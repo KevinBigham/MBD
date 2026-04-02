@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   Clock3,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 import type {
   DraftActionResult,
   DraftBoardCell,
@@ -571,6 +572,8 @@ export default function DraftPage() {
   const [revealedPickCount, setRevealedPickCount] = useState(0);
   const [bonusOffers, setBonusOffers] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const hydratedTickerRef = useRef(false);
+  const visiblePickCountRef = useRef(0);
 
   const loadDraft = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
@@ -619,6 +622,26 @@ export default function DraftPage() {
   const selectedProspect = draft?.availableProspects.find((prospect) => prospect.id === selectedProspectId) ?? null;
   const visiblePicks = draft?.completedPicks.slice(0, watchTargetCount == null ? draft.completedPicks.length : revealedPickCount) ?? [];
   const watching = watchTargetCount != null;
+
+  useEffect(() => {
+    if (!draft) {
+      hydratedTickerRef.current = false;
+      visiblePickCountRef.current = 0;
+      return;
+    }
+
+    if (!hydratedTickerRef.current) {
+      hydratedTickerRef.current = true;
+      visiblePickCountRef.current = visiblePicks.length;
+      return;
+    }
+
+    if (visiblePicks.length > visiblePickCountRef.current) {
+      getAudioEngine().playEffect('draft_pick_announced');
+    }
+
+    visiblePickCountRef.current = visiblePicks.length;
+  }, [draft, visiblePicks.length]);
 
   const applyDraftResult = (result: DraftActionResult | null, options?: { watch?: boolean }) => {
     if (!result?.success || !result.draft) {

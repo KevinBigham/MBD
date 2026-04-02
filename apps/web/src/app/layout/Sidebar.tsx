@@ -18,6 +18,7 @@ import {
 import { type ReactNode, useEffect, useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 interface NavItem {
   to: string;
@@ -50,6 +51,9 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
     <NavLink
       to={item.to}
       end={item.to === '/'}
+      onClick={() => {
+        getAudioEngine().playEffect('tab_switch');
+      }}
       className={({ isActive }) =>
         [
           'focus-ring group flex items-center gap-3 rounded-r-md border-l-2 px-3 py-2.5 text-sm font-medium transition-colors',
@@ -106,7 +110,10 @@ export function Sidebar() {
       {/* Collapse toggle */}
       <div className="flex items-center justify-end border-b border-dynasty-border p-2">
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={() => {
+            getAudioEngine().playEffect('button_click');
+            setCollapsed(!collapsed);
+          }}
           className="focus-ring rounded p-1 text-dynasty-muted transition-colors hover:text-dynasty-text"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >

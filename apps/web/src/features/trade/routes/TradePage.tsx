@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 interface PlayerDTO {
   id: string;
@@ -666,6 +667,12 @@ export default function TradePage() {
     }
     return `${daysUntilDeadline} days until trade deadline`;
   }, [daysUntilDeadline, phase, tradeMarketOpen]);
+
+  useEffect(() => {
+    if (tradeResult?.status === 'accepted') {
+      getAudioEngine().playEffect('trade_completed');
+    }
+  }, [tradeResult]);
 
   return (
     <div className="space-y-4">

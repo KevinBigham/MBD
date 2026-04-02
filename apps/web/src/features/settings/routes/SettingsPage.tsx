@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Save, Trash2, Upload } from 'lucide-react';
+import { Save, Trash2, Upload, Volume2, VolumeX } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 import {
   deleteSave,
   listSaves,
@@ -16,6 +18,10 @@ export default function SettingsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
   const { season, day, phase, userTeamId, initializeGame } = useGameStore();
+  const muted = useAudioPreferencesStore((state) => state.muted);
+  const volume = useAudioPreferencesStore((state) => state.volume);
+  const setMuted = useAudioPreferencesStore((state) => state.setMuted);
+  const setVolume = useAudioPreferencesStore((state) => state.setVolume);
   const [saves, setSaves] = useState<SaveData[]>([]);
   const [status, setStatus] = useState<string>('');
   const [busySlot, setBusySlot] = useState<number | null>(null);
@@ -91,7 +97,28 @@ export default function SettingsPage() {
     }
   }
 
+  function handleMuteToggle() {
+    const nextMuted = !muted;
+    const audio = getAudioEngine();
+    audio.setVolume(volume);
+    audio.setMuted(nextMuted);
+    setMuted(nextMuted);
+    if (!nextMuted) {
+      audio.playEffect('modal_open');
+    }
+  }
+
+  function handleVolumeChange(nextVolume: number) {
+    const audio = getAudioEngine();
+    audio.setVolume(nextVolume);
+    setVolume(nextVolume);
+    if (!muted) {
+      audio.playEffect('button_click');
+    }
+  }
+
   const saveMap = new Map(saves.map((save) => [save.slotNumber, save]));
+  const volumePercent = Math.round(volume * 100);
 
   return (
     <div className="space-y-6">
@@ -113,13 +140,50 @@ export default function SettingsPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-          <h2 className="mb-3 font-heading text-lg font-semibold text-dynasty-textBright">
-            Game Settings
-          </h2>
-          <p className="font-heading text-sm text-dynasty-muted">
-            Simulation speed, auto-save frequency, difficulty level, and league
-            rules configuration.
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="mb-3 font-heading text-lg font-semibold text-dynasty-textBright">
+                Audio
+              </h2>
+              <p className="font-heading text-sm text-dynasty-muted">
+                Procedural effects and ambient beds. Audio starts muted until you opt in.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleMuteToggle}
+              className={`inline-flex items-center gap-2 rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide transition-colors ${
+                muted
+                  ? 'border-dynasty-border text-dynasty-text hover:bg-dynasty-elevated'
+                  : 'border-accent-success/40 text-accent-success hover:bg-accent-success/10'
+              }`}
+            >
+              {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+              {muted ? 'Muted' : 'Sound On'}
+            </button>
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <label htmlFor="audio-volume" className="font-heading text-sm text-dynasty-textBright">
+                Master Volume
+              </label>
+              <span className="font-data text-xs text-dynasty-muted">{volumePercent}%</span>
+            </div>
+            <input
+              id="audio-volume"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={volumePercent}
+              onChange={(event) => handleVolumeChange(Number(event.target.value) / 100)}
+              className="mt-3 w-full accent-accent-primary"
+            />
+            <p className="mt-3 font-heading text-xs text-dynasty-muted">
+              Ambient beds stay disabled when the browser requests reduced motion.
+            </p>
+          </div>
         </div>
 
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">

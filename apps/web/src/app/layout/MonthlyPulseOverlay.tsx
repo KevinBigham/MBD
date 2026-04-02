@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, ArrowRight, Clock3, Sparkles, X } from 'lucide-react';
 import type { DecisionSpotlightItem, MonthlyReport } from '@mbd/contracts';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 interface MonthlyPulseOverlayProps {
   report: MonthlyReport | null;
@@ -29,6 +31,22 @@ export function MonthlyPulseOverlay({
   onDecisionDismiss,
   onDecisionAction,
 }: MonthlyPulseOverlayProps) {
+  const visible = report != null || decision != null;
+  const visibleRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (visibleRef.current == null) {
+      visibleRef.current = visible;
+      return;
+    }
+
+    if (visibleRef.current !== visible) {
+      getAudioEngine().playEffect(visible ? 'modal_open' : 'modal_close');
+    }
+
+    visibleRef.current = visible;
+  }, [visible]);
+
   if (!report && !decision) {
     return null;
   }

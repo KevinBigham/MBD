@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -8,7 +8,9 @@ import { SeasonFlowCard } from './SeasonFlowCard';
 import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
 import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
 import type { MonthlyPulseState } from '@mbd/contracts';
 
@@ -25,16 +27,64 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
+function resolveAmbientMode(
+  pathname: string,
+  phase: string,
+  initialized: boolean,
+  overlayVisible: boolean,
+): AmbientMode | null {
+  if (!initialized) {
+    return null;
+  }
+
+  if (overlayVisible) {
+    return 'press-room';
+  }
+
+  if (pathname.startsWith('/draft')) {
+    return 'draft-room';
+  }
+
+  if (pathname.startsWith('/press-room')) {
+    return 'press-room';
+  }
+
+  if (
+    pathname.startsWith('/settings')
+    || pathname.startsWith('/offseason')
+    || pathname.startsWith('/free-agency')
+  ) {
+    return 'office';
+  }
+
+  if (phase === 'regular' || phase === 'playoffs') {
+    return 'ballpark';
+  }
+
+  return 'office';
+}
+
 export function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
   const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseState | null>(null);
   const [monthlyPulseBusy, setMonthlyPulseBusy] = useState(false);
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { setSimulating, updateFromSim, initializeGame, isInitialized, isSimulating } = useGameStore();
+  const {
+    phase,
+    setSimulating,
+    updateFromSim,
+    initializeGame,
+    isInitialized,
+    isSimulating,
+  } = useGameStore();
+  const audioMuted = useAudioPreferencesStore((state) => state.muted);
+  const audioVolume = useAudioPreferencesStore((state) => state.volume);
   const initialized = useRef(false);
+  const commandPaletteOpenRef = useRef<boolean | null>(null);
 
   const refreshSeasonFlow = useCallback(async () => {
     if (!workerReady) return;
@@ -115,6 +165,37 @@ export function AppLayout() {
 
   const activeReport = monthlyPulse?.pendingReport ?? null;
   const activeDecision = activeReport ? null : (monthlyPulse?.decisionQueue[0] ?? null);
+  const ambientMode = resolveAmbientMode(
+    location.pathname,
+    phase,
+    isInitialized,
+    activeReport != null || activeDecision != null,
+  );
+
+  useEffect(() => {
+    getAudioEngine().setVolume(audioVolume);
+  }, [audioVolume]);
+
+  useEffect(() => {
+    getAudioEngine().setMuted(audioMuted);
+  }, [audioMuted]);
+
+  useEffect(() => {
+    getAudioEngine().setAmbient(ambientMode);
+  }, [ambientMode]);
+
+  useEffect(() => {
+    if (commandPaletteOpenRef.current == null) {
+      commandPaletteOpenRef.current = commandPaletteOpen;
+      return;
+    }
+
+    if (commandPaletteOpenRef.current !== commandPaletteOpen) {
+      getAudioEngine().playEffect(commandPaletteOpen ? 'modal_open' : 'modal_close');
+    }
+
+    commandPaletteOpenRef.current = commandPaletteOpen;
+  }, [commandPaletteOpen]);
 
   const handleMonthlyReportContinue = useCallback(async () => {
     if (!activeReport) return;

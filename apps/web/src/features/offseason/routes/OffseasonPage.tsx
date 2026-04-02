@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowRightLeft,
   Award,
@@ -20,6 +20,7 @@ import { getTeamById } from '@mbd/sim-core';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; description: string }> = {
   season_review: {
@@ -233,9 +234,23 @@ export default function OffseasonPage() {
   const [qualifyingOfferSalary, setQualifyingOfferSalary] = useState<number | null>(null);
   const [advancing, setAdvancing] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({});
+  const previousResultsRef = useRef<OffseasonData['phaseResults'] | null>(null);
 
   const applyOffseasonData = useCallback((data: OffseasonData | null) => {
     if (!data) return;
+
+    const previous = previousResultsRef.current;
+    if (previous) {
+      if (data.phaseResults.extensions.length > previous.extensions.length) {
+        getAudioEngine().playEffect('extension_signed');
+      }
+
+      if (data.phaseResults.freeAgentSignings.length > previous.freeAgentSignings.length) {
+        getAudioEngine().playEffect('free_agent_signed');
+      }
+    }
+
+    previousResultsRef.current = data.phaseResults;
     setOffseason(data);
     setExpandedPhases((current) => {
       const next = { ...current };
