@@ -11,6 +11,7 @@ import { StandingsTracker } from '../league/standings.js';
 import type { GameBoxScore, PlayerGameStats, GameTeam } from './gameSimulator.js';
 import { simulateGame } from './gameSimulator.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
+import { getNextMonthStartDay } from './calendar.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -231,8 +232,9 @@ export function simulateMonth(
 ): { newState: SeasonState; result: DaySimResult } {
   let current = state;
   let lastResult: DaySimResult = { day: state.currentDay, games: [], seasonComplete: false };
+  const targetDay = getNextMonthStartDay(state.currentDay);
 
-  for (let i = 0; i < 30; i++) {
+  while (current.currentDay < targetDay) {
     if (current.completed) break;
     const { newState, result } = simulateDay(rng, current, schedule, allPlayers);
     current = newState;

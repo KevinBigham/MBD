@@ -38,6 +38,12 @@ function createWorkerMock(flow: Record<string, unknown>) {
   return {
     isReady: true,
     getSeasonFlowState: vi.fn().mockResolvedValue(flow),
+    getMonthlyPulse: vi.fn().mockResolvedValue({
+      pendingReport: null,
+      decisionQueue: [],
+    }),
+    acknowledgeMonthlyReport: vi.fn().mockResolvedValue({ success: true }),
+    dismissDecisionSpotlight: vi.fn().mockResolvedValue({ success: true }),
     subscribeToFlowUpdates: vi.fn(() => () => {}),
     newGame: vi.fn().mockResolvedValue({
       season: 3,
@@ -300,13 +306,151 @@ describe('AppLayout', () => {
     });
 
     expect(worker.subscribeToFlowUpdates).toHaveBeenCalledTimes(1);
-    expect(worker.getSeasonFlowState).toHaveBeenCalledTimes(2);
+    expect(worker.getSeasonFlowState).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       vi.advanceTimersByTime(5000);
       await Promise.resolve();
     });
 
-    expect(worker.getSeasonFlowState).toHaveBeenCalledTimes(2);
+    expect(worker.getSeasonFlowState).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the monthly report first and then advances into the decision spotlight queue', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 117,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      playerCount: 780,
+      gamesPlayed: 117,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const flow = {
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 — Day 117/162',
+      detailLabel: 'Regular Season',
+      progress: 117 / 162,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 5,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    };
+    const worker = createWorkerMock(flow);
+    let pulseCall = 0;
+    worker.getMonthlyPulse = vi.fn().mockImplementation(async () => {
+      pulseCall += 1;
+      if (pulseCall === 1) {
+        return {
+          pendingReport: {
+            id: 'report-3-7',
+            monthLabel: 'July',
+            teamRecord: '18-10',
+            overallRecord: '62-55',
+            divisionMovement: 1,
+            playerOfTheMonth: {
+              playerName: 'Aaron Judge',
+              war: 1.8,
+            },
+          },
+          decisionQueue: [
+            {
+              id: 'decision-roster',
+              urgency: 'red',
+              title: 'Roster is over the active limit',
+              body: 'You need to clear one roster spot before the next series.',
+              route: '/roster',
+              actionLabel: 'Open Roster',
+            },
+          ],
+        };
+      }
+
+      if (pulseCall === 2) {
+        return {
+          pendingReport: null,
+          decisionQueue: [
+            {
+              id: 'decision-roster',
+              urgency: 'red',
+              title: 'Roster is over the active limit',
+              body: 'You need to clear one roster spot before the next series.',
+              route: '/roster',
+              actionLabel: 'Open Roster',
+            },
+          ],
+        };
+      }
+
+      return {
+        pendingReport: null,
+        decisionQueue: [],
+      };
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+              <Route path="roster" element={<div>Roster</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Monthly Report');
+    expect(container.textContent).toContain('July');
+    expect(container.textContent).toContain('Aaron Judge');
+
+    const continueButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Continue'),
+    );
+
+    await act(async () => {
+      continueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.acknowledgeMonthlyReport).toHaveBeenCalledWith('report-3-7');
+    expect(container.textContent).toContain('Decision Spotlight');
+    expect(container.textContent).toContain('Roster is over the active limit');
+
+    const dismissButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Dismiss'),
+    );
+
+    await act(async () => {
+      dismissButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.dismissDecisionSpotlight).toHaveBeenCalledWith('decision-roster');
   });
 });

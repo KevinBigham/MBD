@@ -45,6 +45,7 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
 import {
   getAwardHistory,
@@ -597,6 +598,10 @@ export const queryApi = {
 
   getDashboardSummary() {
     return state ? buildDashboardSummary(state) : null;
+  },
+
+  getMonthlyPulse() {
+    return state ? getMonthlyPulse(state) : null;
   },
 
   getSeasonFlowState() {

@@ -175,6 +175,10 @@ function createState(): FullGameState {
     coachingStaffs: new Map(),
     coachFreeAgentPool: [],
     pendingExtensionNegotiations: new Map(),
+    monthlyPulse: {
+      pendingReport: null,
+      decisionQueue: [],
+    },
     ...createNarrativeSample('nyy'),
     tradeState: {
       pendingOffers: [],
@@ -222,7 +226,13 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(9);
+    expect(snapshot.schemaVersion).toBe(10);
+    expect((snapshot as GameSnapshot & {
+      monthlyPulse?: { pendingReport: null; decisionQueue: unknown[] };
+    }).monthlyPulse).toEqual({
+      pendingReport: null,
+      decisionQueue: [],
+    });
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -245,9 +255,36 @@ describe('snapshot helpers', () => {
     expect(restored.rivalries.get('nyy:bos')?.intensity).toBe(63);
     expect(restored.tradeState.pendingOffers).toEqual([]);
     expect(restored.tradeState.tradeHistory).toEqual([]);
+    expect((restored as FullGameState & {
+      monthlyPulse: { pendingReport: null; decisionQueue: unknown[] };
+    }).monthlyPulse).toEqual({
+      pendingReport: null,
+      decisionQueue: [],
+    });
     expect(restored.rule5Session?.phase).toBe('protection_audit');
     expect(restored.rule5Obligations[0]?.status).toBe('active');
     expect(restored.rule5OfferBackStates[0]?.status).toBe('pending');
+  });
+
+  it('migrates v9 snapshots into the v10 monthly pulse shape', () => {
+    const original = createState();
+    const exported = exportGameSnapshot(original) as GameSnapshot & {
+      schemaVersion: number;
+      monthlyPulse?: unknown;
+    };
+
+    const restored = importGameSnapshot({
+      ...exported,
+      schemaVersion: 9,
+      monthlyPulse: undefined,
+    });
+
+    expect((restored as FullGameState & {
+      monthlyPulse: { pendingReport: null; decisionQueue: unknown[] };
+    }).monthlyPulse).toEqual({
+      pendingReport: null,
+      decisionQueue: [],
+    });
   });
 
   it('does not persist pending extension negotiations in snapshots', () => {

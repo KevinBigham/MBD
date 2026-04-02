@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AwardHistoryEntry } from '@mbd/contracts';
 import {
+  buildRosterState,
   createOffseasonState,
   evaluatePlayerTradeValue,
   type GeneratedPlayer,
@@ -120,6 +121,21 @@ interface MinorLeagueWorkerApi {
   };
   hireCoach: (coachId: string) => { success: boolean };
   fireCoach: (coachId: string) => { success: boolean };
+  getMonthlyPulse: () => {
+    pendingReport: {
+      id: string;
+      monthLabel: string;
+      teamRecord: string;
+      overallRecord: string;
+    } | null;
+    decisionQueue: Array<{
+      id: string;
+      urgency: 'red' | 'yellow' | 'blue';
+      route: string;
+    }>;
+  };
+  acknowledgeMonthlyReport: (reportId: string) => { success: boolean };
+  dismissDecisionSpotlight: (decisionId: string) => { success: boolean };
 }
 
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
@@ -278,6 +294,106 @@ describe('sim worker narrative APIs', () => {
     expect(report?.playerId).toBe(prospect!.id);
     expect(report?.history.length).toBeGreaterThan(0);
     expect(reports?.history).toEqual(report?.history);
+  });
+
+  it('advances to calendar month boundaries and creates a pending monthly pulse report', () => {
+    api.newGame(1251, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 31,
+    };
+
+    const result = api.simMonth();
+    const monthlyPulse = (api as typeof api & MinorLeagueWorkerApi).getMonthlyPulse();
+    expect(monthlyPulse).not.toBeNull();
+    if (!monthlyPulse) {
+      throw new Error('Expected monthly pulse state after simulating a month.');
+    }
+
+    expect(result.day).toBe(62);
+    expect(monthlyPulse.pendingReport).toMatchObject({
+      monthLabel: 'May',
+    });
+    expect(monthlyPulse.pendingReport?.teamRecord).toMatch(/^\d+-\d+$/);
+    expect(monthlyPulse.pendingReport?.overallRecord).toMatch(/^\d+-\d+$/);
+  });
+
+  it('builds red, yellow, and blue monthly spotlight items and supports acknowledgement flow', () => {
+    api.newGame(1252, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 92;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 92,
+    };
+
+    const extraMlb = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB',
+    )!;
+    const prospect = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB' && player.id !== extraMlb.id,
+    )!;
+    extraMlb.rosterStatus = 'MLB';
+    extraMlb.minorLeagueLevel = null;
+    prospect.rosterStatus = 'AAA';
+    prospect.minorLeagueLevel = 'AAA';
+    state.rosterStates.set('nyy', buildRosterState('nyy', state.players));
+    state.tradeState.pendingOffers = [buildIncomingOffer('monthly-pulse-offer').offer];
+    state.minorLeagueState.affiliateStates = [
+      {
+        teamId: 'nyy',
+        level: 'AAA',
+        season: state.season,
+        gamesPlayed: 48,
+        wins: 31,
+        losses: 17,
+        runsScored: 241,
+        runsAllowed: 188,
+        playerStats: [[prospect.id, {
+          playerId: prospect.id,
+          games: 31,
+          pa: 132,
+          hits: 41,
+          hr: 8,
+          rbi: 27,
+          bb: 16,
+          k: 19,
+          ipOuts: 0,
+          earnedRuns: 0,
+          strikeouts: 0,
+          walks: 0,
+          wins: 0,
+          losses: 0,
+        }]],
+      },
+    ];
+
+    api.simMonth();
+
+    const monthlyApi = api as typeof api & MinorLeagueWorkerApi;
+    const pulse = monthlyApi.getMonthlyPulse();
+    expect(pulse).not.toBeNull();
+    if (!pulse) {
+      throw new Error('Expected monthly pulse state after simulating a month.');
+    }
+    const urgencies = pulse.decisionQueue.map((item) => item.urgency);
+
+    expect(urgencies).toEqual(expect.arrayContaining(['red', 'yellow', 'blue']));
+    expect(pulse.decisionQueue[0]?.urgency).toBe('red');
+
+    const reportId = pulse.pendingReport?.id;
+    expect(reportId).toBeTruthy();
+    expect(monthlyApi.acknowledgeMonthlyReport(reportId!)).toEqual({ success: true });
+    expect(monthlyApi.getMonthlyPulse()?.pendingReport).toBeNull();
+
+    const firstDecisionId = monthlyApi.getMonthlyPulse()?.decisionQueue[0]?.id;
+    expect(firstDecisionId).toBeTruthy();
+    expect(monthlyApi.dismissDecisionSpotlight(firstDecisionId!)).toEqual({ success: true });
+    expect(monthlyApi.getMonthlyPulse()?.decisionQueue.some((item) => item.id === firstDecisionId)).toBe(false);
   });
 
   it('routes offseason progression through extensions before qualifying offers', () => {

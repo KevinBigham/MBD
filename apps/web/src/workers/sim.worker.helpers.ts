@@ -31,6 +31,7 @@ import {
   getTeamById,
   getOffseasonLength,
   getQualifyingOfferEligiblePlayers,
+  getRegularSeasonMonthForDay,
   resolveDraftSigning,
   resolveQualifyingOffer as resolveQualifyingOfferCore,
   scoutDraftProspect,
@@ -135,6 +136,7 @@ import type {
   DraftSignability,
   DraftState as PersistentDraftState,
   MinorLeagueState,
+  MonthlyPulseState,
   OwnerState,
   PlayerMorale,
   Rivalry,
@@ -177,6 +179,7 @@ export interface FullGameState {
   internationalScoutingState: InternationalScoutingState;
   draftState: PersistentDraftState;
   minorLeagueState: MinorLeagueState;
+  monthlyPulse: MonthlyPulseState;
   playerMorale: Map<string, PlayerMorale>;
   teamChemistry: Map<string, TeamChemistry>;
   ownerState: Map<string, OwnerState>;
@@ -2896,18 +2899,22 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
   }
 
   if (s.phase === 'regular') {
+    const currentMonth = getRegularSeasonMonthForDay(s.day);
+    const daysUntilTradeDeadline = Math.max(0, 120 - s.day);
     return {
       status: 'regular',
       season: s.season,
       phaseLabel: `Season ${s.season} — Day ${s.day}/162`,
-      detailLabel: 'Regular Season',
+      detailLabel: daysUntilTradeDeadline <= 14
+        ? `${currentMonth.label} pulse · ${daysUntilTradeDeadline} days to deadline`
+        : `${currentMonth.label} pulse`,
       progress: clampProgress(s.day / 162),
       canUseRegularSimControls: true,
       action: null,
       actionLabel: null,
       secondaryAction: null,
       secondaryActionLabel: null,
-      daysUntilTradeDeadline: Math.max(0, 120 - s.day),
+      daysUntilTradeDeadline,
       standingsSnapshot,
       playoffPreview: [],
       seasonSummary: null,

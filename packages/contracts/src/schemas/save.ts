@@ -25,7 +25,9 @@ import {
   RivalrySchema,
   TeamChemistrySchema,
   SeasonHistoryEntrySchema,
+  type NewsTag,
 } from "./narrative.js";
+import { MonthlyPulseStateSchema } from "./monthlyPulse.js";
 import { TradeStateSchema } from "./trade.js";
 import {
   DraftCompensatoryPickSchema,
@@ -392,7 +394,7 @@ const MinorLeagueStateV7Schema = z.object({
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 9;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 10;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -420,6 +422,7 @@ export const GameSnapshotSchema = z.object({
   coachingStaffs: z.array(CoachingStaffEntrySchema),
   coachFreeAgentPool: z.array(CoachSchema),
   narrative: NarrativeSnapshotSchema,
+  monthlyPulse: MonthlyPulseStateSchema,
   tradeState: TradeStateSchema,
   internationalScoutingState: InternationalScoutingStateSchema,
   draftState: DraftStateSchema,
@@ -429,6 +432,39 @@ export const GameSnapshotSchema = z.object({
   rule5OfferBackStates: z.array(Rule5StateEntrySchema),
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV9Schema = z.object({
+  schemaVersion: z.literal(9),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(SnapshotPlayerSchema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateV8Schema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  coachingStaffs: z.array(CoachingStaffEntrySchema),
+  coachFreeAgentPool: z.array(CoachSchema),
+  narrative: NarrativeSnapshotSchema,
+  tradeState: TradeStateSchema,
+  internationalScoutingState: InternationalScoutingStateSchema,
+  draftState: DraftStateSchema,
+  minorLeagueState: MinorLeagueStateSchema,
+  rule5Session: Rule5SessionSchema,
+  rule5Obligations: z.array(Rule5StateEntrySchema),
+  rule5OfferBackStates: z.array(Rule5StateEntrySchema),
+});
+export type GameSnapshotV9 = z.infer<typeof GameSnapshotV9Schema>;
 
 export const GameSnapshotV8Schema = z.object({
   schemaVersion: z.literal(8),
@@ -648,6 +684,29 @@ function migratePlayerStatEntryV8([playerId, stats]: z.infer<typeof PlayerStatEn
       flyBallsAllowed: 0,
     },
   ];
+}
+
+function inferSavedNewsTag(category: string, priority: number): NewsTag {
+  if (category === "rumor") return "RUMOR";
+  if (priority <= 1) return "BREAKING";
+  if (["extension", "qualifying_offer", "coaching", "development", "rivalry", "owner", "chemistry"].includes(category)) {
+    return "ANALYSIS";
+  }
+  return "RECAP";
+}
+
+function normalizeSavedNewsItemTag<T extends { category: string; priority: number; tag?: NewsTag }>(item: T): T & { tag: NewsTag } {
+  return {
+    ...item,
+    tag: item.tag ?? inferSavedNewsTag(item.category, item.priority),
+  };
+}
+
+function createEmptyMonthlyPulseState() {
+  return {
+    pendingReport: null,
+    decisionQueue: [],
+  };
 }
 
 function createEmptyStatLeaders() {
@@ -1011,6 +1070,7 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
     players: snapshot.players.map((player) =>
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     seasonState: {
@@ -1023,6 +1083,7 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
         ...entry,
         league: "MLB" as const,
       })),
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
       ...createEmptyLegacyState(),
       seasonHistory: snapshot.narrative.seasonHistory.map((entry) => ({
         ...entry,
@@ -1038,6 +1099,7 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
         userSeason: null,
         })),
     },
+    monthlyPulse: createEmptyMonthlyPulseState(),
     tradeState: createEmptyTradeState(),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
@@ -1051,6 +1113,7 @@ function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
     players: snapshot.players.map((player) =>
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     seasonState: {
@@ -1059,8 +1122,10 @@ function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
     },
     narrative: {
       ...snapshot.narrative,
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
       ...createEmptyLegacyState(),
     },
+    monthlyPulse: createEmptyMonthlyPulseState(),
     tradeState: createEmptyTradeState(),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
@@ -1074,6 +1139,7 @@ function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
     players: snapshot.players.map((player) =>
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     seasonState: {
@@ -1082,8 +1148,10 @@ function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
     },
     narrative: {
       ...snapshot.narrative,
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
       ...createEmptyLegacyState(),
     },
+    monthlyPulse: createEmptyMonthlyPulseState(),
     tradeState: snapshot.tradeState ?? createEmptyTradeState(),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
@@ -1097,12 +1165,18 @@ function migrateGameSnapshotV5(snapshot: GameSnapshotV5): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
     players: snapshot.players.map((player) =>
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     seasonState: {
       ...snapshot.seasonState,
       playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
     },
+    narrative: {
+      ...snapshot.narrative,
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
+    },
+    monthlyPulse: createEmptyMonthlyPulseState(),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
@@ -1115,12 +1189,18 @@ function migrateGameSnapshotV6(snapshot: GameSnapshotV6): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
     players: snapshot.players.map((player) =>
       migrateV6SnapshotPlayer(player, serviceTimeLookup.get(player.id) ?? 0)),
     seasonState: {
       ...snapshot.seasonState,
       playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
     },
+    narrative: {
+      ...snapshot.narrative,
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
+    },
+    monthlyPulse: createEmptyMonthlyPulseState(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
   });
@@ -1131,6 +1211,7 @@ function migrateGameSnapshotV7(snapshot: GameSnapshotV7): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
     players: snapshot.players.map((player) => ({
       ...player,
       ...backfillDevelopmentProfile(player),
@@ -1139,7 +1220,12 @@ function migrateGameSnapshotV7(snapshot: GameSnapshotV7): GameSnapshot {
       ...snapshot.seasonState,
       playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
     },
+    narrative: {
+      ...snapshot.narrative,
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
+    },
     minorLeagueState: upgradeMinorLeagueState(snapshot.minorLeagueState),
+    monthlyPulse: createEmptyMonthlyPulseState(),
     ...createEmptyPhase7State(snapshot.season, teamIds),
   });
 }
@@ -1148,10 +1234,33 @@ function migrateGameSnapshotV8(snapshot: GameSnapshotV8): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
     seasonState: {
       ...snapshot.seasonState,
       playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
     },
+    narrative: {
+      ...snapshot.narrative,
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
+    },
+    monthlyPulse: createEmptyMonthlyPulseState(),
+  });
+}
+
+function migrateGameSnapshotV9(snapshot: GameSnapshotV9): GameSnapshot {
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    news: snapshot.news.map(normalizeSavedNewsItemTag),
+    seasonState: {
+      ...snapshot.seasonState,
+      playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
+    },
+    narrative: {
+      ...snapshot.narrative,
+      briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
+    },
+    monthlyPulse: createEmptyMonthlyPulseState(),
   });
 }
 
@@ -1172,6 +1281,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 9
+  ) {
+    return migrateGameSnapshotV9(GameSnapshotV9Schema.parse(snapshotLike));
   }
 
   if (

@@ -27,6 +27,15 @@ export type {
 } from './gameSimulator.js';
 
 export {
+  REGULAR_SEASON_MONTHS,
+  getRegularSeasonMonthForDay,
+  getNextMonthStartDay,
+} from './calendar.js';
+export type {
+  RegularSeasonMonth,
+} from './calendar.js';
+
+export {
   createSeasonState,
   simulateDay,
   simulateWeek,

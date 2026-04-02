@@ -214,6 +214,23 @@ export type {
 } from "./schemas/narrative.js";
 
 export {
+  DecisionSpotlightUrgencyEnum,
+  MonthlyPlayerOfTheMonthSchema,
+  ScheduleDifficultySchema,
+  MonthlyReportSchema,
+  DecisionSpotlightItemSchema,
+  MonthlyPulseStateSchema,
+} from "./schemas/monthlyPulse.js";
+export type {
+  DecisionSpotlightUrgency,
+  MonthlyPlayerOfTheMonth,
+  ScheduleDifficulty,
+  MonthlyReport,
+  DecisionSpotlightItem,
+  MonthlyPulseState,
+} from "./schemas/monthlyPulse.js";
+
+export {
   SaveMetaSchema,
   SaveSlotSchema,
   CURRENT_GAME_SNAPSHOT_VERSION,

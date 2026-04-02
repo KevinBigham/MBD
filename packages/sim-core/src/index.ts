@@ -153,6 +153,9 @@ export type {
 
 // Sim
 export {
+  REGULAR_SEASON_MONTHS,
+  getRegularSeasonMonthForDay,
+  getNextMonthStartDay,
   resolvePlateAppearance,
   advanceRunners,
   freshRunnerState,
@@ -174,6 +177,7 @@ export {
   simulatePlayoffs,
 } from './sim/index.js';
 export type {
+  RegularSeasonMonth,
   PAOutcome,
   PAContext,
   PAResult,
