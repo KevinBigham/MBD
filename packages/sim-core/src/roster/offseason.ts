@@ -17,6 +17,7 @@ export const OFFSEASON_PHASES = [
   'season_review',
   'arbitration',
   'tender_nontender',
+  'extensions',
   'qualifying_offers',
   'free_agency',
   'draft',
@@ -34,6 +35,7 @@ const PHASE_DURATIONS: Record<OffseasonPhase, number> = {
   season_review: 3,
   arbitration: 7,
   tender_nontender: 5,
+  extensions: 5,
   qualifying_offers: 4,
   free_agency: 30,
   draft: 3,
@@ -61,6 +63,9 @@ export interface PhaseResults {
   arbitrationResolved: ArbitrationResult[];
   tenderedPlayers: string[];          // Player IDs that were tendered
   nonTenderedPlayers: string[];       // Player IDs that were non-tendered (become FAs)
+  extensions: ExtensionPhaseResult[];
+  qualifyingOffers: QualifyingOfferPhaseResult[];
+  coachChanges: CoachChangeResult[];
   freeAgentSignings: FASigningResult[];
   draftPicks: DraftPickResult[];
   ifaSignings: IFASigningResult[];
@@ -81,6 +86,33 @@ export interface FASigningResult {
   years: number;
   annualSalary: number;
   totalValue: number;
+}
+
+export interface ExtensionPhaseResult {
+  playerId: string;
+  teamId: string;
+  status: 'accepted' | 'rejected';
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+}
+
+export interface QualifyingOfferPhaseResult {
+  playerId: string;
+  teamId: string;
+  amount: number;
+  status: 'offered' | 'accepted' | 'rejected' | 'compensated' | 'expired';
+  signingTeamId: string | null;
+  compensationPickId: string | null;
+}
+
+export interface CoachChangeResult {
+  teamId: string;
+  coachId: string;
+  coachName: string;
+  role: string;
+  action: 'hired' | 'fired';
+  salary: number;
 }
 
 export interface DraftPickResult {
@@ -127,6 +159,9 @@ export function createOffseasonState(season: number): OffseasonState {
       arbitrationResolved: [],
       tenderedPlayers: [],
       nonTenderedPlayers: [],
+      extensions: [],
+      qualifyingOffers: [],
+      coachChanges: [],
       freeAgentSignings: [],
       draftPicks: [],
       ifaSignings: [],
@@ -255,6 +290,45 @@ export function recordTenderDecisions(
       ...state.phaseResults,
       tenderedPlayers: [...state.phaseResults.tenderedPlayers, ...tendered],
       nonTenderedPlayers: [...state.phaseResults.nonTenderedPlayers, ...nonTendered],
+    },
+  };
+}
+
+export function recordExtensionResults(
+  state: OffseasonState,
+  results: ExtensionPhaseResult[],
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      extensions: [...state.phaseResults.extensions, ...results],
+    },
+  };
+}
+
+export function recordQualifyingOfferResults(
+  state: OffseasonState,
+  results: QualifyingOfferPhaseResult[],
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      qualifyingOffers: [...state.phaseResults.qualifyingOffers, ...results],
+    },
+  };
+}
+
+export function recordCoachChange(
+  state: OffseasonState,
+  result: CoachChangeResult,
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      coachChanges: [...state.phaseResults.coachChanges, result],
     },
   };
 }

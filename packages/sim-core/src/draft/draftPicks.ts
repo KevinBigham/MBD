@@ -25,6 +25,15 @@ export interface DraftCompensatoryPick {
   order: number;
 }
 
+export interface DraftCompensatoryPickAward {
+  season: number;
+  awardedToTeamId: string;
+  compensationForPlayerId: string;
+  compensationFromTeamId: string;
+  order?: number;
+  priorityGroup?: 'premium' | 'standard';
+}
+
 export interface DraftPickSlot {
   slotId: string;
   season: number;
@@ -34,6 +43,8 @@ export interface DraftPickSlot {
   originalTeamId: string | null;
   kind: 'standard' | 'compensatory';
   compensationForPlayerId: string | null;
+  compensationFromTeamId: string | null;
+  compensationPriority: 'premium' | 'standard' | null;
 }
 
 function sortByDraftPriority(standingsOrder: string[], left: DraftPickOwnership, right: DraftPickOwnership): number {
@@ -91,11 +102,33 @@ export function tradeDraftPickOwnership(
 
 export function awardCompensatoryPick(
   compPicks: DraftCompensatoryPick[],
-  award: Omit<DraftCompensatoryPick, 'id'>,
+  award: DraftCompensatoryPickAward,
 ): DraftCompensatoryPick[] {
+  const nextOrder = (() => {
+    if (award.order != null) {
+      return award.order;
+    }
+
+    const seasonPicks = compPicks.filter((pick) => pick.season === award.season);
+    if (award.priorityGroup === 'premium') {
+      const latestPremiumOrder = seasonPicks
+        .filter((pick) => pick.order < 100)
+        .reduce((max, pick) => Math.max(max, pick.order), 0);
+      return latestPremiumOrder + 1;
+    }
+
+    const latestStandardOrder = seasonPicks
+      .filter((pick) => pick.order >= 100)
+      .reduce((max, pick) => Math.max(max, pick.order), 99);
+    return latestStandardOrder + 1;
+  })();
   const nextPick: DraftCompensatoryPick = {
-    ...award,
-    id: `comp-${award.season}-${award.awardedToTeamId}-${award.compensationForPlayerId}-${award.order}`,
+    season: award.season,
+    awardedToTeamId: award.awardedToTeamId,
+    compensationForPlayerId: award.compensationForPlayerId,
+    compensationFromTeamId: award.compensationFromTeamId,
+    order: nextOrder,
+    id: `comp-${award.season}-${award.awardedToTeamId}-${award.compensationForPlayerId}-${nextOrder}`,
   };
 
   return [...compPicks, nextPick].sort((left, right) =>
@@ -166,6 +199,8 @@ export function buildDraftPickSlots(
         originalTeamId,
         kind: 'standard',
         compensationForPlayerId: null,
+        compensationFromTeamId: null,
+        compensationPriority: null,
       });
     }
   };
@@ -185,6 +220,8 @@ export function buildDraftPickSlots(
       originalTeamId: null,
       kind: 'compensatory',
       compensationForPlayerId: compPick.compensationForPlayerId,
+      compensationFromTeamId: compPick.compensationFromTeamId,
+      compensationPriority: compPick.order < 100 ? 'premium' : 'standard',
     });
   }
 

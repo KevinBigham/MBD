@@ -174,6 +174,7 @@ function createState(): FullGameState {
     },
     coachingStaffs: new Map(),
     coachFreeAgentPool: [],
+    pendingExtensionNegotiations: new Map(),
     ...createNarrativeSample('nyy'),
     tradeState: {
       pendingOffers: [],
@@ -247,6 +248,34 @@ describe('snapshot helpers', () => {
     expect(restored.rule5Session?.phase).toBe('protection_audit');
     expect(restored.rule5Obligations[0]?.status).toBe('active');
     expect(restored.rule5OfferBackStates[0]?.status).toBe('pending');
+  });
+
+  it('does not persist pending extension negotiations in snapshots', () => {
+    const original = createState();
+    original.pendingExtensionNegotiations.set('player-1', {
+      playerId: 'player-1',
+      targetContract: {
+        years: 5,
+        annualSalary: 20,
+        totalValue: 100,
+        noTradeClause: false,
+        noTradeClauseType: 'none',
+        playerOption: false,
+        teamOption: false,
+        optOutYears: [],
+        signingBonus: 0,
+        buyoutAmount: 0,
+        deferredMoney: [],
+      },
+      counterOffer: null,
+      rounds: [],
+    });
+
+    const snapshot = exportGameSnapshot(original);
+    const restored = importGameSnapshot(snapshot);
+
+    expect('pendingExtensionNegotiations' in snapshot).toBe(false);
+    expect(restored.pendingExtensionNegotiations.size).toBe(0);
   });
 
   it('migrates v7 snapshots into the v8 staff and development shape', () => {

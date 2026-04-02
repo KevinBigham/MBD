@@ -3,7 +3,7 @@
  * AI trade behavior: GM personalities, proposal evaluation, counter-offers,
  * and autonomous trade generation.
  *
- * All randomness uses GameRNG — Math.random() is NEVER used.
+ * All randomness uses GameRNG; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';

@@ -1,7 +1,7 @@
 /**
  * @module generation
  * Player generation: creates full rosters of deterministic, varied players.
- * Uses GameRNG for all randomness — Math.random() is NEVER used.
+ * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';

@@ -2,7 +2,7 @@
  * @module draftAI
  * AI draft selection logic: determines draft order, evaluates team needs,
  * and runs the full 20-round draft for all 32 teams.
- * Uses GameRNG for all randomness — Math.random() is NEVER used.
+ * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';

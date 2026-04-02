@@ -2,6 +2,7 @@ import {
   AFFILIATE_LEVELS,
   calculateCoachingPayroll,
   calculateLuxuryTax,
+  calculateQualifyingOfferSalary,
   calculateStaffBudget,
   calculateTeamPayroll,
   createFreeAgencyMarket,
@@ -30,7 +31,10 @@ import {
   buildSeasonFlowStateView,
   buildDraftRoomView,
   buildOffseasonStateView,
+  getExtensionCandidatesForTeam,
+  getExtensionOfferForPlayer,
   getPromotionCandidatesForTeam,
+  getQualifyingOfferEligibleForTeam,
   getRosterComplianceIssuesForTeam,
   getTeamPlayers,
   requireState,
@@ -691,7 +695,13 @@ export const queryApi = {
     return [...requireState().coachFreeAgentPool];
   },
 
+  getCoachMarket() {
+    return [...requireState().coachFreeAgentPool];
+  },
+
   getDevelopmentReport(playerId: string) {
+    const recommendations = requireState().minorLeagueState.conversionRecommendations
+      .filter((entry) => entry.playerId === playerId);
     const reports = requireState().minorLeagueState.developmentReports
       .filter((entry) => entry.playerId === playerId)
       .sort((left, right) => left.season - right.season || left.month - right.month);
@@ -708,6 +718,30 @@ export const queryApi = {
         summary: entry.summary,
         overallRating: entry.overallRating,
       })),
+      recommendations,
+    };
+  },
+
+  getDevelopmentReports(playerId: string) {
+    const recommendations = requireState().minorLeagueState.conversionRecommendations
+      .filter((entry) => entry.playerId === playerId);
+    const reports = requireState().minorLeagueState.developmentReports
+      .filter((entry) => entry.playerId === playerId)
+      .sort((left, right) => left.season - right.season || left.month - right.month);
+    if (reports.length === 0) {
+      return null;
+    }
+
+    return {
+      playerId,
+      history: reports.map((entry) => ({
+        season: entry.season,
+        month: entry.month,
+        trajectory: entry.trajectory,
+        summary: entry.summary,
+        overallRating: entry.overallRating,
+      })),
+      recommendations,
     };
   },
 
@@ -757,6 +791,22 @@ export const queryApi = {
           developmentTrajectory: player.developmentTrajectory ?? 'on_track',
         })),
     }));
+  },
+
+  getExtensionCandidates(teamId?: string) {
+    return getExtensionCandidatesForTeam(requireState(), teamId);
+  },
+
+  getExtensionOffer(playerId: string, years: number) {
+    return getExtensionOfferForPlayer(requireState(), playerId, years);
+  },
+
+  getQualifyingOfferEligible(teamId?: string) {
+    return getQualifyingOfferEligibleForTeam(requireState(), teamId);
+  },
+
+  getQualifyingOfferSalary() {
+    return calculateQualifyingOfferSalary(requireState().players);
   },
 
   getIFAPool() {

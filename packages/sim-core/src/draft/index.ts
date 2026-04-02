@@ -30,6 +30,7 @@ export type {
   DraftPickOwnership,
   DraftPickDescriptor,
   DraftCompensatoryPick,
+  DraftCompensatoryPickAward,
   DraftPickSlot,
 } from './draftPicks.js';
 export {

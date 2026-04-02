@@ -32,6 +32,7 @@ describe('advanceOffseasonDay', () => {
       'season_review',
       'arbitration',
       'tender_nontender',
+      'extensions',
       'qualifying_offers',
       'free_agency',
       'draft',

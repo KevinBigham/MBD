@@ -55,12 +55,17 @@ import {
   createEmptyTradeState,
   enforceRule5RosterRestriction,
   ensurePlayersHaveRule5Eligibility,
+  fireCoachForUserTeam,
   getTeamPlayers,
+  hireCoachForUserTeam,
+  issueTeamQualifyingOffer,
   lockUserRule5Protection,
   makeUserDraftSelection,
   makeUserRule5Selection,
+  negotiatePlayerExtension,
   processDayInjuriesAndNews,
   requireState,
+  resolveOutstandingQualifyingOffers,
   resolveRule5OfferBackDecision,
   passUserRule5Turn,
   placePlayerOnWaivers,
@@ -77,6 +82,7 @@ import {
   timestamp,
   toggleUserRule5Protection,
   advanceOffseasonOnce,
+  applyQualifyingOfferCompensationIfNeeded,
 } from './sim.worker.helpers.js';
 import type {
   FullGameState,
@@ -644,6 +650,7 @@ export const actionApi = {
       gmPersonalities,
       coachingStaffs,
       coachFreeAgentPool: generateCoachFreeAgents(coachPoolRng),
+      pendingExtensionNegotiations: new Map(),
       offseasonState: null,
       rule5Session: null,
       rule5Obligations: [],
@@ -1064,9 +1071,15 @@ export const actionApi = {
     player.contract = {
       years,
       annualSalary: salary,
+      totalValue: offer.totalValue,
       noTradeClause: false,
+      noTradeClauseType: 'none',
       playerOption: false,
       teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
     };
 
     s.freeAgencyMarket.freeAgents = s.freeAgencyMarket.freeAgents.filter(
@@ -1081,8 +1094,29 @@ export const actionApi = {
 
     s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
+    applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
     return result;
+  },
+
+  negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
+    return negotiatePlayerExtension(requireState(), playerId, offer);
+  },
+
+  issueQualifyingOffer(playerId: string) {
+    return issueTeamQualifyingOffer(requireState(), playerId);
+  },
+
+  resolveQualifyingOffers() {
+    return resolveOutstandingQualifyingOffers(requireState());
+  },
+
+  hireCoach(coachId: string) {
+    return hireCoachForUserTeam(requireState(), coachId);
+  },
+
+  fireCoach(coachId: string) {
+    return fireCoachForUserTeam(requireState(), coachId);
   },
 
   advanceOffseason(): OffseasonStateView | null {

@@ -2,7 +2,7 @@
  * @module development
  * Ornstein-Uhlenbeck aging curves for player development.
  * Each attribute evolves per-season via mean reversion, drift, and stochastic noise.
- * Uses GameRNG for all randomness — Math.random() is NEVER used.
+ * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';

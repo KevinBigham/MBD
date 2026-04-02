@@ -73,6 +73,9 @@ export function useWorker() {
   type ScoutIFAResult = Awaited<ReturnType<WorkerApi['scoutIFAPlayer']>>;
   type SignIFAResult = Awaited<ReturnType<WorkerApi['signIFAPlayer']>>;
   type TradeIFAPoolResult = Awaited<ReturnType<WorkerApi['tradeIFAPoolSpace']>>;
+  type ExtensionOfferResult = NonNullable<Awaited<ReturnType<WorkerApi['getExtensionOffer']>>>;
+  type IssueQualifyingOfferResult = Awaited<ReturnType<WorkerApi['issueQualifyingOffer']>>;
+  type CoachMutationResult = Awaited<ReturnType<WorkerApi['hireCoach']>>;
 
   const runMutation = useCallback(
     async <T,>(operation: () => Promise<T>) => {
@@ -252,6 +255,36 @@ export function useWorker() {
     async (teamId?: string) => api.getPromotionCandidates(teamId),
     [api],
   );
+  const getExtensionCandidates = useCallback(
+    async (teamId?: string) => api.getExtensionCandidates(teamId),
+    [api],
+  );
+  const getExtensionOffer = useCallback(
+    async (playerId: string, years: number) => api.getExtensionOffer(playerId, years),
+    [api],
+  );
+  const negotiateExtension = useCallback(
+    async (playerId: string, offer: ExtensionOfferResult) =>
+      runMutation(() => api.negotiateExtension(playerId, offer)),
+    [api, runMutation],
+  );
+  const getQualifyingOfferEligible = useCallback(
+    async (teamId?: string) => api.getQualifyingOfferEligible(teamId),
+    [api],
+  );
+  const getQualifyingOfferSalary = useCallback(async () => api.getQualifyingOfferSalary(), [api]);
+  const issueQualifyingOffer = useCallback(
+    async (playerId: string): Promise<IssueQualifyingOfferResult> => {
+      return runMutation<IssueQualifyingOfferResult>(
+        () => api.issueQualifyingOffer(playerId) as Promise<IssueQualifyingOfferResult>,
+      );
+    },
+    [api, runMutation],
+  );
+  const resolveQualifyingOffers = useCallback(
+    async () => runMutation(() => api.resolveQualifyingOffers()),
+    [api, runMutation],
+  );
   const getRosterComplianceIssues = useCallback(
     async (teamId?: string) => api.getRosterComplianceIssues(teamId),
     [api],
@@ -262,6 +295,48 @@ export function useWorker() {
   );
   const getAffiliateBoxScore = useCallback(
     async (boxScoreId: string) => api.getAffiliateBoxScore(boxScoreId),
+    [api],
+  );
+  const getCoachingStaff = useCallback(
+    async (teamId?: string) => api.getCoachingStaff(teamId),
+    [api],
+  );
+  const getCoachFreeAgents = useCallback(async () => api.getCoachFreeAgents(), [api]);
+  const getCoachMarket = useCallback(async () => api.getCoachMarket(), [api]);
+  const hireCoach = useCallback(
+    async (coachId: string): Promise<CoachMutationResult> => {
+      return runMutation<CoachMutationResult>(
+        () => api.hireCoach(coachId) as Promise<CoachMutationResult>,
+      );
+    },
+    [api, runMutation],
+  );
+  const fireCoach = useCallback(
+    async (coachId: string): Promise<CoachMutationResult> => {
+      return runMutation<CoachMutationResult>(
+        () => api.fireCoach(coachId) as Promise<CoachMutationResult>,
+      );
+    },
+    [api, runMutation],
+  );
+  const getDevelopmentReport = useCallback(
+    async (playerId: string) => api.getDevelopmentReport(playerId),
+    [api],
+  );
+  const getDevelopmentReports = useCallback(
+    async (playerId: string) => api.getDevelopmentReports(playerId),
+    [api],
+  );
+  const getCoachingImpact = useCallback(
+    async (teamId?: string) => api.getCoachingImpact(teamId),
+    [api],
+  );
+  const getStaffBudget = useCallback(
+    async (teamId?: string) => api.getStaffBudget(teamId),
+    [api],
+  );
+  const getDevelopmentPipeline = useCallback(
+    async (teamId?: string) => api.getDevelopmentPipeline(teamId),
     [api],
   );
   const proceedToOffseason = useCallback(async () => runMutation(() => api.proceedToOffseason()), [api, runMutation]);
@@ -336,7 +411,11 @@ export function useWorker() {
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
-    getPromotionCandidates, getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
+    getPromotionCandidates, getExtensionCandidates, getExtensionOffer, negotiateExtension,
+    getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,
+    getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
+    getCoachingStaff, getCoachFreeAgents, getCoachMarket, hireCoach, fireCoach,
+    getDevelopmentReport, getDevelopmentReports, getCoachingImpact, getStaffBudget, getDevelopmentPipeline,
     proceedToOffseason, startNextSeason,
     getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,

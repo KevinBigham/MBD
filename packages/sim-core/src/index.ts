@@ -218,11 +218,22 @@ export {
   generateContractOffer,
   getArbEligiblePlayers,
   serviceDaysToYears,
+  evaluateExtensionWillingness,
+  calculateExtensionOffer,
+  negotiateExtension,
+  processTeamExtensions,
 } from './finance/index.js';
 export type {
   ContractDetail,
   ArbitrationCase,
   TeamPayroll,
+  ExtensionTeamContext,
+  ExtensionContractTerms,
+  ExtensionWillingness,
+  NegotiationRound,
+  ExtensionNegotiationSession,
+  ExtensionResult,
+  TeamExtensionProcessResult,
 } from './finance/index.js';
 
 // Scouting
@@ -293,6 +304,7 @@ export type {
   DraftPickOwnership,
   DraftPickDescriptor,
   DraftCompensatoryPick,
+  DraftCompensatoryPickAward,
   DraftPickSlot,
 } from './draft/index.js';
 
@@ -349,6 +361,9 @@ export {
   skipCurrentPhase,
   recordArbitration,
   recordTenderDecisions,
+  recordExtensionResults,
+  recordQualifyingOfferResults,
+  recordCoachChange,
   recordFASigning,
   recordDraftPicks,
   recordIFASigning,
@@ -362,6 +377,9 @@ export type {
   OffseasonState,
   PhaseResults,
   ArbitrationResult,
+  ExtensionPhaseResult,
+  QualifyingOfferPhaseResult,
+  CoachChangeResult,
   FASigningResult,
   DraftPickResult,
   IFASigningResult,
@@ -375,6 +393,10 @@ export {
   getDemandLevel,
   projectContractYears,
   createFreeAgencyMarket,
+  calculateQualifyingOfferSalary,
+  getQualifyingOfferEligiblePlayers,
+  issueQualifyingOffer,
+  resolveQualifyingOffer,
   generateAIOffer,
   simulateFADay,
   simulateFullFreeAgency,
@@ -385,6 +407,7 @@ export type {
   FreeAgent,
   ContractOffer,
   FreeAgencyMarket,
+  QualifyingOfferResolution,
 } from './roster/index.js';
 export {
   AFFILIATE_LEVELS,

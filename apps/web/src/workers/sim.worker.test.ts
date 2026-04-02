@@ -75,10 +75,51 @@ interface MinorLeagueWorkerApi {
   getAffiliateBoxScore: (boxScoreId: string) => AffiliateBoxScoreView | null;
   getCoachingStaff: (teamId?: string) => Array<{ id: string; role: string; specialty: string }>;
   getCoachFreeAgents: () => Array<{ id: string; role: string }>;
+  getCoachMarket: () => Array<{ id: string; role: string }>;
   getDevelopmentReport: (playerId: string) => {
     playerId: string;
     history: Array<{ month: number; trajectory: string }>;
   } | null;
+  getDevelopmentReports: (playerId: string) => {
+    playerId: string;
+    history: Array<{ month: number; trajectory: string }>;
+  } | null;
+  getExtensionCandidates: (teamId?: string) => Array<{
+    playerId: string;
+    willingness: number;
+  }>;
+  getExtensionOffer: (playerId: string, years: number) => {
+    years: number;
+    annualSalary: number;
+    totalValue: number;
+  } | null;
+  negotiateExtension: (
+    playerId: string,
+    offer: {
+      years: number;
+      annualSalary: number;
+      totalValue: number;
+      noTradeClause: boolean;
+      noTradeClauseType: string;
+      playerOption: boolean;
+      teamOption: boolean;
+      optOutYears: number[];
+      signingBonus: number;
+      buyoutAmount: number;
+      deferredMoney: Array<{ yearOffset: number; amount: number }>;
+    },
+  ) => {
+    status: 'accepted' | 'rejected' | 'countered';
+    rounds: Array<{ round: number; status: string }>;
+  };
+  getQualifyingOfferEligible: (teamId?: string) => Array<{ playerId: string }>;
+  getQualifyingOfferSalary: () => number;
+  issueQualifyingOffer: (playerId: string) => { success: boolean };
+  resolveQualifyingOffers: () => {
+    resolved: Array<{ playerId: string; status: string }>;
+  };
+  hireCoach: (coachId: string) => { success: boolean };
+  fireCoach: (coachId: string) => { success: boolean };
 }
 
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
@@ -213,9 +254,11 @@ describe('sim worker narrative APIs', () => {
 
     const staff = (api as typeof api & MinorLeagueWorkerApi).getCoachingStaff('nyy');
     const pool = (api as typeof api & MinorLeagueWorkerApi).getCoachFreeAgents();
+    const market = (api as typeof api & MinorLeagueWorkerApi).getCoachMarket();
 
     expect(staff).toHaveLength(12);
     expect(pool.length).toBeGreaterThan(0);
+    expect(market).toHaveLength(pool.length);
   });
 
   it('creates monthly development report history when the season advances', () => {
@@ -225,9 +268,156 @@ describe('sim worker narrative APIs', () => {
     const prospect = api.getFullRoster('nyy').minors.AA?.[0];
     expect(prospect).toBeTruthy();
     const report = (api as typeof api & MinorLeagueWorkerApi).getDevelopmentReport(prospect!.id);
+    const reports = (api as typeof api & MinorLeagueWorkerApi).getDevelopmentReports(prospect!.id);
 
     expect(report?.playerId).toBe(prospect!.id);
     expect(report?.history.length).toBeGreaterThan(0);
+    expect(reports?.history).toEqual(report?.history);
+  });
+
+  it('routes offseason progression through extensions before qualifying offers', () => {
+    api.newGame(126, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'tender_nontender',
+      phaseDay: 5,
+      totalDay: 15,
+    };
+
+    const enteredExtensions = api.advanceOffseason();
+    const enteredQualifyingOffers = api.skipOffseasonPhase();
+
+    expect(enteredExtensions?.currentPhase).toBe('extensions');
+    expect(enteredQualifyingOffers?.currentPhase).toBe('qualifying_offers');
+  });
+
+  it('resets extension negotiations when a fresh offer is requested', () => {
+    api.newGame(127, 'nyy');
+    const state = requireState();
+    const candidate = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    setHitterProfile(candidate, 'SS', 500, 27, 4);
+    candidate.contract.years = 1;
+    candidate.contract.totalValue = 4;
+    candidate.developmentTrajectory = 'on_track';
+    state.serviceTime.set(candidate.id, 5);
+    candidate.serviceTimeDays = 5 * 172;
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'extensions',
+      phaseDay: 1,
+      totalDay: 13,
+    };
+
+    const extensionApi = api as typeof api & MinorLeagueWorkerApi;
+    const candidates = extensionApi.getExtensionCandidates('nyy');
+    const entry = candidates.find((player) => player.playerId === candidate.id);
+    const openingOffer = extensionApi.getExtensionOffer(candidate.id, 5);
+
+    expect(entry?.willingness).toBeGreaterThan(0);
+    expect(openingOffer?.years).toBe(5);
+
+    const lowballOffer = {
+      ...openingOffer!,
+      annualSalary: Number((openingOffer!.annualSalary * 0.74).toFixed(2)),
+      totalValue: Number((openingOffer!.annualSalary * 0.74 * openingOffer!.years).toFixed(2)),
+    };
+
+    const firstResponse = extensionApi.negotiateExtension(candidate.id, lowballOffer);
+    const resetOffer = extensionApi.getExtensionOffer(candidate.id, 5);
+    const secondResponse = extensionApi.negotiateExtension(candidate.id, lowballOffer);
+
+    expect(firstResponse).toBeTruthy();
+    expect(secondResponse).toBeTruthy();
+    expect(firstResponse!.status).toBe('countered');
+    expect(firstResponse!.rounds).toHaveLength(1);
+    expect(resetOffer?.annualSalary).toBe(openingOffer?.annualSalary);
+    expect(secondResponse!.status).toBe('countered');
+    expect(secondResponse!.rounds).toHaveLength(1);
+  });
+
+  it('issues and resolves qualifying offers through worker APIs', () => {
+    api.newGame(128, 'nyy');
+    const state = requireState();
+    const candidate = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    setHitterProfile(candidate, 'RF', 480, 34, 18);
+    candidate.contract.years = 1;
+    candidate.contract.totalValue = 18;
+    candidate.developmentTrajectory = 'on_track';
+    state.serviceTime.set(candidate.id, 6);
+    candidate.serviceTimeDays = 6 * 172;
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+
+    const extensionApi = api as typeof api & MinorLeagueWorkerApi;
+    const salary = extensionApi.getQualifyingOfferSalary();
+    const eligible = extensionApi.getQualifyingOfferEligible('nyy');
+    const issued = extensionApi.issueQualifyingOffer(candidate.id);
+
+    expect(salary).toBeGreaterThan(0);
+    expect(eligible.some((player) => player.playerId === candidate.id)).toBe(true);
+    expect(issued.success).toBe(true);
+    expect(requireState().draftState.qualifyingOffers.some((record) => record.playerId === candidate.id)).toBe(true);
+
+    requireState().offseasonState = {
+      ...requireState().offseasonState!,
+      currentPhase: 'free_agency',
+      phaseDay: 1,
+    };
+
+    const resolved = extensionApi.resolveQualifyingOffers();
+    const record = requireState().draftState.qualifyingOffers.find((entry) => entry.playerId === candidate.id);
+    const qualifyingOfferGroup = api.getOffseasonState()?.transactionGroups.find(
+      (group) => group.phase === 'qualifying_offers',
+    );
+
+    expect(resolved.resolved.some((entry) => entry.playerId === candidate.id)).toBe(true);
+    expect(['accepted', 'rejected']).toContain(record?.status);
+    expect(qualifyingOfferGroup?.rows.some((row) => row.summary.includes(candidate.firstName))).toBe(true);
+  });
+
+  it('supports hiring and firing coaches through the worker market APIs', () => {
+    api.newGame(129, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'coaching_changes',
+      phaseDay: 1,
+      totalDay: 45,
+    };
+
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const currentStaff = workerApi.getCoachingStaff('nyy');
+    const firedCoach = currentStaff[0]!;
+    const fireResult = workerApi.fireCoach(firedCoach.id);
+    const marketAfterFire = workerApi.getCoachMarket();
+    const replacement = marketAfterFire.find((coach) => coach.role === firedCoach.role) ?? marketAfterFire[0]!;
+    const hireResult = workerApi.hireCoach(replacement.id);
+    const finalStaff = workerApi.getCoachingStaff('nyy');
+    const coachingGroup = api.getOffseasonState()?.transactionGroups.find(
+      (group) => group.phase === 'coaching_changes',
+    );
+
+    expect(fireResult.success).toBe(true);
+    expect(marketAfterFire.some((coach) => coach.id === firedCoach.id)).toBe(true);
+    expect(hireResult.success).toBe(true);
+    expect(finalStaff).toHaveLength(12);
+    expect(finalStaff.some((coach) => coach.id === replacement.id)).toBe(true);
+    expect(coachingGroup?.rows.length).toBeGreaterThan(0);
   });
 
   it('returns personality profiles and award races after the season starts', () => {

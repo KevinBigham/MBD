@@ -194,6 +194,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     serviceTime,
     scoutingStaffs: fromEntries(snapshot.scoutingStaffs as [string, Scout[]][]),
     gmPersonalities: fromEntries(snapshot.gmPersonalities as [string, GMPersonality][]),
+    pendingExtensionNegotiations: new Map(),
     offseasonState: normalizeOffseasonState(
       snapshot.offseasonState as OffseasonState | null,
       players,

@@ -27,6 +27,13 @@ export {
   type ContractDetail,
   type ArbitrationCase,
   type TeamPayroll,
+  type ExtensionTeamContext,
+  type ExtensionContractTerms,
+  type ExtensionWillingness,
+  type NegotiationRound,
+  type ExtensionNegotiationSession,
+  type ExtensionResult,
+  type TeamExtensionProcessResult,
   // Functions
   calculatePlayerValue,
   generateArbitrationCase,
@@ -38,4 +45,8 @@ export {
   generateContractOffer,
   getArbEligiblePlayers,
   serviceDaysToYears,
+  evaluateExtensionWillingness,
+  calculateExtensionOffer,
+  negotiateExtension,
+  processTeamExtensions,
 } from './contracts.js';
