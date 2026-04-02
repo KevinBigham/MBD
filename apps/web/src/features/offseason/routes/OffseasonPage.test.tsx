@@ -31,6 +31,9 @@ function buildOffseasonState(overrides: Record<string, unknown> = {}) {
       arbitrationResolved: [{ id: 'arb-1' }],
       tenderedPlayers: ['player-2'],
       nonTenderedPlayers: ['player-3'],
+      extensions: [],
+      qualifyingOffers: [],
+      coachChanges: [],
       freeAgentSignings: [{ id: 'fa-1' }],
       draftPicks: [{ id: 'pick-1' }],
       ifaSignings: [{ id: 'ifa-1' }],
@@ -75,6 +78,11 @@ function buildWorkerMock(overrides: Record<string, unknown> = {}) {
     makeRule5Pick: vi.fn().mockResolvedValue({ success: true }),
     passRule5Pick: vi.fn().mockResolvedValue({ success: true }),
     resolveRule5OfferBack: vi.fn().mockResolvedValue({ success: true }),
+    getExtensionCandidates: vi.fn().mockResolvedValue([]),
+    getQualifyingOfferEligible: vi.fn().mockResolvedValue([]),
+    getQualifyingOfferSalary: vi.fn().mockResolvedValue(20.4),
+    issueQualifyingOffer: vi.fn().mockResolvedValue({ success: true }),
+    resolveQualifyingOffers: vi.fn().mockResolvedValue({ resolved: [] }),
     ...overrides,
   };
 }
@@ -181,6 +189,103 @@ describe('OffseasonPage', () => {
     expect(container.textContent).toContain('Qualifying Offers');
     expect(container.textContent).toContain('extended a qualifying offer');
     expect(container.textContent).toContain('Free Agency');
+  });
+
+  it('renders extension candidates during the extensions phase', async () => {
+    mockedUseWorker.mockReturnValue(
+      buildWorkerMock({
+        getOffseasonState: vi.fn().mockResolvedValue(
+          buildOffseasonState({
+            currentPhase: 'extensions',
+            transactionGroups: [
+              {
+                phase: 'extensions',
+                label: 'Extensions',
+                rows: [
+                  {
+                    id: 'extension-1',
+                    tone: 'user',
+                    summary: 'Juan Cornerstone signed an extension with New York Yankees for $22.4M/yr (6 years)',
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+        getExtensionCandidates: vi.fn().mockResolvedValue([
+          {
+            playerId: 'ext-1',
+            playerName: 'Juan Cornerstone',
+            willingness: 0.72,
+            yearsRemaining: 1,
+            currentSalary: 9.2,
+          },
+        ]),
+      }) as unknown as ReturnType<typeof useWorker>,
+    );
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Extensions');
+    expect(container.textContent).toContain('Juan Cornerstone');
+    expect(container.textContent).toContain('Willingness');
+  });
+
+  it('issues and resolves qualifying offers from the offseason control surface', async () => {
+    const issueQualifyingOffer = vi.fn().mockResolvedValue({ success: true });
+    const resolveQualifyingOffers = vi.fn().mockResolvedValue({ resolved: [{ playerId: 'qo-1', status: 'rejected' }] });
+
+    mockedUseWorker.mockReturnValue(
+      buildWorkerMock({
+        getOffseasonState: vi.fn().mockResolvedValue(
+          buildOffseasonState({
+            currentPhase: 'qualifying_offers',
+            transactionGroups: [
+              {
+                phase: 'qualifying_offers',
+                label: 'Qualifying Offers',
+                rows: [
+                  {
+                    id: 'qo-issued-1',
+                    tone: 'user',
+                    summary: 'New York Yankees issued a qualifying offer to Victor Veteran for $21.40M/yr.',
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+        getQualifyingOfferEligible: vi.fn().mockResolvedValue([
+          {
+            playerId: 'qo-1',
+            playerName: 'Victor Veteran',
+            projectedMarketValue: 24.8,
+            qualifyingOfferSalary: 21.4,
+            serviceYears: 6,
+          },
+        ]),
+        getQualifyingOfferSalary: vi.fn().mockResolvedValue(21.4),
+        issueQualifyingOffer,
+        resolveQualifyingOffers,
+      }) as unknown as ReturnType<typeof useWorker>,
+    );
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Victor Veteran');
+    expect(container.textContent).toContain('$21.40M');
+
+    const issueButton = findButton('Issue QO');
+    const resolveButton = findButton('Resolve Offers');
+
+    await act(async () => {
+      issueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      resolveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(issueQualifyingOffer).toHaveBeenCalledWith('qo-1');
+    expect(resolveQualifyingOffers).toHaveBeenCalled();
   });
 
   it('renders the protection audit surface and invokes Rule 5 protection actions', async () => {

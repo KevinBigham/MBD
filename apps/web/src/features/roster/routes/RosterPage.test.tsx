@@ -154,6 +154,9 @@ describe('RosterPage', () => {
           priorityIndex: 1,
         }],
       }),
+      getExtensionCandidates: vi.fn().mockResolvedValue([]),
+      getExtensionOffer: vi.fn().mockResolvedValue(null),
+      negotiateExtension: vi.fn().mockResolvedValue(null),
       promotePlayer,
       designateForAssignment,
       claimOffWaivers,
@@ -206,5 +209,114 @@ describe('RosterPage', () => {
     expect(promotePlayer).toHaveBeenCalledWith('prospect-1');
     expect(designateForAssignment).toHaveBeenCalledWith('dfa-1');
     expect(claimOffWaivers).toHaveBeenCalledWith('waive-1');
+  });
+
+  it('opens the contracts tab and starts an extension negotiation flow', async () => {
+    const getExtensionOffer = vi.fn().mockResolvedValue({
+      years: 5,
+      annualSalary: 18.4,
+      totalValue: 92,
+      noTradeClause: false,
+      noTradeClauseType: 'none',
+      playerOption: false,
+      teamOption: false,
+      optOutYears: [],
+      signingBonus: 2.5,
+      buyoutAmount: 0,
+      deferredMoney: [],
+    });
+    const negotiateExtension = vi.fn().mockResolvedValue({
+      status: 'countered',
+      counterOffer: {
+        years: 5,
+        annualSalary: 19.2,
+        totalValue: 96,
+        noTradeClause: false,
+        noTradeClauseType: 'none',
+        playerOption: false,
+        teamOption: false,
+        optOutYears: [],
+        signingBonus: 2.5,
+        buyoutAmount: 0,
+        deferredMoney: [],
+      },
+      rounds: [{ round: 1, status: 'countered' }],
+    });
+
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getFullRoster: vi.fn().mockResolvedValue({
+        mlb: [],
+        minors: { AAA: [], AA: [], A_PLUS: [], A: [], ROOKIE: [], INTERNATIONAL: [] },
+      }),
+      getTeamChemistry: vi.fn().mockResolvedValue(null),
+      getPromotionCandidates: vi.fn().mockResolvedValue([]),
+      getRosterComplianceIssues: vi.fn().mockResolvedValue(null),
+      getAffiliateOverview: vi.fn().mockResolvedValue(null),
+      getExtensionCandidates: vi.fn().mockResolvedValue([
+        {
+          playerId: 'ext-1',
+          playerName: 'Diego Future',
+          position: 'SS',
+          yearsRemaining: 1,
+          currentSalary: 6.8,
+          willingness: 0.78,
+          demandMultiplier: 1.12,
+        },
+      ]),
+      getExtensionOffer,
+      negotiateExtension,
+      promotePlayer: vi.fn(),
+      designateForAssignment: vi.fn(),
+      claimOffWaivers: vi.fn(),
+      demotePlayer: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <RosterPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const contractsTab = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Contracts'),
+    );
+
+    await act(async () => {
+      contractsTab?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Diego Future');
+    expect(container.textContent).toContain('Willingness');
+
+    const negotiateButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Negotiate'),
+    );
+
+    await act(async () => {
+      negotiateButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getExtensionOffer).toHaveBeenCalledWith('ext-1', 5);
+    expect(container.textContent).toContain('Extension Negotiation');
+
+    const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Submit Offer'),
+    );
+
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(negotiateExtension).toHaveBeenCalled();
+    expect(container.textContent).toContain('countered');
   });
 });
