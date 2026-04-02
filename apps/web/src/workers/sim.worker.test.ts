@@ -136,11 +136,16 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
     bb: 0,
     k: 0,
     runs: 0,
+    hbp: 0,
+    sacFlies: 0,
     ip: 0,
     earnedRuns: 0,
     strikeouts: 0,
     walks: 0,
     hitsAllowed: 0,
+    homeRunsAllowed: 0,
+    hitBatters: 0,
+    flyBallsAllowed: 0,
     wins: 0,
     losses: 0,
     ...overrides,
@@ -1719,5 +1724,61 @@ describe('sim worker narrative APIs', () => {
     expect(feed).toHaveLength(100);
     expect(feed[0]?.id).toBe('news-120');
     expect(feed.at(-1)?.id).toBe('news-21');
+  });
+
+  it('returns advanced stat lines and advanced leaderboard results', () => {
+    api.newGame(779, 'nyy');
+    const state = requireState();
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const pitcher = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      pa: 640,
+      ab: 555,
+      hits: 182,
+      doubles: 38,
+      triples: 4,
+      hr: 34,
+      rbi: 112,
+      bb: 74,
+      hbp: 6,
+      sacFlies: 5,
+      runs: 101,
+    }));
+    state.seasonState.playerSeasonStats.set(pitcher.id, createPlayerStats({
+      playerId: pitcher.id,
+      teamId: pitcher.teamId,
+      ip: 585,
+      earnedRuns: 64,
+      strikeouts: 201,
+      walks: 42,
+      hitsAllowed: 141,
+      homeRunsAllowed: 18,
+      hitBatters: 4,
+      flyBallsAllowed: 177,
+      wins: 16,
+      losses: 6,
+    }));
+
+    const hitterAdvanced = api.getAdvancedStats(hitter.id);
+    const pitcherAdvanced = api.getAdvancedStats(pitcher.id);
+    const wobaLeader = api.getLeagueLeaders('woba', 1)[0];
+    const fipLeader = api.getLeagueLeaders('fip', 1)[0];
+
+    expect(hitterAdvanced?.woba).toBeGreaterThan(0.35);
+    expect(hitterAdvanced?.war).toBeGreaterThan(0);
+    expect(pitcherAdvanced?.fip).toBeGreaterThan(0);
+    expect(pitcherAdvanced?.war).toBeGreaterThan(0);
+
+    expect(wobaLeader?.id).toBe(hitter.id);
+    expect(wobaLeader?.advanced?.woba).toBeCloseTo(hitterAdvanced?.woba ?? 0, 3);
+    expect(fipLeader?.id).toBe(pitcher.id);
+    expect(fipLeader?.advanced?.fip).toBeCloseTo(pitcherAdvanced?.fip ?? 0, 3);
   });
 });

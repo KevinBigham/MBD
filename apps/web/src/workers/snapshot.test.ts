@@ -222,7 +222,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(8);
+    expect(snapshot.schemaVersion).toBe(9);
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -298,6 +298,50 @@ describe('snapshot helpers', () => {
     expect(restored.coachingStaffs.get('nyy')).toHaveLength(12);
     expect(restored.coachFreeAgentPool.length).toBeGreaterThan(0);
     expect(restored.minorLeagueState.processedDevelopmentMonths).toEqual([]);
+  });
+
+  it('migrates v8 snapshots into the v9 advanced stat shape', () => {
+    const snapshot = exportGameSnapshot(createState());
+    const [playerId, playerStats] = snapshot.seasonState.playerSeasonStats[0]!;
+    const v8Snapshot = {
+      ...snapshot,
+      schemaVersion: 8,
+      seasonState: {
+        ...snapshot.seasonState,
+        playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(([entryPlayerId, entryStats]) => [
+          entryPlayerId,
+          {
+            pa: entryStats.pa,
+            ab: entryStats.ab,
+            hits: entryStats.hits,
+            doubles: entryStats.doubles,
+            triples: entryStats.triples,
+            hr: entryStats.hr,
+            rbi: entryStats.rbi,
+            bb: entryStats.bb,
+            k: entryStats.k,
+            runs: entryStats.runs,
+            ip: entryStats.ip,
+            earnedRuns: entryStats.earnedRuns,
+            strikeouts: entryStats.strikeouts,
+            walks: entryStats.walks,
+            hitsAllowed: entryStats.hitsAllowed,
+            wins: entryStats.wins,
+            losses: entryStats.losses,
+          },
+        ]),
+      },
+    } as unknown as GameSnapshot;
+
+    const restored = importGameSnapshot(v8Snapshot);
+    const migrated = restored.seasonState.playerSeasonStats.get(playerId);
+
+    expect(migrated?.hbp).toBe(0);
+    expect(migrated?.sacFlies).toBe(0);
+    expect(migrated?.homeRunsAllowed).toBe(0);
+    expect(migrated?.hitBatters).toBe(0);
+    expect(migrated?.flyBallsAllowed).toBe(0);
+    expect(playerStats.hbp).toBeDefined();
   });
 
   it('migrates v2 snapshots into the v5 narrative, stat, trade, and legacy shape', () => {

@@ -156,11 +156,16 @@ export function simulateDay(
         existing.bb += gameStats.bb;
         existing.k += gameStats.k;
         existing.runs += gameStats.runs;
+        existing.hbp += gameStats.hbp;
+        existing.sacFlies += gameStats.sacFlies;
         existing.ip += gameStats.ip;
         existing.earnedRuns += gameStats.earnedRuns;
         existing.strikeouts += gameStats.strikeouts;
         existing.walks += gameStats.walks;
         existing.hitsAllowed += gameStats.hitsAllowed;
+        existing.homeRunsAllowed += gameStats.homeRunsAllowed;
+        existing.hitBatters += gameStats.hitBatters;
+        existing.flyBallsAllowed += gameStats.flyBallsAllowed;
         existing.wins += gameStats.wins;
         existing.losses += gameStats.losses;
       } else {

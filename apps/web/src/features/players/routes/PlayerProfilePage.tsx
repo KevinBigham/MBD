@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { toDisplayRating } from '@mbd/sim-core';
+import { estimateProjectedWarRange, toDisplayRating } from '@mbd/sim-core';
 import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
 import { ArrowLeft, BrainCircuit, FileSignature, TrendingUp } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
@@ -55,8 +55,23 @@ interface PlayerDTO {
     earnedRuns: number;
     strikeouts: number;
     walks: number;
+    hitsAllowed: number;
     era: string;
   } | null;
+}
+
+interface AdvancedStatsView {
+  war: number;
+  woba: number | null;
+  wrcPlus: number | null;
+  opsPlus: number | null;
+  iso: number | null;
+  fip: number | null;
+  xfip: number | null;
+  whip: number | null;
+  kPer9: number | null;
+  bbPer9: number | null;
+  kBb: number | null;
 }
 
 interface PersonalityProfile {
@@ -146,6 +161,17 @@ function formatMonth(month: number): string {
   return labels[Math.max(0, Math.min(labels.length - 1, month - 1))] ?? `M${month}`;
 }
 
+function formatDecimal(value: number | null | undefined, digits: number): string {
+  if (value == null) return '--';
+  return value.toFixed(digits);
+}
+
+function formatInnings(outs: number): string {
+  const innings = Math.floor(outs / 3);
+  const remainder = outs % 3;
+  return `${innings}.${remainder}`;
+}
+
 const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 
 export default function PlayerProfilePage() {
@@ -156,19 +182,22 @@ export default function PlayerProfilePage() {
   const [player, setPlayer] = useState<PlayerDTO | null>(null);
   const [profile, setProfile] = useState<PersonalityProfile | null>(null);
   const [developmentReports, setDevelopmentReports] = useState<DevelopmentReportsView | null>(null);
+  const [advancedStats, setAdvancedStats] = useState<AdvancedStatsView | null>(null);
 
   const fetchPlayer = useCallback(async () => {
     if (!isInitialized || !workerReady || !playerId) return;
 
-    const [playerData, profileData, reportData] = await Promise.all([
+    const [playerData, profileData, reportData, advancedData] = await Promise.all([
       worker.getPlayer(playerId),
       worker.getPersonalityProfile(playerId),
       worker.getDevelopmentReports(playerId),
+      worker.getAdvancedStats(playerId),
     ]);
 
     setPlayer(playerData as PlayerDTO | null);
     setProfile(profileData as PersonalityProfile | null);
     setDevelopmentReports(reportData as DevelopmentReportsView | null);
+    setAdvancedStats(advancedData as AdvancedStatsView | null);
   }, [isInitialized, playerId, worker, workerReady]);
 
   useEffect(() => {
@@ -186,6 +215,12 @@ export default function PlayerProfilePage() {
   const isPitcher = PITCHER_POSITIONS.has(player.position);
   const trajectoryVariant = badgeVariantForTrajectory(player.developmentTrajectory);
   const currentContract = player.contract;
+  const projectedWar = estimateProjectedWarRange({
+    overall: player.displayRating,
+    floor: displayBand(player.floor),
+    ceiling: displayBand(player.ceiling),
+    isPitcher,
+  });
 
   return (
     <div className="space-y-6">
@@ -254,6 +289,13 @@ export default function PlayerProfilePage() {
                 { label: 'Ceiling', value: displayBand(player.ceiling) || '--' },
               ]}
             />
+            <StatLine
+              stats={[
+                { label: 'WAR Floor', value: projectedWar.floorWar?.toFixed(1) ?? '--' },
+                { label: 'WAR Now', value: projectedWar.currentWar.toFixed(1) },
+                { label: 'WAR Ceiling', value: projectedWar.ceilingWar?.toFixed(1) ?? '--' },
+              ]}
+            />
           </CardContent>
         </Card>
 
@@ -282,6 +324,35 @@ export default function PlayerProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      {advancedStats && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Advanced Stats</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isPitcher ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                <StatBlock label="WAR" value={formatDecimal(advancedStats.war, 1)} highlight />
+                <StatBlock label="FIP" value={formatDecimal(advancedStats.fip, 2)} />
+                <StatBlock label="xFIP" value={formatDecimal(advancedStats.xfip, 2)} />
+                <StatBlock label="WHIP" value={formatDecimal(advancedStats.whip, 2)} />
+                <StatBlock label="K/9" value={formatDecimal(advancedStats.kPer9, 1)} />
+                <StatBlock label="K/BB" value={formatDecimal(advancedStats.kBb, 2)} />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                <StatBlock label="WAR" value={formatDecimal(advancedStats.war, 1)} highlight />
+                <StatBlock label="wOBA" value={formatDecimal(advancedStats.woba, 3)} />
+                <StatBlock label="wRC+" value={formatDecimal(advancedStats.wrcPlus, 0)} />
+                <StatBlock label="OPS+" value={formatDecimal(advancedStats.opsPlus, 0)} />
+                <StatBlock label="ISO" value={formatDecimal(advancedStats.iso, 3)} />
+                <StatBlock label="Proj WAR" value={projectedWar.ceilingWar?.toFixed(1) ?? '--'} />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         {profile && (
@@ -416,9 +487,9 @@ export default function PlayerProfilePage() {
                 <StatBlock label="ERA" value={player.stats.era} />
                 <StatBlock label="K" value={String(player.stats.strikeouts)} />
                 <StatBlock label="BB" value={String(player.stats.walks)} />
-                <StatBlock label="H" value={String(player.stats.hits)} />
+                <StatBlock label="H" value={String(player.stats.hitsAllowed)} />
                 <StatBlock label="ER" value={String(player.stats.earnedRuns)} />
-                <StatBlock label="IP" value={String(Math.round(player.stats.ip / 3))} />
+                <StatBlock label="IP" value={formatInnings(player.stats.ip)} />
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">

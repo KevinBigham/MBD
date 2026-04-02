@@ -9,6 +9,26 @@ export type {
   Log5Modifiers,
   OutcomeRates,
 } from './math/index.js';
+export {
+  buildLeagueAdvancedContext,
+  calculateAdvancedStatLine,
+  calculateBattingAverage,
+  calculateFip,
+  calculateIso,
+  calculateObp,
+  calculateOps,
+  calculateSlg,
+  calculateWoba,
+  calculateXfip,
+  estimateProjectedWarFromGrade,
+  estimateProjectedWarRange,
+} from './stats/advanced.js';
+export type {
+  AdvancedStatLine,
+  LeagueAdvancedContext,
+  LeaderboardStatKey,
+  ProjectedWarRange,
+} from './stats/advanced.js';
 
 // Player
 export {

@@ -23,6 +23,7 @@ export const TeamSchema = z.object({
   city: z.string().min(1),
   abbreviation: z.string().length(3),
   division: DivisionEnum,
+  parkFactor: z.number().min(0.85).max(1.15),
   payroll: z.number().min(0),
   ownerArchetype: OwnerArchetypeEnum,
   chemistryRating: z.number().int().min(0).max(100),

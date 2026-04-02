@@ -9,7 +9,7 @@ import {
 
 function createSnapshot(): GameSnapshot {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     rng: { seed: 7, callCount: 14 },
     season: 3,
     day: 97,
@@ -109,7 +109,7 @@ function createSnapshot(): GameSnapshot {
 }
 
 describe('saveSystem helpers', () => {
-  it('builds a v8 save record from a canonical snapshot', () => {
+  it('builds a v9 save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
     const record = buildSaveRecord(2, 'Dynasty Slot', snapshot);
@@ -119,10 +119,10 @@ describe('saveSystem helpers', () => {
     expect(record.season).toBe(3);
     expect(record.day).toBe(97);
     expect(record.phase).toBe('regular');
-    expect(record.schemaVersion).toBe(8);
+    expect(record.schemaVersion).toBe(9);
     expect(record.hasSnapshot).toBe(true);
     expect(record.snapshot?.rng.callCount).toBe(14);
-    expect(record.snapshot?.schemaVersion).toBe(8);
+    expect(record.snapshot?.schemaVersion).toBe(9);
     expect(record.snapshot?.narrative.seasonHistory[0]?.worldSeriesRecord).toBe('4-2');
     expect(record.snapshot?.tradeState.pendingOffers).toEqual([]);
     expect(record.snapshot?.rule5Session).toBeNull();
@@ -153,7 +153,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.legacyState).toBe('{"old":true}');
   });
 
-  it('migrates v2 snapshots to v8 on load', () => {
+  it('migrates v2 snapshots to v9 on load', () => {
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-3',
       slotNumber: 3,
@@ -236,10 +236,12 @@ describe('saveSystem helpers', () => {
       // This fixture intentionally uses the legacy v2 shape.
     } as any);
 
-    expect(normalized.schemaVersion).toBe(8);
-    expect(normalized.snapshot?.schemaVersion).toBe(8);
+    expect(normalized.schemaVersion).toBe(9);
+    expect(normalized.snapshot?.schemaVersion).toBe(9);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].wins).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].losses).toBe(0);
+    expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].hbp).toBe(0);
+    expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].homeRunsAllowed).toBe(0);
     expect(normalized.snapshot?.narrative.awardHistory[0]?.league).toBe('MLB');
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.runnerUpTeamId).toBeNull();
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.statLeaders.w).toEqual([]);
@@ -254,7 +256,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.snapshot?.minorLeagueState.optionUsage).toEqual([]);
   });
 
-  it('migrates v3 snapshots to v8 on load', () => {
+  it('migrates v3 snapshots to v9 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-5',
@@ -268,13 +270,13 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(8);
-    expect(normalized.snapshot?.schemaVersion).toBe(8);
+    expect(normalized.schemaVersion).toBe(9);
+    expect(normalized.snapshot?.schemaVersion).toBe(9);
     expect(normalized.snapshot?.tradeState.tradeHistory).toEqual([]);
     expect(normalized.snapshot?.rule5Obligations).toEqual([]);
   });
 
-  it('migrates v4 snapshots to v8 on load', () => {
+  it('migrates v4 snapshots to v9 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-6',
@@ -298,8 +300,8 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(8);
-    expect(normalized.snapshot?.schemaVersion).toBe(8);
+    expect(normalized.schemaVersion).toBe(9);
+    expect(normalized.snapshot?.schemaVersion).toBe(9);
     expect(normalized.snapshot?.narrative.hallOfFame).toEqual([]);
     expect(normalized.snapshot?.narrative.hallOfFameBallot).toEqual([]);
     expect(normalized.snapshot?.narrative.franchiseTimeline).toEqual([]);

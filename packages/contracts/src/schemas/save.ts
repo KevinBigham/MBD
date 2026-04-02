@@ -145,6 +145,35 @@ export const PlayerStatEntrySchema = z.tuple([
     bb: z.number().int().min(0),
     k: z.number().int().min(0),
     runs: z.number().int().min(0),
+    hbp: z.number().int().min(0),
+    sacFlies: z.number().int().min(0),
+    ip: z.number().int().min(0),
+    earnedRuns: z.number().int().min(0),
+    strikeouts: z.number().int().min(0),
+    walks: z.number().int().min(0),
+    hitsAllowed: z.number().int().min(0),
+    homeRunsAllowed: z.number().int().min(0),
+    hitBatters: z.number().int().min(0),
+    flyBallsAllowed: z.number().int().min(0),
+    wins: z.number().int().min(0),
+    losses: z.number().int().min(0),
+  }),
+]);
+export type PlayerStatEntry = z.infer<typeof PlayerStatEntrySchema>;
+
+const PlayerStatEntryV8Schema = z.tuple([
+  z.string(),
+  z.object({
+    pa: z.number().int().min(0),
+    ab: z.number().int().min(0),
+    hits: z.number().int().min(0),
+    doubles: z.number().int().min(0),
+    triples: z.number().int().min(0),
+    hr: z.number().int().min(0),
+    rbi: z.number().int().min(0),
+    bb: z.number().int().min(0),
+    k: z.number().int().min(0),
+    runs: z.number().int().min(0),
     ip: z.number().int().min(0),
     earnedRuns: z.number().int().min(0),
     strikeouts: z.number().int().min(0),
@@ -154,7 +183,6 @@ export const PlayerStatEntrySchema = z.tuple([
     losses: z.number().int().min(0),
   }),
 ]);
-export type PlayerStatEntry = z.infer<typeof PlayerStatEntrySchema>;
 
 const LegacyPlayerStatEntrySchema = z.tuple([
   z.string(),
@@ -186,6 +214,15 @@ export const SerializedSeasonStateSchema = z.object({
   completed: z.boolean(),
 });
 export type SerializedSeasonState = z.infer<typeof SerializedSeasonStateSchema>;
+
+const SerializedSeasonStateV8Schema = z.object({
+  season: z.number().int().min(1),
+  currentDay: z.number().int().min(1),
+  standings: z.array(StandingsRecordSchema),
+  playerSeasonStats: z.array(PlayerStatEntryV8Schema),
+  gameLog: z.array(z.unknown()),
+  completed: z.boolean(),
+});
 
 const LegacySerializedSeasonStateSchema = z.object({
   season: z.number().int().min(1),
@@ -355,7 +392,7 @@ const MinorLeagueStateV7Schema = z.object({
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 8;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 9;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -393,6 +430,39 @@ export const GameSnapshotSchema = z.object({
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
 
+export const GameSnapshotV8Schema = z.object({
+  schemaVersion: z.literal(8),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(SnapshotPlayerSchema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateV8Schema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  coachingStaffs: z.array(CoachingStaffEntrySchema),
+  coachFreeAgentPool: z.array(CoachSchema),
+  narrative: NarrativeSnapshotSchema,
+  tradeState: TradeStateSchema,
+  internationalScoutingState: InternationalScoutingStateSchema,
+  draftState: DraftStateSchema,
+  minorLeagueState: MinorLeagueStateSchema,
+  rule5Session: Rule5SessionSchema,
+  rule5Obligations: z.array(Rule5StateEntrySchema),
+  rule5OfferBackStates: z.array(Rule5StateEntrySchema),
+});
+export type GameSnapshotV8 = z.infer<typeof GameSnapshotV8Schema>;
+
 export const GameSnapshotV7Schema = z.object({
   schemaVersion: z.literal(7),
   rng: GameRNGStateSchema,
@@ -402,7 +472,7 @@ export const GameSnapshotV7Schema = z.object({
   userTeamId: z.string(),
   players: z.array(SnapshotPlayerV7Schema),
   schedule: z.array(ScheduledGameSchema),
-  seasonState: SerializedSeasonStateSchema,
+  seasonState: SerializedSeasonStateV8Schema,
   playoffBracket: z.unknown().nullable(),
   injuries: z.array(InjuryEntrySchema),
   serviceTime: z.array(ServiceTimeEntrySchema),
@@ -433,7 +503,7 @@ export const GameSnapshotV6Schema = z.object({
   userTeamId: z.string(),
   players: z.array(SnapshotPlayerV6Schema),
   schedule: z.array(ScheduledGameSchema),
-  seasonState: SerializedSeasonStateSchema,
+  seasonState: SerializedSeasonStateV8Schema,
   playoffBracket: z.unknown().nullable(),
   injuries: z.array(InjuryEntrySchema),
   serviceTime: z.array(ServiceTimeEntrySchema),
@@ -461,7 +531,7 @@ export const GameSnapshotV5Schema = z.object({
   userTeamId: z.string(),
   players: z.array(LegacySnapshotPlayerSchema),
   schedule: z.array(ScheduledGameSchema),
-  seasonState: SerializedSeasonStateSchema,
+  seasonState: SerializedSeasonStateV8Schema,
   playoffBracket: z.unknown().nullable(),
   injuries: z.array(InjuryEntrySchema),
   serviceTime: z.array(ServiceTimeEntrySchema),
@@ -486,7 +556,7 @@ export const GameSnapshotV4Schema = z.object({
   userTeamId: z.string(),
   players: z.array(LegacySnapshotPlayerSchema),
   schedule: z.array(ScheduledGameSchema),
-  seasonState: SerializedSeasonStateSchema,
+  seasonState: SerializedSeasonStateV8Schema,
   playoffBracket: z.unknown().nullable(),
   injuries: z.array(InjuryEntrySchema),
   serviceTime: z.array(ServiceTimeEntrySchema),
@@ -511,7 +581,7 @@ export const GameSnapshotV3Schema = z.object({
   userTeamId: z.string(),
   players: z.array(LegacySnapshotPlayerSchema),
   schedule: z.array(ScheduledGameSchema),
-  seasonState: SerializedSeasonStateSchema,
+  seasonState: SerializedSeasonStateV8Schema,
   playoffBracket: z.unknown().nullable(),
   injuries: z.array(InjuryEntrySchema),
   serviceTime: z.array(ServiceTimeEntrySchema),
@@ -555,8 +625,27 @@ function migratePlayerStatEntry([playerId, stats]: z.infer<typeof LegacyPlayerSt
     playerId,
     {
       ...stats,
+      hbp: 0,
+      sacFlies: 0,
+      homeRunsAllowed: 0,
+      hitBatters: 0,
+      flyBallsAllowed: 0,
       wins: 0,
       losses: 0,
+    },
+  ];
+}
+
+function migratePlayerStatEntryV8([playerId, stats]: z.infer<typeof PlayerStatEntryV8Schema>): PlayerStatEntry {
+  return [
+    playerId,
+    {
+      ...stats,
+      hbp: 0,
+      sacFlies: 0,
+      homeRunsAllowed: 0,
+      hitBatters: 0,
+      flyBallsAllowed: 0,
     },
   ];
 }
@@ -964,6 +1053,10 @@ function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     players: snapshot.players.map((player) =>
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
+    seasonState: {
+      ...snapshot.seasonState,
+      playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
+    },
     narrative: {
       ...snapshot.narrative,
       ...createEmptyLegacyState(),
@@ -983,6 +1076,10 @@ function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     players: snapshot.players.map((player) =>
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
+    seasonState: {
+      ...snapshot.seasonState,
+      playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
+    },
     narrative: {
       ...snapshot.narrative,
       ...createEmptyLegacyState(),
@@ -1002,6 +1099,10 @@ function migrateGameSnapshotV5(snapshot: GameSnapshotV5): GameSnapshot {
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     players: snapshot.players.map((player) =>
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
+    seasonState: {
+      ...snapshot.seasonState,
+      playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
+    },
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
@@ -1016,6 +1117,10 @@ function migrateGameSnapshotV6(snapshot: GameSnapshotV6): GameSnapshot {
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     players: snapshot.players.map((player) =>
       migrateV6SnapshotPlayer(player, serviceTimeLookup.get(player.id) ?? 0)),
+    seasonState: {
+      ...snapshot.seasonState,
+      playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
+    },
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
   });
@@ -1030,8 +1135,23 @@ function migrateGameSnapshotV7(snapshot: GameSnapshotV7): GameSnapshot {
       ...player,
       ...backfillDevelopmentProfile(player),
     })),
+    seasonState: {
+      ...snapshot.seasonState,
+      playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
+    },
     minorLeagueState: upgradeMinorLeagueState(snapshot.minorLeagueState),
     ...createEmptyPhase7State(snapshot.season, teamIds),
+  });
+}
+
+function migrateGameSnapshotV8(snapshot: GameSnapshotV8): GameSnapshot {
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    seasonState: {
+      ...snapshot.seasonState,
+      playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntryV8),
+    },
   });
 }
 
@@ -1052,6 +1172,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 8
+  ) {
+    return migrateGameSnapshotV8(GameSnapshotV8Schema.parse(snapshotLike));
   }
 
   if (

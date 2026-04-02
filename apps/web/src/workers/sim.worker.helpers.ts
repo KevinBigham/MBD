@@ -142,6 +142,7 @@ import type {
   TeamChemistry,
   TradeState,
 } from '@mbd/contracts';
+import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -262,17 +263,29 @@ export interface PlayerDTO {
     pa: number;
     ab: number;
     hits: number;
+    doubles: number;
+    triples: number;
     hr: number;
     rbi: number;
     bb: number;
     k: number;
+    runs: number;
+    hbp: number;
+    sacFlies: number;
     avg: string;
     ip: number;
     earnedRuns: number;
     strikeouts: number;
     walks: number;
+    hitsAllowed: number;
+    homeRunsAllowed: number;
+    hitBatters: number;
+    flyBallsAllowed: number;
+    wins: number;
+    losses: number;
     era: string;
   } | null;
+  advanced: PlayerAdvancedStatsDTO | null;
 }
 
 export interface SimResultDTO {
@@ -2948,10 +2961,14 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
   };
 }
 
-export function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): PlayerDTO {
+export function toPlayerDTO(
+  player: GeneratedPlayer,
+  stats?: PlayerGameStats,
+  advanced?: PlayerAdvancedStatsDTO | null,
+): PlayerDTO {
   const seasonStats = stats ?? (state ? state.seasonState.playerSeasonStats.get(player.id) : undefined);
   let statBlock: PlayerDTO['stats'] = null;
-  if (seasonStats && (seasonStats.pa > 0 || seasonStats.strikeouts > 0)) {
+  if (seasonStats && (seasonStats.pa > 0 || seasonStats.ip > 0)) {
     const avg = seasonStats.ab > 0
       ? (seasonStats.hits / seasonStats.ab).toFixed(3).replace(/^0/, '')
       : '.000';
@@ -2959,11 +2976,30 @@ export function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): P
       ? ((seasonStats.earnedRuns / (seasonStats.ip / 3)) * 9).toFixed(2)
       : '0.00';
     statBlock = {
-      pa: seasonStats.pa, ab: seasonStats.ab, hits: seasonStats.hits,
-      hr: seasonStats.hr, rbi: seasonStats.rbi, bb: seasonStats.bb,
-      k: seasonStats.k, avg,
-      ip: seasonStats.ip, earnedRuns: seasonStats.earnedRuns,
-      strikeouts: seasonStats.strikeouts, walks: seasonStats.walks, era,
+      pa: seasonStats.pa,
+      ab: seasonStats.ab,
+      hits: seasonStats.hits,
+      doubles: seasonStats.doubles,
+      triples: seasonStats.triples,
+      hr: seasonStats.hr,
+      rbi: seasonStats.rbi,
+      bb: seasonStats.bb,
+      k: seasonStats.k,
+      runs: seasonStats.runs,
+      hbp: seasonStats.hbp,
+      sacFlies: seasonStats.sacFlies,
+      avg,
+      ip: seasonStats.ip,
+      earnedRuns: seasonStats.earnedRuns,
+      strikeouts: seasonStats.strikeouts,
+      walks: seasonStats.walks,
+      hitsAllowed: seasonStats.hitsAllowed,
+      homeRunsAllowed: seasonStats.homeRunsAllowed,
+      hitBatters: seasonStats.hitBatters,
+      flyBallsAllowed: seasonStats.flyBallsAllowed,
+      wins: seasonStats.wins,
+      losses: seasonStats.losses,
+      era,
     };
   }
   return {
@@ -2996,6 +3032,7 @@ export function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): P
     developmentTrajectory: player.developmentTrajectory ?? 'on_track',
     extensionHistory: [...(player.extensionHistory ?? [])],
     stats: statBlock,
+    advanced: advanced ?? null,
   };
 }
 

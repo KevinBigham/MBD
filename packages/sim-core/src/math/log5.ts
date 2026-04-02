@@ -14,6 +14,7 @@
 
 export interface OutcomeRates {
   readonly bb: number;
+  readonly hbp: number;
   readonly k: number;
   readonly hr: number;
   readonly single: number;
@@ -44,7 +45,7 @@ export interface Log5Input {
 // ---------------------------------------------------------------------------
 
 const OUTCOME_KEYS = [
-  'bb', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld',
+  'bb', 'hbp', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld',
 ] as const;
 
 type OutcomeKey = (typeof OUTCOME_KEYS)[number];
@@ -64,6 +65,7 @@ type OutcomeKey = (typeof OUTCOME_KEYS)[number];
  */
 const BATTER_INFLUENCE: Record<OutcomeKey, number> = {
   bb: 0.65,
+  hbp: 0.15,
   k: 0.25,
   hr: 0.50,
   single: 0.50,

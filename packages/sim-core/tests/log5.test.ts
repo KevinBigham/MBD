@@ -9,12 +9,13 @@ import type { Log5Input, OutcomeRates } from '../src/math/log5.js';
 /** MLB-approximate league-average rates (sum to 1.0). */
 const LEAGUE_AVG: OutcomeRates = {
   bb: 0.085,
+  hbp: 0.008,
   k: 0.220,
   hr: 0.035,
   single: 0.155,
   double: 0.050,
   triple: 0.005,
-  gb: 0.200,
+  gb: 0.192,
   fb: 0.150,
   ld: 0.100,
 };
@@ -119,6 +120,15 @@ describe('computeLog5Probabilities', () => {
       );
 
       expect(patientResult['bb']!).toBeGreaterThan(avgResult['bb']!);
+    });
+
+    it('wild pitchers raise hit-by-pitch probability', () => {
+      const avgResult = computeLog5Probabilities(makeInput());
+      const wildPitcher = computeLog5Probabilities(
+        makeInput({ pitcher: { hbp: 0.02 } }),
+      );
+
+      expect(wildPitcher['hbp']!).toBeGreaterThan(avgResult['hbp']!);
     });
   });
 

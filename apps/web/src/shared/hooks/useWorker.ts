@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore, useCallback } from 'react';
 import * as Comlink from 'comlink';
 import type { TradeAsset } from '@mbd/contracts';
+import type { LeaderboardStatKey } from '@mbd/sim-core';
 import type { WorkerApi } from '@/workers/sim.worker';
 
 // ---------------------------------------------------------------------------
@@ -126,9 +127,13 @@ export function useWorker() {
     async (playerId: string) => api.getPlayer(playerId),
     [api],
   );
+  const getAdvancedStats = useCallback(
+    async (playerId: string) => api.getAdvancedStats(playerId),
+    [api],
+  );
 
   const getLeagueLeaders = useCallback(
-    async (stat: string, limit?: number) => api.getLeagueLeaders(stat, limit),
+    async (stat: LeaderboardStatKey, limit?: number) => api.getLeagueLeaders(stat, limit),
     [api],
   );
 
@@ -405,7 +410,7 @@ export function useWorker() {
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot,
-    getStandings, getTeamRoster, getFullRoster, getPlayer,
+    getStandings, getTeamRoster, getFullRoster, getPlayer, getAdvancedStats,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,

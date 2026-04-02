@@ -82,6 +82,11 @@ describe('RosterPage', () => {
           isOutOfOptions: false,
           minorLeagueLevel: null,
           stats: null,
+          advanced: {
+            war: 4.3,
+            fip: null,
+            xfip: null,
+          },
         }],
         minors: {
           AAA: [],
@@ -174,6 +179,8 @@ describe('RosterPage', () => {
 
     expect(container.textContent).toContain('40-man roster has 42 players');
     expect(container.textContent).toContain('Logan Depth');
+    expect(container.textContent).toContain('WAR');
+    expect(container.textContent).toContain('4.3');
 
     let buttons = Array.from(container.querySelectorAll('button'));
     const dfaButton = buttons.find((button) => button.textContent?.includes('DFA Logan Depth'));

@@ -12,7 +12,7 @@ import {
   Globe2,
   Handshake,
 } from 'lucide-react';
-import { TEAMS, getTeamById } from '@mbd/sim-core';
+import { TEAMS, estimateProjectedWarRange, getTeamById } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 
@@ -171,6 +171,15 @@ function regionLabel(region: string): string {
 function teamDisplay(teamId: string | null): string {
   if (!teamId) return 'Unsigned';
   return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
+}
+
+function projectedWarLabels(overall: number, floor: number | null, ceiling: number | null, isPitcher: boolean) {
+  const projection = estimateProjectedWarRange({ overall, floor, ceiling, isPitcher });
+  return {
+    current: projection.currentWar.toFixed(1),
+    floor: projection.floorWar?.toFixed(1) ?? '--',
+    ceiling: projection.ceilingWar?.toFixed(1) ?? '--',
+  };
 }
 
 export default function ScoutingPage() {
@@ -517,6 +526,33 @@ export default function ScoutingPage() {
                   </div>
                 </div>
 
+                <div className="grid gap-3 border-t border-dynasty-border pt-3 sm:grid-cols-3">
+                  {(() => {
+                    const projectedWar = projectedWarLabels(
+                      scoutReport.overall,
+                      scoutReport.floor,
+                      scoutReport.ceiling,
+                      scoutReport.isPitcher,
+                    );
+                    return (
+                      <>
+                        <div>
+                          <p className="font-heading text-[10px] text-dynasty-muted">WAR Floor</p>
+                          <p className="font-data text-lg font-bold text-accent-danger">{projectedWar.floor}</p>
+                        </div>
+                        <div>
+                          <p className="font-heading text-[10px] text-dynasty-muted">WAR Now</p>
+                          <p className="font-data text-lg font-bold text-dynasty-textBright">{projectedWar.current}</p>
+                        </div>
+                        <div>
+                          <p className="font-heading text-[10px] text-dynasty-muted">WAR Ceiling</p>
+                          <p className="font-data text-lg font-bold text-accent-success">{projectedWar.ceiling}</p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+
                 {scoutReport.notes && (
                   <div className="border-t border-dynasty-border pt-3">
                     <div className="mb-1 flex items-center gap-1">
@@ -704,6 +740,32 @@ export default function ScoutingPage() {
                               ))}
                             </div>
                           </div>
+                        </div>
+                        <div className="grid gap-3 border-t border-dynasty-border pt-3 sm:grid-cols-3">
+                          {(() => {
+                            const projectedWar = projectedWarLabels(
+                              ifaReport.overall,
+                              ifaReport.floor,
+                              ifaReport.ceiling,
+                              ifaReport.position === 'SP' || ifaReport.position === 'RP' || ifaReport.position === 'CL',
+                            );
+                            return (
+                              <>
+                                <div>
+                                  <div className="font-heading text-[10px] uppercase text-dynasty-muted">WAR Floor</div>
+                                  <div className="font-data text-lg font-bold text-accent-danger">{projectedWar.floor}</div>
+                                </div>
+                                <div>
+                                  <div className="font-heading text-[10px] uppercase text-dynasty-muted">WAR Now</div>
+                                  <div className="font-data text-lg font-bold text-dynasty-textBright">{projectedWar.current}</div>
+                                </div>
+                                <div>
+                                  <div className="font-heading text-[10px] uppercase text-dynasty-muted">WAR Ceiling</div>
+                                  <div className="font-data text-lg font-bold text-accent-success">{projectedWar.ceiling}</div>
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                         <div className="border-t border-dynasty-border pt-3">
                           <div className="font-heading text-[10px] uppercase text-dynasty-muted">Notes</div>
