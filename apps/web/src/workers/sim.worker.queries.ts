@@ -45,6 +45,7 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
 import {
@@ -603,6 +604,10 @@ export const queryApi = {
 
   getMonthlyPulse() {
     return state ? getMonthlyPulse(state) : null;
+  },
+
+  getCeremonyState() {
+    return state ? getCeremonyStateView(state) : { activeMoment: null, queueLength: 0 };
   },
 
   getSeasonFlowState() {

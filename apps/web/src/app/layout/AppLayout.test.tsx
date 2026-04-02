@@ -38,6 +38,11 @@ function createWorkerMock(flow: Record<string, unknown>) {
   return {
     isReady: true,
     getSeasonFlowState: vi.fn().mockResolvedValue(flow),
+    getCeremonyState: vi.fn().mockResolvedValue({
+      activeMoment: null,
+      queueLength: 0,
+    }),
+    dismissCeremonyMoment: vi.fn().mockResolvedValue({ success: true }),
     getMonthlyPulse: vi.fn().mockResolvedValue({
       pendingReport: null,
       decisionQueue: [],
@@ -452,5 +457,121 @@ describe('AppLayout', () => {
     });
 
     expect(worker.dismissDecisionSpotlight).toHaveBeenCalledWith('decision-roster');
+  });
+
+  it('shows the active ceremony moment before the monthly report and then advances into the report queue', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 162,
+      phase: 'playoffs',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      playerCount: 780,
+      gamesPlayed: 180,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const flow = {
+      status: 'playoffs_complete',
+      season: 3,
+      phaseLabel: 'Season 3 — World Series Final',
+      detailLabel: 'New York Yankees defeated Los Angeles Dodgers 4-2',
+      progress: 1,
+      canUseRegularSimControls: false,
+      action: 'proceed_to_offseason',
+      actionLabel: 'Proceed to Offseason',
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: null,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: {
+        championTeamId: 'nyy',
+        championTeamName: 'New York Yankees',
+        runnerUpTeamName: 'Los Angeles Dodgers',
+        seriesRecord: '4-2',
+      },
+      offseasonSummary: null,
+    };
+    const worker = createWorkerMock(flow);
+    let ceremonyCalls = 0;
+    worker.getCeremonyState = vi.fn().mockImplementation(async () => {
+      ceremonyCalls += 1;
+      if (ceremonyCalls === 1) {
+        return {
+          activeMoment: {
+            id: 'moment-world-series',
+            type: 'world_series_win',
+            title: 'WORLD CHAMPIONS',
+            subtitle: 'New York Yankees',
+            detailLines: ['Defeated Los Angeles Dodgers 4-2'],
+            soundEffect: 'world_series_win',
+            autoDismissMs: 5000,
+          },
+          queueLength: 1,
+        };
+      }
+
+      return {
+        activeMoment: null,
+        queueLength: 0,
+      };
+    });
+    worker.getMonthlyPulse = vi.fn().mockResolvedValue({
+      pendingReport: {
+        id: 'report-3-10',
+        monthLabel: 'October',
+        teamRecord: '11-5',
+        overallRecord: '101-61',
+        divisionMovement: 0,
+        playerOfTheMonth: {
+          playerName: 'Aaron Judge',
+          war: 1.6,
+        },
+      },
+      decisionQueue: [],
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('WORLD CHAMPIONS');
+    expect(container.textContent).not.toContain('Monthly Report');
+
+    const continueButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Keep Going'),
+    );
+
+    await act(async () => {
+      continueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.dismissCeremonyMoment).toHaveBeenCalledWith('moment-world-series');
+    expect(container.textContent).toContain('Monthly Report');
+    expect(container.textContent).toContain('October');
   });
 });

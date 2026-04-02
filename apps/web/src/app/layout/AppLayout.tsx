@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { SimControls } from './SimControls';
 import { CommandPalette } from './CommandPalette';
+import { MomentCardOverlay } from './MomentCardOverlay';
 import { SeasonFlowCard } from './SeasonFlowCard';
 import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import type { SeasonFlowState } from './seasonFlow';
@@ -12,7 +13,7 @@ import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStor
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
 import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
-import type { MonthlyPulseState } from '@mbd/contracts';
+import type { CeremonyMoment, MonthlyPulseState } from '@mbd/contracts';
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -32,9 +33,14 @@ function resolveAmbientMode(
   phase: string,
   initialized: boolean,
   overlayVisible: boolean,
+  celebrationVisible: boolean,
 ): AmbientMode | null {
   if (!initialized) {
     return null;
+  }
+
+  if (celebrationVisible) {
+    return 'celebration';
   }
 
   if (overlayVisible) {
@@ -69,6 +75,7 @@ export function AppLayout() {
   const location = useLocation();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
+  const [activeMoment, setActiveMoment] = useState<CeremonyMoment | null>(null);
   const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseState | null>(null);
   const [monthlyPulseBusy, setMonthlyPulseBusy] = useState(false);
   const worker = useWorker();
@@ -98,6 +105,12 @@ export function AppLayout() {
     setMonthlyPulse(next as MonthlyPulseState);
   }, [worker, workerReady]);
 
+  const refreshCeremony = useCallback(async () => {
+    if (!workerReady) return;
+    const next = await worker.getCeremonyState();
+    setActiveMoment(((next as { activeMoment: CeremonyMoment | null })?.activeMoment) ?? null);
+  }, [worker, workerReady]);
+
   // Auto-initialize a new game when the worker is ready
   useEffect(() => {
     if (!workerReady || initialized.current || isInitialized) return;
@@ -116,7 +129,7 @@ export function AppLayout() {
             playerCount: result.playerCount,
             userTeamId: result.userTeamId,
           });
-          await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
+          await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
           return;
         }
 
@@ -128,23 +141,25 @@ export function AppLayout() {
           playerCount: result.playerCount,
           userTeamId: 'nyy',
         });
-        await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
+        await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
       } catch (err: unknown) {
         console.error('Failed to initialize game:', err);
       }
     })();
-  }, [workerReady, initializeGame, isInitialized, refreshMonthlyPulse, refreshSeasonFlow, worker]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workerReady, initializeGame, isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, worker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!workerReady || !isInitialized) return;
 
     void refreshSeasonFlow();
+    void refreshCeremony();
     void refreshMonthlyPulse();
     return worker.subscribeToFlowUpdates(() => {
       void refreshSeasonFlow();
+      void refreshCeremony();
       void refreshMonthlyPulse();
     });
-  }, [isInitialized, refreshMonthlyPulse, refreshSeasonFlow, worker, workerReady]);
+  }, [isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, worker, workerReady]);
 
   const handleSim = useCallback(
     async (simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>) => {
@@ -153,23 +168,24 @@ export function AppLayout() {
       try {
         const result = await simFn();
         updateFromSim(result);
-        await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
+        await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
       } catch (err) {
         console.error('Simulation error:', err);
       } finally {
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, refreshMonthlyPulse, refreshSeasonFlow, setSimulating, updateFromSim]
+    [workerReady, isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, setSimulating, updateFromSim]
   );
 
-  const activeReport = monthlyPulse?.pendingReport ?? null;
+  const activeReport = activeMoment ? null : (monthlyPulse?.pendingReport ?? null);
   const activeDecision = activeReport ? null : (monthlyPulse?.decisionQueue[0] ?? null);
   const ambientMode = resolveAmbientMode(
     location.pathname,
     phase,
     isInitialized,
     activeReport != null || activeDecision != null,
+    activeMoment != null,
   );
 
   useEffect(() => {
@@ -209,6 +225,18 @@ export function AppLayout() {
       setMonthlyPulseBusy(false);
     }
   }, [activeReport, refreshMonthlyPulse, worker]);
+
+  const handleMomentDismiss = useCallback(async (momentId: string) => {
+    setMonthlyPulseBusy(true);
+    try {
+      await worker.dismissCeremonyMoment(momentId);
+      await Promise.all([refreshCeremony(), refreshMonthlyPulse()]);
+    } catch (err) {
+      console.error('Failed to dismiss ceremony moment:', err);
+    } finally {
+      setMonthlyPulseBusy(false);
+    }
+  }, [refreshCeremony, refreshMonthlyPulse, worker]);
 
   const handleDecisionDismiss = useCallback(async () => {
     if (!activeDecision) return;
@@ -355,6 +383,12 @@ export function AppLayout() {
       <CommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
+      />
+
+      <MomentCardOverlay
+        moment={activeMoment}
+        busy={isSimulating || monthlyPulseBusy}
+        onDismiss={(momentId) => void handleMomentDismiss(momentId)}
       />
 
       <MonthlyPulseOverlay

@@ -107,6 +107,10 @@ export function useWorker() {
     async (decisionId: string) => runMutation(() => api.dismissDecisionSpotlight(decisionId)),
     [api, runMutation],
   );
+  const dismissCeremonyMoment = useCallback(
+    async (momentId: string) => runMutation(() => api.dismissCeremonyMoment(momentId)),
+    [api, runMutation],
+  );
   const simToPlayoffs = useCallback(async () => runMutation(() => api.simToPlayoffs()), [api, runMutation]);
   const simPlayoffGame = useCallback(async () => runMutation(() => api.simPlayoffGame()), [api, runMutation]);
   const simPlayoffSeries = useCallback(async () => runMutation(() => api.simPlayoffSeries()), [api, runMutation]);
@@ -151,6 +155,7 @@ export function useWorker() {
   const getDynastyScore = useCallback(async () => api.getDynastyScore(), [api]);
   const getDashboardSummary = useCallback(async () => api.getDashboardSummary(), [api]);
   const getMonthlyPulse = useCallback(async () => api.getMonthlyPulse(), [api]);
+  const getCeremonyState = useCallback(async () => api.getCeremonyState(), [api]);
   const getSeasonFlowState = useCallback(async () => api.getSeasonFlowState(), [api]);
   const getScoutingStaff = useCallback(async () => api.getScoutingStaff(), [api]);
   const scoutPlayerReport = useCallback(
@@ -416,12 +421,12 @@ export function useWorker() {
   );
 
   return {
-    ping, newGame, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, simToPlayoffs,
+    ping, newGame, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot,
     getStandings, getTeamRoster, getFullRoster, getPlayer, getAdvancedStats,
-    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getMonthlyPulse, getSeasonFlowState,
+    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getMonthlyPulse, getCeremonyState, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeAssetInventory, proposeTrade, respondToTradeOffer,

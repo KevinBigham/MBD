@@ -128,11 +128,14 @@ import type {
   GMPersonality,
 } from '@mbd/sim-core';
 import type {
+  AchievementState,
   AwardHistoryEntry,
   BriefingItem,
   CareerStatsLedger,
+  CeremonyState,
   DraftCompensatoryPick,
   DraftPickOwnership,
+  FranchiseState,
   FranchiseTimelineEntry,
   HallOfFameBallotEntry,
   HallOfFameEntry,
@@ -148,6 +151,7 @@ import type {
   TradeState,
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
+import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -196,6 +200,9 @@ export interface FullGameState {
   careerStats: CareerStatsLedger[];
   seasonHistory: SeasonHistoryEntry[];
   tradeState: TradeState;
+  franchise: FranchiseState;
+  ceremony: CeremonyState;
+  achievements: AchievementState;
 }
 
 export let state: FullGameState | null = null;
@@ -3168,6 +3175,7 @@ export function processDayInjuriesAndNews(s: FullGameState): void {
     }, s.players, s.season, s.day);
     s.news.push(...mNews);
   }
+  queueCareerMilestoneMoments(s);
 
   s.news = deduplicateNews(s.news);
 }

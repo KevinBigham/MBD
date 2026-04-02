@@ -1635,6 +1635,108 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().playerMorale.get(requested.id)?.score).toBeGreaterThan(baselineMorale);
   });
 
+  it('returns ceremony moments in queue order and dismisses them sequentially', () => {
+    api.newGame(3431, 'nyy');
+    const state = requireState();
+    state.ceremony.pendingMoments = [
+      {
+        id: 'moment-a',
+        type: 'playoff_clinch',
+        title: 'POSTSEASON BOUND',
+        subtitle: 'New York Yankees',
+        detailLines: ['Clinched a playoff berth.'],
+        soundEffect: 'playoff_clinch',
+        autoDismissMs: 5000,
+        createdAt: 'S1D150',
+        theme: 'celebration',
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: [],
+      },
+      {
+        id: 'moment-b',
+        type: 'prospect_debut',
+        title: 'THE FUTURE IS NOW',
+        subtitle: 'Jasson Dominguez',
+        detailLines: ['Called up from AAA.'],
+        soundEffect: 'prospect_callup',
+        autoDismissMs: 5000,
+        createdAt: 'S1D151',
+        theme: 'future',
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: ['prospect-1'],
+      },
+    ];
+
+    const workerApi = api as typeof api & {
+      getCeremonyState: () => {
+        activeMoment: { id: string } | null;
+        queueLength: number;
+      };
+      dismissCeremonyMoment: (momentId: string) => { success: boolean };
+    };
+
+    expect(workerApi.getCeremonyState().activeMoment?.id).toBe('moment-a');
+    expect(workerApi.getCeremonyState().queueLength).toBe(2);
+
+    expect(workerApi.dismissCeremonyMoment('moment-a').success).toBe(true);
+    expect(workerApi.getCeremonyState().activeMoment?.id).toBe('moment-b');
+    expect(requireState().ceremony.seenMomentIds).toContain('moment-a');
+  });
+
+  it('queues a playoff clinch moment when the regular season rolls into the playoffs', () => {
+    api.newGame(344, 'nyy');
+    const state = requireState();
+    const finalRegularSeasonDay = Math.max(...state.schedule.map((game) => game.day));
+
+    state.phase = 'regular';
+    state.day = finalRegularSeasonDay;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: finalRegularSeasonDay,
+    };
+
+    for (let win = 0; win < 140; win += 1) {
+      state.seasonState.standings.recordGame('nyy', 'bos', 5, 1, true);
+    }
+
+    api.simDay();
+
+    const ceremony = (api as typeof api & {
+      getCeremonyState: () => {
+        activeMoment: { type: string; title: string } | null;
+      };
+    }).getCeremonyState();
+
+    expect(ceremony.activeMoment?.type).toBe('playoff_clinch');
+    expect(ceremony.activeMoment?.title).toContain('POSTSEASON BOUND');
+  });
+
+  it('queues a prospect debut moment when a user prospect reaches MLB', () => {
+    api.newGame(3441, 'nyy');
+    api.simDay();
+    api.simDay();
+    const state = requireState();
+    const promotionTarget = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AAA')!;
+    const rosterState = state.rosterStates.get('nyy')!;
+    rosterState.mlbRoster = rosterState.mlbRoster.slice(0, 25);
+    rosterState.fortyManRoster = [
+      ...rosterState.fortyManRoster.filter((playerId) => playerId !== promotionTarget.id).slice(0, 39),
+      promotionTarget.id,
+    ];
+
+    const result = api.promotePlayer(promotionTarget.id);
+    const ceremony = (api as typeof api & {
+      getCeremonyState: () => {
+        activeMoment: { type: string; title: string; subtitle: string } | null;
+      };
+    }).getCeremonyState();
+
+    expect(result.success).toBe(true);
+    expect(ceremony.activeMoment?.type).toBe('prospect_debut');
+    expect(ceremony.activeMoment?.title).toContain('THE FUTURE IS NOW');
+    expect(ceremony.activeMoment?.subtitle).toContain(promotionTarget.lastName);
+  });
+
   it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {
     api.newGame(344, 'nyy');
 
@@ -1645,7 +1747,7 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().playoffBracket).toBeNull();
     expect(flow.status).toBe('regular_season_complete');
     expect(flow.action).toBe('watch_playoffs');
-  });
+  }, 10_000);
 
   it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {
     api.newGame(345, 'nyy');

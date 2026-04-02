@@ -1,8 +1,11 @@
 import {
+  type AchievementState,
   type AwardHistoryEntry,
   type BriefingItem,
   type CareerStatsLedger,
+  type CeremonyState,
   type FranchiseTimelineEntry,
+  type FranchiseState,
   type GameSnapshot,
   type HallOfFameBallotEntry,
   type HallOfFameEntry,
@@ -48,6 +51,11 @@ import {
   type DraftSessionState,
   type FullGameState,
 } from './sim.worker.helpers';
+import {
+  createDefaultFranchiseState,
+  createEmptyAchievementState,
+  createEmptyCeremonyState,
+} from './sim.worker.ceremony.js';
 import { createEmptyMonthlyPulseState } from './sim.worker.monthlyPulse.js';
 
 function serializeSeasonState(seasonState: SeasonState): GameSnapshot['seasonState'] {
@@ -117,6 +125,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 7 &&
     snapshot.schemaVersion !== 8 &&
     snapshot.schemaVersion !== 9 &&
+    snapshot.schemaVersion !== 10 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -174,6 +183,9 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
     },
     monthlyPulse: state.monthlyPulse,
     tradeState: state.tradeState,
+    franchise: state.franchise,
+    ceremony: state.ceremony,
+    achievements: state.achievements,
   });
 }
 
@@ -238,5 +250,9 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     careerStats: snapshot.narrative.careerStats as CareerStatsLedger[],
     seasonHistory: snapshot.narrative.seasonHistory as SeasonHistoryEntry[],
     tradeState: snapshot.tradeState ?? createEmptyTradeState(),
+    franchise: (snapshot.franchise as FranchiseState | undefined)
+      ?? createDefaultFranchiseState(snapshot.userTeamId, snapshot.season, snapshot.day),
+    ceremony: (snapshot.ceremony as CeremonyState | undefined) ?? createEmptyCeremonyState(),
+    achievements: (snapshot.achievements as AchievementState | undefined) ?? createEmptyAchievementState(),
   };
 }

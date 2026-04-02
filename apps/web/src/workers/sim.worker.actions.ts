@@ -93,6 +93,17 @@ import type {
 } from './sim.worker.helpers.js';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
 import {
+  createDefaultFranchiseState,
+  createEmptyAchievementState,
+  createEmptyCeremonyState,
+  dismissCeremonyMoment as dismissCeremonyMomentState,
+  maybeQueuePlayoffClinchMoment,
+  queueAwardMoments,
+  queueHallOfFameMoments,
+  queuePlayoffSeriesMoment,
+  queueProspectDebutMoment,
+} from './sim.worker.ceremony.js';
+import {
   clearPendingTradeOffers,
   isTradeMarketOpen,
   processTradeMarketActivity,
@@ -326,6 +337,7 @@ function recordPlayoffProgressCoverage(
         1,
       );
       applySeriesOutcomeConsequences(s, series.winnerId ?? series.higherSeed.teamId, series.loserId ?? series.lowerSeed.teamId);
+      queuePlayoffSeriesMoment(s, series);
     }
   }
 
@@ -353,6 +365,7 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
   }
 
   ensureAwardHistoryForSeason(s);
+  queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
   const seasonMoments = applyPostseasonConsequences(s);
   recordSeasonHistory(s, seasonMoments);
   upsertFranchiseTimelineEntry(s);
@@ -382,6 +395,8 @@ function playoffResult(s: FullGameState, gamesPlayed: number): SimResultDTO {
 function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonComplete: boolean): SimResultDTO {
   if (seasonComplete) {
     ensureAwardHistoryForSeason(s);
+    queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
+    maybeQueuePlayoffClinchMoment(s);
     clearPendingTradeOffers(s);
     s.phase = 'playoffs';
     s.day = 1;
@@ -484,7 +499,8 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.players = developedPlayers;
 
   const retired = determineRetirements(s.rng.fork(), s.players);
-  processHallOfFameForRetirements(s, retired);
+  const inductees = processHallOfFameForRetirements(s, retired);
+  queueHallOfFameMoments(s, inductees);
   enrichFranchiseTimelineWithDepartures(s, retired);
   if (s.offseasonState) {
     s.offseasonState = recordRetirements(
@@ -690,6 +706,9 @@ export const actionApi = {
       careerStats: [],
       seasonHistory: [],
       tradeState: createEmptyTradeState(),
+      franchise: createDefaultFranchiseState(userTeamId, 1, 1),
+      ceremony: createEmptyCeremonyState(),
+      achievements: createEmptyAchievementState(),
     });
     ensureNarrativeState(requireState());
 
@@ -723,6 +742,10 @@ export const actionApi = {
 
   dismissDecisionSpotlight(decisionId: string) {
     return dismissDecisionSpotlight(requireState(), decisionId);
+  },
+
+  dismissCeremonyMoment(momentId: string) {
+    return dismissCeremonyMomentState(requireState(), momentId);
   },
 
   simToPlayoffs(): SimResultDTO {
@@ -981,6 +1004,7 @@ export const actionApi = {
           streak: 'call-up watch',
         },
       }, s.players, s.season, s.day));
+      queueProspectDebutMoment(s, promotedPlayer.id, player.rosterStatus);
     }
     return { success: result.success, error: result.error };
   },
