@@ -34,6 +34,7 @@ import {
   getRegularSeasonMonthForDay,
   resolveDraftSigning,
   resolveQualifyingOffer as resolveQualifyingOfferCore,
+  shouldIssueQualifyingOffer,
   scoutDraftProspect,
   serviceDaysToYears,
   toDisplayRating,
@@ -3522,6 +3523,27 @@ function processTeamExtensionsOnce(s: FullGameState) {
     if (finalized.length > 0) {
       s.offseasonState = recordExtensionResults(s.offseasonState, finalized);
       recordedTeamIds.add(teamId);
+
+      for (const extension of finalized) {
+        const player = s.players.find((candidate) => candidate.id === extension.playerId);
+        if (!player) continue;
+        s.news.unshift(...generateNews(s.rng.fork(), {
+          type: 'extension',
+          season: s.season,
+          day: s.day,
+          data: {
+            playerId: player.id,
+            playerName: `${player.firstName} ${player.lastName}`,
+            teamId,
+            teamName: getTeamById(teamId)?.name ?? teamId.toUpperCase(),
+            years: extension.years,
+            annualSalary: extension.annualSalary,
+            totalValue: extension.totalValue,
+            outcome: extension.status,
+            record: `${s.seasonState.standings.getRecord(teamId)?.wins ?? 0}-${s.seasonState.standings.getRecord(teamId)?.losses ?? 0}`,
+          },
+        }, s.players, s.season, s.day));
+      }
     }
   }
 }
@@ -3540,6 +3562,9 @@ function processQualifyingOfferIssuanceOnce(s: FullGameState) {
 
     for (const player of getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime)) {
       if (existingPlayerIds.has(player.id)) {
+        continue;
+      }
+      if (!shouldIssueQualifyingOffer(player, calculateQualifyingOfferSalaryCore(s.players))) {
         continue;
       }
 
@@ -3722,6 +3747,19 @@ function applyNewFreeAgencySignings(
     s.offseasonState = recordFASigning(s.offseasonState, signingResult);
     applyQualifyingOfferCompensationIfNeeded(s, player.id, teamId);
     currentSigningIds.add(player.id);
+    s.news.unshift(...generateNews(s.rng.fork(), {
+      type: 'signing',
+      season: s.season,
+      day: s.day,
+      data: {
+        playerId: player.id,
+        teamId,
+        teamName: getTeamById(teamId)?.name ?? teamId.toUpperCase(),
+        years: contract.years,
+        annualSalary: contract.annualSalary,
+        totalValue: contract.totalValue,
+      },
+    }, s.players, s.season, s.day));
     progress.push({
       playerId: player.id,
       teamId,

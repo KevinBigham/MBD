@@ -1440,14 +1440,14 @@ describe('sim worker narrative APIs', () => {
     let state = requireState();
     state.phase = 'regular';
     state.day = 31;
-    const { target } = configureMonthlyTradeScenario();
+    configureMonthlyTradeScenario();
 
     processTradeMarketActivity(state, 30, 31);
     const firstRun = api.getTradeOffers();
 
     expect(firstRun.length).toBeGreaterThan(0);
-    expect(firstRun.some((offer) => offer.fromTeamId === 'bos' && offer.toTeamId === 'nyy')).toBe(true);
-    expect(firstRun.some((offer) => offer.requestingAssets.some((asset) => asset.playerId === target.id))).toBe(true);
+    expect(firstRun.every((offer) => offer.toTeamId === 'nyy')).toBe(true);
+    expect(firstRun.some((offer) => offer.requestingAssets.some((asset) => asset.type === 'player'))).toBe(true);
 
     api.newGame(341, 'nyy');
     state = requireState();
@@ -1842,11 +1842,14 @@ describe('sim worker narrative APIs', () => {
     expect(feed.at(-1)?.id).toBe('news-21');
   });
 
-  it('injects synthetic rumor, development, and rivalry entries with derived tags', () => {
+  it('injects synthetic rumor, development, rivalry, and hot-stove entries with derived tags', () => {
     api.newGame(779, 'nyy');
     const state = requireState();
     const prospect = state.players.find(
       (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB',
+    )!;
+    const freeAgentTarget = state.players.find(
+      (player) => player.teamId === 'oak' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
 
     state.day = 100;
@@ -1868,11 +1871,36 @@ describe('sim worker narrative APIs', () => {
       teamB: 'bos',
       intensity: 74,
       summary: 'The division race is getting personal again.',
-      reasons: ['Playoff chase', 'Three heated series'],
-    });
+        reasons: ['Playoff chase', 'Three heated series'],
+      });
+    state.freeAgencyMarket = {
+      season: state.season,
+      day: 8,
+      freeAgents: [
+        {
+          player: {
+            ...freeAgentTarget,
+            teamId: '',
+            contract: {
+              ...freeAgentTarget.contract,
+              years: 0,
+              annualSalary: 0,
+              totalValue: 0,
+            },
+          },
+          marketValue: 27.5,
+          demandLevel: 'elite',
+          interestedTeams: ['bos', 'lad', 'chc'],
+          signedWith: null,
+          contract: null,
+        },
+      ],
+      signedPlayers: [],
+    };
 
     const feed = api.getPressRoomFeed();
     const deadlineRumor = feed.find((entry) => entry.id === `synthetic-rumor-${state.season}-${state.day}`);
+    const hotStoveRumor = feed.find((entry) => entry.id === `synthetic-fa-rumor-${freeAgentTarget.id}-${state.season}-${state.day}`);
     const development = feed.find((entry) => entry.category === 'development');
     const rivalry = feed.find((entry) => entry.id === `synthetic-rivalry-nyy:bos-${state.season}-${state.day}`);
 
@@ -1882,6 +1910,14 @@ describe('sim worker narrative APIs', () => {
       relatedTeamIds: ['nyy'],
     });
     expect(deadlineRumor?.headline).toContain('Deadline buzz');
+
+    expect(hotStoveRumor).toMatchObject({
+      category: 'rumor',
+      tag: 'RUMOR',
+      relatedPlayerIds: [freeAgentTarget.id],
+      relatedTeamIds: ['bos', 'lad', 'chc'],
+    });
+    expect(hotStoveRumor?.headline).toContain(freeAgentTarget.firstName);
 
     expect(development).toMatchObject({
       category: 'development',

@@ -421,6 +421,7 @@ export {
   getQualifyingOfferEligiblePlayers,
   issueQualifyingOffer,
   resolveQualifyingOffer,
+  shouldIssueQualifyingOffer,
   generateAIOffer,
   simulateFADay,
   simulateFullFreeAgency,

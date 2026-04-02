@@ -52,6 +52,33 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
     });
   }
 
+  const hotStoveCandidate = state.freeAgencyMarket?.freeAgents
+    .filter((entry) =>
+      entry.signedWith == null
+      && entry.interestedTeams.length >= 2
+      && (entry.demandLevel === 'elite' || entry.demandLevel === 'high'),
+    )
+    .sort((left, right) => right.marketValue - left.marketValue)[0];
+  if (hotStoveCandidate) {
+    const playerName = `${hotStoveCandidate.player.firstName} ${hotStoveCandidate.player.lastName}`;
+    const clubLabels = hotStoveCandidate.interestedTeams
+      .slice(0, 3)
+      .map((teamId) => getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase())
+      .join(', ');
+    entries.push({
+      id: `synthetic-fa-rumor-${hotStoveCandidate.player.id}-${state.season}-${state.day}`,
+      source: 'news',
+      category: 'rumor',
+      tag: 'RUMOR',
+      priority: 2,
+      headline: `Hot stove: ${playerName} drawing interest from ${clubLabels}`,
+      body: `${playerName} still has ${hotStoveCandidate.interestedTeams.length} clubs circling as free agency moves through the top tier.`,
+      timestamp,
+      relatedTeamIds: hotStoveCandidate.interestedTeams.slice(0, 3),
+      relatedPlayerIds: [hotStoveCandidate.player.id],
+    });
+  }
+
   const latestDevelopment = [...state.minorLeagueState.developmentReports]
     .sort((left, right) => right.season - left.season || right.month - left.month)[0];
   if (latestDevelopment) {

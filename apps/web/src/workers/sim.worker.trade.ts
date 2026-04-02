@@ -465,6 +465,53 @@ function buildTradeViews<T extends PersistentTradeOffer | TradeHistoryEntry>(
   }));
 }
 
+function positionNeedLabel(position: string): string {
+  switch (position) {
+    case 'SP':
+      return 'rotation help';
+    case 'RP':
+    case 'CL':
+      return 'bullpen depth';
+    case 'SS':
+      return 'middle-infield help';
+    case 'CF':
+      return 'center-field help';
+    case 'depth':
+      return 'depth';
+    default:
+      return `${position.toLowerCase()} depth`;
+  }
+}
+
+function recordTradeRumor(state: FullGameState, proposal: TradeProposal) {
+  const targetPlayer = state.players.find((player) => player.id === proposal.playersRequested[0]);
+  const rumorItems = generateNews(
+    state.rng.fork(),
+    {
+      type: 'rumor',
+      season: state.season,
+      day: state.day,
+      data: {
+        teamId: proposal.fromTeamId,
+        teamName: teamName(proposal.fromTeamId),
+        targetPlayerId: proposal.playersRequested[0],
+        targetName: targetPlayer ? `${targetPlayer.firstName} ${targetPlayer.lastName}` : 'a league target',
+        need: positionNeedLabel(targetPlayer?.position ?? 'depth'),
+        daysToDeadline: Math.max(0, TRADE_DEADLINE_DAY - state.day),
+      },
+    },
+    state.players,
+    state.season,
+    state.day,
+  );
+
+  if (rumorItems.length === 0) {
+    return;
+  }
+
+  state.news = deduplicateNews([...rumorItems, ...state.news]);
+}
+
 export function isTradeMarketOpen(state: FullGameState): boolean {
   return state.phase === 'regular' && state.day <= TRADE_DEADLINE_DAY;
 }
@@ -572,6 +619,13 @@ function buildMonthlyTradeCandidates(state: FullGameState) {
   const userCandidates: TradeProposal[] = [];
   const aiCandidates: TradeProposal[] = [];
   const signatures = existingTradeSignatures(state);
+  const contenderTeamIds = Array.from(
+    new Set(
+      state.players
+        .map((player) => player.teamId)
+        .filter((teamId): teamId is string => Boolean(teamId) && isContender(state, teamId)),
+    ),
+  );
 
   for (const team of Array.from(new Set(state.players.map((player) => player.teamId))).filter((teamId) => teamId && teamId !== state.userTeamId)) {
     const gm = state.gmPersonalities.get(team);
@@ -584,6 +638,10 @@ function buildMonthlyTradeCandidates(state: FullGameState) {
       state.players,
       gm,
       isContender(state, team),
+      {
+        currentDay: state.day,
+        contenderTeamIds,
+      },
     );
 
     for (const proposal of proposals) {
@@ -617,6 +675,7 @@ function generateMonthlyTradeActivity(state: FullGameState) {
   const userOfferTarget = state.rng.nextInt(1, 3);
 
   for (const proposal of userCandidates.slice(0, userOfferTarget)) {
+    recordTradeRumor(state, proposal);
     const fairnessScore = fairValueForProposal(state, proposal);
     addPendingOffer(state, buildPersistentOffer(state, {
       ...proposal,
@@ -626,6 +685,7 @@ function generateMonthlyTradeActivity(state: FullGameState) {
   }
 
   for (const proposal of aiCandidates.slice(0, 1)) {
+    recordTradeRumor(state, proposal);
     const gm = state.gmPersonalities.get(proposal.toTeamId);
     if (!gm || !playersStillMatchProposal(state, proposal)) continue;
     const result = evaluateTradeProposal(

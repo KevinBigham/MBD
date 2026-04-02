@@ -62,9 +62,6 @@ const POSITION_MULTIPLIERS: Partial<Record<Position, number>> = {
 };
 const DEFAULT_POSITION_MULTIPLIER = 1.0;
 
-/** Budget safety threshold -- teams won't spend beyond 90% of budget. */
-const BUDGET_SAFETY_FACTOR = 0.9;
-
 /** Need bonus when a team badly needs a position. */
 const NEED_BONUS_FACTOR = 0.3;
 
@@ -100,6 +97,11 @@ const TEAM_OPTION_CHANCE = 0.25;
 const QUALIFYING_OFFER_SALARY_PLAYER_COUNT = 125;
 const QUALIFYING_OFFER_MIN_SERVICE_YEARS = 3;
 const QUALIFYING_OFFER_MARKET_VALUE_FRACTION = 0.75;
+const SMALL_MARKET_BUDGET_THRESHOLD = 145;
+const MID_MARKET_BUDGET_THRESHOLD = 175;
+const LOW_NEED_THRESHOLD = 35;
+const MODERATE_NEED_THRESHOLD = 55;
+const ELITE_FA_MARKET_VALUE = 22;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,6 +180,34 @@ function roundCurrency(value: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function playerDurability(player: GeneratedPlayer): number {
+  return player.pitcherAttributes?.stamina ?? player.hitterAttributes.durability;
+}
+
+function spendingComfortFactor(teamBudget: number): number {
+  if (teamBudget <= SMALL_MARKET_BUDGET_THRESHOLD) {
+    return 0.8;
+  }
+  if (teamBudget <= MID_MARKET_BUDGET_THRESHOLD) {
+    return 0.85;
+  }
+  return 0.91;
+}
+
+function marketAggressionFactor(teamBudget: number): number {
+  if (teamBudget <= SMALL_MARKET_BUDGET_THRESHOLD) {
+    return 0.84;
+  }
+  if (teamBudget <= MID_MARKET_BUDGET_THRESHOLD) {
+    return 0.95;
+  }
+  return 1.06;
+}
+
+function requiresStrongRosterFit(player: GeneratedPlayer, marketValue: number): boolean {
+  return player.position !== 'SP' && marketValue < ELITE_FA_MARKET_VALUE;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,12 +346,34 @@ export function issueQualifyingOffer(
   };
 }
 
+export function shouldIssueQualifyingOffer(
+  player: GeneratedPlayer,
+  amount: number,
+): boolean {
+  const marketValue = calculateMarketValue(player);
+  const durability = playerDurability(player);
+  const leverage = marketValue - amount;
+  const agePenalty = player.age >= 35 ? 4 : player.age >= 33 ? 2.25 : 0;
+  const injuryPenalty = durability < 220 ? 3.5 : durability < 280 ? 1.5 : 0;
+  const starBonus = getOverall(player) >= 380 ? 2.5 : 0;
+  const youthBonus = player.age <= 30 ? 1.25 : 0;
+  const trajectoryBonus = player.developmentTrajectory === 'ahead_of_curve'
+    ? 0.75
+    : player.developmentTrajectory === 'below_expectations' || player.developmentTrajectory === 'bust_risk'
+      ? -1
+      : 0;
+
+  return leverage + starBonus + youthBonus + trajectoryBonus - agePenalty - injuryPenalty >= 1.5;
+}
+
 export function resolveQualifyingOffer(
   player: GeneratedPlayer,
   record: QualifyingOfferRecord,
   rng: GameRNG,
 ): QualifyingOfferResolution {
   const leverage = record.marketValue - record.amount;
+  const durability = playerDurability(player);
+  const marketRatio = record.marketValue / Math.max(record.amount, 0.1);
   const ageAdjustment = player.age >= 35 ? 0.26 : player.age >= 32 ? 0.12 : player.age <= 28 ? -0.12 : 0;
   const trajectoryAdjustment = player.developmentTrajectory === 'bust_risk'
     ? 0.16
@@ -330,11 +382,25 @@ export function resolveQualifyingOffer(
       : player.developmentTrajectory === 'ahead_of_curve'
         ? -0.10
         : 0;
+  const durabilityAdjustment = durability < 220
+    ? 0.16
+    : durability < 280
+      ? 0.08
+      : durability >= 360
+        ? -0.04
+        : 0;
+  const marketAdjustment = marketRatio >= 1.35
+    ? -0.12
+    : marketRatio <= 1.05
+      ? 0.1
+      : 0;
   const acceptChance = clamp(
     0.52
       - (leverage * 0.05)
       + ageAdjustment
       + trajectoryAdjustment
+      + durabilityAdjustment
+      + marketAdjustment
       + (record.amount >= player.contract.annualSalary * 1.5 ? 0.05 : 0),
     0.08,
     0.88,
@@ -390,19 +456,31 @@ export function generateAIOffer(
   teamNeed: number,
 ): ContractOffer | null {
   const baseValue = calculateMarketValue(player);
+  const availableBudget = teamBudget * spendingComfortFactor(teamBudget) - currentPayroll;
 
-  // Budget check: can the team afford roughly this AAV?
-  const availableBudget = teamBudget * BUDGET_SAFETY_FACTOR - currentPayroll;
-  if (availableBudget < baseValue * 0.5) return null;
+  if (availableBudget < baseValue * 0.55) return null;
 
-  // Need adjustment: teams that need this position bid higher
-  const needMultiplier = 1.0 + (teamNeed / 100) * NEED_BONUS_FACTOR;
+  if (requiresStrongRosterFit(player, baseValue) && teamNeed < MODERATE_NEED_THRESHOLD) {
+    return null;
+  }
+
+  if (teamBudget <= SMALL_MARKET_BUDGET_THRESHOLD && baseValue >= ELITE_FA_MARKET_VALUE && teamNeed < 80) {
+    return null;
+  }
+
+  if (teamNeed < LOW_NEED_THRESHOLD && baseValue < ELITE_FA_MARKET_VALUE) {
+    return null;
+  }
+
+  // Need adjustment: teams that need this position bid higher.
+  const needMultiplier = 0.92 + (teamNeed / 100) * NEED_BONUS_FACTOR;
+  const budgetMultiplier = marketAggressionFactor(teamBudget);
 
   // Jitter: each team's valuation varies slightly
   const jitterPct = rng.nextInt(OFFER_JITTER_MIN, OFFER_JITTER_MAX) / 100;
   const offeredAAV = Math.max(
     MINOR_LEAGUE_DEAL_AAV,
-    Math.round(baseValue * needMultiplier * (1 + jitterPct) * 100) / 100,
+    Math.round(baseValue * needMultiplier * budgetMultiplier * (1 + jitterPct) * 100) / 100,
   );
 
   // If offered AAV exceeds what team can spend, reduce or bail

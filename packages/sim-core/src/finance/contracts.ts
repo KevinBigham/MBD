@@ -369,14 +369,62 @@ function blendOffers(
   });
 }
 
-function extensionCandidateScore(player: GeneratedPlayer, context: ExtensionTeamContext): number {
+function isFranchiseExtensionTarget(
+  player: GeneratedPlayer,
+  teamPlayers: GeneratedPlayer[],
+): boolean {
+  const ranked = [...teamPlayers]
+    .sort((left, right) => getPlayerOverall(right) - getPlayerOverall(left) || left.id.localeCompare(right.id));
+  const rank = ranked.findIndex((candidate) => candidate.id === player.id);
+  return rank >= 0 && rank < 3;
+}
+
+function shouldPursueExtensionCandidate(
+  player: GeneratedPlayer,
+  context: ExtensionTeamContext,
+  teamPlayers: GeneratedPlayer[],
+): boolean {
   const controlYears = controlYearsForPlayer(player, context);
   const overall = getPlayerOverall(player);
+  const franchiseTarget = isFranchiseExtensionTarget(player, teamPlayers);
+
+  if (overall < 285 && !franchiseTarget) {
+    return false;
+  }
+
+  if (player.age >= 33 && overall < 340) {
+    return false;
+  }
+
+  if (
+    (player.developmentTrajectory === 'below_expectations' || player.developmentTrajectory === 'bust_risk')
+    && player.age >= 31
+  ) {
+    return false;
+  }
+
+  if (controlYears >= 5 && !franchiseTarget) {
+    return false;
+  }
+
+  return true;
+}
+
+function extensionCandidateScore(
+  player: GeneratedPlayer,
+  context: ExtensionTeamContext,
+  teamPlayers: GeneratedPlayer[],
+): number {
+  const controlYears = controlYearsForPlayer(player, context);
+  const overall = getPlayerOverall(player);
+  const franchiseTarget = isFranchiseExtensionTarget(player, teamPlayers);
   return overall
-    + (controlYears <= 1 ? 90 : controlYears === 2 ? 45 : 0)
-    + (player.age <= 27 ? 25 : 0)
+    + (franchiseTarget ? 120 : 0)
+    + (controlYears <= 1 ? 60 : controlYears <= 3 && franchiseTarget && player.age <= 29 ? 95 : controlYears === 2 ? 25 : 0)
+    + (player.age <= 27 ? 25 : player.age <= 29 ? 12 : 0)
     + (player.position === 'SP' ? 18 : 0)
-    - Math.max(0, player.age - 32) * 20;
+    - Math.max(0, player.age - 32) * 28
+    - (overall < 300 ? 60 : 0);
 }
 
 export function serviceDaysToYears(serviceTimeDays: number): number {
@@ -933,17 +981,19 @@ export function processTeamExtensions(
   const nextPlayers = [...players];
   const results: TeamExtensionProcessResult['results'] = [];
   let workingPayroll = context.currentPayroll;
+  const teamPlayers = players.filter((player) => player.teamId === context.teamId && player.rosterStatus === 'MLB');
 
   const candidates = players
     .filter((player) =>
       player.teamId === context.teamId
       && player.rosterStatus === 'MLB'
       && getPlayerOverall(player) >= 260
+      && shouldPursueExtensionCandidate(player, context, teamPlayers)
       && !(player.contract.noTradeClause && player.contract.noTradeClauseType === 'full' && player.contract.years >= 2)
       && !player.extensionHistory?.some((entry) => entry.season === context.season && entry.outcome === 'accepted'),
     )
     .sort((left, right) => {
-      const scoreDelta = extensionCandidateScore(right, context) - extensionCandidateScore(left, context);
+      const scoreDelta = extensionCandidateScore(right, context, teamPlayers) - extensionCandidateScore(left, context, teamPlayers);
       if (scoreDelta !== 0) {
         return scoreDelta;
       }

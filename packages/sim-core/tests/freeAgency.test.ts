@@ -6,6 +6,7 @@ import {
   calculateMarketValue,
   getDemandLevel,
   createFreeAgencyMarket,
+  generateAIOffer,
   projectContractYears,
   getTopFreeAgents,
   simulateFullFreeAgency,
@@ -173,5 +174,63 @@ describe('simulateFullFreeAgency', () => {
     expect(first.freeAgents).toEqual([]);
     expect(first.signedPlayers[0]?.signedWith).toBe('bos');
     expect(first.signedPlayers[0]?.contract).toBeTruthy();
+  });
+});
+
+describe('generateAIOffer', () => {
+  it('stays out of low-need fits for conservative budgets', () => {
+    const player = {
+      ...makeExpiringPlayer(301),
+      age: 31,
+      overallRating: 275,
+      hitterAttributes: {
+        contact: 280,
+        power: 265,
+        eye: 250,
+        speed: 180,
+        defense: 210,
+        durability: 240,
+      },
+    };
+
+    const offer = generateAIOffer(
+      new GameRNG(301),
+      'oak',
+      player,
+      125,
+      92,
+      18,
+    );
+
+    expect(offer).toBeNull();
+  });
+
+  it('still makes competitive offers for elite fits with budget support', () => {
+    const player = {
+      ...makeExpiringPlayer(302),
+      age: 27,
+      overallRating: 430,
+      hitterAttributes: {
+        contact: 420,
+        power: 430,
+        eye: 395,
+        speed: 260,
+        defense: 300,
+        durability: 365,
+      },
+    };
+
+    const offer = generateAIOffer(
+      new GameRNG(302),
+      'bos',
+      player,
+      240,
+      128,
+      92,
+    );
+
+    expect(offer).toBeTruthy();
+    expect(offer?.annualSalary).toBeGreaterThan(20);
+    expect(offer?.years).toBeGreaterThanOrEqual(4);
   });
 });

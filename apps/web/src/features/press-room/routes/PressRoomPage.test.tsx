@@ -76,6 +76,18 @@ describe('PressRoomPage', () => {
           relatedTeamIds: ['nyy', 'bos'],
           relatedPlayerIds: [],
         },
+        {
+          id: 'news-signing-1',
+          source: 'news',
+          category: 'signing',
+          tag: 'BREAKING',
+          priority: 1,
+          headline: 'Free-agent ace lands in Boston',
+          body: 'Boston closed a five-year deal for a frontline starter.',
+          timestamp: 'S3D42',
+          relatedTeamIds: ['bos'],
+          relatedPlayerIds: ['player-ace'],
+        },
       ]),
     } as unknown as ReturnType<typeof useWorker>);
   });
@@ -109,6 +121,8 @@ describe('PressRoomPage', () => {
     expect(container.textContent).toContain('BREAKING');
     expect(container.textContent).toContain('RUMOR');
     expect(container.textContent).toContain('Season 3 • Day 44');
+    expect(container.textContent).toContain('Transaction Log');
+    expect(container.textContent).toContain('Free-agent ace lands in Boston');
 
     const selects = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[];
     const tagFilter = selects[2]!;

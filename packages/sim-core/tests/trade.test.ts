@@ -8,6 +8,7 @@ import {
   assignGMPersonality,
   evaluateTradeProposal,
   executeTrade,
+  generateAITradeOffers,
   generateTradeId,
 } from '../src/index.js';
 import type { TradeProposal, GeneratedPlayer } from '../src/index.js';
@@ -104,6 +105,149 @@ describe('evaluateTradeProposal', () => {
     );
     expect(['accepted', 'rejected', 'countered']).toContain(result.decision);
     expect(result.reason.length).toBeGreaterThan(0);
+  });
+
+  it('rejects trade requests built around protected top prospects', () => {
+    const rental = {
+      ...makePlayer(2001, 'NYY'),
+      age: 31,
+      contract: {
+        ...makePlayer(2001, 'NYY').contract,
+        years: 1,
+        annualSalary: 15,
+        totalValue: 15,
+      },
+    };
+    const protectedProspect = {
+      ...makePlayer(2002, 'BOS'),
+      age: 21,
+      rosterStatus: 'AAA' as const,
+      minorLeagueLevel: 'AAA' as const,
+      potentialRating: 390,
+      overallRating: 305,
+    };
+
+    const proposal: TradeProposal = {
+      id: 'top-prospect-test',
+      fromTeamId: 'NYY',
+      toTeamId: 'BOS',
+      playersOffered: [rental.id],
+      playersRequested: [protectedProspect.id],
+      status: 'proposed',
+      reason: 'Deadline deal',
+    };
+
+    const result = evaluateTradeProposal(
+      new GameRNG(2003),
+      proposal,
+      [rental],
+      [protectedProspect],
+      'analytical',
+      true,
+    );
+
+    expect(result.decision).toBe('rejected');
+  });
+});
+
+describe('generateAITradeOffers', () => {
+  it('keeps protected prospects out of contender offer packages', () => {
+    const protectedProspect = {
+      ...makePlayer(3001, 'NYY'),
+      age: 20,
+      position: 'SS' as const,
+      rosterStatus: 'AAA' as const,
+      minorLeagueLevel: 'AAA' as const,
+      potentialRating: 385,
+      overallRating: 300,
+    };
+    const weakStarter = {
+      ...makePlayer(3002, 'NYY'),
+      position: 'SS' as const,
+      overallRating: 205,
+    };
+    const tradeChip = {
+      ...makePlayer(3003, 'NYY'),
+      position: 'RF' as const,
+      overallRating: 325,
+      age: 29,
+    };
+    const target = {
+      ...makePlayer(3004, 'BOS'),
+      position: 'SS' as const,
+      overallRating: 360,
+      age: 28,
+      contract: {
+        ...makePlayer(3004, 'BOS').contract,
+        years: 1,
+        annualSalary: 17,
+        totalValue: 17,
+      },
+    };
+
+    const proposals = generateAITradeOffers(
+      new GameRNG(3005),
+      'NYY',
+      [weakStarter, tradeChip, protectedProspect],
+      [weakStarter, tradeChip, protectedProspect, target],
+      'win_now',
+      true,
+      {
+        currentDay: 110,
+        contenderTeamIds: ['NYY', 'BOS'],
+      },
+    );
+
+    expect(proposals.some((proposal) => proposal.playersOffered.includes(protectedProspect.id))).toBe(false);
+  });
+
+  it('lets non-contenders shop rentals for future value at the deadline', () => {
+    const rentalStarter = {
+      ...makePlayer(3011, 'OAK'),
+      position: 'SP' as const,
+      age: 31,
+      overallRating: 338,
+      contract: {
+        ...makePlayer(3011, 'OAK').contract,
+        years: 1,
+        annualSalary: 14,
+        totalValue: 14,
+      },
+    };
+    const buyerProspect = {
+      ...makePlayer(3012, 'BOS'),
+      age: 22,
+      position: 'SP' as const,
+      rosterStatus: 'AAA' as const,
+      minorLeagueLevel: 'AAA' as const,
+      potentialRating: 315,
+      overallRating: 248,
+    };
+    const buyerStarter = {
+      ...makePlayer(3013, 'BOS'),
+      position: 'SP' as const,
+      overallRating: 240,
+      age: 30,
+    };
+
+    const proposals = generateAITradeOffers(
+      new GameRNG(3014),
+      'OAK',
+      [rentalStarter],
+      [rentalStarter, buyerProspect, buyerStarter],
+      'analytical',
+      false,
+      {
+        currentDay: 112,
+        contenderTeamIds: ['BOS'],
+      },
+    );
+
+    expect(proposals.length).toBeGreaterThan(0);
+    expect(proposals[0]?.fromTeamId).toBe('OAK');
+    expect(proposals[0]?.toTeamId).toBe('BOS');
+    expect(proposals[0]?.playersOffered).toContain(rentalStarter.id);
+    expect(proposals[0]?.playersRequested).toContain(buyerProspect.id);
   });
 });
 
