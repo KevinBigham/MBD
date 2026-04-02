@@ -56,6 +56,7 @@ import {
 } from './sim.worker.narrative.js';
 import {
   buildTradeAssetInventoryView,
+  buildTradeDeadlineStateView,
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
@@ -827,6 +828,10 @@ export const queryApi = {
 
   getTradeHistory() {
     return buildTradeHistoryView(requireState());
+  },
+
+  getTradeDeadlineState() {
+    return buildTradeDeadlineStateView(requireState());
   },
 
   getTradeAssetInventory(teamId: string) {

@@ -1,8 +1,10 @@
 import {
   buildLeagueAdvancedContext,
   calculateAdvancedStatLine,
+  getDaysUntilTradeDeadline,
   getPromotionCandidates,
   getRegularSeasonMonthForDay,
+  getTradeDeadlineDay,
   getRosterComplianceIssues,
   getTeamById,
   getNextMonthStartDay,
@@ -259,6 +261,7 @@ export function generateMonthlyPulse(
     .slice(0, 3)
     .map((playerId) => formatPlayerName(s, playerId));
   const completedDay = s.phase === 'regular' ? s.day - 1 : context.month.endDay;
+  const tradeDeadlineDay = getTradeDeadlineDay();
   const monthRecord = {
     wins: afterRecord.wins - context.teamRecordBefore.wins,
     losses: afterRecord.losses - context.teamRecordBefore.losses,
@@ -279,8 +282,8 @@ export function generateMonthlyPulse(
     keyInjuries: newInjuries,
     keyReturns: returns,
     tradeDeadlineCountdown:
-      context.month.month >= 7 && context.month.month <= 8 && completedDay < 122
-        ? Math.max(0, 122 - completedDay)
+      context.month.month >= 7 && context.month.month <= 8 && completedDay < tradeDeadlineDay
+        ? getDaysUntilTradeDeadline(completedDay)
         : null,
     upcomingScheduleDifficulty: buildScheduleDifficulty(s),
   };

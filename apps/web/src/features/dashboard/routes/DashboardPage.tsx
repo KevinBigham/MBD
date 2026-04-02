@@ -87,6 +87,15 @@ interface DashboardSummary {
   };
 }
 
+interface TradeDeadlineStateView {
+  daysUntilDeadline: number | null;
+  ticker: Array<{
+    id: string;
+    summary: string;
+    timestamp: string;
+  }>;
+}
+
 function ownerTone(patience: number | undefined): string {
   if (patience == null) return 'bg-dynasty-border';
   if (patience >= 65) return 'bg-accent-success';
@@ -113,12 +122,17 @@ export default function DashboardPage() {
   const worker = useWorker();
   const { isInitialized, userTeamId, season, day, phase } = useGameStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
     try {
-      const nextSummary = await worker.getDashboardSummary();
+      const [nextSummary, nextDeadlineState] = await Promise.all([
+        worker.getDashboardSummary(),
+        worker.getTradeDeadlineState(),
+      ]);
       setSummary((nextSummary ?? null) as DashboardSummary | null);
+      setDeadlineState((nextDeadlineState ?? null) as TradeDeadlineStateView | null);
     } catch (err) {
       console.error('Failed to fetch dashboard summary:', err);
     }
@@ -146,6 +160,17 @@ export default function DashboardPage() {
           <span className="font-data text-sm text-dynasty-muted">{summary?.franchise.dynasty.score ?? 0} pts</span>
         </div>
       </div>
+
+      {phase === 'regular' && deadlineState?.daysUntilDeadline != null ? (
+        <section className="rounded-lg border border-accent-warning/30 bg-accent-warning/10 p-4">
+          <div className="font-heading text-sm text-accent-warning">
+            {deadlineState.daysUntilDeadline} days until trade deadline
+          </div>
+          <div className="mt-1 font-heading text-xs text-dynasty-muted">
+            The market is tightening. Monitor hot offers and the league wire from Trade Center.
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
@@ -304,6 +329,30 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+          <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
+            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+              <ArrowLeftRight className="h-4 w-4 text-accent-warning" />
+              League Trade Ticker
+            </h2>
+            <Link to="/trade" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+              Trade Center <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="space-y-3 p-4">
+            {(deadlineState?.ticker ?? []).length > 0 ? deadlineState?.ticker.map((item) => (
+              <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">{item.timestamp}</div>
+                <div className="mt-2 font-heading text-sm text-dynasty-text">{item.summary}</div>
+              </div>
+            )) : (
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
+                No completed trades on the wire yet.
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
           <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
             <h2 className="font-heading text-sm font-semibold text-dynasty-text">Division Standings</h2>

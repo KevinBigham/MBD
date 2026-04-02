@@ -154,8 +154,11 @@ export type {
 // Sim
 export {
   REGULAR_SEASON_MONTHS,
+  getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,
+  getTradeDeadlineDay,
   getNextMonthStartDay,
+  isTradeDeadlineModeDay,
   resolvePlateAppearance,
   advanceRunners,
   freshRunnerState,

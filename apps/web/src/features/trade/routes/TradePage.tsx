@@ -67,6 +67,41 @@ interface TradeHistoryView {
   requestingAssets: TradeAssetView[];
 }
 
+interface HotTradeOfferView extends TradeOfferView {
+  urgencyTag: 'ACTIVE' | 'EXPIRING SOON' | 'FINAL OFFER';
+  bidderCount: number;
+  biddingSummary: string | null;
+}
+
+interface TradeTickerItem {
+  id: string;
+  summary: string;
+  timestamp: string;
+}
+
+interface TradeDeadlineRecapItem {
+  id: string;
+  summary: string;
+  outcome: 'completed' | 'missed';
+}
+
+interface TradeDeadlineRecapView {
+  analysisHeadline: string;
+  yourTrades: TradeDeadlineRecapItem[];
+  majorMoves: TradeTickerItem[];
+  winners: string[];
+  losers: string[];
+}
+
+interface TradeDeadlineStateView {
+  deadlineDay: number;
+  daysUntilDeadline: number | null;
+  deadlineMode: boolean;
+  hotOffers: HotTradeOfferView[];
+  ticker: TradeTickerItem[];
+  recap: TradeDeadlineRecapView | null;
+}
+
 interface TradeInventoryPickView {
   key: string;
   label: string;
@@ -279,12 +314,17 @@ function OfferCard({
   onCounter,
   onDecline,
 }: {
-  offer: TradeOfferView;
+  offer: HotTradeOfferView;
   onAccept: () => void;
   onCounter: () => void;
   onDecline: () => void;
 }) {
   const evaluation = fairnessText(-offer.fairnessScore, 'Them', 'You');
+  const urgencyTone = offer.urgencyTag === 'FINAL OFFER'
+    ? 'border-accent-danger/50 bg-accent-danger/10 text-accent-danger'
+    : offer.urgencyTag === 'EXPIRING SOON'
+      ? 'border-accent-warning/50 bg-accent-warning/10 text-accent-warning'
+      : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
 
   return (
     <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
@@ -295,12 +335,22 @@ function OfferCard({
             {offer.createdAt} · {evaluation}
           </p>
         </div>
-        <span className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-          {offer.fromTeamAbbreviation}
-        </span>
+        <div className="flex flex-col items-end gap-2">
+          <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${urgencyTone}`}>
+            {offer.urgencyTag}
+          </span>
+          <span className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            {offer.fromTeamAbbreviation}
+          </span>
+        </div>
       </div>
 
       <p className="mt-3 font-heading text-sm text-dynasty-text">{offer.message}</p>
+      {offer.biddingSummary ? (
+        <p className="mt-2 rounded border border-accent-warning/30 bg-accent-warning/10 px-3 py-2 font-heading text-xs text-accent-warning">
+          {offer.biddingSummary}
+        </p>
+      ) : null}
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
@@ -375,8 +425,8 @@ export default function TradePage() {
   const worker = useWorker();
   const {
     getTeamRoster,
-    getTradeOffers,
     getTradeHistory,
+    getTradeDeadlineState,
     getTradeAssetInventory,
     proposeTrade,
     respondToTradeOffer,
@@ -394,16 +444,18 @@ export default function TradePage() {
   const [requestingPicks, setRequestingPicks] = useState<DraftPickAsset[]>([]);
   const [offeringIFAAmount, setOfferingIFAAmount] = useState('');
   const [requestingIFAAmount, setRequestingIFAAmount] = useState('');
-  const [incomingOffers, setIncomingOffers] = useState<TradeOfferView[]>([]);
+  const [incomingOffers, setIncomingOffers] = useState<HotTradeOfferView[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryView[]>([]);
+  const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
   const [proposing, setProposing] = useState(false);
   const [activeCounterOfferId, setActiveCounterOfferId] = useState<string | null>(null);
 
   const workerReady = worker.isReady;
   const otherTeams = ALL_TEAMS.filter((team) => team.id !== userTeamId);
-  const tradeMarketOpen = phase === 'regular' && day <= 120;
-  const daysUntilDeadline = Math.max(0, 120 - day);
+  const tradeMarketOpen = phase === 'regular' && (
+    (deadlineState?.deadlineMode ?? false) || ((deadlineState?.daysUntilDeadline ?? -1) > 0)
+  );
 
   const loadUserRoster = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -437,13 +489,14 @@ export default function TradePage() {
 
   const loadTradeActivity = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
-    const [offers, history] = await Promise.all([
-      getTradeOffers(),
+    const [history, deadline] = await Promise.all([
       getTradeHistory(),
+      getTradeDeadlineState(),
     ]);
-    setIncomingOffers((offers as TradeOfferView[]) ?? []);
     setTradeHistory((history as TradeHistoryView[]) ?? []);
-  }, [getTradeHistory, getTradeOffers, isInitialized, workerReady]);
+    setDeadlineState((deadline as TradeDeadlineStateView) ?? null);
+    setIncomingOffers(((deadline as TradeDeadlineStateView | null)?.hotOffers ?? []) as HotTradeOfferView[]);
+  }, [getTradeDeadlineState, getTradeHistory, isInitialized, workerReady]);
 
   useEffect(() => {
     void loadUserRoster();
@@ -665,8 +718,8 @@ export default function TradePage() {
     if (!tradeMarketOpen) {
       return 'Trade market closed — reopens in offseason';
     }
-    return `${daysUntilDeadline} days until trade deadline`;
-  }, [daysUntilDeadline, phase, tradeMarketOpen]);
+    return `${deadlineState?.daysUntilDeadline ?? 0} days until trade deadline`;
+  }, [deadlineState?.daysUntilDeadline, phase, tradeMarketOpen]);
 
   useEffect(() => {
     if (tradeResult?.status === 'accepted') {
@@ -693,13 +746,57 @@ export default function TradePage() {
         </p>
       </div>
 
+      {deadlineState?.recap ? (
+        <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <h2 className="font-heading text-sm font-semibold text-dynasty-text">{deadlineState.recap.analysisHeadline}</h2>
+              <div className="mt-3 space-y-2">
+                {deadlineState.recap.yourTrades.map((item) => (
+                  <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded border px-2 py-0.5 font-heading text-[10px] uppercase tracking-[0.18em] ${
+                        item.outcome === 'completed'
+                          ? 'border-accent-success/40 text-accent-success'
+                          : 'border-accent-warning/40 text-accent-warning'
+                      }`}>
+                        {item.outcome}
+                      </span>
+                    </div>
+                    <p className="mt-2 font-heading text-sm text-dynasty-text">{item.summary}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 xl:w-[22rem]">
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Major Moves</div>
+                <div className="mt-2 space-y-2">
+                  {deadlineState.recap.majorMoves.map((move) => (
+                    <p key={move.id} className="font-heading text-xs text-dynasty-text">{move.summary}</p>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Winners</div>
+                <p className="mt-2 font-heading text-sm text-dynasty-text">{deadlineState.recap.winners.join(', ') || 'None'}</p>
+              </div>
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Losers</div>
+                <p className="mt-2 font-heading text-sm text-dynasty-text">{deadlineState.recap.losers.join(', ') || 'None'}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-4">
           <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
             <div className="flex items-center gap-2 border-b border-dynasty-border px-4 py-3">
               <Inbox className="h-4 w-4 text-dynasty-muted" />
               <div>
-                <h2 className="font-heading text-sm font-semibold text-dynasty-text">Trade Inbox</h2>
+                <h2 className="font-heading text-sm font-semibold text-dynasty-text">Hot Offers</h2>
                 <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
                   {incomingOffers.length} active conversations
                 </p>
@@ -719,6 +816,32 @@ export default function TradePage() {
                     onCounter={() => handleCounterOffer(offer)}
                     onDecline={() => void handleDeclineOffer(offer.id)}
                   />
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+            <div className="flex items-center gap-2 border-b border-dynasty-border px-4 py-3">
+              <ArrowRight className="h-4 w-4 text-dynasty-muted" />
+              <div>
+                <h2 className="font-heading text-sm font-semibold text-dynasty-text">League Trade Ticker</h2>
+                <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  Deadline wire
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 px-3 py-3">
+              {(deadlineState?.ticker ?? []).length === 0 ? (
+                <p className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
+                  No league moves have hit the wire yet.
+                </p>
+              ) : (
+                (deadlineState?.ticker ?? []).map((item) => (
+                  <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
+                    <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">{item.timestamp}</div>
+                    <p className="mt-2 font-heading text-sm text-dynasty-text">{item.summary}</p>
+                  </div>
                 ))
               )}
             </div>

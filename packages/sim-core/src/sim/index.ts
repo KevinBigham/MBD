@@ -28,8 +28,11 @@ export type {
 
 export {
   REGULAR_SEASON_MONTHS,
+  getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,
+  getTradeDeadlineDay,
   getNextMonthStartDay,
+  isTradeDeadlineModeDay,
 } from './calendar.js';
 export type {
   RegularSeasonMonth,

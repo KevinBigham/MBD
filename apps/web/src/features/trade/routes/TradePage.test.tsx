@@ -144,6 +144,79 @@ function createWorkerMock() {
           ifaRemaining: 2.25,
         }
     )),
+    getTradeDeadlineState: vi.fn().mockResolvedValue({
+      deadlineDay: 122,
+      daysUntilDeadline: 4,
+      deadlineMode: true,
+      hotOffers: [
+        {
+          id: 'offer-1',
+          fromTeamId: 'bos',
+          fromTeamName: 'Boston Red Sox',
+          fromTeamAbbreviation: 'BOS',
+          toTeamId: 'nyy',
+          toTeamName: 'New York Yankees',
+          toTeamAbbreviation: 'NYY',
+          fairnessScore: -6,
+          message: 'The Boston Red Sox want to discuss a trade.',
+          createdAt: 'S4D118',
+          offeringAssets: [
+            {
+              key: 'player:bos-1',
+              type: 'player',
+              label: 'Roman Anthony',
+              detail: 'CF',
+              asset: { type: 'player', playerId: 'bos-1' },
+              playerId: 'bos-1',
+            },
+          ],
+          requestingAssets: [
+            {
+              key: 'player:nyy-1',
+              type: 'player',
+              label: 'Anthony Volpe',
+              detail: 'SS',
+              asset: { type: 'player', playerId: 'nyy-1' },
+              playerId: 'nyy-1',
+            },
+          ],
+          urgencyTag: 'EXPIRING SOON',
+          bidderCount: 3,
+          biddingSummary: '3 clubs are in on Anthony Volpe.',
+        },
+      ],
+      ticker: [
+        {
+          id: 'ticker-1',
+          summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+          timestamp: 'S4D117',
+        },
+      ],
+      recap: {
+        analysisHeadline: 'Deadline winners and losers',
+        yourTrades: [
+          {
+            id: 'recap-trade-1',
+            summary: 'New York Yankees sent Anthony Volpe to Boston Red Sox for Roman Anthony.',
+            outcome: 'completed',
+          },
+          {
+            id: 'recap-trade-2',
+            summary: 'Boston Red Sox offer for Anthony Volpe expired at the deadline.',
+            outcome: 'missed',
+          },
+        ],
+        majorMoves: [
+          {
+            id: 'ticker-1',
+            summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+            timestamp: 'S4D117',
+          },
+        ],
+        winners: ['Seattle Mariners', 'New York Yankees'],
+        losers: ['Boston Red Sox'],
+      },
+    }),
     proposeTrade: vi.fn().mockResolvedValue({ decision: 'accepted', reason: 'Deal works.' }),
     respondToTradeOffer: vi.fn().mockResolvedValue({ decision: 'accepted', message: 'Accepted.' }),
   };
@@ -206,10 +279,14 @@ describe('TradePage', () => {
 
     await renderPage();
 
-    expect(container.textContent).toContain('25 days until trade deadline');
-    expect(container.textContent).toContain('Trade Inbox');
+    expect(container.textContent).toContain('4 days until trade deadline');
+    expect(container.textContent).toContain('Hot Offers');
     expect(container.textContent).toContain('Boston Red Sox');
     expect(container.textContent).toContain('Roman Anthony');
+    expect(container.textContent).toContain('EXPIRING SOON');
+    expect(container.textContent).toContain('3 clubs are in on Anthony Volpe.');
+    expect(container.textContent).toContain('League Trade Ticker');
+    expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
     expect(container.textContent).toContain('Trade History');
     expect(container.textContent).toContain('Tampa Bay Rays sent Drew Example to Toronto Blue Jays for Chris Sample.');
   });
@@ -238,6 +315,26 @@ describe('TradePage', () => {
     const worker = createWorkerMock();
     worker.getTradeOffers.mockResolvedValue([]);
     worker.getTradeHistory.mockResolvedValue([]);
+    worker.getTradeDeadlineState.mockResolvedValue({
+      deadlineDay: 122,
+      daysUntilDeadline: 0,
+      deadlineMode: false,
+      hotOffers: [],
+      ticker: [],
+      recap: {
+        analysisHeadline: 'Deadline winners and losers',
+        yourTrades: [
+          {
+            id: 'missed-trade',
+            summary: 'Boston Red Sox offer for Anthony Volpe expired at the deadline.',
+            outcome: 'missed',
+          },
+        ],
+        majorMoves: [],
+        winners: ['Seattle Mariners'],
+        losers: ['Boston Red Sox'],
+      },
+    });
     mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
 
     await renderPage();
@@ -245,6 +342,8 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('Trade market closed — reopens in offseason');
     expect(container.textContent).toContain('No active trade offers.');
     expect(container.textContent).toContain('No trades completed yet this season.');
+    expect(container.textContent).toContain('Deadline winners and losers');
+    expect(container.textContent).toContain('offer for Anthony Volpe expired');
   });
 
   it('includes draft picks and IFA pool space when proposing an asset-based trade', async () => {

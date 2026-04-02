@@ -28,7 +28,9 @@ import {
   determineDraftOrder,
   forfeitHighestEligiblePick,
   generateDraftClass,
+  getDaysUntilTradeDeadline,
   getTeamById,
+  getTradeDeadlineDay,
   getOffseasonLength,
   getQualifyingOfferEligiblePlayers,
   getRegularSeasonMonthForDay,
@@ -2901,7 +2903,10 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
 
   if (s.phase === 'regular') {
     const currentMonth = getRegularSeasonMonthForDay(s.day);
-    const daysUntilTradeDeadline = Math.max(0, 120 - s.day);
+    const tradeDeadlineDay = getTradeDeadlineDay();
+    const daysUntilTradeDeadline = s.day <= tradeDeadlineDay
+      ? getDaysUntilTradeDeadline(s.day)
+      : 0;
     return {
       status: 'regular',
       season: s.season,

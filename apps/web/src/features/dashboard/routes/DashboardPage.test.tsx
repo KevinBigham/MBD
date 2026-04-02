@@ -167,6 +167,20 @@ describe('DashboardPage', () => {
           newsCount: 8,
         },
       }),
+      getTradeDeadlineState: vi.fn().mockResolvedValue({
+        deadlineDay: 122,
+        daysUntilDeadline: 34,
+        deadlineMode: false,
+        hotOffers: [],
+        ticker: [
+          {
+            id: 'ticker-1',
+            summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+            timestamp: 'S4D88',
+          },
+        ],
+        recap: null,
+      }),
     } as unknown as ReturnType<typeof useWorker>);
   });
 
@@ -196,6 +210,9 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Roster Snapshot');
     expect(container.textContent).toContain('Front Office Intel');
     expect(container.textContent).toContain('Trade Inbox');
+    expect(container.textContent).toContain('34 days until trade deadline');
+    expect(container.textContent).toContain('League Trade Ticker');
+    expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
     expect(container.textContent).toContain('Spencer Jones');
     expect(container.textContent).toContain('Aaron Judge');
     expect(container.textContent).toContain('Press Room');

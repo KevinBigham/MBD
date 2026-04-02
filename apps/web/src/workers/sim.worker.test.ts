@@ -1413,7 +1413,7 @@ describe('sim worker narrative APIs', () => {
     expect(tradeResult.remainingBudget).toBeLessThan(signResult.remainingBudget);
   });
 
-  it('closes the trade market after day 120 and clears pending offers', () => {
+  it('closes the trade market after the deadline day and clears pending offers', () => {
     api.newGame(340, 'nyy');
     const state = requireState();
     state.phase = 'regular';
@@ -1421,8 +1421,8 @@ describe('sim worker narrative APIs', () => {
     const { offer, requested, offered } = buildIncomingOffer('deadline-offer');
     state.tradeState.pendingOffers = [offer];
 
-    processTradeMarketActivity(state, 120, 121);
-    state.day = 121;
+    processTradeMarketActivity(state, 122, 123);
+    state.day = 123;
 
     expect(api.getTradeOffers()).toEqual([]);
 
@@ -1433,6 +1433,133 @@ describe('sim worker narrative APIs', () => {
     );
     expect(closedResult.decision).toBe('rejected');
     expect(closedResult.reason).toContain('Trade market closed');
+  });
+
+  it('builds deadline state with urgency tags, bidding wars, and a trade ticker', () => {
+    api.newGame(3401, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 118;
+
+    const first = buildIncomingOffer('deadline-hot-1');
+    const second = buildIncomingOffer('deadline-hot-2');
+    second.offer.fromTeamId = 'tb';
+    second.offer.id = 'deadline-hot-2';
+    second.offer.message = 'Tampa Bay is circling with a final framework.';
+
+    state.tradeState.pendingOffers = [first.offer, second.offer];
+    state.tradeState.tradeHistory = [
+      {
+        id: 'ticker-trade-1',
+        fromTeamId: 'sea',
+        toTeamId: 'sd',
+        offeringAssets: [{ type: 'player', playerId: first.offered.id }],
+        requestingAssets: [{ type: 'player', playerId: first.requested.id }],
+        fairnessScore: 18,
+        summary: 'Seattle Mariners sent Drew Heater to San Diego Padres for Miguel Prospect.',
+        timestamp: 'S1D117',
+      },
+    ];
+
+    const deadlineState = (api as typeof api & {
+      getTradeDeadlineState: () => {
+        deadlineMode: boolean;
+        hotOffers: Array<{ urgencyTag: string; bidderCount: number; biddingSummary: string | null }>;
+        ticker: Array<{ summary: string }>;
+      };
+    }).getTradeDeadlineState();
+
+    expect(deadlineState.deadlineMode).toBe(true);
+    expect(deadlineState.hotOffers).toHaveLength(2);
+    expect(deadlineState.hotOffers[0]?.urgencyTag).toBe('EXPIRING SOON');
+    expect(deadlineState.hotOffers.some((offer) => offer.bidderCount > 1)).toBe(true);
+    expect(deadlineState.hotOffers.some((offer) => offer.biddingSummary?.includes('clubs'))).toBe(true);
+    expect(deadlineState.ticker[0]?.summary).toContain('Seattle Mariners');
+  });
+
+  it('creates a deadline recap and analysis when the market closes', () => {
+    api.newGame(3402, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 122;
+
+    const { offer, requested, offered } = buildIncomingOffer('deadline-missed');
+    state.tradeState.pendingOffers = [offer];
+    state.tradeState.tradeHistory = [
+      {
+        id: 'deadline-user-trade',
+        fromTeamId: 'nyy',
+        toTeamId: 'bos',
+        offeringAssets: [{ type: 'player', playerId: requested.id }],
+        requestingAssets: [{ type: 'player', playerId: offered.id }],
+        fairnessScore: 14,
+        summary: 'New York Yankees sent Anthony Volpe to Boston Red Sox for Roman Anthony.',
+        timestamp: 'S1D121',
+      },
+      {
+        id: 'deadline-ai-trade',
+        fromTeamId: 'sea',
+        toTeamId: 'lad',
+        offeringAssets: [{ type: 'player', playerId: offered.id }],
+        requestingAssets: [{ type: 'player', playerId: requested.id }],
+        fairnessScore: -8,
+        summary: 'Seattle Mariners sent Drew Heater to Los Angeles Dodgers for Miguel Prospect.',
+        timestamp: 'S1D121',
+      },
+    ];
+
+    processTradeMarketActivity(state, 122, 123);
+    state.day = 123;
+
+    const deadlineState = (api as typeof api & {
+      getTradeDeadlineState: () => {
+        recap: {
+          yourTrades: Array<{ outcome: 'completed' | 'missed'; summary: string }>;
+          analysisHeadline: string;
+        } | null;
+      };
+      getPressRoomFeed: (limit?: number) => Array<{ headline: string; tag: string }>;
+    }).getTradeDeadlineState();
+
+    expect(api.getTradeOffers()).toEqual([]);
+    expect(deadlineState.recap).not.toBeNull();
+    expect(deadlineState.recap?.yourTrades.some((trade) => trade.outcome === 'completed')).toBe(true);
+    expect(deadlineState.recap?.yourTrades.some((trade) => trade.outcome === 'missed')).toBe(true);
+    expect(deadlineState.recap?.analysisHeadline).toContain('Deadline winners and losers');
+    expect((api as typeof api & {
+      getPressRoomFeed: (limit?: number) => Array<{ headline: string; tag: string }>;
+    }).getPressRoomFeed(25).some((entry) =>
+      entry.tag === 'ANALYSIS' && entry.headline.includes('Deadline winners and losers'),
+    )).toBe(true);
+  });
+
+  it('generates deterministic deadline trade bursts with the same seed', () => {
+    api.newGame(3403, 'nyy');
+    let state = requireState();
+    state.phase = 'regular';
+    state.day = 114;
+    configureMonthlyTradeScenario();
+
+    processTradeMarketActivity(state, 91, 114);
+    const firstRun = {
+      offers: api.getTradeOffers(),
+      history: api.getTradeHistory(),
+    };
+
+    api.newGame(3403, 'nyy');
+    state = requireState();
+    state.phase = 'regular';
+    state.day = 114;
+    configureMonthlyTradeScenario();
+
+    processTradeMarketActivity(state, 91, 114);
+    const secondRun = {
+      offers: api.getTradeOffers(),
+      history: api.getTradeHistory(),
+    };
+
+    expect(firstRun.offers.length + firstRun.history.length).toBeGreaterThan(0);
+    expect(secondRun).toEqual(firstRun);
   });
 
   it('generates deterministic monthly AI trade offers for the user inbox', () => {

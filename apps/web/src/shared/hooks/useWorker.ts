@@ -233,6 +233,7 @@ export function useWorker() {
   );
   const getTradeOffers = useCallback(async () => api.getTradeOffers(), [api]);
   const getTradeHistory = useCallback(async () => api.getTradeHistory(), [api]);
+  const getTradeDeadlineState = useCallback(async () => api.getTradeDeadlineState(), [api]);
   const getTradeAssetInventory = useCallback(async (teamId: string) => api.getTradeAssetInventory(teamId), [api]);
   const proposeTrade = useCallback(
     async (offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) =>
@@ -423,7 +424,7 @@ export function useWorker() {
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getMonthlyPulse, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
-    getTradeOffers, getTradeHistory, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
+    getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
     getPromotionCandidates, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,

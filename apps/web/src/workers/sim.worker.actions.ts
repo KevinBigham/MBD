@@ -98,6 +98,7 @@ import {
   processTradeMarketActivity,
   proposeTradePackage,
   recordAcceptedUserTrade,
+  resetTradeDeadlineState,
   respondToTradeOffer,
 } from './sim.worker.trade.js';
 import {
@@ -615,6 +616,7 @@ function simDayInternal(): SimResultDTO {
 
 export const actionApi = {
   newGame(seed: number, userTeamId: string = 'nyy') {
+    resetTradeDeadlineState();
     const rng = new GameRNG(seed);
     const teamIds = TEAMS.map((team) => team.id);
     const developmentRng = new GameRNG(seed + 10_001);
@@ -867,6 +869,7 @@ export const actionApi = {
   },
 
   importSnapshot(snapshot: unknown) {
+    resetTradeDeadlineState();
     setState(importGameSnapshot(snapshot));
     const s = requireState();
     ensureNarrativeState(s);
