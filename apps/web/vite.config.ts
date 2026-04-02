@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
-  base: '/mr-baseball-dynasty/',
+  base: '/MBD/',
   plugins: [react()],
   resolve: {
     alias: {
