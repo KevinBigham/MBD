@@ -1726,8 +1726,67 @@ describe('sim worker narrative APIs', () => {
     expect(feed.at(-1)?.id).toBe('news-21');
   });
 
-  it('returns advanced stat lines and advanced leaderboard results', () => {
+  it('injects synthetic rumor, development, and rivalry entries with derived tags', () => {
     api.newGame(779, 'nyy');
+    const state = requireState();
+    const prospect = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB',
+    )!;
+
+    state.day = 100;
+    state.tradeState.pendingOffers = [buildIncomingOffer('offer-synthetic').offer];
+    state.minorLeagueState.developmentReports = [
+      {
+        playerId: prospect.id,
+        teamId: 'nyy',
+        season: state.season,
+        month: 6,
+        trajectory: 'ahead_of_curve',
+        summary: 'The player development group is pushing for a promotion.',
+        overallRating: prospect.overallRating,
+      },
+    ];
+    state.rivalries.set('nyy:bos', {
+      id: 'nyy:bos',
+      teamA: 'nyy',
+      teamB: 'bos',
+      intensity: 74,
+      summary: 'The division race is getting personal again.',
+      reasons: ['Playoff chase', 'Three heated series'],
+    });
+
+    const feed = api.getPressRoomFeed();
+    const deadlineRumor = feed.find((entry) => entry.id === `synthetic-rumor-${state.season}-${state.day}`);
+    const development = feed.find((entry) => entry.category === 'development');
+    const rivalry = feed.find((entry) => entry.id === `synthetic-rivalry-nyy:bos-${state.season}-${state.day}`);
+
+    expect(deadlineRumor).toMatchObject({
+      category: 'rumor',
+      tag: 'RUMOR',
+      relatedTeamIds: ['nyy'],
+    });
+    expect(deadlineRumor?.headline).toContain('Deadline buzz');
+
+    expect(development).toMatchObject({
+      category: 'development',
+      tag: 'ANALYSIS',
+      relatedPlayerIds: [prospect.id],
+      relatedTeamIds: ['nyy'],
+    });
+    expect(development?.headline).toContain(`${prospect.firstName} ${prospect.lastName}`);
+    expect(development?.body).toContain('promotion');
+
+    expect(rivalry).toMatchObject({
+      category: 'rivalry',
+      tag: 'ANALYSIS',
+      relatedTeamIds: ['nyy', 'bos'],
+    });
+    expect(rivalry?.headline).toContain('NYY');
+    expect(rivalry?.headline).toContain('BOS');
+  });
+
+  it('returns advanced stat lines and advanced leaderboard results', () => {
+    api.newGame(780, 'nyy');
     const state = requireState();
     const hitter = state.players.find(
       (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,

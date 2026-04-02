@@ -923,6 +923,23 @@ export function negotiatePlayerExtension(
     }]);
   }
 
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'extension',
+    season: s.season,
+    day: s.day,
+    data: {
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      teamId: player.teamId,
+      teamName: getTeamById(player.teamId)?.name ?? player.teamId.toUpperCase(),
+      years: finalOffer.years,
+      annualSalary: finalOffer.annualSalary,
+      totalValue: finalOffer.totalValue,
+      outcome: result.status,
+      record: `${s.seasonState.standings.getRecord(player.teamId)?.wins ?? 0}-${s.seasonState.standings.getRecord(player.teamId)?.losses ?? 0}`,
+    },
+  }, s.players, s.season, s.day));
+
   return result;
 }
 
@@ -983,6 +1000,20 @@ export function issueTeamQualifyingOffer(
     }]);
   }
 
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'qualifying_offer',
+    season: s.season,
+    day: s.day,
+    data: {
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      teamId: player.teamId,
+      teamName: getTeamById(player.teamId)?.name ?? player.teamId.toUpperCase(),
+      amount: record.amount,
+      outcome: 'issued',
+    },
+  }, s.players, s.season, s.day));
+
   return { success: true as const, record };
 }
 
@@ -1024,6 +1055,20 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
       playerId: result.record.playerId,
       status: result.record.status,
     });
+
+    s.news.unshift(...generateNews(s.rng.fork(), {
+      type: 'qualifying_offer',
+      season: s.season,
+      day: s.day,
+      data: {
+        playerId: result.record.playerId,
+        playerName: `${result.player.firstName} ${result.player.lastName}`,
+        teamId: result.record.teamId,
+        teamName: getTeamById(result.record.teamId)?.name ?? result.record.teamId.toUpperCase(),
+        amount: result.record.amount,
+        outcome: result.record.status,
+      },
+    }, s.players, s.season, s.day));
   }
 
   return { resolved };
@@ -1049,6 +1094,18 @@ export function hireCoachForUserTeam(s: FullGameState, coachId: string) {
     });
   }
 
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'coaching',
+    season: s.season,
+    day: s.day,
+    data: {
+      teamId: s.userTeamId,
+      teamName: getTeamById(s.userTeamId)?.name ?? s.userTeamId.toUpperCase(),
+      coachName: `${result.hiredCoach.firstName} ${result.hiredCoach.lastName}`,
+      role: result.hiredCoach.role,
+    },
+  }, s.players, s.season, s.day));
+
   return { success: true as const, coach: result.hiredCoach };
 }
 
@@ -1071,6 +1128,19 @@ export function fireCoachForUserTeam(s: FullGameState, coachId: string) {
       salary: result.firedCoach.annualSalary,
     });
   }
+
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'coaching',
+    season: s.season,
+    day: s.day,
+    data: {
+      teamId: s.userTeamId,
+      teamName: getTeamById(s.userTeamId)?.name ?? s.userTeamId.toUpperCase(),
+      coachName: `${result.firedCoach.firstName} ${result.firedCoach.lastName}`,
+      role: result.firedCoach.role,
+      record: `${s.seasonState.standings.getRecord(s.userTeamId)?.wins ?? 0}-${s.seasonState.standings.getRecord(s.userTeamId)?.losses ?? 0}`,
+    },
+  }, s.players, s.season, s.day));
 
   return { success: true as const, coach: result.firedCoach };
 }

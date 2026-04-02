@@ -129,6 +129,7 @@ export default function DashboardPage() {
   }, [fetchData, day, season, phase]);
 
   const latestPressItem = summary?.pressRoom.latest ?? null;
+  const headlineFeed = summary?.pressRoom.feed.slice(0, 4) ?? [];
 
   return (
     <div className="space-y-6">
@@ -348,13 +349,64 @@ export default function DashboardPage() {
           </div>
           <div className="space-y-4 p-4">
             <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-              <div className="font-heading text-lg text-dynasty-textBright">{latestPressItem?.headline ?? 'No archived items yet'}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${
+                  latestPressItem?.tag === 'BREAKING'
+                    ? 'border-accent-danger/50 bg-accent-danger/10 text-accent-danger'
+                    : latestPressItem?.tag === 'RUMOR'
+                      ? 'border-accent-warning/50 bg-accent-warning/10 text-accent-warning'
+                      : 'border-accent-info/40 bg-accent-info/10 text-accent-info'
+                }`}>
+                  {latestPressItem?.tag ?? 'RECAP'}
+                </span>
+                {latestPressItem && (
+                  <span className="font-data text-[11px] uppercase text-dynasty-muted">
+                    {latestPressItem.category.replace('_', ' ')}
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 font-heading text-lg text-dynasty-textBright">{latestPressItem?.headline ?? 'No archived items yet'}</div>
               <div className="mt-2 font-heading text-sm text-dynasty-muted">{latestPressItem?.body ?? 'The Press Room will populate as the season creates storylines.'}</div>
               {latestPressItem && (
                 <div className="mt-3 font-data text-[11px] uppercase text-dynasty-muted">
                   {latestPressItem.source} · {latestPressItem.category.replace('_', ' ')} · {latestPressItem.timestamp}
                 </div>
               )}
+            </div>
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-heading text-sm text-dynasty-text">Today&apos;s Headlines</div>
+                <Link to="/press-room" className="font-heading text-xs text-accent-info hover:text-accent-primary">
+                  Read more
+                </Link>
+              </div>
+              <div className="mt-3 space-y-3">
+                {headlineFeed.length > 0 ? headlineFeed.map((entry) => (
+                  <Link
+                    key={entry.id}
+                    to="/press-room"
+                    className="block rounded border border-dynasty-border/60 px-3 py-2 transition-colors hover:border-accent-primary/40 hover:bg-dynasty-surface"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide ${
+                        entry.tag === 'BREAKING'
+                          ? 'border-accent-danger/50 text-accent-danger'
+                          : entry.tag === 'RUMOR'
+                            ? 'border-accent-warning/50 text-accent-warning'
+                            : 'border-dynasty-border text-dynasty-muted'
+                      }`}>
+                        {entry.tag}
+                      </span>
+                      <span className="font-data text-[11px] uppercase text-dynasty-muted">{entry.timestamp}</span>
+                    </div>
+                    <div className="mt-1 font-heading text-sm text-dynasty-text">{entry.headline}</div>
+                  </Link>
+                )) : (
+                  <div className="font-heading text-xs text-dynasty-muted">
+                    No headlines yet. Advance the sim to generate the next cycle.
+                  </div>
+                )}
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <IntelCard

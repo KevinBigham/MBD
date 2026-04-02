@@ -9,15 +9,29 @@ export const NewsPriorityEnum = z.union([
 ]);
 export type NewsPriority = z.infer<typeof NewsPriorityEnum>;
 
+export const NewsTagEnum = z.enum([
+  "BREAKING",
+  "ANALYSIS",
+  "RECAP",
+  "RUMOR",
+]);
+export type NewsTag = z.infer<typeof NewsTagEnum>;
+
 export const NewsCategoryEnum = z.enum([
   "injury",
   "trade",
   "signing",
+  "extension",
+  "qualifying_offer",
+  "coaching",
   "draft",
   "milestone",
   "performance",
   "standings",
   "roster_move",
+  "development",
+  "rumor",
+  "rivalry",
   "award",
   "record",
   "playoff",
@@ -30,6 +44,7 @@ export const NewsItemSchema = z.object({
   body: z.string(),
   priority: NewsPriorityEnum,
   category: NewsCategoryEnum,
+  tag: NewsTagEnum.optional(),
   timestamp: z.string(),
   relatedPlayerIds: z.array(z.string()),
   relatedTeamIds: z.array(z.string()),
@@ -129,6 +144,11 @@ export const BriefingCategoryEnum = z.enum([
   "rivalry",
   "breakout",
   "news",
+  "extension",
+  "qualifying_offer",
+  "coaching",
+  "development",
+  "rumor",
 ]);
 export type BriefingCategory = z.infer<typeof BriefingCategoryEnum>;
 
@@ -136,6 +156,7 @@ export const BriefingItemSchema = z.object({
   id: z.string(),
   priority: NewsPriorityEnum,
   category: BriefingCategoryEnum,
+  tag: NewsTagEnum.optional(),
   headline: z.string().min(1),
   body: z.string(),
   relatedTeamIds: z.array(z.string()),

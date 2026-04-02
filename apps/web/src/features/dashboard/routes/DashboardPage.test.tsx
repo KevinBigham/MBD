@@ -129,6 +129,7 @@ describe('DashboardPage', () => {
             id: 'brief-owner-heat',
             source: 'briefing',
             category: 'owner',
+            tag: 'BREAKING',
             priority: 1,
             headline: 'Owner pressure is rising.',
             body: 'Ownership wants a stronger response this month.',
@@ -136,7 +137,32 @@ describe('DashboardPage', () => {
             relatedTeamIds: ['nyy'],
             relatedPlayerIds: [],
           },
-          feed: [],
+          feed: [
+            {
+              id: 'brief-owner-heat',
+              source: 'briefing',
+              category: 'owner',
+              tag: 'BREAKING',
+              priority: 1,
+              headline: 'Owner pressure is rising.',
+              body: 'Ownership wants a stronger response this month.',
+              timestamp: 'S4D88',
+              relatedTeamIds: ['nyy'],
+              relatedPlayerIds: [],
+            },
+            {
+              id: 'news-deadline',
+              source: 'news',
+              category: 'rumor',
+              tag: 'RUMOR',
+              priority: 2,
+              headline: 'Deadline buzz is building.',
+              body: 'Clubs are circling the Yankees for bullpen help.',
+              timestamp: 'S4D88',
+              relatedTeamIds: ['nyy'],
+              relatedPlayerIds: [],
+            },
+          ],
           briefingCount: 4,
           newsCount: 8,
         },
@@ -173,5 +199,9 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Spencer Jones');
     expect(container.textContent).toContain('Aaron Judge');
     expect(container.textContent).toContain('Press Room');
+    expect(container.textContent).toContain("Today's Headlines");
+    expect(container.textContent).toContain('BREAKING');
+    expect(container.textContent).toContain('Deadline buzz is building.');
+    expect(container.textContent).toContain('Read more');
   });
 });

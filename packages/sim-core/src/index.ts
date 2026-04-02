@@ -495,6 +495,7 @@ export {
 } from './narrative/index.js';
 export type {
   NewsPriority,
+  NewsTag,
   NewsCategory,
   NewsItem,
   MomentType,

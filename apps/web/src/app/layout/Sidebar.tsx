@@ -15,15 +15,18 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { useWorker } from '@/shared/hooks/useWorker';
+import { useGameStore } from '@/shared/hooks/useGameStore';
 
 interface NavItem {
   to: string;
   label: string;
   icon: ReactNode;
+  badge?: number | null;
 }
 
-const mainNavItems: NavItem[] = [
+const baseMainNavItems: NavItem[] = [
   { to: '/', label: 'Front Office', icon: <Briefcase className="h-5 w-5" /> },
   { to: '/roster', label: 'Roster', icon: <Users className="h-5 w-5" /> },
   { to: '/minors', label: 'Minors', icon: <Users className="h-5 w-5" /> },
@@ -59,13 +62,39 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
       title={collapsed ? item.label : undefined}
     >
       {item.icon}
-      {!collapsed && <span>{item.label}</span>}
+      {!collapsed && (
+        <>
+          <span>{item.label}</span>
+          {item.badge != null && item.badge > 0 ? (
+            <span className="ml-auto rounded border border-accent-warning/40 bg-accent-warning/10 px-1.5 py-0.5 font-data text-[10px] text-accent-warning">
+              {item.badge}
+            </span>
+          ) : null}
+        </>
+      )}
     </NavLink>
   );
 }
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const worker = useWorker();
+  const { isInitialized, day, season, phase } = useGameStore();
+  const [pressRoomCount, setPressRoomCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isInitialized || !worker.isReady) return;
+    void (async () => {
+      const summary = await worker.getDashboardSummary();
+      const total = ((summary as { pressRoom?: { briefingCount?: number; newsCount?: number } } | null)?.pressRoom?.briefingCount ?? 0)
+        + ((summary as { pressRoom?: { briefingCount?: number; newsCount?: number } } | null)?.pressRoom?.newsCount ?? 0);
+      setPressRoomCount(total);
+    })();
+  }, [day, isInitialized, phase, season, worker]);
+
+  const mainNavItems = baseMainNavItems.map((item) =>
+    item.to === '/press-room' ? { ...item, badge: pressRoomCount } : item,
+  );
 
   return (
     <aside

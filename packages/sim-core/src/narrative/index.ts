@@ -25,6 +25,7 @@ export {
 export type {
   // Types
   NewsPriority,
+  NewsTag,
   NewsCategory,
   NewsItem,
   MomentType,

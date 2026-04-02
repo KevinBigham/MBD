@@ -153,6 +153,7 @@ export type { StandingsEntry, AwardType, Award } from "./schemas/league.js";
 export {
   NewsCategoryEnum,
   NewsPriorityEnum,
+  NewsTagEnum,
   NewsItemSchema,
   MomentTypeEnum,
   MomentSchema,
@@ -183,6 +184,7 @@ export {
 export type {
   NewsCategory,
   NewsPriority,
+  NewsTag,
   NewsItem,
   MomentType,
   Moment,

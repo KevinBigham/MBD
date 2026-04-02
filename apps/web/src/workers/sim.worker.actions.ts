@@ -15,6 +15,7 @@ import {
   generateDraftClass,
   generateCoachFreeAgents,
   generateCoachingStaff,
+  generateNews,
   generateLeaguePlayers,
   generateSchedule,
   generateScoutingStaff,
@@ -942,6 +943,22 @@ export const actionApi = {
         : candidate,
     );
     s.rosterStates.set(player.teamId, result.rosterState);
+    const promotedPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (promotedPlayer && player.rosterStatus !== 'MLB' && promotedPlayer.rosterStatus === 'MLB') {
+      s.news.unshift(...generateNews(s.rng.fork(), {
+        type: 'development',
+        season: s.season,
+        day: s.day,
+        data: {
+          playerId: promotedPlayer.id,
+          playerName: `${promotedPlayer.firstName} ${promotedPlayer.lastName}`,
+          teamId: promotedPlayer.teamId,
+          teamName: teamLabel(promotedPlayer.teamId),
+          level: player.rosterStatus,
+          streak: 'call-up watch',
+        },
+      }, s.players, s.season, s.day));
+    }
     return { success: result.success, error: result.error };
   },
 
