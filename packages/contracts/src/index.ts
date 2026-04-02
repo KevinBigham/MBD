@@ -4,10 +4,15 @@ export {
   DevelopmentPhaseEnum,
   RosterStatusEnum,
   MinorLeagueLevelEnum,
+  DevelopmentProgramEnum,
+  DevelopmentTrajectoryEnum,
+  NoTradeClauseTypeEnum,
   HitterAttributesSchema,
   PitcherAttributesSchema,
   PersonalitySchema,
   InjurySchema,
+  DeferredMoneyInstallmentSchema,
+  ExtensionHistoryEntrySchema,
   ContractSchema,
   PlayerSchema,
 } from "./schemas/player.js";
@@ -16,13 +21,29 @@ export type {
   DevelopmentPhase,
   RosterStatus,
   MinorLeagueLevel,
+  DevelopmentProgram,
+  DevelopmentTrajectory,
+  NoTradeClauseType,
   HitterAttributes,
   PitcherAttributes,
   Personality,
   Injury,
+  DeferredMoneyInstallment,
+  ExtensionHistoryEntry,
   Contract,
   Player,
 } from "./schemas/player.js";
+
+export {
+  CoachRoleEnum,
+  CoachSpecialtyEnum,
+  CoachSchema,
+} from "./schemas/staff.js";
+export type {
+  CoachRole,
+  CoachSpecialty,
+  Coach,
+} from "./schemas/staff.js";
 
 export {
   DivisionEnum,
@@ -56,6 +77,9 @@ export {
   AffiliateStateSchema,
   WaiverClaimSchema,
   AffiliateBoxScoreSchema,
+  DevelopmentLedgerEntrySchema,
+  DevelopmentReportEntrySchema,
+  PositionConversionRecommendationSchema,
   MinorLeagueStateSchema,
 } from "./schemas/minors.js";
 export type {
@@ -64,6 +88,9 @@ export type {
   AffiliateState,
   WaiverClaim,
   AffiliateBoxScore,
+  DevelopmentLedgerEntry,
+  DevelopmentReportEntry,
+  PositionConversionRecommendation,
   MinorLeagueState,
 } from "./schemas/minors.js";
 
@@ -210,6 +237,7 @@ export {
   GameSnapshotV4Schema,
   GameSnapshotV5Schema,
   GameSnapshotV6Schema,
+  GameSnapshotV7Schema,
   GameSnapshotSchema,
   migrateGameSnapshot,
   parseGameSnapshot,
@@ -239,6 +267,7 @@ export type {
   GameSnapshotV4,
   GameSnapshotV5,
   GameSnapshotV6,
+  GameSnapshotV7,
   GameSnapshot,
 } from "./schemas/save.js";
 

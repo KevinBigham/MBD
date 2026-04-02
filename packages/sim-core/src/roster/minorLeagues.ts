@@ -77,12 +77,47 @@ export interface AffiliateBoxScore {
   notablePlayerIds: string[];
 }
 
+export interface DevelopmentLedgerEntry {
+  playerId: string;
+  teamId: string;
+  season: number;
+  month: number;
+  progressScore: number;
+  coachModifier: number;
+  programBonus: number;
+  breakoutProbability: number;
+  bustRisk: number;
+}
+
+export interface DevelopmentReportEntry {
+  playerId: string;
+  teamId: string;
+  season: number;
+  month: number;
+  trajectory: 'ahead_of_curve' | 'on_track' | 'below_expectations' | 'bust_risk';
+  summary: string;
+  overallRating: number;
+}
+
+export interface PositionConversionRecommendation {
+  playerId: string;
+  teamId: string;
+  fromPosition: string;
+  toPosition: string;
+  confidence: number;
+  reason: string;
+}
+
 export interface MinorLeagueState {
   serviceTimeLedger: Array<[string, number]>;
   optionUsage: Array<[string, number[]]>;
   waiverClaims: WaiverClaim[];
   affiliateStates: AffiliateState[];
   affiliateBoxScores: AffiliateBoxScore[];
+  processedDevelopmentMonths: number[];
+  developmentLedger: DevelopmentLedgerEntry[];
+  developmentReports: DevelopmentReportEntry[];
+  conversionRecommendations: PositionConversionRecommendation[];
 }
 
 export interface MinorLeagueMutationResult {
@@ -385,6 +420,10 @@ export function createMinorLeagueState(teamIds: string[], season: number): Minor
     waiverClaims: [],
     affiliateStates,
     affiliateBoxScores: [],
+    processedDevelopmentMonths: [],
+    developmentLedger: [],
+    developmentReports: [],
+    conversionRecommendations: [],
   };
 }
 

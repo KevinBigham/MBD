@@ -167,7 +167,13 @@ function createState(): FullGameState {
       waiverClaims: [],
       affiliateStates: [],
       affiliateBoxScores: [],
+      processedDevelopmentMonths: [],
+      developmentLedger: [],
+      developmentReports: [],
+      conversionRecommendations: [],
     },
+    coachingStaffs: new Map(),
+    coachFreeAgentPool: [],
     ...createNarrativeSample('nyy'),
     tradeState: {
       pendingOffers: [],
@@ -215,7 +221,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(7);
+    expect(snapshot.schemaVersion).toBe(8);
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -243,16 +249,16 @@ describe('snapshot helpers', () => {
     expect(restored.rule5OfferBackStates[0]?.status).toBe('pending');
   });
 
-  it('migrates v6 snapshots into the v7 service-time and roster-control shape', () => {
+  it('migrates v7 snapshots into the v8 staff and development shape', () => {
     const snapshot = exportGameSnapshot(createState());
     const mlbPlayer = snapshot.players.find((player) => player.rosterStatus === 'MLB')!;
     const minorLeaguer = snapshot.players.find((player) => player.rosterStatus === 'AA')!;
-    const v6Snapshot = {
+    const v7Snapshot = {
       ...snapshot,
-      schemaVersion: 6,
+      schemaVersion: 7,
     } as unknown as GameSnapshot;
 
-    const restored = importGameSnapshot(v6Snapshot);
+    const restored = importGameSnapshot(v7Snapshot);
     const restoredMLBPlayer = restored.players.find((player) => player.id === mlbPlayer.id)!;
     const restoredMinorLeaguer = restored.players.find((player) => player.id === minorLeaguer.id)!;
 
@@ -260,6 +266,9 @@ describe('snapshot helpers', () => {
     expect(restoredMLBPlayer.optionYearsUsed).toBe(0);
     expect(restoredMLBPlayer.isOutOfOptions).toBe(false);
     expect(restoredMinorLeaguer.minorLeagueLevel).toBe(minorLeaguer.rosterStatus);
+    expect(restored.coachingStaffs.get('nyy')).toHaveLength(12);
+    expect(restored.coachFreeAgentPool.length).toBeGreaterThan(0);
+    expect(restored.minorLeagueState.processedDevelopmentMonths).toEqual([]);
   });
 
   it('migrates v2 snapshots into the v5 narrative, stat, trade, and legacy shape', () => {

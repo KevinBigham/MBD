@@ -73,6 +73,12 @@ interface MinorLeagueWorkerApi {
   };
   getAffiliateOverview: (teamId?: string) => AffiliateOverviewView;
   getAffiliateBoxScore: (boxScoreId: string) => AffiliateBoxScoreView | null;
+  getCoachingStaff: (teamId?: string) => Array<{ id: string; role: string; specialty: string }>;
+  getCoachFreeAgents: () => Array<{ id: string; role: string }>;
+  getDevelopmentReport: (playerId: string) => {
+    playerId: string;
+    history: Array<{ month: number; trajectory: string }>;
+  } | null;
 }
 
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
@@ -200,6 +206,28 @@ describe('sim worker narrative APIs', () => {
     expect(owner?.teamId).toBe('nyy');
     expect(typeof owner?.summary).toBe('string');
     expect(briefing.length).toBeGreaterThan(0);
+  });
+
+  it('seeds coaching staffs and a coach free-agent market for a new game', () => {
+    api.newGame(124, 'nyy');
+
+    const staff = (api as typeof api & MinorLeagueWorkerApi).getCoachingStaff('nyy');
+    const pool = (api as typeof api & MinorLeagueWorkerApi).getCoachFreeAgents();
+
+    expect(staff).toHaveLength(12);
+    expect(pool.length).toBeGreaterThan(0);
+  });
+
+  it('creates monthly development report history when the season advances', () => {
+    api.newGame(125, 'nyy');
+    api.simMonth();
+
+    const prospect = api.getFullRoster('nyy').minors.AA?.[0];
+    expect(prospect).toBeTruthy();
+    const report = (api as typeof api & MinorLeagueWorkerApi).getDevelopmentReport(prospect!.id);
+
+    expect(report?.playerId).toBe(prospect!.id);
+    expect(report?.history.length).toBeGreaterThan(0);
   });
 
   it('returns personality profiles and award races after the season starts', () => {

@@ -15,6 +15,7 @@ import {
   calculateMarketValue,
   createDefaultDraftPickOwnership,
   createInternationalScoutingState as createInternationalScoutingStateCore,
+  type Coach,
   type InternationalScoutingState,
   determinePlayoffSeeds,
   determineDraftOrder,
@@ -145,6 +146,8 @@ export interface FullGameState {
   serviceTime: Map<string, number>;
   scoutingStaffs: Map<string, Scout[]>;
   gmPersonalities: Map<string, GMPersonality>;
+  coachingStaffs: Map<string, Coach[]>;
+  coachFreeAgentPool: Coach[];
   offseasonState: OffseasonState | null;
   rule5Session: Rule5SessionState | null;
   rule5Obligations: Rule5Obligation[];

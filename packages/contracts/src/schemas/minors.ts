@@ -66,11 +66,60 @@ export const AffiliateBoxScoreSchema = z.object({
 });
 export type AffiliateBoxScore = z.infer<typeof AffiliateBoxScoreSchema>;
 
+export const DevelopmentLedgerEntrySchema = z.object({
+  playerId: z.string(),
+  teamId: z.string(),
+  season: z.number().int().min(1),
+  month: z.number().int().min(1).max(12),
+  progressScore: z.number(),
+  coachModifier: z.number(),
+  programBonus: z.number(),
+  breakoutProbability: z.number().min(0).max(1),
+  bustRisk: z.number().min(0).max(1),
+});
+export type DevelopmentLedgerEntry = z.infer<
+  typeof DevelopmentLedgerEntrySchema
+>;
+
+export const DevelopmentReportEntrySchema = z.object({
+  playerId: z.string(),
+  teamId: z.string(),
+  season: z.number().int().min(1),
+  month: z.number().int().min(1).max(12),
+  trajectory: z.enum([
+    "ahead_of_curve",
+    "on_track",
+    "below_expectations",
+    "bust_risk",
+  ]),
+  summary: z.string(),
+  overallRating: z.number().int().min(0).max(550),
+});
+export type DevelopmentReportEntry = z.infer<
+  typeof DevelopmentReportEntrySchema
+>;
+
+export const PositionConversionRecommendationSchema = z.object({
+  playerId: z.string(),
+  teamId: z.string(),
+  fromPosition: z.string(),
+  toPosition: z.string(),
+  confidence: z.number().min(0).max(1),
+  reason: z.string(),
+});
+export type PositionConversionRecommendation = z.infer<
+  typeof PositionConversionRecommendationSchema
+>;
+
 export const MinorLeagueStateSchema = z.object({
   serviceTimeLedger: z.array(z.tuple([z.string(), z.number().int().min(0)])),
   optionUsage: z.array(z.tuple([z.string(), z.array(z.number().int().min(0))])),
   waiverClaims: z.array(WaiverClaimSchema),
   affiliateStates: z.array(AffiliateStateSchema),
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
+  processedDevelopmentMonths: z.array(z.number().int().min(1).max(12)),
+  developmentLedger: z.array(DevelopmentLedgerEntrySchema),
+  developmentReports: z.array(DevelopmentReportEntrySchema),
+  conversionRecommendations: z.array(PositionConversionRecommendationSchema),
 });
 export type MinorLeagueState = z.infer<typeof MinorLeagueStateSchema>;

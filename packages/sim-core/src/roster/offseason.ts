@@ -1,7 +1,8 @@
 /**
  * @module offseason
  * Offseason phase sequencing: arbitration → tender/non-tender → qualifying offers →
- * free agency → draft → rule 5 → international signing → spring training.
+ * free agency → draft → rule 5 → international signing → coaching changes →
+ * spring training.
  * Pure engine logic — no React, no DOM.
  */
 
@@ -22,6 +23,7 @@ export const OFFSEASON_PHASES = [
   'protection_audit',
   'rule5_draft',
   'international_signing',
+  'coaching_changes',
   'spring_training',
 ] as const;
 
@@ -38,6 +40,7 @@ const PHASE_DURATIONS: Record<OffseasonPhase, number> = {
   protection_audit: 4,
   rule5_draft: 3,
   international_signing: 10,
+  coaching_changes: 7,
   spring_training: 12,
 };
 
@@ -385,6 +388,10 @@ export function determineRetirements(
     const durabilityAttr = player.pitcherAttributes
       ? player.pitcherAttributes.stamina
       : player.hitterAttributes.durability;
+    if (player.age >= 44) {
+      retired.push(player.id);
+      continue;
+    }
     if (durabilityAttr < 80) {
       retireChance += 0.10;
     }

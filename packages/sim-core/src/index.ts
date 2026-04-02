@@ -41,13 +41,37 @@ export type {
   Position,
   RosterLevel,
   DevPhase,
+  DevelopmentProgram,
+  DevelopmentTrajectory,
+  NoTradeClauseType,
+  DeferredMoneyInstallment,
+  ExtensionHistoryEntry,
   GeneratedPlayer,
 } from './player/index.js';
 export {
   detectProspectBreakouts,
+  COACH_ROLES,
+  COACH_SPECIALTIES,
+  calculateCoachMarketValue,
+  calculateCoachingPayroll,
+  calculateStaffBudget,
+  fireCoach,
+  generateCoachFreeAgents,
+  generateCoachingStaff,
+  getBreakoutProbability,
+  getCoachSpecialtyForPosition,
+  getCoachingDevelopmentModifier,
+  getPositionConversionTargets,
+  hireCoach,
+  initializePlayerDevelopmentProfile,
+  reconcileDevelopmentPipeline,
+  runMonthlyDevelopmentCheckpoint,
 } from './player/index.js';
 export type {
   BreakoutEvent,
+  CoachRole,
+  CoachSpecialty,
+  Coach,
 } from './player/index.js';
 
 // League

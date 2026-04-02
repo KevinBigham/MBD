@@ -431,22 +431,37 @@ export function finalizeSeasonHistoryRetirements(state: FullGameState, retiredPl
   const entry = state.seasonHistory.find((candidate) => candidate.season === state.season);
   if (!entry) return;
 
-  const notableRetirements = retiredPlayerIds
+  const retiredPlayers = retiredPlayerIds
     .map((playerId) => state.players.find((candidate) => candidate.id === playerId))
-    .filter((player): player is GeneratedPlayer => player != null)
-    .filter((player) => (state.serviceTime.get(player.id) ?? 0) >= 10 || toDisplayRating(player.overallRating) >= 70)
-    .map((player) => ({
-      playerId: player.id,
-      teamId: player.teamId,
-      seasonsPlayed: state.serviceTime.get(player.id) ?? 0,
-      overallRating: toDisplayRating(player.overallRating),
-      summary: `${playerLabel(player)} retired after ${state.serviceTime.get(player.id) ?? 0} seasons with ${toDisplayRating(player.overallRating)} overall talent.`,
-    }));
+    .filter((player): player is GeneratedPlayer => player != null);
 
-  entry.notableRetirements = notableRetirements;
+  const toRetirementSummary = (player: GeneratedPlayer) => ({
+    playerId: player.id,
+    teamId: player.teamId,
+    seasonsPlayed: state.serviceTime.get(player.id) ?? 0,
+    overallRating: toDisplayRating(player.overallRating),
+    summary: `${playerLabel(player)} retired after ${state.serviceTime.get(player.id) ?? 0} seasons with ${toDisplayRating(player.overallRating)} overall talent.`,
+  });
+
+  const notableRetirements = retiredPlayers
+    .filter((player) => (state.serviceTime.get(player.id) ?? 0) >= 10 || toDisplayRating(player.overallRating) >= 70)
+    .map((player) => toRetirementSummary(player))
+    .sort((left, right) => right.seasonsPlayed - left.seasonsPlayed || right.overallRating - left.overallRating);
+
+  const fallbackRetirements = retiredPlayers
+    .sort((left, right) =>
+      (state.serviceTime.get(right.id) ?? 0) - (state.serviceTime.get(left.id) ?? 0)
+      || right.overallRating - left.overallRating,
+    )
+    .slice(0, 3)
+    .map((player) => toRetirementSummary(player));
+
+  entry.notableRetirements = notableRetirements.length > 0
+    ? notableRetirements
+    : fallbackRetirements;
   entry.keyMoments = uniqueStrings([
     ...entry.keyMoments,
-    ...notableRetirements.map((retirement) => retirement.summary),
+    ...entry.notableRetirements.map((retirement) => retirement.summary),
   ], 6);
 }
 

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   ContractSchema,
+  DevelopmentProgramEnum,
+  DevelopmentTrajectoryEnum,
   HitterAttributesSchema,
   MinorLeagueLevelEnum,
   PersonalitySchema,
@@ -8,6 +10,7 @@ import {
   PositionEnum,
   RosterStatusEnum,
   DevelopmentPhaseEnum,
+  ExtensionHistoryEntrySchema,
 } from "./player.js";
 import {
   AwardHistoryEntrySchema,
@@ -32,7 +35,13 @@ import {
   DraftSignabilitySchema,
   QualifyingOfferRecordSchema,
 } from "./draft.js";
-import { MinorLeagueStateSchema } from "./minors.js";
+import {
+  AffiliateBoxScoreSchema,
+  AffiliateStateSchema,
+  MinorLeagueStateSchema,
+  WaiverClaimSchema,
+} from "./minors.js";
+import { CoachSchema } from "./staff.js";
 
 export const SaveMetaSchema = z.object({
   id: z.string().uuid(),
@@ -88,11 +97,18 @@ const LegacySnapshotPlayerSchema = z.object({
 const SnapshotPlayerV6Schema = LegacySnapshotPlayerSchema.extend({
   rule5EligibleAfterSeason: z.number().int().min(1),
 });
-export const SnapshotPlayerSchema = SnapshotPlayerV6Schema.extend({
+export const SnapshotPlayerV7Schema = SnapshotPlayerV6Schema.extend({
   serviceTimeDays: z.number().int().min(0),
   optionYearsUsed: z.number().int().min(0),
   isOutOfOptions: z.boolean(),
   minorLeagueLevel: MinorLeagueLevelEnum.nullable(),
+});
+export const SnapshotPlayerSchema = SnapshotPlayerV7Schema.extend({
+  ceiling: z.number().int().min(0).max(550).optional(),
+  floor: z.number().int().min(0).max(550).optional(),
+  developmentProgram: DevelopmentProgramEnum.optional(),
+  developmentTrajectory: DevelopmentTrajectoryEnum.optional(),
+  extensionHistory: z.array(ExtensionHistoryEntrySchema).optional(),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
 
@@ -183,6 +199,7 @@ const LegacySerializedSeasonStateSchema = z.object({
 const InjuryEntrySchema = z.tuple([z.string(), z.unknown()]);
 const ServiceTimeEntrySchema = z.tuple([z.string(), z.number().int().min(0)]);
 const ScoutStaffEntrySchema = z.tuple([z.string(), z.array(z.unknown())]);
+const CoachingStaffEntrySchema = z.tuple([z.string(), z.array(CoachSchema)]);
 const GMPersonalityEntrySchema = z.tuple([z.string(), z.string()]);
 const RosterStateEntrySchema = z.tuple([z.string(), z.unknown()]);
 const StoryFlagEntrySchema = z.tuple([z.string(), z.array(z.string())]);
@@ -330,7 +347,15 @@ export type DraftState = z.infer<typeof DraftStateSchema>;
 
 export type MinorLeagueState = z.infer<typeof MinorLeagueStateSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 7;
+const MinorLeagueStateV7Schema = z.object({
+  serviceTimeLedger: z.array(z.tuple([z.string(), z.number().int().min(0)])),
+  optionUsage: z.array(z.tuple([z.string(), z.array(z.number().int().min(0))])),
+  waiverClaims: z.array(WaiverClaimSchema),
+  affiliateStates: z.array(AffiliateStateSchema),
+  affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
+});
+
+export const CURRENT_GAME_SNAPSHOT_VERSION = 8;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -355,6 +380,8 @@ export const GameSnapshotSchema = z.object({
   freeAgencyMarket: z.unknown().nullable(),
   news: z.array(NewsItemSchema),
   rosterStates: z.array(RosterStateEntrySchema),
+  coachingStaffs: z.array(CoachingStaffEntrySchema),
+  coachFreeAgentPool: z.array(CoachSchema),
   narrative: NarrativeSnapshotSchema,
   tradeState: TradeStateSchema,
   internationalScoutingState: InternationalScoutingStateSchema,
@@ -365,6 +392,37 @@ export const GameSnapshotSchema = z.object({
   rule5OfferBackStates: z.array(Rule5StateEntrySchema),
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV7Schema = z.object({
+  schemaVersion: z.literal(7),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(SnapshotPlayerV7Schema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateSchema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  narrative: NarrativeSnapshotSchema,
+  tradeState: TradeStateSchema,
+  internationalScoutingState: InternationalScoutingStateSchema,
+  draftState: DraftStateSchema,
+  minorLeagueState: MinorLeagueStateV7Schema,
+  rule5Session: Rule5SessionSchema,
+  rule5Obligations: z.array(Rule5StateEntrySchema),
+  rule5OfferBackStates: z.array(Rule5StateEntrySchema),
+});
+export type GameSnapshotV7 = z.infer<typeof GameSnapshotV7Schema>;
 
 export const GameSnapshotV6Schema = z.object({
   schemaVersion: z.literal(6),
@@ -561,7 +619,213 @@ function createEmptyPhase6State(season: number) {
       waiverClaims: [],
       affiliateStates: [],
       affiliateBoxScores: [],
+      processedDevelopmentMonths: [],
+      developmentLedger: [],
+      developmentReports: [],
+      conversionRecommendations: [],
     },
+  };
+}
+
+const COACH_ROLE_ORDER = [
+  "manager",
+  "pitching_coach",
+  "hitting_coach",
+  "bench_coach",
+  "bullpen_coach",
+  "first_base_coach",
+  "third_base_coach",
+  "farm_director",
+  "rookie_coordinator",
+  "a_coordinator",
+  "aa_coordinator",
+  "aaa_coordinator",
+] as const;
+
+const COACH_FIRST_NAMES = [
+  "Jim",
+  "Dave",
+  "Ron",
+  "Mike",
+  "Tony",
+  "Luis",
+  "Carlos",
+  "Pete",
+  "Sam",
+  "Mark",
+  "Dan",
+  "Alex",
+];
+
+const COACH_LAST_NAMES = [
+  "Thompson",
+  "Martinez",
+  "Walker",
+  "Collins",
+  "Rivera",
+  "Johnson",
+  "Bennett",
+  "Foster",
+  "Cruz",
+  "Parker",
+  "Hernandez",
+  "Lopez",
+];
+
+const ROLE_SPECIALTY_MAP: Record<(typeof COACH_ROLE_ORDER)[number], z.infer<typeof CoachSchema>["specialty"]> = {
+  manager: "leadership",
+  pitching_coach: "stuff",
+  hitting_coach: "power",
+  bench_coach: "contact",
+  bullpen_coach: "control",
+  first_base_coach: "speed",
+  third_base_coach: "defense",
+  farm_director: "leadership",
+  rookie_coordinator: "speed",
+  a_coordinator: "contact",
+  aa_coordinator: "contact",
+  aaa_coordinator: "mlb_prep",
+};
+
+function clampRating(value: number): number {
+  return Math.max(0, Math.min(550, Math.round(value)));
+}
+
+function clampFraction(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function deriveDevelopmentProgram(
+  rosterStatus: z.infer<typeof SnapshotPlayerSchema>["rosterStatus"],
+  minorLeagueLevel: z.infer<typeof SnapshotPlayerSchema>["minorLeagueLevel"],
+): z.infer<typeof DevelopmentProgramEnum> {
+  const level = minorLeagueLevel ?? rosterStatus;
+  switch (level) {
+    case "ROOKIE":
+    case "INTERNATIONAL":
+      return "tools";
+    case "A":
+    case "A_PLUS":
+      return "fundamentals";
+    case "AA":
+      return "refinement";
+    case "AAA":
+    case "MLB":
+    case "FREE_AGENT":
+    case "RETIRED":
+    default:
+      return "mlb_prep";
+  }
+}
+
+function backfillDevelopmentProfile(
+  player: z.infer<typeof SnapshotPlayerV7Schema>,
+): Pick<
+  SnapshotPlayer,
+  "ceiling" | "floor" | "developmentProgram" | "developmentTrajectory" | "extensionHistory"
+> {
+  const varianceSeed = hashString(player.id);
+  const upsideWindow = Math.max(
+    18,
+    Math.min(
+      120,
+      (player.rosterStatus === "MLB" ? 24 : 42)
+      + Math.max(0, 26 - player.age) * 4
+      + (varianceSeed % 18),
+    ),
+  );
+  const floorWindow = Math.max(
+    10,
+    Math.min(
+      90,
+      20 + Math.max(0, player.age - 24) * 3 + ((varianceSeed >> 4) % 16),
+    ),
+  );
+
+  return {
+    ceiling: clampRating(player.overallRating + upsideWindow),
+    floor: clampRating(player.overallRating - floorWindow),
+    developmentProgram: deriveDevelopmentProgram(
+      player.rosterStatus,
+      player.minorLeagueLevel,
+    ),
+    developmentTrajectory: "on_track",
+    extensionHistory: [],
+  };
+}
+
+function upgradeMinorLeagueState(
+  state: z.infer<typeof MinorLeagueStateV7Schema>,
+): MinorLeagueState {
+  return {
+    ...state,
+    processedDevelopmentMonths: [],
+    developmentLedger: [],
+    developmentReports: [],
+    conversionRecommendations: [],
+  };
+}
+
+function createCoachRecord(
+  role: (typeof COACH_ROLE_ORDER)[number],
+  teamId: string | null,
+  seed: string,
+): z.infer<typeof CoachSchema> {
+  const hash = hashString(seed);
+  const firstIndex = hash % COACH_FIRST_NAMES.length;
+  const lastIndex = (hash >>> 3) % COACH_LAST_NAMES.length;
+  const annualSalary = Math.round((0.6 + (((hash >>> 8) % 290) / 100)) * 100) / 100;
+  return {
+    id: `coach-${seed}`,
+    firstName: COACH_FIRST_NAMES[firstIndex]!,
+    lastName: COACH_LAST_NAMES[lastIndex]!,
+    role,
+    specialty: ROLE_SPECIALTY_MAP[role],
+    teachingAbility: clampFraction(0.3 + ((hash % 701) / 1000), 0.3, 1),
+    developmentBonus: clampFraction((((hash >>> 4) % 301) / 1000), 0, 0.3),
+    personalityFit: clampFraction(0.3 + ((((hash >>> 6) % 701) / 1000)), 0.3, 1),
+    experienceYears: hash % 26,
+    contractYears: 1 + (hash % 3),
+    annualSalary,
+    teamId,
+  };
+}
+
+function createDefaultCoachingStaffEntries(
+  teamIds: string[],
+  season: number,
+): Array<[string, z.infer<typeof CoachSchema>[]]> {
+  return [...teamIds]
+    .sort((left, right) => left.localeCompare(right))
+    .map((teamId) => [
+      teamId,
+      COACH_ROLE_ORDER.map((role) =>
+        createCoachRecord(role, teamId, `${teamId}-${season}-${role}`)),
+    ]);
+}
+
+function createDefaultCoachFreeAgentPool(season: number): z.infer<typeof CoachSchema>[] {
+  const pool: z.infer<typeof CoachSchema>[] = [];
+  for (const role of COACH_ROLE_ORDER) {
+    for (let index = 0; index < 2; index += 1) {
+      pool.push(createCoachRecord(role, null, `fa-${season}-${role}-${index}`));
+    }
+  }
+  return pool;
+}
+
+function createEmptyPhase7State(season: number, teamIds: string[]) {
+  return {
+    coachingStaffs: createDefaultCoachingStaffEntries(teamIds, season),
+    coachFreeAgentPool: createDefaultCoachFreeAgentPool(season),
   };
 }
 
@@ -642,11 +906,19 @@ function migrateV6SnapshotPlayer(
     optionYearsUsed: 0,
     isOutOfOptions: false,
     minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
+    ...backfillDevelopmentProfile({
+      ...player,
+      serviceTimeDays: serviceTimeYears * 172,
+      optionYearsUsed: 0,
+      isOutOfOptions: false,
+      minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
+    }),
   };
 }
 
 export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
   const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
+  const teamIds = snapshot.rosterStates.map(([teamId]) => teamId);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
@@ -680,11 +952,13 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
     tradeState: createEmptyTradeState(),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
+    ...createEmptyPhase7State(snapshot.season, teamIds),
   });
 }
 
 function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
   const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
+  const teamIds = snapshot.rosterStates.map(([teamId]) => teamId);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
@@ -697,11 +971,13 @@ function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
     tradeState: createEmptyTradeState(),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
+    ...createEmptyPhase7State(snapshot.season, teamIds),
   });
 }
 
 function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
   const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
+  const teamIds = snapshot.rosterStates.map(([teamId]) => teamId);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
@@ -714,11 +990,13 @@ function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
     tradeState: snapshot.tradeState ?? createEmptyTradeState(),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
+    ...createEmptyPhase7State(snapshot.season, teamIds),
   });
 }
 
 function migrateGameSnapshotV5(snapshot: GameSnapshotV5): GameSnapshot {
   const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
+  const teamIds = snapshot.rosterStates.map(([teamId]) => teamId);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
@@ -726,17 +1004,34 @@ function migrateGameSnapshotV5(snapshot: GameSnapshotV5): GameSnapshot {
       migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
+    ...createEmptyPhase7State(snapshot.season, teamIds),
   });
 }
 
 function migrateGameSnapshotV6(snapshot: GameSnapshotV6): GameSnapshot {
   const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
+  const teamIds = snapshot.rosterStates.map(([teamId]) => teamId);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     players: snapshot.players.map((player) =>
       migrateV6SnapshotPlayer(player, serviceTimeLookup.get(player.id) ?? 0)),
     ...createEmptyPhase6State(snapshot.season),
+    ...createEmptyPhase7State(snapshot.season, teamIds),
+  });
+}
+
+function migrateGameSnapshotV7(snapshot: GameSnapshotV7): GameSnapshot {
+  const teamIds = snapshot.rosterStates.map(([teamId]) => teamId);
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) => ({
+      ...player,
+      ...backfillDevelopmentProfile(player),
+    })),
+    minorLeagueState: upgradeMinorLeagueState(snapshot.minorLeagueState),
+    ...createEmptyPhase7State(snapshot.season, teamIds),
   });
 }
 
@@ -757,6 +1052,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 7
+  ) {
+    return migrateGameSnapshotV7(GameSnapshotV7Schema.parse(snapshotLike));
   }
 
   if (
