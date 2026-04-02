@@ -45,6 +45,7 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { buildAchievementView } from './sim.worker.achievements.js';
 import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
@@ -219,6 +220,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       record: userStanding ? `${userStanding.wins}-${userStanding.losses}` : '0-0',
       division: userDivision,
       divisionRank: userStanding?.divisionRank ?? 1,
+      achievementCount: s.achievements.unlocked.length,
       dynasty,
       owner: ownerState,
       chemistry,
@@ -596,6 +598,10 @@ export const queryApi = {
 
   getDynastyScore() {
     return state ? getDynastyScoreSummary(state) : null;
+  },
+
+  getAchievements() {
+    return state ? buildAchievementView(state) : [];
   },
 
   getDashboardSummary() {

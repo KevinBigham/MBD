@@ -85,6 +85,7 @@ export function Sidebar() {
   const worker = useWorker();
   const { isInitialized, day, season, phase } = useGameStore();
   const [pressRoomCount, setPressRoomCount] = useState<number>(0);
+  const [achievementCount, setAchievementCount] = useState<number>(0);
 
   useEffect(() => {
     if (!isInitialized || !worker.isReady) return;
@@ -92,13 +93,21 @@ export function Sidebar() {
       const summary = await worker.getDashboardSummary();
       const total = ((summary as { pressRoom?: { briefingCount?: number; newsCount?: number } } | null)?.pressRoom?.briefingCount ?? 0)
         + ((summary as { pressRoom?: { briefingCount?: number; newsCount?: number } } | null)?.pressRoom?.newsCount ?? 0);
+      const achievements = ((summary as { franchise?: { achievementCount?: number } } | null)?.franchise?.achievementCount ?? 0);
       setPressRoomCount(total);
+      setAchievementCount(achievements);
     })();
   }, [day, isInitialized, phase, season, worker]);
 
-  const mainNavItems = baseMainNavItems.map((item) =>
-    item.to === '/press-room' ? { ...item, badge: pressRoomCount } : item,
-  );
+  const mainNavItems = baseMainNavItems.map((item) => {
+    if (item.to === '/press-room') {
+      return { ...item, badge: pressRoomCount };
+    }
+    if (item.to === '/history') {
+      return { ...item, badge: achievementCount };
+    }
+    return item;
+  });
 
   return (
     <aside

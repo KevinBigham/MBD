@@ -61,6 +61,7 @@ export function createEmptyAchievementState(): AchievementState {
     unlocked: [],
     progress: [],
     counters: [],
+    ledgers: [],
   };
 }
 

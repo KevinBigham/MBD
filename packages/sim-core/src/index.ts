@@ -130,8 +130,17 @@ export {
   evaluateHOFCandidate,
   processHOFInductions,
   calculateDynastyScore,
+  ACHIEVEMENT_DEFINITIONS,
+  checkAchievements,
 } from './league/index.js';
 export type {
+  AchievementCategory,
+  AchievementDefinition,
+  AchievementMetricMap,
+  AchievementProgressValue,
+  AchievementUnlockResult,
+  CheckAchievementsArgs,
+  CheckAchievementsResult,
   PersonalityArchetype,
   MoraleEvent,
   OwnerEvaluationContext,

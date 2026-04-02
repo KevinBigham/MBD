@@ -176,6 +176,42 @@ describe('HistoryPage', () => {
           awardWinners: 1,
         },
       }),
+      getAchievements: vi.fn().mockResolvedValue([
+        {
+          id: 'champion',
+          category: 'dynasty',
+          name: 'Champion',
+          description: 'Win the World Series.',
+          metric: 'championships',
+          target: 1,
+          progressLabel: 'World Series titles',
+          unlocked: true,
+          unlockedAt: 'S2D180',
+          unlockSummary: 'Won the World Series.',
+          progress: {
+            current: 1,
+            target: 1,
+            summary: 'World Series titles',
+          },
+        },
+        {
+          id: 'decade',
+          category: 'longevity',
+          name: 'Decade',
+          description: 'Stay with one club for 10 seasons.',
+          metric: 'seasonsManaged',
+          target: 10,
+          progressLabel: 'Seasons managed',
+          unlocked: false,
+          unlockedAt: null,
+          unlockSummary: null,
+          progress: {
+            current: 2,
+            target: 10,
+            summary: 'Seasons managed',
+          },
+        },
+      ]),
       resolveHistoryDisplayNames: vi.fn().mockResolvedValue({
         players: {
           'player-mvp': 'Mike Trout',
@@ -233,6 +269,9 @@ describe('HistoryPage', () => {
     expect(container.textContent).toContain('Derek Jeter');
     expect(container.textContent).toContain('Dynasty Score');
     expect(container.textContent).toContain('Franchise Timeline');
+    expect(container.textContent).toContain('Trophy Room');
+    expect(container.textContent).toContain('Champion');
+    expect(container.textContent).toContain('2 / 10');
     expect(container.textContent).not.toContain('player-mvp');
     expect(container.textContent).not.toContain('nyy vs bos');
   });

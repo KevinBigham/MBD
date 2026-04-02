@@ -93,6 +93,16 @@ import type {
 } from './sim.worker.helpers.js';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
 import {
+  captureSeasonAchievementFacts,
+  recordDraftedHomegrownPlayer,
+  recordExtensionCompleted,
+  recordFreeAgentSigning,
+  recordInternationalHomegrownPlayer,
+  recordMonthlyDivisionLead,
+  recordProspectCallup,
+  syncAchievementState,
+} from './sim.worker.achievements.js';
+import {
   createDefaultFranchiseState,
   createEmptyAchievementState,
   createEmptyCeremonyState,
@@ -369,6 +379,8 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
   const seasonMoments = applyPostseasonConsequences(s);
   recordSeasonHistory(s, seasonMoments);
   upsertFranchiseTimelineEntry(s);
+  captureSeasonAchievementFacts(s);
+  syncAchievementState(s);
   clearPendingTradeOffers(s);
 }
 
@@ -397,6 +409,8 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     ensureAwardHistoryForSeason(s);
     queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
     maybeQueuePlayoffClinchMoment(s);
+    captureSeasonAchievementFacts(s);
+    syncAchievementState(s);
     clearPendingTradeOffers(s);
     s.phase = 'playoffs';
     s.day = 1;
@@ -481,6 +495,8 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   refreshNarrativeState(s, result.games);
   s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
+  recordMonthlyDivisionLead(s);
+  syncAchievementState(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
 }
 
@@ -501,6 +517,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   const retired = determineRetirements(s.rng.fork(), s.players);
   const inductees = processHallOfFameForRetirements(s, retired);
   queueHallOfFameMoments(s, inductees);
+  syncAchievementState(s);
   enrichFranchiseTimelineWithDepartures(s, retired);
   if (s.offseasonState) {
     s.offseasonState = recordRetirements(
@@ -896,6 +913,7 @@ export const actionApi = {
     setState(importGameSnapshot(snapshot));
     const s = requireState();
     ensureNarrativeState(s);
+    syncAchievementState(s, { publish: false });
     return {
       success: true as const,
       season: s.season,
@@ -937,8 +955,15 @@ export const actionApi = {
   },
 
   signDraftPick(playerId: string, bonusAmount: number) {
+    const s = requireState();
+    const result = signUserDraftPick(s, playerId, bonusAmount);
+    if (result.success && result.signed) {
+      const player = s.players.find((candidate) => candidate.id === playerId);
+      recordDraftedHomegrownPlayer(s, playerId, player?.rosterStatus ?? 'ROOKIE');
+      syncAchievementState(s);
+    }
     return {
-      ...signUserDraftPick(requireState(), playerId, bonusAmount),
+      ...result,
       flowStateChanged: true,
     };
   },
@@ -951,12 +976,17 @@ export const actionApi = {
   },
 
   proposeTrade(offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) {
-    return proposeTradePackage(
-      requireState(),
+    const s = requireState();
+    const result = proposeTradePackage(
+      s,
       offeringAssets,
       requestingAssets,
       toTeamId,
     );
+    if (result.decision === 'accepted') {
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   respondToTradeOffer(
@@ -964,7 +994,12 @@ export const actionApi = {
     action: 'accept' | 'decline' | 'counter',
     counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
   ) {
-    return respondToTradeOffer(requireState(), offerId, action, counterPackage);
+    const s = requireState();
+    const result = respondToTradeOffer(s, offerId, action, counterPackage);
+    if (result.success && result.decision === 'accepted') {
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   promotePlayerAction(playerId: string) {
@@ -1005,6 +1040,8 @@ export const actionApi = {
         },
       }, s.players, s.season, s.day));
       queueProspectDebutMoment(s, promotedPlayer.id, player.rosterStatus);
+      recordProspectCallup(s, promotedPlayer.id);
+      syncAchievementState(s);
     }
     return { success: result.success, error: result.error };
   },
@@ -1160,11 +1197,19 @@ export const actionApi = {
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
     applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
+    recordFreeAgentSigning(s, playerId, salary);
+    syncAchievementState(s);
     return result;
   },
 
   negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
-    return negotiatePlayerExtension(requireState(), playerId, offer);
+    const s = requireState();
+    const result = negotiatePlayerExtension(s, playerId, offer);
+    if (result?.status === 'accepted') {
+      recordExtensionCompleted(s);
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   issueQualifyingOffer(playerId: string) {
@@ -1204,7 +1249,13 @@ export const actionApi = {
   },
 
   signIFAPlayer(playerId: string, bonusAmount: number) {
-    const result = signUserIFAPlayer(requireState(), playerId, bonusAmount);
+    const s = requireState();
+    const result = signUserIFAPlayer(s, playerId, bonusAmount);
+    if (result.success) {
+      const player = s.players.find((candidate) => candidate.id === playerId);
+      recordInternationalHomegrownPlayer(s, playerId, player?.rosterStatus ?? 'INTERNATIONAL');
+      syncAchievementState(s);
+    }
     return result.success ? { ...result, flowStateChanged: true as const } : result;
   },
 

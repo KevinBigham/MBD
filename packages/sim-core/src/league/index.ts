@@ -77,3 +77,17 @@ export type {
   FranchiseTimelineEntry,
   DynastyScoreSummary,
 } from './hallOfFame.js';
+
+export {
+  ACHIEVEMENT_DEFINITIONS,
+  checkAchievements,
+} from './achievements.js';
+export type {
+  AchievementCategory,
+  AchievementDefinition,
+  AchievementMetricMap,
+  AchievementProgressValue,
+  AchievementUnlockResult,
+  CheckAchievementsArgs,
+  CheckAchievementsResult,
+} from './achievements.js';

@@ -39,6 +39,7 @@ export const CeremonyMomentTypeEnum = z.enum([
   "playoff_clinch",
   "series_win",
   "world_series_win",
+  "achievement",
   "award",
   "hall_of_fame",
   "career_milestone",
@@ -95,5 +96,6 @@ export const AchievementStateSchema = z.object({
   unlocked: z.array(AchievementUnlockSchema),
   progress: z.array(z.tuple([z.string(), AchievementProgressSchema])),
   counters: z.array(z.tuple([z.string(), z.number()])),
+  ledgers: z.array(z.tuple([z.string(), z.array(z.string())])).default([]),
 });
 export type AchievementState = z.infer<typeof AchievementStateSchema>;
