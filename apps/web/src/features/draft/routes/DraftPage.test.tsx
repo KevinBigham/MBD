@@ -380,4 +380,121 @@ describe('DraftPage', () => {
     expect(container.textContent).toContain('Your Draft Class');
     expect(container.textContent).toContain('Overall Grade B');
   });
+
+  it('labels compensatory picks with qualifying-offer context', async () => {
+    const compensation = {
+      compensationForPlayerId: 'qo-1',
+      compensationForPlayerName: 'Victor Veteran',
+      compensationFromTeamId: 'bos',
+      compensationFromTeamName: 'Boston Red Sox',
+    };
+
+    const draftView = {
+      status: 'complete',
+      availableProspects: [],
+      udfaProspects: [],
+      completedPicks: [
+        {
+          slotId: 'comp-4-nyy-qo-1-1',
+          round: 1,
+          pickNumber: 31,
+          teamId: 'nyy',
+          teamName: 'New York Yankees',
+          teamAbbreviation: 'NYY',
+          playerId: 'pick-1',
+          playerName: 'Miles Compensation',
+          position: 'CF',
+          scoutingGrade: 57,
+          origin: 'College',
+          slotKind: 'compensatory',
+          compensation,
+          tone: 'user',
+        },
+      ],
+      currentPick: null,
+      board: {
+        teams: [
+          { teamId: 'nyy', teamName: 'New York Yankees', abbreviation: 'NYY', tone: 'user' },
+        ],
+        rounds: [
+          {
+            round: 1,
+            cells: [
+              {
+                slotId: 'comp-4-nyy-qo-1-1',
+                round: 1,
+                pickInRound: 31,
+                teamId: 'nyy',
+                teamAbbreviation: 'NYY',
+                tone: 'user',
+                compensation,
+                pick: {
+                  slotId: 'comp-4-nyy-qo-1-1',
+                  round: 1,
+                  pickNumber: 31,
+                  teamId: 'nyy',
+                  teamName: 'New York Yankees',
+                  teamAbbreviation: 'NYY',
+                  playerId: 'pick-1',
+                  playerName: 'Miles Compensation',
+                  position: 'CF',
+                  scoutingGrade: 57,
+                  origin: 'College',
+                  slotKind: 'compensatory',
+                  compensation,
+                  tone: 'user',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      counts: { totalRounds: 20, totalPicks: 31, picksMade: 31, picksRemaining: 0 },
+      userDraftClass: {
+        picks: [
+          {
+            playerId: 'pick-1',
+            playerName: 'Miles Compensation',
+            position: 'CF',
+            scoutingGrade: 57,
+            origin: 'College',
+            slotValue: 2.1,
+            askBonus: 2.3,
+            signed: null,
+            agreedBonus: null,
+            assessment: 'On-slot selection with balanced risk and upside.',
+          },
+        ],
+        overallGrade: 'B',
+        averageScoutingGrade: 57,
+      },
+      userBigBoard: [],
+    };
+
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getDraftClass: vi.fn().mockResolvedValue(draftView),
+      startDraft: vi.fn(),
+      makeDraftPick: vi.fn(),
+      scoutDraftPlayer: vi.fn(),
+      toggleDraftBigBoard: vi.fn(),
+      signDraftPick: vi.fn(),
+      simulateRemainingDraft: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DraftPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('QO');
+    expect(container.textContent).toContain('Victor Veteran');
+    expect(container.textContent).toContain('Boston Red Sox');
+  });
 });

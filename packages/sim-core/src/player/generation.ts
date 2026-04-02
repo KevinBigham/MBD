@@ -1,7 +1,7 @@
 /**
  * @module generation
  * Player generation: creates full rosters of deterministic, varied players.
- * Uses GameRNG for all randomness — Math.random() is NEVER used.
+ * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';
@@ -27,6 +27,46 @@ export type RosterLevel = (typeof ROSTER_LEVELS)[number];
 /** Development phases */
 export const DEV_PHASES = ['Prospect', 'Ascent', 'Prime', 'Decline', 'Retirement'] as const;
 export type DevPhase = (typeof DEV_PHASES)[number];
+export const DEVELOPMENT_PROGRAMS = [
+  'tools',
+  'fundamentals',
+  'refinement',
+  'mlb_prep',
+  'power',
+  'contact',
+  'speed',
+  'defense',
+  'control',
+  'velocity',
+  'breaking',
+  'stamina',
+] as const;
+export type DevelopmentProgram = (typeof DEVELOPMENT_PROGRAMS)[number];
+
+export const DEVELOPMENT_TRAJECTORIES = [
+  'ahead_of_curve',
+  'on_track',
+  'below_expectations',
+  'bust_risk',
+] as const;
+export type DevelopmentTrajectory = (typeof DEVELOPMENT_TRAJECTORIES)[number];
+
+export const NO_TRADE_CLAUSE_TYPES = ['none', 'partial', 'full'] as const;
+export type NoTradeClauseType = (typeof NO_TRADE_CLAUSE_TYPES)[number];
+
+export interface DeferredMoneyInstallment {
+  yearOffset: number;
+  amount: number;
+}
+
+export interface ExtensionHistoryEntry {
+  season: number;
+  teamId: string;
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+  outcome: 'accepted' | 'rejected' | 'countered';
+}
 
 /** Position distribution per team (target counts for a ~40-player active roster) */
 const POSITION_TEMPLATE: Record<string, number> = {
@@ -147,9 +187,15 @@ export interface GeneratedPlayer {
   contract: {
     years: number;
     annualSalary: number;
+    totalValue?: number;
     noTradeClause: boolean;
+    noTradeClauseType?: NoTradeClauseType;
     playerOption: boolean;
     teamOption: boolean;
+    optOutYears?: number[];
+    signingBonus?: number;
+    buyoutAmount?: number;
+    deferredMoney?: DeferredMoneyInstallment[];
   };
   rosterStatus: RosterLevel;
   developmentPhase: DevPhase;
@@ -161,6 +207,12 @@ export interface GeneratedPlayer {
   optionYearsUsed: number;
   isOutOfOptions: boolean;
   minorLeagueLevel: Exclude<RosterLevel, 'MLB'> | null;
+  ceiling?: number;
+  floor?: number;
+  developmentProgram?: DevelopmentProgram;
+  developmentTrajectory?: DevelopmentTrajectory;
+  extensionHistory?: ExtensionHistoryEntry[];
+  potentialRating?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,19 +318,41 @@ function generatePersonality(rng: GameRNG) {
 
 function generateContract(rng: GameRNG, rosterLevel: RosterLevel, overallRating: number) {
   if (rosterLevel !== 'MLB') {
-    return { years: 0, annualSalary: 0.5, noTradeClause: false, playerOption: false, teamOption: false };
+    return {
+      years: 0,
+      annualSalary: 0.5,
+      totalValue: 0.5,
+      noTradeClause: false,
+      noTradeClauseType: 'none' as const,
+      playerOption: false,
+      teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
+    };
   }
 
   const baseSalary = (overallRating / 550) * 25 + rng.nextGaussian(3, 5);
   const salary = Math.max(0.7, Math.round(baseSalary * 10) / 10);
   const years = rng.nextInt(1, 6);
+  const noTradeClause = salary > 20 && rng.nextFloat() > 0.5;
+  const noTradeClauseType: NoTradeClauseType = noTradeClause
+    ? (salary > 28 ? 'full' : 'partial')
+    : 'none';
 
   return {
     years,
     annualSalary: salary,
-    noTradeClause: salary > 20 && rng.nextFloat() > 0.5,
+    totalValue: Math.round(salary * years * 10) / 10,
+    noTradeClause,
+    noTradeClauseType,
     playerOption: rng.nextFloat() > 0.85,
     teamOption: rng.nextFloat() > 0.8,
+    optOutYears: [],
+    signingBonus: 0,
+    buyoutAmount: 0,
+    deferredMoney: [],
   };
 }
 

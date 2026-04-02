@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
+import { Clock3, DollarSign, FileSignature, ShieldCheck } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 
@@ -18,6 +20,19 @@ interface PlayerDTO {
   optionYearsUsed: number;
   isOutOfOptions: boolean;
   minorLeagueLevel: string | null;
+  contract: {
+    years: number;
+    annualSalary: number;
+    totalValue: number;
+    noTradeClause: boolean;
+    noTradeClauseType: string;
+    playerOption: boolean;
+    teamOption: boolean;
+    optOutYears: number[];
+    signingBonus: number;
+    buyoutAmount: number;
+    deferredMoney: Array<{ yearOffset: number; amount: number }>;
+  };
   stats: {
     pa: number;
     ab: number;
@@ -111,6 +126,37 @@ interface AffiliateOverviewView {
   }>;
 }
 
+interface ExtensionCandidateView {
+  playerId: string;
+  playerName: string;
+  position: string;
+  yearsRemaining: number;
+  currentSalary: number;
+  willingness: number;
+  demandMultiplier: number;
+  walkAwayThreshold: number;
+}
+
+interface ExtensionOfferView {
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+  noTradeClause: boolean;
+  noTradeClauseType: string;
+  playerOption: boolean;
+  teamOption: boolean;
+  optOutYears: number[];
+  signingBonus: number;
+  buyoutAmount: number;
+  deferredMoney: Array<{ yearOffset: number; amount: number }>;
+}
+
+interface ExtensionResponseView {
+  status: 'accepted' | 'rejected' | 'countered';
+  rounds: Array<{ round: number; status: string }>;
+  counterOffer?: ExtensionOfferView;
+}
+
 function gradeColor(grade: string): string {
   switch (grade) {
     case 'A': return 'bg-accent-success/20 text-accent-success';
@@ -154,6 +200,22 @@ function formatServiceTime(serviceTimeDays: number): string {
   return `${years}y ${days}d`;
 }
 
+function moneyLabel(value: number): string {
+  return `$${value.toFixed(1)}M`;
+}
+
+function willingnessLabel(value: number): { label: string; variant: 'success' | 'info' | 'outline' } {
+  if (value >= 0.7) return { label: 'High', variant: 'success' };
+  if (value >= 0.5) return { label: 'Medium', variant: 'info' };
+  return { label: 'Low', variant: 'outline' };
+}
+
+function gradeFromValue(value: number, floor: number, ceiling: number): number {
+  const normalized = (value - floor) / Math.max(0.0001, ceiling - floor);
+  const clamped = Math.max(0, Math.min(1, normalized));
+  return Math.round(20 + (clamped * 60));
+}
+
 const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 
 const MINOR_LEVELS = [
@@ -175,8 +237,17 @@ export default function RosterPage() {
   const [promotionCandidates, setPromotionCandidates] = useState<PromotionCandidateView[]>([]);
   const [compliance, setCompliance] = useState<RosterComplianceView | null>(null);
   const [affiliateOverview, setAffiliateOverview] = useState<AffiliateOverviewView | null>(null);
-  const [activeTab, setActiveTab] = useState<'mlb' | 'minors'>('mlb');
+  const [extensionCandidates, setExtensionCandidates] = useState<ExtensionCandidateView[]>([]);
+  const [activeTab, setActiveTab] = useState<'mlb' | 'minors' | 'contracts'>('mlb');
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [selectedExtension, setSelectedExtension] = useState<ExtensionCandidateView | null>(null);
+  const [extensionOffer, setExtensionOffer] = useState<ExtensionOfferView | null>(null);
+  const [offerYears, setOfferYears] = useState(5);
+  const [offerSalary, setOfferSalary] = useState('');
+  const [offerSigningBonus, setOfferSigningBonus] = useState('');
+  const [offerNoTrade, setOfferNoTrade] = useState(false);
+  const [offerOptOut, setOfferOptOut] = useState(false);
+  const [negotiationResponse, setNegotiationResponse] = useState<ExtensionResponseView | null>(null);
 
   const fetchRoster = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -187,12 +258,14 @@ export default function RosterPage() {
       promotionData,
       complianceData,
       affiliateData,
+      extensionData,
     ] = await Promise.all([
       worker.getFullRoster(userTeamId),
       worker.getTeamChemistry(userTeamId),
       worker.getPromotionCandidates(userTeamId),
       worker.getRosterComplianceIssues(userTeamId),
       worker.getAffiliateOverview(userTeamId),
+      worker.getExtensionCandidates(userTeamId),
     ]);
 
     if (rosterData) {
@@ -204,6 +277,7 @@ export default function RosterPage() {
     setPromotionCandidates((promotionData ?? []) as PromotionCandidateView[]);
     setCompliance((complianceData ?? null) as RosterComplianceView | null);
     setAffiliateOverview((affiliateData ?? null) as AffiliateOverviewView | null);
+    setExtensionCandidates((extensionData ?? []) as ExtensionCandidateView[]);
   }, [isInitialized, userTeamId, worker, workerReady]);
 
   useEffect(() => {
@@ -222,6 +296,60 @@ export default function RosterPage() {
 
   const hitters = mlbRoster.filter((player) => !PITCHER_POSITIONS.has(player.position));
   const pitchers = mlbRoster.filter((player) => PITCHER_POSITIONS.has(player.position));
+
+  const openNegotiation = useCallback(async (candidate: ExtensionCandidateView) => {
+    const offer = await worker.getExtensionOffer(candidate.playerId, 5);
+    if (!offer) return;
+
+    setSelectedExtension(candidate);
+    setExtensionOffer(offer as ExtensionOfferView);
+    setOfferYears((offer as ExtensionOfferView).years);
+    setOfferSalary((offer as ExtensionOfferView).annualSalary.toFixed(1));
+    setOfferSigningBonus(((offer as ExtensionOfferView).signingBonus ?? 0).toFixed(1));
+    setOfferNoTrade((offer as ExtensionOfferView).noTradeClause);
+    setOfferOptOut(((offer as ExtensionOfferView).optOutYears ?? []).length > 0);
+    setNegotiationResponse(null);
+  }, [worker]);
+
+  const closeNegotiation = useCallback(() => {
+    setSelectedExtension(null);
+    setExtensionOffer(null);
+    setNegotiationResponse(null);
+  }, []);
+
+  const submitExtensionOffer = useCallback(async () => {
+    if (!selectedExtension || !extensionOffer) return;
+
+    setBusyAction(`extension-${selectedExtension.playerId}`);
+    try {
+      const response = await worker.negotiateExtension(selectedExtension.playerId, {
+        ...extensionOffer,
+        years: offerYears,
+        annualSalary: Number.parseFloat(offerSalary) || extensionOffer.annualSalary,
+        totalValue: (Number.parseFloat(offerSalary) || extensionOffer.annualSalary) * offerYears,
+        signingBonus: Number.parseFloat(offerSigningBonus) || 0,
+        noTradeClause: offerNoTrade,
+        noTradeClauseType: offerNoTrade ? 'full' : 'none',
+        optOutYears: offerOptOut ? [Math.max(2, offerYears - 1)] : [],
+      });
+      setNegotiationResponse((response ?? null) as ExtensionResponseView | null);
+      if ((response as ExtensionResponseView | null)?.status === 'accepted') {
+        await fetchRoster();
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  }, [
+    extensionOffer,
+    fetchRoster,
+    offerNoTrade,
+    offerOptOut,
+    offerSalary,
+    offerSigningBonus,
+    offerYears,
+    selectedExtension,
+    worker,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -260,30 +388,13 @@ export default function RosterPage() {
         </div>
       )}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('mlb')}
-          className={`rounded-md px-4 py-2 font-heading text-sm font-semibold transition-colors ${
-            activeTab === 'mlb'
-              ? 'bg-accent-primary text-white'
-              : 'bg-dynasty-surface text-dynasty-muted hover:text-dynasty-text'
-          }`}
-        >
-          MLB Control Room
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('minors')}
-          className={`rounded-md px-4 py-2 font-heading text-sm font-semibold transition-colors ${
-            activeTab === 'minors'
-              ? 'bg-accent-primary text-white'
-              : 'bg-dynasty-surface text-dynasty-muted hover:text-dynasty-text'
-          }`}
-        >
-          Minor Leagues
-        </button>
-      </div>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'mlb' | 'minors' | 'contracts')}>
+        <TabsList>
+          <TabsTrigger value="mlb" onClick={() => setActiveTab('mlb')}>MLB Control Room</TabsTrigger>
+          <TabsTrigger value="minors" onClick={() => setActiveTab('minors')}>Minor Leagues</TabsTrigger>
+          <TabsTrigger value="contracts" onClick={() => setActiveTab('contracts')}>Contracts</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {activeTab === 'mlb' && (
         <div className="space-y-6">
@@ -691,6 +802,189 @@ export default function RosterPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {activeTab === 'contracts' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
+                  <FileSignature className="h-4 w-4 text-accent-primary" />
+                  Extension Candidates
+                </CardTitle>
+              </div>
+              <Badge variant="outline">
+                {extensionCandidates.length} active files
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {extensionCandidates.length > 0 ? extensionCandidates.map((candidate) => {
+                const willingness = willingnessLabel(candidate.willingness);
+                const demandMultiplier = candidate.demandMultiplier ?? 1;
+                const walkAwayThreshold = candidate.walkAwayThreshold ?? 0.12;
+                return (
+                  <div key={candidate.playerId} className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="font-heading text-sm text-dynasty-text">{candidate.playerName}</div>
+                        <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                          {candidate.position} | {candidate.yearsRemaining} year control left
+                        </div>
+                        <StatLine
+                          className="mt-3"
+                          stats={[
+                            { label: 'Current', value: moneyLabel(candidate.currentSalary) },
+                            { label: 'Demand', value: `${demandMultiplier.toFixed(2)}x` },
+                            { label: 'Willingness', value: `${Math.round(candidate.willingness * 100)}%` },
+                          ]}
+                        />
+                      </div>
+                      <div className="w-full max-w-sm space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Badge variant={willingness.variant}>{willingness.label}</Badge>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void openNegotiation(candidate)}
+                          >
+                            Negotiate
+                          </Button>
+                        </div>
+                        <GradeBar label="Willingness" grade={gradeFromValue(candidate.willingness, 0, 1)} />
+                        <GradeBar label="Leverage" grade={gradeFromValue(demandMultiplier, 1, 1.55)} />
+                        <GradeBar label="Risk" grade={gradeFromValue(walkAwayThreshold, 0.04, 0.28)} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 px-4 py-6 text-sm text-dynasty-muted">
+                  No extension files are open for this roster right now.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {selectedExtension && extensionOffer && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 p-6">
+          <Card className="w-full max-w-3xl border-accent-primary/30 shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="font-heading text-dynasty-text">Extension Negotiation</CardTitle>
+                <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  {selectedExtension.playerName}
+                </div>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={closeNegotiation}>
+                Close
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="border-dynasty-border/60 bg-dynasty-elevated/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Clock3 className="h-4 w-4 text-accent-info" />
+                      Current Deal
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <StatLine
+                      stats={[
+                        { label: 'Years', value: selectedExtension.yearsRemaining },
+                        { label: 'Salary', value: moneyLabel(selectedExtension.currentSalary) },
+                      ]}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card className="border-dynasty-border/60 bg-dynasty-elevated/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <DollarSign className="h-4 w-4 text-accent-success" />
+                      Proposed Extension
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <label className="block">
+                      <div className="mb-1 text-xs uppercase tracking-[0.18em] text-dynasty-muted">Years</div>
+                      <input
+                        value={offerYears}
+                        onChange={(event) => setOfferYears(Number.parseInt(event.target.value, 10) || 1)}
+                        className="w-full rounded-md border border-dynasty-border bg-dynasty-base px-3 py-2 text-sm text-dynasty-text"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="mb-1 text-xs uppercase tracking-[0.18em] text-dynasty-muted">AAV</div>
+                      <input
+                        value={offerSalary}
+                        onChange={(event) => setOfferSalary(event.target.value)}
+                        className="w-full rounded-md border border-dynasty-border bg-dynasty-base px-3 py-2 text-sm text-dynasty-text"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="mb-1 text-xs uppercase tracking-[0.18em] text-dynasty-muted">Signing Bonus</div>
+                      <input
+                        value={offerSigningBonus}
+                        onChange={(event) => setOfferSigningBonus(event.target.value)}
+                        className="w-full rounded-md border border-dynasty-border bg-dynasty-base px-3 py-2 text-sm text-dynasty-text"
+                      />
+                    </label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="flex items-center gap-2 rounded-md border border-dynasty-border px-3 py-2 text-sm text-dynasty-text">
+                        <input type="checkbox" checked={offerNoTrade} onChange={(event) => setOfferNoTrade(event.target.checked)} />
+                        <ShieldCheck className="h-4 w-4 text-accent-info" />
+                        No-trade clause
+                      </label>
+                      <label className="flex items-center gap-2 rounded-md border border-dynasty-border px-3 py-2 text-sm text-dynasty-text">
+                        <input type="checkbox" checked={offerOptOut} onChange={(event) => setOfferOptOut(event.target.checked)} />
+                        <Clock3 className="h-4 w-4 text-accent-warning" />
+                        Opt-out
+                      </label>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {negotiationResponse && (
+                <Card className="border-dynasty-border/60 bg-dynasty-elevated/50">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Latest Response</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Badge variant={negotiationResponse.status === 'accepted' ? 'success' : negotiationResponse.status === 'countered' ? 'info' : 'outline'}>
+                      {negotiationResponse.status}
+                    </Badge>
+                    {negotiationResponse.counterOffer && (
+                      <StatLine
+                        stats={[
+                          { label: 'Counter Years', value: negotiationResponse.counterOffer.years },
+                          { label: 'Counter AAV', value: moneyLabel(negotiationResponse.counterOffer.annualSalary) },
+                        ]}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={closeNegotiation}>
+                  Walk Away
+                </Button>
+                <Button
+                  type="button"
+                  loading={busyAction === `extension-${selectedExtension.playerId}`}
+                  onClick={() => void submitExtensionOffer()}
+                >
+                  Submit Offer
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

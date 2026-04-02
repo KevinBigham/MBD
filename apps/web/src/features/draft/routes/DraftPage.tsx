@@ -47,6 +47,18 @@ function formatBonus(value: number | null | undefined): string {
   return `$${(value ?? 0).toFixed(2)}M`;
 }
 
+function compensationContextLabel(
+  compensation: DraftRoomPick['compensation'] | DraftBoardCell['compensation'] | null | undefined,
+): string | null {
+  if (!compensation) {
+    return null;
+  }
+
+  return compensation.compensationFromTeamName
+    ? `QO for ${compensation.compensationForPlayerName} from ${compensation.compensationFromTeamName}`
+    : `QO for ${compensation.compensationForPlayerName}`;
+}
+
 function statusText(view: DraftRoomView | null, phase: string): string {
   if (phase !== 'offseason') return 'Draft Unavailable';
   if (!view || view.status === 'available') return 'Draft Available';
@@ -341,6 +353,12 @@ function DraftTicker({
                   <p className="mt-1 font-data text-xs text-dynasty-muted">
                     {pick.position} · {pick.origin}
                   </p>
+                  {pick.compensation && (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded border border-accent-warning/30 bg-accent-warning/10 px-2 py-1 font-data text-[10px] uppercase tracking-[0.18em] text-accent-warning">
+                      <span>QO</span>
+                      <span>{compensationContextLabel(pick.compensation)}</span>
+                    </div>
+                  )}
                 </div>
                 <span className={`rounded border px-2 py-1 font-data text-sm font-semibold ${gradeChipClass(pick.scoutingGrade)}`}>
                   {pick.scoutingGrade}
@@ -400,18 +418,42 @@ function DraftBoard({ draft, visibleCount }: { draft: DraftRoomView; visibleCoun
                       <div className={`min-h-14 rounded border px-2 py-1 ${visiblePick ? toneClasses(cell.tone) : 'border-dynasty-border bg-dynasty-elevated/60 text-dynasty-muted'}`}>
                         {visiblePick ? (
                           <>
-                            <div className="font-data text-[10px] uppercase tracking-[0.18em]">{visiblePick.pickNumber}</div>
+                            <div className="flex items-center justify-between gap-2 font-data text-[10px] uppercase tracking-[0.18em]">
+                              <span>{visiblePick.pickNumber}</span>
+                              {visiblePick.compensation && (
+                                <span className="rounded border border-accent-warning/30 bg-accent-warning/10 px-1.5 py-0.5 text-accent-warning">
+                                  QO
+                                </span>
+                              )}
+                            </div>
                             <div className="mt-1 font-heading text-xs font-semibold leading-tight">
                               {visiblePick.playerName}
                             </div>
                             <div className="mt-1 font-data text-[10px] text-dynasty-muted">
                               {visiblePick.position} · {visiblePick.scoutingGrade}
                             </div>
+                            {visiblePick.compensation && (
+                              <div className="mt-1 font-data text-[10px] text-accent-warning">
+                                {compensationContextLabel(visiblePick.compensation)}
+                              </div>
+                            )}
                           </>
                         ) : (
-                          <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted/70">
-                            {cell.teamAbbreviation}
-                          </div>
+                          <>
+                            <div className="flex items-center justify-between gap-2 font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted/70">
+                              <span>{cell.teamAbbreviation}</span>
+                              {cell.compensation && (
+                                <span className="rounded border border-accent-warning/30 bg-accent-warning/10 px-1.5 py-0.5 text-accent-warning">
+                                  QO
+                                </span>
+                              )}
+                            </div>
+                            {cell.compensation && (
+                              <div className="mt-1 font-data text-[10px] text-accent-warning">
+                                {compensationContextLabel(cell.compensation)}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

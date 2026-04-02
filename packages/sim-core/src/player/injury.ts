@@ -1,7 +1,7 @@
 /**
  * @module injury
  * Injury system: deterministic injury checks, recovery, and attribute penalties.
- * Uses GameRNG for all randomness — Math.random() is NEVER used.
+ * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';

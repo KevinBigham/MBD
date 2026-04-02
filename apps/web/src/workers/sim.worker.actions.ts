@@ -8,21 +8,26 @@ import {
   demotePlayer,
   determinePlayoffSeeds,
   determineRetirements,
-  developAllPlayers,
+  developPlayer,
   dfaPlayer,
   evaluateTradeProposal,
   executeTrade,
   generateDraftClass,
+  generateCoachFreeAgents,
+  generateCoachingStaff,
   generateLeaguePlayers,
   generateSchedule,
   generateScoutingStaff,
   getTeamById,
+  initializePlayerDevelopmentProfile,
   initializePlayoffBracket,
   isPlayoffComplete,
   markAsRead,
   makeUserOffer,
   promotePlayer,
+  reconcileDevelopmentPipeline,
   recordRetirements,
+  runMonthlyDevelopmentCheckpoint,
   simulateDay,
   simulateMonth,
   simNextPlayoffGame,
@@ -50,12 +55,17 @@ import {
   createEmptyTradeState,
   enforceRule5RosterRestriction,
   ensurePlayersHaveRule5Eligibility,
+  fireCoachForUserTeam,
   getTeamPlayers,
+  hireCoachForUserTeam,
+  issueTeamQualifyingOffer,
   lockUserRule5Protection,
   makeUserDraftSelection,
   makeUserRule5Selection,
+  negotiatePlayerExtension,
   processDayInjuriesAndNews,
   requireState,
+  resolveOutstandingQualifyingOffers,
   resolveRule5OfferBackDecision,
   passUserRule5Turn,
   placePlayerOnWaivers,
@@ -72,6 +82,7 @@ import {
   timestamp,
   toggleUserRule5Protection,
   advanceOffseasonOnce,
+  applyQualifyingOfferCompensationIfNeeded,
 } from './sim.worker.helpers.js';
 import type {
   FullGameState,
@@ -377,9 +388,41 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
   };
 }
 
+function monthFromDay(day: number): number {
+  return Math.min(12, Math.max(1, Math.floor((Math.max(1, day) - 1) / 30) + 1));
+}
+
+function applyMonthlyDevelopmentCheckpoints(
+  s: FullGameState,
+  previousDay: number,
+  currentDay: number,
+) {
+  const previousMonth = monthFromDay(previousDay);
+  const currentMonth = monthFromDay(currentDay);
+  if (currentMonth <= previousMonth) {
+    return;
+  }
+
+  for (let month = previousMonth + 1; month <= currentMonth; month += 1) {
+    const checkpoint = runMonthlyDevelopmentCheckpoint(
+      s.rng.fork(),
+      s.season,
+      month,
+      s.players,
+      s.coachingStaffs,
+      s.minorLeagueState,
+    );
+    s.players = checkpoint.players;
+    s.minorLeagueState = checkpoint.state;
+  }
+}
+
 function simWeekInternal(): SimResultDTO {
   const s = requireState();
-  if (s.phase !== 'regular') {
+  if (s.phase === 'preseason') {
+    s.phase = 'regular';
+    s.day = 1;
+  } else if (s.phase !== 'regular') {
     return simDayInternal();
   }
 
@@ -387,6 +430,7 @@ function simWeekInternal(): SimResultDTO {
   const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
   s.seasonState = newState;
   s.day = newState.currentDay;
+  applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
   refreshNarrativeState(s, result.games);
@@ -395,7 +439,10 @@ function simWeekInternal(): SimResultDTO {
 
 function simMonthInternal(): SimResultDTO {
   const s = requireState();
-  if (s.phase !== 'regular') {
+  if (s.phase === 'preseason') {
+    s.phase = 'regular';
+    s.day = 1;
+  } else if (s.phase !== 'regular') {
     return simDayInternal();
   }
 
@@ -403,6 +450,7 @@ function simMonthInternal(): SimResultDTO {
   const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
   s.seasonState = newState;
   s.day = newState.currentDay;
+  applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
   refreshNarrativeState(s, result.games);
@@ -413,7 +461,13 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   accrueCareerStatsForSeason(s);
 
   const beforePlayers = s.players;
-  const developedPlayers = developAllPlayers(s.rng.fork(), s.players);
+  const kernelPlayers = s.players.map((player) => developPlayer(s.rng.fork(), player));
+  const developedPlayers = reconcileDevelopmentPipeline(
+    s.rng.fork(),
+    kernelPlayers,
+    s.coachingStaffs,
+    s.minorLeagueState,
+  );
   recordBreakoutNarratives(s, beforePlayers, developedPlayers);
   s.players = developedPlayers;
 
@@ -485,6 +539,7 @@ function simDayInternal(): SimResultDTO {
     s.seasonState = newState;
     s.day = newState.currentDay;
     advanceMinorLeagueDay(s);
+    applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
     processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
@@ -550,7 +605,11 @@ export const actionApi = {
   newGame(seed: number, userTeamId: string = 'nyy') {
     const rng = new GameRNG(seed);
     const teamIds = TEAMS.map((team) => team.id);
-    const players = generateLeaguePlayers(rng.fork(), teamIds);
+    const developmentRng = new GameRNG(seed + 10_001);
+    const coachingRng = new GameRNG(seed + 20_001);
+    const coachPoolRng = new GameRNG(seed + 30_001);
+    const players = generateLeaguePlayers(rng.fork(), teamIds)
+      .map((player) => initializePlayerDevelopmentProfile(developmentRng.fork(), player));
     ensurePlayersHaveRule5Eligibility(players, 1);
     const schedule = generateSchedule(rng.fork());
     const seasonState = createSeasonState(1, teamIds);
@@ -566,10 +625,12 @@ export const actionApi = {
 
     const scoutingStaffs = new Map();
     const gmPersonalities = new Map();
+    const coachingStaffs = new Map();
     const rosterStates = new Map();
     for (const teamId of teamIds) {
       scoutingStaffs.set(teamId, generateScoutingStaff(rng.fork(), teamId));
       gmPersonalities.set(teamId, assignGMPersonality(rng.fork(), teamId));
+      coachingStaffs.set(teamId, generateCoachingStaff(coachingRng.fork(), teamId));
       rosterStates.set(teamId, buildRosterState(teamId, players));
     }
 
@@ -587,6 +648,9 @@ export const actionApi = {
       serviceTime,
       scoutingStaffs,
       gmPersonalities,
+      coachingStaffs,
+      coachFreeAgentPool: generateCoachFreeAgents(coachPoolRng),
+      pendingExtensionNegotiations: new Map(),
       offseasonState: null,
       rule5Session: null,
       rule5Obligations: [],
@@ -1007,9 +1071,15 @@ export const actionApi = {
     player.contract = {
       years,
       annualSalary: salary,
+      totalValue: offer.totalValue,
       noTradeClause: false,
+      noTradeClauseType: 'none',
       playerOption: false,
       teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
     };
 
     s.freeAgencyMarket.freeAgents = s.freeAgencyMarket.freeAgents.filter(
@@ -1024,8 +1094,29 @@ export const actionApi = {
 
     s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
+    applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
     return result;
+  },
+
+  negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
+    return negotiatePlayerExtension(requireState(), playerId, offer);
+  },
+
+  issueQualifyingOffer(playerId: string) {
+    return issueTeamQualifyingOffer(requireState(), playerId);
+  },
+
+  resolveQualifyingOffers() {
+    return resolveOutstandingQualifyingOffers(requireState());
+  },
+
+  hireCoach(coachId: string) {
+    return hireCoachForUserTeam(requireState(), coachId);
+  },
+
+  fireCoach(coachId: string) {
+    return fireCoachForUserTeam(requireState(), coachId);
   },
 
   advanceOffseason(): OffseasonStateView | null {

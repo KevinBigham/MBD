@@ -33,8 +33,40 @@ export type {
   Position,
   RosterLevel,
   DevPhase,
+  DevelopmentProgram,
+  DevelopmentTrajectory,
+  NoTradeClauseType,
+  DeferredMoneyInstallment,
+  ExtensionHistoryEntry,
   GeneratedPlayer,
 } from './generation.js';
+
+export {
+  COACH_ROLES,
+  COACH_SPECIALTIES,
+  calculateCoachMarketValue,
+  calculateCoachingPayroll,
+  calculateStaffBudget,
+  fireCoach,
+  generateCoachFreeAgents,
+  generateCoachingStaff,
+  getCoachSpecialtyForPosition,
+  getCoachingDevelopmentModifier,
+  hireCoach,
+} from './coaching.js';
+export type {
+  CoachRole,
+  CoachSpecialty,
+  Coach,
+} from './coaching.js';
+
+export {
+  getBreakoutProbability,
+  getPositionConversionTargets,
+  initializePlayerDevelopmentProfile,
+  reconcileDevelopmentPipeline,
+  runMonthlyDevelopmentCheckpoint,
+} from './developmentPipeline.js';
 
 // Development
 export {

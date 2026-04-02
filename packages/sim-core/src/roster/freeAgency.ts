@@ -3,14 +3,16 @@
  * Free agency market simulation: competitive bidding, contract generation,
  * and AI team decision-making for off-season player signings.
  *
- * All randomness flows through GameRNG -- Math.random() is NEVER used.
+ * All randomness flows through GameRNG; the JS global random API is never used.
  */
 
+import type { QualifyingOfferRecord } from '@mbd/contracts';
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer, Position } from '../player/generation.js';
 import { PITCHER_POSITIONS } from '../player/generation.js';
 import { hitterOverall, pitcherOverall, toDisplayRating } from '../player/attributes.js';
 import { RATING_MAX } from '../player/attributes.js';
+import { serviceDaysToYears } from '../finance/contracts.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -95,6 +97,10 @@ const NTC_RATING_THRESHOLD = 0.7;
 const PLAYER_OPTION_CHANCE = 0.3;
 const TEAM_OPTION_CHANCE = 0.25;
 
+const QUALIFYING_OFFER_SALARY_PLAYER_COUNT = 125;
+const QUALIFYING_OFFER_MIN_SERVICE_YEARS = 3;
+const QUALIFYING_OFFER_MARKET_VALUE_FRACTION = 0.75;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -125,6 +131,11 @@ export interface FreeAgencyMarket {
   freeAgents: FreeAgent[];
   signedPlayers: FreeAgent[];
   day: number;
+}
+
+export interface QualifyingOfferResolution {
+  player: GeneratedPlayer;
+  record: QualifyingOfferRecord;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +170,14 @@ function positionMultiplier(position: Position): number {
 /** Check if a player's contract has expired (0 years remaining). */
 function isExpiring(player: GeneratedPlayer): boolean {
   return player.contract.years <= 0;
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +263,117 @@ export function createFreeAgencyMarket(
     freeAgents,
     signedPlayers: [],
     day: 0,
+  };
+}
+
+export function calculateQualifyingOfferSalary(players: GeneratedPlayer[]): number {
+  const salaries = players
+    .filter((player) => player.teamId !== '' && player.rosterStatus === 'MLB')
+    .map((player) => player.contract.annualSalary)
+    .sort((left, right) => right - left);
+
+  if (salaries.length === 0) {
+    return 20;
+  }
+
+  const topSalaries = salaries.slice(0, Math.min(QUALIFYING_OFFER_SALARY_PLAYER_COUNT, salaries.length));
+  const average = topSalaries.reduce((total, salary) => total + salary, 0) / topSalaries.length;
+  return roundCurrency(average);
+}
+
+export function getQualifyingOfferEligiblePlayers(
+  players: GeneratedPlayer[],
+  teamId: string,
+  serviceTime: Map<string, number>,
+): GeneratedPlayer[] {
+  const qualifyingOfferSalary = calculateQualifyingOfferSalary(players);
+  return players
+    .filter((player) =>
+      player.teamId === teamId
+      && player.rosterStatus === 'MLB'
+      && player.contract.years <= 1
+      && (serviceTime.get(player.id) ?? serviceDaysToYears(player.serviceTimeDays)) >= QUALIFYING_OFFER_MIN_SERVICE_YEARS
+      && calculateMarketValue(player) >= qualifyingOfferSalary * QUALIFYING_OFFER_MARKET_VALUE_FRACTION,
+    )
+    .sort((left, right) => calculateMarketValue(right) - calculateMarketValue(left));
+}
+
+export function issueQualifyingOffer(
+  player: GeneratedPlayer,
+  teamId: string,
+  season: number,
+  amount: number,
+): QualifyingOfferRecord {
+  return {
+    playerId: player.id,
+    teamId,
+    season,
+    marketValue: calculateMarketValue(player),
+    amount: roundCurrency(amount),
+    status: 'offered',
+    signingTeamId: null,
+    compensationPickId: null,
+  };
+}
+
+export function resolveQualifyingOffer(
+  player: GeneratedPlayer,
+  record: QualifyingOfferRecord,
+  rng: GameRNG,
+): QualifyingOfferResolution {
+  const leverage = record.marketValue - record.amount;
+  const ageAdjustment = player.age >= 35 ? 0.26 : player.age >= 32 ? 0.12 : player.age <= 28 ? -0.12 : 0;
+  const trajectoryAdjustment = player.developmentTrajectory === 'bust_risk'
+    ? 0.16
+    : player.developmentTrajectory === 'below_expectations'
+      ? 0.08
+      : player.developmentTrajectory === 'ahead_of_curve'
+        ? -0.10
+        : 0;
+  const acceptChance = clamp(
+    0.52
+      - (leverage * 0.05)
+      + ageAdjustment
+      + trajectoryAdjustment
+      + (record.amount >= player.contract.annualSalary * 1.5 ? 0.05 : 0),
+    0.08,
+    0.88,
+  );
+  const accepted = rng.nextFloat() < acceptChance;
+
+  if (!accepted) {
+    return {
+      player,
+      record: {
+        ...record,
+        status: 'rejected',
+      },
+    };
+  }
+
+  return {
+    player: {
+      ...player,
+      contract: {
+        ...player.contract,
+        years: 1,
+        annualSalary: roundCurrency(record.amount),
+        totalValue: roundCurrency(record.amount),
+        noTradeClause: false,
+        noTradeClauseType: 'none',
+        playerOption: false,
+        teamOption: false,
+        optOutYears: [],
+        signingBonus: 0,
+        buyoutAmount: 0,
+        deferredMoney: [],
+      },
+    },
+    record: {
+      ...record,
+      status: 'accepted',
+      signingTeamId: record.teamId,
+    },
   };
 }
 

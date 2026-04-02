@@ -1,6 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, BrainCircuit } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { toDisplayRating } from '@mbd/sim-core';
+import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
+import { ArrowLeft, BrainCircuit, FileSignature, TrendingUp } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 
@@ -15,6 +17,31 @@ interface PlayerDTO {
   letterGrade: string;
   rosterStatus: string;
   teamId: string;
+  ceiling: number | null;
+  floor: number | null;
+  developmentProgram: string | null;
+  developmentTrajectory: string;
+  contract: {
+    years: number;
+    annualSalary: number;
+    totalValue: number;
+    noTradeClause: boolean;
+    noTradeClauseType: string;
+    playerOption: boolean;
+    teamOption: boolean;
+    optOutYears: number[];
+    signingBonus: number;
+    buyoutAmount: number;
+    deferredMoney: Array<{ yearOffset: number; amount: number }>;
+  };
+  extensionHistory: Array<{
+    season: number;
+    teamId: string;
+    years: number;
+    annualSalary: number;
+    totalValue: number;
+    outcome: string;
+  }>;
   stats: {
     pa: number;
     ab: number;
@@ -50,6 +77,25 @@ interface PersonalityProfile {
   summary: string;
 }
 
+interface DevelopmentReportsView {
+  playerId: string;
+  history: Array<{
+    season: number;
+    month: number;
+    trajectory: string;
+    summary: string;
+    overallRating: number;
+  }>;
+  recommendations: Array<{
+    playerId: string;
+    teamId: string;
+    fromPosition: string;
+    toPosition: string;
+    confidence: number;
+    reason: string;
+  }>;
+}
+
 function gradeColor(grade: string): string {
   switch (grade) {
     case 'A': return 'bg-accent-success/20 text-accent-success';
@@ -67,6 +113,39 @@ function moraleTone(score: number): string {
   return 'text-accent-danger';
 }
 
+function moneyLabel(value: number): string {
+  return `$${value.toFixed(1)}M`;
+}
+
+function labelize(value: string): string {
+  return value.replaceAll('_', ' ');
+}
+
+function displayBand(value: number | null): number {
+  if (value == null) return 0;
+  return value > 100 ? toDisplayRating(value) : value;
+}
+
+function badgeVariantForTrajectory(trajectory: string): 'success' | 'info' | 'warning' | 'outline' {
+  switch (trajectory) {
+    case 'ahead_of_curve':
+    case 'improving':
+      return 'success';
+    case 'stalling':
+    case 'on_track':
+      return 'info';
+    case 'declining':
+      return 'warning';
+    default:
+      return 'outline';
+  }
+}
+
+function formatMonth(month: number): string {
+  const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return labels[Math.max(0, Math.min(labels.length - 1, month - 1))] ?? `M${month}`;
+}
+
 const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 
 export default function PlayerProfilePage() {
@@ -76,21 +155,24 @@ export default function PlayerProfilePage() {
   const { isInitialized, day, season } = useGameStore();
   const [player, setPlayer] = useState<PlayerDTO | null>(null);
   const [profile, setProfile] = useState<PersonalityProfile | null>(null);
+  const [developmentReports, setDevelopmentReports] = useState<DevelopmentReportsView | null>(null);
 
   const fetchPlayer = useCallback(async () => {
     if (!isInitialized || !workerReady || !playerId) return;
 
-    const [playerData, profileData] = await Promise.all([
+    const [playerData, profileData, reportData] = await Promise.all([
       worker.getPlayer(playerId),
       worker.getPersonalityProfile(playerId),
+      worker.getDevelopmentReports(playerId),
     ]);
 
     setPlayer(playerData as PlayerDTO | null);
     setProfile(profileData as PersonalityProfile | null);
-  }, [isInitialized, workerReady, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setDevelopmentReports(reportData as DevelopmentReportsView | null);
+  }, [isInitialized, playerId, worker, workerReady]);
 
   useEffect(() => {
-    fetchPlayer();
+    void fetchPlayer();
   }, [fetchPlayer, day, season]);
 
   if (!player) {
@@ -102,6 +184,8 @@ export default function PlayerProfilePage() {
   }
 
   const isPitcher = PITCHER_POSITIONS.has(player.position);
+  const trajectoryVariant = badgeVariantForTrajectory(player.developmentTrajectory);
+  const currentContract = player.contract;
 
   return (
     <div className="space-y-6">
@@ -113,25 +197,18 @@ export default function PlayerProfilePage() {
         Back to Players
       </Link>
 
-      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-        <div className="flex items-start justify-between">
+      <Card>
+        <CardContent className="flex flex-col gap-6 p-6 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="font-heading text-3xl font-bold text-dynasty-text">
               {player.firstName} {player.lastName}
             </h1>
-            <div className="mt-2 flex items-center gap-3">
-              <span className="rounded bg-dynasty-elevated px-2 py-0.5 font-data text-sm text-dynasty-muted">
-                {player.position}
-              </span>
-              <span className="font-data text-sm text-dynasty-muted">
-                Age {player.age}
-              </span>
-              <span className="font-data text-sm text-dynasty-muted">
-                {player.teamId.toUpperCase()}
-              </span>
-              <span className="rounded bg-dynasty-elevated px-2 py-0.5 font-data text-xs uppercase text-accent-info">
-                {player.rosterStatus}
-              </span>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <Badge variant="outline">{player.position}</Badge>
+              <span className="font-data text-sm text-dynasty-muted">Age {player.age}</span>
+              <span className="font-data text-sm text-dynasty-muted">{player.teamId.toUpperCase()}</span>
+              <Badge variant="info">{player.rosterStatus}</Badge>
+              <Badge variant={trajectoryVariant}>{player.developmentTrajectory}</Badge>
             </div>
           </div>
           <div className="text-right">
@@ -142,22 +219,86 @@ export default function PlayerProfilePage() {
               {player.letterGrade}
             </span>
           </div>
-        </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
+              <TrendingUp className="h-4 w-4 text-accent-success" />
+              Development Trajectory
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  Current Program
+                </div>
+                <div className="mt-1 font-heading text-sm text-dynasty-text">
+                  {player.developmentProgram ? labelize(player.developmentProgram) : 'No assignment'}
+                </div>
+              </div>
+              <Badge variant={trajectoryVariant}>{player.developmentTrajectory}</Badge>
+            </div>
+            <div className="space-y-3">
+              <GradeBar label="Floor" grade={displayBand(player.floor)} />
+              <GradeBar label="Current" grade={player.displayRating} />
+              <GradeBar label="Ceiling" grade={displayBand(player.ceiling)} />
+            </div>
+            <StatLine
+              stats={[
+                { label: 'Floor', value: displayBand(player.floor) || '--' },
+                { label: 'Current', value: player.displayRating },
+                { label: 'Ceiling', value: displayBand(player.ceiling) || '--' },
+              ]}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
+              <FileSignature className="h-4 w-4 text-accent-warning" />
+              Contract Snapshot
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <StatLine
+              stats={[
+                { label: 'Years', value: currentContract.years },
+                { label: 'AAV', value: moneyLabel(currentContract.annualSalary) },
+                { label: 'Total', value: moneyLabel(currentContract.totalValue) },
+              ]}
+            />
+            <StatLine
+              stats={[
+                { label: 'Bonus', value: moneyLabel(currentContract.signingBonus) },
+                { label: 'Opt-Outs', value: currentContract.optOutYears.length || '--' },
+                { label: 'NTC', value: currentContract.noTradeClause ? currentContract.noTradeClauseType : 'none' },
+              ]}
+            />
+          </CardContent>
+        </Card>
       </div>
 
-      {profile && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-            <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-              <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        {profile && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
                 <BrainCircuit className="h-4 w-4 text-accent-info" />
                 Personality Profile
-              </h2>
-              <span className="rounded bg-dynasty-elevated px-2 py-1 font-heading text-xs uppercase text-accent-primary">
-                {profile.archetype.replace('_', ' ')}
-              </span>
-            </div>
-            <div className="space-y-4 p-4">
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <Badge variant="info">{labelize(profile.archetype)}</Badge>
+                <div className={`font-data text-lg font-bold ${moraleTone(profile.morale.score)}`}>
+                  Morale {profile.morale.score}
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <PersonalityStat label="Work Ethic" value={profile.personality.workEthic} />
                 <PersonalityStat label="Toughness" value={profile.personality.mentalToughness} />
@@ -169,53 +310,107 @@ export default function PlayerProfilePage() {
                 <div className="mt-1 font-heading text-sm text-dynasty-text">
                   {profile.summary}
                 </div>
+                <div className="mt-3 font-data text-xs text-dynasty-muted">
+                  {profile.morale.trend.toUpperCase()} | Updated {profile.morale.lastUpdated}
+                </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
+        )}
 
-          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-            <div className="border-b border-dynasty-border px-4 py-3">
-              <h2 className="font-heading text-sm font-semibold text-dynasty-text">
-                Morale Snapshot
-              </h2>
-            </div>
-            <div className="space-y-4 p-4">
-              <div className="flex items-end justify-between">
-                <div>
-                  <div className="font-heading text-xs uppercase text-dynasty-muted">Current score</div>
-                  <div className={`font-data text-4xl font-bold ${moraleTone(profile.morale.score)}`}>
-                    {profile.morale.score}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Checkpoint History</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {developmentReports?.history.length ? developmentReports.history.map((entry) => (
+              <div key={`${entry.season}-${entry.month}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-heading text-sm text-dynasty-text">
+                    {formatMonth(entry.month)} S{entry.season}
                   </div>
+                  <Badge variant={badgeVariantForTrajectory(entry.trajectory)}>{entry.trajectory}</Badge>
                 </div>
-                <div className="text-right">
-                  <div className="font-heading text-xs uppercase text-dynasty-muted">Trend</div>
-                  <div className="font-data text-sm text-dynasty-text">
-                    {profile.morale.trend.toUpperCase()}
-                  </div>
-                </div>
-              </div>
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="font-heading text-xs uppercase text-dynasty-muted">Latest note</div>
-                <div className="mt-1 font-heading text-sm text-dynasty-text">
-                  {profile.morale.summary}
-                </div>
+                <div className="mt-2 text-sm text-dynasty-muted">{entry.summary}</div>
                 <div className="mt-2 font-data text-xs text-dynasty-muted">
-                  Updated {profile.morale.lastUpdated}
+                  Overall {displayBand(entry.overallRating)}
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            )) : (
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
+                No monthly checkpoints recorded yet.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Conversion Recommendations</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {developmentReports?.recommendations.length ? developmentReports.recommendations.map((entry) => (
+              <div key={`${entry.playerId}-${entry.fromPosition}-${entry.toPosition}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-heading text-sm text-dynasty-text">
+                    {entry.fromPosition} to {entry.toPosition}
+                  </div>
+                  <Badge variant={entry.confidence >= 0.65 ? 'success' : 'info'}>
+                    {Math.round(entry.confidence * 100)}%
+                  </Badge>
+                </div>
+                <div className="mt-2 text-sm text-dynasty-muted">{entry.reason}</div>
+              </div>
+            )) : (
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
+                No position-change recommendations on file.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Extension History</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {player.extensionHistory.length ? player.extensionHistory.map((entry) => (
+              <div key={`${entry.season}-${entry.teamId}-${entry.years}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-heading text-sm text-dynasty-text">
+                    Season {entry.season}
+                  </div>
+                  <Badge variant={entry.outcome === 'accepted' ? 'success' : entry.outcome === 'rejected' ? 'warning' : 'outline'}>
+                    {entry.outcome}
+                  </Badge>
+                </div>
+                <StatLine
+                  className="mt-2"
+                  stats={[
+                    { label: 'Team', value: entry.teamId.toUpperCase() },
+                    { label: 'Years', value: entry.years },
+                    { label: 'AAV', value: moneyLabel(entry.annualSalary) },
+                    { label: 'Total', value: moneyLabel(entry.totalValue) },
+                  ]}
+                />
+              </div>
+            )) : (
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
+                No extension negotiations recorded.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {player.stats ? (
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="border-b border-dynasty-border px-4 py-3">
-            <h2 className="font-heading text-sm font-semibold text-dynasty-text">
-              Season Stats
-            </h2>
-          </div>
-          <div className="p-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Season Stats</CardTitle>
+          </CardHeader>
+          <CardContent>
             {isPitcher ? (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
                 <StatBlock label="ERA" value={player.stats.era} />
@@ -236,14 +431,16 @@ export default function PlayerProfilePage() {
                 <StatBlock label="PA" value={String(player.stats.pa)} />
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8 text-center">
-          <p className="font-heading text-sm text-dynasty-muted">
-            No stats yet. Sim games to see this player&apos;s performance.
-          </p>
-        </div>
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="font-heading text-sm text-dynasty-muted">
+              No stats yet. Sim games to see this player&apos;s performance.
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

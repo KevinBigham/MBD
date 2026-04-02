@@ -1,7 +1,7 @@
 /**
  * @module prng
  * Seedable PRNG system wrapping pure-rand.
- * Math.random() is NEVER used. All randomness flows through this module.
+ * The JS global random API is never used. All randomness flows through this module.
  */
 
 import prand from 'pure-rand';

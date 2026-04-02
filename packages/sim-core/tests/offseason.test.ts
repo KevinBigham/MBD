@@ -32,12 +32,14 @@ describe('advanceOffseasonDay', () => {
       'season_review',
       'arbitration',
       'tender_nontender',
+      'extensions',
       'qualifying_offers',
       'free_agency',
       'draft',
       'protection_audit',
       'rule5_draft',
       'international_signing',
+      'coaching_changes',
       'spring_training',
     ]);
   });

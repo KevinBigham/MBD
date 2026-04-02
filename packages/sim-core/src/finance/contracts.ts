@@ -1,7 +1,7 @@
 /**
  * @module contracts
  * Contract, arbitration, payroll, and team finance system.
- * Uses GameRNG for all randomness — Math.random() is NEVER used.
+ * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';
@@ -176,6 +176,73 @@ export interface TeamPayroll {
   capSpace: number;
 }
 
+export interface ExtensionTeamContext {
+  season: number;
+  teamId: string;
+  teamWinPct: number;
+  teamBudget: number;
+  currentPayroll: number;
+  futureCommitments: number[];
+  controlYearsByPlayer: Map<string, number>;
+  serviceYearsByPlayer: Map<string, number>;
+  moraleByPlayer: Map<string, number>;
+}
+
+export interface ExtensionContractTerms {
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+  noTradeClause: boolean;
+  noTradeClauseType: 'none' | 'partial' | 'full';
+  playerOption: boolean;
+  teamOption: boolean;
+  optOutYears: number[];
+  signingBonus: number;
+  buyoutAmount: number;
+  deferredMoney: Array<{
+    yearOffset: number;
+    amount: number;
+  }>;
+}
+
+export interface ExtensionWillingness {
+  willingness: number;
+  demandMultiplier: number;
+  walkAwayThreshold: number;
+}
+
+export interface NegotiationRound {
+  round: number;
+  status: 'accepted' | 'rejected' | 'countered';
+  gap: number;
+  teamOffer: ExtensionContractTerms;
+  playerDemand: ExtensionContractTerms;
+  walkAwayRoll: number;
+}
+
+export interface ExtensionNegotiationSession {
+  playerId: string;
+  targetContract: ExtensionContractTerms;
+  counterOffer: ExtensionContractTerms | null;
+  rounds: NegotiationRound[];
+}
+
+export interface ExtensionResult {
+  status: 'accepted' | 'rejected' | 'countered';
+  finalContract?: ExtensionContractTerms;
+  counterOffer?: ExtensionContractTerms;
+  rounds: NegotiationRound[];
+  session: ExtensionNegotiationSession;
+}
+
+export interface TeamExtensionProcessResult {
+  players: GeneratedPlayer[];
+  results: Array<{
+    playerId: string;
+    result: ExtensionResult;
+  }>;
+}
+
 // ---------------------------------------------------------------------------
 // Helper: get overall rating for any player
 // ---------------------------------------------------------------------------
@@ -186,6 +253,130 @@ function getPlayerOverall(player: GeneratedPlayer): number {
     return pitcherOverall(player.pitcherAttributes);
   }
   return hitterOverall(player.hitterAttributes);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function controlYearsForPlayer(player: GeneratedPlayer, context: ExtensionTeamContext): number {
+  return Math.max(1, context.controlYearsByPlayer.get(player.id) ?? Math.max(1, player.contract.years));
+}
+
+function serviceYearsForPlayer(player: GeneratedPlayer, context: ExtensionTeamContext): number {
+  return Math.max(
+    0,
+    context.serviceYearsByPlayer.get(player.id) ?? serviceDaysToYears(player.serviceTimeDays),
+  );
+}
+
+function moraleForPlayer(player: GeneratedPlayer, context: ExtensionTeamContext): number {
+  return clamp(context.moraleByPlayer.get(player.id) ?? 55, 0, 100);
+}
+
+function trajectoryDemandAdjustment(player: GeneratedPlayer): number {
+  switch (player.developmentTrajectory) {
+    case 'ahead_of_curve':
+      return 0.16;
+    case 'below_expectations':
+      return -0.08;
+    case 'bust_risk':
+      return -0.16;
+    case 'on_track':
+    default:
+      return 0;
+  }
+}
+
+function normalizeExtensionTerms(offer: ExtensionContractTerms): ExtensionContractTerms {
+  return {
+    ...offer,
+    years: Math.max(1, Math.round(offer.years)),
+    annualSalary: roundCurrency(Math.max(LEAGUE_MINIMUM_SALARY, offer.annualSalary)),
+    totalValue: roundCurrency(Math.max(0, offer.totalValue)),
+    noTradeClauseType: offer.noTradeClause ? offer.noTradeClauseType : 'none',
+    optOutYears: [...new Set(offer.optOutYears.filter((year) => year >= 1 && year <= offer.years))].sort((left, right) => left - right),
+    signingBonus: roundCurrency(Math.max(0, offer.signingBonus)),
+    buyoutAmount: roundCurrency(Math.max(0, offer.buyoutAmount)),
+    deferredMoney: offer.deferredMoney.map((installment) => ({
+      yearOffset: Math.max(0, Math.round(installment.yearOffset)),
+      amount: roundCurrency(Math.max(0, installment.amount)),
+    })),
+  };
+}
+
+function recalculateExtensionTotals(offer: ExtensionContractTerms): ExtensionContractTerms {
+  const normalized = normalizeExtensionTerms(offer);
+  const deferredTotal = normalized.deferredMoney.reduce((total, installment) => total + installment.amount, 0);
+  return {
+    ...normalized,
+    totalValue: roundCurrency(
+      (normalized.annualSalary * normalized.years)
+      + normalized.signingBonus
+      + normalized.buyoutAmount
+      + deferredTotal,
+    ),
+  };
+}
+
+function buildNegotiationCounter(
+  demand: ExtensionContractTerms,
+  willingness: ExtensionWillingness,
+  round: number,
+  minimumAnnualSalary: number,
+): ExtensionContractTerms {
+  const concessionRate = clamp(0.09 + (willingness.willingness * 0.10) + ((round - 1) * 0.04), 0.09, 0.24);
+  return recalculateExtensionTotals({
+    ...demand,
+    annualSalary: Math.max(minimumAnnualSalary, roundCurrency(demand.annualSalary * (1 - concessionRate))),
+    signingBonus: roundCurrency(demand.signingBonus * (1 - concessionRate / 2)),
+    buyoutAmount: roundCurrency(demand.buyoutAmount * (1 - concessionRate / 2)),
+    deferredMoney: demand.deferredMoney.map((installment) => ({
+      ...installment,
+      amount: roundCurrency(installment.amount * (1 - concessionRate / 2)),
+    })),
+  });
+}
+
+function blendOffers(
+  teamOffer: ExtensionContractTerms,
+  counterOffer: ExtensionContractTerms,
+  aggression: number,
+): ExtensionContractTerms {
+  return recalculateExtensionTotals({
+    ...counterOffer,
+    years: Math.max(teamOffer.years, counterOffer.years),
+    annualSalary: roundCurrency(
+      teamOffer.annualSalary + ((counterOffer.annualSalary - teamOffer.annualSalary) * aggression),
+    ),
+    signingBonus: roundCurrency(
+      teamOffer.signingBonus + ((counterOffer.signingBonus - teamOffer.signingBonus) * aggression),
+    ),
+    buyoutAmount: roundCurrency(
+      teamOffer.buyoutAmount + ((counterOffer.buyoutAmount - teamOffer.buyoutAmount) * aggression),
+    ),
+    deferredMoney: counterOffer.deferredMoney.map((installment, index) => ({
+      yearOffset: installment.yearOffset,
+      amount: roundCurrency(
+        (teamOffer.deferredMoney[index]?.amount ?? 0)
+        + ((installment.amount - (teamOffer.deferredMoney[index]?.amount ?? 0)) * aggression),
+      ),
+    })),
+  });
+}
+
+function extensionCandidateScore(player: GeneratedPlayer, context: ExtensionTeamContext): number {
+  const controlYears = controlYearsForPlayer(player, context);
+  const overall = getPlayerOverall(player);
+  return overall
+    + (controlYears <= 1 ? 90 : controlYears === 2 ? 45 : 0)
+    + (player.age <= 27 ? 25 : 0)
+    + (player.position === 'SP' ? 18 : 0)
+    - Math.max(0, player.age - 32) * 20;
 }
 
 export function serviceDaysToYears(serviceTimeDays: number): number {
@@ -471,4 +662,367 @@ export function getArbEligiblePlayers(
     const years = serviceTime.get(p.id) ?? serviceDaysToYears(p.serviceTimeDays);
     return years >= ARB_FIRST_YEAR && years <= ARB_LAST_YEAR;
   });
+}
+
+export function evaluateExtensionWillingness(
+  player: GeneratedPlayer,
+  context: ExtensionTeamContext,
+  rng: GameRNG,
+): ExtensionWillingness {
+  const controlYears = controlYearsForPlayer(player, context);
+  const serviceYears = serviceYearsForPlayer(player, context);
+  const morale = moraleForPlayer(player, context);
+  const trajectoryAdjustment = trajectoryDemandAdjustment(player);
+  const ageDemandAdjustment = player.age <= 25 ? 0.10 : player.age >= 32 ? -0.12 : player.age >= 29 ? -0.03 : 0;
+  const ageWillingnessAdjustment = player.age >= 32 ? 0.14 : player.age <= 25 ? -0.08 : 0;
+  const urgencyAdjustment = controlYears <= 1 ? 0.24 : controlYears === 2 ? 0.12 : -0.04;
+  const competitivenessAdjustment = (context.teamWinPct - 0.5) * 0.35;
+  const moraleAdjustment = ((morale - 50) / 50) * 0.12;
+  const payrollPressure = context.teamBudget > 0
+    ? clamp(context.currentPayroll / context.teamBudget, 0, 1.4)
+    : 1;
+  const demandMultiplier = clamp(
+    1.02
+      + trajectoryAdjustment
+      + ageDemandAdjustment
+      - Math.max(0, competitivenessAdjustment * 0.20)
+      - (controlYears <= 1 ? 0.05 : 0)
+      + (serviceYears >= 6 ? 0.04 : 0)
+      + ((rng.nextFloat() - 0.5) * 0.04),
+    0.78,
+    1.55,
+  );
+  const willingness = clamp(
+    0.44
+      + urgencyAdjustment
+      + competitivenessAdjustment
+      + moraleAdjustment
+      + ageWillingnessAdjustment
+      - trajectoryAdjustment
+      - Math.max(0, payrollPressure - 0.9) * 0.10,
+    0.08,
+    0.95,
+  );
+  const walkAwayThreshold = clamp(
+    0.11
+      + ((demandMultiplier - 1) * 0.18)
+      + ((0.55 - willingness) * 0.10),
+    0.08,
+    0.28,
+  );
+
+  return {
+    willingness: Math.round(willingness * 1000) / 1000,
+    demandMultiplier: Math.round(demandMultiplier * 1000) / 1000,
+    walkAwayThreshold: Math.round(walkAwayThreshold * 1000) / 1000,
+  };
+}
+
+export function calculateExtensionOffer(
+  player: GeneratedPlayer,
+  context: ExtensionTeamContext,
+  years: number,
+  rng: GameRNG,
+): ExtensionContractTerms {
+  const requestedYears = clamp(
+    Math.round(years),
+    1,
+    Math.min(MAX_CONTRACT_YEARS, Math.max(1, 40 - player.age + (player.age <= 27 ? 1 : 0))),
+  );
+  const willingness = evaluateExtensionWillingness(player, context, rng.fork());
+  const serviceYears = serviceYearsForPlayer(player, context);
+  const projectedValue = Math.max(
+    calculatePlayerValue(player, Math.max(ARB_FIRST_YEAR, serviceYears)),
+    calculatePlayerValue(player, ARB_LAST_YEAR + 1) * 0.72,
+  );
+  const budgetPressure = context.teamBudget > 0
+    ? clamp(context.currentPayroll / context.teamBudget, 0, 1.4)
+    : 1;
+  const averageFutureCommitment = context.futureCommitments.length > 0
+    ? context.futureCommitments
+      .slice(0, Math.min(context.futureCommitments.length, requestedYears))
+      .reduce((total, value) => total + value, 0) / Math.min(context.futureCommitments.length, requestedYears)
+    : 0;
+  const futurePressure = context.teamBudget > 0
+    ? clamp(averageFutureCommitment / context.teamBudget, 0, 1.5)
+    : 0;
+  const budgetAdjustment = clamp(
+    1
+      - (Math.max(0, budgetPressure - 0.72) * 0.40)
+      - (Math.max(0, futurePressure - 0.55) * 0.15),
+    0.78,
+    1.08,
+  );
+  const annualSalary = roundCurrency(
+    Math.max(
+      LEAGUE_MINIMUM_SALARY,
+      projectedValue * willingness.demandMultiplier * budgetAdjustment,
+    ),
+  );
+  const overall = getPlayerOverall(player);
+  const noTradeClause = overall >= NTC_RATING_THRESHOLD || annualSalary >= 18;
+  const noTradeClauseType = noTradeClause
+    ? (overall >= 450 || requestedYears >= 6 ? 'full' : 'partial')
+    : 'none';
+  const playerOption = requestedYears >= 4
+    && player.age <= 31
+    && overall >= PLAYER_OPTION_RATING_THRESHOLD
+    && rng.nextFloat() < 0.32;
+  const teamOption = !playerOption
+    && requestedYears >= 3
+    && budgetPressure > 0.78
+    && rng.nextFloat() < 0.28;
+  const optOutYears = playerOption
+    ? [Math.max(2, requestedYears - 1)]
+    : requestedYears >= 6 && willingness.demandMultiplier >= 1.18
+      ? [3]
+      : [];
+  const signingBonus = roundCurrency(
+    annualSalary * clamp(0.05 + ((1 - willingness.willingness) * 0.10), 0.05, 0.13),
+  );
+  const buyoutAmount = teamOption ? roundCurrency(annualSalary * 0.18) : 0;
+  const deferredMoney = annualSalary * requestedYears >= 60 && budgetPressure > 0.8
+    ? [{
+      yearOffset: requestedYears,
+      amount: roundCurrency(annualSalary * 0.15),
+    }]
+    : [];
+
+  return recalculateExtensionTotals({
+    years: requestedYears,
+    annualSalary,
+    totalValue: 0,
+    noTradeClause,
+    noTradeClauseType,
+    playerOption,
+    teamOption,
+    optOutYears,
+    signingBonus,
+    buyoutAmount,
+    deferredMoney,
+  });
+}
+
+export function negotiateExtension(
+  player: GeneratedPlayer,
+  context: ExtensionTeamContext,
+  offer: ExtensionContractTerms,
+  rng: GameRNG,
+  session?: ExtensionNegotiationSession,
+): ExtensionResult {
+  const normalizedOffer = recalculateExtensionTotals(offer);
+  const demandProfile = evaluateExtensionWillingness(player, context, rng.fork());
+  const nextSession = session?.playerId === player.id
+    ? {
+      ...session,
+      rounds: [...session.rounds],
+    }
+    : {
+      playerId: player.id,
+      targetContract: calculateExtensionOffer(player, context, normalizedOffer.years, rng.fork()),
+      counterOffer: null,
+      rounds: [],
+    };
+  const currentDemand = nextSession.counterOffer ?? nextSession.targetContract;
+  const gap = clamp(
+    (currentDemand.annualSalary - normalizedOffer.annualSalary) / Math.max(currentDemand.annualSalary, 0.01),
+    0,
+    1,
+  );
+  const acceptGap = clamp(0.05 + (demandProfile.willingness * 0.06), 0.05, 0.11);
+  const walkAwayRoll = Math.round(rng.nextFloat() * 1000) / 1000;
+  const roundNumber = nextSession.rounds.length + 1;
+
+  if (gap <= acceptGap) {
+    const rounds = [
+      ...nextSession.rounds,
+      {
+        round: roundNumber,
+        status: 'accepted' as const,
+        gap: Math.round(gap * 1000) / 1000,
+        teamOffer: normalizedOffer,
+        playerDemand: currentDemand,
+        walkAwayRoll,
+      },
+    ];
+    const acceptedSession: ExtensionNegotiationSession = {
+      ...nextSession,
+      rounds,
+      counterOffer: null,
+    };
+    return {
+      status: 'accepted',
+      finalContract: normalizedOffer,
+      rounds,
+      session: acceptedSession,
+    };
+  }
+
+  const shouldReject = roundNumber >= 3
+    || (
+      roundNumber >= 2
+      && gap > demandProfile.walkAwayThreshold * 1.6
+      && walkAwayRoll < clamp(gap - demandProfile.walkAwayThreshold, 0.08, 0.65)
+    );
+
+  if (shouldReject) {
+    const rounds = [
+      ...nextSession.rounds,
+      {
+        round: roundNumber,
+        status: 'rejected' as const,
+        gap: Math.round(gap * 1000) / 1000,
+        teamOffer: normalizedOffer,
+        playerDemand: currentDemand,
+        walkAwayRoll,
+      },
+    ];
+    return {
+      status: 'rejected',
+      rounds,
+      session: {
+        ...nextSession,
+        rounds,
+        counterOffer: null,
+      },
+    };
+  }
+
+  const counterOffer = buildNegotiationCounter(
+    currentDemand,
+    demandProfile,
+    roundNumber,
+    roundCurrency(normalizedOffer.annualSalary + 0.25),
+  );
+  const rounds = [
+    ...nextSession.rounds,
+    {
+      round: roundNumber,
+      status: 'countered' as const,
+      gap: Math.round(gap * 1000) / 1000,
+      teamOffer: normalizedOffer,
+      playerDemand: counterOffer,
+      walkAwayRoll,
+    },
+  ];
+  return {
+    status: 'countered',
+    counterOffer,
+    rounds,
+    session: {
+      ...nextSession,
+      rounds,
+      counterOffer,
+    },
+  };
+}
+
+export function processTeamExtensions(
+  context: ExtensionTeamContext,
+  players: GeneratedPlayer[],
+  rng: GameRNG,
+): TeamExtensionProcessResult {
+  if (context.currentPayroll > context.teamBudget * 1.03) {
+    return {
+      players,
+      results: [],
+    };
+  }
+
+  const playerIndex = new Map(players.map((player, index) => [player.id, index] as const));
+  const nextPlayers = [...players];
+  const results: TeamExtensionProcessResult['results'] = [];
+  let workingPayroll = context.currentPayroll;
+
+  const candidates = players
+    .filter((player) =>
+      player.teamId === context.teamId
+      && player.rosterStatus === 'MLB'
+      && getPlayerOverall(player) >= 260
+      && !(player.contract.noTradeClause && player.contract.noTradeClauseType === 'full' && player.contract.years >= 2)
+      && !player.extensionHistory?.some((entry) => entry.season === context.season && entry.outcome === 'accepted'),
+    )
+    .sort((left, right) => {
+      const scoreDelta = extensionCandidateScore(right, context) - extensionCandidateScore(left, context);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      return left.id.localeCompare(right.id);
+    })
+    .slice(0, 3);
+
+  for (const player of candidates) {
+    const controlYears = controlYearsForPlayer(player, context);
+    const desiredYears = controlYears <= 1 ? (player.age <= 30 ? 5 : 3) : (player.age <= 27 ? 6 : 4);
+    const openingOffer = calculateExtensionOffer(player, {
+      ...context,
+      currentPayroll: workingPayroll,
+    }, desiredYears, rng.fork());
+
+    if (workingPayroll + openingOffer.annualSalary > context.teamBudget * 1.08) {
+      continue;
+    }
+
+    let result = negotiateExtension(player, {
+      ...context,
+      currentPayroll: workingPayroll,
+    }, openingOffer, rng.fork());
+    let latestOffer = openingOffer;
+
+    while (result.status === 'countered' && result.counterOffer) {
+      const aggression = result.rounds.length === 1 ? 0.55 : 0.82;
+      latestOffer = blendOffers(latestOffer, result.counterOffer, aggression);
+      result = negotiateExtension(player, {
+        ...context,
+        currentPayroll: workingPayroll,
+      }, latestOffer, rng.fork(), result.session);
+    }
+
+    results.push({
+      playerId: player.id,
+      result,
+    });
+
+    if (result.status === 'accepted' && result.finalContract) {
+      const index = playerIndex.get(player.id);
+      if (index == null) {
+        continue;
+      }
+
+      nextPlayers[index] = {
+        ...player,
+        contract: {
+          ...player.contract,
+          years: result.finalContract.years,
+          annualSalary: result.finalContract.annualSalary,
+          totalValue: result.finalContract.totalValue,
+          noTradeClause: result.finalContract.noTradeClause,
+          noTradeClauseType: result.finalContract.noTradeClauseType,
+          playerOption: result.finalContract.playerOption,
+          teamOption: result.finalContract.teamOption,
+          optOutYears: result.finalContract.optOutYears,
+          signingBonus: result.finalContract.signingBonus,
+          buyoutAmount: result.finalContract.buyoutAmount,
+          deferredMoney: result.finalContract.deferredMoney,
+        },
+        extensionHistory: [
+          ...(player.extensionHistory ?? []),
+          {
+            season: context.season,
+            teamId: context.teamId,
+            years: result.finalContract.years,
+            annualSalary: result.finalContract.annualSalary,
+            totalValue: result.finalContract.totalValue,
+            outcome: 'accepted',
+          },
+        ],
+      };
+      workingPayroll += result.finalContract.annualSalary;
+    }
+  }
+
+  return {
+    players: nextPlayers,
+    results,
+  };
 }

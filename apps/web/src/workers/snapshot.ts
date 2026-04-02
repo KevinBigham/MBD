@@ -113,6 +113,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 4 &&
     snapshot.schemaVersion !== 5 &&
     snapshot.schemaVersion !== 6 &&
+    snapshot.schemaVersion !== 7 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -149,6 +150,8 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
     freeAgencyMarket: state.freeAgencyMarket,
     news: state.news,
     rosterStates: toEntries(state.rosterStates),
+    coachingStaffs: toEntries(state.coachingStaffs),
+    coachFreeAgentPool: state.coachFreeAgentPool,
     internationalScoutingState: serializeInternationalScoutingState(state.internationalScoutingState),
     draftState: state.draftState,
     minorLeagueState: state.minorLeagueState,
@@ -191,6 +194,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     serviceTime,
     scoutingStaffs: fromEntries(snapshot.scoutingStaffs as [string, Scout[]][]),
     gmPersonalities: fromEntries(snapshot.gmPersonalities as [string, GMPersonality][]),
+    pendingExtensionNegotiations: new Map(),
     offseasonState: normalizeOffseasonState(
       snapshot.offseasonState as OffseasonState | null,
       players,
@@ -208,6 +212,8 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     freeAgencyMarket: snapshot.freeAgencyMarket as FreeAgencyMarket | null,
     news: snapshot.news as NewsItem[],
     rosterStates: fromEntries(snapshot.rosterStates as [string, RosterState][]),
+    coachingStaffs: fromEntries(snapshot.coachingStaffs as [string, FullGameState['coachFreeAgentPool']][]),
+    coachFreeAgentPool: snapshot.coachFreeAgentPool as FullGameState['coachFreeAgentPool'],
     internationalScoutingState:
       snapshot.internationalScoutingState
         ? deserializeInternationalScoutingState(snapshot.internationalScoutingState)

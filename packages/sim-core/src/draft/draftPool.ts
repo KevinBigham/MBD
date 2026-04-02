@@ -1,7 +1,7 @@
 /**
  * @module draftPool
  * Draft class generation: creates a full amateur draft + UDFA pool each season.
- * Uses GameRNG for all randomness — Math.random() is NEVER used.
+ * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';

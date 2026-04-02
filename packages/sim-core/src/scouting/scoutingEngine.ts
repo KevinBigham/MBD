@@ -6,7 +6,7 @@
  * of the truth. Elite scouts produce precise grades; mediocre scouts produce
  * noisy estimates with wide confidence intervals.
  *
- * All randomness flows through GameRNG — Math.random() is NEVER used.
+ * All randomness flows through GameRNG; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';

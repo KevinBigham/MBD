@@ -260,6 +260,28 @@ describe('draft pick ownership and compensation', () => {
     expect(draftSlots[firstRoundEnd + 1]?.round).toBe(2);
   });
 
+  it('orders premium compensatory picks ahead of standard compensatory picks', () => {
+    const compensatory = awardCompensatoryPick([
+      {
+        id: 'comp-standard',
+        season: 9,
+        awardedToTeamId: 'bos',
+        compensationForPlayerId: 'fa-standard',
+        compensationFromTeamId: 'nyy',
+        order: 100,
+      },
+    ], {
+      season: 9,
+      awardedToTeamId: 'pit',
+      compensationForPlayerId: 'fa-premium',
+      compensationFromTeamId: 'lad',
+      priorityGroup: 'premium',
+    });
+
+    expect(compensatory[0]?.compensationForPlayerId).toBe('fa-premium');
+    expect(compensatory[1]?.compensationForPlayerId).toBe('fa-standard');
+  });
+
   it('forfeits the highest eligible non-protected pick when a team signs a qualified free agent', () => {
     const ownership = createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), 11);
     const standingsOrder = determineDraftOrder([

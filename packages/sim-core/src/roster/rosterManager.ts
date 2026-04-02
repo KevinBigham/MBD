@@ -2,7 +2,7 @@
  * @module rosterManager
  * Roster management: MLB 26-man and 40-man roster enforcement, promotions,
  * demotions, DFA, options, and auto-fill logic.
- * Pure engine code — no React, no DOM, no Math.random().
+ * Pure engine code — no React, no DOM, no ambient randomness.
  */
 
 import type { GeneratedPlayer, RosterLevel } from '../player/generation.js';
