@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore, useCallback } from 'react';
 import * as Comlink from 'comlink';
+import type { TradeAsset } from '@mbd/contracts';
 import type { WorkerApi } from '@/workers/sim.worker';
 
 // ---------------------------------------------------------------------------
@@ -69,6 +70,9 @@ function isFlowAwareResult(value: unknown): value is { flowStateChanged?: boolea
 export function useWorker() {
   const api = useMemo(() => getOrCreateWorker(), []);
   const isReady = useSyncExternalStore(subscribe, getSnapshot);
+  type ScoutIFAResult = Awaited<ReturnType<WorkerApi['scoutIFAPlayer']>>;
+  type SignIFAResult = Awaited<ReturnType<WorkerApi['signIFAPlayer']>>;
+  type TradeIFAPoolResult = Awaited<ReturnType<WorkerApi['tradeIFAPoolSpace']>>;
 
   const runMutation = useCallback(
     async <T,>(operation: () => Promise<T>) => {
@@ -136,11 +140,75 @@ export function useWorker() {
     async (playerId: string) => api.scoutPlayerReport(playerId),
     [api],
   );
+  const getIFAPool = useCallback(async () => api.getIFAPool(), [api]);
+  const scoutIFAPlayer = useCallback(
+    async (playerId: string): Promise<ScoutIFAResult> => {
+      const result = await api.scoutIFAPlayer(playerId);
+      return result as ScoutIFAResult;
+    },
+    [api],
+  );
+  const signIFAPlayer = useCallback(
+    async (
+      playerId: string,
+      bonusAmount: number,
+    ): Promise<SignIFAResult> => {
+      const result = await api.signIFAPlayer(playerId, bonusAmount);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result as SignIFAResult;
+    },
+    [api],
+  );
+  const tradeIFAPoolSpace = useCallback(
+    async (
+      toTeamId: string,
+      amount: number,
+    ): Promise<TradeIFAPoolResult> => {
+      const result = await api.tradeIFAPoolSpace(toTeamId, amount);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result as TradeIFAPoolResult;
+    },
+    [api],
+  );
   const getDraftClass = useCallback(async () => api.getDraftClass(), [api]);
   const startDraft = useCallback(async () => runMutation(() => api.startDraft()), [api, runMutation]);
   const makeDraftPick = useCallback(
     async (prospectId: string) => runMutation(() => api.makeDraftPick(prospectId)),
     [api, runMutation],
+  );
+  const scoutDraftPlayer = useCallback(
+    async (prospectId: string) => {
+      const result = await api.scoutDraftPlayer(prospectId);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result;
+    },
+    [api],
+  );
+  const toggleDraftBigBoard = useCallback(
+    async (prospectId: string) => {
+      const result = await api.toggleDraftBigBoard(prospectId);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result;
+    },
+    [api],
+  );
+  const signDraftPick = useCallback(
+    async (playerId: string, bonusAmount: number) => {
+      const result = await api.signDraftPick(playerId, bonusAmount);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result;
+    },
+    [api],
   );
   const simulateRemainingDraft = useCallback(
     async () => runMutation(() => api.simulateRemainingDraft()),
@@ -148,21 +216,54 @@ export function useWorker() {
   );
   const getTradeOffers = useCallback(async () => api.getTradeOffers(), [api]);
   const getTradeHistory = useCallback(async () => api.getTradeHistory(), [api]);
+  const getTradeAssetInventory = useCallback(async (teamId: string) => api.getTradeAssetInventory(teamId), [api]);
   const proposeTrade = useCallback(
-    async (offered: string[], requested: string[], toTeamId: string) =>
-      api.proposeTrade(offered, requested, toTeamId),
+    async (offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) =>
+      api.proposeTrade(offeringAssets, requestingAssets, toTeamId),
     [api],
   );
   const respondToTradeOffer = useCallback(
     async (
       offerId: string,
       action: 'accept' | 'decline' | 'counter',
-      counterPackage?: { offeringPlayerIds: string[]; requestingPlayerIds: string[] },
+      counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
     ) => api.respondToTradeOffer(offerId, action, counterPackage),
     [api],
   );
   const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
   const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
+  const promotePlayer = useCallback(
+    async (playerId: string) => runMutation(() => api.promotePlayer(playerId)),
+    [api, runMutation],
+  );
+  const demotePlayer = useCallback(
+    async (playerId: string) => runMutation(() => api.demotePlayer(playerId)),
+    [api, runMutation],
+  );
+  const designateForAssignment = useCallback(
+    async (playerId: string) => runMutation(() => api.designateForAssignment(playerId)),
+    [api, runMutation],
+  );
+  const claimOffWaivers = useCallback(
+    async (playerId: string) => runMutation(() => api.claimOffWaivers(playerId)),
+    [api, runMutation],
+  );
+  const getPromotionCandidates = useCallback(
+    async (teamId?: string) => api.getPromotionCandidates(teamId),
+    [api],
+  );
+  const getRosterComplianceIssues = useCallback(
+    async (teamId?: string) => api.getRosterComplianceIssues(teamId),
+    [api],
+  );
+  const getAffiliateOverview = useCallback(
+    async (teamId?: string) => api.getAffiliateOverview(teamId),
+    [api],
+  );
+  const getAffiliateBoxScore = useCallback(
+    async (boxScoreId: string) => api.getAffiliateBoxScore(boxScoreId),
+    [api],
+  );
   const proceedToOffseason = useCallback(async () => runMutation(() => api.proceedToOffseason()), [api, runMutation]);
   const startNextSeason = useCallback(async () => runMutation(() => api.startNextSeason()), [api, runMutation]);
   const getBriefing = useCallback(async (limit?: number) => api.getBriefing(limit), [api]);
@@ -231,10 +332,12 @@ export function useWorker() {
     exportSnapshot, importSnapshot,
     getStandings, getTeamRoster, getFullRoster, getPlayer,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getSeasonFlowState,
-    getScoutingStaff, scoutPlayerReport,
-    getDraftClass, startDraft, makeDraftPick, simulateRemainingDraft,
-    getTradeOffers, getTradeHistory, proposeTrade, respondToTradeOffer,
-    getNews, markNewsRead, proceedToOffseason, startNextSeason,
+    getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
+    getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
+    getTradeOffers, getTradeHistory, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
+    getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
+    getPromotionCandidates, getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
+    proceedToOffseason, startNextSeason,
     getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory, resolveHistoryDisplayNames,

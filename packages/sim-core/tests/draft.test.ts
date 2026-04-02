@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   GameRNG,
-  generatePlayer,
   generateTeamRoster,
   generateDraftClass,
   rankProspects,
@@ -9,10 +8,18 @@ import {
   aiSelectPick,
   evaluateTeamNeeds,
   simulateFullDraft,
+  DRAFT_CLASS_SIZE,
   DRAFT_ROUNDS,
   NUM_TEAMS,
   ALL_POSITIONS,
   TEAMS,
+  scoutDraftProspect,
+  resolveDraftSigning,
+  createDefaultDraftPickOwnership,
+  tradeDraftPickOwnership,
+  awardCompensatoryPick,
+  buildDraftPickSlots,
+  forfeitHighestEligiblePick,
 } from '../src/index.js';
 
 // ---------------------------------------------------------------------------
@@ -20,10 +27,10 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('generateDraftClass', () => {
-  it('creates ~300 prospects', () => {
+  it('creates a 750-player draft and udfa pool seed class', () => {
     const rng = new GameRNG(42);
     const draftClass = generateDraftClass(rng, 1);
-    expect(draftClass.prospects.length).toBe(300);
+    expect(draftClass.prospects.length).toBe(DRAFT_CLASS_SIZE);
     expect(draftClass.season).toBe(1);
   });
 
@@ -39,6 +46,19 @@ describe('generateDraftClass', () => {
       expect(prospect.signability).toBeLessThanOrEqual(1);
       expect(prospect.player.id).toBeTruthy();
     }
+  });
+
+  it('uses a realistic pitcher-heavy mix with college and prep demographics', () => {
+    const rng = new GameRNG(2026);
+    const draftClass = generateDraftClass(rng, 3);
+    const pitchers = draftClass.prospects.filter((prospect) => ['SP', 'RP', 'CL'].includes(prospect.player.position));
+    const pitcherShare = pitchers.length / draftClass.prospects.length;
+    const backgrounds = new Set(draftClass.prospects.map((prospect) => prospect.background));
+
+    expect(pitcherShare).toBeGreaterThan(0.48);
+    expect(pitcherShare).toBeLessThan(0.62);
+    expect(backgrounds).toEqual(new Set(['college_senior', 'college_underclass', 'high_school']));
+    expect(draftClass.prospects.every((prospect) => prospect.background !== 'international')).toBe(true);
   });
 });
 
@@ -97,7 +117,7 @@ describe('evaluateTeamNeeds', () => {
 });
 
 describe('simulateFullDraft', () => {
-  it('produces 640 picks (20 rounds x 32 teams)', () => {
+  it('produces 640 standard picks before compensatory supplements', () => {
     const rng1 = new GameRNG(42);
     const draftClass = generateDraftClass(rng1, 1);
 
@@ -113,8 +133,8 @@ describe('simulateFullDraft', () => {
     const rng2 = new GameRNG(99);
     const result = simulateFullDraft(rng2, draftClass, draftOrder, teamRosters, 'NYY');
 
-    // Draft class has 300 prospects, so all 300 get drafted (not 640)
-    expect(result.picks.length).toBe(300);
+    expect(result.picks.length).toBe(DRAFT_ROUNDS * NUM_TEAMS);
+    expect(result.undrafted.length).toBe(DRAFT_CLASS_SIZE - (DRAFT_ROUNDS * NUM_TEAMS));
   });
 
   it('all drafted players assigned to teams', () => {
@@ -144,5 +164,115 @@ describe('draft determinism', () => {
     for (let i = 0; i < dc1.prospects.length; i++) {
       expect(dc1.prospects[i]!.scoutingGrade).toBe(dc2.prospects[i]!.scoutingGrade);
     }
+  });
+});
+
+describe('draft scouting', () => {
+  it('tightens scouting error after multiple looks', () => {
+    const classRng = new GameRNG(44);
+    const draftClass = generateDraftClass(classRng, 2);
+    const prospect = draftClass.prospects[0]!;
+    const scoutRng = new GameRNG(145);
+
+    const firstLook = scoutDraftProspect(scoutRng.fork(), prospect, 0.62);
+    const thirdLook = scoutDraftProspect(scoutRng.fork(), prospect, 0.62, firstLook);
+    const trueDisplay = Math.round((prospect.player.overallRating / 550) * 60 + 20);
+
+    expect(firstLook.looks).toBe(1);
+    expect(thirdLook.looks).toBe(2);
+    expect(Math.abs(thirdLook.overallGrade - trueDisplay)).toBeLessThanOrEqual(
+      Math.abs(firstLook.overallGrade - trueDisplay),
+    );
+  });
+});
+
+describe('draft signability', () => {
+  it('always signs college seniors', () => {
+    const rng = new GameRNG(99);
+    const draftClass = generateDraftClass(rng, 5);
+    const senior = draftClass.prospects.find((prospect) => prospect.background === 'college_senior');
+    expect(senior).toBeTruthy();
+
+    const result = resolveDraftSigning(new GameRNG(15), senior!, senior!.slotValue * 0.6);
+    expect(result.signed).toBe(true);
+  });
+
+  it('allows strong-commitment high schoolers to reject under-slot offers', () => {
+    const rng = new GameRNG(121);
+    const draftClass = generateDraftClass(rng, 5);
+    const prep = draftClass.prospects.find(
+      (prospect) => prospect.background === 'high_school' && prospect.commitmentStrength >= 0.75,
+    );
+    expect(prep).toBeTruthy();
+
+    const result = resolveDraftSigning(new GameRNG(33), prep!, prep!.askBonus * 0.7);
+    expect(result.signed).toBe(false);
+    expect(result.returnPath).toBe('college');
+  });
+});
+
+describe('draft pick ownership and compensation', () => {
+  it('creates current and next-year ownership for every team and round', () => {
+    const ownership = createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), 4);
+    expect(ownership.length).toBe(TEAMS.length * DRAFT_ROUNDS * 2);
+    expect(
+      ownership.some((pick) => pick.season === 4 && pick.round === 1 && pick.originalTeamId === 'nyy'),
+    ).toBe(true);
+    expect(
+      ownership.some((pick) => pick.season === 5 && pick.round === 20 && pick.originalTeamId === 'bos'),
+    ).toBe(true);
+  });
+
+  it('supports draft-pick trades for current and next-year picks', () => {
+    const ownership = createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), 7);
+    const traded = tradeDraftPickOwnership(
+      ownership,
+      { season: 8, round: 2, originalTeamId: 'bos' },
+      'nyy',
+    );
+
+    expect(
+      traded.find((pick) => pick.season === 8 && pick.round === 2 && pick.originalTeamId === 'bos')?.currentTeamId,
+    ).toBe('nyy');
+  });
+
+  it('inserts compensatory picks between the first and second rounds', () => {
+    const ownership = createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), 9);
+    const compensatory = awardCompensatoryPick([], {
+      season: 9,
+      awardedToTeamId: 'pit',
+      compensationForPlayerId: 'fa-1',
+      compensationFromTeamId: 'nyy',
+      order: 1,
+    });
+    const draftSlots = buildDraftPickSlots(determineDraftOrder([
+      { teamId: 'pit', wins: 60, losses: 102 },
+      { teamId: 'bos', wins: 70, losses: 92 },
+      { teamId: 'nyy', wins: 90, losses: 72 },
+      ...TEAMS
+        .filter((team) => !['pit', 'bos', 'nyy'].includes(team.id))
+        .map((team, index) => ({ teamId: team.id, wins: 71 + index, losses: 91 - index })),
+    ]), ownership, compensatory, 9);
+
+    const firstRoundEnd = NUM_TEAMS;
+    expect(draftSlots[firstRoundEnd]?.kind).toBe('compensatory');
+    expect(draftSlots[firstRoundEnd]?.teamId).toBe('pit');
+    expect(draftSlots[firstRoundEnd + 1]?.round).toBe(2);
+  });
+
+  it('forfeits the highest eligible non-protected pick when a team signs a qualified free agent', () => {
+    const ownership = createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), 11);
+    const standingsOrder = determineDraftOrder([
+      { teamId: 'pit', wins: 50, losses: 112 },
+      { teamId: 'bos', wins: 65, losses: 97 },
+      { teamId: 'nyy', wins: 88, losses: 74 },
+      ...TEAMS
+        .filter((team) => !['pit', 'bos', 'nyy'].includes(team.id))
+        .map((team, index) => ({ teamId: team.id, wins: 66 + index, losses: 96 - index })),
+    ]);
+
+    const forfeiture = forfeitHighestEligiblePick(ownership, standingsOrder, 'pit', 11);
+    expect(forfeiture.forfeitedPick?.round).toBe(2);
+    expect(forfeiture.forfeitedPick?.originalTeamId).toBe('pit');
   });
 });

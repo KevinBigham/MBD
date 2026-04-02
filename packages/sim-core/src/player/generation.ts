@@ -157,6 +157,10 @@ export interface GeneratedPlayer {
   nationality: Nationality;
   overallRating: number;
   rule5EligibleAfterSeason: number;
+  serviceTimeDays: number;
+  optionYearsUsed: number;
+  isOutOfOptions: boolean;
+  minorLeagueLevel: Exclude<RosterLevel, 'MLB'> | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +332,7 @@ export function generatePlayer(
   }
 
   const contract = generateContract(rng, rosterLevel, overallRating);
+  const minorLeagueLevel = rosterLevel === 'MLB' ? null : rosterLevel;
 
   return {
     id: generateId(rng),
@@ -345,6 +350,10 @@ export function generatePlayer(
     nationality,
     overallRating,
     rule5EligibleAfterSeason: calculateRule5EligibleAfterSeason(1, age),
+    serviceTimeDays: 0,
+    optionYearsUsed: 0,
+    isOutOfOptions: false,
+    minorLeagueLevel,
   };
 }
 

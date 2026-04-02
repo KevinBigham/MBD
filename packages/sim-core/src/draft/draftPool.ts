@@ -1,6 +1,6 @@
 /**
  * @module draftPool
- * Draft class generation: creates ~300 amateur draft prospects per season.
+ * Draft class generation: creates a full amateur draft + UDFA pool each season.
  * Uses GameRNG for all randomness — Math.random() is NEVER used.
  */
 
@@ -19,7 +19,7 @@ import { toDisplayRating, clampRating } from '../player/attributes.js';
 // ---------------------------------------------------------------------------
 
 /** Total number of prospects generated per draft class. */
-const DRAFT_CLASS_SIZE = 300;
+export const DRAFT_CLASS_SIZE = 750;
 
 /** Number of draft rounds. */
 export const DRAFT_ROUNDS = 20;
@@ -31,34 +31,36 @@ export const NUM_TEAMS = 32;
 const TALENT_TIERS = [
   { maxPick: 10,  overallMin: 250, overallMax: 400 },
   { maxPick: 30,  overallMin: 200, overallMax: 300 },
-  { maxPick: 160, overallMin: 150, overallMax: 250 }, // rounds 2-5
-  { maxPick: 320, overallMin: 100, overallMax: 200 }, // rounds 6-10
-  { maxPick: 640, overallMin: 60,  overallMax: 150 }, // rounds 11-20
+  { maxPick: 80,  overallMin: 175, overallMax: 280 },
+  { maxPick: 160, overallMin: 150, overallMax: 250 }, // rounds 3-5
+  { maxPick: 320, overallMin: 100, overallMax: 210 }, // rounds 6-10
+  { maxPick: 640, overallMin: 60,  overallMax: 160 }, // rounds 11-20
+  { maxPick: 750, overallMin: 40,  overallMax: 130 }, // udfa pool
 ] as const;
 
 /** Scouting grade noise standard deviations by tier (top picks = more variance). */
-const SCOUTING_NOISE_BY_TIER = [15, 12, 10, 8, 6] as const;
+const SCOUTING_NOISE_BY_TIER = [14, 12, 10, 8, 7, 6] as const;
 
-/** Background type weights: college is most common, then HS, then international. */
+/** Background type weights: college underclassmen lead, then seniors, then prep. */
 const BACKGROUND_WEIGHTS = {
-  college: 55,
+  college_senior: 30,
+  college_underclass: 42,
   high_school: 30,
-  international: 15,
 } as const;
 
-type ProspectBackground = 'college' | 'high_school' | 'international';
-const BACKGROUNDS: ProspectBackground[] = ['college', 'high_school', 'international'];
+export type DraftProspectBackground = 'college_senior' | 'college_underclass' | 'high_school';
+const BACKGROUNDS: DraftProspectBackground[] = ['college_senior', 'college_underclass', 'high_school'];
 const BG_WEIGHTS: number[] = [
-  BACKGROUND_WEIGHTS.college,
+  BACKGROUND_WEIGHTS.college_senior,
+  BACKGROUND_WEIGHTS.college_underclass,
   BACKGROUND_WEIGHTS.high_school,
-  BACKGROUND_WEIGHTS.international,
 ];
 
 /** Age ranges by background. */
-const AGE_RANGES: Record<ProspectBackground, [number, number]> = {
-  college: [20, 22],
+const AGE_RANGES: Record<DraftProspectBackground, [number, number]> = {
+  college_senior: [21, 23],
+  college_underclass: [18, 21],
   high_school: [17, 18],
-  international: [17, 20],
 };
 
 // ---------------------------------------------------------------------------
@@ -69,9 +71,14 @@ export interface DraftProspect {
   player: GeneratedPlayer;
   scoutingGrade: number;     // 20-80 perceived grade (may differ from true rating)
   signability: number;       // 0-1, higher = easier to sign
-  collegeOrHS: ProspectBackground;
+  collegeOrHS: DraftProspectBackground;
+  background: DraftProspectBackground;
+  commitmentStrength: number;
   draftRound: number;        // Projected round (1-20)
   positionRank: number;      // Rank among same-position prospects
+  slotValue: number;
+  askBonus: number;
+  consensusRank: number;
 }
 
 export interface DraftClass {
@@ -97,9 +104,15 @@ function scoutingGradeFromOverall(
   trueOverall: number,
   noiseStddev: number,
 ): number {
-  const baseGrade = toDisplayRating(trueOverall);
-  const noise = rng.nextGaussian(0, noiseStddev);
-  return Math.max(20, Math.min(80, Math.round(baseGrade + noise)));
+  const safeOverall = Number.isFinite(trueOverall) ? trueOverall : 275;
+  const safeNoiseStddev = Number.isFinite(noiseStddev) ? noiseStddev : 8;
+  const baseGrade = toDisplayRating(safeOverall);
+  const noise = rng.nextGaussian(0, safeNoiseStddev);
+  const blended = baseGrade + noise;
+  if (!Number.isFinite(blended)) {
+    return 50;
+  }
+  return Math.max(20, Math.min(80, Math.round(blended)));
 }
 
 /** Determine projected draft round from a prospect's rank in the class. */
@@ -110,17 +123,54 @@ function projectedRound(prospectIndex: number): number {
 
 /** Pick a random position with realistic draft distribution. */
 function pickDraftPosition(rng: GameRNG): Position {
-  // Draft classes skew toward pitchers (~55%) and athletic positions
+  // Draft classes skew toward pitchers (~55%) and premium defensive spots.
   const positions = [...ALL_POSITIONS] as Position[];
   const weights = positions.map((pos) => {
-    if (pos === 'SP') return 25;
-    if (pos === 'RP' || pos === 'CL') return 10;
-    if (pos === 'SS' || pos === 'CF') return 10;
+    if (pos === 'SP') return 30;
+    if (pos === 'RP') return 14;
+    if (pos === 'CL') return 10;
+    if (pos === 'SS' || pos === 'CF') return 8;
     if (pos === 'C') return 6;
     if (pos === 'DH') return 1;
-    return 6; // remaining hitter positions
+    return 4; // remaining hitter positions
   });
   return rng.weightedPick(positions, weights);
+}
+
+function slotValueForIndex(prospectIndex: number): number {
+  const totalDraftSlots = DRAFT_ROUNDS * NUM_TEAMS;
+  const normalized = Math.min(1, prospectIndex / Math.max(1, totalDraftSlots - 1));
+  const rawValue = 9 * Math.exp(-normalized * 3.1);
+  return Math.max(0.15, Math.round(rawValue * 100) / 100);
+}
+
+function computeCommitmentStrength(
+  rng: GameRNG,
+  background: DraftProspectBackground,
+): number {
+  if (background === 'college_senior') {
+    return 0;
+  }
+  if (background === 'college_underclass') {
+    return Math.max(0, Math.min(1, rng.nextGaussian(0.45, 0.15)));
+  }
+  return Math.max(0, Math.min(1, rng.nextGaussian(0.62, 0.18)));
+}
+
+function computeAskBonus(
+  rng: GameRNG,
+  slotValue: number,
+  background: DraftProspectBackground,
+  commitmentStrength: number,
+  tierIdx: number,
+): number {
+  const baseMultiplier =
+    background === 'college_senior' ? 0.82
+      : background === 'college_underclass' ? 0.92 + commitmentStrength * 0.28
+        : 1.02 + commitmentStrength * 0.38;
+  const tierPremium = Math.max(0, (5 - Math.min(tierIdx, 5)) * 0.04);
+  const noise = rng.nextGaussian(0, 0.04);
+  return Math.max(0.05, Math.round(slotValue * (baseMultiplier + tierPremium + noise) * 100) / 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,13 +192,14 @@ export function generateDraftClass(rng: GameRNG, season: number): DraftClass {
     // Pick background
     const background = rng.weightedPick(BACKGROUNDS, BG_WEIGHTS);
     const [ageMin, ageMax] = AGE_RANGES[background];
+    const commitmentStrength = computeCommitmentStrength(rng, background);
+    const slotValue = slotValueForIndex(i);
 
     // Pick position
     const position = pickDraftPosition(rng);
 
-    // Generate the player at ROOKIE/INTERNATIONAL level as a Prospect
-    const rosterLevel = background === 'international' ? 'INTERNATIONAL' : 'ROOKIE';
-    const player = generatePlayer(rng, position, 'draft_pool', rosterLevel);
+    // Generate the player as a draft prospect in rookie ball.
+    const player = generatePlayer(rng, position, 'draft_pool', 'ROOKIE');
 
     // Override age to match background
     (player as { age: number }).age = rng.nextInt(ageMin, ageMax);
@@ -161,19 +212,29 @@ export function generateDraftClass(rng: GameRNG, season: number): DraftClass {
       const scaleFactor = targetOverall / currentOverall;
       // Scale the relevant attributes to hit the target overall
       scalePlayerAttributes(player, scaleFactor);
-      (player as { overallRating: number }).overallRating = recomputeOverall(player);
+      (player as { overallRating: number }).overallRating = normalizeOverallRating(
+        recomputeOverall(player),
+        targetOverall,
+      );
     }
 
+    (player as { overallRating: number }).overallRating = normalizeOverallRating(player.overallRating, targetOverall);
     const scoutingGrade = scoutingGradeFromOverall(rng, player.overallRating, noiseStddev);
-    const signability = computeSignability(rng, background, tierIdx);
+    const signability = computeSignability(rng, background, tierIdx, commitmentStrength);
+    const askBonus = computeAskBonus(rng, slotValue, background, commitmentStrength, tierIdx);
 
     prospects.push({
       player,
       scoutingGrade,
       signability,
       collegeOrHS: background,
+      background,
+      commitmentStrength,
       draftRound: projectedRound(i),
       positionRank: 0, // filled by rankProspects
+      slotValue,
+      askBonus,
+      consensusRank: i + 1,
     });
   }
 
@@ -204,6 +265,7 @@ export function rankProspects(prospects: DraftProspect[]): DraftProspect[] {
   // Re-assign projected round based on overall ranking
   for (let i = 0; i < sorted.length; i++) {
     sorted[i]!.draftRound = projectedRound(i);
+    sorted[i]!.consensusRank = i + 1;
   }
 
   return sorted;
@@ -248,20 +310,29 @@ function recomputeOverall(player: GeneratedPlayer): number {
   );
 }
 
+function normalizeOverallRating(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(550, Math.round(value)));
+}
+
 function computeSignability(
   rng: GameRNG,
-  background: ProspectBackground,
+  background: DraftProspectBackground,
   tierIdx: number,
+  commitmentStrength: number,
 ): number {
-  // College players are easier to sign; top picks harder (want more money)
+  // Seniors are extremely signable; prep bats/arms carry the most leverage.
   const baseSignability =
-    background === 'college' ? 0.85 :
-    background === 'high_school' ? 0.60 :
-    0.50; // international
+    background === 'college_senior' ? 0.98 :
+    background === 'college_underclass' ? 0.78 :
+    0.52;
 
-  // Higher tier (lower index) = harder to sign (they have leverage)
-  const tierPenalty = (4 - tierIdx) * 0.05; // top tier: -0.20, bottom: 0
-  const noise = rng.nextGaussian(0, 0.08);
+  // Higher tier (lower index) = harder to sign (they have leverage).
+  const tierPenalty = Math.max(0, (5 - Math.min(tierIdx, 5)) * 0.03);
+  const commitmentPenalty = commitmentStrength * (background === 'high_school' ? 0.32 : 0.18);
+  const noise = rng.nextGaussian(0, 0.05);
 
-  return Math.max(0, Math.min(1, baseSignability - tierPenalty + noise));
+  return Math.max(0, Math.min(1, baseSignability - tierPenalty - commitmentPenalty + noise));
 }

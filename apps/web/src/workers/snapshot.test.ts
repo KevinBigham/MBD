@@ -120,6 +120,7 @@ function createState(): FullGameState {
   for (const player of players) {
     if (player.rosterStatus === 'MLB') {
       serviceTime.set(player.id, 1);
+      player.serviceTimeDays = 172;
     }
   }
 
@@ -145,6 +146,28 @@ function createState(): FullGameState {
     freeAgencyMarket: null,
     news: [],
     rosterStates,
+    internationalScoutingState: {
+      season: 1,
+      ifaPool: [],
+      budgets: new Map(),
+      scoutingHistory: new Map(),
+    },
+    draftState: {
+      scoutingReports: [],
+      signability: [],
+      qualifyingOffers: [],
+      compensatoryPicks: [],
+      pickOwnership: [],
+      bigBoards: [],
+      signingDecisions: [],
+    },
+    minorLeagueState: {
+      serviceTimeLedger: [],
+      optionUsage: [],
+      waiverClaims: [],
+      affiliateStates: [],
+      affiliateBoxScores: [],
+    },
     ...createNarrativeSample('nyy'),
     tradeState: {
       pendingOffers: [],
@@ -192,7 +215,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(6);
+    expect(snapshot.schemaVersion).toBe(7);
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -218,6 +241,25 @@ describe('snapshot helpers', () => {
     expect(restored.rule5Session?.phase).toBe('protection_audit');
     expect(restored.rule5Obligations[0]?.status).toBe('active');
     expect(restored.rule5OfferBackStates[0]?.status).toBe('pending');
+  });
+
+  it('migrates v6 snapshots into the v7 service-time and roster-control shape', () => {
+    const snapshot = exportGameSnapshot(createState());
+    const mlbPlayer = snapshot.players.find((player) => player.rosterStatus === 'MLB')!;
+    const minorLeaguer = snapshot.players.find((player) => player.rosterStatus === 'AA')!;
+    const v6Snapshot = {
+      ...snapshot,
+      schemaVersion: 6,
+    } as unknown as GameSnapshot;
+
+    const restored = importGameSnapshot(v6Snapshot);
+    const restoredMLBPlayer = restored.players.find((player) => player.id === mlbPlayer.id)!;
+    const restoredMinorLeaguer = restored.players.find((player) => player.id === minorLeaguer.id)!;
+
+    expect(restoredMLBPlayer.serviceTimeDays).toBe(172);
+    expect(restoredMLBPlayer.optionYearsUsed).toBe(0);
+    expect(restoredMLBPlayer.isOutOfOptions).toBe(false);
+    expect(restoredMinorLeaguer.minorLeagueLevel).toBe(minorLeaguer.rosterStatus);
   });
 
   it('migrates v2 snapshots into the v5 narrative, stat, trade, and legacy shape', () => {

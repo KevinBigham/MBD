@@ -17,6 +17,64 @@ import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
 
+interface WorkerPlayerView {
+  id: string;
+  teamId: string;
+  rosterStatus: string;
+  serviceTimeDays: number;
+}
+
+interface PromotionCandidateView {
+  playerId: string;
+  playerName: string;
+  score: number;
+}
+
+interface RosterComplianceIssueView {
+  code: string;
+  severity: 'error' | 'warning';
+  message: string;
+}
+
+interface DFACandidateView {
+  playerId: string;
+  playerName: string;
+  score: number;
+}
+
+interface AffiliateOverviewView {
+  affiliates: Array<{
+    level: string;
+    gamesPlayed: number;
+    wins: number;
+    losses: number;
+  }>;
+  recentBoxScores: Array<{
+    id: string;
+    level: string;
+    summary: string;
+  }>;
+  waiverClaims: Array<{
+    playerId: string;
+    status: string;
+  }>;
+}
+
+interface AffiliateBoxScoreView {
+  id: string;
+  summary: string;
+}
+
+interface MinorLeagueWorkerApi {
+  getPromotionCandidates: (teamId?: string) => PromotionCandidateView[];
+  getRosterComplianceIssues: (teamId?: string) => {
+    issues: RosterComplianceIssueView[];
+    dfaRecommendations: DFACandidateView[];
+  };
+  getAffiliateOverview: (teamId?: string) => AffiliateOverviewView;
+  getAffiliateBoxScore: (boxScoreId: string) => AffiliateBoxScoreView | null;
+}
+
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
   return {
     playerId: 'player',
@@ -86,8 +144,8 @@ function buildIncomingOffer(offerId: string) {
       id: offerId,
       fromTeamId: 'bos',
       toTeamId: 'nyy',
-      offeringPlayerIds: [offered.id],
-      requestingPlayerIds: [requested.id],
+      offeringAssets: [{ type: 'player' as const, playerId: offered.id }],
+      requestingAssets: [{ type: 'player' as const, playerId: requested.id }],
       fairnessScore: -4,
       message: 'Boston wants to discuss a one-for-one swap.',
       createdAt: 'S1D60',
@@ -188,6 +246,83 @@ describe('sim worker narrative APIs', () => {
     expect(api.getBriefing(10)).toEqual(beforeBriefing);
   });
 
+  it('exposes minor league management queries and affiliate box scores', () => {
+    api.newGame(111, 'nyy');
+    api.simDay();
+
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    const state = requireState();
+    const mlbPlayer = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB')!;
+    const beforeServiceTime = (api.getPlayer(mlbPlayer.id) as unknown as WorkerPlayerView).serviceTimeDays;
+
+    api.simDay();
+
+    const afterServiceTime = (api.getPlayer(mlbPlayer.id) as unknown as WorkerPlayerView).serviceTimeDays;
+
+    const promotionTarget = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+    const affiliateState = state.minorLeagueState.affiliateStates.find(
+      (entry) => entry.teamId === 'nyy' && entry.level === 'AA',
+    )!;
+    affiliateState.playerStats = [[promotionTarget.id, {
+      playerId: promotionTarget.id,
+      games: 24,
+      pa: 118,
+      hits: 38,
+      hr: 7,
+      rbi: 29,
+      bb: 18,
+      k: 17,
+      ipOuts: 0,
+      earnedRuns: 0,
+      strikeouts: 0,
+      walks: 0,
+      wins: 0,
+      losses: 0,
+    }]];
+
+    const rosterState = state.rosterStates.get('nyy')!;
+    rosterState.fortyManRoster = state.players
+      .filter((player) => player.teamId === 'nyy')
+      .map((player) => player.id);
+
+    const promotionCandidates = workerApi.getPromotionCandidates('nyy');
+    const compliance = workerApi.getRosterComplianceIssues('nyy');
+    const affiliateOverview = workerApi.getAffiliateOverview('nyy');
+    const latestBoxScore = workerApi.getAffiliateBoxScore(affiliateOverview.recentBoxScores[0]!.id);
+
+    expect(afterServiceTime).toBe(beforeServiceTime + 1);
+    expect(promotionCandidates[0]?.playerId).toBe(promotionTarget.id);
+    expect(compliance.issues.some((issue) => issue.code === 'forty_man_over_limit')).toBe(true);
+    expect(compliance.dfaRecommendations.length).toBeGreaterThan(0);
+    expect(affiliateOverview.affiliates.some((affiliate) => affiliate.level === 'AAA' && affiliate.gamesPlayed > 0)).toBe(true);
+    expect(affiliateOverview.recentBoxScores.length).toBeGreaterThan(0);
+    expect(latestBoxScore?.id).toBe(affiliateOverview.recentBoxScores[0]!.id);
+  });
+
+  it('routes out-of-options demotions through waivers and allows the priority team to claim the player', () => {
+    api.newGame(112, 'ari');
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+    player.optionYearsUsed = 3;
+    player.isOutOfOptions = true;
+
+    const demotionResult = api.demotePlayer(player.id);
+    const overviewBeforeClaim = workerApi.getAffiliateOverview('ari');
+
+    expect(demotionResult.success).toBe(true);
+    expect(overviewBeforeClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'pending')).toBe(true);
+
+    const claimResult = api.claimOffWaivers(player.id);
+    const claimedPlayer = api.getPlayer(player.id) as unknown as WorkerPlayerView;
+    const overviewAfterClaim = workerApi.getAffiliateOverview('ari');
+
+    expect(claimResult.success).toBe(true);
+    expect(claimedPlayer.teamId).toBe('ari');
+    expect(claimedPlayer.rosterStatus).toBe('AAA');
+    expect(overviewAfterClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'claimed')).toBe(true);
+  });
+
   it('adds trade consequences after an accepted user trade', () => {
     api.newGame(321, 'nyy');
     const state = requireState();
@@ -206,7 +341,11 @@ describe('sim worker narrative APIs', () => {
     const baselineOutgoingMorale = state.playerMorale.get(offered.id)?.score ?? 0;
     const beforeOwner = api.getOwnerState('nyy');
 
-    const result = api.proposeTrade([offered.id], [requested.id], 'bos');
+    const result = api.proposeTrade(
+      [{ type: 'player', playerId: offered.id }],
+      [{ type: 'player', playerId: requested.id }],
+      'bos',
+    );
 
     expect(result.decision).toBe('accepted');
 
@@ -862,6 +1001,79 @@ describe('sim worker narrative APIs', () => {
     expect(state.players.find((candidate) => candidate.id === player.id)?.teamId).toBe('bos');
   });
 
+  it('opens the international signing phase after the Rule 5 draft and seeds the IFA pool', () => {
+    api.newGame(342, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'rule5_draft',
+      phaseDay: 3,
+      totalDay: 43,
+    };
+
+    const entered = api.advanceOffseason() as { currentPhase: string } | null;
+    const pool = (api as typeof api & {
+      getIFAPool: () => { signingWindowOpen: boolean; prospects: Array<{ id: string }> };
+    }).getIFAPool();
+
+    expect(entered?.currentPhase).toBe('international_signing');
+    expect(pool.signingWindowOpen).toBe(true);
+    expect(pool.prospects.length).toBeGreaterThanOrEqual(80);
+  });
+
+  it('scouts, signs, and trades IFA pool space during the international signing window', () => {
+    api.newGame(343, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'international_signing',
+      phaseDay: 1,
+      totalDay: 44,
+    };
+
+    const poolBefore = (api as typeof api & {
+      getIFAPool: () => {
+        budget: { remaining: number };
+        prospects: Array<{ id: string; expectedBonus: number; status: string }>;
+      };
+    }).getIFAPool();
+    const target = poolBefore.prospects.find((prospect) => prospect.status === 'available')!;
+
+    const reportResult = (api as typeof api & {
+      scoutIFAPlayer: (playerId: string) => { success: boolean; report?: { looks: number; overall: number } };
+    }).scoutIFAPlayer(target.id);
+
+    expect(reportResult.success).toBe(true);
+    if (!reportResult.success) {
+      throw new Error(reportResult.error);
+    }
+    expect(reportResult.report.looks).toBe(1);
+    expect(reportResult.report.overall).toBeGreaterThan(20);
+
+    const signResult = (api as typeof api & {
+      signIFAPlayer: (playerId: string, bonusAmount: number) => { success: boolean; remainingBudget?: number };
+    }).signIFAPlayer(target.id, target.expectedBonus);
+
+    expect(signResult.success).toBe(true);
+    if (!signResult.success) {
+      throw new Error(signResult.error);
+    }
+    expect(signResult.remainingBudget).toBeLessThan(poolBefore.budget.remaining);
+    expect(state.players.some((player) => player.id === target.id && player.teamId === 'nyy' && player.rosterStatus === 'ROOKIE')).toBe(true);
+
+    const tradeResult = (api as typeof api & {
+      tradeIFAPoolSpace: (toTeamId: string, amount: number) => { success: boolean; remainingBudget?: number };
+    }).tradeIFAPoolSpace('bos', 0.25);
+
+    expect(tradeResult.success).toBe(true);
+    if (!tradeResult.success) {
+      throw new Error(tradeResult.error);
+    }
+    expect(tradeResult.remainingBudget).toBeLessThan(signResult.remainingBudget);
+  });
+
   it('closes the trade market after day 120 and clears pending offers', () => {
     api.newGame(340, 'nyy');
     const state = requireState();
@@ -875,7 +1087,11 @@ describe('sim worker narrative APIs', () => {
 
     expect(api.getTradeOffers()).toEqual([]);
 
-    const closedResult = api.proposeTrade([requested.id], [offered.id], 'bos');
+    const closedResult = api.proposeTrade(
+      [{ type: 'player', playerId: requested.id }],
+      [{ type: 'player', playerId: offered.id }],
+      'bos',
+    );
     expect(closedResult.decision).toBe('rejected');
     expect(closedResult.reason).toContain('Trade market closed');
   });
@@ -892,7 +1108,7 @@ describe('sim worker narrative APIs', () => {
 
     expect(firstRun.length).toBeGreaterThan(0);
     expect(firstRun.some((offer) => offer.fromTeamId === 'bos' && offer.toTeamId === 'nyy')).toBe(true);
-    expect(firstRun.some((offer) => offer.requestingPlayers.some((player) => player.playerId === target.id))).toBe(true);
+    expect(firstRun.some((offer) => offer.requestingAssets.some((asset) => asset.playerId === target.id))).toBe(true);
 
     api.newGame(341, 'nyy');
     state = requireState();

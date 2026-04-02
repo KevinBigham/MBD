@@ -18,6 +18,9 @@ import {
 } from '../../../../packages/contracts/src/schemas/save';
 import {
   GameRNG,
+  type IFAScoutingHistoryEntry,
+  type IFATeamBudget,
+  type InternationalScoutingState,
   StandingsTracker,
   type FreeAgencyMarket,
   type GMPersonality,
@@ -35,6 +38,9 @@ import {
   type NewsItem,
 } from '@mbd/sim-core';
 import {
+  createEmptyDraftState,
+  createEmptyInternationalScoutingState,
+  createEmptyMinorLeagueState,
   createEmptyTradeState,
   ensurePlayersHaveRule5Eligibility,
   normalizeDraftSessionState,
@@ -75,6 +81,28 @@ function fromEntries<T>(entries: [string, T][]): Map<string, T> {
   return new Map(entries);
 }
 
+function serializeInternationalScoutingState(
+  state: InternationalScoutingState,
+): GameSnapshot['internationalScoutingState'] {
+  return {
+    season: state.season,
+    ifaPool: state.ifaPool,
+    budgets: Array.from(state.budgets.entries()),
+    scoutingHistory: Array.from(state.scoutingHistory.entries()),
+  };
+}
+
+function deserializeInternationalScoutingState(
+  serialized: GameSnapshot['internationalScoutingState'],
+): InternationalScoutingState {
+  return {
+    season: serialized.season,
+    ifaPool: serialized.ifaPool,
+    budgets: new Map(serialized.budgets as [string, IFATeamBudget][]),
+    scoutingHistory: new Map(serialized.scoutingHistory as [string, IFAScoutingHistoryEntry[]][]),
+  };
+}
+
 function validateSnapshot(snapshot: unknown): GameSnapshot {
   if (
     typeof snapshot === 'object' &&
@@ -84,6 +112,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 3 &&
     snapshot.schemaVersion !== 4 &&
     snapshot.schemaVersion !== 5 &&
+    snapshot.schemaVersion !== 6 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -120,6 +149,9 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
     freeAgencyMarket: state.freeAgencyMarket,
     news: state.news,
     rosterStates: toEntries(state.rosterStates),
+    internationalScoutingState: serializeInternationalScoutingState(state.internationalScoutingState),
+    draftState: state.draftState,
+    minorLeagueState: state.minorLeagueState,
     narrative: {
       playerMorale: toEntries(state.playerMorale),
       teamChemistry: toEntries(state.teamChemistry),
@@ -170,11 +202,18 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     draftClass: normalizeDraftSessionState(
       snapshot.draftClass as DraftSessionState | null,
       seasonState,
+      snapshot.draftState ?? createEmptyDraftState(),
       snapshot.userTeamId,
     ),
     freeAgencyMarket: snapshot.freeAgencyMarket as FreeAgencyMarket | null,
     news: snapshot.news as NewsItem[],
     rosterStates: fromEntries(snapshot.rosterStates as [string, RosterState][]),
+    internationalScoutingState:
+      snapshot.internationalScoutingState
+        ? deserializeInternationalScoutingState(snapshot.internationalScoutingState)
+        : createEmptyInternationalScoutingState(snapshot.season),
+    draftState: snapshot.draftState ?? createEmptyDraftState(),
+    minorLeagueState: snapshot.minorLeagueState ?? createEmptyMinorLeagueState(),
     playerMorale: fromEntries(snapshot.narrative.playerMorale as [string, PlayerMorale][]),
     teamChemistry: fromEntries(snapshot.narrative.teamChemistry as [string, TeamChemistry][]),
     ownerState: fromEntries(snapshot.narrative.ownerState as [string, OwnerState][]),

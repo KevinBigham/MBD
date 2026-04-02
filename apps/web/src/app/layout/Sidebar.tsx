@@ -25,6 +25,7 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { to: '/', label: 'Front Office', icon: <Briefcase className="h-5 w-5" /> },
   { to: '/roster', label: 'Roster', icon: <Users className="h-5 w-5" /> },
+  { to: '/minors', label: 'Minors', icon: <Users className="h-5 w-5" /> },
   { to: '/players', label: 'Players', icon: <User className="h-5 w-5" /> },
   { to: '/scouting', label: 'Scouting', icon: <Search className="h-5 w-5" /> },
   { to: '/draft', label: 'Draft', icon: <FileText className="h-5 w-5" /> },

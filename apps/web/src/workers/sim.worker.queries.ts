@@ -1,10 +1,12 @@
 import {
+  AFFILIATE_LEVELS,
   calculateLuxuryTax,
   calculateTeamPayroll,
   createFreeAgencyMarket,
   describeInjury,
   evaluatePlayerTradeValue,
   generateAITradeOffers,
+  getActiveRosterLimit,
   getTeamBudget,
   getTeamById,
   getTopFreeAgents,
@@ -22,9 +24,12 @@ import type {
 } from '@mbd/sim-core';
 import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
+  buildIFAPoolView,
   buildSeasonFlowStateView,
   buildDraftRoomView,
   buildOffseasonStateView,
+  getPromotionCandidatesForTeam,
+  getRosterComplianceIssuesForTeam,
   getTeamPlayers,
   requireState,
   state,
@@ -42,6 +47,7 @@ import {
   resolveHistoryDisplayNames as resolveNarrativeHistoryDisplayNames,
 } from './sim.worker.narrative.js';
 import {
+  buildTradeAssetInventoryView,
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
@@ -246,6 +252,169 @@ function teamNameFromId(teamId: string): string {
   return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
 }
 
+function formatMinorLevel(level: string): string {
+  switch (level) {
+    case 'A_PLUS':
+      return 'A+';
+    case 'ROOKIE':
+      return 'Rookie';
+    default:
+      return level;
+  }
+}
+
+function buildDFARecommendations(teamId: string) {
+  const s = requireState();
+  const rosterState = s.rosterStates.get(teamId);
+  if (!rosterState) {
+    return [];
+  }
+
+  const fortyManSet = new Set(rosterState.fortyManRoster);
+  return s.players
+    .filter((player) => player.teamId === teamId && fortyManSet.has(player.id))
+    .map((player) => {
+      const tradeValue = evaluatePlayerTradeValue(player);
+      const score = Math.round(
+        Math.max(0, 82 - player.overallRating)
+        + Math.max(0, player.age - 26) * 4
+        + (player.contract.annualSalary * 3)
+        + (player.rosterStatus === 'MLB' ? -10 : 10)
+        + Math.max(0, 55 - tradeValue.overall),
+      );
+      const levelLabel = player.rosterStatus === 'MLB' ? 'MLB fringe role' : `${formatMinorLevel(player.rosterStatus)} depth role`;
+      return {
+        playerId: player.id,
+        playerName: `${player.firstName} ${player.lastName}`,
+        position: player.position,
+        age: player.age,
+        salary: Number(player.contract.annualSalary.toFixed(1)),
+        score,
+        reason: `${levelLabel} with age ${player.age} and $${player.contract.annualSalary.toFixed(1)}M salary pressure.`,
+      };
+    })
+    .sort((left, right) => right.score - left.score || left.playerName.localeCompare(right.playerName))
+    .slice(0, 5);
+}
+
+function buildAffiliateOverview(teamId: string) {
+  const s = requireState();
+  const playerMap = new Map(s.players.map((player) => [player.id, player]));
+
+  const affiliates = s.minorLeagueState.affiliateStates
+    .filter((affiliate) => affiliate.teamId === teamId)
+    .sort((left, right) => AFFILIATE_LEVELS.indexOf(left.level) - AFFILIATE_LEVELS.indexOf(right.level))
+    .map((affiliate) => {
+      const topPlayerEntry = [...affiliate.playerStats].sort((left, right) => {
+        const leftScore = left[1].hits + (left[1].hr * 2) + left[1].strikeouts;
+        const rightScore = right[1].hits + (right[1].hr * 2) + right[1].strikeouts;
+        return rightScore - leftScore;
+      })[0];
+      const topPlayer = topPlayerEntry ? playerMap.get(topPlayerEntry[0]) : null;
+      const topStats = topPlayerEntry?.[1] ?? null;
+
+      return {
+        level: affiliate.level,
+        label: formatMinorLevel(affiliate.level),
+        wins: affiliate.wins,
+        losses: affiliate.losses,
+        gamesPlayed: affiliate.gamesPlayed,
+        runDifferential: affiliate.runsScored - affiliate.runsAllowed,
+        topPerformer: topPlayer && topStats
+          ? {
+            playerId: topPlayer.id,
+            playerName: `${topPlayer.firstName} ${topPlayer.lastName}`,
+            statLine: topPlayer.pitcherAttributes
+              ? `${topStats.strikeouts} K · ${topStats.wins}-${topStats.losses}`
+              : `${topStats.hits} H · ${topStats.hr} HR`,
+          }
+          : null,
+      };
+    });
+
+  const recentBoxScores = s.minorLeagueState.affiliateBoxScores
+    .filter((boxScore) => boxScore.homeTeamId === teamId || boxScore.awayTeamId === teamId)
+    .sort((left, right) => right.day - left.day || right.id.localeCompare(left.id))
+    .slice(0, 15)
+    .map((boxScore) => {
+      const home = boxScore.homeTeamId === teamId;
+      const teamScore = home ? boxScore.homeScore : boxScore.awayScore;
+      const opponentScore = home ? boxScore.awayScore : boxScore.homeScore;
+      const opponentId = home ? boxScore.awayTeamId : boxScore.homeTeamId;
+      return {
+        id: boxScore.id,
+        day: boxScore.day,
+        level: boxScore.level,
+        label: formatMinorLevel(boxScore.level),
+        result: teamScore > opponentScore ? 'W' : 'L',
+        scoreline: `${teamScore}-${opponentScore} ${home ? 'vs' : 'at'} ${getTeamById(opponentId)?.abbreviation ?? opponentId.toUpperCase()}`,
+        summary: boxScore.summary,
+      };
+    });
+
+  const waiverClaims = s.minorLeagueState.waiverClaims
+    .filter((claim) => claim.status === 'pending' || claim.fromTeamId === teamId || claim.toTeamId === teamId)
+    .sort((left, right) => {
+      if (left.status !== right.status) {
+        return left.status === 'pending' ? -1 : 1;
+      }
+      return right.day - left.day || left.playerId.localeCompare(right.playerId);
+    })
+    .map((claim) => {
+      const player = playerMap.get(claim.playerId);
+      const priorityIndex = claim.priorityTeamIds.indexOf(teamId);
+      return {
+        playerId: claim.playerId,
+        playerName: player ? `${player.firstName} ${player.lastName}` : claim.playerId,
+        fromTeamName: teamNameFromId(claim.fromTeamId),
+        toTeamName: claim.toTeamId ? teamNameFromId(claim.toTeamId) : null,
+        status: claim.status,
+        salary: Number(claim.salary.toFixed(1)),
+        priorityIndex: priorityIndex >= 0 ? priorityIndex + 1 : null,
+      };
+    });
+
+  return {
+    teamId,
+    affiliates,
+    recentBoxScores,
+    waiverClaims,
+  };
+}
+
+function getAffiliateBoxScoreView(boxScoreId: string) {
+  const s = requireState();
+  const boxScore = s.minorLeagueState.affiliateBoxScores.find((entry) => entry.id === boxScoreId);
+  if (!boxScore) {
+    return null;
+  }
+
+  return {
+    id: boxScore.id,
+    season: boxScore.season,
+    day: boxScore.day,
+    level: boxScore.level,
+    label: formatMinorLevel(boxScore.level),
+    homeTeamId: boxScore.homeTeamId,
+    homeTeamName: teamNameFromId(boxScore.homeTeamId),
+    awayTeamId: boxScore.awayTeamId,
+    awayTeamName: teamNameFromId(boxScore.awayTeamId),
+    homeScore: boxScore.homeScore,
+    awayScore: boxScore.awayScore,
+    summary: boxScore.summary,
+    notablePlayers: boxScore.notablePlayerIds.flatMap((playerId) => {
+        const player = s.players.find((candidate) => candidate.id === playerId);
+        return player
+          ? [{
+            playerId,
+            playerName: `${player.firstName} ${player.lastName}`,
+            position: player.position,
+          }]
+          : [];
+      }),
+  };
+}
+
 export const queryApi = {
   getState() {
     if (!state) {
@@ -327,6 +496,45 @@ export const queryApi = {
 
     const player = state.players.find((candidate) => candidate.id === playerId);
     return player ? toPlayerDTO(player) : null;
+  },
+
+  getPromotionCandidates(teamId?: string) {
+    const s = requireState();
+    const resolvedTeamId = teamId ?? s.userTeamId;
+    return getPromotionCandidatesForTeam(s, resolvedTeamId).map((candidate) => {
+      const player = s.players.find((entry) => entry.id === candidate.playerId);
+      return {
+        ...candidate,
+        playerName: player ? `${player.firstName} ${player.lastName}` : candidate.playerId,
+        position: player?.position ?? 'UTIL',
+        age: player?.age ?? 0,
+      };
+    });
+  },
+
+  getRosterComplianceIssues(teamId?: string) {
+    const s = requireState();
+    const resolvedTeamId = teamId ?? s.userTeamId;
+    const rosterState = s.rosterStates.get(resolvedTeamId);
+    const issues = getRosterComplianceIssuesForTeam(s, resolvedTeamId);
+
+    return {
+      teamId: resolvedTeamId,
+      activeRosterCount: rosterState?.mlbRoster.length ?? 0,
+      activeRosterLimit: getActiveRosterLimit(s.day),
+      fortyManCount: rosterState?.fortyManRoster.length ?? 0,
+      issues,
+      dfaRecommendations: buildDFARecommendations(resolvedTeamId),
+    };
+  },
+
+  getAffiliateOverview(teamId?: string) {
+    const s = requireState();
+    return buildAffiliateOverview(teamId ?? s.userTeamId);
+  },
+
+  getAffiliateBoxScore(boxScoreId: string) {
+    return getAffiliateBoxScoreView(boxScoreId);
   },
 
   getLeagueLeaders(stat: string, limit: number = 20): PlayerDTO[] {
@@ -472,6 +680,10 @@ export const queryApi = {
     return s.scoutingStaffs.get(s.userTeamId) ?? [];
   },
 
+  getIFAPool() {
+    return buildIFAPoolView(requireState());
+  },
+
   getDraftClass() {
     return buildDraftRoomView(requireState());
   },
@@ -487,6 +699,10 @@ export const queryApi = {
 
   getTradeHistory() {
     return buildTradeHistoryView(requireState());
+  },
+
+  getTradeAssetInventory(teamId: string) {
+    return buildTradeAssetInventoryView(requireState(), teamId);
   },
 
   getRosterState(teamId: string): RosterState | null {

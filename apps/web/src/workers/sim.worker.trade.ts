@@ -1,6 +1,7 @@
 import type {
   BriefingItem,
   PersistentTradeOffer,
+  TradeAsset,
   TradeHistoryEntry,
 } from '@mbd/contracts';
 import {
@@ -8,6 +9,7 @@ import {
   buildRosterState,
   calculateTeamChemistry,
   comparePackages,
+  createDefaultDraftPickOwnership,
   createInitialPlayerMorale,
   deduplicateNews,
   evaluateTradeProposal,
@@ -15,7 +17,10 @@ import {
   generateAITradeOffers,
   generateNews,
   generateNewsId,
+  getRemainingIFABudget,
   getTeamById,
+  tradeDraftPickOwnership as tradeDraftPickOwnershipCore,
+  tradeIFABonusPool as tradeIFABonusPoolCore,
 } from '@mbd/sim-core';
 import type { TradeProposal } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
@@ -26,9 +31,12 @@ import { rebuildBriefing } from './sim.worker.narrative.js';
 export const TRADE_DEADLINE_DAY = 120;
 
 export interface TradeAssetView {
-  playerId: string;
-  playerName: string;
-  position: string;
+  key: string;
+  type: TradeAsset['type'];
+  label: string;
+  detail: string;
+  asset: TradeAsset;
+  playerId?: string;
 }
 
 export interface TradeOfferView {
@@ -42,8 +50,8 @@ export interface TradeOfferView {
   fairnessScore: number;
   message: string;
   createdAt: string;
-  offeringPlayers: TradeAssetView[];
-  requestingPlayers: TradeAssetView[];
+  offeringAssets: TradeAssetView[];
+  requestingAssets: TradeAssetView[];
 }
 
 export interface TradeHistoryView {
@@ -57,13 +65,23 @@ export interface TradeHistoryView {
   fairnessScore: number;
   summary: string;
   timestamp: string;
-  offeringPlayers: TradeAssetView[];
-  requestingPlayers: TradeAssetView[];
+  offeringAssets: TradeAssetView[];
+  requestingAssets: TradeAssetView[];
+}
+
+export interface TradeAssetInventoryView {
+  draftPicks: Array<{
+    key: string;
+    label: string;
+    detail: string;
+    asset: Extract<TradeAsset, { type: 'draft_pick' }>;
+  }>;
+  ifaRemaining: number;
 }
 
 export interface TradeCounterPackage {
-  offeringPlayerIds: string[];
-  requestingPlayerIds: string[];
+  offeringAssets: TradeAsset[];
+  requestingAssets: TradeAsset[];
 }
 
 export interface TradeOfferResponseResult {
@@ -84,20 +102,166 @@ function teamAbbreviation(teamId: string): string {
 function tradeSignature(
   fromTeamId: string,
   toTeamId: string,
-  offeringPlayerIds: string[],
-  requestingPlayerIds: string[],
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
 ): string {
-  const offered = [...offeringPlayerIds].sort().join(',');
-  const requested = [...requestingPlayerIds].sort().join(',');
+  const serializeAsset = (asset: TradeAsset): string => {
+    switch (asset.type) {
+      case 'player':
+        return `player:${asset.playerId}`;
+      case 'draft_pick':
+        return `draft:${asset.season}:${asset.round}:${asset.originalTeamId}`;
+      case 'ifa_pool_space':
+        return `ifa:${asset.amount.toFixed(2)}`;
+    }
+  };
+  const offered = [...offeringAssets].map(serializeAsset).sort().join(',');
+  const requested = [...requestingAssets].map(serializeAsset).sort().join(',');
   return `${fromTeamId}->${toTeamId}:${offered}|${requested}`;
 }
 
-function playerViewForId(state: FullGameState, playerId: string): TradeAssetView {
-  const player = state.players.find((candidate) => candidate.id === playerId);
-  return {
+function ensureDraftPickOwnership(state: FullGameState, season: number) {
+  if (state.draftState.pickOwnership.length > 0) {
+    return;
+  }
+
+  state.draftState = {
+    ...state.draftState,
+    pickOwnership: createDefaultDraftPickOwnership(
+      Array.from(new Set(state.players.map((player) => player.teamId).filter(Boolean))),
+      season,
+    ),
+  };
+}
+
+function assetPlayerIds(assets: TradeAsset[]): string[] {
+  return assets
+    .filter((asset): asset is Extract<TradeAsset, { type: 'player' }> => asset.type === 'player')
+    .map((asset) => asset.playerId);
+}
+
+function playerAssets(playerIds: string[]): TradeAsset[] {
+  return playerIds.map((playerId) => ({
+    type: 'player',
     playerId,
-    playerName: player ? `${player.firstName} ${player.lastName}` : playerId,
-    position: player?.position ?? 'UNK',
+  }));
+}
+
+function assetViewFor(state: FullGameState, asset: TradeAsset): TradeAssetView {
+  switch (asset.type) {
+    case 'player': {
+      const player = state.players.find((candidate) => candidate.id === asset.playerId);
+      return {
+        key: `player:${asset.playerId}`,
+        type: asset.type,
+        label: player ? `${player.firstName} ${player.lastName}` : asset.playerId,
+        detail: player?.position ?? 'UNK',
+        asset,
+        playerId: asset.playerId,
+      };
+    }
+    case 'draft_pick':
+      return {
+        key: `draft:${asset.season}:${asset.round}:${asset.originalTeamId}`,
+        type: asset.type,
+        label: `Round ${asset.round} Pick`,
+        detail: `${asset.season} ${teamAbbreviation(asset.originalTeamId)} original`,
+        asset,
+      };
+    case 'ifa_pool_space':
+      return {
+        key: `ifa:${asset.amount.toFixed(2)}`,
+        type: asset.type,
+        label: `IFA Pool Space`,
+        detail: `$${asset.amount.toFixed(2)}M`,
+        asset,
+      };
+  }
+}
+
+function assetValue(state: FullGameState, asset: TradeAsset): number {
+  switch (asset.type) {
+    case 'player': {
+      const player = state.players.find((candidate) => candidate.id === asset.playerId);
+      if (!player) return 0;
+      const offered = state.players.filter((candidate) => candidate.id === asset.playerId);
+      return comparePackages(offered, []).offerValue;
+    }
+    case 'draft_pick': {
+      const roundWeight = Math.max(1, 22 - asset.round);
+      const seasonDiscount = asset.season === state.season ? 1 : 0.85;
+      return roundWeight * 3 * seasonDiscount;
+    }
+    case 'ifa_pool_space':
+      return asset.amount * 8;
+  }
+}
+
+function compareAssetPackages(
+  state: FullGameState,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+) {
+  const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
+  const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
+  const maxValue = Math.max(offerValue, requestValue, 1);
+  const fairness = Math.max(-100, Math.min(100, Math.round(((requestValue - offerValue) / maxValue) * 100)));
+  return { fairness, offerValue, requestValue };
+}
+
+function applyTradeAssets(
+  state: FullGameState,
+  fromTeamId: string,
+  toTeamId: string,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+) {
+  const proposal: TradeProposal = {
+    id: 'asset-trade',
+    fromTeamId,
+    toTeamId,
+    playersOffered: assetPlayerIds(offeringAssets),
+    playersRequested: assetPlayerIds(requestingAssets),
+    status: 'accepted',
+    reason: 'asset trade',
+  };
+
+  if (proposal.playersOffered.length > 0 || proposal.playersRequested.length > 0) {
+    executeTrade(proposal, state.players);
+  }
+
+  ensureDraftPickOwnership(state, state.season);
+  let pickOwnership = state.draftState.pickOwnership;
+
+  for (const asset of offeringAssets) {
+    if (asset.type === 'draft_pick') {
+      pickOwnership = tradeDraftPickOwnershipCore(pickOwnership, asset, toTeamId);
+    } else if (asset.type === 'ifa_pool_space') {
+      state.internationalScoutingState = tradeIFABonusPoolCore(
+        state.internationalScoutingState,
+        fromTeamId,
+        toTeamId,
+        asset.amount,
+      );
+    }
+  }
+
+  for (const asset of requestingAssets) {
+    if (asset.type === 'draft_pick') {
+      pickOwnership = tradeDraftPickOwnershipCore(pickOwnership, asset, fromTeamId);
+    } else if (asset.type === 'ifa_pool_space') {
+      state.internationalScoutingState = tradeIFABonusPoolCore(
+        state.internationalScoutingState,
+        toTeamId,
+        fromTeamId,
+        asset.amount,
+      );
+    }
+  }
+
+  state.draftState = {
+    ...state.draftState,
+    pickOwnership,
   };
 }
 
@@ -180,28 +344,32 @@ function fairValueForProposal(state: FullGameState, proposal: TradeProposal): nu
   return comparePackages(offered, requested).fairness;
 }
 
+function buildAssetSummary(state: FullGameState, assets: TradeAsset[]): string {
+  return assets
+    .map((asset) => assetViewFor(state, asset).label)
+    .slice(0, 2)
+    .join(', ');
+}
+
 function buildTradeHistoryEntry(
   state: FullGameState,
-  proposal: TradeProposal,
+  proposal: Pick<TradeProposal, 'id' | 'fromTeamId' | 'toTeamId'> & {
+    offeringAssets: TradeAsset[];
+    requestingAssets: TradeAsset[];
+  },
   fairnessScore: number,
 ): TradeHistoryEntry {
-  const offeringNames = proposal.playersOffered
-    .map((playerId) => playerViewForId(state, playerId).playerName)
-    .slice(0, 2)
-    .join(', ');
-  const requestingNames = proposal.playersRequested
-    .map((playerId) => playerViewForId(state, playerId).playerName)
-    .slice(0, 2)
-    .join(', ');
+  const offeringNames = buildAssetSummary(state, proposal.offeringAssets);
+  const requestingNames = buildAssetSummary(state, proposal.requestingAssets);
 
   return {
     id: proposal.id,
     fromTeamId: proposal.fromTeamId,
     toTeamId: proposal.toTeamId,
-    offeringPlayerIds: proposal.playersOffered,
-    requestingPlayerIds: proposal.playersRequested,
+    offeringAssets: proposal.offeringAssets,
+    requestingAssets: proposal.requestingAssets,
     fairnessScore,
-    summary: `${teamName(proposal.fromTeamId)} sent ${offeringNames || 'players'} to ${teamName(proposal.toTeamId)} for ${requestingNames || 'players'}.`,
+    summary: `${teamName(proposal.fromTeamId)} sent ${offeringNames || 'assets'} to ${teamName(proposal.toTeamId)} for ${requestingNames || 'assets'}.`,
     timestamp: timestamp(),
   };
 }
@@ -241,16 +409,16 @@ function existingTradeSignatures(state: FullGameState): Set<string> {
     signatures.add(tradeSignature(
       offer.fromTeamId,
       offer.toTeamId,
-      offer.offeringPlayerIds,
-      offer.requestingPlayerIds,
+      offer.offeringAssets,
+      offer.requestingAssets,
     ));
   }
   for (const history of state.tradeState.tradeHistory) {
     signatures.add(tradeSignature(
       history.fromTeamId,
       history.toTeamId,
-      history.offeringPlayerIds,
-      history.requestingPlayerIds,
+      history.offeringAssets,
+      history.requestingAssets,
     ));
   }
   return signatures;
@@ -264,15 +432,18 @@ function isContender(state: FullGameState, teamId: string): boolean {
 
 function buildPersistentOffer(
   state: FullGameState,
-  proposal: TradeProposal,
+  proposal: Pick<TradeProposal, 'id' | 'fromTeamId' | 'toTeamId' | 'reason'> & {
+    offeringAssets: TradeAsset[];
+    requestingAssets: TradeAsset[];
+  },
   fairnessScore: number,
 ): PersistentTradeOffer {
   return {
     id: proposal.id,
     fromTeamId: proposal.fromTeamId,
     toTeamId: proposal.toTeamId,
-    offeringPlayerIds: proposal.playersOffered,
-    requestingPlayerIds: proposal.playersRequested,
+    offeringAssets: proposal.offeringAssets,
+    requestingAssets: proposal.requestingAssets,
     fairnessScore,
     message: `The ${teamName(proposal.fromTeamId)} want to discuss a trade. ${proposal.reason}`,
     createdAt: timestamp(),
@@ -289,8 +460,8 @@ function buildTradeViews<T extends PersistentTradeOffer | TradeHistoryEntry>(
     fromTeamAbbreviation: teamAbbreviation(trade.fromTeamId),
     toTeamName: teamName(trade.toTeamId),
     toTeamAbbreviation: teamAbbreviation(trade.toTeamId),
-    offeringPlayers: trade.offeringPlayerIds.map((playerId) => playerViewForId(state, playerId)),
-    requestingPlayers: trade.requestingPlayerIds.map((playerId) => playerViewForId(state, playerId)),
+    offeringAssets: trade.offeringAssets.map((asset) => assetViewFor(state, asset)),
+    requestingAssets: trade.requestingAssets.map((asset) => assetViewFor(state, asset)),
   }));
 }
 
@@ -304,6 +475,37 @@ export function buildTradeOffersView(state: FullGameState): TradeOfferView[] {
 
 export function buildTradeHistoryView(state: FullGameState): TradeHistoryView[] {
   return buildTradeViews(state, state.tradeState.tradeHistory) as TradeHistoryView[];
+}
+
+export function buildTradeAssetInventoryView(state: FullGameState, teamId: string): TradeAssetInventoryView {
+  ensureDraftPickOwnership(state, state.season);
+  const draftPicks = state.draftState.pickOwnership
+    .filter((pick) =>
+      pick.currentTeamId === teamId
+      && !pick.forfeited
+      && (pick.season === state.season || pick.season === state.season + 1),
+    )
+    .sort((left, right) => left.season - right.season || left.round - right.round || left.originalTeamId.localeCompare(right.originalTeamId))
+    .map((pick) => {
+      const asset = {
+        type: 'draft_pick' as const,
+        season: pick.season,
+        round: pick.round,
+        originalTeamId: pick.originalTeamId,
+      };
+      return {
+        key: `draft:${pick.season}:${pick.round}:${pick.originalTeamId}`,
+        label: `R${pick.round} ${pick.season}`,
+        detail: `${teamAbbreviation(pick.originalTeamId)} original`,
+        asset,
+      };
+    });
+
+  const budget = state.internationalScoutingState.budgets.get(teamId);
+  return {
+    draftPicks,
+    ifaRemaining: budget ? getRemainingIFABudget(budget) : 0,
+  };
 }
 
 export function clearPendingTradeOffers(state: FullGameState) {
@@ -354,10 +556,13 @@ function recordLeagueTradeNews(state: FullGameState, proposal: TradeProposal) {
 
 function executeAcceptedTrade(
   state: FullGameState,
-  proposal: TradeProposal,
+  proposal: Pick<TradeProposal, 'id' | 'fromTeamId' | 'toTeamId'> & {
+    offeringAssets: TradeAsset[];
+    requestingAssets: TradeAsset[];
+  },
   fairnessScore: number,
 ) {
-  executeTrade(proposal, state.players);
+  applyTradeAssets(state, proposal.fromTeamId, proposal.toTeamId, proposal.offeringAssets, proposal.requestingAssets);
   state.rosterStates.set(proposal.fromTeamId, buildRosterState(proposal.fromTeamId, state.players));
   state.rosterStates.set(proposal.toTeamId, buildRosterState(proposal.toTeamId, state.players));
   addTradeHistoryEntry(state, buildTradeHistoryEntry(state, proposal, fairnessScore));
@@ -387,8 +592,8 @@ function buildMonthlyTradeCandidates(state: FullGameState) {
       const signature = tradeSignature(
         proposal.fromTeamId,
         proposal.toTeamId,
-        proposal.playersOffered,
-        proposal.playersRequested,
+        playerAssets(proposal.playersOffered),
+        playerAssets(proposal.playersRequested),
       );
       if (signatures.has(signature)) continue;
       signatures.add(signature);
@@ -413,7 +618,11 @@ function generateMonthlyTradeActivity(state: FullGameState) {
 
   for (const proposal of userCandidates.slice(0, userOfferTarget)) {
     const fairnessScore = fairValueForProposal(state, proposal);
-    addPendingOffer(state, buildPersistentOffer(state, proposal, fairnessScore));
+    addPendingOffer(state, buildPersistentOffer(state, {
+      ...proposal,
+      offeringAssets: playerAssets(proposal.playersOffered),
+      requestingAssets: playerAssets(proposal.playersRequested),
+    }, fairnessScore));
   }
 
   for (const proposal of aiCandidates.slice(0, 1)) {
@@ -430,7 +639,11 @@ function generateMonthlyTradeActivity(state: FullGameState) {
     if (result.decision !== 'accepted') continue;
 
     const fairnessScore = fairValueForProposal(state, proposal);
-    executeAcceptedTrade(state, proposal, fairnessScore);
+    executeAcceptedTrade(state, {
+      ...proposal,
+      offeringAssets: playerAssets(proposal.playersOffered),
+      requestingAssets: playerAssets(proposal.playersRequested),
+    }, fairnessScore);
     recordLeagueTradeNews(state, proposal);
   }
 }
@@ -459,9 +672,145 @@ export function processTradeMarketActivity(
 
 export function recordAcceptedUserTrade(
   state: FullGameState,
-  proposal: TradeProposal,
+  proposal: {
+    id: string;
+    fromTeamId: string;
+    toTeamId: string;
+    offeringAssets: TradeAsset[];
+    requestingAssets: TradeAsset[];
+  },
 ) {
-  addTradeHistoryEntry(state, buildTradeHistoryEntry(state, proposal, fairValueForProposal(state, proposal)));
+  addTradeHistoryEntry(state, buildTradeHistoryEntry(
+    state,
+    proposal,
+    compareAssetPackages(state, proposal.offeringAssets, proposal.requestingAssets).fairness,
+  ));
+}
+
+function validateTradeAssetsForTeam(
+  state: FullGameState,
+  teamId: string,
+  assets: TradeAsset[],
+): string | null {
+  ensureDraftPickOwnership(state, state.season);
+
+  for (const asset of assets) {
+    if (asset.type === 'player') {
+      const player = state.players.find((candidate) => candidate.id === asset.playerId);
+      if (!player || player.teamId !== teamId) {
+        return 'Trade package includes a player not controlled by that team.';
+      }
+      continue;
+    }
+
+    if (asset.type === 'draft_pick') {
+      const pick = state.draftState.pickOwnership.find((entry) =>
+        entry.season === asset.season
+        && entry.round === asset.round
+        && entry.originalTeamId === asset.originalTeamId,
+      );
+      if (!pick || pick.currentTeamId !== teamId || pick.forfeited) {
+        return 'Trade package includes a draft pick not owned by that team.';
+      }
+      continue;
+    }
+
+    const budget = state.internationalScoutingState.budgets.get(teamId);
+    if (!budget || getRemainingIFABudget(budget) < asset.amount) {
+      return 'Trade package includes IFA pool space that exceeds the available balance.';
+    }
+  }
+
+  return null;
+}
+
+function hasNonPlayerAssets(assets: TradeAsset[]): boolean {
+  return assets.some((asset) => asset.type !== 'player');
+}
+
+export function proposeTradePackage(
+  state: FullGameState,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+  toTeamId: string,
+) {
+  if (!isTradeMarketOpen(state)) {
+    return { decision: 'rejected', reason: 'Trade market closed — reopens in offseason' };
+  }
+
+  const gm = state.gmPersonalities.get(toTeamId);
+  if (!gm) {
+    return { decision: 'rejected', reason: 'Unknown team' };
+  }
+
+  const offeredValidation = validateTradeAssetsForTeam(state, state.userTeamId, offeringAssets);
+  if (offeredValidation) {
+    return { decision: 'rejected', reason: offeredValidation };
+  }
+
+  const requestedValidation = validateTradeAssetsForTeam(state, toTeamId, requestingAssets);
+  if (requestedValidation) {
+    return { decision: 'rejected', reason: requestedValidation };
+  }
+
+  const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
+  const preTradePartnerPlayers = getTeamPlayers(toTeamId);
+  const playerOnlyProposal: TradeProposal = {
+    id: `user-${timestamp()}`,
+    fromTeamId: state.userTeamId,
+    toTeamId,
+    playersOffered: assetPlayerIds(offeringAssets),
+    playersRequested: assetPlayerIds(requestingAssets),
+    status: 'proposed',
+    reason: '',
+  };
+
+  const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets).fairness;
+  const usesNonPlayerAssets = hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets);
+  const result = usesNonPlayerAssets
+    ? {
+      decision: (-fairnessScore >= -10 ? 'accepted' : 'rejected') as 'accepted' | 'rejected',
+      reason: -fairnessScore >= -10 ? 'The value framework works for us.' : 'The value gap is too wide for us.',
+      counter: undefined,
+    }
+    : evaluateTradeProposal(
+      state.rng.fork(),
+      playerOnlyProposal,
+      preTradeUserPlayers,
+      preTradePartnerPlayers,
+      gm,
+      false,
+    );
+
+  if (result.decision === 'accepted') {
+    executeAcceptedTrade(state, {
+      id: playerOnlyProposal.id,
+      fromTeamId: state.userTeamId,
+      toTeamId,
+      offeringAssets,
+      requestingAssets,
+    }, fairnessScore);
+    applyTradeConsequences(
+      state,
+      assetPlayerIds(offeringAssets),
+      assetPlayerIds(requestingAssets),
+      toTeamId,
+      preTradeUserPlayers,
+      preTradePartnerPlayers,
+    );
+  }
+
+  return {
+    decision: result.decision,
+    reason: result.reason,
+    counter: result.counter
+      ? {
+        ...result.counter,
+        offeringAssets: playerAssets(result.counter.playersOffered),
+        requestingAssets: playerAssets(result.counter.playersRequested),
+      }
+      : undefined,
+  };
 }
 
 export function respondToTradeOffer(
@@ -479,20 +828,22 @@ export function respondToTradeOffer(
     id: offer.id,
     fromTeamId: offer.fromTeamId,
     toTeamId: offer.toTeamId,
-    playersOffered: offer.offeringPlayerIds,
-    playersRequested: offer.requestingPlayerIds,
+    playersOffered: assetPlayerIds(offer.offeringAssets),
+    playersRequested: assetPlayerIds(offer.requestingAssets),
     status: 'proposed',
     reason: offer.message,
   };
+  const offerPlayerIds = assetPlayerIds(offer.offeringAssets);
+  const requestedPlayerIds = assetPlayerIds(offer.requestingAssets);
 
   if (action === 'decline') {
     removePendingOffer(state, offerId);
-    applyDeclineMorale(state, offer.requestingPlayerIds);
+    applyDeclineMorale(state, requestedPlayerIds);
     pushNewsAndBriefing(
       state,
       `${teamName(offer.fromTeamId)} offer declined`,
-      `${teamName(state.userTeamId)} declined a trade proposal involving ${playerViewForId(state, offer.requestingPlayerIds[0] ?? '').playerName}.`,
-      [...offer.offeringPlayerIds, ...offer.requestingPlayerIds],
+      `${teamName(state.userTeamId)} declined a trade proposal involving ${assetViewFor(state, offer.requestingAssets[0] ?? { type: 'ifa_pool_space', amount: 0.01 }).label}.`,
+      [...offerPlayerIds, ...requestedPlayerIds],
       [offer.fromTeamId, offer.toTeamId],
     );
     return {
@@ -514,12 +865,18 @@ export function respondToTradeOffer(
 
     const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
     const preTradePartnerPlayers = getTeamPlayers(offer.fromTeamId);
-    executeAcceptedTrade(state, proposal, offer.fairnessScore);
+    executeAcceptedTrade(state, {
+      id: proposal.id,
+      fromTeamId: proposal.fromTeamId,
+      toTeamId: proposal.toTeamId,
+      offeringAssets: offer.offeringAssets,
+      requestingAssets: offer.requestingAssets,
+    }, offer.fairnessScore);
     removePendingOffer(state, offerId);
     applyTradeConsequences(
       state,
-      offer.requestingPlayerIds,
-      offer.offeringPlayerIds,
+      requestedPlayerIds,
+      offerPlayerIds,
       offer.fromTeamId,
       preTradeUserPlayers,
       preTradePartnerPlayers,
@@ -543,8 +900,8 @@ export function respondToTradeOffer(
     id: offer.id,
     fromTeamId: state.userTeamId,
     toTeamId: offer.fromTeamId,
-    playersOffered: counterPackage.offeringPlayerIds,
-    playersRequested: counterPackage.requestingPlayerIds,
+    playersOffered: assetPlayerIds(counterPackage.offeringAssets),
+    playersRequested: assetPlayerIds(counterPackage.requestingAssets),
     status: 'proposed',
     reason: 'Counter-offer from user GM',
   };
@@ -554,22 +911,41 @@ export function respondToTradeOffer(
     return { success: false, decision: 'rejected', message: 'Unable to reach the other front office.' };
   }
 
-  const result = evaluateTradeProposal(
-    state.rng.fork(),
-    counterProposal,
-    getTeamPlayers(state.userTeamId),
-    getTeamPlayers(offer.fromTeamId),
-    gm,
-    isContender(state, offer.fromTeamId),
-  );
+  const usesNonPlayerAssets = hasNonPlayerAssets(counterPackage.offeringAssets) || hasNonPlayerAssets(counterPackage.requestingAssets);
+  const result = usesNonPlayerAssets
+    ? {
+      decision: (-compareAssetPackages(state, counterPackage.offeringAssets, counterPackage.requestingAssets).fairness >= -10
+        ? 'accepted'
+        : 'rejected') as 'accepted' | 'rejected',
+      reason: 'Counter framework evaluated.',
+      counter: undefined,
+    }
+    : evaluateTradeProposal(
+      state.rng.fork(),
+      counterProposal,
+      getTeamPlayers(state.userTeamId),
+      getTeamPlayers(offer.fromTeamId),
+      gm,
+      isContender(state, offer.fromTeamId),
+    );
 
   removePendingOffer(state, offerId);
 
   if (result.decision === 'accepted') {
     const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
     const preTradePartnerPlayers = getTeamPlayers(offer.fromTeamId);
-    const fairnessScore = fairValueForProposal(state, counterProposal);
-    executeAcceptedTrade(state, counterProposal, fairnessScore);
+    const fairnessScore = compareAssetPackages(
+      state,
+      counterPackage.offeringAssets,
+      counterPackage.requestingAssets,
+    ).fairness;
+    executeAcceptedTrade(state, {
+      id: counterProposal.id,
+      fromTeamId: counterProposal.fromTeamId,
+      toTeamId: counterProposal.toTeamId,
+      offeringAssets: counterPackage.offeringAssets,
+      requestingAssets: counterPackage.requestingAssets,
+    }, fairnessScore);
     applyTradeConsequences(
       state,
       counterProposal.playersOffered,
@@ -587,7 +963,11 @@ export function respondToTradeOffer(
 
   if (result.decision === 'countered' && result.counter) {
     const fairnessScore = fairValueForProposal(state, result.counter);
-    addPendingOffer(state, buildPersistentOffer(state, result.counter, fairnessScore));
+    addPendingOffer(state, buildPersistentOffer(state, {
+      ...result.counter,
+      offeringAssets: playerAssets(result.counter.playersOffered),
+      requestingAssets: playerAssets(result.counter.playersRequested),
+    }, fairnessScore));
     pushNewsAndBriefing(
       state,
       `${teamName(offer.fromTeamId)} countered back`,

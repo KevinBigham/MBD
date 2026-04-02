@@ -37,4 +37,5 @@ export {
   advanceContracts,
   generateContractOffer,
   getArbEligiblePlayers,
+  serviceDaysToYears,
 } from './contracts.js';

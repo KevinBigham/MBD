@@ -38,6 +38,16 @@ export const RosterStatusEnum = z.enum([
 ]);
 export type RosterStatus = z.infer<typeof RosterStatusEnum>;
 
+export const MinorLeagueLevelEnum = z.enum([
+  "AAA",
+  "AA",
+  "A_PLUS",
+  "A",
+  "ROOKIE",
+  "INTERNATIONAL",
+]);
+export type MinorLeagueLevel = z.infer<typeof MinorLeagueLevelEnum>;
+
 const attributeRating = z.number().int().min(0).max(550);
 
 export const HitterAttributesSchema = z.object({
@@ -98,5 +108,9 @@ export const PlayerSchema = z.object({
   injury: InjurySchema.optional(),
   teamId: z.string(),
   rule5EligibleAfterSeason: z.number().int().min(1),
+  serviceTimeDays: z.number().int().min(0),
+  optionYearsUsed: z.number().int().min(0),
+  isOutOfOptions: z.boolean(),
+  minorLeagueLevel: MinorLeagueLevelEnum.nullable(),
 });
 export type Player = z.infer<typeof PlayerSchema>;

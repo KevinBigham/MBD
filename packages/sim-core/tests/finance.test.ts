@@ -12,6 +12,7 @@ import {
   getTeamBudget,
   advanceContracts,
   getArbEligiblePlayers,
+  serviceDaysToYears,
   LUXURY_TAX_THRESHOLD,
 } from '../src/index.js';
 import type { ContractDetail, GeneratedPlayer } from '../src/index.js';
@@ -190,5 +191,15 @@ describe('getArbEligiblePlayers', () => {
       expect(years).toBeLessThanOrEqual(6);
     }
     expect(eligible.length).toBeGreaterThan(0);
+  });
+});
+
+describe('serviceDaysToYears', () => {
+  it('converts MLB roster days into whole service years', () => {
+    expect(serviceDaysToYears(0)).toBe(0);
+    expect(serviceDaysToYears(171)).toBe(0);
+    expect(serviceDaysToYears(172)).toBe(1);
+    expect(serviceDaysToYears(343)).toBe(1);
+    expect(serviceDaysToYears(344)).toBe(2);
   });
 });

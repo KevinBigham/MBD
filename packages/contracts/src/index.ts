@@ -3,6 +3,7 @@ export {
   PositionEnum,
   DevelopmentPhaseEnum,
   RosterStatusEnum,
+  MinorLeagueLevelEnum,
   HitterAttributesSchema,
   PitcherAttributesSchema,
   PersonalitySchema,
@@ -14,6 +15,7 @@ export type {
   Position,
   DevelopmentPhase,
   RosterStatus,
+  MinorLeagueLevel,
   HitterAttributes,
   PitcherAttributes,
   Personality,
@@ -49,14 +51,52 @@ export {
 export type { TransactionType, RosterTransaction } from "./schemas/roster.js";
 
 export {
+  AffiliateLevelEnum,
+  AffiliatePlayerStatsSchema,
+  AffiliateStateSchema,
+  WaiverClaimSchema,
+  AffiliateBoxScoreSchema,
+  MinorLeagueStateSchema,
+} from "./schemas/minors.js";
+export type {
+  AffiliateLevel,
+  AffiliatePlayerStats,
+  AffiliateState,
+  WaiverClaim,
+  AffiliateBoxScore,
+  MinorLeagueState,
+} from "./schemas/minors.js";
+
+export {
   ScoutReportSchema,
+  DraftProspectBackgroundEnum,
+  DraftScoutingReportSchema,
+  DraftSignabilitySchema,
+  DraftPickOwnershipSchema,
+  DraftCompensatoryPickSchema,
+  QualifyingOfferStatusEnum,
+  QualifyingOfferRecordSchema,
+  DraftSigningDecisionSchema,
   DraftPickSchema,
   DraftClassSchema,
 } from "./schemas/draft.js";
-export type { ScoutReport, DraftPick, DraftClass } from "./schemas/draft.js";
+export type {
+  ScoutReport,
+  DraftProspectBackground,
+  DraftScoutingReport,
+  DraftSignability,
+  DraftPickOwnership,
+  DraftCompensatoryPick,
+  QualifyingOfferStatus,
+  QualifyingOfferRecord,
+  DraftSigningDecision,
+  DraftPick,
+  DraftClass,
+} from "./schemas/draft.js";
 
 export {
   TradeStatusEnum,
+  TradeAssetSchema,
   TradePackageSchema,
   TradeProposalSchema,
   PersistentTradeOfferSchema,
@@ -65,6 +105,7 @@ export {
 } from "./schemas/trade.js";
 export type {
   TradeStatus,
+  TradeAsset,
   TradePackage,
   TradeProposal,
   PersistentTradeOffer,
@@ -150,6 +191,15 @@ export {
   GameRNGStateSchema,
   SimPhaseEnum,
   SnapshotPlayerSchema,
+  InternationalBonusPoolSchema,
+  InternationalRegionEnum,
+  InternationalNationalityEnum,
+  IFAProspectStatusEnum,
+  InternationalProspectSchema,
+  InternationalScoutingReportSchema,
+  IFAScoutingHistoryEntrySchema,
+  InternationalScoutingStateSchema,
+  DraftStateSchema,
   ScheduledGameSchema,
   StandingsRecordSchema,
   PlayerStatEntrySchema,
@@ -159,6 +209,7 @@ export {
   GameSnapshotV3Schema,
   GameSnapshotV4Schema,
   GameSnapshotV5Schema,
+  GameSnapshotV6Schema,
   GameSnapshotSchema,
   migrateGameSnapshot,
   parseGameSnapshot,
@@ -169,6 +220,15 @@ export type {
   GameRNGState,
   SimPhase,
   SnapshotPlayer,
+  InternationalBonusPool,
+  InternationalRegion,
+  InternationalNationality,
+  IFAProspectStatus,
+  InternationalProspect,
+  InternationalScoutingReport,
+  IFAScoutingHistoryEntry,
+  InternationalScoutingState,
+  DraftState,
   ScheduledGame,
   StandingsRecord,
   PlayerStatEntry,
@@ -178,6 +238,7 @@ export type {
   GameSnapshotV3,
   GameSnapshotV4,
   GameSnapshotV5,
+  GameSnapshotV6,
   GameSnapshot,
 } from "./schemas/save.js";
 

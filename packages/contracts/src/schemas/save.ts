@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ContractSchema,
   HitterAttributesSchema,
+  MinorLeagueLevelEnum,
   PersonalitySchema,
   PitcherAttributesSchema,
   PositionEnum,
@@ -23,6 +24,15 @@ import {
   SeasonHistoryEntrySchema,
 } from "./narrative.js";
 import { TradeStateSchema } from "./trade.js";
+import {
+  DraftCompensatoryPickSchema,
+  DraftPickOwnershipSchema,
+  DraftScoutingReportSchema,
+  DraftSigningDecisionSchema,
+  DraftSignabilitySchema,
+  QualifyingOfferRecordSchema,
+} from "./draft.js";
+import { MinorLeagueStateSchema } from "./minors.js";
 
 export const SaveMetaSchema = z.object({
   id: z.string().uuid(),
@@ -41,6 +51,9 @@ export const SaveSlotSchema = z.object({
   isEmpty: z.boolean(),
 });
 export type SaveSlot = z.infer<typeof SaveSlotSchema>;
+
+const DISPLAY_GRADE_MIN = 20;
+const DISPLAY_GRADE_MAX = 80;
 
 export const GameRNGStateSchema = z.object({
   seed: z.number().int(),
@@ -72,8 +85,14 @@ const LegacySnapshotPlayerSchema = z.object({
   nationality: z.enum(["american", "latin", "asian"]),
   overallRating: z.number().int().min(0).max(550),
 });
-export const SnapshotPlayerSchema = LegacySnapshotPlayerSchema.extend({
+const SnapshotPlayerV6Schema = LegacySnapshotPlayerSchema.extend({
   rule5EligibleAfterSeason: z.number().int().min(1),
+});
+export const SnapshotPlayerSchema = SnapshotPlayerV6Schema.extend({
+  serviceTimeDays: z.number().int().min(0),
+  optionYearsUsed: z.number().int().min(0),
+  isOutOfOptions: z.boolean(),
+  minorLeagueLevel: MinorLeagueLevelEnum.nullable(),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
 
@@ -226,7 +245,92 @@ const NarrativeSnapshotV4Schema = z.object({
   seasonHistory: z.array(SeasonHistoryEntrySchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 6;
+export const InternationalBonusPoolSchema = z.object({
+  baseAllocation: z.number().min(0),
+  tradedIn: z.number(),
+  tradedOut: z.number(),
+  committed: z.number().min(0),
+});
+export type InternationalBonusPool = z.infer<typeof InternationalBonusPoolSchema>;
+
+export const InternationalRegionEnum = z.enum([
+  "latin_america",
+  "caribbean",
+  "asia",
+]);
+export type InternationalRegion = z.infer<typeof InternationalRegionEnum>;
+
+export const InternationalNationalityEnum = z.enum(["latin", "asian"]);
+export type InternationalNationality = z.infer<typeof InternationalNationalityEnum>;
+
+export const IFAProspectStatusEnum = z.enum(["available", "signed"]);
+export type IFAProspectStatus = z.infer<typeof IFAProspectStatusEnum>;
+
+export const InternationalProspectSchema = z.object({
+  id: z.string(),
+  season: z.number().int().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  age: z.number().int().min(16).max(22),
+  position: PositionEnum,
+  hitterAttributes: HitterAttributesSchema,
+  pitcherAttributes: PitcherAttributesSchema.nullable(),
+  personality: PersonalitySchema,
+  nationality: InternationalNationalityEnum,
+  region: InternationalRegionEnum,
+  country: z.string().min(1),
+  overallRating: z.number().int().min(0).max(550),
+  potentialRating: z.number().int().min(0).max(550),
+  expectedBonus: z.number().min(0),
+  status: IFAProspectStatusEnum,
+  signedTeamId: z.string().nullable(),
+  signedBonus: z.number().min(0).nullable(),
+});
+export type InternationalProspect = z.infer<typeof InternationalProspectSchema>;
+
+export const InternationalScoutingReportSchema = z.object({
+  playerId: z.string(),
+  looks: z.number().int().min(1),
+  accuracy: z.number().min(0.5).max(0.95),
+  observedRatings: z.record(z.string(), z.number().int().min(DISPLAY_GRADE_MIN).max(DISPLAY_GRADE_MAX)),
+  overallGrade: z.number().int().min(DISPLAY_GRADE_MIN).max(DISPLAY_GRADE_MAX),
+  confidence: z.number().int().min(1).max(20),
+  ceiling: z.number().int().min(DISPLAY_GRADE_MIN).max(DISPLAY_GRADE_MAX),
+  floor: z.number().int().min(DISPLAY_GRADE_MIN).max(DISPLAY_GRADE_MAX),
+  notes: z.string(),
+  reliability: z.number().min(0.5).max(0.95),
+});
+export type InternationalScoutingReport = z.infer<typeof InternationalScoutingReportSchema>;
+
+export const IFAScoutingHistoryEntrySchema = z.object({
+  playerId: z.string(),
+  looks: z.number().int().min(1),
+  report: InternationalScoutingReportSchema,
+});
+export type IFAScoutingHistoryEntry = z.infer<typeof IFAScoutingHistoryEntrySchema>;
+
+export const InternationalScoutingStateSchema = z.object({
+  season: z.number().int().min(1),
+  ifaPool: z.array(InternationalProspectSchema),
+  budgets: z.array(z.tuple([z.string(), InternationalBonusPoolSchema])),
+  scoutingHistory: z.array(z.tuple([z.string(), z.array(IFAScoutingHistoryEntrySchema)])),
+});
+export type InternationalScoutingState = z.infer<typeof InternationalScoutingStateSchema>;
+
+export const DraftStateSchema = z.object({
+  scoutingReports: z.array(z.tuple([z.string(), z.array(DraftScoutingReportSchema)])),
+  signability: z.array(z.tuple([z.string(), DraftSignabilitySchema])),
+  qualifyingOffers: z.array(QualifyingOfferRecordSchema),
+  compensatoryPicks: z.array(DraftCompensatoryPickSchema),
+  pickOwnership: z.array(DraftPickOwnershipSchema),
+  bigBoards: z.array(z.tuple([z.string(), z.array(z.string())])),
+  signingDecisions: z.array(DraftSigningDecisionSchema),
+});
+export type DraftState = z.infer<typeof DraftStateSchema>;
+
+export type MinorLeagueState = z.infer<typeof MinorLeagueStateSchema>;
+
+export const CURRENT_GAME_SNAPSHOT_VERSION = 7;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -253,11 +357,42 @@ export const GameSnapshotSchema = z.object({
   rosterStates: z.array(RosterStateEntrySchema),
   narrative: NarrativeSnapshotSchema,
   tradeState: TradeStateSchema,
+  internationalScoutingState: InternationalScoutingStateSchema,
+  draftState: DraftStateSchema,
+  minorLeagueState: MinorLeagueStateSchema,
   rule5Session: Rule5SessionSchema,
   rule5Obligations: z.array(Rule5StateEntrySchema),
   rule5OfferBackStates: z.array(Rule5StateEntrySchema),
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV6Schema = z.object({
+  schemaVersion: z.literal(6),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(SnapshotPlayerV6Schema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateSchema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  narrative: NarrativeSnapshotSchema,
+  tradeState: TradeStateSchema,
+  rule5Session: Rule5SessionSchema,
+  rule5Obligations: z.array(Rule5StateEntrySchema),
+  rule5OfferBackStates: z.array(Rule5StateEntrySchema),
+});
+export type GameSnapshotV6 = z.infer<typeof GameSnapshotV6Schema>;
 
 export const GameSnapshotV5Schema = z.object({
   schemaVersion: z.literal(5),
@@ -403,6 +538,33 @@ function createEmptyRule5State() {
   };
 }
 
+function createEmptyPhase6State(season: number) {
+  return {
+    internationalScoutingState: {
+      season,
+      ifaPool: [],
+      budgets: [],
+      scoutingHistory: [],
+    },
+    draftState: {
+      scoutingReports: [],
+      signability: [],
+      qualifyingOffers: [],
+      compensatoryPicks: [],
+      pickOwnership: [],
+      bigBoards: [],
+      signingDecisions: [],
+    },
+    minorLeagueState: {
+      serviceTimeLedger: [],
+      optionUsage: [],
+      waiverClaims: [],
+      affiliateStates: [],
+      affiliateBoxScores: [],
+    },
+  };
+}
+
 function calculateRule5EligibleAfterSeason(signingSeason: number, signedAge: number): number {
   return Math.max(1, signingSeason + (signedAge <= 18 ? 4 : 3));
 }
@@ -434,6 +596,7 @@ const BACKFILL_TYPICAL_MAX_AGE: Record<z.infer<typeof LegacySnapshotPlayerSchema
 function migrateSnapshotPlayer(
   player: z.infer<typeof LegacySnapshotPlayerSchema>,
   currentSeason: number,
+  serviceTimeYears: number,
 ): SnapshotPlayer {
   const baseYears = BACKFILL_BASE_YEARS[player.rosterStatus];
   const typicalMaxAge = BACKFILL_TYPICAL_MAX_AGE[player.rosterStatus];
@@ -444,14 +607,51 @@ function migrateSnapshotPlayer(
   return {
     ...player,
     rule5EligibleAfterSeason: calculateRule5EligibleAfterSeason(estimatedSigningSeason, estimatedSignedAge),
+    serviceTimeDays: serviceTimeYears * 172,
+    optionYearsUsed: 0,
+    isOutOfOptions: false,
+    minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
+  };
+}
+
+function getMinorLeagueLevel(
+  rosterStatus: z.infer<typeof LegacySnapshotPlayerSchema>["rosterStatus"],
+): z.infer<typeof MinorLeagueLevelEnum> | null {
+  if (
+    rosterStatus === "MLB" ||
+    rosterStatus === "FREE_AGENT" ||
+    rosterStatus === "RETIRED"
+  ) {
+    return null;
+  }
+
+  return rosterStatus;
+}
+
+function createServiceTimeLookup(entries: [string, number][]): Map<string, number> {
+  return new Map(entries);
+}
+
+function migrateV6SnapshotPlayer(
+  player: z.infer<typeof SnapshotPlayerV6Schema>,
+  serviceTimeYears: number,
+): SnapshotPlayer {
+  return {
+    ...player,
+    serviceTimeDays: serviceTimeYears * 172,
+    optionYearsUsed: 0,
+    isOutOfOptions: false,
+    minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
   };
 }
 
 export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
+  const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
+    players: snapshot.players.map((player) =>
+      migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     seasonState: {
       ...snapshot.seasonState,
       playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntry),
@@ -479,43 +679,64 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
     },
     tradeState: createEmptyTradeState(),
     ...createEmptyRule5State(),
+    ...createEmptyPhase6State(snapshot.season),
   });
 }
 
 function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
+  const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
+    players: snapshot.players.map((player) =>
+      migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     narrative: {
       ...snapshot.narrative,
       ...createEmptyLegacyState(),
     },
     tradeState: createEmptyTradeState(),
     ...createEmptyRule5State(),
+    ...createEmptyPhase6State(snapshot.season),
   });
 }
 
 function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
+  const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
+    players: snapshot.players.map((player) =>
+      migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     narrative: {
       ...snapshot.narrative,
       ...createEmptyLegacyState(),
     },
     tradeState: snapshot.tradeState ?? createEmptyTradeState(),
     ...createEmptyRule5State(),
+    ...createEmptyPhase6State(snapshot.season),
   });
 }
 
 function migrateGameSnapshotV5(snapshot: GameSnapshotV5): GameSnapshot {
+  const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
+    players: snapshot.players.map((player) =>
+      migrateSnapshotPlayer(player, snapshot.season, serviceTimeLookup.get(player.id) ?? 0)),
     ...createEmptyRule5State(),
+    ...createEmptyPhase6State(snapshot.season),
+  });
+}
+
+function migrateGameSnapshotV6(snapshot: GameSnapshotV6): GameSnapshot {
+  const serviceTimeLookup = createServiceTimeLookup(snapshot.serviceTime);
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) =>
+      migrateV6SnapshotPlayer(player, serviceTimeLookup.get(player.id) ?? 0)),
+    ...createEmptyPhase6State(snapshot.season),
   });
 }
 
@@ -536,6 +757,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 6
+  ) {
+    return migrateGameSnapshotV6(GameSnapshotV6Schema.parse(snapshotLike));
   }
 
   if (

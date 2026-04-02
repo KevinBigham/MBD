@@ -64,11 +64,13 @@ describe('DraftPage', () => {
     const availableView = {
       status: 'available',
       availableProspects: [],
+      udfaProspects: [],
       completedPicks: [],
       currentPick: null,
       board: { teams: [], rounds: [] },
       counts: { totalRounds: 20, totalPicks: 0, picksMade: 0, picksRemaining: 0 },
       userDraftClass: null,
+      userBigBoard: [],
     };
 
     const inProgressView = {
@@ -82,12 +84,20 @@ describe('DraftPage', () => {
           lastName: 'Prospect',
           position: 'SS',
           scoutingGrade: 61,
+          consensusGrade: 58,
+          looks: 2,
+          slotValue: 2.4,
+          askBonus: 2.8,
+          background: 'high_school',
+          bigBoardRank: 1,
           age: 18,
           origin: 'HS',
         },
       ],
+      udfaProspects: [],
       completedPicks: [
         {
+          slotId: 'standard:1:1:bos',
           round: 1,
           pickNumber: 1,
           teamId: 'bos',
@@ -102,6 +112,7 @@ describe('DraftPage', () => {
         },
       ],
       currentPick: {
+        slotId: 'standard:1:2:nyy',
         round: 1,
         pickNumber: 2,
         pickInRound: 2,
@@ -121,12 +132,14 @@ describe('DraftPage', () => {
             round: 1,
             cells: [
               {
+                slotId: 'standard:1:1:bos',
                 round: 1,
                 pickInRound: 1,
                 teamId: 'bos',
                 teamAbbreviation: 'BOS',
                 tone: 'division_rival',
                 pick: {
+                  slotId: 'standard:1:1:bos',
                   round: 1,
                   pickNumber: 1,
                   teamId: 'bos',
@@ -141,6 +154,7 @@ describe('DraftPage', () => {
                 },
               },
               {
+                slotId: 'standard:1:2:nyy',
                 round: 1,
                 pickInRound: 2,
                 teamId: 'nyy',
@@ -161,12 +175,17 @@ describe('DraftPage', () => {
             position: 'SS',
             scoutingGrade: 61,
             origin: 'HS',
+            slotValue: 2.4,
+            askBonus: 2.8,
+            signed: null,
+            agreedBonus: null,
             assessment: 'Strong value with a realistic path to contributing.',
           },
         ],
         overallGrade: 'B',
         averageScoutingGrade: 61,
       },
+      userBigBoard: ['prospect-1'],
     };
 
     const completeView = {
@@ -177,6 +196,7 @@ describe('DraftPage', () => {
       completedPicks: [
         ...inProgressView.completedPicks,
         {
+          slotId: 'standard:1:2:nyy',
           round: 1,
           pickNumber: 2,
           teamId: 'nyy',
@@ -190,6 +210,7 @@ describe('DraftPage', () => {
           tone: 'user',
         },
         {
+          slotId: 'standard:1:3:tb',
           round: 1,
           pickNumber: 3,
           teamId: 'tb',
@@ -214,12 +235,14 @@ describe('DraftPage', () => {
             cells: [
               inProgressView.board.rounds[0]!.cells[0]!,
               {
+                slotId: 'standard:1:2:nyy',
                 round: 1,
                 pickInRound: 2,
                 teamId: 'nyy',
                 teamAbbreviation: 'NYY',
                 tone: 'user',
                 pick: {
+                  slotId: 'standard:1:2:nyy',
                   round: 1,
                   pickNumber: 2,
                   teamId: 'nyy',
@@ -234,12 +257,14 @@ describe('DraftPage', () => {
                 },
               },
               {
+                slotId: 'standard:1:3:tb',
                 round: 1,
                 pickInRound: 3,
                 teamId: 'tb',
                 teamAbbreviation: 'TBR',
                 tone: 'division_rival',
                 pick: {
+                  slotId: 'standard:1:3:tb',
                   round: 1,
                   pickNumber: 3,
                   teamId: 'tb',
@@ -271,6 +296,21 @@ describe('DraftPage', () => {
       draft: inProgressView,
       newPicks: [],
     });
+    const scoutDraftPlayer = vi.fn().mockResolvedValue({
+      success: true,
+      draft: inProgressView,
+      newPicks: [],
+    });
+    const toggleDraftBigBoard = vi.fn().mockResolvedValue({
+      success: true,
+      draft: inProgressView,
+      newPicks: [],
+    });
+    const signDraftPick = vi.fn().mockResolvedValue({
+      success: true,
+      draft: completeView,
+      newPicks: [],
+    });
     const simulateRemainingDraft = vi.fn().mockResolvedValue({
       success: true,
       draft: completeView,
@@ -282,6 +322,9 @@ describe('DraftPage', () => {
       getDraftClass,
       startDraft,
       makeDraftPick,
+      scoutDraftPlayer,
+      toggleDraftBigBoard,
+      signDraftPick,
       simulateRemainingDraft,
     } as unknown as ReturnType<typeof useWorker>);
 

@@ -9,6 +9,9 @@ const DashboardPage = lazy(
 const RosterPage = lazy(
   () => import('@/features/roster/routes/RosterPage')
 );
+const MinorsPage = lazy(
+  () => import('@/features/minors/routes/MinorsPage')
+);
 const PlayersPage = lazy(
   () => import('@/features/players/routes/PlayersPage')
 );
@@ -69,6 +72,7 @@ export function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="roster" element={<RosterPage />} />
+          <Route path="minors" element={<MinorsPage />} />
           <Route path="players" element={<PlayersPage />} />
           <Route path="players/:playerId" element={<PlayerProfilePage />} />
           <Route path="scouting" element={<ScoutingPage />} />

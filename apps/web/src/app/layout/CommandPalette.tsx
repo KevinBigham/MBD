@@ -49,6 +49,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     // Navigation
     { id: 'nav-office', label: 'Front Office', icon: <Briefcase className="h-4 w-4" />, action: () => navigate('/'), group: 'navigation' },
     { id: 'nav-roster', label: 'Roster', icon: <Users className="h-4 w-4" />, action: () => navigate('/roster'), group: 'navigation' },
+    { id: 'nav-minors', label: 'Minor League Hub', icon: <Users className="h-4 w-4" />, action: () => navigate('/minors'), group: 'navigation' },
     { id: 'nav-players', label: 'Players', icon: <User className="h-4 w-4" />, action: () => navigate('/players'), group: 'navigation' },
     { id: 'nav-scouting', label: 'Scouting', icon: <Search className="h-4 w-4" />, action: () => navigate('/scouting'), group: 'navigation' },
     { id: 'nav-draft', label: 'Draft Room', icon: <FileText className="h-4 w-4" />, action: () => navigate('/draft'), group: 'navigation' },

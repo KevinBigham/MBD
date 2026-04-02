@@ -43,6 +43,10 @@ function toneClasses(tone: DraftRoomPick['tone'] | DraftBoardCell['tone']): stri
   }
 }
 
+function formatBonus(value: number | null | undefined): string {
+  return `$${(value ?? 0).toFixed(2)}M`;
+}
+
 function statusText(view: DraftRoomView | null, phase: string): string {
   if (phase !== 'offseason') return 'Draft Unavailable';
   if (!view || view.status === 'available') return 'Draft Available';
@@ -113,12 +117,15 @@ function ProspectsPanel({
         <table className="w-full">
           <thead className="sticky top-0 bg-dynasty-surface">
             <tr className="border-b border-dynasty-border text-left font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-              <th className="px-4 py-2">Rank</th>
+              <th className="px-4 py-2">Board</th>
               <th className="px-2 py-2">Player</th>
               <th className="px-2 py-2">POS</th>
               <th className="px-2 py-2 text-right">Age</th>
+              <th className="px-2 py-2">Looks</th>
               <th className="px-2 py-2">Origin</th>
-              <th className="px-4 py-2 text-right">Grade</th>
+              <th className="px-2 py-2 text-right">User</th>
+              <th className="px-2 py-2 text-right">Cns</th>
+              <th className="px-4 py-2 text-right">Ask</th>
             </tr>
           </thead>
           <tbody>
@@ -132,20 +139,27 @@ function ProspectsPanel({
                     selected ? 'bg-accent-primary/12' : 'hover:bg-dynasty-elevated'
                   }`}
                 >
-                  <td className="px-4 py-2 font-data text-dynasty-muted">{index + 1}</td>
+                  <td className="px-4 py-2 font-data text-dynasty-muted">
+                    {prospect.bigBoardRank ?? index + 1}
+                  </td>
                   <td className="px-2 py-2 font-heading font-medium text-dynasty-textBright">{prospect.name}</td>
                   <td className="px-2 py-2 font-data text-dynasty-muted">{prospect.position}</td>
                   <td className="px-2 py-2 text-right font-data text-dynasty-muted">{prospect.age}</td>
+                  <td className="px-2 py-2 font-data text-dynasty-muted">{prospect.looks ?? 0}</td>
                   <td className="px-2 py-2 font-data text-dynasty-muted">{prospect.origin}</td>
                   <td className={`px-4 py-2 text-right font-data font-semibold ${gradeTextClass(prospect.scoutingGrade)}`}>
                     {prospect.scoutingGrade}
                   </td>
+                  <td className={`px-2 py-2 text-right font-data ${gradeTextClass(prospect.consensusGrade ?? prospect.scoutingGrade)}`}>
+                    {prospect.consensusGrade ?? prospect.scoutingGrade}
+                  </td>
+                  <td className="px-4 py-2 text-right font-data text-dynasty-muted">{formatBonus(prospect.askBonus)}</td>
                 </tr>
               );
             })}
             {sortedProspects.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center font-heading text-sm text-dynasty-muted">
+                <td colSpan={9} className="px-4 py-10 text-center font-heading text-sm text-dynasty-muted">
                   No prospects remain on the board.
                 </td>
               </tr>
@@ -161,12 +175,18 @@ function CurrentPickPanel({
   draft,
   selectedProspect,
   onDraft,
+  onScout,
+  onToggleBoard,
   drafting,
+  scouting,
 }: {
   draft: DraftRoomView;
   selectedProspect: DraftRoomProspect | null;
   onDraft: () => void;
+  onScout: () => void;
+  onToggleBoard: () => void;
   drafting: boolean;
+  scouting: boolean;
 }) {
   const userOnClock = draft.currentPick?.userOnClock ?? false;
 
@@ -208,10 +228,33 @@ function CurrentPickPanel({
                 <p className="mt-1 font-data text-sm text-dynasty-muted">
                   {selectedProspect.position} · {selectedProspect.origin} · Age {selectedProspect.age}
                 </p>
+                <p className="mt-1 font-data text-xs text-dynasty-muted">
+                  {selectedProspect.background ?? selectedProspect.origin} · {(selectedProspect.looks ?? 0)} look{selectedProspect.looks === 1 ? '' : 's'} · Ask {formatBonus(selectedProspect.askBonus)}
+                </p>
               </div>
-              <div className={`rounded border px-3 py-2 font-data text-2xl font-bold ${gradeChipClass(selectedProspect.scoutingGrade)}`}>
-                {selectedProspect.scoutingGrade}
+              <div className="space-y-2 text-right">
+                <div className={`rounded border px-3 py-2 font-data text-2xl font-bold ${gradeChipClass(selectedProspect.scoutingGrade)}`}>
+                  {selectedProspect.scoutingGrade}
+                </div>
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  Consensus {selectedProspect.consensusGrade ?? selectedProspect.scoutingGrade}
+                </div>
               </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={onScout}
+                disabled={scouting}
+                className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-text transition-colors hover:border-accent-info hover:text-accent-info disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {scouting ? 'Scouting...' : 'Scout Look'}
+              </button>
+              <button
+                onClick={onToggleBoard}
+                className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-text transition-colors hover:border-accent-warning hover:text-accent-warning"
+              >
+                {selectedProspect.bigBoardRank ? `Big Board #${selectedProspect.bigBoardRank}` : 'Add To Board'}
+              </button>
             </div>
             <button
               onClick={onDraft}
@@ -334,9 +377,9 @@ function DraftBoard({ draft, visibleCount }: { draft: DraftRoomView; visibleCoun
               <th className="sticky left-0 z-20 border-b border-r border-dynasty-border bg-dynasty-surface px-3 py-2 text-left font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
                 Rd
               </th>
-              {draft.board.teams.map((team) => (
+              {draft.board.teams.map((team, index) => (
                 <th
-                  key={team.teamId}
+                  key={`${team.teamId}-${index}`}
                   className="border-b border-dynasty-border px-2 py-2 text-center font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted"
                 >
                   {team.abbreviation}
@@ -353,7 +396,7 @@ function DraftBoard({ draft, visibleCount }: { draft: DraftRoomView; visibleCoun
                 {row.cells.map((cell) => {
                   const visiblePick = cell.pick && visiblePickNumbers.has(cell.pick.pickNumber) ? cell.pick : null;
                   return (
-                    <td key={`${row.round}-${cell.teamId}`} className="border-b border-r border-dynasty-border/60 p-1 align-top">
+                    <td key={cell.slotId} className="border-b border-r border-dynasty-border/60 p-1 align-top">
                       <div className={`min-h-14 rounded border px-2 py-1 ${visiblePick ? toneClasses(cell.tone) : 'border-dynasty-border bg-dynasty-elevated/60 text-dynasty-muted'}`}>
                         {visiblePick ? (
                           <>
@@ -383,7 +426,19 @@ function DraftBoard({ draft, visibleCount }: { draft: DraftRoomView; visibleCoun
   );
 }
 
-function DraftSummary({ draft }: { draft: DraftRoomView }) {
+function DraftSummary({
+  draft,
+  bonusOffers,
+  onBonusChange,
+  onSign,
+  signingPlayerId,
+}: {
+  draft: DraftRoomView;
+  bonusOffers: Record<string, string>;
+  onBonusChange: (playerId: string, value: string) => void;
+  onSign: (playerId: string) => void;
+  signingPlayerId: string | null;
+}) {
   if (draft.status !== 'complete' || !draft.userDraftClass) {
     return null;
   }
@@ -413,12 +468,38 @@ function DraftSummary({ draft }: { draft: DraftRoomView }) {
                 <p className="mt-1 font-data text-xs text-dynasty-muted">
                   {pick.position} · {pick.origin}
                 </p>
+                <p className="mt-1 font-data text-xs text-dynasty-muted">
+                  Slot ${pick.slotValue.toFixed(2)}M · Ask ${pick.askBonus.toFixed(2)}M
+                </p>
               </div>
               <span className={`rounded border px-2 py-1 font-data text-sm font-semibold ${gradeChipClass(pick.scoutingGrade)}`}>
                 {pick.scoutingGrade}
               </span>
             </div>
             <p className="mt-2 font-heading text-sm text-dynasty-text">{pick.assessment}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                value={bonusOffers[pick.playerId] ?? pick.askBonus.toFixed(2)}
+                onChange={(event) => onBonusChange(pick.playerId, event.target.value)}
+                className="w-28 rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-data text-sm text-dynasty-text"
+              />
+              <button
+                onClick={() => onSign(pick.playerId)}
+                disabled={pick.signed !== null || signingPlayerId === pick.playerId}
+                className="rounded bg-accent-primary px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pick.signed === true
+                  ? 'Signed'
+                  : pick.signed === false
+                    ? 'Declined'
+                    : signingPlayerId === pick.playerId
+                      ? 'Negotiating...'
+                      : 'Offer Bonus'}
+              </button>
+              {pick.agreedBonus != null && (
+                <span className="font-data text-xs text-accent-success">Agreed ${pick.agreedBonus.toFixed(2)}M</span>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -432,6 +513,9 @@ export default function DraftPage() {
     getDraftClass,
     startDraft,
     makeDraftPick,
+    scoutDraftPlayer,
+    toggleDraftBigBoard,
+    signDraftPick,
     simulateRemainingDraft,
   } = worker;
   const { phase, season, isInitialized } = useGameStore();
@@ -439,8 +523,11 @@ export default function DraftPage() {
   const [draft, setDraft] = useState<DraftRoomView | null>(null);
   const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [scouting, setScouting] = useState(false);
+  const [signingPlayerId, setSigningPlayerId] = useState<string | null>(null);
   const [watchTargetCount, setWatchTargetCount] = useState<number | null>(null);
   const [revealedPickCount, setRevealedPickCount] = useState(0);
+  const [bonusOffers, setBonusOffers] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   const loadDraft = useCallback(async () => {
@@ -537,6 +624,50 @@ export default function DraftPage() {
       setError('Failed to submit draft pick.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleScoutProspect = async () => {
+    if (!selectedProspect) return;
+    setScouting(true);
+    setError(null);
+    try {
+      await scoutDraftPlayer(selectedProspect.id);
+      await loadDraft();
+    } catch {
+      setError('Failed to update scouting report.');
+    } finally {
+      setScouting(false);
+    }
+  };
+
+  const handleToggleBigBoard = async () => {
+    if (!selectedProspect) return;
+    setError(null);
+    try {
+      await toggleDraftBigBoard(selectedProspect.id);
+      await loadDraft();
+    } catch {
+      setError('Failed to update big board.');
+    }
+  };
+
+  const handleSignDraftPick = async (playerId: string) => {
+    const offeredBonus = Number.parseFloat(bonusOffers[playerId] ?? '0');
+    if (!Number.isFinite(offeredBonus) || offeredBonus <= 0) {
+      setError('Enter a valid bonus offer.');
+      return;
+    }
+
+    setSigningPlayerId(playerId);
+    setError(null);
+    try {
+      await signDraftPick(playerId, offeredBonus);
+      await loadDraft();
+    } catch {
+      setError('Failed to complete draft signing.');
+    } finally {
+      setSigningPlayerId(null);
     }
   };
 
@@ -656,7 +787,10 @@ export default function DraftPage() {
             draft={draft}
             selectedProspect={selectedProspect}
             onDraft={handleMakePick}
+            onScout={handleScoutProspect}
+            onToggleBoard={handleToggleBigBoard}
             drafting={loading}
+            scouting={scouting}
           />
         </div>
         <div className="xl:col-span-4">
@@ -665,7 +799,13 @@ export default function DraftPage() {
       </div>
 
       <DraftBoard draft={draft} visibleCount={visiblePicks.length} />
-      <DraftSummary draft={draft} />
+      <DraftSummary
+        draft={draft}
+        bonusOffers={bonusOffers}
+        onBonusChange={(playerId, value) => setBonusOffers((current) => ({ ...current, [playerId]: value }))}
+        onSign={handleSignDraftPick}
+        signingPlayerId={signingPlayerId}
+      />
     </div>
   );
 }

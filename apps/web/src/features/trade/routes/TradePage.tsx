@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { TradeAsset } from '@mbd/contracts';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -27,9 +28,12 @@ interface PlayerDTO {
 }
 
 interface TradeAssetView {
-  playerId: string;
-  playerName: string;
-  position: string;
+  key: string;
+  type: TradeAsset['type'];
+  label: string;
+  detail: string;
+  asset: TradeAsset;
+  playerId?: string;
 }
 
 interface TradeOfferView {
@@ -43,8 +47,8 @@ interface TradeOfferView {
   fairnessScore: number;
   message: string;
   createdAt: string;
-  offeringPlayers: TradeAssetView[];
-  requestingPlayers: TradeAssetView[];
+  offeringAssets: TradeAssetView[];
+  requestingAssets: TradeAssetView[];
 }
 
 interface TradeHistoryView {
@@ -58,14 +62,33 @@ interface TradeHistoryView {
   fairnessScore: number;
   summary: string;
   timestamp: string;
-  offeringPlayers: TradeAssetView[];
-  requestingPlayers: TradeAssetView[];
+  offeringAssets: TradeAssetView[];
+  requestingAssets: TradeAssetView[];
 }
+
+interface TradeInventoryPickView {
+  key: string;
+  label: string;
+  detail: string;
+  asset: Extract<TradeAsset, { type: 'draft_pick' }>;
+}
+
+interface TradeAssetInventoryView {
+  draftPicks: TradeInventoryPickView[];
+  ifaRemaining: number;
+}
+
+type DraftPickAsset = Extract<TradeAsset, { type: 'draft_pick' }>;
 
 interface TradeResult {
   status: 'accepted' | 'rejected' | 'counter' | 'declined';
   message: string;
 }
+
+const EMPTY_TRADE_ASSET_INVENTORY: TradeAssetInventoryView = {
+  draftPicks: [],
+  ifaRemaining: 0,
+};
 
 const ALL_TEAMS = [
   { id: 'bal', name: 'Orioles', abbr: 'BAL' }, { id: 'bos', name: 'Red Sox', abbr: 'BOS' },
@@ -118,6 +141,100 @@ function fairnessLabel(ratio: number): { text: string; color: string } {
 function fairnessText(score: number, fromTeam: string, toTeam: string): string {
   if (Math.abs(score) <= 10) return 'Balanced';
   return score > 0 ? `Favored ${fromTeam}` : `Favored ${toTeam}`;
+}
+
+function playerAsset(playerId: string): TradeAsset {
+  return {
+    type: 'player',
+    playerId,
+  };
+}
+
+function draftPickValue(asset: DraftPickAsset, currentSeason: number): number {
+  return Math.max(2, 24 - asset.round) * (asset.season === currentSeason ? 3 : 2.5);
+}
+
+function draftPickKey(asset: DraftPickAsset): string {
+  return `draft:${asset.season}:${asset.round}:${asset.originalTeamId}`;
+}
+
+function parsePoolAmount(value: string): number {
+  const amount = Number.parseFloat(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 0;
+  }
+  return Number(amount.toFixed(2));
+}
+
+function poolAsset(amount: number): Extract<TradeAsset, { type: 'ifa_pool_space' }> {
+  return {
+    type: 'ifa_pool_space',
+    amount: Number(amount.toFixed(2)),
+  };
+}
+
+function toggleDraftPickAsset(current: DraftPickAsset[], asset: DraftPickAsset): DraftPickAsset[] {
+  const key = draftPickKey(asset);
+  if (current.some((candidate) => draftPickKey(candidate) === key)) {
+    return current.filter((candidate) => draftPickKey(candidate) !== key);
+  }
+  return [...current, asset];
+}
+
+function buildTradeAssetLabel(
+  asset: TradeAsset,
+  resolvePlayer: (playerId: string) => PlayerDTO | undefined,
+): string {
+  switch (asset.type) {
+    case 'player': {
+      const player = resolvePlayer(asset.playerId);
+      if (!player) {
+        return asset.playerId;
+      }
+      return `${player.firstName[0]}. ${player.lastName} · ${player.position}`;
+    }
+    case 'draft_pick':
+      return `R${asset.round} ${asset.season} · ${asset.originalTeamId.toUpperCase()} original`;
+    case 'ifa_pool_space':
+      return `IFA Pool · $${asset.amount.toFixed(2)}M`;
+  }
+}
+
+function tradeAssetValue(
+  asset: TradeAsset,
+  currentSeason: number,
+  resolvePlayer: (playerId: string) => PlayerDTO | undefined,
+): number {
+  switch (asset.type) {
+    case 'player': {
+      const player = resolvePlayer(asset.playerId);
+      return player ? estimateValue(player) : 0;
+    }
+    case 'draft_pick':
+      return draftPickValue(asset, currentSeason);
+    case 'ifa_pool_space':
+      return asset.amount * 8;
+  }
+}
+
+function playerIdsFromAssetViews(assets: TradeAssetView[]): string[] {
+  return assets.flatMap((asset) =>
+    asset.asset.type === 'player' ? [asset.asset.playerId] : [],
+  );
+}
+
+function draftPickAssetsFromViews(assets: TradeAssetView[]): DraftPickAsset[] {
+  return assets.flatMap((asset) =>
+    asset.asset.type === 'draft_pick' ? [asset.asset] : [],
+  );
+}
+
+function ifaAmountFromViews(assets: TradeAssetView[]): string {
+  const amount = assets.reduce(
+    (sum, asset) => sum + (asset.asset.type === 'ifa_pool_space' ? asset.asset.amount : 0),
+    0,
+  );
+  return amount > 0 ? amount.toFixed(2) : '';
 }
 
 function PlayerRow({
@@ -188,9 +305,9 @@ function OfferCard({
         <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
           <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-accent-success">They Offer</p>
           <div className="mt-2 space-y-1">
-            {offer.offeringPlayers.map((asset) => (
-              <p key={asset.playerId} className="font-data text-xs text-dynasty-text">
-                {asset.playerName} · {asset.position}
+            {offer.offeringAssets.map((asset) => (
+              <p key={asset.key} className="font-data text-xs text-dynasty-text">
+                {asset.label} · {asset.detail}
               </p>
             ))}
           </div>
@@ -198,9 +315,9 @@ function OfferCard({
         <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
           <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-accent-warning">They Want</p>
           <div className="mt-2 space-y-1">
-            {offer.requestingPlayers.map((asset) => (
-              <p key={asset.playerId} className="font-data text-xs text-dynasty-text">
-                {asset.playerName} · {asset.position}
+            {offer.requestingAssets.map((asset) => (
+              <p key={asset.key} className="font-data text-xs text-dynasty-text">
+                {asset.label} · {asset.detail}
               </p>
             ))}
           </div>
@@ -245,7 +362,7 @@ function HistoryCard({ trade }: { trade: TradeHistoryView }) {
           </p>
         </div>
         <span className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-          {trade.offeringPlayers.length + trade.requestingPlayers.length} assets
+          {trade.offeringAssets.length + trade.requestingAssets.length} assets
         </span>
       </div>
       <p className="mt-3 font-heading text-sm text-dynasty-text">{trade.summary}</p>
@@ -259,6 +376,7 @@ export default function TradePage() {
     getTeamRoster,
     getTradeOffers,
     getTradeHistory,
+    getTradeAssetInventory,
     proposeTrade,
     respondToTradeOffer,
   } = worker;
@@ -267,8 +385,14 @@ export default function TradePage() {
   const [selectedTeam, setSelectedTeam] = useState('');
   const [yourRoster, setYourRoster] = useState<PlayerDTO[]>([]);
   const [targetRoster, setTargetRoster] = useState<PlayerDTO[]>([]);
+  const [yourInventory, setYourInventory] = useState<TradeAssetInventoryView>(EMPTY_TRADE_ASSET_INVENTORY);
+  const [targetInventory, setTargetInventory] = useState<TradeAssetInventoryView>(EMPTY_TRADE_ASSET_INVENTORY);
   const [offering, setOffering] = useState<string[]>([]);
   const [requesting, setRequesting] = useState<string[]>([]);
+  const [offeringPicks, setOfferingPicks] = useState<DraftPickAsset[]>([]);
+  const [requestingPicks, setRequestingPicks] = useState<DraftPickAsset[]>([]);
+  const [offeringIFAAmount, setOfferingIFAAmount] = useState('');
+  const [requestingIFAAmount, setRequestingIFAAmount] = useState('');
   const [incomingOffers, setIncomingOffers] = useState<TradeOfferView[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryView[]>([]);
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
@@ -286,6 +410,12 @@ export default function TradePage() {
     setYourRoster((data as PlayerDTO[]) ?? []);
   }, [getTeamRoster, isInitialized, userTeamId, workerReady]);
 
+  const loadUserInventory = useCallback(async () => {
+    if (!isInitialized || !workerReady) return;
+    const data = await getTradeAssetInventory(userTeamId);
+    setYourInventory((data as TradeAssetInventoryView) ?? EMPTY_TRADE_ASSET_INVENTORY);
+  }, [getTradeAssetInventory, isInitialized, userTeamId, workerReady]);
+
   const loadTargetRoster = useCallback(async () => {
     if (!selectedTeam || !isInitialized || !workerReady) {
       setTargetRoster([]);
@@ -294,6 +424,15 @@ export default function TradePage() {
     const data = await getTeamRoster(selectedTeam);
     setTargetRoster((data as PlayerDTO[]) ?? []);
   }, [getTeamRoster, isInitialized, selectedTeam, workerReady]);
+
+  const loadTargetInventory = useCallback(async () => {
+    if (!selectedTeam || !isInitialized || !workerReady) {
+      setTargetInventory(EMPTY_TRADE_ASSET_INVENTORY);
+      return;
+    }
+    const data = await getTradeAssetInventory(selectedTeam);
+    setTargetInventory((data as TradeAssetInventoryView) ?? EMPTY_TRADE_ASSET_INVENTORY);
+  }, [getTradeAssetInventory, isInitialized, selectedTeam, workerReady]);
 
   const loadTradeActivity = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -310,8 +449,16 @@ export default function TradePage() {
   }, [loadUserRoster, day, season, phase]);
 
   useEffect(() => {
+    void loadUserInventory();
+  }, [loadUserInventory, day, season, phase]);
+
+  useEffect(() => {
     void loadTargetRoster();
   }, [loadTargetRoster, day, season, phase]);
+
+  useEffect(() => {
+    void loadTargetInventory();
+  }, [loadTargetInventory, day, season, phase]);
 
   useEffect(() => {
     void loadTradeActivity();
@@ -330,6 +477,10 @@ export default function TradePage() {
   const resetBuilder = () => {
     setOffering([]);
     setRequesting([]);
+    setOfferingPicks([]);
+    setRequestingPicks([]);
+    setOfferingIFAAmount('');
+    setRequestingIFAAmount('');
     setActiveCounterOfferId(null);
   };
 
@@ -338,21 +489,86 @@ export default function TradePage() {
     setTradeResult(null);
   };
 
-  const playerById = (id: string) =>
-    yourRoster.find((player) => player.id === id) ?? targetRoster.find((player) => player.id === id);
+  const playerById = useCallback(
+    (id: string) => yourRoster.find((player) => player.id === id) ?? targetRoster.find((player) => player.id === id),
+    [targetRoster, yourRoster],
+  );
 
-  const offerTotal = offering.reduce((sum, id) => sum + estimateValue(playerById(id)!), 0);
-  const requestTotal = requesting.reduce((sum, id) => sum + estimateValue(playerById(id)!), 0);
+  const offeringAssets = useMemo(() => {
+    const assets: TradeAsset[] = [...offering.map(playerAsset), ...offeringPicks];
+    const poolAmount = parsePoolAmount(offeringIFAAmount);
+    if (poolAmount > 0) {
+      assets.push(poolAsset(poolAmount));
+    }
+    return assets;
+  }, [offering, offeringIFAAmount, offeringPicks]);
+
+  const requestingAssets = useMemo(() => {
+    const assets: TradeAsset[] = [...requesting.map(playerAsset), ...requestingPicks];
+    const poolAmount = parsePoolAmount(requestingIFAAmount);
+    if (poolAmount > 0) {
+      assets.push(poolAsset(poolAmount));
+    }
+    return assets;
+  }, [requesting, requestingIFAAmount, requestingPicks]);
+
+  const offeringSummary = useMemo(
+    () => offeringAssets.map((asset) => ({
+      key:
+        asset.type === 'player'
+          ? `player:${asset.playerId}`
+          : asset.type === 'draft_pick'
+            ? draftPickKey(asset)
+            : `ifa:${asset.amount.toFixed(2)}`,
+      label: buildTradeAssetLabel(asset, playerById),
+    })),
+    [offeringAssets, playerById],
+  );
+
+  const requestingSummary = useMemo(
+    () => requestingAssets.map((asset) => ({
+      key:
+        asset.type === 'player'
+          ? `player:${asset.playerId}`
+          : asset.type === 'draft_pick'
+            ? draftPickKey(asset)
+            : `ifa:${asset.amount.toFixed(2)}`,
+      label: buildTradeAssetLabel(asset, playerById),
+    })),
+    [playerById, requestingAssets],
+  );
+
+  const offerTotal = offeringAssets.reduce(
+    (sum, asset) => sum + tradeAssetValue(asset, season, playerById),
+    0,
+  );
+  const requestTotal = requestingAssets.reduce(
+    (sum, asset) => sum + tradeAssetValue(asset, season, playerById),
+    0,
+  );
   const packageFairness = fairnessLabel(fairnessRatio(offerTotal, requestTotal));
 
   const submitTrade = async () => {
-    if (!selectedTeam || offering.length === 0 || requesting.length === 0 || !tradeMarketOpen) return;
+    if (!selectedTeam || offeringAssets.length === 0 || requestingAssets.length === 0 || !tradeMarketOpen) return;
+    const offeredPoolAmount = parsePoolAmount(offeringIFAAmount);
+    const requestedPoolAmount = parsePoolAmount(requestingIFAAmount);
+
+    if (offeredPoolAmount > yourInventory.ifaRemaining + 0.001) {
+      setTradeResult({ status: 'rejected', message: 'You cannot offer more international pool space than you have remaining.' });
+      return;
+    }
+
+    if (requestedPoolAmount > targetInventory.ifaRemaining + 0.001) {
+      setTradeResult({ status: 'rejected', message: 'The target club does not have that much international pool space available.' });
+      return;
+    }
+
     setProposing(true);
     try {
       if (activeCounterOfferId) {
         const result = await respondToTradeOffer(activeCounterOfferId, 'counter', {
-          offeringPlayerIds: offering,
-          requestingPlayerIds: requesting,
+          offeringAssets,
+          requestingAssets,
         });
         const response = result as { decision: 'accepted' | 'rejected' | 'countered' | 'declined'; message: string };
         setTradeResult({
@@ -365,7 +581,11 @@ export default function TradePage() {
         });
         resetBuilder();
       } else {
-        const result = await proposeTrade(offering, requesting, selectedTeam);
+        const result = await proposeTrade(
+          offeringAssets,
+          requestingAssets,
+          selectedTeam,
+        );
         const response = result as { decision: 'accepted' | 'rejected' | 'countered'; reason: string };
         setTradeResult({
           status: response.decision === 'accepted'
@@ -380,7 +600,13 @@ export default function TradePage() {
         }
       }
 
-      await Promise.all([loadUserRoster(), loadTargetRoster(), loadTradeActivity()]);
+      await Promise.all([
+        loadUserRoster(),
+        loadTargetRoster(),
+        loadUserInventory(),
+        loadTargetInventory(),
+        loadTradeActivity(),
+      ]);
     } finally {
       setProposing(false);
     }
@@ -395,7 +621,13 @@ export default function TradePage() {
         status: response.decision === 'accepted' ? 'accepted' : 'rejected',
         message: response.message,
       });
-      await Promise.all([loadUserRoster(), loadTargetRoster(), loadTradeActivity()]);
+      await Promise.all([
+        loadUserRoster(),
+        loadTargetRoster(),
+        loadUserInventory(),
+        loadTargetInventory(),
+        loadTradeActivity(),
+      ]);
     } finally {
       setProposing(false);
     }
@@ -415,8 +647,12 @@ export default function TradePage() {
 
   const handleCounterOffer = (offer: TradeOfferView) => {
     setSelectedTeam(offer.fromTeamId);
-    setOffering(offer.requestingPlayers.map((asset) => asset.playerId));
-    setRequesting(offer.offeringPlayers.map((asset) => asset.playerId));
+    setOffering(playerIdsFromAssetViews(offer.requestingAssets));
+    setRequesting(playerIdsFromAssetViews(offer.offeringAssets));
+    setOfferingPicks(draftPickAssetsFromViews(offer.requestingAssets));
+    setRequestingPicks(draftPickAssetsFromViews(offer.offeringAssets));
+    setOfferingIFAAmount(ifaAmountFromViews(offer.requestingAssets));
+    setRequestingIFAAmount(ifaAmountFromViews(offer.offeringAssets));
     setActiveCounterOfferId(offer.id);
     setTradeResult(null);
   };
@@ -519,10 +755,9 @@ export default function TradePage() {
               <select
                 value={selectedTeam}
                 onChange={(event) => {
+                  resetBuilder();
                   setSelectedTeam(event.target.value);
-                  setRequesting([]);
                   setTradeResult(null);
-                  setActiveCounterOfferId(null);
                 }}
                 className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-sm text-dynasty-text focus:border-accent-primary focus:outline-none"
               >
@@ -552,7 +787,7 @@ export default function TradePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {yourRoster.map((player) => (
+                    {yourRoster.map((player) => (
                         <PlayerRow
                           key={player.id}
                           player={player}
@@ -563,6 +798,62 @@ export default function TradePage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div className="space-y-3 border-t border-dynasty-border px-4 py-3">
+                  <div>
+                    <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Draft Picks</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {yourInventory.draftPicks.length === 0 ? (
+                        <span className="font-heading text-xs text-dynasty-muted">No current or next-year picks available.</span>
+                      ) : (
+                        yourInventory.draftPicks.map((pick) => {
+                          const selected = offeringPicks.some((asset) => draftPickKey(asset) === pick.key);
+                          return (
+                            <button
+                              key={pick.key}
+                              onClick={() => {
+                                setTradeResult(null);
+                                setOfferingPicks((current) => toggleDraftPickAsset(current, pick.asset));
+                              }}
+                              disabled={!tradeMarketOpen}
+                              className={`rounded border px-2 py-1 text-left font-data text-xs transition-colors ${
+                                selected
+                                  ? 'border-accent-primary bg-accent-primary/15 text-accent-primary'
+                                  : 'border-dynasty-border bg-dynasty-surface text-dynasty-text'
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              {pick.label} · {pick.detail}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">IFA Pool Space</p>
+                      <span className="font-data text-[11px] text-dynasty-muted">Remaining ${yourInventory.ifaRemaining.toFixed(2)}M</span>
+                    </div>
+                    <input
+                      name="offering-ifa-pool"
+                      type="number"
+                      min="0"
+                      max={yourInventory.ifaRemaining.toFixed(2)}
+                      step="0.1"
+                      value={offeringIFAAmount}
+                      disabled={!tradeMarketOpen}
+                      onInput={(event) => {
+                        setTradeResult(null);
+                        setOfferingIFAAmount((event.target as HTMLInputElement).value);
+                      }}
+                      onChange={(event) => {
+                        setTradeResult(null);
+                        setOfferingIFAAmount(event.target.value);
+                      }}
+                      className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-surface px-3 py-2 font-data text-sm text-dynasty-text focus:border-accent-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      placeholder="0.0"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -594,6 +885,64 @@ export default function TradePage() {
                     </tbody>
                   </table>
                 </div>
+                <div className="space-y-3 border-t border-dynasty-border px-4 py-3">
+                  <div>
+                    <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Draft Picks</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {!selectedTeam ? (
+                        <span className="font-heading text-xs text-dynasty-muted">Select a team to inspect its pick inventory.</span>
+                      ) : targetInventory.draftPicks.length === 0 ? (
+                        <span className="font-heading text-xs text-dynasty-muted">No current or next-year picks available.</span>
+                      ) : (
+                        targetInventory.draftPicks.map((pick) => {
+                          const selected = requestingPicks.some((asset) => draftPickKey(asset) === pick.key);
+                          return (
+                            <button
+                              key={pick.key}
+                              onClick={() => {
+                                setTradeResult(null);
+                                setRequestingPicks((current) => toggleDraftPickAsset(current, pick.asset));
+                              }}
+                              disabled={!tradeMarketOpen}
+                              className={`rounded border px-2 py-1 text-left font-data text-xs transition-colors ${
+                                selected
+                                  ? 'border-accent-info bg-accent-info/15 text-accent-info'
+                                  : 'border-dynasty-border bg-dynasty-surface text-dynasty-text'
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              {pick.label} · {pick.detail}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">IFA Pool Space</p>
+                      <span className="font-data text-[11px] text-dynasty-muted">Remaining ${targetInventory.ifaRemaining.toFixed(2)}M</span>
+                    </div>
+                    <input
+                      name="requesting-ifa-pool"
+                      type="number"
+                      min="0"
+                      max={targetInventory.ifaRemaining.toFixed(2)}
+                      step="0.1"
+                      value={requestingIFAAmount}
+                      disabled={!tradeMarketOpen || !selectedTeam}
+                      onInput={(event) => {
+                        setTradeResult(null);
+                        setRequestingIFAAmount((event.target as HTMLInputElement).value);
+                      }}
+                      onChange={(event) => {
+                        setTradeResult(null);
+                        setRequestingIFAAmount(event.target.value);
+                      }}
+                      className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-surface px-3 py-2 font-data text-sm text-dynasty-text focus:border-accent-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      placeholder="0.0"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -606,20 +955,17 @@ export default function TradePage() {
                 <div>
                   <p className="mb-2 font-heading text-[11px] uppercase tracking-[0.18em] text-accent-primary">Offering</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {offering.length === 0 ? (
-                      <span className="font-heading text-xs text-dynasty-muted">Select players from your roster</span>
+                    {offeringSummary.length === 0 ? (
+                      <span className="font-heading text-xs text-dynasty-muted">Select players, picks, or pool space from your side</span>
                     ) : (
-                      offering.map((id) => {
-                        const player = playerById(id);
-                        if (!player) return null;
+                      offeringSummary.map((asset) => {
                         return (
-                          <button
-                            key={id}
-                            onClick={() => toggleOffer(id)}
+                          <span
+                            key={asset.key}
                             className="rounded border border-dynasty-border bg-dynasty-surface px-2 py-1 font-data text-xs text-dynasty-text"
                           >
-                            {player.firstName[0]}. {player.lastName} · {player.position}
-                          </button>
+                            {asset.label}
+                          </span>
                         );
                       })
                     )}
@@ -633,20 +979,17 @@ export default function TradePage() {
                 <div>
                   <p className="mb-2 font-heading text-[11px] uppercase tracking-[0.18em] text-accent-info">Requesting</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {requesting.length === 0 ? (
-                      <span className="font-heading text-xs text-dynasty-muted">Select players from the target roster</span>
+                    {requestingSummary.length === 0 ? (
+                      <span className="font-heading text-xs text-dynasty-muted">Select players, picks, or pool space from the target club</span>
                     ) : (
-                      requesting.map((id) => {
-                        const player = playerById(id);
-                        if (!player) return null;
+                      requestingSummary.map((asset) => {
                         return (
-                          <button
-                            key={id}
-                            onClick={() => toggleRequest(id)}
+                          <span
+                            key={asset.key}
                             className="rounded border border-dynasty-border bg-dynasty-surface px-2 py-1 font-data text-xs text-dynasty-text"
                           >
-                            {player.firstName[0]}. {player.lastName} · {player.position}
-                          </button>
+                            {asset.label}
+                          </span>
                         );
                       })
                     )}
@@ -654,7 +997,7 @@ export default function TradePage() {
                 </div>
               </div>
 
-              {(offering.length > 0 || requesting.length > 0) && (
+              {(offeringAssets.length > 0 || requestingAssets.length > 0) && (
                 <div className="mt-4 space-y-2">
                   <div className="h-2 w-full overflow-hidden rounded-full bg-dynasty-border">
                     <div
@@ -680,13 +1023,13 @@ export default function TradePage() {
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   onClick={() => void submitTrade()}
-                  disabled={!tradeMarketOpen || !selectedTeam || offering.length === 0 || requesting.length === 0 || proposing}
+                  disabled={!tradeMarketOpen || !selectedTeam || offeringAssets.length === 0 || requestingAssets.length === 0 || proposing}
                   className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ArrowRight className="h-4 w-4" />
                   {activeCounterOfferId ? 'Send Counter Offer' : 'Propose Trade'}
                 </button>
-                {(offering.length > 0 || requesting.length > 0 || activeCounterOfferId) && (
+                {(offeringAssets.length > 0 || requestingAssets.length > 0 || activeCounterOfferId) && (
                   <button
                     onClick={clearTrade}
                     className="inline-flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm text-dynasty-muted transition-colors hover:text-dynasty-text"

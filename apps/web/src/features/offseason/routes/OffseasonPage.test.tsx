@@ -33,6 +33,7 @@ function buildOffseasonState(overrides: Record<string, unknown> = {}) {
       nonTenderedPlayers: ['player-3'],
       freeAgentSignings: [{ id: 'fa-1' }],
       draftPicks: [{ id: 'pick-1' }],
+      ifaSignings: [{ id: 'ifa-1' }],
       retiredPlayers: [{ id: 'retire-1' }],
     },
     transactionGroups: [
@@ -149,6 +150,37 @@ describe('OffseasonPage', () => {
     expect(container.textContent).toContain('Corbin Burnes signed with Boston Red Sox for $28.5M/yr (5 years)');
     expect(container.innerHTML).toContain('accent-success');
     expect(container.innerHTML).toContain('accent-warning');
+  });
+
+  it('shows the qualifying offers phase in the offseason progress flow', async () => {
+    mockedUseWorker.mockReturnValue(
+      buildWorkerMock({
+        getOffseasonState: vi.fn().mockResolvedValue(
+          buildOffseasonState({
+            currentPhase: 'qualifying_offers',
+            transactionGroups: [
+              {
+                phase: 'qualifying_offers',
+                label: 'Qualifying Offers',
+                rows: [
+                  {
+                    id: 'qo-1',
+                    tone: 'user',
+                    summary: 'New York Yankees extended a qualifying offer to Juan Slugger.',
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      }) as unknown as ReturnType<typeof useWorker>,
+    );
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Qualifying Offers');
+    expect(container.textContent).toContain('extended a qualifying offer');
+    expect(container.textContent).toContain('Free Agency');
   });
 
   it('renders the protection audit surface and invokes Rule 5 protection actions', async () => {

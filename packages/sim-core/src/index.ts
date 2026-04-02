@@ -193,6 +193,7 @@ export {
   advanceContracts,
   generateContractOffer,
   getArbEligiblePlayers,
+  serviceDaysToYears,
 } from './finance/index.js';
 export type {
   ContractDetail,
@@ -208,29 +209,67 @@ export {
   combineReports,
   getTeamScoutingAccuracy,
   generateScoutNotes,
+  DEFAULT_IFA_BONUS_POOL,
+  IFA_POOL_MIN,
+  IFA_POOL_MAX,
+  scoutQualityToAccuracy,
+  getInternationalScoutAccuracy,
+  generateIFAPool,
+  createInternationalScoutingState,
+  getAvailableIFAProspects,
+  getRemainingIFABudget,
+  scoutIFAProspect,
+  tradeIFABonusPool,
+  convertIFAProspectToPlayer,
+  signIFAProspect,
 } from './scouting/index.js';
 export type {
   ScoutBias,
   Scout,
   ScoutReport,
+  InternationalRegion,
+  InternationalNationality,
+  IFAProspectStatus,
+  InternationalProspect,
+  IFATeamBudget,
+  InternationalScoutingReport,
+  IFAScoutingHistoryEntry,
+  InternationalScoutingState,
+  SignIFAProspectResult,
 } from './scouting/index.js';
 
 // Draft
 export {
   generateDraftClass,
   rankProspects,
+  DRAFT_CLASS_SIZE,
   DRAFT_ROUNDS,
   NUM_TEAMS,
   determineDraftOrder,
   aiSelectPick,
   evaluateTeamNeeds,
   simulateFullDraft,
+  scoutDraftProspect,
+  resolveDraftSigning,
+  PROTECTED_TOP_TEN_PICK_COUNT,
+  createDefaultDraftPickOwnership,
+  tradeDraftPickOwnership,
+  awardCompensatoryPick,
+  forfeitHighestEligiblePick,
+  buildDraftPickSlots,
 } from './draft/index.js';
 export type {
   DraftProspect,
+  DraftProspectBackground,
   DraftClass,
   DraftPick,
   DraftResult,
+  DraftScoutingReport,
+  DraftSigningOutcome,
+  DraftPickOwnership,
+  DraftPickDescriptor,
+  DraftCompensatoryPick,
+  DraftPickSlot,
 } from './draft/index.js';
 
 // Trade
@@ -288,6 +327,7 @@ export {
   recordTenderDecisions,
   recordFASigning,
   recordDraftPicks,
+  recordIFASigning,
   recordRetirements,
   autoResolveTenderNonTender,
   determineRetirements,
@@ -300,6 +340,7 @@ export type {
   ArbitrationResult,
   FASigningResult,
   DraftPickResult,
+  IFASigningResult,
   RetirementResult,
   OffseasonSummary,
 } from './roster/index.js';
@@ -320,6 +361,36 @@ export type {
   FreeAgent,
   ContractOffer,
   FreeAgencyMarket,
+} from './roster/index.js';
+export {
+  AFFILIATE_LEVELS,
+  AFFILIATE_SCHEDULE_LENGTHS,
+  EXPANDED_MLB_ROSTER_LIMIT,
+  SEPTEMBER_EXPANDED_ROSTER_DAYS,
+  ROOKIE_AFFILIATE_START_DAY,
+  createMinorLeagueState,
+  accrueServiceTimeDay,
+  consumeOptionYear,
+  buildWaiverPriority,
+  placeOnWaivers,
+  claimOffWaivers,
+  isExpandedRosterWindow,
+  getActiveRosterLimit,
+  getRosterComplianceIssues,
+  getPromotionCandidates,
+  simulateAffiliateDay,
+} from './roster/index.js';
+export type {
+  AffiliateLevel,
+  AffiliatePlayerStats,
+  AffiliateState,
+  WaiverClaim,
+  AffiliateBoxScore,
+  MinorLeagueState,
+  MinorLeagueMutationResult,
+  WaiverClaimResult,
+  RosterComplianceIssue,
+  PromotionCandidate,
 } from './roster/index.js';
 export {
   calculateRule5EligibleAfterSeason,

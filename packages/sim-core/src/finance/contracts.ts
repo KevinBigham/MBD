@@ -188,6 +188,10 @@ function getPlayerOverall(player: GeneratedPlayer): number {
   return hitterOverall(player.hitterAttributes);
 }
 
+export function serviceDaysToYears(serviceTimeDays: number): number {
+  return Math.floor(Math.max(0, serviceTimeDays) / 172);
+}
+
 // ---------------------------------------------------------------------------
 // Core Functions
 // ---------------------------------------------------------------------------
@@ -464,7 +468,7 @@ export function getArbEligiblePlayers(
 ): GeneratedPlayer[] {
   return players.filter((p) => {
     if (p.teamId !== teamId) return false;
-    const years = serviceTime.get(p.id) ?? 0;
+    const years = serviceTime.get(p.id) ?? serviceDaysToYears(p.serviceTimeDays);
     return years >= ARB_FIRST_YEAR && years <= ARB_LAST_YEAR;
   });
 }
