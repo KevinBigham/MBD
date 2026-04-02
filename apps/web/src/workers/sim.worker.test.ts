@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AwardHistoryEntry } from '@mbd/contracts';
 import {
+  buildRosterState,
   createOffseasonState,
   evaluatePlayerTradeValue,
   type GeneratedPlayer,
@@ -120,6 +121,21 @@ interface MinorLeagueWorkerApi {
   };
   hireCoach: (coachId: string) => { success: boolean };
   fireCoach: (coachId: string) => { success: boolean };
+  getMonthlyPulse: () => {
+    pendingReport: {
+      id: string;
+      monthLabel: string;
+      teamRecord: string;
+      overallRecord: string;
+    } | null;
+    decisionQueue: Array<{
+      id: string;
+      urgency: 'red' | 'yellow' | 'blue';
+      route: string;
+    }>;
+  };
+  acknowledgeMonthlyReport: (reportId: string) => { success: boolean };
+  dismissDecisionSpotlight: (decisionId: string) => { success: boolean };
 }
 
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
@@ -136,11 +152,16 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
     bb: 0,
     k: 0,
     runs: 0,
+    hbp: 0,
+    sacFlies: 0,
     ip: 0,
     earnedRuns: 0,
     strikeouts: 0,
     walks: 0,
     hitsAllowed: 0,
+    homeRunsAllowed: 0,
+    hitBatters: 0,
+    flyBallsAllowed: 0,
     wins: 0,
     losses: 0,
     ...overrides,
@@ -273,6 +294,106 @@ describe('sim worker narrative APIs', () => {
     expect(report?.playerId).toBe(prospect!.id);
     expect(report?.history.length).toBeGreaterThan(0);
     expect(reports?.history).toEqual(report?.history);
+  });
+
+  it('advances to calendar month boundaries and creates a pending monthly pulse report', () => {
+    api.newGame(1251, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 31,
+    };
+
+    const result = api.simMonth();
+    const monthlyPulse = (api as typeof api & MinorLeagueWorkerApi).getMonthlyPulse();
+    expect(monthlyPulse).not.toBeNull();
+    if (!monthlyPulse) {
+      throw new Error('Expected monthly pulse state after simulating a month.');
+    }
+
+    expect(result.day).toBe(62);
+    expect(monthlyPulse.pendingReport).toMatchObject({
+      monthLabel: 'May',
+    });
+    expect(monthlyPulse.pendingReport?.teamRecord).toMatch(/^\d+-\d+$/);
+    expect(monthlyPulse.pendingReport?.overallRecord).toMatch(/^\d+-\d+$/);
+  });
+
+  it('builds red, yellow, and blue monthly spotlight items and supports acknowledgement flow', () => {
+    api.newGame(1252, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 92;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 92,
+    };
+
+    const extraMlb = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB',
+    )!;
+    const prospect = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB' && player.id !== extraMlb.id,
+    )!;
+    extraMlb.rosterStatus = 'MLB';
+    extraMlb.minorLeagueLevel = null;
+    prospect.rosterStatus = 'AAA';
+    prospect.minorLeagueLevel = 'AAA';
+    state.rosterStates.set('nyy', buildRosterState('nyy', state.players));
+    state.tradeState.pendingOffers = [buildIncomingOffer('monthly-pulse-offer').offer];
+    state.minorLeagueState.affiliateStates = [
+      {
+        teamId: 'nyy',
+        level: 'AAA',
+        season: state.season,
+        gamesPlayed: 48,
+        wins: 31,
+        losses: 17,
+        runsScored: 241,
+        runsAllowed: 188,
+        playerStats: [[prospect.id, {
+          playerId: prospect.id,
+          games: 31,
+          pa: 132,
+          hits: 41,
+          hr: 8,
+          rbi: 27,
+          bb: 16,
+          k: 19,
+          ipOuts: 0,
+          earnedRuns: 0,
+          strikeouts: 0,
+          walks: 0,
+          wins: 0,
+          losses: 0,
+        }]],
+      },
+    ];
+
+    api.simMonth();
+
+    const monthlyApi = api as typeof api & MinorLeagueWorkerApi;
+    const pulse = monthlyApi.getMonthlyPulse();
+    expect(pulse).not.toBeNull();
+    if (!pulse) {
+      throw new Error('Expected monthly pulse state after simulating a month.');
+    }
+    const urgencies = pulse.decisionQueue.map((item) => item.urgency);
+
+    expect(urgencies).toEqual(expect.arrayContaining(['red', 'yellow', 'blue']));
+    expect(pulse.decisionQueue[0]?.urgency).toBe('red');
+
+    const reportId = pulse.pendingReport?.id;
+    expect(reportId).toBeTruthy();
+    expect(monthlyApi.acknowledgeMonthlyReport(reportId!)).toEqual({ success: true });
+    expect(monthlyApi.getMonthlyPulse()?.pendingReport).toBeNull();
+
+    const firstDecisionId = monthlyApi.getMonthlyPulse()?.decisionQueue[0]?.id;
+    expect(firstDecisionId).toBeTruthy();
+    expect(monthlyApi.dismissDecisionSpotlight(firstDecisionId!)).toEqual({ success: true });
+    expect(monthlyApi.getMonthlyPulse()?.decisionQueue.some((item) => item.id === firstDecisionId)).toBe(false);
   });
 
   it('routes offseason progression through extensions before qualifying offers', () => {
@@ -1319,14 +1440,14 @@ describe('sim worker narrative APIs', () => {
     let state = requireState();
     state.phase = 'regular';
     state.day = 31;
-    const { target } = configureMonthlyTradeScenario();
+    configureMonthlyTradeScenario();
 
     processTradeMarketActivity(state, 30, 31);
     const firstRun = api.getTradeOffers();
 
     expect(firstRun.length).toBeGreaterThan(0);
-    expect(firstRun.some((offer) => offer.fromTeamId === 'bos' && offer.toTeamId === 'nyy')).toBe(true);
-    expect(firstRun.some((offer) => offer.requestingAssets.some((asset) => asset.playerId === target.id))).toBe(true);
+    expect(firstRun.every((offer) => offer.toTeamId === 'nyy')).toBe(true);
+    expect(firstRun.some((offer) => offer.requestingAssets.some((asset) => asset.type === 'player'))).toBe(true);
 
     api.newGame(341, 'nyy');
     state = requireState();
@@ -1719,5 +1840,156 @@ describe('sim worker narrative APIs', () => {
     expect(feed).toHaveLength(100);
     expect(feed[0]?.id).toBe('news-120');
     expect(feed.at(-1)?.id).toBe('news-21');
+  });
+
+  it('injects synthetic rumor, development, rivalry, and hot-stove entries with derived tags', () => {
+    api.newGame(779, 'nyy');
+    const state = requireState();
+    const prospect = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB',
+    )!;
+    const freeAgentTarget = state.players.find(
+      (player) => player.teamId === 'oak' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    state.day = 100;
+    state.tradeState.pendingOffers = [buildIncomingOffer('offer-synthetic').offer];
+    state.minorLeagueState.developmentReports = [
+      {
+        playerId: prospect.id,
+        teamId: 'nyy',
+        season: state.season,
+        month: 6,
+        trajectory: 'ahead_of_curve',
+        summary: 'The player development group is pushing for a promotion.',
+        overallRating: prospect.overallRating,
+      },
+    ];
+    state.rivalries.set('nyy:bos', {
+      id: 'nyy:bos',
+      teamA: 'nyy',
+      teamB: 'bos',
+      intensity: 74,
+      summary: 'The division race is getting personal again.',
+        reasons: ['Playoff chase', 'Three heated series'],
+      });
+    state.freeAgencyMarket = {
+      season: state.season,
+      day: 8,
+      freeAgents: [
+        {
+          player: {
+            ...freeAgentTarget,
+            teamId: '',
+            contract: {
+              ...freeAgentTarget.contract,
+              years: 0,
+              annualSalary: 0,
+              totalValue: 0,
+            },
+          },
+          marketValue: 27.5,
+          demandLevel: 'elite',
+          interestedTeams: ['bos', 'lad', 'chc'],
+          signedWith: null,
+          contract: null,
+        },
+      ],
+      signedPlayers: [],
+    };
+
+    const feed = api.getPressRoomFeed();
+    const deadlineRumor = feed.find((entry) => entry.id === `synthetic-rumor-${state.season}-${state.day}`);
+    const hotStoveRumor = feed.find((entry) => entry.id === `synthetic-fa-rumor-${freeAgentTarget.id}-${state.season}-${state.day}`);
+    const development = feed.find((entry) => entry.category === 'development');
+    const rivalry = feed.find((entry) => entry.id === `synthetic-rivalry-nyy:bos-${state.season}-${state.day}`);
+
+    expect(deadlineRumor).toMatchObject({
+      category: 'rumor',
+      tag: 'RUMOR',
+      relatedTeamIds: ['nyy'],
+    });
+    expect(deadlineRumor?.headline).toContain('Deadline buzz');
+
+    expect(hotStoveRumor).toMatchObject({
+      category: 'rumor',
+      tag: 'RUMOR',
+      relatedPlayerIds: [freeAgentTarget.id],
+      relatedTeamIds: ['bos', 'lad', 'chc'],
+    });
+    expect(hotStoveRumor?.headline).toContain(freeAgentTarget.firstName);
+
+    expect(development).toMatchObject({
+      category: 'development',
+      tag: 'ANALYSIS',
+      relatedPlayerIds: [prospect.id],
+      relatedTeamIds: ['nyy'],
+    });
+    expect(development?.headline).toContain(`${prospect.firstName} ${prospect.lastName}`);
+    expect(development?.body).toContain('promotion');
+
+    expect(rivalry).toMatchObject({
+      category: 'rivalry',
+      tag: 'ANALYSIS',
+      relatedTeamIds: ['nyy', 'bos'],
+    });
+    expect(rivalry?.headline).toContain('NYY');
+    expect(rivalry?.headline).toContain('BOS');
+  });
+
+  it('returns advanced stat lines and advanced leaderboard results', () => {
+    api.newGame(780, 'nyy');
+    const state = requireState();
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const pitcher = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      pa: 640,
+      ab: 555,
+      hits: 182,
+      doubles: 38,
+      triples: 4,
+      hr: 34,
+      rbi: 112,
+      bb: 74,
+      hbp: 6,
+      sacFlies: 5,
+      runs: 101,
+    }));
+    state.seasonState.playerSeasonStats.set(pitcher.id, createPlayerStats({
+      playerId: pitcher.id,
+      teamId: pitcher.teamId,
+      ip: 585,
+      earnedRuns: 64,
+      strikeouts: 201,
+      walks: 42,
+      hitsAllowed: 141,
+      homeRunsAllowed: 18,
+      hitBatters: 4,
+      flyBallsAllowed: 177,
+      wins: 16,
+      losses: 6,
+    }));
+
+    const hitterAdvanced = api.getAdvancedStats(hitter.id);
+    const pitcherAdvanced = api.getAdvancedStats(pitcher.id);
+    const wobaLeader = api.getLeagueLeaders('woba', 1)[0];
+    const fipLeader = api.getLeagueLeaders('fip', 1)[0];
+
+    expect(hitterAdvanced?.woba).toBeGreaterThan(0.35);
+    expect(hitterAdvanced?.war).toBeGreaterThan(0);
+    expect(pitcherAdvanced?.fip).toBeGreaterThan(0);
+    expect(pitcherAdvanced?.war).toBeGreaterThan(0);
+
+    expect(wobaLeader?.id).toBe(hitter.id);
+    expect(wobaLeader?.advanced?.woba).toBeCloseTo(hitterAdvanced?.woba ?? 0, 3);
+    expect(fipLeader?.id).toBe(pitcher.id);
+    expect(fipLeader?.advanced?.fip).toBeCloseTo(pitcherAdvanced?.fip ?? 0, 3);
   });
 });

@@ -48,6 +48,7 @@ import {
   type DraftSessionState,
   type FullGameState,
 } from './sim.worker.helpers';
+import { createEmptyMonthlyPulseState } from './sim.worker.monthlyPulse.js';
 
 function serializeSeasonState(seasonState: SeasonState): GameSnapshot['seasonState'] {
   return {
@@ -114,6 +115,8 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 5 &&
     snapshot.schemaVersion !== 6 &&
     snapshot.schemaVersion !== 7 &&
+    snapshot.schemaVersion !== 8 &&
+    snapshot.schemaVersion !== 9 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -169,6 +172,7 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       careerStats: state.careerStats,
       seasonHistory: state.seasonHistory,
     },
+    monthlyPulse: state.monthlyPulse,
     tradeState: state.tradeState,
   });
 }
@@ -220,6 +224,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
         : createEmptyInternationalScoutingState(snapshot.season),
     draftState: snapshot.draftState ?? createEmptyDraftState(),
     minorLeagueState: snapshot.minorLeagueState ?? createEmptyMinorLeagueState(),
+    monthlyPulse: snapshot.monthlyPulse ?? createEmptyMonthlyPulseState(),
     playerMorale: fromEntries(snapshot.narrative.playerMorale as [string, PlayerMorale][]),
     teamChemistry: fromEntries(snapshot.narrative.teamChemistry as [string, TeamChemistry][]),
     ownerState: fromEntries(snapshot.narrative.ownerState as [string, OwnerState][]),

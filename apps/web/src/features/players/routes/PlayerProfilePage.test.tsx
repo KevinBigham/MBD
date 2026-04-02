@@ -100,6 +100,19 @@ describe('PlayerProfilePage', () => {
         }],
         stats: null,
       }),
+      getAdvancedStats: vi.fn().mockResolvedValue({
+        war: 4.8,
+        woba: 0.378,
+        wrcPlus: 142,
+        opsPlus: 137,
+        iso: 0.224,
+        fip: null,
+        xfip: null,
+        whip: null,
+        kPer9: null,
+        bbPer9: null,
+        kBb: null,
+      }),
       getPersonalityProfile: vi.fn().mockResolvedValue({
         playerId: 'player-1',
         archetype: 'clubhouse_engine',
@@ -160,5 +173,8 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Extension History');
     expect(container.textContent).toContain('$18.2M');
     expect(container.textContent).toContain('2B');
+    expect(container.textContent).toContain('Advanced Stats');
+    expect(container.textContent).toContain('wOBA');
+    expect(container.textContent).toContain('4.8');
   });
 });

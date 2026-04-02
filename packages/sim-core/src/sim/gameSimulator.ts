@@ -46,12 +46,17 @@ export interface PlayerGameStats {
   bb: number;
   k: number;
   runs: number;
+  hbp: number;
+  sacFlies: number;
   // Pitching
   ip: number;  // innings pitched (in thirds)
   earnedRuns: number;
   strikeouts: number;
   walks: number;
   hitsAllowed: number;
+  homeRunsAllowed: number;
+  hitBatters: number;
+  flyBallsAllowed: number;
   wins: number;
   losses: number;
 }
@@ -104,8 +109,9 @@ export function simulateGame(
       stats = {
         playerId: player.id, teamId,
         pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0,
-        rbi: 0, bb: 0, k: 0, runs: 0,
+        rbi: 0, bb: 0, k: 0, runs: 0, hbp: 0, sacFlies: 0,
         ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,
+        homeRunsAllowed: 0, hitBatters: 0, flyBallsAllowed: 0,
         wins: 0, losses: 0,
       };
       playerStats.set(player.id, stats);
@@ -260,15 +266,24 @@ function simulateHalfInning(
     if (paResult.outcome === 'DOUBLE') bStats.doubles++;
     if (paResult.outcome === 'TRIPLE') bStats.triples++;
     if (paResult.outcome === 'HR') bStats.hr++;
-    if (paResult.outcome === 'BB' || paResult.outcome === 'HBP') bStats.bb++;
+    if (paResult.outcome === 'BB') bStats.bb++;
+    if (paResult.outcome === 'HBP') bStats.hbp++;
     if (paResult.outcome === 'K') bStats.k++;
+    if (paResult.outcome === 'FB_OUT' && outsBefore < 2 && markovResult.runsScored > 0) {
+      bStats.sacFlies++;
+    }
     bStats.rbi += markovResult.runsScored;
 
     // Pitcher stats
     const pStats = getStats(pitcher, pitchingTeamId);
     if (HIT_OUTCOMES.has(paResult.outcome)) pStats.hitsAllowed++;
+    if (paResult.outcome === 'HR') pStats.homeRunsAllowed++;
     if (paResult.outcome === 'K') pStats.strikeouts++;
-    if (paResult.outcome === 'BB' || paResult.outcome === 'HBP') pStats.walks++;
+    if (paResult.outcome === 'BB') pStats.walks++;
+    if (paResult.outcome === 'HBP') pStats.hitBatters++;
+    if (paResult.outcome === 'FB_OUT' || paResult.outcome === 'HR' || paResult.outcome === 'SAC_FLY') {
+      pStats.flyBallsAllowed++;
+    }
     pStats.ip += markovResult.inningOver ? 3 - outsBefore : runnerState.outs - outsBefore;
     pStats.earnedRuns += markovResult.runsScored;
 

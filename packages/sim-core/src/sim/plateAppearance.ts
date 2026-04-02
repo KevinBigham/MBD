@@ -38,12 +38,13 @@ export interface PAResult {
 /** League average rates (approximate MLB averages) */
 const LEAGUE_AVG = {
   bb: 0.085,
+  hbp: 0.008,
   k: 0.220,
   hr: 0.030,
   single: 0.155,
   double: 0.045,
   triple: 0.005,
-  gb: 0.220,
+  gb: 0.212,
   fb: 0.140,
   ld: 0.100,
 };
@@ -62,6 +63,7 @@ function hitterToRates(attrs: HitterAttributes) {
 
   return {
     bb: LEAGUE_AVG.bb * (0.5 + eyeN),
+    hbp: LEAGUE_AVG.hbp * (0.75 + ((eyeN + speedN) * 0.35)),
     k: LEAGUE_AVG.k * (1.5 - contactN),
     hr: LEAGUE_AVG.hr * (0.3 + powerN * 1.4),
     single: LEAGUE_AVG.single * (0.5 + contactN * 0.8),
@@ -86,6 +88,7 @@ function pitcherToRates(attrs: PitcherAttributes) {
 
   return {
     bb: LEAGUE_AVG.bb * (1.5 - controlN),
+    hbp: LEAGUE_AVG.hbp * (1.4 - controlN),
     k: LEAGUE_AVG.k * (0.5 + stuffN),
     hr: LEAGUE_AVG.hr * (1.3 - movementN * 0.6),
     single: LEAGUE_AVG.single * (1.3 - stuffN * 0.6),
@@ -104,6 +107,7 @@ function pitcherToRates(attrs: PitcherAttributes) {
 /** Outcome mapping from Log5 keys to PAOutcome enum */
 const KEY_TO_OUTCOME: Record<string, PAOutcome> = {
   bb: 'BB',
+  hbp: 'HBP',
   k: 'K',
   hr: 'HR',
   single: 'SINGLE',
@@ -114,7 +118,7 @@ const KEY_TO_OUTCOME: Record<string, PAOutcome> = {
   ld: 'LD_OUT',
 };
 
-const OUTCOME_KEYS = ['bb', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld'] as const;
+const OUTCOME_KEYS = ['bb', 'hbp', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld'] as const;
 
 /**
  * Resolve a single plate appearance.

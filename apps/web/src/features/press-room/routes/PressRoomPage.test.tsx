@@ -56,6 +56,7 @@ describe('PressRoomPage', () => {
           id: 'brief-owner-heat',
           source: 'briefing',
           category: 'owner',
+          tag: 'BREAKING',
           priority: 1,
           headline: 'Owner pressure is rising.',
           body: 'Ownership wants a stronger response this month.',
@@ -67,12 +68,25 @@ describe('PressRoomPage', () => {
           id: 'news-trade-1',
           source: 'news',
           category: 'trade',
+          tag: 'RUMOR',
           priority: 2,
           headline: 'Breaking trade headline',
           body: 'New York added a bullpen arm in a deadline swing.',
           timestamp: 'S3D43',
           relatedTeamIds: ['nyy', 'bos'],
           relatedPlayerIds: [],
+        },
+        {
+          id: 'news-signing-1',
+          source: 'news',
+          category: 'signing',
+          tag: 'BREAKING',
+          priority: 1,
+          headline: 'Free-agent ace lands in Boston',
+          body: 'Boston closed a five-year deal for a frontline starter.',
+          timestamp: 'S3D42',
+          relatedTeamIds: ['bos'],
+          relatedPlayerIds: ['player-ace'],
         },
       ]),
     } as unknown as ReturnType<typeof useWorker>);
@@ -86,7 +100,7 @@ describe('PressRoomPage', () => {
     vi.clearAllMocks();
   });
 
-  it('renders a unified press room feed with visual source and category metadata', async () => {
+  it('renders a grouped press room feed with tags and filters', async () => {
     await act(async () => {
       root.render(
         <MemoryRouter>
@@ -104,6 +118,21 @@ describe('PressRoomPage', () => {
     expect(container.textContent).toContain('briefing');
     expect(container.textContent).toContain('owner');
     expect(container.textContent).toContain('trade');
-    expect(container.textContent).toContain('S3D44');
+    expect(container.textContent).toContain('BREAKING');
+    expect(container.textContent).toContain('RUMOR');
+    expect(container.textContent).toContain('Season 3 • Day 44');
+    expect(container.textContent).toContain('Transaction Log');
+    expect(container.textContent).toContain('Free-agent ace lands in Boston');
+
+    const selects = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[];
+    const tagFilter = selects[2]!;
+
+    await act(async () => {
+      tagFilter.value = 'BREAKING';
+      tagFilter.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain('Owner pressure is rising.');
+    expect(container.textContent).not.toContain('Breaking trade headline');
   });
 });

@@ -15,9 +15,11 @@ import {
   generateDraftClass,
   generateCoachFreeAgents,
   generateCoachingStaff,
+  generateNews,
   generateLeaguePlayers,
   generateSchedule,
   generateScoutingStaff,
+  getRegularSeasonMonthForDay,
   getTeamById,
   initializePlayerDevelopmentProfile,
   initializePlayoffBracket,
@@ -120,6 +122,13 @@ import {
   processHallOfFameForRetirements,
   upsertFranchiseTimelineEntry,
 } from './sim.worker.legacy.js';
+import {
+  acknowledgeMonthlyReport,
+  captureMonthlyAdvanceContext,
+  createEmptyMonthlyPulseState,
+  dismissDecisionSpotlight,
+  generateMonthlyPulse,
+} from './sim.worker.monthlyPulse.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -389,7 +398,7 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
 }
 
 function monthFromDay(day: number): number {
-  return Math.min(12, Math.max(1, Math.floor((Math.max(1, day) - 1) / 30) + 1));
+  return getRegularSeasonMonthForDay(day).month;
 }
 
 function applyMonthlyDevelopmentCheckpoints(
@@ -446,6 +455,7 @@ function simMonthInternal(): SimResultDTO {
     return simDayInternal();
   }
 
+  const monthlyContext = captureMonthlyAdvanceContext(s);
   const previousDay = s.day;
   const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
   s.seasonState = newState;
@@ -454,6 +464,7 @@ function simMonthInternal(): SimResultDTO {
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
   refreshNarrativeState(s, result.games);
+  s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
 }
 
@@ -509,6 +520,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.internationalScoutingState = createEmptyInternationalScoutingState(s.season);
   s.draftState = createEmptyDraftState();
   s.minorLeagueState = createEmptyMinorLeagueState(s.season);
+  s.monthlyPulse = createEmptyMonthlyPulseState();
   const teamIds = TEAMS.map((team) => team.id);
   s.schedule = generateSchedule(s.rng.fork());
   s.seasonState = createSeasonState(s.season, teamIds);
@@ -662,6 +674,7 @@ export const actionApi = {
       internationalScoutingState: createEmptyInternationalScoutingState(1),
       draftState: createEmptyDraftState(),
       minorLeagueState: createEmptyMinorLeagueState(1),
+      monthlyPulse: createEmptyMonthlyPulseState(),
       playerMorale: new Map(),
       teamChemistry: new Map(),
       ownerState: new Map(),
@@ -700,6 +713,14 @@ export const actionApi = {
 
   simMonth(): SimResultDTO {
     return simMonthInternal();
+  },
+
+  acknowledgeMonthlyReport(reportId: string) {
+    return acknowledgeMonthlyReport(requireState(), reportId);
+  },
+
+  dismissDecisionSpotlight(decisionId: string) {
+    return dismissDecisionSpotlight(requireState(), decisionId);
   },
 
   simToPlayoffs(): SimResultDTO {
@@ -942,6 +963,22 @@ export const actionApi = {
         : candidate,
     );
     s.rosterStates.set(player.teamId, result.rosterState);
+    const promotedPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (promotedPlayer && player.rosterStatus !== 'MLB' && promotedPlayer.rosterStatus === 'MLB') {
+      s.news.unshift(...generateNews(s.rng.fork(), {
+        type: 'development',
+        season: s.season,
+        day: s.day,
+        data: {
+          playerId: promotedPlayer.id,
+          playerName: `${promotedPlayer.firstName} ${promotedPlayer.lastName}`,
+          teamId: promotedPlayer.teamId,
+          teamName: teamLabel(promotedPlayer.teamId),
+          level: player.rosterStatus,
+          streak: 'call-up watch',
+        },
+      }, s.players, s.season, s.day));
+    }
     return { success: result.success, error: result.error };
   },
 

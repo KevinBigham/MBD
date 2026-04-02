@@ -85,9 +85,9 @@ export function SimControls({
               onClick={onSimMonth}
               disabled={isSimulating}
               icon={<SkipForward className="h-4 w-4" />}
-              label="Sim Month"
+              label="Next Month"
               shortLabel="Month"
-              tooltip="Sim Month (Ctrl+Space)"
+              tooltip="Next Month (Ctrl+Space)"
             />
             <SimButton
               onClick={onSimToPlayoffs}

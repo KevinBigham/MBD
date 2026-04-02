@@ -10,6 +10,7 @@ import {
   negotiateExtension,
   processTeamExtensions,
   resolveQualifyingOffer,
+  shouldIssueQualifyingOffer,
   type ExtensionTeamContext,
   type GeneratedPlayer,
 } from '../src/index.js';
@@ -200,6 +201,57 @@ describe('processTeamExtensions', () => {
     expect(result.results.some((entry) => entry.playerId === franchiseStar.id)).toBe(true);
     expect(result.results.some((entry) => entry.playerId === fringe.id)).toBe(false);
   });
+
+  it('aggressively targets young franchise players with multiple control years and skips declining veterans', () => {
+    const franchiseCornerstone = {
+      ...setHitterRatings(makePlayer(44), 405),
+      age: 26,
+      developmentTrajectory: 'ahead_of_curve' as const,
+      contract: {
+        ...makePlayer(44).contract,
+        years: 3,
+        annualSalary: 12,
+        totalValue: 36,
+      },
+    };
+    const decliningVeteran = {
+      ...setHitterRatings(makePlayer(45), 305),
+      age: 35,
+      developmentTrajectory: 'below_expectations' as const,
+      contract: {
+        ...makePlayer(45).contract,
+        years: 1,
+        annualSalary: 14,
+        totalValue: 14,
+      },
+    };
+    const journeyman = {
+      ...setHitterRatings(makePlayer(46), 240),
+      age: 31,
+      developmentTrajectory: 'on_track' as const,
+    };
+
+    const team = createTeamContext();
+    team.controlYearsByPlayer.set(franchiseCornerstone.id, 3);
+    team.controlYearsByPlayer.set(decliningVeteran.id, 1);
+    team.controlYearsByPlayer.set(journeyman.id, 1);
+    team.serviceYearsByPlayer.set(franchiseCornerstone.id, 3);
+    team.serviceYearsByPlayer.set(decliningVeteran.id, 6);
+    team.serviceYearsByPlayer.set(journeyman.id, 5);
+    team.moraleByPlayer.set(franchiseCornerstone.id, 74);
+    team.moraleByPlayer.set(decliningVeteran.id, 44);
+    team.moraleByPlayer.set(journeyman.id, 52);
+
+    const result = processTeamExtensions(
+      team,
+      [franchiseCornerstone, decliningVeteran, journeyman],
+      new GameRNG(144),
+    );
+
+    expect(result.results.some((entry) => entry.playerId === franchiseCornerstone.id)).toBe(true);
+    expect(result.results.some((entry) => entry.playerId === decliningVeteran.id)).toBe(false);
+    expect(result.results.some((entry) => entry.playerId === journeyman.id)).toBe(false);
+  });
 });
 
 describe('qualifying offers', () => {
@@ -271,5 +323,40 @@ describe('qualifying offers', () => {
 
     expect(resolveQualifyingOffer(veteran, veteranOffer, new GameRNG(404)).record.status).toBe('accepted');
     expect(resolveQualifyingOffer(star, starOffer, new GameRNG(404)).record.status).toBe('rejected');
+  });
+
+  it('issues QOs to premium free agents and skips brittle older bets', () => {
+    const star = {
+      ...setHitterRatings(makePlayer(208), 420),
+      age: 28,
+      contract: {
+        ...makePlayer(208).contract,
+        years: 1,
+        annualSalary: 18,
+        totalValue: 18,
+      },
+    };
+    const brittleVeteran = {
+      ...setHitterRatings(makePlayer(209), 315),
+      age: 36,
+      hitterAttributes: {
+        contact: 315,
+        power: 315,
+        eye: 315,
+        speed: 180,
+        defense: 180,
+        durability: 180,
+      },
+      contract: {
+        ...makePlayer(209).contract,
+        years: 1,
+        annualSalary: 17,
+        totalValue: 17,
+      },
+      developmentTrajectory: 'below_expectations' as const,
+    };
+
+    expect(shouldIssueQualifyingOffer(star, 21)).toBe(true);
+    expect(shouldIssueQualifyingOffer(brittleVeteran, 21)).toBe(false);
   });
 });

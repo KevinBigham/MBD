@@ -19,6 +19,7 @@ import {
 import type {
   FreeAgent,
   GeneratedPlayer,
+  LeaderboardStatKey,
   PlayerGameStats,
   PlayerTradeValue,
   PlayoffBracket,
@@ -44,6 +45,7 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
 import {
   getAwardHistory,
@@ -57,6 +59,11 @@ import {
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
+import {
+  buildAdvancedStatsIndex,
+  buildLeagueLeaderEntries,
+  getAdvancedStatsForPlayer,
+} from './sim.worker.stats.js';
 
 function pctFromRecord(wins: number, losses: number): number {
   const total = wins + losses;
@@ -468,10 +475,12 @@ export const queryApi = {
       return [];
     }
 
-    return state.players
+    const roster = state.players
       .filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB')
-      .sort((left, right) => right.overallRating - left.overallRating)
-      .map((player) => toPlayerDTO(player));
+      .sort((left, right) => right.overallRating - left.overallRating);
+    const advancedIndex = buildAdvancedStatsIndex(state, roster);
+
+    return roster.map((player) => toPlayerDTO(player, undefined, advancedIndex.get(player.id) ?? null));
   },
 
   getFullRoster(teamId: string): { mlb: PlayerDTO[]; minors: Record<string, PlayerDTO[]> } {
@@ -480,17 +489,18 @@ export const queryApi = {
     }
 
     const teamPlayers = state.players.filter((player) => player.teamId === teamId);
+    const advancedIndex = buildAdvancedStatsIndex(state, teamPlayers);
     const mlb = teamPlayers
       .filter((player) => player.rosterStatus === 'MLB')
       .sort((left, right) => right.overallRating - left.overallRating)
-      .map((player) => toPlayerDTO(player));
+      .map((player) => toPlayerDTO(player, undefined, advancedIndex.get(player.id) ?? null));
 
     const minors: Record<string, PlayerDTO[]> = {};
     for (const level of ['AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE', 'INTERNATIONAL']) {
       minors[level] = teamPlayers
         .filter((player) => player.rosterStatus === level)
         .sort((left, right) => right.overallRating - left.overallRating)
-        .map((player) => toPlayerDTO(player));
+        .map((player) => toPlayerDTO(player, undefined, advancedIndex.get(player.id) ?? null));
     }
     return { mlb, minors };
   },
@@ -501,7 +511,16 @@ export const queryApi = {
     }
 
     const player = state.players.find((candidate) => candidate.id === playerId);
-    return player ? toPlayerDTO(player) : null;
+    const advanced = player ? getAdvancedStatsForPlayer(state, player.id) : null;
+    return player ? toPlayerDTO(player, undefined, advanced) : null;
+  },
+
+  getAdvancedStats(playerId: string) {
+    if (!state) {
+      return null;
+    }
+
+    return getAdvancedStatsForPlayer(state, playerId);
   },
 
   getPromotionCandidates(teamId?: string) {
@@ -543,41 +562,17 @@ export const queryApi = {
     return getAffiliateBoxScoreView(boxScoreId);
   },
 
-  getLeagueLeaders(stat: string, limit: number = 20): PlayerDTO[] {
+  getLeagueLeaders(stat: LeaderboardStatKey, limit: number = 20): PlayerDTO[] {
     const s = state;
     if (!s) {
       return [];
     }
 
-    const withStats = s.players
-      .filter((player) => player.rosterStatus === 'MLB')
-      .map((player) => ({ player, stats: s.seasonState.playerSeasonStats.get(player.id) }))
-      .filter((item): item is { player: GeneratedPlayer; stats: PlayerGameStats } =>
-        item.stats != null && item.stats.pa > 0,
-      );
+    const sorted = buildLeagueLeaderEntries(s, stat);
 
-    const sorted = [...withStats].sort((left, right) => {
-      switch (stat) {
-        case 'hr':
-          return right.stats.hr - left.stats.hr;
-        case 'rbi':
-          return right.stats.rbi - left.stats.rbi;
-        case 'hits':
-          return right.stats.hits - left.stats.hits;
-        case 'avg':
-          return (right.stats.ab > 0 ? right.stats.hits / right.stats.ab : 0)
-            - (left.stats.ab > 0 ? left.stats.hits / left.stats.ab : 0);
-        case 'k':
-          return right.stats.strikeouts - left.stats.strikeouts;
-        case 'era':
-          return (left.stats.ip > 0 ? (left.stats.earnedRuns / (left.stats.ip / 3)) * 9 : 99)
-            - (right.stats.ip > 0 ? (right.stats.earnedRuns / (right.stats.ip / 3)) * 9 : 99);
-        default:
-          return right.stats.hr - left.stats.hr;
-      }
-    });
-
-    return sorted.slice(0, limit).map((item) => toPlayerDTO(item.player, item.stats));
+    return sorted
+      .slice(0, limit)
+      .map((entry) => toPlayerDTO(entry.player, entry.stats, entry.advanced));
   },
 
   getPlayoffBracket(): PlayoffBracket | null {
@@ -603,6 +598,10 @@ export const queryApi = {
 
   getDashboardSummary() {
     return state ? buildDashboardSummary(state) : null;
+  },
+
+  getMonthlyPulse() {
+    return state ? getMonthlyPulse(state) : null;
   },
 
   getSeasonFlowState() {

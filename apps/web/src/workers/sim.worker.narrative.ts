@@ -244,7 +244,15 @@ export function rebuildBriefing(state: FullGameState) {
   if (!ownerState || !chemistry) return;
 
   const persistentItems = state.briefingQueue.filter(
-    (item) => item.category === 'breakout' || item.category === 'award' || item.category === 'news',
+    (item) =>
+      item.category === 'breakout'
+      || item.category === 'award'
+      || item.category === 'news'
+      || item.category === 'extension'
+      || item.category === 'qualifying_offer'
+      || item.category === 'coaching'
+      || item.category === 'development'
+      || item.category === 'rumor',
   );
 
   state.briefingQueue = dedupeBriefing([
@@ -367,6 +375,7 @@ export function ensureAwardHistoryForSeason(state: FullGameState) {
       id: `award-${winner.season}-${winner.league}-${winner.award}`,
       priority: 2 as const,
       category: 'award' as const,
+      tag: 'ANALYSIS' as const,
       headline: `${winner.league} ${winner.award} winner recorded.`,
       body: winner.summary,
       relatedTeamIds: [winner.teamId],

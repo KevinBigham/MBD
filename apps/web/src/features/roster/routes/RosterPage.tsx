@@ -48,6 +48,11 @@ interface PlayerDTO {
     walks: number;
     era: string;
   } | null;
+  advanced: {
+    war: number;
+    fip: number | null;
+    xfip: number | null;
+  } | null;
 }
 
 interface TeamChemistry {
@@ -388,7 +393,7 @@ export default function RosterPage() {
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'mlb' | 'minors' | 'contracts')}>
+      <Tabs value={activeTab} onValueChange={(value: string) => setActiveTab(value as 'mlb' | 'minors' | 'contracts')}>
         <TabsList>
           <TabsTrigger value="mlb" onClick={() => setActiveTab('mlb')}>MLB Control Room</TabsTrigger>
           <TabsTrigger value="minors" onClick={() => setActiveTab('minors')}>Minor Leagues</TabsTrigger>
@@ -487,6 +492,7 @@ export default function RosterPage() {
                     <th className="px-2 py-2 text-right font-data">AVG</th>
                     <th className="px-2 py-2 text-right font-data">HR</th>
                     <th className="px-2 py-2 text-right font-data">RBI</th>
+                    <th className="px-2 py-2 text-right font-data">WAR</th>
                     <th className="px-4 py-2 text-right font-heading">Action</th>
                   </tr>
                 </thead>
@@ -517,6 +523,9 @@ export default function RosterPage() {
                       <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.avg ?? '-'}</td>
                       <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.hr ?? '-'}</td>
                       <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.rbi ?? '-'}</td>
+                      <td className="px-2 py-2 text-right font-data text-accent-primary">
+                        {player.advanced?.war?.toFixed(1) ?? '-'}
+                      </td>
                       <td className="px-4 py-2 text-right">
                         <button
                           type="button"
@@ -554,6 +563,7 @@ export default function RosterPage() {
                     <th className="px-2 py-2 text-right font-data">ERA</th>
                     <th className="px-2 py-2 text-right font-data">K</th>
                     <th className="px-2 py-2 text-right font-data">BB</th>
+                    <th className="px-2 py-2 text-right font-data">WAR</th>
                     <th className="px-4 py-2 text-right font-heading">Action</th>
                   </tr>
                 </thead>
@@ -583,6 +593,9 @@ export default function RosterPage() {
                       <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.era ?? '-'}</td>
                       <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.strikeouts ?? '-'}</td>
                       <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.stats?.walks ?? '-'}</td>
+                      <td className="px-2 py-2 text-right font-data text-accent-primary">
+                        {player.advanced?.war?.toFixed(1) ?? '-'}
+                      </td>
                       <td className="px-4 py-2 text-right">
                         <button
                           type="button"

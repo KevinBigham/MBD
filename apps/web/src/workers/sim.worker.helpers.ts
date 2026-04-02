@@ -31,8 +31,10 @@ import {
   getTeamById,
   getOffseasonLength,
   getQualifyingOfferEligiblePlayers,
+  getRegularSeasonMonthForDay,
   resolveDraftSigning,
   resolveQualifyingOffer as resolveQualifyingOfferCore,
+  shouldIssueQualifyingOffer,
   scoutDraftProspect,
   serviceDaysToYears,
   toDisplayRating,
@@ -135,6 +137,7 @@ import type {
   DraftSignability,
   DraftState as PersistentDraftState,
   MinorLeagueState,
+  MonthlyPulseState,
   OwnerState,
   PlayerMorale,
   Rivalry,
@@ -142,6 +145,7 @@ import type {
   TeamChemistry,
   TradeState,
 } from '@mbd/contracts';
+import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -176,6 +180,7 @@ export interface FullGameState {
   internationalScoutingState: InternationalScoutingState;
   draftState: PersistentDraftState;
   minorLeagueState: MinorLeagueState;
+  monthlyPulse: MonthlyPulseState;
   playerMorale: Map<string, PlayerMorale>;
   teamChemistry: Map<string, TeamChemistry>;
   ownerState: Map<string, OwnerState>;
@@ -262,17 +267,29 @@ export interface PlayerDTO {
     pa: number;
     ab: number;
     hits: number;
+    doubles: number;
+    triples: number;
     hr: number;
     rbi: number;
     bb: number;
     k: number;
+    runs: number;
+    hbp: number;
+    sacFlies: number;
     avg: string;
     ip: number;
     earnedRuns: number;
     strikeouts: number;
     walks: number;
+    hitsAllowed: number;
+    homeRunsAllowed: number;
+    hitBatters: number;
+    flyBallsAllowed: number;
+    wins: number;
+    losses: number;
     era: string;
   } | null;
+  advanced: PlayerAdvancedStatsDTO | null;
 }
 
 export interface SimResultDTO {
@@ -910,6 +927,23 @@ export function negotiatePlayerExtension(
     }]);
   }
 
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'extension',
+    season: s.season,
+    day: s.day,
+    data: {
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      teamId: player.teamId,
+      teamName: getTeamById(player.teamId)?.name ?? player.teamId.toUpperCase(),
+      years: finalOffer.years,
+      annualSalary: finalOffer.annualSalary,
+      totalValue: finalOffer.totalValue,
+      outcome: result.status,
+      record: `${s.seasonState.standings.getRecord(player.teamId)?.wins ?? 0}-${s.seasonState.standings.getRecord(player.teamId)?.losses ?? 0}`,
+    },
+  }, s.players, s.season, s.day));
+
   return result;
 }
 
@@ -970,6 +1004,20 @@ export function issueTeamQualifyingOffer(
     }]);
   }
 
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'qualifying_offer',
+    season: s.season,
+    day: s.day,
+    data: {
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      teamId: player.teamId,
+      teamName: getTeamById(player.teamId)?.name ?? player.teamId.toUpperCase(),
+      amount: record.amount,
+      outcome: 'issued',
+    },
+  }, s.players, s.season, s.day));
+
   return { success: true as const, record };
 }
 
@@ -1011,6 +1059,20 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
       playerId: result.record.playerId,
       status: result.record.status,
     });
+
+    s.news.unshift(...generateNews(s.rng.fork(), {
+      type: 'qualifying_offer',
+      season: s.season,
+      day: s.day,
+      data: {
+        playerId: result.record.playerId,
+        playerName: `${result.player.firstName} ${result.player.lastName}`,
+        teamId: result.record.teamId,
+        teamName: getTeamById(result.record.teamId)?.name ?? result.record.teamId.toUpperCase(),
+        amount: result.record.amount,
+        outcome: result.record.status,
+      },
+    }, s.players, s.season, s.day));
   }
 
   return { resolved };
@@ -1036,6 +1098,18 @@ export function hireCoachForUserTeam(s: FullGameState, coachId: string) {
     });
   }
 
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'coaching',
+    season: s.season,
+    day: s.day,
+    data: {
+      teamId: s.userTeamId,
+      teamName: getTeamById(s.userTeamId)?.name ?? s.userTeamId.toUpperCase(),
+      coachName: `${result.hiredCoach.firstName} ${result.hiredCoach.lastName}`,
+      role: result.hiredCoach.role,
+    },
+  }, s.players, s.season, s.day));
+
   return { success: true as const, coach: result.hiredCoach };
 }
 
@@ -1058,6 +1132,19 @@ export function fireCoachForUserTeam(s: FullGameState, coachId: string) {
       salary: result.firedCoach.annualSalary,
     });
   }
+
+  s.news.unshift(...generateNews(s.rng.fork(), {
+    type: 'coaching',
+    season: s.season,
+    day: s.day,
+    data: {
+      teamId: s.userTeamId,
+      teamName: getTeamById(s.userTeamId)?.name ?? s.userTeamId.toUpperCase(),
+      coachName: `${result.firedCoach.firstName} ${result.firedCoach.lastName}`,
+      role: result.firedCoach.role,
+      record: `${s.seasonState.standings.getRecord(s.userTeamId)?.wins ?? 0}-${s.seasonState.standings.getRecord(s.userTeamId)?.losses ?? 0}`,
+    },
+  }, s.players, s.season, s.day));
 
   return { success: true as const, coach: result.firedCoach };
 }
@@ -2813,18 +2900,22 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
   }
 
   if (s.phase === 'regular') {
+    const currentMonth = getRegularSeasonMonthForDay(s.day);
+    const daysUntilTradeDeadline = Math.max(0, 120 - s.day);
     return {
       status: 'regular',
       season: s.season,
       phaseLabel: `Season ${s.season} — Day ${s.day}/162`,
-      detailLabel: 'Regular Season',
+      detailLabel: daysUntilTradeDeadline <= 14
+        ? `${currentMonth.label} pulse · ${daysUntilTradeDeadline} days to deadline`
+        : `${currentMonth.label} pulse`,
       progress: clampProgress(s.day / 162),
       canUseRegularSimControls: true,
       action: null,
       actionLabel: null,
       secondaryAction: null,
       secondaryActionLabel: null,
-      daysUntilTradeDeadline: Math.max(0, 120 - s.day),
+      daysUntilTradeDeadline,
       standingsSnapshot,
       playoffPreview: [],
       seasonSummary: null,
@@ -2948,10 +3039,14 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
   };
 }
 
-export function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): PlayerDTO {
+export function toPlayerDTO(
+  player: GeneratedPlayer,
+  stats?: PlayerGameStats,
+  advanced?: PlayerAdvancedStatsDTO | null,
+): PlayerDTO {
   const seasonStats = stats ?? (state ? state.seasonState.playerSeasonStats.get(player.id) : undefined);
   let statBlock: PlayerDTO['stats'] = null;
-  if (seasonStats && (seasonStats.pa > 0 || seasonStats.strikeouts > 0)) {
+  if (seasonStats && (seasonStats.pa > 0 || seasonStats.ip > 0)) {
     const avg = seasonStats.ab > 0
       ? (seasonStats.hits / seasonStats.ab).toFixed(3).replace(/^0/, '')
       : '.000';
@@ -2959,11 +3054,30 @@ export function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): P
       ? ((seasonStats.earnedRuns / (seasonStats.ip / 3)) * 9).toFixed(2)
       : '0.00';
     statBlock = {
-      pa: seasonStats.pa, ab: seasonStats.ab, hits: seasonStats.hits,
-      hr: seasonStats.hr, rbi: seasonStats.rbi, bb: seasonStats.bb,
-      k: seasonStats.k, avg,
-      ip: seasonStats.ip, earnedRuns: seasonStats.earnedRuns,
-      strikeouts: seasonStats.strikeouts, walks: seasonStats.walks, era,
+      pa: seasonStats.pa,
+      ab: seasonStats.ab,
+      hits: seasonStats.hits,
+      doubles: seasonStats.doubles,
+      triples: seasonStats.triples,
+      hr: seasonStats.hr,
+      rbi: seasonStats.rbi,
+      bb: seasonStats.bb,
+      k: seasonStats.k,
+      runs: seasonStats.runs,
+      hbp: seasonStats.hbp,
+      sacFlies: seasonStats.sacFlies,
+      avg,
+      ip: seasonStats.ip,
+      earnedRuns: seasonStats.earnedRuns,
+      strikeouts: seasonStats.strikeouts,
+      walks: seasonStats.walks,
+      hitsAllowed: seasonStats.hitsAllowed,
+      homeRunsAllowed: seasonStats.homeRunsAllowed,
+      hitBatters: seasonStats.hitBatters,
+      flyBallsAllowed: seasonStats.flyBallsAllowed,
+      wins: seasonStats.wins,
+      losses: seasonStats.losses,
+      era,
     };
   }
   return {
@@ -2996,6 +3110,7 @@ export function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): P
     developmentTrajectory: player.developmentTrajectory ?? 'on_track',
     extensionHistory: [...(player.extensionHistory ?? [])],
     stats: statBlock,
+    advanced: advanced ?? null,
   };
 }
 
@@ -3408,6 +3523,27 @@ function processTeamExtensionsOnce(s: FullGameState) {
     if (finalized.length > 0) {
       s.offseasonState = recordExtensionResults(s.offseasonState, finalized);
       recordedTeamIds.add(teamId);
+
+      for (const extension of finalized) {
+        const player = s.players.find((candidate) => candidate.id === extension.playerId);
+        if (!player) continue;
+        s.news.unshift(...generateNews(s.rng.fork(), {
+          type: 'extension',
+          season: s.season,
+          day: s.day,
+          data: {
+            playerId: player.id,
+            playerName: `${player.firstName} ${player.lastName}`,
+            teamId,
+            teamName: getTeamById(teamId)?.name ?? teamId.toUpperCase(),
+            years: extension.years,
+            annualSalary: extension.annualSalary,
+            totalValue: extension.totalValue,
+            outcome: extension.status,
+            record: `${s.seasonState.standings.getRecord(teamId)?.wins ?? 0}-${s.seasonState.standings.getRecord(teamId)?.losses ?? 0}`,
+          },
+        }, s.players, s.season, s.day));
+      }
     }
   }
 }
@@ -3426,6 +3562,9 @@ function processQualifyingOfferIssuanceOnce(s: FullGameState) {
 
     for (const player of getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime)) {
       if (existingPlayerIds.has(player.id)) {
+        continue;
+      }
+      if (!shouldIssueQualifyingOffer(player, calculateQualifyingOfferSalaryCore(s.players))) {
         continue;
       }
 
@@ -3608,6 +3747,19 @@ function applyNewFreeAgencySignings(
     s.offseasonState = recordFASigning(s.offseasonState, signingResult);
     applyQualifyingOfferCompensationIfNeeded(s, player.id, teamId);
     currentSigningIds.add(player.id);
+    s.news.unshift(...generateNews(s.rng.fork(), {
+      type: 'signing',
+      season: s.season,
+      day: s.day,
+      data: {
+        playerId: player.id,
+        teamId,
+        teamName: getTeamById(teamId)?.name ?? teamId.toUpperCase(),
+        years: contract.years,
+        annualSalary: contract.annualSalary,
+        totalValue: contract.totalValue,
+      },
+    }, s.players, s.season, s.day));
     progress.push({
       playerId: player.id,
       teamId,

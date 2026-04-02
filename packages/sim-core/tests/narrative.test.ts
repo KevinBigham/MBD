@@ -38,6 +38,15 @@ function makeGameResultEvent(player: GeneratedPlayer): GameEvent {
   };
 }
 
+function makeEvent(
+  type: GameEvent['type'],
+  data: GameEvent['data'],
+  season: number = 1,
+  day: number = 45,
+): GameEvent {
+  return { type, data, season, day };
+}
+
 function makeSampleNews(count: number): NewsItem[] {
   const rng = new GameRNG(42);
   const items: NewsItem[] = [];
@@ -81,18 +90,53 @@ describe('generateNews', () => {
     const player = makePlayer(42);
     const events: GameEvent[] = [
       makeGameResultEvent(player),
-      {
-        type: 'injury',
-        data: { playerId: player.id, teamId: 'NYY', teamName: 'Yankees', injury: 'hamstring strain', ilDays: 15 },
-        season: 1,
-        day: 50,
-      },
-      {
-        type: 'trade',
-        data: { player1Id: player.id, team1Id: 'NYY', team1Name: 'Yankees', team2Id: 'BOS', team2Name: 'Red Sox' },
-        season: 1,
-        day: 55,
-      },
+      makeEvent('injury', { playerId: player.id, teamId: 'NYY', teamName: 'Yankees', injury: 'hamstring strain', ilDays: 15 }, 1, 50),
+      makeEvent('trade', { player1Id: player.id, team1Id: 'NYY', team1Name: 'Yankees', team2Id: 'BOS', team2Name: 'Red Sox' }, 1, 55),
+      makeEvent('extension', {
+        playerId: player.id,
+        teamId: 'NYY',
+        teamName: 'Yankees',
+        years: 8,
+        totalValue: 280,
+        outcome: 'accepted',
+        record: '58-34',
+        streak: 'W6',
+      }, 1, 90),
+      makeEvent('qualifying_offer', {
+        playerId: player.id,
+        teamId: 'NYY',
+        teamName: 'Yankees',
+        amount: 21.1,
+        outcome: 'rejected',
+      }, 1, 161),
+      makeEvent('coaching', {
+        teamId: 'BOS',
+        teamName: 'Red Sox',
+        coachName: 'Sam Walker',
+        role: 'pitching_coach',
+      }, 1, 72),
+      makeEvent('development', {
+        playerId: player.id,
+        playerName: `${player.firstName} ${player.lastName}`,
+        teamId: 'NYY',
+        teamName: 'Yankees',
+        level: 'AAA',
+      }, 1, 68),
+      makeEvent('rivalry', {
+        team1Id: 'NYY',
+        team1Name: 'Yankees',
+        team2Id: 'BOS',
+        team2Name: 'Red Sox',
+        intensity: 76,
+        playoffPosition: '1.5 games apart in the Wild Card race',
+      }, 1, 101),
+      makeEvent('rumor', {
+        teamId: 'NYY',
+        teamName: 'Yankees',
+        targetPlayerId: player.id,
+        daysToDeadline: 4,
+        need: 'rotation help',
+      }, 1, 118),
     ];
     const rng = new GameRNG(200);
     for (const event of events) {
@@ -103,6 +147,191 @@ describe('generateNews', () => {
         expect(item.category).toBeTruthy();
       }
     }
+  });
+
+  it('generates tagged extension coverage with contract context', () => {
+    const player = makePlayer(42);
+    const rng = new GameRNG(501);
+    const event = makeEvent('extension', {
+      playerId: player.id,
+      teamId: 'NYY',
+      teamName: 'Yankees',
+      years: 8,
+      totalValue: 280,
+      outcome: 'accepted',
+      record: '61-37',
+      streak: 'W5',
+      playoffPosition: '1st in AL East',
+    }, 2, 95);
+
+    const [item] = generateNews(rng, event, [player], event.season, event.day);
+
+    expect(item).toMatchObject({
+      category: 'extension',
+      tag: 'BREAKING',
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: ['NYY'],
+      timestamp: 'S2D95',
+    });
+    expect(item.headline).toContain('Yankees');
+    expect(item.body).toContain('$280.0M');
+    expect(item.body).toContain('61-37 record');
+    expect(item.body).toContain('W5 streak');
+  });
+
+  it('generates tagged qualifying-offer resolution coverage', () => {
+    const player = makePlayer(43);
+    const rng = new GameRNG(502);
+    const event = makeEvent('qualifying_offer', {
+      playerId: player.id,
+      teamId: 'NYY',
+      teamName: 'Yankees',
+      amount: 21.1,
+      outcome: 'rejected',
+      record: '86-76',
+    }, 3, 162);
+
+    const [item] = generateNews(rng, event, [player], event.season, event.day);
+
+    expect(item).toMatchObject({
+      category: 'qualifying_offer',
+      tag: 'BREAKING',
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: ['NYY'],
+    });
+    expect(item.body).toContain('$21.1M');
+    expect(item.body).toContain('free agency');
+  });
+
+  it('generates coaching coverage with analysis tagging', () => {
+    const rng = new GameRNG(503);
+    const event = makeEvent('coaching', {
+      teamId: 'BOS',
+      teamName: 'Red Sox',
+      coachName: 'Maggie Price',
+      role: 'pitching_coach',
+      playoffPosition: '3 games out of the Wild Card',
+    }, 2, 58);
+
+    const [item] = generateNews(rng, event, [], event.season, event.day);
+
+    expect(item).toMatchObject({
+      category: 'coaching',
+      tag: 'ANALYSIS',
+      relatedTeamIds: ['BOS'],
+    });
+    expect(item.headline).toContain('Maggie Price');
+    expect(item.body).toContain('pitching coach');
+    expect(item.body).toContain('3 games out of the Wild Card');
+  });
+
+  it('generates development coverage with level context', () => {
+    const player = makePlayer(44);
+    const rng = new GameRNG(504);
+    const event = makeEvent('development', {
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      teamId: 'NYY',
+      teamName: 'Yankees',
+      level: 'AAA',
+      streak: '12-game hitting',
+    }, 2, 64);
+
+    const [item] = generateNews(rng, event, [player], event.season, event.day);
+
+    expect(item).toMatchObject({
+      category: 'development',
+      tag: 'ANALYSIS',
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: ['NYY'],
+    });
+    expect(item.headline).toContain('AAA');
+    expect(item.body).toContain('AAA');
+    expect(item.body).toContain('12-game hitting streak');
+  });
+
+  it('generates rivalry coverage with both clubs attached', () => {
+    const rng = new GameRNG(505);
+    const event = makeEvent('rivalry', {
+      team1Id: 'NYY',
+      team1Name: 'Yankees',
+      team2Id: 'BOS',
+      team2Name: 'Red Sox',
+      intensity: 84,
+      playoffPosition: 'tied atop the division',
+    }, 4, 122);
+
+    const [item] = generateNews(rng, event, [], event.season, event.day);
+
+    expect(item).toMatchObject({
+      category: 'rivalry',
+      tag: 'ANALYSIS',
+      relatedTeamIds: ['NYY', 'BOS'],
+    });
+    expect(item.headline).toMatch(/Yankees|Red Sox/);
+    expect(item.body).toContain('84');
+    expect(item.body).toContain('tied atop the division');
+  });
+
+  it('generates rumor coverage with rumor tagging', () => {
+    const player = makePlayer(45);
+    const rng = new GameRNG(506);
+    const event = makeEvent('rumor', {
+      teamId: 'NYY',
+      teamName: 'Yankees',
+      targetPlayerId: player.id,
+      targetName: `${player.firstName} ${player.lastName}`,
+      daysToDeadline: 5,
+      need: 'bullpen help',
+    }, 2, 117);
+
+    const [item] = generateNews(rng, event, [player], event.season, event.day);
+
+    expect(item).toMatchObject({
+      category: 'rumor',
+      tag: 'RUMOR',
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: ['NYY'],
+    });
+    expect(item.headline).toContain('Yankees');
+    expect(item.body).toContain('rumor traffic');
+    expect(item.body).toContain('5 days to the deadline');
+  });
+
+  it('is deterministic for repeated rumor events with the same seed', () => {
+    const player = makePlayer(46);
+    const event = makeEvent('rumor', {
+      teamId: 'NYY',
+      teamName: 'Yankees',
+      targetPlayerId: player.id,
+      daysToDeadline: 3,
+      need: 'rotation help',
+    }, 2, 119);
+
+    const first = generateNews(new GameRNG(700), event, [player], event.season, event.day);
+    const second = generateNews(new GameRNG(700), event, [player], event.season, event.day);
+
+    expect(second).toEqual(first);
+  });
+
+  it('uses multiple headline templates across extension events', () => {
+    const player = makePlayer(47);
+    const event = makeEvent('extension', {
+      playerId: player.id,
+      teamId: 'NYY',
+      teamName: 'Yankees',
+      years: 7,
+      totalValue: 210,
+      outcome: 'accepted',
+    }, 2, 80);
+
+    const headlines = new Set(
+      Array.from({ length: 12 }, (_, seed) =>
+        generateNews(new GameRNG(800 + seed), event, [player], event.season, event.day)[0]?.headline ?? '',
+      ),
+    );
+
+    expect(headlines.size).toBeGreaterThan(1);
   });
 });
 

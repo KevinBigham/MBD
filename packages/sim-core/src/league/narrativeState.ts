@@ -248,6 +248,7 @@ export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem
     id: `${context.teamId}-owner-summary`,
     priority: context.ownerState.hotSeat ? 1 : 4,
     category: 'owner',
+    tag: context.ownerState.hotSeat ? 'BREAKING' : 'ANALYSIS',
     headline: context.ownerState.hotSeat
       ? 'Owner pressure is rising.'
       : 'Owner expectations remain on the board.',
@@ -268,6 +269,7 @@ export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem
       id: `${context.teamId}-chemistry`,
       priority: 2,
       category: 'chemistry',
+      tag: 'ANALYSIS',
       headline: 'Clubhouse chemistry needs attention.',
       body: context.chemistry.summary,
       relatedTeamIds: [context.teamId],
@@ -282,6 +284,7 @@ export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem
       id: `${context.teamId}-news`,
       priority: 3,
       category: 'news',
+      tag: 'RECAP',
       headline: `${context.unreadNewsCount} unread briefing item${context.unreadNewsCount === 1 ? '' : 's'}.`,
       body: 'Review the latest league context before making the next major move.',
       relatedTeamIds: [context.teamId],
@@ -299,6 +302,7 @@ export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem
       id: topRivalry.id,
       priority: 4,
       category: 'rivalry',
+      tag: 'ANALYSIS',
       headline: 'A rivalry is becoming a real subplot.',
       body: topRivalry.summary,
       relatedTeamIds: [topRivalry.teamA, topRivalry.teamB],

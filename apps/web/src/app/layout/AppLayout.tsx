@@ -5,10 +5,12 @@ import { TopBar } from './TopBar';
 import { SimControls } from './SimControls';
 import { CommandPalette } from './CommandPalette';
 import { SeasonFlowCard } from './SeasonFlowCard';
+import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
+import type { MonthlyPulseState } from '@mbd/contracts';
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -27,6 +29,8 @@ export function AppLayout() {
   const navigate = useNavigate();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
+  const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseState | null>(null);
+  const [monthlyPulseBusy, setMonthlyPulseBusy] = useState(false);
   const worker = useWorker();
   const workerReady = worker.isReady;
   const { setSimulating, updateFromSim, initializeGame, isInitialized, isSimulating } = useGameStore();
@@ -38,9 +42,15 @@ export function AppLayout() {
     setSeasonFlow(next as SeasonFlowState);
   }, [worker, workerReady]);
 
+  const refreshMonthlyPulse = useCallback(async () => {
+    if (!workerReady) return;
+    const next = await worker.getMonthlyPulse();
+    setMonthlyPulse(next as MonthlyPulseState);
+  }, [worker, workerReady]);
+
   // Auto-initialize a new game when the worker is ready
   useEffect(() => {
-    if (!workerReady || initialized.current) return;
+    if (!workerReady || initialized.current || isInitialized) return;
 
     initialized.current = true;
 
@@ -56,7 +66,7 @@ export function AppLayout() {
             playerCount: result.playerCount,
             userTeamId: result.userTeamId,
           });
-          await refreshSeasonFlow();
+          await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
           return;
         }
 
@@ -68,21 +78,23 @@ export function AppLayout() {
           playerCount: result.playerCount,
           userTeamId: 'nyy',
         });
-        await refreshSeasonFlow();
+        await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
       } catch (err: unknown) {
         console.error('Failed to initialize game:', err);
       }
     })();
-  }, [workerReady, initializeGame, refreshSeasonFlow, worker]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workerReady, initializeGame, isInitialized, refreshMonthlyPulse, refreshSeasonFlow, worker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!workerReady || !isInitialized) return;
 
     void refreshSeasonFlow();
+    void refreshMonthlyPulse();
     return worker.subscribeToFlowUpdates(() => {
       void refreshSeasonFlow();
+      void refreshMonthlyPulse();
     });
-  }, [isInitialized, refreshSeasonFlow, worker, workerReady]);
+  }, [isInitialized, refreshMonthlyPulse, refreshSeasonFlow, worker, workerReady]);
 
   const handleSim = useCallback(
     async (simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>) => {
@@ -91,15 +103,58 @@ export function AppLayout() {
       try {
         const result = await simFn();
         updateFromSim(result);
-        await refreshSeasonFlow();
+        await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
       } catch (err) {
         console.error('Simulation error:', err);
       } finally {
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, refreshSeasonFlow, setSimulating, updateFromSim]
+    [workerReady, isInitialized, refreshMonthlyPulse, refreshSeasonFlow, setSimulating, updateFromSim]
   );
+
+  const activeReport = monthlyPulse?.pendingReport ?? null;
+  const activeDecision = activeReport ? null : (monthlyPulse?.decisionQueue[0] ?? null);
+
+  const handleMonthlyReportContinue = useCallback(async () => {
+    if (!activeReport) return;
+    setMonthlyPulseBusy(true);
+    try {
+      await worker.acknowledgeMonthlyReport(activeReport.id);
+      await refreshMonthlyPulse();
+    } catch (err) {
+      console.error('Failed to acknowledge monthly report:', err);
+    } finally {
+      setMonthlyPulseBusy(false);
+    }
+  }, [activeReport, refreshMonthlyPulse, worker]);
+
+  const handleDecisionDismiss = useCallback(async () => {
+    if (!activeDecision) return;
+    setMonthlyPulseBusy(true);
+    try {
+      await worker.dismissDecisionSpotlight(activeDecision.id);
+      await refreshMonthlyPulse();
+    } catch (err) {
+      console.error('Failed to dismiss decision spotlight:', err);
+    } finally {
+      setMonthlyPulseBusy(false);
+    }
+  }, [activeDecision, refreshMonthlyPulse, worker]);
+
+  const handleDecisionAction = useCallback(async () => {
+    if (!activeDecision) return;
+    setMonthlyPulseBusy(true);
+    try {
+      await worker.dismissDecisionSpotlight(activeDecision.id);
+      await refreshMonthlyPulse();
+      navigate(activeDecision.route);
+    } catch (err) {
+      console.error('Failed to handle decision spotlight action:', err);
+    } finally {
+      setMonthlyPulseBusy(false);
+    }
+  }, [activeDecision, navigate, refreshMonthlyPulse, worker]);
 
   const handleFlowAction = useCallback(async (actionOverride?: SeasonFlowState['action']) => {
     const nextAction = actionOverride ?? seasonFlow?.action;
@@ -219,6 +274,15 @@ export function AppLayout() {
       <CommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
+      />
+
+      <MonthlyPulseOverlay
+        report={activeReport}
+        decision={activeDecision}
+        busy={isSimulating || monthlyPulseBusy}
+        onContinue={() => void handleMonthlyReportContinue()}
+        onDecisionDismiss={() => void handleDecisionDismiss()}
+        onDecisionAction={() => void handleDecisionAction()}
       />
     </div>
   );

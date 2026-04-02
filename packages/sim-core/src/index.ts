@@ -9,6 +9,26 @@ export type {
   Log5Modifiers,
   OutcomeRates,
 } from './math/index.js';
+export {
+  buildLeagueAdvancedContext,
+  calculateAdvancedStatLine,
+  calculateBattingAverage,
+  calculateFip,
+  calculateIso,
+  calculateObp,
+  calculateOps,
+  calculateSlg,
+  calculateWoba,
+  calculateXfip,
+  estimateProjectedWarFromGrade,
+  estimateProjectedWarRange,
+} from './stats/advanced.js';
+export type {
+  AdvancedStatLine,
+  LeagueAdvancedContext,
+  LeaderboardStatKey,
+  ProjectedWarRange,
+} from './stats/advanced.js';
 
 // Player
 export {
@@ -133,6 +153,9 @@ export type {
 
 // Sim
 export {
+  REGULAR_SEASON_MONTHS,
+  getRegularSeasonMonthForDay,
+  getNextMonthStartDay,
   resolvePlateAppearance,
   advanceRunners,
   freshRunnerState,
@@ -154,6 +177,7 @@ export {
   simulatePlayoffs,
 } from './sim/index.js';
 export type {
+  RegularSeasonMonth,
   PAOutcome,
   PAContext,
   PAResult,
@@ -397,6 +421,7 @@ export {
   getQualifyingOfferEligiblePlayers,
   issueQualifyingOffer,
   resolveQualifyingOffer,
+  shouldIssueQualifyingOffer,
   generateAIOffer,
   simulateFADay,
   simulateFullFreeAgency,
@@ -475,6 +500,7 @@ export {
 } from './narrative/index.js';
 export type {
   NewsPriority,
+  NewsTag,
   NewsCategory,
   NewsItem,
   MomentType,

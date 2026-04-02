@@ -153,6 +153,7 @@ export type { StandingsEntry, AwardType, Award } from "./schemas/league.js";
 export {
   NewsCategoryEnum,
   NewsPriorityEnum,
+  NewsTagEnum,
   NewsItemSchema,
   MomentTypeEnum,
   MomentSchema,
@@ -183,6 +184,7 @@ export {
 export type {
   NewsCategory,
   NewsPriority,
+  NewsTag,
   NewsItem,
   MomentType,
   Moment,
@@ -210,6 +212,23 @@ export type {
   UserSeasonSummary,
   SeasonHistoryEntry,
 } from "./schemas/narrative.js";
+
+export {
+  DecisionSpotlightUrgencyEnum,
+  MonthlyPlayerOfTheMonthSchema,
+  ScheduleDifficultySchema,
+  MonthlyReportSchema,
+  DecisionSpotlightItemSchema,
+  MonthlyPulseStateSchema,
+} from "./schemas/monthlyPulse.js";
+export type {
+  DecisionSpotlightUrgency,
+  MonthlyPlayerOfTheMonth,
+  ScheduleDifficulty,
+  MonthlyReport,
+  DecisionSpotlightItem,
+  MonthlyPulseState,
+} from "./schemas/monthlyPulse.js";
 
 export {
   SaveMetaSchema,

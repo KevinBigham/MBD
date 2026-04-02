@@ -69,6 +69,11 @@ describe('simulateGame', () => {
     // Every player should have at least some PA or IP
     for (const [, stats] of playerStats) {
       expect(stats.pa + stats.strikeouts + stats.walks + stats.hitsAllowed).toBeGreaterThanOrEqual(0);
+      expect(stats.hbp).toBeGreaterThanOrEqual(0);
+      expect(stats.sacFlies).toBeGreaterThanOrEqual(0);
+      expect(stats.homeRunsAllowed).toBeGreaterThanOrEqual(0);
+      expect(stats.hitBatters).toBeGreaterThanOrEqual(0);
+      expect(stats.flyBallsAllowed).toBeGreaterThanOrEqual(stats.homeRunsAllowed);
     }
   });
 
