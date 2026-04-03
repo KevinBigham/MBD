@@ -187,6 +187,12 @@ import {
   advanceMonthlyStoryArcs,
   syncSeasonStartStoryArcs,
 } from './sim.worker.storyArcs.js';
+import {
+  applyDevelopmentSetbackCheckpoint,
+  applySeasonEndProspectBondUpdates,
+  getLoyaltyAdjustedAppeal,
+  recordProspectBondDebuts,
+} from './sim.worker.farm.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -700,6 +706,7 @@ function applyMonthlyDevelopmentCheckpoints(
     );
     s.players = checkpoint.players;
     s.minorLeagueState = checkpoint.state;
+    applyDevelopmentSetbackCheckpoint(s, month);
     advanceMonthlyStoryArcs(s, s.season, currentDay);
   }
 }
@@ -741,6 +748,7 @@ function simWeekInternal(): SimResultDTO {
     previousInjuryIds,
     previousTradeCount,
   });
+  recordProspectBondDebuts(s);
   resolveConsequenceChains(s);
   syncRecordTracking(s);
   updateScenarioProgress(s);
@@ -847,6 +855,7 @@ function simMonthInternal(): SimResultDTO {
     previousInjuryIds,
     previousTradeCount,
   });
+  recordProspectBondDebuts(s);
   resolveConsequenceChains(s);
   refreshFanSentiment(s);
   syncRecordTracking(s, { publishWatchStories: true, publishBrokenRecords: true });
@@ -875,6 +884,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   );
   recordBreakoutNarratives(s, beforePlayers, developedPlayers);
   s.players = developedPlayers;
+  applySeasonEndProspectBondUpdates(s);
 
   const retired = determineRetirements(s.rng.fork(), s.players);
   syncHistoricalPlayersForRetirements(s, retired);
@@ -980,6 +990,7 @@ function simDayInternal(): SimResultDTO {
       previousInjuryIds,
       previousTradeCount,
     });
+    recordProspectBondDebuts(s);
     resolveConsequenceChains(s);
     syncRecordTracking(s);
     updateScenarioProgress(s);
@@ -1637,7 +1648,12 @@ export const actionApi = {
     const result = makeUserOffer(s.freeAgencyMarket, {
       ...offer,
       annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
-    }, getTeamFreeAgencyAppealScore(s, s.userTeamId));
+    }, getLoyaltyAdjustedAppeal(
+      s,
+      s.userTeamId,
+      playerId,
+      getTeamFreeAgencyAppealScore(s, s.userTeamId),
+    ));
     if (!result.accepted || !freeAgent) {
       return result;
     }

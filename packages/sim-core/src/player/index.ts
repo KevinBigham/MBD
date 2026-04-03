@@ -80,6 +80,20 @@ export {
   reconcileDevelopmentPipeline,
   runMonthlyDevelopmentCheckpoint,
 } from './developmentPipeline.js';
+export {
+  createProspectBond,
+  getProspectLoyaltyModifier,
+  updateProspectBonds,
+} from './prospectBonds.js';
+export {
+  applyDevelopmentSetback,
+  checkDevelopmentSetback,
+  recoverDevelopmentSetback,
+  isDevelopmentSetbackExpired,
+} from './developmentSetbacks.js';
+export type {
+  ProspectBondSnapshot,
+} from './prospectBonds.js';
 
 // Development
 export {

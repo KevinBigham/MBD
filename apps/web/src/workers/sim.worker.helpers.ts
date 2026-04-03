@@ -174,6 +174,12 @@ import type {
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
 import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool, getTeamPayrollCap } from './sim.worker.setup.js';
+import {
+  getLoyaltyAdjustedAppeal,
+  registerDraftedProspectAcquisition,
+  registerInternationalProspectAcquisition,
+  syncMinorLeagueStatHistory,
+} from './sim.worker.farm.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -880,6 +886,7 @@ export function advanceMinorLeagueDay(s: FullGameState) {
     s.season,
     TEAMS.map((team) => team.id),
   );
+  syncMinorLeagueStatHistory(s);
 }
 
 export function getPromotionCandidatesForTeam(
@@ -1433,6 +1440,7 @@ function applyIFASigningToLeague(
   s.internationalScoutingState = signingResult.state;
   s.players.push(signingResult.signedPlayer);
   s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+  registerInternationalProspectAcquisition(s, prospect.id, teamId, bonusAmount);
 
   if (s.offseasonState) {
     s.offseasonState = recordIFASigning(s.offseasonState, {
@@ -2409,6 +2417,16 @@ export function signUserDraftPick(
     return { success: true, signed: false, message: 'Player declined and will head to school.' };
   }
 
+  registerDraftedProspectAcquisition(
+    s,
+    playerId,
+    s.userTeamId,
+    pick.round,
+    pick.pickNumber,
+    prospect.scoutingGrade,
+    outcome.offeredBonus,
+  );
+
   return { success: true, signed: true, message: 'Player signed and joined the organization.' };
 }
 
@@ -2439,7 +2457,18 @@ function autoResolveAIDraftSignings(s: FullGameState) {
 
     if (!outcome.signed) {
       applyUnsignedDraftOutcome(s, pick.playerId, pick.teamId);
+      continue;
     }
+
+    registerDraftedProspectAcquisition(
+      s,
+      pick.playerId,
+      pick.teamId,
+      pick.round,
+      pick.pickNumber,
+      prospect.scoutingGrade,
+      outcome.offeredBonus,
+    );
   }
 }
 
@@ -4010,11 +4039,13 @@ function simulateFreeAgencyDays(
 ): OffseasonProgressResult['aiSignings'] {
   ensureFreeAgencyMarket(s);
   const aiSignings: OffseasonProgressResult['aiSignings'] = [];
-  const teamAttractiveness = new Map(
-    TEAMS
-      .filter((team) => team.id !== s.userTeamId)
-      .map((team) => [team.id, getTeamFreeAgencyAppealScore(s, team.id)] as const),
-  );
+  const teamAttractiveness = (teamId: string, playerId: string) =>
+    getLoyaltyAdjustedAppeal(
+      s,
+      teamId,
+      playerId,
+      getTeamFreeAgencyAppealScore(s, teamId),
+    );
 
   for (let day = 0; day < daysToSimulate; day++) {
     if (!s.freeAgencyMarket) break;

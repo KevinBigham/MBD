@@ -74,6 +74,11 @@ import {
   buildLeagueLeaderEntries,
   getAdvancedStatsForPlayer,
 } from './sim.worker.stats.js';
+import {
+  getActiveDevelopmentSetbackView,
+  getMinorLeagueProgressionView,
+  getProspectBondView,
+} from './sim.worker.farm.js';
 import { exportGameSnapshot } from './snapshot.js';
 
 function pctFromRecord(wins: number, losses: number): number {
@@ -499,6 +504,78 @@ function buildDFARecommendations(teamId: string) {
     .slice(0, 5);
 }
 
+function buildMinorLeagueLineSummary(
+  player: GeneratedPlayer,
+  line: {
+    avg: number;
+    hits: number;
+    hr: number;
+    rbi: number;
+    ip: number;
+    era: number;
+    k: number;
+  } | null,
+): string | null {
+  if (!line) {
+    return null;
+  }
+
+  if (player.pitcherAttributes) {
+    return `${line.ip.toFixed(1)} IP · ${line.era.toFixed(2)} ERA · ${line.k} K`;
+  }
+
+  return `${line.avg.toFixed(3).replace(/^0/, '')} AVG · ${line.hits} H · ${line.hr} HR · ${line.rbi} RBI`;
+}
+
+function buildFarmReport(teamId: string) {
+  const s = requireState();
+  const prospects = s.players
+    .filter((player) =>
+      player.teamId === teamId
+      && player.rosterStatus !== 'MLB'
+      && player.rosterStatus !== 'INTERNATIONAL',
+    )
+    .map((player) => {
+      const prospectBond = getProspectBondView(s, player.id);
+      const activeSetback = getActiveDevelopmentSetbackView(s, player.id);
+      const progression = getMinorLeagueProgressionView(s, player.id);
+      const latestLine = progression.at(-1) ?? null;
+
+      return {
+        playerId: player.id,
+        playerName: `${player.firstName} ${player.lastName}`,
+        position: player.position,
+        level: player.rosterStatus,
+        levelLabel: formatMinorLevel(player.rosterStatus),
+        overallRating: player.overallRating,
+        ceiling: player.ceiling ?? player.overallRating,
+        bondStrength: prospectBond?.bondStrength ?? 0,
+        loyaltyModifier: prospectBond?.loyaltyModifier ?? 0,
+        milestones: prospectBond?.milestones.slice(-2) ?? [],
+        latestLineSummary: buildMinorLeagueLineSummary(player, latestLine),
+        activeSetback: activeSetback
+          ? {
+            type: activeSetback.type,
+            summary: activeSetback.summary,
+            endMonth: activeSetback.endMonth,
+            endSeason: activeSetback.endSeason,
+          }
+          : null,
+      };
+    })
+    .sort((left, right) =>
+      right.ceiling - left.ceiling
+      || right.bondStrength - left.bondStrength
+      || left.playerName.localeCompare(right.playerName),
+    );
+
+  return {
+    bondedProspects: prospects.filter((player) => player.bondStrength > 0).length,
+    activeSetbackCount: prospects.filter((player) => player.activeSetback != null).length,
+    topProspects: prospects.slice(0, 5),
+  };
+}
+
 function buildAffiliateOverview(teamId: string) {
   const s = requireState();
   const playerMap = new Map(s.players.map((player) => [player.id, player]));
@@ -581,6 +658,7 @@ function buildAffiliateOverview(teamId: string) {
     affiliates,
     recentBoxScores,
     waiverClaims,
+    farmReport: buildFarmReport(teamId),
   };
 }
 
@@ -942,12 +1020,22 @@ export const queryApi = {
   },
 
   getDevelopmentReports(playerId: string) {
-    const recommendations = requireState().minorLeagueState.conversionRecommendations
+    const s = requireState();
+    const recommendations = s.minorLeagueState.conversionRecommendations
       .filter((entry) => entry.playerId === playerId);
-    const reports = requireState().minorLeagueState.developmentReports
+    const reports = s.minorLeagueState.developmentReports
       .filter((entry) => entry.playerId === playerId)
       .sort((left, right) => left.season - right.season || left.month - right.month);
-    if (reports.length === 0) {
+    const minorLeagueProgression = getMinorLeagueProgressionView(s, playerId);
+    const prospectBond = getProspectBondView(s, playerId);
+    const activeSetback = getActiveDevelopmentSetbackView(s, playerId);
+    if (
+      reports.length === 0
+      && recommendations.length === 0
+      && minorLeagueProgression.length === 0
+      && !prospectBond
+      && !activeSetback
+    ) {
       return null;
     }
 
@@ -961,6 +1049,9 @@ export const queryApi = {
         overallRating: entry.overallRating,
       })),
       recommendations,
+      minorLeagueProgression,
+      prospectBond,
+      activeSetback,
     };
   },
 

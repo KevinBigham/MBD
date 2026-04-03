@@ -138,6 +138,10 @@ export interface FreeAgencyMarket {
   day: number;
 }
 
+export type FreeAgencyAttractiveness =
+  | Map<string, number>
+  | ((teamId: string, playerId: string) => number);
+
 export interface QualifyingOfferResolution {
   player: GeneratedPlayer;
   record: QualifyingOfferRecord;
@@ -231,6 +235,17 @@ function offerAppealScore(offer: ContractOffer, attractiveness: number): number 
   const chemistryBoost = 1 + ((clamp(attractiveness, 0, 100) - 50) / 100) * 0.08;
   const yearsBonus = Math.min(0.35, offer.years * 0.04);
   return offer.annualSalary * chemistryBoost + yearsBonus;
+}
+
+function resolveAttractiveness(
+  source: FreeAgencyAttractiveness,
+  teamId: string,
+  playerId: string,
+): number {
+  if (source instanceof Map) {
+    return source.get(teamId) ?? 50;
+  }
+  return source(teamId, playerId);
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +557,7 @@ export function simulateFADay(
   teamBudgets: Map<string, number>,
   teamPayrolls: Map<string, number>,
   teamNeeds: Map<string, Map<string, number>>,
-  teamAttractiveness: Map<string, number> = new Map(),
+  teamAttractiveness: FreeAgencyAttractiveness = new Map(),
 ): FreeAgencyMarket {
   const nextDay = market.day + 1;
   const stillAvailable: FreeAgent[] = [];
@@ -636,8 +651,14 @@ export function simulateFADay(
 
     // Players will take a slight discount for a better clubhouse situation.
     offers.sort((left, right) => {
-      const rightAppeal = offerAppealScore(right, teamAttractiveness.get(right.teamId) ?? 50);
-      const leftAppeal = offerAppealScore(left, teamAttractiveness.get(left.teamId) ?? 50);
+      const rightAppeal = offerAppealScore(
+        right,
+        resolveAttractiveness(teamAttractiveness, right.teamId, fa.player.id),
+      );
+      const leftAppeal = offerAppealScore(
+        left,
+        resolveAttractiveness(teamAttractiveness, left.teamId, fa.player.id),
+      );
       if (rightAppeal !== leftAppeal) {
         return rightAppeal - leftAppeal;
       }
@@ -677,14 +698,14 @@ export function simulateFullFreeAgency(
   teamNeeds: Map<string, Map<string, number>>,
   userTeamId: string,
   userOffers?: ContractOffer[],
-  teamAttractiveness: Map<string, number> = new Map(),
+  teamAttractiveness: FreeAgencyAttractiveness = new Map(),
 ): FreeAgencyMarket {
   let current = { ...market, day: 0, freeAgents: [...market.freeAgents], signedPlayers: [...market.signedPlayers] };
 
   // Apply user offers first -- these are guaranteed attempts on day 0
   if (userOffers && userOffers.length > 0) {
     for (const offer of userOffers) {
-      const result = makeUserOffer(current, offer, teamAttractiveness.get(userTeamId) ?? 50);
+      const result = makeUserOffer(current, offer, resolveAttractiveness(teamAttractiveness, userTeamId, offer.playerId));
       if (result.accepted) {
         // Find the FA and move to signed
         const idx = current.freeAgents.findIndex((fa) => fa.player.id === offer.playerId);
@@ -710,8 +731,12 @@ export function simulateFullFreeAgency(
   aiBudgets.delete(userTeamId);
   const aiNeeds = new Map(teamNeeds);
   aiNeeds.delete(userTeamId);
-  const aiAttractiveness = new Map(teamAttractiveness);
-  aiAttractiveness.delete(userTeamId);
+  const aiAttractiveness: FreeAgencyAttractiveness = typeof teamAttractiveness === 'function'
+    ? (teamId: string, playerId: string) =>
+      teamId === userTeamId ? 0 : teamAttractiveness(teamId, playerId)
+    : new Map(
+      Array.from(teamAttractiveness.entries()).filter(([teamId]) => teamId !== userTeamId),
+    );
 
   // Simulate each day
   for (let day = 0; day < MARKET_DURATION_DAYS; day++) {

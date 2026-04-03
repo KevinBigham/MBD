@@ -94,6 +94,13 @@ export {
   getPositionConversionTargets,
   hireCoach,
   initializePlayerDevelopmentProfile,
+  createProspectBond,
+  getProspectLoyaltyModifier,
+  updateProspectBonds,
+  applyDevelopmentSetback,
+  checkDevelopmentSetback,
+  recoverDevelopmentSetback,
+  isDevelopmentSetbackExpired,
   reconcileDevelopmentPipeline,
   runMonthlyDevelopmentCheckpoint,
 } from './player/index.js';
@@ -102,6 +109,7 @@ export type {
   CoachRole,
   CoachSpecialty,
   Coach,
+  ProspectBondSnapshot,
 } from './player/index.js';
 
 // League
@@ -501,6 +509,7 @@ export type {
   FreeAgent,
   ContractOffer,
   FreeAgencyMarket,
+  FreeAgencyAttractiveness,
   QualifyingOfferResolution,
 } from './roster/index.js';
 export {
@@ -519,6 +528,8 @@ export {
   getActiveRosterLimit,
   getRosterComplianceIssues,
   getPromotionCandidates,
+  getMinorLeagueProgression,
+  recordMinorLeagueStats,
   simulateAffiliateDay,
 } from './roster/index.js';
 export type {
