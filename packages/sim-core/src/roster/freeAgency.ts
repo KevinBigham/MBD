@@ -227,6 +227,12 @@ function requiresStrongRosterFit(player: GeneratedPlayer, marketValue: number): 
   return player.position !== 'SP' && marketValue < ELITE_FA_MARKET_VALUE;
 }
 
+function offerAppealScore(offer: ContractOffer, attractiveness: number): number {
+  const chemistryBoost = 1 + ((clamp(attractiveness, 0, 100) - 50) / 100) * 0.08;
+  const yearsBonus = Math.min(0.35, offer.years * 0.04);
+  return offer.annualSalary * chemistryBoost + yearsBonus;
+}
+
 // ---------------------------------------------------------------------------
 // Core functions
 // ---------------------------------------------------------------------------
@@ -536,6 +542,7 @@ export function simulateFADay(
   teamBudgets: Map<string, number>,
   teamPayrolls: Map<string, number>,
   teamNeeds: Map<string, Map<string, number>>,
+  teamAttractiveness: Map<string, number> = new Map(),
 ): FreeAgencyMarket {
   const nextDay = market.day + 1;
   const stillAvailable: FreeAgent[] = [];
@@ -627,8 +634,15 @@ export function simulateFADay(
       continue;
     }
 
-    // Player signs the best offer (highest AAV)
-    offers.sort((a, b) => b.annualSalary - a.annualSalary);
+    // Players will take a slight discount for a better clubhouse situation.
+    offers.sort((left, right) => {
+      const rightAppeal = offerAppealScore(right, teamAttractiveness.get(right.teamId) ?? 50);
+      const leftAppeal = offerAppealScore(left, teamAttractiveness.get(left.teamId) ?? 50);
+      if (rightAppeal !== leftAppeal) {
+        return rightAppeal - leftAppeal;
+      }
+      return right.annualSalary - left.annualSalary;
+    });
     const bestOffer = offers[0]!;
 
     // Update day payrolls so the next signing accounts for this spend
@@ -663,13 +677,14 @@ export function simulateFullFreeAgency(
   teamNeeds: Map<string, Map<string, number>>,
   userTeamId: string,
   userOffers?: ContractOffer[],
+  teamAttractiveness: Map<string, number> = new Map(),
 ): FreeAgencyMarket {
   let current = { ...market, day: 0, freeAgents: [...market.freeAgents], signedPlayers: [...market.signedPlayers] };
 
   // Apply user offers first -- these are guaranteed attempts on day 0
   if (userOffers && userOffers.length > 0) {
     for (const offer of userOffers) {
-      const result = makeUserOffer(current, offer);
+      const result = makeUserOffer(current, offer, teamAttractiveness.get(userTeamId) ?? 50);
       if (result.accepted) {
         // Find the FA and move to signed
         const idx = current.freeAgents.findIndex((fa) => fa.player.id === offer.playerId);
@@ -695,10 +710,12 @@ export function simulateFullFreeAgency(
   aiBudgets.delete(userTeamId);
   const aiNeeds = new Map(teamNeeds);
   aiNeeds.delete(userTeamId);
+  const aiAttractiveness = new Map(teamAttractiveness);
+  aiAttractiveness.delete(userTeamId);
 
   // Simulate each day
   for (let day = 0; day < MARKET_DURATION_DAYS; day++) {
-    current = simulateFADay(rng, current, aiBudgets, teamPayrolls, aiNeeds);
+    current = simulateFADay(rng, current, aiBudgets, teamPayrolls, aiNeeds, aiAttractiveness);
   }
 
   // Force-sign anyone still unsigned with minor league deals
@@ -738,6 +755,7 @@ export function simulateFullFreeAgency(
 export function makeUserOffer(
   market: FreeAgencyMarket,
   offer: ContractOffer,
+  teamAttractiveness: number = 50,
 ): { accepted: boolean; reason: string } {
   const fa = market.freeAgents.find((f) => f.player.id === offer.playerId);
   if (!fa) {
@@ -752,7 +770,11 @@ export function makeUserOffer(
   const expectedAAV = fa.marketValue;
 
   // Must meet at least 80% of expected value
-  const MINIMUM_OFFER_RATIO = 0.8;
+  const MINIMUM_OFFER_RATIO = teamAttractiveness >= 80
+    ? 0.76
+    : teamAttractiveness >= 65
+      ? 0.78
+      : 0.8;
   if (offer.annualSalary < expectedAAV * MINIMUM_OFFER_RATIO) {
     return {
       accepted: false,
@@ -771,6 +793,13 @@ export function makeUserOffer(
   }
 
   // Between 80-100% of market value: accept but note it was a discount
+  if (teamAttractiveness >= 70) {
+    return {
+      accepted: true,
+      reason: 'Player accepted a below-market offer because the clubhouse fit feels right.',
+    };
+  }
+
   return {
     accepted: true,
     reason: 'Player accepted a below-market offer, hoping to prove their worth.',

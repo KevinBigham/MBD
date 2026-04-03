@@ -8,6 +8,7 @@ import type { GameRNG } from '../math/prng.js';
 import { clampRating } from './attributes.js';
 import type { HitterAttributes, PitcherAttributes } from './attributes.js';
 import { calculateRule5EligibleAfterSeason } from '../roster/rule5.js';
+import { assignPersonalityTraits } from './personalityTraits.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -212,6 +213,7 @@ export interface GeneratedPlayer {
   developmentProgram?: DevelopmentProgram;
   developmentTrajectory?: DevelopmentTrajectory;
   extensionHistory?: ExtensionHistoryEntry[];
+  personalityTraits?: string[];
   potentialRating?: number;
 }
 
@@ -412,6 +414,13 @@ export function generatePlayer(
 
   const contract = generateContract(rng, rosterLevel, overallRating);
   const minorLeagueLevel = rosterLevel === 'MLB' ? null : rosterLevel;
+  const personality = generatePersonality(rng);
+  const personalityTraits = assignPersonalityTraits(rng, {
+    age,
+    position,
+    rosterStatus: rosterLevel,
+    personality,
+  });
 
   return {
     id: generateId(rng),
@@ -421,7 +430,7 @@ export function generatePlayer(
     position,
     hitterAttributes,
     pitcherAttributes,
-    personality: generatePersonality(rng),
+    personality,
     contract,
     rosterStatus: rosterLevel,
     developmentPhase: devPhase,
@@ -433,6 +442,7 @@ export function generatePlayer(
     optionYearsUsed: 0,
     isOutOfOptions: false,
     minorLeagueLevel,
+    personalityTraits,
   };
 }
 

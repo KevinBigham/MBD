@@ -63,16 +63,23 @@ describe('DashboardPage', () => {
           division: 'AL_EAST',
           divisionRank: 1,
           dynasty: { score: 215, grade: 'B' },
+          status: 'active',
+          endReason: null,
           owner: {
             hotSeat: true,
             patience: 42,
             confidence: 45,
             summary: 'Ownership expected a stronger playoff pace.',
+            satisfaction: 38,
           },
           chemistry: {
             score: 62,
             tier: 'connected',
             summary: 'Leadership is pulling the room together.',
+          },
+          frontOffice: {
+            reputation: 64,
+            summary: 'The front office has built real credibility around the league.',
           },
         },
         momentum: {
@@ -112,6 +119,16 @@ describe('DashboardPage', () => {
             readiness: 410,
             level: 'AAA',
           },
+          rivalries: [
+            {
+              id: 'nyy-bos',
+              opponentTeamId: 'bos',
+              intensity: 84,
+              summary: 'Every series is carrying real postseason weight.',
+              currentSeasonRecord: 'NYY 8-5 BOS',
+              historicalRecord: 'NYY 144-132 BOS',
+            },
+          ],
         },
         divisionStandings: [
           {
@@ -215,6 +232,11 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Roster Snapshot');
     expect(container.textContent).toContain('Front Office Intel');
     expect(container.textContent).toContain('Trade Inbox');
+    expect(container.textContent).toContain('Top Rivalry');
+    expect(container.textContent).toContain('Rivalry Board');
+    expect(container.textContent).toContain('NYY vs BOS');
+    expect(container.textContent).toContain('NYY 8-5 BOS');
+    expect(container.textContent).toContain('NYY 144-132 BOS');
     expect(container.textContent).toContain('34 days until trade deadline');
     expect(container.textContent).toContain('League Trade Ticker');
     expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');

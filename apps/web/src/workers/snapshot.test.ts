@@ -18,6 +18,8 @@ import type {
   GameSnapshot,
   OwnerState,
   PlayerMorale,
+  RecordBookEntry,
+  RecordWatchEntry,
   Rivalry,
   TeamChemistry,
 } from '@mbd/contracts';
@@ -99,6 +101,12 @@ function createNarrativeSample(userTeamId: string) {
     storyFlags,
     rivalries,
     awardHistory: [],
+    recordBook: [] as RecordBookEntry[],
+    recordWatch: [] as RecordWatchEntry[],
+    seasonArchive: [],
+    historicalPlayers: [],
+    mentorRelationships: [],
+    frontOfficeState: new Map(),
     seasonHistory: [],
   };
 }
@@ -193,6 +201,12 @@ function createState(): FullGameState {
     hallOfFameBallot: [],
     franchiseTimeline: [],
     careerStats: [],
+    recordBook: [],
+    recordWatch: [],
+    seasonArchive: [],
+    historicalPlayers: [],
+    mentorRelationships: [],
+    frontOfficeState: new Map(),
     franchise: createDefaultFranchiseState('nyy', 1, dayOne.newState.currentDay),
     ceremony: createEmptyCeremonyState(),
     achievements: createEmptyAchievementState(),
@@ -234,7 +248,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(11);
+    expect(snapshot.schemaVersion).toBe(12);
     expect((snapshot as GameSnapshot & {
       monthlyPulse?: { pendingReport: null; decisionQueue: unknown[] };
     }).monthlyPulse).toEqual({
@@ -248,6 +262,12 @@ describe('snapshot helpers', () => {
     expect(snapshot.narrative.briefingQueue).toHaveLength(1);
     expect(snapshot.narrative.storyFlags).toHaveLength(1);
     expect(snapshot.narrative.rivalries).toHaveLength(1);
+    expect(snapshot.narrative.recordBook).toEqual([]);
+    expect(snapshot.narrative.recordWatch).toEqual([]);
+    expect(snapshot.narrative.seasonArchive).toEqual([]);
+    expect(snapshot.narrative.historicalPlayers).toEqual([]);
+    expect(snapshot.narrative.mentorRelationships).toEqual([]);
+    expect(snapshot.narrative.frontOfficeState).toEqual([]);
     expect(snapshot.rule5Session).toBeTruthy();
     expect(snapshot.rule5Obligations).toHaveLength(1);
     expect(snapshot.rule5OfferBackStates).toHaveLength(1);
@@ -261,6 +281,12 @@ describe('snapshot helpers', () => {
     expect(restored.briefingQueue[0]?.headline).toContain('Ownership');
     expect(restored.storyFlags.get('nyy')).toContain('owner_hot_seat');
     expect(restored.rivalries.get('nyy:bos')?.intensity).toBe(63);
+    expect(restored.recordBook).toEqual([]);
+    expect(restored.recordWatch).toEqual([]);
+    expect(restored.seasonArchive).toEqual([]);
+    expect(restored.historicalPlayers).toEqual([]);
+    expect(restored.mentorRelationships).toEqual([]);
+    expect(restored.frontOfficeState.size).toBe(0);
     expect(restored.tradeState.pendingOffers).toEqual([]);
     expect(restored.tradeState.tradeHistory).toEqual([]);
     expect((restored as FullGameState & {
@@ -316,6 +342,25 @@ describe('snapshot helpers', () => {
     expect(restored.ceremony.pendingMoments).toEqual([]);
     expect(restored.ceremony.seenMomentIds).toEqual([]);
     expect(restored.achievements.unlocked).toEqual([]);
+  });
+
+  it('migrates v11 snapshots into the v12 record and historical state shape', () => {
+    const original = createState();
+    const exported = exportGameSnapshot(original) as GameSnapshot & {
+      schemaVersion: number;
+    };
+
+    const restored = importGameSnapshot({
+      ...exported,
+      schemaVersion: 11,
+    });
+
+    expect(restored.recordBook.length).toBeGreaterThan(0);
+    expect(restored.recordWatch).toEqual([]);
+    expect(restored.seasonArchive).toEqual([]);
+    expect(restored.historicalPlayers.length).toBeGreaterThan(0);
+    expect(restored.mentorRelationships).toEqual([]);
+    expect(restored.frontOfficeState.size).toBe(0);
   });
 
   it('does not persist pending extension negotiations in snapshots', () => {

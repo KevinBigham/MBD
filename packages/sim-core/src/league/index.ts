@@ -33,6 +33,7 @@ export {
   createInitialPlayerMorale,
   applyMoraleEvent,
   calculateTeamChemistry,
+  chemistryScoreToModifier,
   createOwnerState,
   evaluateOwnerState,
   applyOwnerDecisionDelta,
@@ -43,7 +44,18 @@ export type {
   MoraleEvent,
   OwnerEvaluationContext,
   BriefingContext,
+  TeamChemistryContext,
 } from './narrativeState.js';
+
+export {
+  createFrontOfficeState,
+  evaluateFrontOfficeState,
+  frontOfficeTradeModifier,
+  frontOfficeFreeAgencyAppeal,
+} from './frontOffice.js';
+export type {
+  FrontOfficeEvaluationContext,
+} from './frontOffice.js';
 
 export {
   calculateAwardRaces,
@@ -55,9 +67,36 @@ export type {
 } from './awards.js';
 
 export {
+  getRivalry,
+  seedHistoricalRivalries,
   upsertRivalry,
+  recordRivalryGame,
   deriveRivalriesFromStandings,
+  finalizeSeasonRivalries,
+  recordBlockbusterTradeRivalry,
+  recordStarDefectionRivalry,
+  rivalryTradePenalty,
+  rivalryGameModifier,
 } from './rivalries.js';
+export type {
+  RivalrySeasonReviewContext,
+  RivalryTradeContext,
+  RivalryDefectionContext,
+} from './rivalries.js';
+
+export {
+  backfillLegacyRecordBook,
+  getRecordWatchList,
+  updateRecordBook,
+} from './records.js';
+export type {
+  BrokenRecord,
+  LegacyRecordBookArgs,
+  PlayerSeasonRecord,
+  RecordWatchArgs,
+  TeamStandingRecord,
+  UpdateRecordBookArgs,
+} from './records.js';
 
 export {
   evaluateHOFCandidate,

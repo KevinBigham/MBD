@@ -6,6 +6,7 @@ import {
   HitterAttributesSchema,
   MinorLeagueLevelEnum,
   PersonalitySchema,
+  PersonalityTraitSchema,
   PitcherAttributesSchema,
   PositionEnum,
   RosterStatusEnum,
@@ -16,13 +17,19 @@ import {
   AwardHistoryEntrySchema,
   BriefingItemSchema,
   CareerStatsLedgerSchema,
+  FrontOfficeStateSchema,
   FranchiseTimelineEntrySchema,
   HallOfFameBallotEntrySchema,
   HallOfFameEntrySchema,
+  HistoricalPlayerSchema,
+  MentorRelationshipSchema,
   NewsItemSchema,
   OwnerStateSchema,
   PlayerMoraleSchema,
+  RecordBookEntrySchema,
+  RecordWatchEntrySchema,
   RivalrySchema,
+  SeasonArchiveEntrySchema,
   TeamChemistrySchema,
   SeasonHistoryEntrySchema,
   type NewsTag,
@@ -116,6 +123,7 @@ export const SnapshotPlayerSchema = SnapshotPlayerV7Schema.extend({
   developmentProgram: DevelopmentProgramEnum.optional(),
   developmentTrajectory: DevelopmentTrajectoryEnum.optional(),
   extensionHistory: z.array(ExtensionHistoryEntrySchema).optional(),
+  personalityTraits: z.array(PersonalityTraitSchema).default([]),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
 
@@ -142,6 +150,7 @@ export type StandingsRecord = z.infer<typeof StandingsRecordSchema>;
 export const PlayerStatEntrySchema = z.tuple([
   z.string(),
   z.object({
+    gamesPlayed: z.number().int().min(0).default(0),
     pa: z.number().int().min(0),
     ab: z.number().int().min(0),
     hits: z.number().int().min(0),
@@ -163,6 +172,7 @@ export const PlayerStatEntrySchema = z.tuple([
     hitBatters: z.number().int().min(0),
     flyBallsAllowed: z.number().int().min(0),
     wins: z.number().int().min(0),
+    saves: z.number().int().min(0).default(0),
     losses: z.number().int().min(0),
   }),
 ]);
@@ -264,6 +274,12 @@ export const NarrativeSnapshotSchema = z.object({
   hallOfFameBallot: z.array(HallOfFameBallotEntrySchema),
   franchiseTimeline: z.array(FranchiseTimelineEntrySchema),
   careerStats: z.array(CareerStatsLedgerSchema),
+  recordBook: z.array(RecordBookEntrySchema).default([]),
+  recordWatch: z.array(RecordWatchEntrySchema).default([]),
+  seasonArchive: z.array(SeasonArchiveEntrySchema).default([]),
+  historicalPlayers: z.array(HistoricalPlayerSchema).default([]),
+  mentorRelationships: z.array(MentorRelationshipSchema).default([]),
+  frontOfficeState: z.array(z.tuple([z.string(), FrontOfficeStateSchema])).default([]),
   seasonHistory: z.array(SeasonHistoryEntrySchema),
 });
 export type NarrativeSnapshot = z.infer<typeof NarrativeSnapshotSchema>;
@@ -399,7 +415,7 @@ const MinorLeagueStateV7Schema = z.object({
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 11;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 12;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -440,6 +456,11 @@ export const GameSnapshotSchema = z.object({
   rule5OfferBackStates: z.array(Rule5StateEntrySchema),
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV11Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(11),
+});
+export type GameSnapshotV11 = z.infer<typeof GameSnapshotV11Schema>;
 
 export const GameSnapshotV10Schema = z.object({
   schemaVersion: z.literal(10),
@@ -702,6 +723,7 @@ function migratePlayerStatEntry([playerId, stats]: z.infer<typeof LegacyPlayerSt
   return [
     playerId,
     {
+      gamesPlayed: 0,
       ...stats,
       hbp: 0,
       sacFlies: 0,
@@ -709,6 +731,7 @@ function migratePlayerStatEntry([playerId, stats]: z.infer<typeof LegacyPlayerSt
       hitBatters: 0,
       flyBallsAllowed: 0,
       wins: 0,
+      saves: 0,
       losses: 0,
     },
   ];
@@ -718,12 +741,14 @@ function migratePlayerStatEntryV8([playerId, stats]: z.infer<typeof PlayerStatEn
   return [
     playerId,
     {
+      gamesPlayed: 0,
       ...stats,
       hbp: 0,
       sacFlies: 0,
       homeRunsAllowed: 0,
       hitBatters: 0,
       flyBallsAllowed: 0,
+      saves: 0,
     },
   ];
 }
@@ -779,6 +804,9 @@ function createDefaultFranchiseState(userTeamId: string, season: number, day: nu
     teamName: teamCode,
     teamAbbreviation: teamCode,
     teamDivision: "UNKNOWN",
+    status: "active" as const,
+    endedAt: null,
+    endReason: null,
     onboarding: {
       welcomeBriefingSeen: true,
       firstMonthlyPulseSeen: true,
@@ -798,6 +826,7 @@ function createEmptyAchievementState() {
     unlocked: [],
     progress: [],
     counters: [],
+    ledgers: [],
   };
 }
 
@@ -806,6 +835,254 @@ function createEmptyPhase9State(userTeamId: string, season: number, day: number)
     franchise: createDefaultFranchiseState(userTeamId, season, day),
     ceremony: createEmptyCeremonyState(),
     achievements: createEmptyAchievementState(),
+  };
+}
+
+function createEmptyPhase11NarrativeState() {
+  return {
+    recordBook: [],
+    recordWatch: [],
+    seasonArchive: [],
+    historicalPlayers: [],
+    mentorRelationships: [],
+    frontOfficeState: [],
+  };
+}
+
+type RecordCategory = "team_single_season" | "individual_single_season" | "career" | "streak";
+
+const RECORD_DESCRIPTORS: Array<{
+  scope: "franchise" | "league";
+  category: RecordCategory;
+  stat: string;
+  label: string;
+}> = [
+  { scope: "franchise", category: "team_single_season", stat: "wins", label: "Most Wins" },
+  { scope: "franchise", category: "team_single_season", stat: "losses", label: "Most Losses" },
+  { scope: "franchise", category: "team_single_season", stat: "batting_average", label: "Highest Team BA" },
+  { scope: "franchise", category: "team_single_season", stat: "era", label: "Lowest Team ERA" },
+  { scope: "franchise", category: "team_single_season", stat: "hr", label: "Most Home Runs" },
+  { scope: "franchise", category: "team_single_season", stat: "stolen_bases", label: "Most Stolen Bases" },
+  { scope: "franchise", category: "individual_single_season", stat: "hr", label: "Most Home Runs" },
+  { scope: "franchise", category: "individual_single_season", stat: "rbi", label: "Most RBI" },
+  { scope: "franchise", category: "individual_single_season", stat: "hits", label: "Most Hits" },
+  { scope: "franchise", category: "individual_single_season", stat: "batting_average", label: "Highest Batting Average" },
+  { scope: "franchise", category: "individual_single_season", stat: "wins", label: "Most Pitcher Wins" },
+  { scope: "franchise", category: "individual_single_season", stat: "saves", label: "Most Saves" },
+  { scope: "franchise", category: "individual_single_season", stat: "era", label: "Lowest ERA" },
+  { scope: "franchise", category: "individual_single_season", stat: "strikeouts", label: "Most Strikeouts" },
+  { scope: "franchise", category: "career", stat: "games_played", label: "Most Games" },
+  { scope: "franchise", category: "career", stat: "hr", label: "Most Career Home Runs" },
+  { scope: "franchise", category: "career", stat: "hits", label: "Most Career Hits" },
+  { scope: "franchise", category: "career", stat: "wins", label: "Most Career Wins" },
+  { scope: "franchise", category: "career", stat: "saves", label: "Most Career Saves" },
+  { scope: "franchise", category: "career", stat: "war", label: "Most Career WAR" },
+  { scope: "franchise", category: "streak", stat: "win_streak", label: "Longest Win Streak" },
+  { scope: "franchise", category: "streak", stat: "loss_streak", label: "Longest Losing Streak" },
+  { scope: "franchise", category: "streak", stat: "playoff_appearances", label: "Most Consecutive Playoff Appearances" },
+  { scope: "league", category: "team_single_season", stat: "wins", label: "Most Wins" },
+  { scope: "league", category: "team_single_season", stat: "losses", label: "Most Losses" },
+  { scope: "league", category: "individual_single_season", stat: "hr", label: "Most Home Runs" },
+  { scope: "league", category: "individual_single_season", stat: "batting_average", label: "Highest Batting Average" },
+  { scope: "league", category: "individual_single_season", stat: "era", label: "Lowest ERA" },
+  { scope: "league", category: "career", stat: "games_played", label: "Most Games" },
+  { scope: "league", category: "career", stat: "hr", label: "Most Career Home Runs" },
+  { scope: "league", category: "career", stat: "hits", label: "Most Career Hits" },
+  { scope: "league", category: "career", stat: "wins", label: "Most Career Wins" },
+  { scope: "league", category: "career", stat: "saves", label: "Most Career Saves" },
+  { scope: "league", category: "career", stat: "war", label: "Most Career WAR" },
+];
+
+function createDefaultRecordBook(franchiseTeamId: string, currentSeason: number): z.infer<typeof RecordBookEntrySchema>[] {
+  return RECORD_DESCRIPTORS.map((descriptor) => ({
+    id: `${descriptor.scope}:${descriptor.scope === "franchise" ? `${franchiseTeamId}:` : ""}${descriptor.category}:${descriptor.stat}`,
+    scope: descriptor.scope,
+    teamId: descriptor.scope === "franchise" ? franchiseTeamId : null,
+    category: descriptor.category,
+    stat: descriptor.stat,
+    label: descriptor.label,
+    qualifier: null,
+    holders: [] as z.infer<typeof RecordBookEntrySchema>["holders"],
+    trackingFromSeason: currentSeason,
+    note: null,
+  }));
+}
+
+function setRecordBookValue(
+  recordBook: ReturnType<typeof createDefaultRecordBook>,
+  id: string,
+  holder: {
+    playerId: string | null;
+    playerName: string | null;
+    teamId: string | null;
+    season: number | null;
+    value: number;
+    displayValue: string;
+  },
+) {
+  const entry = recordBook.find((candidate) => candidate.id === id);
+  if (!entry) {
+    return;
+  }
+
+  if (entry.holders.length === 0 || holder.value > entry.holders[0]!.value) {
+    entry.holders = [holder];
+    entry.trackingFromSeason = null;
+    return;
+  }
+
+  if (holder.value === entry.holders[0]!.value) {
+    entry.holders.push(holder);
+    entry.trackingFromSeason = null;
+  }
+}
+
+function createHistoricalPlayers(
+  players: z.infer<typeof SnapshotPlayerSchema>[],
+  careerStats: z.infer<typeof CareerStatsLedgerSchema>[],
+) {
+  const historicalPlayers = new Map<
+    string,
+    {
+      playerId: string;
+      fullName: string;
+      firstName: string;
+      lastName: string;
+      position: string;
+      lastKnownTeamId: string;
+      active: boolean;
+      retiredSeason: number | null;
+      seasonsPlayed: number;
+      peakOverall: number | null;
+      personalityTraits: string[];
+    }
+  >();
+
+  for (const player of players) {
+    historicalPlayers.set(player.id, {
+      playerId: player.id,
+      fullName: `${player.firstName} ${player.lastName}`,
+      firstName: player.firstName,
+      lastName: player.lastName,
+      position: player.position,
+      lastKnownTeamId: player.teamId,
+      active: player.rosterStatus !== "RETIRED",
+      retiredSeason: player.rosterStatus === "RETIRED" ? null : null,
+      seasonsPlayed: 0,
+      peakOverall: null,
+      personalityTraits: [...(player.personalityTraits ?? [])],
+    });
+  }
+
+  for (const ledger of careerStats) {
+    const current = historicalPlayers.get(ledger.playerId);
+    const names = ledger.playerName.split(" ");
+    historicalPlayers.set(ledger.playerId, {
+      playerId: ledger.playerId,
+      fullName: ledger.playerName,
+      firstName: current?.firstName ?? names[0] ?? ledger.playerName,
+      lastName: current?.lastName ?? (names.slice(1).join(" ") || names[0] || ledger.playerName),
+      position: current?.position ?? ledger.position,
+      lastKnownTeamId: current?.lastKnownTeamId ?? ledger.teamIds[ledger.teamIds.length - 1] ?? "",
+      active: current?.active ?? false,
+      retiredSeason: current?.retiredSeason ?? null,
+      seasonsPlayed: ledger.seasonsPlayed,
+      peakOverall: ledger.peakOverall,
+      personalityTraits: current?.personalityTraits ?? [],
+    });
+  }
+
+  return Array.from(historicalPlayers.values());
+}
+
+function createPhase11MigrationState(
+  userTeamId: string,
+  season: number,
+  players: z.infer<typeof SnapshotPlayerSchema>[],
+  franchiseTimeline: z.infer<typeof FranchiseTimelineEntrySchema>[],
+  careerStats: z.infer<typeof CareerStatsLedgerSchema>[],
+) {
+  const recordBook = createDefaultRecordBook(userTeamId, season);
+  const bestWinSeason = franchiseTimeline.reduce<typeof franchiseTimeline[number] | null>((best, entry) => {
+    if (entry.teamId !== userTeamId) {
+      return best;
+    }
+    if (!best || entry.winTotal > best.winTotal) {
+      return entry;
+    }
+    return best;
+  }, null);
+
+  if (bestWinSeason) {
+    setRecordBookValue(recordBook, `franchise:${userTeamId}:team_single_season:wins`, {
+      playerId: null,
+      playerName: null,
+      teamId: userTeamId,
+      season: bestWinSeason.season,
+      value: bestWinSeason.winTotal,
+      displayValue: String(bestWinSeason.winTotal),
+    });
+  }
+
+  const franchiseCareerLedgers = careerStats.filter((entry) => entry.teamIds.includes(userTeamId));
+  for (const ledger of franchiseCareerLedgers) {
+    setRecordBookValue(recordBook, `franchise:${userTeamId}:career:games_played`, {
+      playerId: ledger.playerId,
+      playerName: ledger.playerName,
+      teamId: userTeamId,
+      season: null,
+      value: ledger.gamesPlayed ?? 0,
+      displayValue: String(ledger.gamesPlayed ?? 0),
+    });
+    setRecordBookValue(recordBook, `franchise:${userTeamId}:career:hr`, {
+      playerId: ledger.playerId,
+      playerName: ledger.playerName,
+      teamId: userTeamId,
+      season: null,
+      value: ledger.batting?.hr ?? 0,
+      displayValue: String(ledger.batting?.hr ?? 0),
+    });
+    setRecordBookValue(recordBook, `franchise:${userTeamId}:career:hits`, {
+      playerId: ledger.playerId,
+      playerName: ledger.playerName,
+      teamId: userTeamId,
+      season: null,
+      value: ledger.batting?.hits ?? 0,
+      displayValue: String(ledger.batting?.hits ?? 0),
+    });
+    setRecordBookValue(recordBook, `franchise:${userTeamId}:career:wins`, {
+      playerId: ledger.playerId,
+      playerName: ledger.playerName,
+      teamId: userTeamId,
+      season: null,
+      value: ledger.pitching?.wins ?? 0,
+      displayValue: String(ledger.pitching?.wins ?? 0),
+    });
+    setRecordBookValue(recordBook, `franchise:${userTeamId}:career:saves`, {
+      playerId: ledger.playerId,
+      playerName: ledger.playerName,
+      teamId: userTeamId,
+      season: null,
+      value: ledger.saves ?? 0,
+      displayValue: String(ledger.saves ?? 0),
+    });
+    setRecordBookValue(recordBook, `franchise:${userTeamId}:career:war`, {
+      playerId: ledger.playerId,
+      playerName: ledger.playerName,
+      teamId: userTeamId,
+      season: null,
+      value: ledger.war ?? 0,
+      displayValue: (ledger.war ?? 0).toFixed(1),
+    });
+  }
+
+  return {
+    recordBook,
+    recordWatch: [],
+    seasonArchive: [],
+    historicalPlayers: createHistoricalPlayers(players, careerStats),
+    mentorRelationships: [],
+    frontOfficeState: [],
   };
 }
 
@@ -1105,6 +1382,7 @@ function migrateSnapshotPlayer(
     optionYearsUsed: 0,
     isOutOfOptions: false,
     minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
+    personalityTraits: [],
   };
 }
 
@@ -1130,19 +1408,18 @@ function migrateV6SnapshotPlayer(
   player: z.infer<typeof SnapshotPlayerV6Schema>,
   serviceTimeYears: number,
 ): SnapshotPlayer {
-  return {
+  const upgradedPlayer = {
     ...player,
     serviceTimeDays: serviceTimeYears * 172,
     optionYearsUsed: 0,
     isOutOfOptions: false,
     minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
-    ...backfillDevelopmentProfile({
-      ...player,
-      serviceTimeDays: serviceTimeYears * 172,
-      optionYearsUsed: 0,
-      isOutOfOptions: false,
-      minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
-    }),
+  };
+
+  return {
+    ...upgradedPlayer,
+    personalityTraits: [],
+    ...backfillDevelopmentProfile(upgradedPlayer),
   };
 }
 
@@ -1362,6 +1639,23 @@ function migrateGameSnapshotV10(snapshot: GameSnapshotV10): GameSnapshot {
   });
 }
 
+function migrateGameSnapshotV11(snapshot: GameSnapshotV11): GameSnapshot {
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      ...createPhase11MigrationState(
+        snapshot.userTeamId,
+        snapshot.season,
+        snapshot.players,
+        snapshot.narrative.franchiseTimeline,
+        snapshot.narrative.careerStats,
+      ),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -1379,6 +1673,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 11
+  ) {
+    return migrateGameSnapshotV11(GameSnapshotV11Schema.parse(snapshotLike));
   }
 
   if (

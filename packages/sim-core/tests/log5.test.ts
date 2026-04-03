@@ -182,6 +182,27 @@ describe('computeLog5Probabilities', () => {
       expect(sumValues(fresh)).toBeCloseTo(1.0, 10);
     });
 
+    it('chemistry modifier boosts batter-friendly outcomes and suppresses outs', () => {
+      const neutral = computeLog5Probabilities(makeInput());
+      const connectedClubhouse = computeLog5Probabilities(
+        makeInput({ modifiers: { chemistry: 1.08 } }),
+      );
+
+      const neutralProduction = neutral['bb']! + neutral['single']! + neutral['double']! + neutral['triple']! + neutral['hr']!;
+      const connectedProduction =
+        connectedClubhouse['bb']! +
+        connectedClubhouse['single']! +
+        connectedClubhouse['double']! +
+        connectedClubhouse['triple']! +
+        connectedClubhouse['hr']!;
+      const neutralOuts = neutral['k']! + neutral['gb']! + neutral['fb']!;
+      const connectedOuts = connectedClubhouse['k']! + connectedClubhouse['gb']! + connectedClubhouse['fb']!;
+
+      expect(connectedProduction).toBeGreaterThan(neutralProduction);
+      expect(connectedClubhouse['hr']!).toBeGreaterThan(neutral['hr']!);
+      expect(connectedOuts).toBeLessThan(neutralOuts);
+    });
+
     it('park factor affects outcomes', () => {
       const neutral = computeLog5Probabilities(makeInput());
       const hitterPark = computeLog5Probabilities(

@@ -21,6 +21,9 @@ export const FranchiseStateSchema = z.object({
   teamName: z.string().min(1),
   teamAbbreviation: z.string().min(1),
   teamDivision: z.string().min(1),
+  status: z.enum(["active", "fired"]).optional(),
+  endedAt: z.string().nullable().optional(),
+  endReason: z.string().nullable().optional(),
   onboarding: FranchiseOnboardingSchema,
 });
 export type FranchiseState = z.infer<typeof FranchiseStateSchema>;
@@ -44,6 +47,7 @@ export const CeremonyMomentTypeEnum = z.enum([
   "hall_of_fame",
   "career_milestone",
   "prospect_debut",
+  "record_broken",
 ]);
 export type CeremonyMomentType = z.infer<typeof CeremonyMomentTypeEnum>;
 

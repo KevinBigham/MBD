@@ -3,8 +3,13 @@ import {
   GameRNG,
   TEAMS,
   assignGMPersonality,
+  backfillLegacyRecordBook,
   buildRosterState,
   createSeasonState,
+  createFrontOfficeState,
+  createOwnerState,
+  frontOfficeFreeAgencyAppeal,
+  frontOfficeTradeModifier,
   generateCoachFreeAgents,
   generateCoachingStaff,
   generateLeaguePlayers,
@@ -13,6 +18,7 @@ import {
   getTeamBudget,
   getTeamById,
   initializePlayerDevelopmentProfile,
+  seedHistoricalRivalries,
   toDisplayRating,
 } from '@mbd/sim-core';
 import { createEmptyMonthlyPulseState } from './sim.worker.monthlyPulse.js';
@@ -84,16 +90,27 @@ export function getDifficultyProfileForState(state: Pick<FullGameState, 'franchi
   return DIFFICULTY_PROFILES[state.franchise.difficulty];
 }
 
-export function getDifficultyAdjustedBudget(state: Pick<FullGameState, 'franchise' | 'userTeamId'>, teamId: string): number {
-  const baseBudget = getTeamBudget(teamId);
+function difficultyAdjustValue(
+  state: Pick<FullGameState, 'franchise' | 'userTeamId'>,
+  teamId: string,
+  value: number,
+): number {
   if (teamId !== state.userTeamId) {
-    return baseBudget;
+    return Math.round(value * 100) / 100;
   }
-  return Math.round(baseBudget * getDifficultyProfileForState(state).budgetMultiplier * 100) / 100;
+  return Math.round(value * getDifficultyProfileForState(state).budgetMultiplier * 100) / 100;
+}
+
+export function getDifficultyAdjustedBudget(
+  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
+  teamId: string,
+): number {
+  const baseBudget = state.ownerState?.get(teamId)?.annualBudget ?? getTeamBudget(teamId);
+  return difficultyAdjustValue(state, teamId, baseBudget);
 }
 
 export function getDifficultyAdjustedTradeFairness(
-  state: Pick<FullGameState, 'franchise' | 'userTeamId'>,
+  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'frontOfficeState'>>,
   fairness: number,
   fromTeamId: string,
   toTeamId: string,
@@ -102,7 +119,15 @@ export function getDifficultyAdjustedTradeFairness(
     return fairness;
   }
 
-  return Math.max(-100, Math.min(100, fairness + getDifficultyProfileForState(state).tradeBias));
+  return Math.max(
+    -100,
+    Math.min(
+      100,
+      fairness
+        + getDifficultyProfileForState(state).tradeBias
+        + getTeamTradeReputationModifier(state, state.userTeamId),
+    ),
+  );
 }
 
 export function getDifficultyAdjustedCompetitiveAav(
@@ -110,6 +135,46 @@ export function getDifficultyAdjustedCompetitiveAav(
   annualSalary: number,
 ): number {
   return Math.round(annualSalary * getDifficultyProfileForState(state).aiCompetitiveBidMultiplier * 100) / 100;
+}
+
+export function getTeamPayrollCap(
+  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
+  teamId: string,
+): number {
+  const value = state.ownerState?.get(teamId)?.payrollCap ?? (getDifficultyAdjustedBudget(state, teamId) * 0.92);
+  return difficultyAdjustValue(state, teamId, value);
+}
+
+export function getTeamIFABonusPool(
+  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
+  teamId: string,
+): number {
+  const value = state.ownerState?.get(teamId)?.ifaBonusPool ?? Math.max(3.5, getDifficultyAdjustedBudget(state, teamId) * 0.0225);
+  return difficultyAdjustValue(state, teamId, value);
+}
+
+export function getTeamStaffBudget(
+  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
+  teamId: string,
+): number {
+  const value = state.ownerState?.get(teamId)?.staffBudget ?? Math.max(7.5, getDifficultyAdjustedBudget(state, teamId) * 0.0525);
+  return difficultyAdjustValue(state, teamId, value);
+}
+
+export function getTeamTradeReputationModifier(
+  state: Partial<Pick<FullGameState, 'frontOfficeState'>>,
+  teamId: string,
+): number {
+  return frontOfficeTradeModifier(state.frontOfficeState?.get(teamId)?.reputation ?? 50);
+}
+
+export function getTeamFreeAgencyAppealScore(
+  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState'>>,
+  teamId: string,
+): number {
+  const chemistryScore = state.teamChemistry.get(teamId)?.score ?? 50;
+  const reputationAppeal = frontOfficeFreeAgencyAppeal(state.frontOfficeState?.get(teamId)?.reputation ?? 50);
+  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3))));
 }
 
 function payrollTierForBudget(budget: number): string {
@@ -209,12 +274,24 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
   const gmPersonalities = new Map();
   const coachingStaffs = new Map();
   const rosterStates = new Map();
+  const ownerState = new Map();
+  const frontOfficeState = new Map();
   for (const teamId of teamIds) {
     scoutingStaffs.set(teamId, generateScoutingStaff(rng.fork(), teamId));
     gmPersonalities.set(teamId, assignGMPersonality(rng.fork(), teamId));
     coachingStaffs.set(teamId, generateCoachingStaff(coachingRng.fork(), teamId));
     rosterStates.set(teamId, buildRosterState(teamId, players));
+    ownerState.set(teamId, createOwnerState(teamId, getTeamBudget(teamId)));
+    frontOfficeState.set(teamId, createFrontOfficeState(teamId));
   }
+
+  const recordBook = backfillLegacyRecordBook({
+    currentSeason: 1,
+    franchiseTeamId: options.userTeamId,
+    franchiseTimeline: [],
+    seasonHistory: [],
+    careerStats: [],
+  });
 
   return {
     rng,
@@ -247,15 +324,21 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     monthlyPulse: createEmptyMonthlyPulseState(),
     playerMorale: new Map(),
     teamChemistry: new Map(),
-    ownerState: new Map(),
+    ownerState,
     briefingQueue: [],
     storyFlags: new Map(),
-    rivalries: new Map(),
+    rivalries: seedHistoricalRivalries(new Map()),
     awardHistory: [],
     hallOfFame: [],
     hallOfFameBallot: [],
     franchiseTimeline: [],
     careerStats: [],
+    recordBook,
+    recordWatch: [],
+    seasonArchive: [],
+    historicalPlayers: [],
+    mentorRelationships: [],
+    frontOfficeState,
     seasonHistory: [],
     tradeState: createEmptyTradeState(),
     franchise: createDefaultFranchiseState(options.userTeamId, 1, 1, {

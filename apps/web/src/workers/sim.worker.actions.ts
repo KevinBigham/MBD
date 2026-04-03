@@ -1,8 +1,10 @@
 import {
+  autoFillMLBRoster,
   GameRNG,
   TEAMS,
   assignGMPersonality,
   buildRosterState,
+  chemistryScoreToModifier,
   consumeOptionYear,
   createSeasonState,
   demotePlayer,
@@ -29,6 +31,8 @@ import {
   promotePlayer,
   reconcileDevelopmentPipeline,
   recordRetirements,
+  recordStarDefectionRivalry,
+  rivalryGameModifier,
   runMonthlyDevelopmentCheckpoint,
   simulateDay,
   simulateMonth,
@@ -123,8 +127,10 @@ import {
   respondToTradeOffer,
 } from './sim.worker.trade.js';
 import {
+  recordSeasonArchive,
   ensureNarrativeState,
   ensureAwardHistoryForSeason,
+  finalizeRivalriesForSeason,
   finalizeSeasonHistoryRetirements,
   recordBreakoutNarratives,
   recordSeasonHistory,
@@ -142,6 +148,7 @@ import {
   accrueCareerStatsForSeason,
   enrichFranchiseTimelineWithDepartures,
   processHallOfFameForRetirements,
+  syncHistoricalPlayersForRetirements,
   upsertFranchiseTimelineEntry,
 } from './sim.worker.legacy.js';
 import {
@@ -154,8 +161,10 @@ import {
 import {
   buildNewGameState,
   getDifficultyAdjustedCompetitiveAav,
+  getTeamFreeAgencyAppealScore,
   type NewGameOptions,
 } from './sim.worker.setup.js';
+import { syncRecordTracking } from './sim.worker.records.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -177,6 +186,24 @@ function applyAISigningProgress(
       signing.marketValue,
     );
   }
+}
+
+function franchiseLockMessage(s: FullGameState): string {
+  return s.franchise.endReason ?? 'Owner fired the GM. This dynasty is now read-only.';
+}
+
+function syncFranchiseTerminationFromOwner(s: FullGameState): boolean {
+  return s.franchise.status === 'fired';
+}
+
+function blockedSimResult(s: FullGameState): SimResultDTO {
+  return {
+    day: s.day,
+    season: s.season,
+    phase: s.phase,
+    gamesPlayed: 0,
+    seasonComplete: true,
+  };
 }
 
 function teamLabel(teamId: string): string {
@@ -379,10 +406,12 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
     return;
   }
 
+  finalizeRivalriesForSeason(s);
   ensureAwardHistoryForSeason(s);
   queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
   const seasonMoments = applyPostseasonConsequences(s);
   recordSeasonHistory(s, seasonMoments);
+  recordSeasonArchive(s);
   upsertFranchiseTimelineEntry(s);
   captureSeasonAchievementFacts(s);
   syncAchievementState(s);
@@ -414,6 +443,11 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     ensureAwardHistoryForSeason(s);
     queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
     maybeQueuePlayoffClinchMoment(s);
+    syncRecordTracking(s, {
+      includeCurrentSeasonPlayoffAppearance: true,
+      clearWatches: true,
+      publishBrokenRecords: true,
+    });
     captureSeasonAchievementFacts(s);
     syncAchievementState(s);
     clearPendingTradeOffers(s);
@@ -463,6 +497,9 @@ function applyMonthlyDevelopmentCheckpoints(
 
 function simWeekInternal(): SimResultDTO {
   const s = requireState();
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
   if (s.phase === 'preseason') {
     s.phase = 'regular';
     s.day = 1;
@@ -471,7 +508,13 @@ function simWeekInternal(): SimResultDTO {
   }
 
   const previousDay = s.day;
-  const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
+  const { newState, result } = simulateWeek(
+    s.rng,
+    s.seasonState,
+    s.schedule,
+    s.players,
+    { teamModifiers: buildTeamPerformanceModifiers(s) },
+  );
   s.seasonState = newState;
   s.day = newState.currentDay;
   applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
@@ -479,7 +522,33 @@ function simWeekInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  syncRecordTracking(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+}
+
+function buildTeamPerformanceModifiers(s: FullGameState): Map<string, number> {
+  const modifiers = new Map(
+    TEAMS.map((team) => [
+      team.id,
+      chemistryScoreToModifier(s.teamChemistry.get(team.id)?.score ?? 50),
+    ] as const),
+  );
+  const todayGames = s.schedule.filter((game) => game.day === s.day);
+
+  for (const game of todayGames) {
+    const homeChemistry = s.teamChemistry.get(game.homeTeamId)?.score ?? 50;
+    const awayChemistry = s.teamChemistry.get(game.awayTeamId)?.score ?? 50;
+    modifiers.set(
+      game.homeTeamId,
+      Number(((modifiers.get(game.homeTeamId) ?? 1) + rivalryGameModifier(s.rivalries, game.homeTeamId, game.awayTeamId, homeChemistry)).toFixed(4)),
+    );
+    modifiers.set(
+      game.awayTeamId,
+      Number(((modifiers.get(game.awayTeamId) ?? 1) + rivalryGameModifier(s.rivalries, game.awayTeamId, game.homeTeamId, awayChemistry)).toFixed(4)),
+    );
+  }
+
+  return modifiers;
 }
 
 function normalizeLeagueActiveRosters(s: FullGameState) {
@@ -497,12 +566,33 @@ function normalizeLeagueActiveRosters(s: FullGameState) {
       overflow.minorLeagueLevel = 'AAA';
     }
 
-    s.rosterStates.set(team.id, buildRosterState(team.id, s.players));
+    const rosterState = buildRosterState(team.id, s.players);
+    const filledRoster = autoFillMLBRoster(team.id, s.players, rosterState);
+    s.players = filledRoster.players;
+    s.rosterStates.set(team.id, filledRoster.rosterState);
   }
 }
 
 function simMonthInternal(): SimResultDTO {
   const s = requireState();
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
+  const owner = s.ownerState.get(s.userTeamId);
+  if (
+    owner?.hotSeat
+    && (
+      (owner.satisfaction ?? 100) < 45
+      || owner.patience < 35
+      || owner.confidence < 35
+    )
+  ) {
+    const existingFlags = s.storyFlags.get(s.userTeamId) ?? [];
+    const flag = `owner_meeting_${s.season}`;
+    if (!existingFlags.includes(flag)) {
+      s.storyFlags.set(s.userTeamId, [...existingFlags, flag]);
+    }
+  }
   if (s.phase === 'preseason') {
     s.phase = 'regular';
     s.day = 1;
@@ -512,7 +602,13 @@ function simMonthInternal(): SimResultDTO {
 
   const monthlyContext = captureMonthlyAdvanceContext(s);
   const previousDay = s.day;
-  const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
+  const { newState, result } = simulateMonth(
+    s.rng,
+    s.seasonState,
+    s.schedule,
+    s.players,
+    { teamModifiers: buildTeamPerformanceModifiers(s) },
+  );
   s.seasonState = newState;
   s.day = newState.currentDay;
   applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
@@ -520,6 +616,7 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  syncRecordTracking(s, { publishWatchStories: true, publishBrokenRecords: true });
   s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
   recordMonthlyDivisionLead(s);
   syncAchievementState(s);
@@ -528,6 +625,11 @@ function simMonthInternal(): SimResultDTO {
 
 function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   accrueCareerStatsForSeason(s);
+  syncRecordTracking(s, {
+    includeCurrentSeasonPlayoffAppearance: true,
+    clearWatches: true,
+    publishBrokenRecords: true,
+  });
 
   const beforePlayers = s.players;
   const kernelPlayers = s.players.map((player) => developPlayer(s.rng.fork(), player));
@@ -541,6 +643,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.players = developedPlayers;
 
   const retired = determineRetirements(s.rng.fork(), s.players);
+  syncHistoricalPlayersForRetirements(s, retired);
   const inductees = processHallOfFameForRetirements(s, retired);
   queueHallOfFameMoments(s, inductees);
   syncAchievementState(s);
@@ -565,6 +668,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 
   applyRetirementConsequences(s, retired);
   finalizeSeasonHistoryRetirements(s, retired);
+  recordSeasonArchive(s, { includeOffseasonData: true });
   s.players = s.players.filter((player) => !retired.includes(player.id));
   s.season++;
   s.day = 1;
@@ -585,7 +689,10 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.schedule = generateSchedule(s.rng.fork());
   s.seasonState = createSeasonState(s.season, teamIds);
   for (const teamId of teamIds) {
-    s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+    const rosterState = buildRosterState(teamId, s.players);
+    const filledRoster = autoFillMLBRoster(teamId, s.players, rosterState);
+    s.players = filledRoster.players;
+    s.rosterStates.set(teamId, filledRoster.rosterState);
   }
   ensureNarrativeState(s);
   return {
@@ -600,6 +707,9 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 
 function simDayInternal(): SimResultDTO {
   const s = requireState();
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
   if (s.phase === 'preseason') {
     s.phase = 'regular';
     s.day = 1;
@@ -607,7 +717,13 @@ function simDayInternal(): SimResultDTO {
 
   if (s.phase === 'regular') {
     const previousDay = s.day;
-    const { newState, result } = simulateDay(s.rng, s.seasonState, s.schedule, s.players);
+    const { newState, result } = simulateDay(
+      s.rng,
+      s.seasonState,
+      s.schedule,
+      s.players,
+      { teamModifiers: buildTeamPerformanceModifiers(s) },
+    );
     s.seasonState = newState;
     s.day = newState.currentDay;
     advanceMinorLeagueDay(s);
@@ -615,6 +731,7 @@ function simDayInternal(): SimResultDTO {
     processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
+    syncRecordTracking(s);
     return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
   }
 
@@ -632,7 +749,9 @@ function simDayInternal(): SimResultDTO {
     const gamesBefore = countBracketGames(before);
     let working = before;
     while (!isPlayoffComplete(working)) {
-      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
+      working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+        teamModifiers: buildTeamPerformanceModifiers(s),
+      });
     }
     s.playoffBracket = working;
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
@@ -738,24 +857,39 @@ export const actionApi = {
 
   simToPlayoffs(): SimResultDTO {
     const s = requireState();
-    let result = simDayInternal();
-
-    while (s.phase === 'regular') {
-      const remainingDays = Math.max(0, 163 - s.day);
-      if (remainingDays >= 30) {
-        result = simMonthInternal();
-      } else if (remainingDays >= 7) {
-        result = simWeekInternal();
-      } else {
-        result = simDayInternal();
-      }
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
     }
+    const userFlags = s.storyFlags.get(s.userTeamId) ?? [];
+    if (!userFlags.includes('suppress_owner_firing')) {
+      s.storyFlags.set(s.userTeamId, [...userFlags, 'suppress_owner_firing']);
+    }
+    try {
+      let result = simDayInternal();
 
-    return result;
+      while (s.phase === 'regular') {
+        const remainingDays = Math.max(0, 163 - s.day);
+        if (remainingDays >= 30) {
+          result = simMonthInternal();
+        } else if (remainingDays >= 7) {
+          result = simWeekInternal();
+        } else {
+          result = simDayInternal();
+        }
+      }
+
+      return result;
+    } finally {
+      const nextFlags = (s.storyFlags.get(s.userTeamId) ?? []).filter((flag) => flag !== 'suppress_owner_firing');
+      s.storyFlags.set(s.userTeamId, nextFlags);
+    }
   },
 
   simPlayoffGame(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -769,7 +903,9 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork());
+    s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -777,6 +913,9 @@ export const actionApi = {
 
   simPlayoffSeries(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -790,7 +929,9 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork());
+    s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -798,6 +939,9 @@ export const actionApi = {
 
   simPlayoffRound(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -811,7 +955,9 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork());
+    s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -819,6 +965,9 @@ export const actionApi = {
 
   simRemainingPlayoffs(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -834,7 +983,9 @@ export const actionApi = {
     const gamesBefore = countBracketGames(before);
     let working = before;
     while (!isPlayoffComplete(working)) {
-      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
+      working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+        teamModifiers: buildTeamPerformanceModifiers(s),
+      });
     }
     s.playoffBracket = working;
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
@@ -844,6 +995,9 @@ export const actionApi = {
 
   proceedToOffseason(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase === 'playoffs' && s.playoffBracket?.champion) {
       s.phase = 'offseason';
       s.day = 1;
@@ -861,6 +1015,9 @@ export const actionApi = {
 
   startNextSeason(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase === 'offseason' && s.offseasonState?.completed) {
       return finalizeOffseasonRollover(s);
     }
@@ -901,6 +1058,9 @@ export const actionApi = {
 
   startDraft() {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     return {
       ...startDraftSession(s, generateDraftClass(s.rng.fork(), s.season)),
       flowStateChanged: true,
@@ -908,8 +1068,12 @@ export const actionApi = {
   },
 
   makeDraftPick(prospectId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     return {
-      ...makeUserDraftSelection(requireState(), prospectId),
+      ...makeUserDraftSelection(s, prospectId),
       flowStateChanged: true,
     };
   },
@@ -930,6 +1094,9 @@ export const actionApi = {
 
   signDraftPick(playerId: string, bonusAmount: number) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     const result = signUserDraftPick(s, playerId, bonusAmount);
     if (result.success && result.signed) {
       const player = s.players.find((candidate) => candidate.id === playerId);
@@ -943,14 +1110,21 @@ export const actionApi = {
   },
 
   simulateRemainingDraft() {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     return {
-      ...simulateRemainingDraftSession(requireState()),
+      ...simulateRemainingDraftSession(s),
       flowStateChanged: true,
     };
   },
 
   proposeTrade(offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { decision: 'rejected' as const, reason: franchiseLockMessage(s) };
+    }
     const result = proposeTradePackage(
       s,
       offeringAssets,
@@ -969,6 +1143,9 @@ export const actionApi = {
     counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
   ) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, decision: 'rejected' as const, message: franchiseLockMessage(s) };
+    }
     const result = respondToTradeOffer(s, offerId, action, counterPackage);
     if (result.success && result.decision === 'accepted') {
       syncAchievementState(s);
@@ -978,6 +1155,9 @@ export const actionApi = {
 
   promotePlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -1022,6 +1202,9 @@ export const actionApi = {
 
   demotePlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -1064,6 +1247,9 @@ export const actionApi = {
 
   dfaPlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -1110,11 +1296,17 @@ export const actionApi = {
 
   claimOffWaivers(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return claimPlayerOffWaivers(s, playerId, s.userTeamId);
   },
 
   makeContractOffer(playerId: string, years: number, salary: number) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { accepted: false, reason: franchiseLockMessage(s) };
+    }
     if (!s.freeAgencyMarket) {
       s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
     }
@@ -1134,7 +1326,7 @@ export const actionApi = {
     const result = makeUserOffer(s.freeAgencyMarket, {
       ...offer,
       annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
-    });
+    }, getTeamFreeAgencyAppealScore(s, s.userTeamId));
     if (!result.accepted || !freeAgent) {
       return result;
     }
@@ -1171,7 +1363,28 @@ export const actionApi = {
     });
 
     s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+    s.rivalries = recordStarDefectionRivalry(s.rivalries, {
+      season: s.season,
+      fromTeamId: previousTeamId,
+      toTeamId: s.userTeamId,
+      playerName: `${player.firstName} ${player.lastName}`,
+      starScore: player.overallRating,
+    });
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
+    if (result.reason.toLowerCase().includes('clubhouse fit feels right')) {
+      s.news.unshift({
+        id: `clubhouse-signing-${s.season}-${playerId}`,
+        headline: 'FA cites great clubhouse as reason for signing discount',
+        body: `${player.firstName} ${player.lastName} accepted less than full market value because the room felt like the right fit.`,
+        priority: 3,
+        category: 'signing',
+        tag: 'ANALYSIS',
+        timestamp: `S${s.season}D${s.day}`,
+        relatedPlayerIds: [player.id],
+        relatedTeamIds: [s.userTeamId],
+        read: false,
+      });
+    }
     applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
     recordFreeAgentSigning(s, playerId, salary);
@@ -1181,6 +1394,9 @@ export const actionApi = {
 
   negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { status: 'rejected' as const, rounds: [], reason: franchiseLockMessage(s) };
+    }
     const result = negotiatePlayerExtension(s, playerId, offer);
     if (result?.status === 'accepted') {
       recordExtensionCompleted(s);
@@ -1190,23 +1406,42 @@ export const actionApi = {
   },
 
   issueQualifyingOffer(playerId: string) {
-    return issueTeamQualifyingOffer(requireState(), playerId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return issueTeamQualifyingOffer(s, playerId);
   },
 
   resolveQualifyingOffers() {
-    return resolveOutstandingQualifyingOffers(requireState());
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { resolved: [], error: franchiseLockMessage(s) };
+    }
+    return resolveOutstandingQualifyingOffers(s);
   },
 
   hireCoach(coachId: string) {
-    return hireCoachForUserTeam(requireState(), coachId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return hireCoachForUserTeam(s, coachId);
   },
 
   fireCoach(coachId: string) {
-    return fireCoachForUserTeam(requireState(), coachId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return fireCoachForUserTeam(s, coachId);
   },
 
   advanceOffseason(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const progress = advanceOffseasonOnce(s);
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
@@ -1215,6 +1450,9 @@ export const actionApi = {
 
   skipOffseasonPhase(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const progress = skipOffseasonPhaseWithAI(s);
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
@@ -1222,11 +1460,18 @@ export const actionApi = {
   },
 
   scoutIFAPlayer(playerId: string) {
-    return scoutUserIFAPlayer(requireState(), playerId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return scoutUserIFAPlayer(s, playerId);
   },
 
   signIFAPlayer(playerId: string, bonusAmount: number) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const result = signUserIFAPlayer(s, playerId, bonusAmount);
     if (result.success) {
       const player = s.players.find((candidate) => candidate.id === playerId);
@@ -1237,17 +1482,27 @@ export const actionApi = {
   },
 
   tradeIFAPoolSpace(toTeamId: string, amount: number) {
-    const result = tradeUserIFABonusPool(requireState(), toTeamId, amount);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    const result = tradeUserIFABonusPool(s, toTeamId, amount);
     return result.success ? { ...result, flowStateChanged: true as const } : result;
   },
 
   toggleRule5Protection(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return toggleUserRule5Protection(s, playerId);
   },
 
   lockRule5Protection(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const result = lockUserRule5Protection(s);
     if (!result.success) {
       return null;
@@ -1257,16 +1512,26 @@ export const actionApi = {
 
   makeRule5Pick(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return makeUserRule5Selection(s, playerId);
   },
 
   passRule5Pick() {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return passUserRule5Turn(s);
   },
 
   resolveRule5OfferBack(playerId: string, acceptReturn: boolean) {
-    return resolveRule5OfferBackDecision(requireState(), playerId, acceptReturn);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return resolveRule5OfferBackDecision(s, playerId, acceptReturn);
   },
 
   markNewsRead(newsId: string) {

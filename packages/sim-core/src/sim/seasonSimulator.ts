@@ -32,6 +32,10 @@ export interface DaySimResult {
   readonly seasonComplete: boolean;
 }
 
+export interface SeasonSimulationOptions {
+  readonly teamModifiers?: Map<string, number>;
+}
+
 // ---------------------------------------------------------------------------
 // Lineup builder
 // ---------------------------------------------------------------------------
@@ -102,6 +106,7 @@ export function simulateDay(
   state: SeasonState,
   schedule: ScheduledGame[],
   allPlayers: GeneratedPlayer[],
+  options: SeasonSimulationOptions = {},
 ): { newState: SeasonState; result: DaySimResult } {
   const dayGames = schedule.filter(g => g.day === state.currentDay);
 
@@ -126,6 +131,10 @@ export function simulateDay(
       homeTeam,
       `S${state.season}D${state.currentDay}`,
       false,
+      {
+        awayOffenseModifier: options.teamModifiers?.get(game.awayTeamId),
+        homeOffenseModifier: options.teamModifiers?.get(game.homeTeamId),
+      },
     );
 
     boxScores.push(boxScore);
@@ -212,13 +221,14 @@ export function simulateWeek(
   state: SeasonState,
   schedule: ScheduledGame[],
   allPlayers: GeneratedPlayer[],
+  options: SeasonSimulationOptions = {},
 ): { newState: SeasonState; result: DaySimResult } {
   let current = state;
   let lastResult: DaySimResult = { day: state.currentDay, games: [], seasonComplete: false };
 
   for (let i = 0; i < 7; i++) {
     if (current.completed) break;
-    const { newState, result } = simulateDay(rng, current, schedule, allPlayers);
+    const { newState, result } = simulateDay(rng, current, schedule, allPlayers, options);
     current = newState;
     lastResult = result;
   }
@@ -234,6 +244,7 @@ export function simulateMonth(
   state: SeasonState,
   schedule: ScheduledGame[],
   allPlayers: GeneratedPlayer[],
+  options: SeasonSimulationOptions = {},
 ): { newState: SeasonState; result: DaySimResult } {
   let current = state;
   let lastResult: DaySimResult = { day: state.currentDay, games: [], seasonComplete: false };
@@ -241,7 +252,7 @@ export function simulateMonth(
 
   while (current.currentDay < targetDay) {
     if (current.completed) break;
-    const { newState, result } = simulateDay(rng, current, schedule, allPlayers);
+    const { newState, result } = simulateDay(rng, current, schedule, allPlayers, options);
     current = newState;
     lastResult = result;
   }

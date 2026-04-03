@@ -22,6 +22,8 @@ import {
   getRemainingIFABudget,
   getTeamById,
   isTradeDeadlineModeDay,
+  recordBlockbusterTradeRivalry,
+  rivalryTradePenalty,
   tradeDraftPickOwnership as tradeDraftPickOwnershipCore,
   tradeIFABonusPool as tradeIFABonusPoolCore,
 } from '@mbd/sim-core';
@@ -243,6 +245,13 @@ function assetValue(state: FullGameState, asset: TradeAsset): number {
   }
 }
 
+function playerRatingsForAssets(state: FullGameState, assets: TradeAsset[]): number[] {
+  return assets
+    .filter((asset): asset is Extract<TradeAsset, { type: 'player' }> => asset.type === 'player')
+    .map((asset) => state.players.find((candidate) => candidate.id === asset.playerId)?.overallRating ?? 0)
+    .filter((rating) => rating > 0);
+}
+
 function compareAssetPackages(
   state: FullGameState,
   offeringAssets: TradeAsset[],
@@ -253,9 +262,15 @@ function compareAssetPackages(
   const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const maxValue = Math.max(offerValue, requestValue, 1);
+  const rivalryPenalty = rivalryTradePenalty(
+    state.rivalries,
+    fromTeamId,
+    toTeamId,
+    playerRatingsForAssets(state, requestingAssets),
+  );
   const fairness = getDifficultyAdjustedTradeFairness(
     state,
-    Math.max(-100, Math.min(100, Math.round(((requestValue - offerValue) / maxValue) * 100))),
+    Math.max(-100, Math.min(100, Math.round((((requestValue - offerValue) / maxValue) * 100) + rivalryPenalty))),
     fromTeamId,
     toTeamId,
   );
@@ -392,9 +407,28 @@ function playersStillMatchProposal(state: FullGameState, proposal: TradeProposal
 }
 
 function fairValueForProposal(state: FullGameState, proposal: TradeProposal): number {
-  const offered = state.players.filter((player) => proposal.playersOffered.includes(player.id));
-  const requested = state.players.filter((player) => proposal.playersRequested.includes(player.id));
-  return comparePackages(offered, requested).fairness;
+  return compareAssetPackages(
+    state,
+    playerAssets(proposal.playersOffered),
+    playerAssets(proposal.playersRequested),
+    proposal.fromTeamId,
+    proposal.toTeamId,
+  ).fairness;
+}
+
+function applyUserFrontOfficeTradeOverride(
+  result: ReturnType<typeof evaluateTradeProposal>,
+  fairnessScore: number,
+) {
+  if (result.decision !== 'accepted' && fairnessScore >= -6) {
+    return {
+      decision: 'accepted' as const,
+      reason: 'The value is close enough for a front office we respect.',
+      counter: undefined,
+    };
+  }
+
+  return result;
 }
 
 function buildAssetSummary(state: FullGameState, assets: TradeAsset[]): string {
@@ -888,10 +922,25 @@ function executeAcceptedTrade(
   },
   fairnessScore: number,
 ) {
+  const tradePackageValue = compareAssetPackages(
+    state,
+    proposal.offeringAssets,
+    proposal.requestingAssets,
+    proposal.fromTeamId,
+    proposal.toTeamId,
+  );
+  const tradeImpactScore = Math.max(tradePackageValue.offerValue, tradePackageValue.requestValue);
   applyTradeAssets(state, proposal.fromTeamId, proposal.toTeamId, proposal.offeringAssets, proposal.requestingAssets);
   state.rosterStates.set(proposal.fromTeamId, buildRosterState(proposal.fromTeamId, state.players));
   state.rosterStates.set(proposal.toTeamId, buildRosterState(proposal.toTeamId, state.players));
   addTradeHistoryEntry(state, buildTradeHistoryEntry(state, proposal, fairnessScore));
+  state.rivalries = recordBlockbusterTradeRivalry(state.rivalries, {
+    season: state.season,
+    fromTeamId: proposal.fromTeamId,
+    toTeamId: proposal.toTeamId,
+    impactScore: tradeImpactScore,
+    summary: 'Blockbuster trade changed the tone of the matchup',
+  });
 }
 
 function buildMonthlyTradeCandidates(state: FullGameState) {
@@ -944,7 +993,9 @@ function buildMonthlyTradeCandidates(state: FullGameState) {
   }
 
   return {
-    userCandidates: state.rng.shuffle(userCandidates),
+    userCandidates: state.rng
+      .shuffle(userCandidates)
+      .sort((left, right) => fairValueForProposal(state, right) - fairValueForProposal(state, left)),
     aiCandidates: state.rng.shuffle(aiCandidates),
   };
 }
@@ -1305,7 +1356,7 @@ export function proposeTradePackage(
 
   const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets, state.userTeamId, toTeamId).fairness;
   const usesNonPlayerAssets = hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets);
-  const result = usesNonPlayerAssets
+  const evaluation = usesNonPlayerAssets
     ? {
       decision: (-fairnessScore >= -10 ? 'accepted' : 'rejected') as 'accepted' | 'rejected',
       reason: -fairnessScore >= -10 ? 'The value framework works for us.' : 'The value gap is too wide for us.',
@@ -1319,6 +1370,7 @@ export function proposeTradePackage(
       gm,
       false,
     );
+  const result = applyUserFrontOfficeTradeOverride(evaluation, fairnessScore);
 
   if (result.decision === 'accepted') {
     executeAcceptedTrade(state, {
@@ -1450,9 +1502,16 @@ export function respondToTradeOffer(
   }
 
   const usesNonPlayerAssets = hasNonPlayerAssets(counterPackage.offeringAssets) || hasNonPlayerAssets(counterPackage.requestingAssets);
-  const result = usesNonPlayerAssets
+  const counterFairness = compareAssetPackages(
+    state,
+    counterPackage.offeringAssets,
+    counterPackage.requestingAssets,
+    state.userTeamId,
+    offer.fromTeamId,
+  ).fairness;
+  const evaluation = usesNonPlayerAssets
     ? {
-      decision: (-compareAssetPackages(state, counterPackage.offeringAssets, counterPackage.requestingAssets, state.userTeamId, offer.fromTeamId).fairness >= -10
+      decision: (-counterFairness >= -10
         ? 'accepted'
         : 'rejected') as 'accepted' | 'rejected',
       reason: 'Counter framework evaluated.',
@@ -1466,6 +1525,7 @@ export function respondToTradeOffer(
       gm,
       isContender(state, offer.fromTeamId),
     );
+  const result = applyUserFrontOfficeTradeOverride(evaluation, counterFairness);
 
   removePendingOffer(state, offerId);
 

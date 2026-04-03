@@ -100,7 +100,9 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
     });
   }
 
-  const topRivalry = [...state.rivalries.values()].sort((left, right) => right.intensity - left.intensity)[0];
+  const topRivalry = [...state.rivalries.values()]
+    .filter((rivalry) => rivalry.teamA === state.userTeamId || rivalry.teamB === state.userTeamId)
+    .sort((left, right) => right.intensity - left.intensity)[0];
   if (topRivalry && topRivalry.intensity >= 55) {
     const teamA = getTeamById(topRivalry.teamA);
     const teamB = getTeamById(topRivalry.teamB);

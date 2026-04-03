@@ -83,6 +83,31 @@ describe('HistoryPage', () => {
       ]),
       getSeasonHistory: vi.fn().mockResolvedValue([
         {
+          season: 1,
+          championTeamId: 'hou',
+          runnerUpTeamId: 'nyy',
+          worldSeriesRecord: '4-3',
+          summary: 'Houston survived a seven-game classic.',
+          awards: [],
+          keyMoments: ['The Yankees fell one win short.'],
+          statLeaders: {
+            hr: [],
+            rbi: [],
+            avg: [],
+            era: [],
+            k: [],
+            w: [],
+          },
+          notableRetirements: [],
+          blockbusterTrades: [],
+          userSeason: {
+            teamId: 'nyy',
+            record: '88-74',
+            playoffResult: 'Championship Series exit',
+            storylines: ['Came up short late in October.'],
+          },
+        },
+        {
           season: 2,
           championTeamId: 'nyy',
           runnerUpTeamId: 'lad',
@@ -126,6 +151,181 @@ describe('HistoryPage', () => {
           },
         },
       ]),
+      getSeasonArchive: vi.fn().mockImplementation(async (season?: number) => {
+        if (season === 1) {
+          return {
+            season: 1,
+            standings: [
+              { teamId: 'nyy', wins: 88, losses: 74, divisionRank: 2, gamesBack: 5 },
+            ],
+            playoffSeries: [
+              { round: 'CHAMPIONSHIP_SERIES', winnerTeamId: 'hou', loserTeamId: 'nyy', result: '4-2' },
+            ],
+            awards: [],
+            statLeaders: {
+              hr: [],
+              rbi: [],
+              avg: [],
+              era: [],
+              k: [],
+              w: [],
+            },
+            transactions: [
+              {
+                headline: 'Midwinter reset thinned the roster',
+                summary: 'New York cleared payroll and prospect space.',
+                playerIds: ['player-mvp'],
+                teamIds: ['nyy'],
+                impactScore: 76,
+              },
+            ],
+            draftClass: [
+              {
+                pickNumber: 12,
+                playerId: 'pick-1',
+                playerName: 'Jorge Mendez',
+                teamId: 'nyy',
+                currentStatus: 'AAA',
+              },
+            ],
+            financials: [
+              { teamId: 'nyy', payroll: 220, budget: 235 },
+            ],
+            userSummary: {
+              teamId: 'nyy',
+              record: '88-74',
+              playoffResult: 'Championship Series exit',
+              storylines: ['Came up short late in October.'],
+            },
+            timelineEvents: ['Reached the ALCS'],
+          };
+        }
+
+        return {
+          season: 2,
+          standings: [
+            { teamId: 'nyy', wins: 97, losses: 65, divisionRank: 1, gamesBack: 0 },
+            { teamId: 'bos', wins: 92, losses: 70, divisionRank: 2, gamesBack: 5 },
+            { teamId: 'lad', wins: 98, losses: 64, divisionRank: 1, gamesBack: 0 },
+          ],
+          playoffSeries: [
+            { round: 'ALCS', winnerTeamId: 'nyy', loserTeamId: 'hou', result: '4-1' },
+            { round: 'WORLD_SERIES', winnerTeamId: 'nyy', loserTeamId: 'lad', result: '4-2' },
+          ],
+          awards: [{
+            season: 2,
+            award: 'MVP',
+            league: 'AL',
+            playerId: 'player-mvp',
+            teamId: 'nyy',
+            summary: 'Mike Trout carried the offense all summer.',
+          }],
+          statLeaders: {
+            hr: [{ playerId: 'player-mvp', teamId: 'nyy', value: '44', summary: '44 HR' }],
+            rbi: [{ playerId: 'player-rbi', teamId: 'nyy', value: '131', summary: '131 RBI' }],
+            avg: [{ playerId: 'player-avg', teamId: 'tor', value: '.350', summary: '.350 AVG' }],
+            era: [{ playerId: 'player-era', teamId: 'bos', value: '2.61', summary: '2.61 ERA' }],
+            k: [{ playerId: 'player-k', teamId: 'bos', value: '236', summary: '236 K' }],
+            w: [{ playerId: 'player-w', teamId: 'sea', value: '20', summary: '20 W' }],
+          },
+          transactions: [
+            {
+              headline: 'Deadline blockbuster reshaped the race',
+              summary: 'The Yankees bought aggressively at the deadline.',
+              playerIds: ['player-mvp'],
+              teamIds: ['nyy', 'lad'],
+              impactScore: 91,
+            },
+          ],
+          draftClass: [
+            {
+              pickNumber: 8,
+              playerId: 'pick-2',
+              playerName: 'Calvin Velez',
+              teamId: 'nyy',
+              currentStatus: 'AA',
+            },
+          ],
+          financials: [
+            { teamId: 'nyy', payroll: 245, budget: 255 },
+            { teamId: 'bos', payroll: 231, budget: 240 },
+          ],
+          userSummary: {
+            teamId: 'nyy',
+            record: '97-65',
+            playoffResult: 'Champion',
+            storylines: ['Won the World Series in six games.'],
+          },
+          timelineEvents: ['Won the World Series', 'Deadline blockbuster reshaped the race'],
+        };
+      }),
+      compareSeasons: vi.fn().mockResolvedValue({
+        userTeamId: 'nyy',
+        left: {
+          season: 1,
+          userSummary: {
+            teamId: 'nyy',
+            record: '88-74',
+            playoffResult: 'Championship Series exit',
+            storylines: ['Came up short late in October.'],
+          },
+          financials: [{ teamId: 'nyy', payroll: 220, budget: 235 }],
+        },
+        right: {
+          season: 2,
+          userSummary: {
+            teamId: 'nyy',
+            record: '97-65',
+            playoffResult: 'Champion',
+            storylines: ['Won the World Series in six games.'],
+          },
+          financials: [{ teamId: 'nyy', payroll: 245, budget: 255 }],
+        },
+        deltas: {
+          wins: 9,
+          payroll: 25,
+          budget: 20,
+        },
+      }),
+      getRecordBook: vi.fn().mockResolvedValue({
+        franchise: [
+          {
+            id: 'franchise:nyy:individual_single_season:hr',
+            scope: 'franchise',
+            teamId: 'nyy',
+            category: 'individual_single_season',
+            stat: 'hr',
+            label: 'Most Home Runs',
+            qualifier: null,
+            holders: [{
+              playerId: 'player-mvp',
+              playerName: 'Mike Trout',
+              teamId: 'nyy',
+              season: 2,
+              value: 44,
+              displayValue: '44',
+            }],
+            trackingFromSeason: null,
+            note: null,
+          },
+        ],
+        league: [],
+      }),
+      getRecordWatchList: vi.fn().mockResolvedValue([
+        {
+          id: 'watch-1',
+          recordId: 'franchise:nyy:individual_single_season:hr',
+          playerId: 'player-mvp',
+          playerName: 'Mike Trout',
+          teamId: 'nyy',
+          recordLabel: 'Most Home Runs',
+          currentValue: 24,
+          projectedValue: 61,
+          holderValue: 44,
+          progressRatio: 0.55,
+          summary: 'Mike Trout is on pace for 61 HR. Franchise record is 44.',
+        },
+      ]),
       getRivalries: vi.fn().mockResolvedValue([
         {
           id: 'nyy-bos',
@@ -134,6 +334,12 @@ describe('HistoryPage', () => {
           intensity: 84,
           summary: 'Every series is carrying real postseason weight.',
           reasons: ['division race', 'recent playoffs'],
+          origin: 'historical',
+          currentSeasonWinsA: 8,
+          currentSeasonWinsB: 5,
+          historicalWinsA: 144,
+          historicalWinsB: 132,
+          eventHistory: [],
         },
       ]),
       getHallOfFame: vi.fn().mockResolvedValue([
@@ -244,6 +450,14 @@ describe('HistoryPage', () => {
     vi.clearAllMocks();
   });
 
+  async function clickButton(label: string) {
+    const button = Array.from(container.querySelectorAll('button')).find((candidate) => candidate.textContent?.includes(label));
+    expect(button).toBeTruthy();
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  }
+
   it('renders resolved names and rich season recap content', async () => {
     await act(async () => {
       root.render(
@@ -257,18 +471,37 @@ describe('HistoryPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('Mike Trout');
     expect(container.textContent).toContain('New York Yankees');
     expect(container.textContent).toContain('Boston Red Sox');
-    expect(container.textContent).toContain('Season 2 Recap');
-    expect(container.textContent).toContain('New York Yankees def. Los Angeles Dodgers (4-2)');
-    expect(container.textContent).toContain('Anthony Rizzo');
-    expect(container.textContent).toContain('Deadline blockbuster reshaped the race');
-    expect(container.textContent).toContain('97-65');
+    expect(container.textContent).toContain('Season Browser');
+    expect(container.textContent).toContain('Compare Seasons');
+    expect(container.textContent).toContain('Season 2 vs Season 1');
+    expect(container.textContent).toContain('Calvin Velez');
+    expect(container.textContent).toContain('Payroll');
+    expect(container.textContent).toContain('$245.0M');
+
+    await clickButton('leaders');
+    expect(container.textContent).toContain('Mike Trout');
+
+    await clickButton('records');
+    expect(container.textContent).toContain('Records');
+    expect(container.textContent).toContain('Most Home Runs');
+    expect(container.textContent).toContain('Mike Trout is on pace for 61 HR');
+    expect(container.textContent).toContain('Origin');
+    expect(container.textContent).toContain('Historical');
+    expect(container.textContent).toContain('Current season');
+    expect(container.textContent).toContain('NYY 8-5 BOS');
+    expect(container.textContent).toContain('Historical record');
+    expect(container.textContent).toContain('NYY 144-132 BOS');
+
+    await clickButton('timeline');
+    expect(container.textContent).toContain('Dynasty Timeline');
+    expect(container.textContent).toContain('Franchise Timeline');
+
+    await clickButton('Awards / HOF');
     expect(container.textContent).toContain('Hall of Fame');
     expect(container.textContent).toContain('Derek Jeter');
     expect(container.textContent).toContain('Dynasty Score');
-    expect(container.textContent).toContain('Franchise Timeline');
     expect(container.textContent).toContain('Trophy Room');
     expect(container.textContent).toContain('Champion');
     expect(container.textContent).toContain('2 / 10');
@@ -332,6 +565,7 @@ describe('HistoryPage', () => {
       await Promise.resolve();
     });
 
+    await clickButton('Awards / HOF');
     expect(container.textContent).toContain('No achievements unlocked yet');
     expect(container.textContent).toContain('Keep pushing seasons, titles, and milestones to fill the trophy room.');
   });

@@ -108,6 +108,9 @@ export const PersonalitySchema = z.object({
 });
 export type Personality = z.infer<typeof PersonalitySchema>;
 
+export const PersonalityTraitSchema = z.string().min(1);
+export type PersonalityTrait = z.infer<typeof PersonalityTraitSchema>;
+
 export const InjurySchema = z.object({
   type: z.string(),
   severity: z.number().int().min(1).max(5),
@@ -174,5 +177,6 @@ export const PlayerSchema = z.object({
   developmentProgram: DevelopmentProgramEnum.optional(),
   developmentTrajectory: DevelopmentTrajectoryEnum.optional(),
   extensionHistory: z.array(ExtensionHistoryEntrySchema).optional(),
+  personalityTraits: z.array(PersonalityTraitSchema).optional(),
 });
 export type Player = z.infer<typeof PlayerSchema>;

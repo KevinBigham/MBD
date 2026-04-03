@@ -162,9 +162,34 @@ function buildDecisionQueue(
 ): DecisionSpotlightItem[] {
   const items: DecisionSpotlightItem[] = [];
   const rosterState = s.rosterStates.get(s.userTeamId);
+  const ownerState = s.ownerState.get(s.userTeamId);
+  const ownerMeetingFlagActive = (s.storyFlags.get(s.userTeamId) ?? []).some((flag) => flag.startsWith('owner_meeting_'));
+  const ownerUltimatumActive = Boolean(
+    ownerMeetingFlagActive
+      || (
+        ownerState
+        && ownerState.hotSeat
+        && (
+          (ownerState.satisfaction ?? 100) < 45
+          || ownerState.patience < 35
+          || ownerState.confidence < 35
+        )
+      ),
+  );
   const rosterIssues = rosterState
     ? getRosterComplianceIssues(s.players.filter((player) => player.teamId === s.userTeamId), rosterState, s.day)
     : [];
+
+  if (ownerUltimatumActive) {
+    items.push({
+      id: `spotlight-owner-${s.season}-${month.month}`,
+      urgency: 'red',
+      title: 'Owner ultimatum is on your desk',
+      body: ownerState?.summary ?? 'Ownership needs immediate improvement in results and budget discipline.',
+      route: '/dashboard',
+      actionLabel: 'Open Dashboard',
+    });
+  }
 
   if (rosterIssues.some((issue) => issue.code === 'active_roster_over_limit')) {
     items.push({

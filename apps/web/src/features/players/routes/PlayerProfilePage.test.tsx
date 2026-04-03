@@ -177,4 +177,148 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('wOBA');
     expect(container.textContent).toContain('4.8');
   });
+
+  it('shows active player personality traits', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getPlayer: vi.fn().mockResolvedValue({
+        id: 'player-2',
+        firstName: 'Leo',
+        lastName: 'Captain',
+        age: 29,
+        position: 'CF',
+        overallRating: 71,
+        displayRating: 61,
+        letterGrade: 'B',
+        rosterStatus: 'MLB',
+        teamId: 'nyy',
+        ceiling: 74,
+        floor: 55,
+        developmentProgram: 'speed',
+        developmentTrajectory: 'on_track',
+        personalityTraits: ['Leader', 'Fan Favorite'],
+        contract: {
+          years: 3,
+          annualSalary: 9.2,
+          totalValue: 27.6,
+          noTradeClause: false,
+          noTradeClauseType: 'none',
+          playerOption: false,
+          teamOption: false,
+          optOutYears: [],
+          signingBonus: 0,
+          buyoutAmount: 0,
+          deferredMoney: [],
+        },
+        extensionHistory: [],
+        stats: null,
+      }),
+      getAdvancedStats: vi.fn().mockResolvedValue(null),
+      getPersonalityProfile: vi.fn().mockResolvedValue({
+        playerId: 'player-2',
+        archetype: 'captain',
+        morale: {
+          score: 74,
+          trend: 'rising',
+          summary: 'The room follows his lead.',
+          lastUpdated: 'S5D92',
+        },
+        personality: {
+          workEthic: 78,
+          mentalToughness: 77,
+          leadership: 89,
+          competitiveness: 81,
+        },
+        summary: 'Veteran center fielder who sets the clubhouse tone.',
+      }),
+      getDevelopmentReports: vi.fn().mockResolvedValue({
+        playerId: 'player-2',
+        history: [],
+        recommendations: [],
+      }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/players/player-2']}>
+          <Routes>
+            <Route path="/players/:playerId" element={<PlayerProfilePage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Leader');
+    expect(container.textContent).toContain('Fan Favorite');
+  });
+
+  it('renders a read-only historical fallback when the player is retired from the live pool', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getPlayer: vi.fn().mockResolvedValue({
+        id: 'historic-1',
+        firstName: 'Derek',
+        lastName: 'Legacy',
+        age: 39,
+        position: 'SS',
+        overallRating: 72,
+        displayRating: 68,
+        letterGrade: 'A',
+        rosterStatus: 'RETIRED',
+        teamId: 'nyy',
+        ceiling: null,
+        floor: null,
+        developmentProgram: null,
+        developmentTrajectory: 'on_track',
+        contract: {
+          years: 0,
+          annualSalary: 0,
+          totalValue: 0,
+          noTradeClause: false,
+          noTradeClauseType: 'none',
+          playerOption: false,
+          teamOption: false,
+          optOutYears: [],
+          signingBonus: 0,
+          buyoutAmount: 0,
+          deferredMoney: [],
+        },
+        extensionHistory: [],
+        stats: null,
+        historical: true,
+        historicalSummary: {
+          playerId: 'historic-1',
+          fullName: 'Derek Legacy',
+          position: 'SS',
+          lastKnownTeamId: 'nyy',
+          active: false,
+          retiredSeason: 4,
+          seasonsPlayed: 16,
+          personalityTraits: ['Leader', 'Fan Favorite'],
+        },
+      }),
+      getAdvancedStats: vi.fn().mockResolvedValue(null),
+      getPersonalityProfile: vi.fn().mockResolvedValue(null),
+      getDevelopmentReports: vi.fn().mockResolvedValue(null),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/players/historic-1']}>
+          <Routes>
+            <Route path="/players/:playerId" element={<PlayerProfilePage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Historical Profile');
+    expect(container.textContent).toContain('Season 4');
+    expect(container.textContent).toContain('Leader');
+    expect(container.textContent).toContain('Fan Favorite');
+  });
 });

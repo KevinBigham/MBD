@@ -5,6 +5,7 @@
 
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { calculatePlayoffComposureModifier } from '../player/personalityTraits.js';
 import { resolvePlateAppearance } from './plateAppearance.js';
 import type { PAOutcome, PAResult } from './plateAppearance.js';
 import { advanceRunners, freshRunnerState } from './markov.js';
@@ -33,9 +34,15 @@ export interface GameBoxScore {
   readonly isPlayoff: boolean;
 }
 
+export interface GameSimulationOptions {
+  readonly awayOffenseModifier?: number;
+  readonly homeOffenseModifier?: number;
+}
+
 export interface PlayerGameStats {
   playerId: string;
   teamId: string;
+  gamesPlayed?: number;
   pa: number;
   ab: number;
   hits: number;
@@ -58,6 +65,7 @@ export interface PlayerGameStats {
   hitBatters: number;
   flyBallsAllowed: number;
   wins: number;
+  saves?: number;
   losses: number;
 }
 
@@ -84,6 +92,7 @@ export function simulateGame(
   home: GameTeam,
   date: string,
   isPlayoff: boolean = false,
+  options: GameSimulationOptions = {},
 ): { boxScore: GameBoxScore; playerStats: Map<string, PlayerGameStats> } {
   let homeScore = 0;
   let awayScore = 0;
@@ -102,17 +111,32 @@ export function simulateGame(
   let homePitcherPA = 0;
   let awayBullpenIdx = 0;
   let homeBullpenIdx = 0;
+  const awayOffenseModifier = Math.max(
+    0.94,
+    Math.min(
+      1.06,
+      (options.awayOffenseModifier ?? 1) * (isPlayoff ? calculatePlayoffComposureModifier(away.lineup) : 1),
+    ),
+  );
+  const homeOffenseModifier = Math.max(
+    0.94,
+    Math.min(
+      1.06,
+      (options.homeOffenseModifier ?? 1) * (isPlayoff ? calculatePlayoffComposureModifier(home.lineup) : 1),
+    ),
+  );
 
   const getStats = (player: GeneratedPlayer, teamId: string): PlayerGameStats => {
     let stats = playerStats.get(player.id);
     if (!stats) {
       stats = {
         playerId: player.id, teamId,
+        gamesPlayed: 1,
         pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0,
         rbi: 0, bb: 0, k: 0, runs: 0, hbp: 0, sacFlies: 0,
         ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,
         homeRunsAllowed: 0, hitBatters: 0, flyBallsAllowed: 0,
-        wins: 0, losses: 0,
+        wins: 0, saves: 0, losses: 0,
       };
       playerStats.set(player.id, stats);
     }
@@ -128,7 +152,7 @@ export function simulateGame(
       rng,
       away.lineup, awayBatterIdx, homePitcher,
       away.teamId, home.teamId,
-      getStats, paResults,
+      getStats, paResults, awayOffenseModifier,
     );
     awayScore += topResult.runs;
     awayHits += topResult.hits;
@@ -154,7 +178,7 @@ export function simulateGame(
       rng,
       home.lineup, homeBatterIdx, awayPitcher,
       home.teamId, away.teamId,
-      getStats, paResults,
+      getStats, paResults, homeOffenseModifier,
     );
     homeScore += botResult.runs;
     homeHits += botResult.hits;
@@ -179,13 +203,21 @@ export function simulateGame(
 
   // Update pitcher IP
   updatePitcherStats(playerStats, homePitcher, away.pitcher, awayScore, homeScore);
-  if (homeScore > awayScore) {
-    getStats(homePitcher, home.teamId).wins++;
-    getStats(awayPitcher, away.teamId).losses++;
-  } else {
-    getStats(awayPitcher, away.teamId).wins++;
-    getStats(homePitcher, home.teamId).losses++;
+  const homeWon = homeScore > awayScore;
+  const margin = Math.abs(homeScore - awayScore);
+  const winningPitcher = homeWon
+    ? (homePitcher.id !== home.pitcher.id && margin <= 3 ? home.pitcher : homePitcher)
+    : (awayPitcher.id !== away.pitcher.id && margin <= 3 ? away.pitcher : awayPitcher);
+  const savingPitcher = homeWon
+    ? (homePitcher.id !== winningPitcher.id && margin <= 3 ? homePitcher : null)
+    : (awayPitcher.id !== winningPitcher.id && margin <= 3 ? awayPitcher : null);
+  const losingPitcher = homeWon ? awayPitcher : homePitcher;
+
+  getStats(winningPitcher, homeWon ? home.teamId : away.teamId).wins++;
+  if (savingPitcher) {
+    getStats(savingPitcher, homeWon ? home.teamId : away.teamId).saves!++;
   }
+  getStats(losingPitcher, homeWon ? away.teamId : home.teamId).losses++;
 
   return {
     boxScore: {
@@ -224,6 +256,7 @@ function simulateHalfInning(
   pitchingTeamId: string,
   getStats: (p: GeneratedPlayer, teamId: string) => PlayerGameStats,
   paResults: PAResult[],
+  offenseModifier: number,
 ): HalfInningResult {
   let runnerState = freshRunnerState();
   let runs = 0;
@@ -240,6 +273,9 @@ function simulateHalfInning(
         batterAttrs: batter.hitterAttributes,
         pitcherAttrs: pitcher.pitcherAttributes ?? {
           stuff: 250, control: 250, stamina: 250, velocity: 250, movement: 250,
+        },
+        modifiers: {
+          chemistry: offenseModifier,
         },
       },
       batter.id,

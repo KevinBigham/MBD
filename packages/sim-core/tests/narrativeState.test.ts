@@ -135,6 +135,35 @@ describe('narrative state', () => {
     expect(strongChemistry.tier).not.toBe('fractured');
   });
 
+  it('rewards positive personality mixes and penalizes toxic trait combinations', () => {
+    const baseRoster = [
+      makePlayerWithTraits(24, 'nyy', { leadership: 72, mentalToughness: 74, workEthic: 73, competitiveness: 71 }),
+      makePlayerWithTraits(25, 'nyy', { leadership: 72, mentalToughness: 74, workEthic: 73, competitiveness: 71 }),
+      makePlayerWithTraits(26, 'nyy', { leadership: 72, mentalToughness: 74, workEthic: 73, competitiveness: 71 }),
+    ];
+    const positiveRoster = baseRoster.map((player, index) => ({
+      ...player,
+      id: `${player.id}-positive-${index}`,
+      personalityTraits: index === 0 ? ['Leader', 'Team First'] : index === 1 ? ['Mentor', 'Hard Worker'] : ['Fan Favorite', 'Clubhouse Comedian'],
+    }));
+    const toxicRoster = baseRoster.map((player, index) => ({
+      ...player,
+      id: `${player.id}-toxic-${index}`,
+      personalityTraits: index === 0 ? ['Diva', 'Hot Head'] : index === 1 ? ['Mercenary', 'Moody'] : ['Party Animal', 'Streaky'],
+    }));
+    const morale = new Map<string, PlayerMorale>([
+      ...positiveRoster.map((player) => [player.id, { ...createInitialPlayerMorale(player, 'S1D1'), score: 60 }] as const),
+      ...toxicRoster.map((player) => [player.id, { ...createInitialPlayerMorale(player, 'S1D1'), score: 60 }] as const),
+    ]);
+
+    const positiveChemistry = calculateTeamChemistry('nyy', positiveRoster, morale);
+    const toxicChemistry = calculateTeamChemistry('nyy', toxicRoster, morale);
+
+    expect(positiveChemistry.score).toBeGreaterThan(toxicChemistry.score);
+    expect(positiveChemistry.reasons.join(' ')).toMatch(/lead|clubhouse|mentor/i);
+    expect(toxicChemistry.reasons.join(' ')).toMatch(/diva|tension|mercenary|drama/i);
+  });
+
   it('puts expensive underperformers on the hot seat', () => {
     const owner = createOwnerState('nyy', 210_000_000);
     const evaluated = evaluateOwnerState(owner, {
@@ -261,7 +290,7 @@ describe('awards and rivalries', () => {
     const players = [alHitter, nlHitter, alPitcher, nlPitcher, alRookie, nlRookie];
     const history = finalizeAwardResults(3, players, stats);
 
-    expect(history).toHaveLength(6);
+    expect(history).toHaveLength(10);
     expect(history[0]?.season).toBe(3);
     expect(history.some((entry) => entry.award === 'MVP' && entry.league === 'AL')).toBe(true);
     expect(history.some((entry) => entry.award === 'MVP' && entry.league === 'NL')).toBe(true);
@@ -269,6 +298,10 @@ describe('awards and rivalries', () => {
     expect(history.some((entry) => entry.award === 'CY_YOUNG' && entry.league === 'NL')).toBe(true);
     expect(history.some((entry) => entry.award === 'ROY' && entry.league === 'AL')).toBe(true);
     expect(history.some((entry) => entry.award === 'ROY' && entry.league === 'NL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'GOLD_GLOVE' && entry.league === 'AL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'GOLD_GLOVE' && entry.league === 'NL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'SILVER_SLUGGER' && entry.league === 'AL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'SILVER_SLUGGER' && entry.league === 'NL')).toBe(true);
   });
 
   it('creates and intensifies rivalries from close division races', () => {

@@ -46,7 +46,7 @@ describe('bundle budgets', () => {
     }
   });
 
-  it('keeps emitted app and worker chunks inside the Phase 10 budget', async () => {
+  it('keeps emitted app and worker chunks inside the Phase 11 budget', async () => {
     const outDir = mkdtempSync(path.join(tmpdir(), 'mbd-bundle-budget-'));
     generatedDirs.push(outDir);
 

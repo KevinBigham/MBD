@@ -1,21 +1,23 @@
 import {
   AFFILIATE_LEVELS,
+  calculateAwardRaces,
   calculateCoachingPayroll,
   calculateLuxuryTax,
   calculateQualifyingOfferSalary,
-  calculateStaffBudget,
   calculateTeamPayroll,
   createFreeAgencyMarket,
   describeInjury,
   evaluatePlayerTradeValue,
   generateAITradeOffers,
   getActiveRosterLimit,
-  getTeamBudget,
   getTeamById,
   getTopFreeAgents,
   getUnreadNews,
   scoutPlayer,
+  toInternalRating,
+  toLetterGrade,
 } from '@mbd/sim-core';
+import type { HistoricalPlayer } from '@mbd/contracts';
 import type {
   FreeAgent,
   GeneratedPlayer,
@@ -26,7 +28,6 @@ import type {
   RosterState,
   StandingsEntry,
 } from '@mbd/sim-core';
-import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
   buildIFAPoolView,
   buildSeasonFlowStateView,
@@ -49,11 +50,13 @@ import { buildAchievementView } from './sim.worker.achievements.js';
 import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
-import { buildSetupPreview, getDifficultyAdjustedBudget } from './sim.worker.setup.js';
+import { buildSetupPreview, getDifficultyAdjustedBudget, getTeamStaffBudget } from './sim.worker.setup.js';
 import {
+  compareSeasons,
   getAwardHistory,
   getPersonalityProfileForPlayer,
   getRivalriesForTeam,
+  getSeasonArchive,
   getSeasonHistory,
   resolveHistoryDisplayNames as resolveNarrativeHistoryDisplayNames,
 } from './sim.worker.narrative.js';
@@ -212,6 +215,17 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
 
   const pressRoomFeed = buildPressRoomFeed(s, 12);
   const briefingCount = pressRoomFeed.filter((entry) => entry.source === 'briefing').length;
+  const rivalries = Array.from(getRivalriesForTeam(s, s.userTeamId).values())
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 3)
+    .map((rivalry) => ({
+      id: rivalry.id,
+      opponentTeamId: rivalry.teamA === s.userTeamId ? rivalry.teamB : rivalry.teamA,
+      intensity: rivalry.intensity,
+      summary: rivalry.summary,
+      currentSeasonRecord: `${getTeamById(rivalry.teamA)?.abbreviation ?? rivalry.teamA.toUpperCase()} ${rivalry.currentSeasonWinsA ?? 0}-${rivalry.currentSeasonWinsB ?? 0} ${getTeamById(rivalry.teamB)?.abbreviation ?? rivalry.teamB.toUpperCase()}`,
+      historicalRecord: `${getTeamById(rivalry.teamA)?.abbreviation ?? rivalry.teamA.toUpperCase()} ${rivalry.historicalWinsA ?? 0}-${rivalry.historicalWinsB ?? 0} ${getTeamById(rivalry.teamB)?.abbreviation ?? rivalry.teamB.toUpperCase()}`,
+    }));
 
   return {
     franchise: {
@@ -226,8 +240,11 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       divisionRank: userStanding?.divisionRank ?? 1,
       achievementCount: s.achievements.unlocked.length,
       dynasty,
+      status: s.franchise.status ?? 'active',
+      endReason: s.franchise.endReason ?? null,
       owner: ownerState,
       chemistry,
+      frontOffice: s.frontOfficeState.get(s.userTeamId) ?? null,
     },
     momentum: {
       last10: `${last10Wins}-${last10Losses}`,
@@ -257,6 +274,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
           level: topProspect.rosterStatus,
         }
         : null,
+      rivalries,
     },
     divisionStandings: divisionView,
     pressRoom: {
@@ -271,6 +289,86 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
 function teamNameFromId(teamId: string): string {
   const team = getTeamById(teamId);
   return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
+function buildHistoricalSummary(player: HistoricalPlayer) {
+  return {
+    playerId: player.playerId,
+    fullName: player.fullName,
+    position: player.position,
+    lastKnownTeamId: player.lastKnownTeamId,
+    active: player.active,
+    retiredSeason: player.retiredSeason,
+    seasonsPlayed: player.seasonsPlayed,
+    personalityTraits: [...player.personalityTraits],
+  };
+}
+
+function buildHistoricalPlayerDTO(player: HistoricalPlayer): PlayerDTO {
+  const displayRating = player.peakOverall ?? 50;
+  const overallRating = toInternalRating(displayRating);
+
+  return {
+    id: player.playerId,
+    firstName: player.firstName,
+    lastName: player.lastName,
+    age: 0,
+    position: player.position,
+    overallRating,
+    displayRating,
+    letterGrade: toLetterGrade(overallRating),
+    rosterStatus: player.active ? 'MLB' : 'RETIRED',
+    teamId: player.lastKnownTeamId,
+    serviceTimeDays: player.seasonsPlayed * 172,
+    optionYearsUsed: 0,
+    isOutOfOptions: false,
+    minorLeagueLevel: null,
+    contract: {
+      years: 0,
+      annualSalary: 0,
+      totalValue: 0,
+      noTradeClause: false,
+      noTradeClauseType: 'none',
+      playerOption: false,
+      teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
+    },
+    ceiling: null,
+    floor: null,
+    developmentProgram: null,
+    developmentTrajectory: 'on_track',
+    personalityTraits: [...player.personalityTraits],
+    extensionHistory: [],
+    stats: null,
+    advanced: null,
+    historical: true,
+    historicalSummary: buildHistoricalSummary(player),
+  };
+}
+
+function decorateHistoricalPlayer(playerView: PlayerDTO, historicalPlayer: HistoricalPlayer | null): PlayerDTO {
+  if (!historicalPlayer) {
+    return playerView;
+  }
+
+  return {
+    ...playerView,
+    personalityTraits: playerView.personalityTraits ?? [...historicalPlayer.personalityTraits],
+    historical: !historicalPlayer.active || playerView.rosterStatus === 'RETIRED',
+    historicalSummary: buildHistoricalSummary(historicalPlayer),
+  };
+}
+
+function matchesPlayerQuery(
+  player: Pick<HistoricalPlayer, 'firstName' | 'lastName' | 'fullName'>,
+  normalizedQuery: string,
+): boolean {
+  return player.firstName.toLowerCase().includes(normalizedQuery)
+    || player.lastName.toLowerCase().includes(normalizedQuery)
+    || player.fullName.toLowerCase().includes(normalizedQuery);
 }
 
 function formatMinorLevel(level: string): string {
@@ -527,8 +625,13 @@ export const queryApi = {
     }
 
     const player = state.players.find((candidate) => candidate.id === playerId);
+    const historicalPlayer = state.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
     const advanced = player ? getAdvancedStatsForPlayer(state, player.id) : null;
-    return player ? toPlayerDTO(player, undefined, advanced) : null;
+    if (player) {
+      return decorateHistoricalPlayer(toPlayerDTO(player, undefined, advanced), historicalPlayer);
+    }
+
+    return historicalPlayer ? buildHistoricalPlayerDTO(historicalPlayer) : null;
   },
 
   getAdvancedStats(playerId: string) {
@@ -641,15 +744,25 @@ export const queryApi = {
       return [];
     }
 
+    const s = state;
     const normalized = query.toLowerCase();
-    return state.players
+    const liveResults = s.players
       .filter((player) =>
         player.firstName.toLowerCase().includes(normalized)
         || player.lastName.toLowerCase().includes(normalized)
         || `${player.firstName} ${player.lastName}`.toLowerCase().includes(normalized),
       )
-      .slice(0, limit)
-      .map((player) => toPlayerDTO(player));
+      .map((player) => {
+        const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === player.id) ?? null;
+        return decorateHistoricalPlayer(toPlayerDTO(player), historicalPlayer);
+      });
+
+    const seenIds = new Set(liveResults.map((player) => player.id));
+    const historicalResults = s.historicalPlayers
+      .filter((player) => !seenIds.has(player.playerId) && matchesPlayerQuery(player, normalized))
+      .map(buildHistoricalPlayerDTO);
+
+    return [...liveResults, ...historicalResults].slice(0, limit);
   },
 
   getInjuries(teamId: string) {
@@ -786,7 +899,7 @@ export const queryApi = {
     const s = requireState();
     const resolvedTeamId = teamId ?? s.userTeamId;
     const payroll = calculateCoachingPayroll(s.coachingStaffs.get(resolvedTeamId) ?? []);
-    const budget = calculateStaffBudget(getDifficultyAdjustedBudget(requireState(), resolvedTeamId));
+    const budget = getTeamStaffBudget(s, resolvedTeamId);
     return {
       payroll,
       budget,
@@ -899,6 +1012,11 @@ export const queryApi = {
     return s.ownerState.get(teamId ?? s.userTeamId) ?? null;
   },
 
+  getFrontOfficeState(teamId?: string) {
+    const s = requireState();
+    return s.frontOfficeState.get(teamId ?? s.userTeamId) ?? null;
+  },
+
   getPersonalityProfile(playerId: string) {
     return getPersonalityProfileForPlayer(requireState(), playerId);
   },
@@ -920,6 +1038,38 @@ export const queryApi = {
 
   getSeasonHistory() {
     return getSeasonHistory(requireState());
+  },
+
+  getSeasonArchive(season?: number) {
+    return getSeasonArchive(requireState(), season);
+  },
+
+  compareSeasons(leftSeason: number, rightSeason: number) {
+    return compareSeasons(requireState(), leftSeason, rightSeason);
+  },
+
+  getRecordBook(teamId?: string) {
+    const s = requireState();
+    const resolvedTeamId = teamId ?? s.userTeamId;
+    const sortEntries = (left: { category: string; label: string }, right: { category: string; label: string }) =>
+      left.category.localeCompare(right.category) || left.label.localeCompare(right.label);
+
+    return {
+      franchise: s.recordBook
+        .filter((entry) => entry.scope === 'franchise' && entry.teamId === resolvedTeamId)
+        .sort(sortEntries),
+      league: s.recordBook
+        .filter((entry) => entry.scope === 'league')
+        .sort(sortEntries),
+    };
+  },
+
+  getRecordWatchList(teamId?: string) {
+    const s = requireState();
+    const resolvedTeamId = teamId ?? s.userTeamId;
+    return s.recordWatch
+      .filter((entry) => entry.teamId === resolvedTeamId)
+      .sort((left, right) => right.progressRatio - left.progressRatio || right.projectedValue - left.projectedValue);
   },
 
   resolveHistoryDisplayNames(playerIds: string[], teamIds: string[]) {

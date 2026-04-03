@@ -104,4 +104,40 @@ describe('simulateGame', () => {
       expect(boxScore.awayScore).toBeLessThan(30);
     }
   });
+
+  it('applies offense modifiers to the scoring environment', () => {
+    let boostedRuns = 0;
+    let suppressedRuns = 0;
+
+    for (let seed = 1; seed <= 12; seed++) {
+      const boostedRng = new GameRNG(seed);
+      const suppressedRng = new GameRNG(seed);
+      const boostedAway = buildTeam('nyy', boostedRng.fork());
+      const boostedHome = buildTeam('bos', boostedRng.fork());
+      const suppressedAway = buildTeam('nyy', suppressedRng.fork());
+      const suppressedHome = buildTeam('bos', suppressedRng.fork());
+
+      const boosted = simulateGame(
+        boostedRng,
+        boostedAway,
+        boostedHome,
+        `boosted-${seed}`,
+        false,
+        { awayOffenseModifier: 1.03, homeOffenseModifier: 1.03 },
+      );
+      const suppressed = simulateGame(
+        suppressedRng,
+        suppressedAway,
+        suppressedHome,
+        `suppressed-${seed}`,
+        false,
+        { awayOffenseModifier: 0.97, homeOffenseModifier: 0.97 },
+      );
+
+      boostedRuns += boosted.boxScore.awayScore + boosted.boxScore.homeScore;
+      suppressedRuns += suppressed.boxScore.awayScore + suppressed.boxScore.homeScore;
+    }
+
+    expect(boostedRuns).toBeGreaterThan(suppressedRuns);
+  });
 });

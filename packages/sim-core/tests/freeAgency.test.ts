@@ -7,6 +7,7 @@ import {
   getDemandLevel,
   createFreeAgencyMarket,
   generateAIOffer,
+  makeUserOffer,
   projectContractYears,
   getTopFreeAgents,
   simulateFullFreeAgency,
@@ -174,6 +175,29 @@ describe('simulateFullFreeAgency', () => {
     expect(first.freeAgents).toEqual([]);
     expect(first.signedPlayers[0]?.signedWith).toBe('bos');
     expect(first.signedPlayers[0]?.contract).toBeTruthy();
+  });
+});
+
+describe('makeUserOffer', () => {
+  it('lets a high-chemistry club land a slightly deeper discount', () => {
+    const player = { ...makeExpiringPlayer(210), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    const freeAgent = market.freeAgents[0]!;
+
+    const result = makeUserOffer(market, {
+      teamId: 'nyy',
+      playerId: freeAgent.player.id,
+      years: 4,
+      annualSalary: Number((freeAgent.marketValue * 0.77).toFixed(2)),
+      totalValue: Number((freeAgent.marketValue * 0.77 * 4).toFixed(2)),
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+      signingBonus: 0,
+    }, 82);
+
+    expect(result.accepted).toBe(true);
+    expect(result.reason).toMatch(/clubhouse fit/i);
   });
 });
 

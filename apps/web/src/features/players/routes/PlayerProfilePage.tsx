@@ -21,6 +21,7 @@ interface PlayerDTO {
   floor: number | null;
   developmentProgram: string | null;
   developmentTrajectory: string;
+  personalityTraits?: string[];
   contract: {
     years: number;
     annualSalary: number;
@@ -57,6 +58,17 @@ interface PlayerDTO {
     walks: number;
     hitsAllowed: number;
     era: string;
+  } | null;
+  historical?: boolean;
+  historicalSummary?: {
+    playerId: string;
+    fullName: string;
+    position: string;
+    lastKnownTeamId: string;
+    active: boolean;
+    retiredSeason: number | null;
+    seasonsPlayed: number;
+    personalityTraits: string[];
   } | null;
 }
 
@@ -257,6 +269,38 @@ export default function PlayerProfilePage() {
         </CardContent>
       </Card>
 
+      {player.historical && player.historicalSummary && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Historical Profile</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-sm text-dynasty-text">
+                {player.historicalSummary.fullName} is preserved as a retired franchise figure.
+              </div>
+              <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                {player.historicalSummary.retiredSeason != null
+                  ? `Retired after Season ${player.historicalSummary.retiredSeason}`
+                  : 'Retirement season unavailable'}
+                {' · '}
+                {player.historicalSummary.seasonsPlayed} seasons
+              </div>
+              <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                Last club: {player.historicalSummary.lastKnownTeamId.toUpperCase()}
+              </div>
+            </div>
+            {player.historicalSummary.personalityTraits.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {player.historicalSummary.personalityTraits.map((trait) => (
+                  <Badge key={trait} variant="outline">{trait}</Badge>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader>
@@ -385,6 +429,13 @@ export default function PlayerProfilePage() {
                   {profile.morale.trend.toUpperCase()} | Updated {profile.morale.lastUpdated}
                 </div>
               </div>
+              {player.personalityTraits?.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {player.personalityTraits.map((trait) => (
+                    <Badge key={trait} variant="outline">{trait}</Badge>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         )}

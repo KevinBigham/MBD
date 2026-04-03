@@ -166,6 +166,15 @@ interface MinorLeagueWorkerApi {
       route: string;
     }>;
   };
+  getFrontOfficeState: (teamId?: string) => {
+    teamId: string;
+    reputation: number;
+    draftScore: number;
+    tradeScore: number;
+    freeAgencyScore: number;
+    playoffScore: number;
+    summary: string;
+  } | null;
   acknowledgeMonthlyReport: (reportId: string) => { success: boolean };
   dismissDecisionSpotlight: (decisionId: string) => { success: boolean };
 }
@@ -174,6 +183,7 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
   return {
     playerId: 'player',
     teamId: 'nyy',
+    gamesPlayed: 0,
     pa: 0,
     ab: 0,
     hits: 0,
@@ -195,6 +205,7 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
     hitBatters: 0,
     flyBallsAllowed: 0,
     wins: 0,
+    saves: 0,
     losses: 0,
     ...overrides,
   };
@@ -293,13 +304,59 @@ describe('sim worker narrative APIs', () => {
 
     const chemistry = api.getTeamChemistry('nyy');
     const owner = api.getOwnerState('nyy');
+    const frontOffice = (api as typeof api & MinorLeagueWorkerApi).getFrontOfficeState('nyy');
     const briefing = api.getBriefing(10);
 
     expect(chemistry?.teamId).toBe('nyy');
     expect(chemistry?.score).toBeGreaterThanOrEqual(0);
     expect(owner?.teamId).toBe('nyy');
     expect(typeof owner?.summary).toBe('string');
+    expect(frontOffice?.teamId).toBe('nyy');
     expect(briefing.length).toBeGreaterThan(0);
+  });
+
+  it('surfaces rivalry intel through dashboard and history queries', () => {
+    startGame(1234, 'nyy');
+    const state = requireState();
+    state.rivalries.set('bos:nyy', {
+      id: 'bos:nyy',
+      teamA: 'nyy',
+      teamB: 'bos',
+      intensity: 86,
+      summary: 'Every series is carrying real postseason weight.',
+      reasons: ['historic feud', 'recent playoffs'],
+      origin: 'historical',
+      active: true,
+      currentSeasonWinsA: 8,
+      currentSeasonWinsB: 5,
+      historicalWinsA: 144,
+      historicalWinsB: 132,
+      lastMetSeason: state.season,
+      closeRaceStreak: 3,
+      playoffSeriesStreak: 1,
+      lastTradeSeason: 0,
+      lastDefectionSeason: 0,
+      eventHistory: [],
+    });
+
+    const summary = api.getDashboardSummary();
+    const rivalries = api.getRivalries('nyy');
+
+    expect(summary?.intel.rivalries[0]).toMatchObject({
+      id: 'bos:nyy',
+      opponentTeamId: 'bos',
+      intensity: 86,
+      currentSeasonRecord: 'NYY 8-5 BOS',
+      historicalRecord: 'NYY 144-132 BOS',
+    });
+    expect(rivalries[0]).toMatchObject({
+      id: 'bos:nyy',
+      origin: 'historical',
+      currentSeasonWinsA: 8,
+      currentSeasonWinsB: 5,
+      historicalWinsA: 144,
+      historicalWinsB: 132,
+    });
   });
 
   it('accepts object-based new game options and persists franchise identity settings', () => {
@@ -479,6 +536,193 @@ describe('sim worker narrative APIs', () => {
     expect(monthlyApi.getMonthlyPulse()?.decisionQueue.some((item) => item.id === firstDecisionId)).toBe(false);
   });
 
+  it('adds an owner ultimatum to the monthly spotlight when satisfaction collapses', () => {
+    startGame(5151, 'nyy');
+    const state = requireState();
+    const monthlyApi = api as typeof api & MinorLeagueWorkerApi;
+    state.phase = 'regular';
+    state.day = 31;
+    const owner = state.ownerState.get('nyy');
+    if (!owner) {
+      throw new Error('Expected owner state');
+    }
+    state.ownerState.set('nyy', {
+      ...owner,
+      satisfaction: 24,
+      patience: 28,
+      confidence: 24,
+      hotSeat: true,
+      summary: 'Owner demands immediate progress.',
+    });
+
+    api.simMonth();
+
+    const ownerSpotlight = monthlyApi.getMonthlyPulse()?.decisionQueue.find((item) => item.id.includes('spotlight-owner'));
+    expect(ownerSpotlight).toBeTruthy();
+    expect(ownerSpotlight?.urgency).toBe('red');
+    expect(ownerSpotlight?.route).toBe('/dashboard');
+  });
+
+  it('fires the GM after an ultimatum remains unresolved and blocks gameplay actions', () => {
+    startGame(6161, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 120;
+    (state.seasonState as typeof state.seasonState & { currentDay: number }).currentDay = 120;
+    const standingsRecord = state.seasonState.standings.getRecord('nyy');
+    if (!standingsRecord) {
+      throw new Error('Expected user standings record');
+    }
+    standingsRecord.wins = 24;
+    standingsRecord.losses = 89;
+    standingsRecord.streak = -6;
+    standingsRecord.last10 = [2, 8];
+    state.storyFlags.set('nyy', [`owner_meeting_${state.season}`]);
+    const owner = state.ownerState.get('nyy');
+    if (!owner) {
+      throw new Error('Expected owner state');
+    }
+    state.ownerState.set('nyy', {
+      ...owner,
+      satisfaction: 8,
+      patience: 12,
+      confidence: 10,
+      hotSeat: true,
+      summary: 'Ownership is ready to make a change.',
+    });
+
+    const result = api.simWeek();
+
+    expect(requireState().franchise.status).toBe('fired');
+    expect(result.gamesPlayed).toBeGreaterThan(0);
+    expect(api.proposeTrade([], [], 'bos').decision).toBe('rejected');
+  });
+
+  it('publishes record watch stories after monthly sim when a user player is on pace', () => {
+    startGame(1253, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 31,
+    };
+
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')!;
+    hrEntry.holders = [{
+      playerId: 'historic-hr-holder',
+      playerName: 'Historic Slugger',
+      teamId: 'nyy',
+      season: 1,
+      value: 44,
+      displayValue: '44',
+    }];
+    hrEntry.trackingFromSeason = null;
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: 'nyy',
+      gamesPlayed: 31,
+      pa: 140,
+      ab: 120,
+      hits: 48,
+      hr: 16,
+      rbi: 42,
+    }));
+
+    api.simMonth();
+
+    const watches = (api as typeof api & {
+      getRecordWatchList: (teamId?: string) => Array<{ playerId: string; recordLabel: string }>;
+    }).getRecordWatchList('nyy');
+    const news = (api as typeof api & {
+      getNews: (limit?: number) => Array<{ category: string; tag?: string }>;
+    }).getNews(20);
+
+    expect(watches.some((entry) => entry.playerId === hitter.id && entry.recordLabel === 'Most Home Runs')).toBe(true);
+    expect(news.some((item) => item.category === 'record' && item.tag === 'WATCH')).toBe(true);
+  });
+
+  it('queues a record broken ceremony when the user club passes a tracked mark', () => {
+    startGame(1254, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 31,
+    };
+
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')!;
+    hrEntry.holders = [{
+      playerId: 'historic-hr-holder',
+      playerName: 'Historic Slugger',
+      teamId: 'nyy',
+      season: 1,
+      value: 10,
+      displayValue: '10',
+    }];
+    hrEntry.trackingFromSeason = null;
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: 'nyy',
+      gamesPlayed: 31,
+      pa: 140,
+      ab: 120,
+      hits: 48,
+      hr: 12,
+      rbi: 39,
+    }));
+
+    api.simMonth();
+
+    expect(requireState().ceremony.pendingMoments.some((moment) => moment.type === 'record_broken')).toBe(true);
+    const recordBook = (api as typeof api & {
+      getRecordBook: (teamId?: string) => {
+        franchise: Array<{ id: string; holders: Array<{ playerId: string | null; value: number }> }>;
+      };
+    }).getRecordBook('nyy');
+    expect(recordBook.franchise.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')?.holders[0]?.playerId).toBe(hitter.id);
+  });
+
+  it('returns historical player data after a retired player leaves the live pool', () => {
+    startGame(1255, 'nyy');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'nyy' && candidate.rosterStatus === 'MLB')!;
+
+    state.historicalPlayers = [{
+      playerId: player.id,
+      fullName: `${player.firstName} ${player.lastName}`,
+      firstName: player.firstName,
+      lastName: player.lastName,
+      position: player.position,
+      lastKnownTeamId: player.teamId,
+      active: false,
+      retiredSeason: state.season,
+      seasonsPlayed: 14,
+      peakOverall: 71,
+      personalityTraits: ['Leader'],
+    }];
+    state.players = state.players.filter((candidate) => candidate.id !== player.id);
+
+    const historicalPlayer = (api as typeof api & {
+      getPlayer: (playerId: string) => {
+        historical?: boolean;
+        personalityTraits?: string[];
+        historicalSummary?: { retiredSeason: number | null };
+      } | null;
+    }).getPlayer(player.id);
+
+    expect(historicalPlayer?.historical).toBe(true);
+    expect(historicalPlayer?.personalityTraits).toContain('Leader');
+    expect(historicalPlayer?.historicalSummary?.retiredSeason).toBe(state.season);
+  });
+
   it('routes offseason progression through extensions before qualifying offers', () => {
     startGame(126, 'nyy');
     const state = requireState();
@@ -639,6 +883,41 @@ describe('sim worker narrative APIs', () => {
     expect(Array.isArray(awardRaces.mvp)).toBe(true);
     expect(Array.isArray(awardRaces.cyYoung)).toBe(true);
     expect(Array.isArray(awardRaces.roy)).toBe(true);
+  });
+
+  it('forms mentor relationships and publishes a clubhouse mentor story', () => {
+    startGame(458, 'nyy');
+    const state = requireState();
+    const veteran = state.players.find(
+      (player) =>
+        player.teamId === 'nyy'
+        && player.rosterStatus === 'MLB'
+        && player.position === 'SS',
+    )!;
+    const rookie = state.players.find(
+      (player) =>
+        player.teamId === 'nyy'
+        && player.rosterStatus === 'AAA'
+        && player.pitcherAttributes == null
+        && player.position === 'SS',
+    )!;
+
+    veteran.age = 34;
+    veteran.personality.leadership = 92;
+    veteran.personalityTraits = ['Leader', 'Mentor', 'Team First'];
+    rookie.age = 21;
+    rookie.rosterStatus = 'MLB';
+    rookie.minorLeagueLevel = null;
+    rookie.personalityTraits = ['Quiet Professional', 'Hard Worker'];
+
+    api.simDay();
+
+    expect(state.mentorRelationships.some((relationship) =>
+      relationship.veteranPlayerId === veteran.id && relationship.rookiePlayerId === rookie.id,
+    )).toBe(true);
+    expect(state.news.some((item) =>
+      /under wing|takes rookie/i.test(item.headline) || /under wing|takes rookie/i.test(item.body),
+    )).toBe(true);
   });
 
   it('resolves history display names from live worker state', () => {
@@ -1055,6 +1334,19 @@ describe('sim worker narrative APIs', () => {
   it('records rich season recaps and finalizes retirements into the same history entry', () => {
     startGame(335, 'nyy');
     const state = requireState();
+    const standingsRecords = (state.seasonState.standings as unknown as {
+      records: Map<string, {
+        teamId: string;
+        wins: number;
+        losses: number;
+        runsScored: number;
+        runsAllowed: number;
+        streak: number;
+        last10: [number, number];
+        divisionWins: number;
+        divisionLosses: number;
+      }>;
+    }).records;
     const alMvp = state.players.find(
       (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
@@ -1101,6 +1393,39 @@ describe('sim worker narrative APIs', () => {
     alRoy.age = 22;
     nlRoy.age = 22;
     alMvp.overallRating = 430;
+    standingsRecords.set('nyy', {
+      teamId: 'nyy',
+      wins: 99,
+      losses: 63,
+      runsScored: 845,
+      runsAllowed: 699,
+      streak: 4,
+      last10: [7, 3],
+      divisionWins: 52,
+      divisionLosses: 24,
+    });
+    standingsRecords.set('lad', {
+      teamId: 'lad',
+      wins: 98,
+      losses: 64,
+      runsScored: 832,
+      runsAllowed: 708,
+      streak: 2,
+      last10: [6, 4],
+      divisionWins: 49,
+      divisionLosses: 27,
+    });
+    standingsRecords.set('bos', {
+      teamId: 'bos',
+      wins: 92,
+      losses: 70,
+      runsScored: 801,
+      runsAllowed: 733,
+      streak: 1,
+      last10: [5, 5],
+      divisionWins: 46,
+      divisionLosses: 30,
+    });
 
     state.phase = 'playoffs';
     state.news = [{
@@ -1186,15 +1511,21 @@ describe('sim worker narrative APIs', () => {
     api.simDay();
 
     const recap = api.getSeasonHistory()[0]!;
+    const archive = api.getSeasonArchive(1)!;
     expect(recap.championTeamId).toBe('nyy');
     expect(recap.runnerUpTeamId).toBe('lad');
     expect(recap.worldSeriesRecord).toBe('4-2');
-    expect(recap.awards).toHaveLength(6);
+    expect(recap.awards).toHaveLength(10);
     expect(recap.statLeaders.hr.length).toBe(3);
     expect(recap.statLeaders.w[0]?.playerId).toBe(nlW.id);
     expect(recap.blockbusterTrades[0]?.headline).toBe('Deadline blockbuster reshaped the race');
     expect(recap.userSeason?.teamId).toBe('nyy');
     expect(recap.userSeason?.playoffResult).toContain('Champion');
+    expect(archive.awards).toHaveLength(10);
+    expect(archive.standings.find((entry) => entry.teamId === 'nyy')?.wins).toBe(99);
+    expect(archive.playoffSeries[0]?.winnerTeamId).toBe('nyy');
+    expect(archive.transactions[0]?.headline).toBe('Deadline blockbuster reshaped the race');
+    expect(archive.financials.some((entry) => entry.teamId === 'nyy')).toBe(true);
 
     for (const veteran of state.players.filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB').slice(0, 4)) {
       veteran.age = 45;
@@ -1209,6 +1540,35 @@ describe('sim worker narrative APIs', () => {
 
     state.offseasonState = {
       ...createOffseasonState(state.season),
+      phaseResults: {
+        ...createOffseasonState(state.season).phaseResults,
+        freeAgentSignings: [{
+          playerId: alMvp.id,
+          teamId: 'nyy',
+          years: 7,
+          annualSalary: 32,
+          totalValue: 224,
+        }],
+        draftPicks: [{
+          round: 1,
+          pickNumber: 8,
+          teamId: 'nyy',
+          playerId: 'draft-1',
+          playerName: 'Calvin Velez',
+          position: 'SS',
+          scoutingGrade: 71,
+          origin: 'college',
+        }],
+        ifaSignings: [{
+          playerId: 'ifa-1',
+          teamId: 'nyy',
+          playerName: 'Luis Encarnacion',
+          position: 'CF',
+          country: 'Dominican Republic',
+          bonusAmount: 4.2,
+        }],
+        retiredPlayers: [],
+      },
       completed: true,
     };
 
@@ -1216,8 +1576,89 @@ describe('sim worker narrative APIs', () => {
     api.startNextSeason();
 
     const finalized = api.getSeasonHistory().find((entry) => entry.season === 1)!;
+    const finalizedArchive = api.getSeasonArchive(1)!;
     expect(finalized.notableRetirements.length).toBeGreaterThan(0);
     expect(finalized.notableRetirements[0]?.seasonsPlayed).toBeGreaterThanOrEqual(10);
+    expect(finalizedArchive.draftClass[0]?.playerName).toBe('Calvin Velez');
+    expect(finalizedArchive.transactions.some((entry) => entry.playerIds.includes(alMvp.id))).toBe(true);
+    expect(finalizedArchive.timelineEvents).toContain('Won the World Series');
+  });
+
+  it('compares archived seasons with user-team deltas', () => {
+    startGame(336, 'nyy');
+    const state = requireState();
+    state.seasonArchive = [
+      {
+        season: 1,
+        standings: [
+          { teamId: 'nyy', wins: 88, losses: 74, divisionRank: 2, gamesBack: 5 },
+        ],
+        playoffSeries: [
+          { round: 'CHAMPIONSHIP_SERIES', winnerTeamId: 'hou', loserTeamId: 'nyy', result: '4-2' },
+        ],
+        awards: [],
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        transactions: [],
+        draftClass: [],
+        financials: [
+          { teamId: 'nyy', payroll: 210, budget: 228 },
+        ],
+        userSummary: {
+          teamId: 'nyy',
+          record: '88-74',
+          playoffResult: 'Championship Series exit',
+          storylines: ['Came up short in October.'],
+        },
+        timelineEvents: ['Reached the ALCS'],
+      },
+      {
+        season: 2,
+        standings: [
+          { teamId: 'nyy', wins: 97, losses: 65, divisionRank: 1, gamesBack: 0 },
+        ],
+        playoffSeries: [
+          { round: 'WORLD_SERIES', winnerTeamId: 'nyy', loserTeamId: 'lad', result: '4-2' },
+        ],
+        awards: [],
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        transactions: [],
+        draftClass: [],
+        financials: [
+          { teamId: 'nyy', payroll: 235, budget: 248 },
+        ],
+        userSummary: {
+          teamId: 'nyy',
+          record: '97-65',
+          playoffResult: 'Champion',
+          storylines: ['Closed the season with a title.'],
+        },
+        timelineEvents: ['Won the World Series'],
+      },
+    ];
+
+    const comparison = api.compareSeasons(1, 2);
+
+    expect(comparison?.left?.season).toBe(1);
+    expect(comparison?.right?.season).toBe(2);
+    expect(comparison?.userTeamId).toBe('nyy');
+    expect(comparison?.deltas.wins).toBe(9);
+    expect(comparison?.deltas.payroll).toBe(25);
+    expect(comparison?.deltas.budget).toBe(20);
+    expect(comparison?.right?.userSummary?.playoffResult).toBe('Champion');
   });
 
   it('records draft picks with structured detail and auto-advances to the next user turn', () => {
@@ -1471,8 +1912,10 @@ describe('sim worker narrative APIs', () => {
     if (!reportResult.success) {
       throw new Error(reportResult.error);
     }
-    expect(reportResult.report.looks).toBe(1);
-    expect(reportResult.report.overall).toBeGreaterThan(20);
+    const report = (reportResult as { report: { looks: number; overall: number } }).report;
+    expect(report).toBeDefined();
+    expect(report.looks).toBe(1);
+    expect(report.overall).toBeGreaterThan(20);
 
     const signResult = (api as typeof api & {
       signIFAPlayer: (playerId: string, bonusAmount: number) => { success: boolean; remainingBudget?: number };
@@ -1482,7 +1925,9 @@ describe('sim worker narrative APIs', () => {
     if (!signResult.success) {
       throw new Error(signResult.error);
     }
-    expect(signResult.remainingBudget).toBeLessThan(poolBefore.budget.remaining);
+    const remainingBudgetAfterSigning = (signResult as { remainingBudget: number }).remainingBudget;
+    expect(remainingBudgetAfterSigning).toBeDefined();
+    expect(remainingBudgetAfterSigning).toBeLessThan(poolBefore.budget.remaining);
     expect(state.players.some((player) => player.id === target.id && player.teamId === 'nyy' && player.rosterStatus === 'ROOKIE')).toBe(true);
 
     const tradeResult = (api as typeof api & {
@@ -1493,7 +1938,9 @@ describe('sim worker narrative APIs', () => {
     if (!tradeResult.success) {
       throw new Error(tradeResult.error);
     }
-    expect(tradeResult.remainingBudget).toBeLessThan(signResult.remainingBudget);
+    const remainingBudgetAfterTrade = (tradeResult as { remainingBudget: number }).remainingBudget;
+    expect(remainingBudgetAfterTrade).toBeDefined();
+    expect(remainingBudgetAfterTrade).toBeLessThan(remainingBudgetAfterSigning);
   });
 
   it('closes the trade market after the deadline day and clears pending offers', () => {
@@ -2127,6 +2574,13 @@ describe('sim worker narrative APIs', () => {
         headline: 'Read feature still belongs in the archive',
         timestamp: 'S1D9',
       }),
+      expect.objectContaining({
+        id: 'synthetic-rivalry-bos:nyy-1-1',
+        source: 'news',
+        category: 'rivalry',
+        headline: 'Rivalry watch: NYY vs BOS',
+        timestamp: 'S1D1',
+      }),
     ]);
     expect(feed.some((entry) => entry.id === 'brief-news-breaker')).toBe(false);
   });
@@ -2177,14 +2631,14 @@ describe('sim worker narrative APIs', () => {
         overallRating: prospect.overallRating,
       },
     ];
-    state.rivalries.set('nyy:bos', {
-      id: 'nyy:bos',
+    state.rivalries.set('bos:nyy', {
+      id: 'bos:nyy',
       teamA: 'nyy',
       teamB: 'bos',
       intensity: 74,
       summary: 'The division race is getting personal again.',
-        reasons: ['Playoff chase', 'Three heated series'],
-      });
+      reasons: ['Playoff chase', 'Three heated series'],
+    });
     state.freeAgencyMarket = {
       season: state.season,
       day: 8,
@@ -2214,7 +2668,7 @@ describe('sim worker narrative APIs', () => {
     const deadlineRumor = feed.find((entry) => entry.id === `synthetic-rumor-${state.season}-${state.day}`);
     const hotStoveRumor = feed.find((entry) => entry.id === `synthetic-fa-rumor-${freeAgentTarget.id}-${state.season}-${state.day}`);
     const development = feed.find((entry) => entry.category === 'development');
-    const rivalry = feed.find((entry) => entry.id === `synthetic-rivalry-nyy:bos-${state.season}-${state.day}`);
+    const rivalry = feed.find((entry) => entry.id.startsWith('synthetic-rivalry-'));
 
     expect(deadlineRumor).toMatchObject({
       category: 'rumor',

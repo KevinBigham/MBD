@@ -23,6 +23,9 @@ export interface CareerStatsLedger {
   peakOverall: number;
   championshipRings: number;
   allStarSelections: number;
+  gamesPlayed?: number;
+  saves?: number;
+  war?: number;
   batting: CareerBattingTotals | null;
   pitching: CareerPitchingTotals | null;
 }
