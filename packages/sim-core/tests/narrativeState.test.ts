@@ -261,7 +261,7 @@ describe('awards and rivalries', () => {
     const players = [alHitter, nlHitter, alPitcher, nlPitcher, alRookie, nlRookie];
     const history = finalizeAwardResults(3, players, stats);
 
-    expect(history).toHaveLength(6);
+    expect(history).toHaveLength(10);
     expect(history[0]?.season).toBe(3);
     expect(history.some((entry) => entry.award === 'MVP' && entry.league === 'AL')).toBe(true);
     expect(history.some((entry) => entry.award === 'MVP' && entry.league === 'NL')).toBe(true);
@@ -269,6 +269,10 @@ describe('awards and rivalries', () => {
     expect(history.some((entry) => entry.award === 'CY_YOUNG' && entry.league === 'NL')).toBe(true);
     expect(history.some((entry) => entry.award === 'ROY' && entry.league === 'AL')).toBe(true);
     expect(history.some((entry) => entry.award === 'ROY' && entry.league === 'NL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'GOLD_GLOVE' && entry.league === 'AL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'GOLD_GLOVE' && entry.league === 'NL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'SILVER_SLUGGER' && entry.league === 'AL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'SILVER_SLUGGER' && entry.league === 'NL')).toBe(true);
   });
 
   it('creates and intensifies rivalries from close division races', () => {

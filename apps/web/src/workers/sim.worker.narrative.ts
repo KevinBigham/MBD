@@ -3,8 +3,10 @@ import type {
   BriefingItem,
   BlockbusterTradeSummary,
   Rivalry,
+  SeasonArchiveEntry,
   SeasonStatLeader,
   SeasonHistoryEntry,
+  TradeAsset,
 } from '@mbd/contracts';
 import {
   calculateTeamPayroll,
@@ -24,6 +26,7 @@ import {
 import { deriveRivalriesFromStandings } from '../../../../packages/sim-core/src/league/rivalries';
 import { getUnreadNews } from '../../../../packages/sim-core/src/narrative/newsFeed';
 import { toDisplayRating } from '../../../../packages/sim-core/src/player/attributes';
+import { evaluatePlayerTradeValue } from '@mbd/sim-core';
 import type { GeneratedPlayer, PlayerGameStats } from '@mbd/sim-core';
 import { detectProspectBreakouts } from '../../../../packages/sim-core/src/player/breakouts';
 import type { FullGameState } from './sim.worker.helpers';
@@ -45,6 +48,17 @@ export interface PersonalityProfileDTO {
 export interface HistoryDisplayNamesDTO {
   players: Record<string, string>;
   teams: Record<string, string>;
+}
+
+export interface SeasonComparisonDTO {
+  userTeamId: string;
+  left: SeasonArchiveEntry | null;
+  right: SeasonArchiveEntry | null;
+  deltas: {
+    wins: number | null;
+    payroll: number | null;
+    budget: number | null;
+  };
 }
 
 function dedupeBriefing(items: BriefingItem[]): BriefingItem[] {
@@ -116,6 +130,7 @@ function topHitterLeaders(
   scorer: (stats: PlayerGameStats) => number,
   valueFormatter: (stats: PlayerGameStats) => string,
   summaryFormatter: (player: GeneratedPlayer, stats: PlayerGameStats) => string,
+  limit: number = 3,
 ): SeasonStatLeader[] {
   return Array.from(state.seasonState.playerSeasonStats.entries())
     .map(([playerId, stats]) => ({ player: state.players.find((candidate) => candidate.id === playerId), stats }))
@@ -123,7 +138,7 @@ function topHitterLeaders(
       entry.player != null && entry.stats.ab > 0 && entry.player.pitcherAttributes == null,
     )
     .sort((left, right) => scorer(right.stats) - scorer(left.stats))
-    .slice(0, 3)
+    .slice(0, limit)
     .map(({ player, stats }) => createLeaderEntry(player, valueFormatter(stats), summaryFormatter(player, stats)));
 }
 
@@ -133,6 +148,7 @@ function topPitcherLeaders(
   valueFormatter: (stats: PlayerGameStats) => string,
   summaryFormatter: (player: GeneratedPlayer, stats: PlayerGameStats) => string,
   ascending: boolean = false,
+  limit: number = 3,
 ): SeasonStatLeader[] {
   return Array.from(state.seasonState.playerSeasonStats.entries())
     .map(([playerId, stats]) => ({ player: state.players.find((candidate) => candidate.id === playerId), stats }))
@@ -143,29 +159,32 @@ function topPitcherLeaders(
       const diff = scorer(right.stats) - scorer(left.stats);
       return ascending ? -diff : diff;
     })
-    .slice(0, 3)
+    .slice(0, limit)
     .map(({ player, stats }) => createLeaderEntry(player, valueFormatter(stats), summaryFormatter(player, stats)));
 }
 
-function deriveStatLeaders(state: FullGameState): SeasonHistoryEntry['statLeaders'] {
+function deriveStatLeaders(state: FullGameState, limit: number = 3): SeasonHistoryEntry['statLeaders'] {
   return {
     hr: topHitterLeaders(
       state,
       (stats) => stats.hr,
       (stats) => String(stats.hr),
       (player, stats) => `${playerLabel(player)} launched ${stats.hr} home runs.`,
+      limit,
     ),
     rbi: topHitterLeaders(
       state,
       (stats) => stats.rbi,
       (stats) => String(stats.rbi),
       (player, stats) => `${playerLabel(player)} drove in ${stats.rbi} runs.`,
+      limit,
     ),
     avg: topHitterLeaders(
       state,
       (stats) => stats.hits / Math.max(1, stats.ab),
       (stats) => (stats.hits / Math.max(1, stats.ab)).toFixed(3).replace(/^0/, ''),
       (player, stats) => `${playerLabel(player)} hit ${(stats.hits / Math.max(1, stats.ab)).toFixed(3).replace(/^0/, '')}.`,
+      limit,
     ),
     era: topPitcherLeaders(
       state,
@@ -173,18 +192,23 @@ function deriveStatLeaders(state: FullGameState): SeasonHistoryEntry['statLeader
       (stats) => ((stats.earnedRuns / Math.max(1, stats.ip / 3)) * 9).toFixed(2),
       (player, stats) => `${playerLabel(player)} posted a ${((stats.earnedRuns / Math.max(1, stats.ip / 3)) * 9).toFixed(2)} ERA.`,
       true,
+      limit,
     ),
     k: topPitcherLeaders(
       state,
       (stats) => stats.strikeouts,
       (stats) => String(stats.strikeouts),
       (player, stats) => `${playerLabel(player)} punched out ${stats.strikeouts} hitters.`,
+      false,
+      limit,
     ),
     w: topPitcherLeaders(
       state,
       (stats) => stats.wins,
       (stats) => String(stats.wins),
       (player, stats) => `${playerLabel(player)} finished with ${stats.wins} wins.`,
+      false,
+      limit,
     ),
   };
 }
@@ -205,6 +229,240 @@ function deriveBlockbusterTrades(state: FullGameState): BlockbusterTradeSummary[
       playerIds: item.relatedPlayerIds,
       teamIds: item.relatedTeamIds,
     }));
+}
+
+function getArchiveForSeason(state: FullGameState, season: number): SeasonArchiveEntry | null {
+  return state.seasonArchive.find((entry) => entry.season === season) ?? null;
+}
+
+function archiveStandings(state: FullGameState): SeasonArchiveEntry['standings'] {
+  return Object.values(state.seasonState.standings.getFullStandings())
+    .flatMap((entries) =>
+      entries.map((entry, index) => ({
+        teamId: entry.teamId,
+        wins: entry.wins,
+        losses: entry.losses,
+        divisionRank: index + 1,
+        gamesBack: entry.gamesBack,
+      })),
+    )
+    .sort((left, right) => right.wins - left.wins || left.losses - right.losses || left.teamId.localeCompare(right.teamId));
+}
+
+function archivePlayoffSeries(state: FullGameState): SeasonArchiveEntry['playoffSeries'] {
+  return (state.playoffBracket?.series ?? []).map((series) => ({
+    round: series.round,
+    winnerTeamId: series.winnerId,
+    loserTeamId: series.loserId,
+    result: `${series.winnerWins}-${series.loserWins}`,
+  }));
+}
+
+function extractPlayerIdsFromAssets(assets: TradeAsset[]): string[] {
+  return assets
+    .filter((asset): asset is Extract<TradeAsset, { type: 'player' }> => asset.type === 'player')
+    .map((asset) => asset.playerId);
+}
+
+function estimateSeasonImpact(player: GeneratedPlayer, stats: PlayerGameStats | undefined): number {
+  if (!stats) return 0;
+
+  if (player.pitcherAttributes != null) {
+    const innings = stats.ip / 3;
+    const era = innings > 0 ? (stats.earnedRuns / innings) * 9 : 9;
+    return (stats.wins * 1.4) + (stats.strikeouts / 32) + Math.max(0, 5 - era);
+  }
+
+  const average = stats.hits / Math.max(1, stats.ab);
+  return (stats.hr * 0.9) + (stats.rbi * 0.22) + (stats.hits / 24) + (average * 18);
+}
+
+function transactionImpactScore(
+  state: FullGameState,
+  playerIds: string[],
+  contractValue: number = 0,
+  fairnessScore: number = 0,
+  categoryBonus: number = 0,
+): number {
+  const playerImpact = playerIds.reduce((total, playerId) => {
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) return total;
+
+    return total
+      + (evaluatePlayerTradeValue(player).overall / 18)
+      + estimateSeasonImpact(player, state.seasonState.playerSeasonStats.get(playerId));
+  }, 0);
+
+  return Number((playerImpact + categoryBonus + (contractValue / 18) + (Math.abs(fairnessScore) * 16)).toFixed(1));
+}
+
+function archiveTransactionsFromTradeHistory(state: FullGameState): SeasonArchiveEntry['transactions'] {
+  return state.tradeState.tradeHistory
+    .filter((entry) => parseSeasonFromTimestamp(entry.timestamp) === state.season)
+    .map((entry) => {
+      const playerIds = uniqueStrings([
+        ...extractPlayerIdsFromAssets(entry.offeringAssets as TradeAsset[]),
+        ...extractPlayerIdsFromAssets(entry.requestingAssets as TradeAsset[]),
+      ]);
+
+      return {
+        headline: `${teamLabel(entry.fromTeamId)} and ${teamLabel(entry.toTeamId)} swung a deal`,
+        summary: entry.summary,
+        playerIds,
+        teamIds: [entry.fromTeamId, entry.toTeamId],
+        impactScore: transactionImpactScore(state, playerIds, 0, entry.fairnessScore, 8),
+      };
+    });
+}
+
+function archiveTransactionsFromNews(state: FullGameState): SeasonArchiveEntry['transactions'] {
+  return state.news
+    .filter((item) => parseSeasonFromTimestamp(item.timestamp) === state.season)
+    .filter((item) =>
+      item.category === 'trade'
+      || item.category === 'extension'
+      || item.category === 'signing'
+      || item.category === 'qualifying_offer',
+    )
+    .map((item) => ({
+      headline: item.headline,
+      summary: item.body,
+      playerIds: item.relatedPlayerIds,
+      teamIds: item.relatedTeamIds,
+      impactScore: transactionImpactScore(
+        state,
+        item.relatedPlayerIds,
+        0,
+        0,
+        item.category === 'trade' ? 8 : item.category === 'signing' ? 10 : 6,
+      ),
+    }));
+}
+
+function archiveTransactionsFromOffseason(state: FullGameState): SeasonArchiveEntry['transactions'] {
+  if (!state.offseasonState) {
+    return [];
+  }
+
+  const signingTransactions = state.offseasonState.phaseResults.freeAgentSignings.map((entry) => {
+    const player = state.players.find((candidate) => candidate.id === entry.playerId);
+    const playerName = player ? playerLabel(player) : entry.playerId;
+
+    return {
+      headline: `${playerName} signed with ${teamLabel(entry.teamId)}`,
+      summary: `${playerName} agreed to ${entry.years} years and $${entry.totalValue.toFixed(1)}M with ${teamLabel(entry.teamId)}.`,
+      playerIds: [entry.playerId],
+      teamIds: [entry.teamId],
+      impactScore: transactionImpactScore(state, [entry.playerId], entry.totalValue, 0, 12),
+    };
+  });
+
+  const extensionTransactions = state.offseasonState.phaseResults.extensions
+    .filter((entry) => entry.status === 'accepted')
+    .map((entry) => {
+      const player = state.players.find((candidate) => candidate.id === entry.playerId);
+      const playerName = player ? playerLabel(player) : entry.playerId;
+
+      return {
+        headline: `${playerName} stayed with ${teamLabel(entry.teamId)}`,
+        summary: `${playerName} accepted a ${entry.years}-year extension worth $${entry.totalValue.toFixed(1)}M.`,
+        playerIds: [entry.playerId],
+        teamIds: [entry.teamId],
+        impactScore: transactionImpactScore(state, [entry.playerId], entry.totalValue, 0, 9),
+      };
+    });
+
+  return [...signingTransactions, ...extensionTransactions];
+}
+
+function archiveTransactions(state: FullGameState, includeOffseasonData: boolean): SeasonArchiveEntry['transactions'] {
+  const entries = [
+    ...archiveTransactionsFromTradeHistory(state),
+    ...archiveTransactionsFromNews(state),
+    ...(includeOffseasonData ? archiveTransactionsFromOffseason(state) : []),
+  ];
+
+  return entries
+    .sort((left, right) => right.impactScore - left.impactScore || left.headline.localeCompare(right.headline))
+    .filter((entry, index, array) => array.findIndex((candidate) => candidate.headline === entry.headline) === index)
+    .slice(0, 10);
+}
+
+function archiveDraftClass(state: FullGameState, includeOffseasonData: boolean): SeasonArchiveEntry['draftClass'] {
+  if (!includeOffseasonData || !state.offseasonState) {
+    return [];
+  }
+
+  return [...state.offseasonState.phaseResults.draftPicks]
+    .sort((left, right) => left.pickNumber - right.pickNumber)
+    .slice(0, 10)
+    .map((pick) => ({
+      pickNumber: pick.pickNumber,
+      playerId: pick.playerId,
+      playerName: pick.playerName,
+      teamId: pick.teamId,
+      currentStatus: state.players.find((player) => player.id === pick.playerId)?.rosterStatus ?? 'DRAFTED',
+    }));
+}
+
+function archiveFinancials(state: FullGameState): SeasonArchiveEntry['financials'] {
+  return TEAMS
+    .map((team) => ({
+      teamId: team.id,
+      payroll: calculateTeamPayroll(team.id, getTeamPlayers(team.id)).totalPayroll,
+      budget: getTeamBudget(team.id),
+    }))
+    .sort((left, right) => right.payroll - left.payroll);
+}
+
+function archiveTimelineEvents(
+  state: FullGameState,
+  awards: AwardHistoryEntry[],
+  transactions: SeasonArchiveEntry['transactions'],
+  draftClass: SeasonArchiveEntry['draftClass'],
+): string[] {
+  const seasonHistoryEntry = state.seasonHistory.find((entry) => entry.season === state.season) ?? null;
+  const userAwards = awards.filter((entry) => entry.teamId === state.userTeamId);
+  const hallOfFameEvents = state.hallOfFame
+    .filter((entry) => entry.inductionSeason === state.season + 1)
+    .map((entry) => `Hall of Fame: ${entry.playerName}`);
+
+  return uniqueStrings([
+    state.playoffBracket?.champion === state.userTeamId ? 'Won the World Series' : '',
+    seasonHistoryEntry?.summary ?? '',
+    seasonHistoryEntry?.userSeason?.playoffResult ?? '',
+    ...userAwards.map((entry) => `${entry.league} ${entry.award.replace(/_/g, ' ')}: ${entry.playerId}`),
+    ...transactions.slice(0, 3).map((entry) => entry.headline),
+    ...draftClass.slice(0, 2).map((pick) => `Drafted ${pick.playerName}`),
+    ...hallOfFameEvents,
+  ], 8);
+}
+
+export function recordSeasonArchive(state: FullGameState, options?: { includeOffseasonData?: boolean }) {
+  const includeOffseasonData = options?.includeOffseasonData ?? false;
+  const awards = state.awardHistory.filter((entry) => entry.season === state.season);
+  const transactions = archiveTransactions(state, includeOffseasonData);
+  const draftClass = archiveDraftClass(state, includeOffseasonData);
+  const entry: SeasonArchiveEntry = {
+    season: state.season,
+    standings: archiveStandings(state),
+    playoffSeries: archivePlayoffSeries(state),
+    awards,
+    statLeaders: deriveStatLeaders(state, 10),
+    transactions,
+    draftClass,
+    financials: archiveFinancials(state),
+    userSummary: state.seasonHistory.find((candidate) => candidate.season === state.season)?.userSeason ?? null,
+    timelineEvents: archiveTimelineEvents(state, awards, transactions, draftClass),
+  };
+
+  const existingIndex = state.seasonArchive.findIndex((candidate) => candidate.season === state.season);
+  if (existingIndex >= 0) {
+    state.seasonArchive.splice(existingIndex, 1, entry);
+    return;
+  }
+
+  state.seasonArchive.push(entry);
 }
 
 function deriveUserPlayoffResult(state: FullGameState): string {
@@ -546,6 +804,43 @@ export function getAwardHistory(state: FullGameState): AwardHistoryEntry[] {
 
 export function getSeasonHistory(state: FullGameState): SeasonHistoryEntry[] {
   return [...state.seasonHistory].sort((a, b) => b.season - a.season);
+}
+
+export function getSeasonArchive(state: FullGameState, season?: number): SeasonArchiveEntry | null {
+  const targetSeason = season ?? Math.max(0, ...state.seasonArchive.map((entry) => entry.season));
+  if (targetSeason === 0) {
+    return null;
+  }
+
+  return getArchiveForSeason(state, targetSeason);
+}
+
+export function compareSeasons(
+  state: FullGameState,
+  leftSeason: number,
+  rightSeason: number,
+): SeasonComparisonDTO | null {
+  const left = getArchiveForSeason(state, leftSeason);
+  const right = getArchiveForSeason(state, rightSeason);
+  if (!left || !right) {
+    return null;
+  }
+
+  const leftStanding = left.standings.find((entry) => entry.teamId === state.userTeamId) ?? null;
+  const rightStanding = right.standings.find((entry) => entry.teamId === state.userTeamId) ?? null;
+  const leftFinancial = left.financials.find((entry) => entry.teamId === state.userTeamId) ?? null;
+  const rightFinancial = right.financials.find((entry) => entry.teamId === state.userTeamId) ?? null;
+
+  return {
+    userTeamId: state.userTeamId,
+    left,
+    right,
+    deltas: {
+      wins: leftStanding && rightStanding ? rightStanding.wins - leftStanding.wins : null,
+      payroll: leftFinancial && rightFinancial ? Number((rightFinancial.payroll - leftFinancial.payroll).toFixed(1)) : null,
+      budget: leftFinancial && rightFinancial ? Number((rightFinancial.budget - leftFinancial.budget).toFixed(1)) : null,
+    },
+  };
 }
 
 export function resolveHistoryDisplayNames(

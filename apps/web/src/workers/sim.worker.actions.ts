@@ -123,6 +123,7 @@ import {
   respondToTradeOffer,
 } from './sim.worker.trade.js';
 import {
+  recordSeasonArchive,
   ensureNarrativeState,
   ensureAwardHistoryForSeason,
   finalizeSeasonHistoryRetirements,
@@ -385,6 +386,7 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
   queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
   const seasonMoments = applyPostseasonConsequences(s);
   recordSeasonHistory(s, seasonMoments);
+  recordSeasonArchive(s);
   upsertFranchiseTimelineEntry(s);
   captureSeasonAchievementFacts(s);
   syncAchievementState(s);
@@ -580,6 +582,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 
   applyRetirementConsequences(s, retired);
   finalizeSeasonHistoryRetirements(s, retired);
+  recordSeasonArchive(s, { includeOffseasonData: true });
   s.players = s.players.filter((player) => !retired.includes(player.id));
   s.season++;
   s.day = 1;

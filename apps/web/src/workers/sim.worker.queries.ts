@@ -54,9 +54,11 @@ import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
 import { buildSetupPreview, getDifficultyAdjustedBudget } from './sim.worker.setup.js';
 import {
+  compareSeasons,
   getAwardHistory,
   getPersonalityProfileForPlayer,
   getRivalriesForTeam,
+  getSeasonArchive,
   getSeasonHistory,
   resolveHistoryDisplayNames as resolveNarrativeHistoryDisplayNames,
 } from './sim.worker.narrative.js';
@@ -1018,6 +1020,14 @@ export const queryApi = {
 
   getSeasonHistory() {
     return getSeasonHistory(requireState());
+  },
+
+  getSeasonArchive(season?: number) {
+    return getSeasonArchive(requireState(), season);
+  },
+
+  compareSeasons(leftSeason: number, rightSeason: number) {
+    return compareSeasons(requireState(), leftSeason, rightSeason);
   },
 
   getRecordBook(teamId?: string) {

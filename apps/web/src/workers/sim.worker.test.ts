@@ -1182,6 +1182,19 @@ describe('sim worker narrative APIs', () => {
   it('records rich season recaps and finalizes retirements into the same history entry', () => {
     startGame(335, 'nyy');
     const state = requireState();
+    const standingsRecords = (state.seasonState.standings as unknown as {
+      records: Map<string, {
+        teamId: string;
+        wins: number;
+        losses: number;
+        runsScored: number;
+        runsAllowed: number;
+        streak: number;
+        last10: [number, number];
+        divisionWins: number;
+        divisionLosses: number;
+      }>;
+    }).records;
     const alMvp = state.players.find(
       (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
@@ -1228,6 +1241,39 @@ describe('sim worker narrative APIs', () => {
     alRoy.age = 22;
     nlRoy.age = 22;
     alMvp.overallRating = 430;
+    standingsRecords.set('nyy', {
+      teamId: 'nyy',
+      wins: 99,
+      losses: 63,
+      runsScored: 845,
+      runsAllowed: 699,
+      streak: 4,
+      last10: [7, 3],
+      divisionWins: 52,
+      divisionLosses: 24,
+    });
+    standingsRecords.set('lad', {
+      teamId: 'lad',
+      wins: 98,
+      losses: 64,
+      runsScored: 832,
+      runsAllowed: 708,
+      streak: 2,
+      last10: [6, 4],
+      divisionWins: 49,
+      divisionLosses: 27,
+    });
+    standingsRecords.set('bos', {
+      teamId: 'bos',
+      wins: 92,
+      losses: 70,
+      runsScored: 801,
+      runsAllowed: 733,
+      streak: 1,
+      last10: [5, 5],
+      divisionWins: 46,
+      divisionLosses: 30,
+    });
 
     state.phase = 'playoffs';
     state.news = [{
@@ -1313,15 +1359,21 @@ describe('sim worker narrative APIs', () => {
     api.simDay();
 
     const recap = api.getSeasonHistory()[0]!;
+    const archive = api.getSeasonArchive(1)!;
     expect(recap.championTeamId).toBe('nyy');
     expect(recap.runnerUpTeamId).toBe('lad');
     expect(recap.worldSeriesRecord).toBe('4-2');
-    expect(recap.awards).toHaveLength(6);
+    expect(recap.awards).toHaveLength(10);
     expect(recap.statLeaders.hr.length).toBe(3);
     expect(recap.statLeaders.w[0]?.playerId).toBe(nlW.id);
     expect(recap.blockbusterTrades[0]?.headline).toBe('Deadline blockbuster reshaped the race');
     expect(recap.userSeason?.teamId).toBe('nyy');
     expect(recap.userSeason?.playoffResult).toContain('Champion');
+    expect(archive.awards).toHaveLength(10);
+    expect(archive.standings.find((entry) => entry.teamId === 'nyy')?.wins).toBe(99);
+    expect(archive.playoffSeries[0]?.winnerTeamId).toBe('nyy');
+    expect(archive.transactions[0]?.headline).toBe('Deadline blockbuster reshaped the race');
+    expect(archive.financials.some((entry) => entry.teamId === 'nyy')).toBe(true);
 
     for (const veteran of state.players.filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB').slice(0, 4)) {
       veteran.age = 45;
@@ -1336,6 +1388,35 @@ describe('sim worker narrative APIs', () => {
 
     state.offseasonState = {
       ...createOffseasonState(state.season),
+      phaseResults: {
+        ...createOffseasonState(state.season).phaseResults,
+        freeAgentSignings: [{
+          playerId: alMvp.id,
+          teamId: 'nyy',
+          years: 7,
+          annualSalary: 32,
+          totalValue: 224,
+        }],
+        draftPicks: [{
+          round: 1,
+          pickNumber: 8,
+          teamId: 'nyy',
+          playerId: 'draft-1',
+          playerName: 'Calvin Velez',
+          position: 'SS',
+          scoutingGrade: 71,
+          origin: 'college',
+        }],
+        ifaSignings: [{
+          playerId: 'ifa-1',
+          teamId: 'nyy',
+          playerName: 'Luis Encarnacion',
+          position: 'CF',
+          country: 'Dominican Republic',
+          bonusAmount: 4.2,
+        }],
+        retiredPlayers: [],
+      },
       completed: true,
     };
 
@@ -1343,8 +1424,89 @@ describe('sim worker narrative APIs', () => {
     api.startNextSeason();
 
     const finalized = api.getSeasonHistory().find((entry) => entry.season === 1)!;
+    const finalizedArchive = api.getSeasonArchive(1)!;
     expect(finalized.notableRetirements.length).toBeGreaterThan(0);
     expect(finalized.notableRetirements[0]?.seasonsPlayed).toBeGreaterThanOrEqual(10);
+    expect(finalizedArchive.draftClass[0]?.playerName).toBe('Calvin Velez');
+    expect(finalizedArchive.transactions.some((entry) => entry.playerIds.includes(alMvp.id))).toBe(true);
+    expect(finalizedArchive.timelineEvents).toContain('Won the World Series');
+  });
+
+  it('compares archived seasons with user-team deltas', () => {
+    startGame(336, 'nyy');
+    const state = requireState();
+    state.seasonArchive = [
+      {
+        season: 1,
+        standings: [
+          { teamId: 'nyy', wins: 88, losses: 74, divisionRank: 2, gamesBack: 5 },
+        ],
+        playoffSeries: [
+          { round: 'CHAMPIONSHIP_SERIES', winnerTeamId: 'hou', loserTeamId: 'nyy', result: '4-2' },
+        ],
+        awards: [],
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        transactions: [],
+        draftClass: [],
+        financials: [
+          { teamId: 'nyy', payroll: 210, budget: 228 },
+        ],
+        userSummary: {
+          teamId: 'nyy',
+          record: '88-74',
+          playoffResult: 'Championship Series exit',
+          storylines: ['Came up short in October.'],
+        },
+        timelineEvents: ['Reached the ALCS'],
+      },
+      {
+        season: 2,
+        standings: [
+          { teamId: 'nyy', wins: 97, losses: 65, divisionRank: 1, gamesBack: 0 },
+        ],
+        playoffSeries: [
+          { round: 'WORLD_SERIES', winnerTeamId: 'nyy', loserTeamId: 'lad', result: '4-2' },
+        ],
+        awards: [],
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        transactions: [],
+        draftClass: [],
+        financials: [
+          { teamId: 'nyy', payroll: 235, budget: 248 },
+        ],
+        userSummary: {
+          teamId: 'nyy',
+          record: '97-65',
+          playoffResult: 'Champion',
+          storylines: ['Closed the season with a title.'],
+        },
+        timelineEvents: ['Won the World Series'],
+      },
+    ];
+
+    const comparison = api.compareSeasons(1, 2);
+
+    expect(comparison?.left?.season).toBe(1);
+    expect(comparison?.right?.season).toBe(2);
+    expect(comparison?.userTeamId).toBe('nyy');
+    expect(comparison?.deltas.wins).toBe(9);
+    expect(comparison?.deltas.payroll).toBe(25);
+    expect(comparison?.deltas.budget).toBe(20);
+    expect(comparison?.right?.userSummary?.playoffResult).toBe('Champion');
   });
 
   it('records draft picks with structured detail and auto-advances to the next user turn', () => {
