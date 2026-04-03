@@ -195,6 +195,8 @@ import {
 import {
   applyBreakoutCountdowns,
   applyDebutFlashbacks,
+  applyMonthlyNarrativeHooks,
+  applyOffseasonNarrativeHooks,
   applyMonthlyPressConference,
 } from './sim.worker.narrativeFarm.js';
 
@@ -714,6 +716,7 @@ function applyMonthlyDevelopmentCheckpoints(
     advanceMonthlyStoryArcs(s, s.season, currentDay);
     applyBreakoutCountdowns(s);
     applyMonthlyPressConference(s);
+    applyMonthlyNarrativeHooks(s, month);
   }
 }
 
@@ -879,6 +882,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
     clearWatches: true,
     publishBrokenRecords: true,
   });
+  applyOffseasonNarrativeHooks(s);
 
   const beforePlayers = s.players;
   const kernelPlayers = s.players.map((player) => developPlayer(s.rng.fork(), player));

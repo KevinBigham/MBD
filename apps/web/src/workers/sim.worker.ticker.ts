@@ -5,6 +5,7 @@ import {
   GameRNG,
   generateTickerEntries,
   getDaysUntilTradeDeadline,
+  getRivalry,
   getTeamById,
   pruneTickerFeed,
   StandingsTracker,
@@ -96,6 +97,20 @@ function buildScoreContexts(state: FullGameState, games: GameBoxScore[]) {
 
     const winner = getTeamById(winnerId);
     const loser = getTeamById(loserId);
+    const rivalry = getRivalry(state.rivalries, game.homeTeamId, game.awayTeamId);
+    const winnerSeriesWins = rivalry == null
+      ? null
+      : (winnerId === rivalry.teamA ? rivalry.currentSeasonWinsA : rivalry.currentSeasonWinsB) ?? 0;
+    const loserSeriesWins = rivalry == null
+      ? null
+      : (loserId === rivalry.teamA ? rivalry.currentSeasonWinsA : rivalry.currentSeasonWinsB) ?? 0;
+    const rivalryText = rivalry != null
+      && rivalry.intensity >= 60
+      && winnerSeriesWins != null
+      && loserSeriesWins != null
+      ? `The rivalry intensifies as ${winner?.name ?? winnerId.toUpperCase()} takes a ${winnerSeriesWins}-${loserSeriesWins} season edge over ${loser?.name ?? loserId.toUpperCase()}.${star ? ` ${star.playerName} goes ${star.hits}-for-${star.atBats} with ${star.hr} HR.` : ''}`
+      : undefined;
+
     return {
       winningTeamId: winnerId,
       winningTeamName: winner?.name ?? winnerId.toUpperCase(),
@@ -108,6 +123,7 @@ function buildScoreContexts(state: FullGameState, games: GameBoxScore[]) {
       hits: star?.hits,
       atBats: star?.atBats,
       hr: star?.hr,
+      storyText: rivalryText,
     };
   });
 }

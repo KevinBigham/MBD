@@ -92,6 +92,13 @@ describe('MinorsPage', () => {
         farmReport: {
           bondedProspects: 4,
           activeSetbackCount: 1,
+          breakoutCandidates: [
+            {
+              playerId: 'prospect-1',
+              playerName: 'Marco Ascension',
+              summary: 'Dark horse Marco Ascension could be next in line for a callup.',
+            },
+          ],
           topProspects: [
             {
               playerId: 'prospect-1',
@@ -145,6 +152,8 @@ describe('MinorsPage', () => {
     expect(container.textContent).toContain('Minor League Hub');
     expect(container.textContent).toContain('Farm report');
     expect(container.textContent).toContain('bonded prospects');
+    expect(container.textContent).toContain('Breakout candidates');
+    expect(container.textContent).toContain('could be next in line for a callup');
     expect(container.textContent).toContain('Marco Ascension');
     expect(container.textContent).toContain('Bond 42');
     expect(container.textContent).toContain('tearing through upper-level pitching');

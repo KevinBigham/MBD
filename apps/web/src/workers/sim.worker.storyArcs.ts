@@ -1,6 +1,7 @@
 import {
   advanceStoryArcs,
   detectNewStoryArcs,
+  getTeamById,
   pruneTickerFeed,
   type StoryArcSnapshot,
 } from '@mbd/sim-core';
@@ -72,6 +73,18 @@ function appendStoryArcNews(state: FullGameState, items: FullGameState['news']) 
   }
 }
 
+function appendStoryArcTicker(state: FullGameState, entries: FullGameState['tickerFeed']) {
+  if (entries.length === 0) {
+    return;
+  }
+
+  state.tickerFeed = pruneTickerFeed(
+    [...entries, ...state.tickerFeed],
+    200,
+    absoluteDay(state.season, state.day),
+  );
+}
+
 export function syncSeasonStartStoryArcs(state: FullGameState) {
   const newArcs = detectNewStoryArcs(state.rng, buildStoryArcSnapshot(state));
   if (newArcs.length === 0) {
@@ -100,4 +113,66 @@ export function advanceMonthlyStoryArcs(
   if (newArcs.length > 0) {
     mergeStoryArcState(state, [...state.playerStoryArcs, ...newArcs]);
   }
+}
+
+export function advanceTradeSagaClimax(
+  state: FullGameState,
+  tradedPlayerIds: string[],
+) {
+  if (tradedPlayerIds.length === 0) {
+    return;
+  }
+
+  const tradedSet = new Set(tradedPlayerIds);
+  const newsItems: FullGameState['news'] = [];
+  const tickerEntries: FullGameState['tickerFeed'] = [];
+  const updated = state.playerStoryArcs.map((arc) => {
+    if (arc.resolvedSeason != null || arc.arcType !== 'trade_saga' || !tradedSet.has(arc.playerId)) {
+      return arc;
+    }
+
+    const player = state.players.find((candidate) => candidate.id === arc.playerId);
+    if (!player || arc.phase === 'climax' || arc.phase === 'resolution') {
+      return arc;
+    }
+
+    const playerName = `${player.firstName} ${player.lastName}`;
+    const destinationTeam = getTeamById(player.teamId);
+    const destinationLabel = destinationTeam ? `${destinationTeam.city} ${destinationTeam.name}` : player.teamId.toUpperCase();
+    const milestone = `${playerName}'s trade saga hits its climax as ${destinationLabel} completes the move.`;
+
+    newsItems.push({
+      id: `trade-saga-climax-${player.id}-${state.season}-${state.day}`,
+      headline: `Trade saga climax: ${playerName} is on the move`,
+      body: `${milestone} The trade saga around ${playerName} finally broke into a completed deal.`,
+      priority: 1,
+      category: 'trade',
+      tag: 'BREAKING',
+      timestamp: `S${state.season}D${state.day}`,
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: [player.teamId],
+      read: false,
+    });
+    tickerEntries.push({
+      id: `ticker-trade-saga-climax-${player.id}-${state.season}-${state.day}`,
+      timestamp: `S${state.season}D${state.day}`,
+      category: 'trade',
+      text: milestone,
+      priority: 5,
+      relatedTeamIds: [player.teamId],
+      relatedPlayerIds: [player.id],
+      expiresDay: absoluteDay(state.season, state.day) + 30,
+    });
+
+    return {
+      ...arc,
+      phase: 'climax',
+      milestones: [...arc.milestones, milestone],
+      resolvedSeason: null,
+    } satisfies PlayerStoryArc;
+  });
+
+  mergeStoryArcState(state, updated);
+  appendStoryArcNews(state, newsItems);
+  appendStoryArcTicker(state, tickerEntries);
 }

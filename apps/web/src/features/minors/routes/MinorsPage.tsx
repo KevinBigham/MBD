@@ -37,6 +37,11 @@ interface AffiliateOverviewView {
   farmReport: {
     bondedProspects: number;
     activeSetbackCount: number;
+    breakoutCandidates: Array<{
+      playerId: string;
+      playerName: string;
+      summary: string;
+    }>;
     topProspects: Array<{
       playerId: string;
       playerName: string;
@@ -175,10 +180,23 @@ export default function MinorsPage() {
           <div>
             <div className="font-heading text-xs uppercase text-dynasty-muted">Farm report</div>
             <div className="mt-1 font-data text-sm text-dynasty-muted">
-              {overview?.farmReport.bondedProspects ?? 0} bonded prospects | {overview?.farmReport.activeSetbackCount ?? 0} active development signals
+              {overview?.farmReport.bondedProspects ?? 0} bonded prospects | {overview?.farmReport.breakoutCandidates?.length ?? 0} breakout candidates | {overview?.farmReport.activeSetbackCount ?? 0} active development signals
             </div>
           </div>
         </div>
+        {(overview?.farmReport.breakoutCandidates ?? []).length > 0 ? (
+          <div className="mt-4 rounded border border-dynasty-border bg-dynasty-elevated p-3">
+            <div className="font-heading text-xs uppercase text-dynasty-muted">Breakout candidates</div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-3">
+              {(overview?.farmReport.breakoutCandidates ?? []).map((candidate) => (
+                <div key={candidate.playerId} className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+                  <div className="font-heading text-sm text-dynasty-text">{candidate.playerName}</div>
+                  <div className="mt-1 text-xs text-dynasty-muted">{candidate.summary}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {(overview?.farmReport.topProspects ?? []).length > 0 ? (overview?.farmReport.topProspects ?? []).map((prospect) => (
             <div key={prospect.playerId} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">

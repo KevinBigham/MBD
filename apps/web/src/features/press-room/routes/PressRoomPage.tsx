@@ -63,6 +63,44 @@ function groupFeedByTimestamp(feed: PressRoomEntry[]): Array<{ label: string; it
   }));
 }
 
+function sourceLabel(source: PressRoomEntry['source']): string {
+  switch (source) {
+    case 'briefing':
+      return 'Team Briefings';
+    case 'press_conference':
+      return 'Press Conferences';
+    case 'league_wire':
+      return 'League Wire';
+    default:
+      return 'News Wire';
+  }
+}
+
+function sourceDescription(source: PressRoomEntry['source']): string {
+  switch (source) {
+    case 'briefing':
+      return 'Internal pulses from ownership, the clubhouse, and the front office.';
+    case 'press_conference':
+      return 'Monthly media sessions and analysis framed by current team context.';
+    case 'league_wire':
+      return 'League-wide movement, rumors, and narrative spillover from around baseball.';
+    default:
+      return 'Additional headlines carried into the archive.';
+  }
+}
+
+function groupFeedBySource(feed: PressRoomEntry[]) {
+  const sourceOrder: PressRoomEntry['source'][] = ['briefing', 'press_conference', 'league_wire', 'news'];
+  return sourceOrder
+    .map((source) => ({
+      source,
+      label: sourceLabel(source),
+      description: sourceDescription(source),
+      groups: groupFeedByTimestamp(feed.filter((entry) => entry.source === source)),
+    }))
+    .filter((section) => section.groups.length > 0);
+}
+
 function isTransactionEntry(entry: PressRoomEntry): boolean {
   return ['trade', 'signing', 'extension', 'qualifying_offer', 'coaching', 'roster_move'].includes(entry.category);
 }
@@ -106,7 +144,7 @@ export default function PressRoomPage() {
     const tagMatch = selectedTag === 'all' || entry.tag === selectedTag;
     return teamMatch && categoryMatch && tagMatch;
   });
-  const groupedFeed = groupFeedByTimestamp(filteredFeed);
+  const groupedFeed = groupFeedBySource(filteredFeed);
   const transactionFeed = filteredFeed.filter(isTransactionEntry).slice(0, 12);
 
   return (
@@ -157,10 +195,10 @@ export default function PressRoomPage() {
         <div className="mb-4 flex flex-col gap-4 border-b border-dynasty-border pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">
-              Unified Feed
+              Source Board
             </h2>
             <p className="mt-1 font-heading text-xs text-dynasty-muted">
-              Grouped by sim date, filterable by club, story type, and urgency.
+              Grouped by source desk, then sim date, with filters for club, story type, and urgency.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -212,44 +250,60 @@ export default function PressRoomPage() {
         </div>
 
         <div className="space-y-6">
-          {groupedFeed.length > 0 ? groupedFeed.map((group) => (
-            <section key={group.label} className="space-y-3">
-              <div className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
-                {group.label}
+          {groupedFeed.length > 0 ? groupedFeed.map((section) => (
+            <section key={section.source} className="space-y-4">
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(section.source)}`}>
+                    {section.source}
+                  </span>
+                  <h3 className="font-heading text-sm text-dynasty-textBright">{section.label}</h3>
+                </div>
+                <p className="mt-2 font-heading text-xs text-dynasty-muted">
+                  {section.description}
+                </p>
               </div>
-              {group.items.map((entry) => (
-                <article
-                  key={`${entry.source}-${entry.id}`}
-                  className={`rounded-lg border p-4 ${
-                    entry.tag === 'BREAKING'
-                      ? 'border-accent-danger/40 bg-[radial-gradient(circle_at_top,rgba(196,62,62,0.12),transparent_45%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))]'
-                      : 'border-dynasty-border bg-[radial-gradient(circle_at_top,rgba(181,166,114,0.08),transparent_48%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))]'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${tagTone(entry.tag)}`}>
-                      {entry.tag}
-                    </span>
-                    <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(entry.source)}`}>
-                      {entry.source}
-                    </span>
-                    <span className="rounded border border-dynasty-border px-2 py-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
-                      {formatCategory(entry.category)}
-                    </span>
-                    <span className={`rounded border px-2 py-1 font-data text-[10px] uppercase tracking-wide ${priorityTone(entry.priority)}`}>
-                      Priority {entry.priority}
-                    </span>
-                    <span className="ml-auto font-data text-[11px] uppercase text-dynasty-muted">
-                      {entry.timestamp}
-                    </span>
+
+              {section.groups.map((group) => (
+                <section key={`${section.source}-${group.label}`} className="space-y-3">
+                  <div className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+                    {group.label}
                   </div>
-                  <h3 className="mt-3 font-heading text-lg text-dynasty-textBright">
-                    {entry.headline}
-                  </h3>
-                  <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
-                    {entry.body}
-                  </p>
-                </article>
+                  {group.items.map((entry) => (
+                    <article
+                      key={`${entry.source}-${entry.id}`}
+                      className={`rounded-lg border p-4 ${
+                        entry.tag === 'BREAKING'
+                          ? 'border-accent-danger/40 bg-[radial-gradient(circle_at_top,rgba(196,62,62,0.12),transparent_45%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))]'
+                          : 'border-dynasty-border bg-[radial-gradient(circle_at_top,rgba(181,166,114,0.08),transparent_48%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))]'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${tagTone(entry.tag)}`}>
+                          {entry.tag}
+                        </span>
+                        <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(entry.source)}`}>
+                          {entry.source}
+                        </span>
+                        <span className="rounded border border-dynasty-border px-2 py-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
+                          {formatCategory(entry.category)}
+                        </span>
+                        <span className={`rounded border px-2 py-1 font-data text-[10px] uppercase tracking-wide ${priorityTone(entry.priority)}`}>
+                          Priority {entry.priority}
+                        </span>
+                        <span className="ml-auto font-data text-[11px] uppercase text-dynasty-muted">
+                          {entry.timestamp}
+                        </span>
+                      </div>
+                      <h3 className="mt-3 font-heading text-lg text-dynasty-textBright">
+                        {entry.headline}
+                      </h3>
+                      <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
+                        {entry.body}
+                      </p>
+                    </article>
+                  ))}
+                </section>
               ))}
             </section>
           )) : (

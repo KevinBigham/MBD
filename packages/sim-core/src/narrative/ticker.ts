@@ -13,6 +13,7 @@ export interface TickerScoreContext {
   hits?: number;
   atBats?: number;
   hr?: number;
+  storyText?: string;
 }
 
 export interface TickerStandingsChangeContext {
@@ -122,6 +123,10 @@ function parseTimestampRank(timestamp: string): number {
 }
 
 function buildScoreText(score: TickerScoreContext): string {
+  if (score.storyText) {
+    return score.storyText;
+  }
+
   if (
     score.starPlayerName
     && score.hits != null

@@ -128,6 +128,9 @@ describe('PressRoomPage', () => {
     expect(container.textContent).toContain('Owner pressure is rising.');
     expect(container.textContent).toContain('Breaking trade headline');
     expect(container.textContent).toContain('Press Conference: New York Yankees');
+    expect(container.textContent).toContain('Team Briefings');
+    expect(container.textContent).toContain('Press Conferences');
+    expect(container.textContent).toContain('League Wire');
     expect(container.textContent).toContain('briefing');
     expect(container.textContent).toContain('press_conference');
     expect(container.textContent).toContain('owner');

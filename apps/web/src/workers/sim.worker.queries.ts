@@ -529,6 +529,22 @@ function buildMinorLeagueLineSummary(
 
 function buildFarmReport(teamId: string) {
   const s = requireState();
+  const breakoutCandidates = s.playerStoryArcs
+    .filter((arc) => arc.resolvedSeason == null && arc.arcType === 'prospect_rise')
+    .map((arc) => {
+      const player = s.players.find((candidate) => candidate.id === arc.playerId && candidate.teamId === teamId);
+      if (!player) {
+        return null;
+      }
+
+      return {
+        playerId: player.id,
+        playerName: `${player.firstName} ${player.lastName}`,
+        summary: arc.milestones.at(-1) ?? `${player.firstName} ${player.lastName} is on the rise.`,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+    .slice(0, 3);
   const prospects = s.players
     .filter((player) =>
       player.teamId === teamId
@@ -572,6 +588,7 @@ function buildFarmReport(teamId: string) {
   return {
     bondedProspects: prospects.filter((player) => player.bondStrength > 0).length,
     activeSetbackCount: prospects.filter((player) => player.activeSetback != null).length,
+    breakoutCandidates,
     topProspects: prospects.slice(0, 5),
   };
 }
