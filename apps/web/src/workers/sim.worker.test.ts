@@ -315,6 +315,50 @@ describe('sim worker narrative APIs', () => {
     expect(briefing.length).toBeGreaterThan(0);
   });
 
+  it('surfaces rivalry intel through dashboard and history queries', () => {
+    startGame(1234, 'nyy');
+    const state = requireState();
+    state.rivalries.set('bos:nyy', {
+      id: 'bos:nyy',
+      teamA: 'nyy',
+      teamB: 'bos',
+      intensity: 86,
+      summary: 'Every series is carrying real postseason weight.',
+      reasons: ['historic feud', 'recent playoffs'],
+      origin: 'historical',
+      active: true,
+      currentSeasonWinsA: 8,
+      currentSeasonWinsB: 5,
+      historicalWinsA: 144,
+      historicalWinsB: 132,
+      lastMetSeason: state.season,
+      closeRaceStreak: 3,
+      playoffSeriesStreak: 1,
+      lastTradeSeason: 0,
+      lastDefectionSeason: 0,
+      eventHistory: [],
+    });
+
+    const summary = api.getDashboardSummary();
+    const rivalries = api.getRivalries('nyy');
+
+    expect(summary?.intel.rivalries[0]).toMatchObject({
+      id: 'bos:nyy',
+      opponentTeamId: 'bos',
+      intensity: 86,
+      currentSeasonRecord: 'NYY 8-5 BOS',
+      historicalRecord: 'NYY 144-132 BOS',
+    });
+    expect(rivalries[0]).toMatchObject({
+      id: 'bos:nyy',
+      origin: 'historical',
+      currentSeasonWinsA: 8,
+      currentSeasonWinsB: 5,
+      historicalWinsA: 144,
+      historicalWinsB: 132,
+    });
+  });
+
   it('accepts object-based new game options and persists franchise identity settings', () => {
     const result = api.newGame({
       seed: 123,
@@ -2530,6 +2574,13 @@ describe('sim worker narrative APIs', () => {
         headline: 'Read feature still belongs in the archive',
         timestamp: 'S1D9',
       }),
+      expect.objectContaining({
+        id: 'synthetic-rivalry-bos:nyy-1-1',
+        source: 'news',
+        category: 'rivalry',
+        headline: 'Rivalry watch: NYY vs BOS',
+        timestamp: 'S1D1',
+      }),
     ]);
     expect(feed.some((entry) => entry.id === 'brief-news-breaker')).toBe(false);
   });
@@ -2580,14 +2631,14 @@ describe('sim worker narrative APIs', () => {
         overallRating: prospect.overallRating,
       },
     ];
-    state.rivalries.set('nyy:bos', {
-      id: 'nyy:bos',
+    state.rivalries.set('bos:nyy', {
+      id: 'bos:nyy',
       teamA: 'nyy',
       teamB: 'bos',
       intensity: 74,
       summary: 'The division race is getting personal again.',
-        reasons: ['Playoff chase', 'Three heated series'],
-      });
+      reasons: ['Playoff chase', 'Three heated series'],
+    });
     state.freeAgencyMarket = {
       season: state.season,
       day: 8,
@@ -2617,7 +2668,7 @@ describe('sim worker narrative APIs', () => {
     const deadlineRumor = feed.find((entry) => entry.id === `synthetic-rumor-${state.season}-${state.day}`);
     const hotStoveRumor = feed.find((entry) => entry.id === `synthetic-fa-rumor-${freeAgentTarget.id}-${state.season}-${state.day}`);
     const development = feed.find((entry) => entry.category === 'development');
-    const rivalry = feed.find((entry) => entry.id === `synthetic-rivalry-nyy:bos-${state.season}-${state.day}`);
+    const rivalry = feed.find((entry) => entry.id.startsWith('synthetic-rivalry-'));
 
     expect(deadlineRumor).toMatchObject({
       category: 'rumor',

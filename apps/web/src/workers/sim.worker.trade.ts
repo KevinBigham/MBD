@@ -22,6 +22,8 @@ import {
   getRemainingIFABudget,
   getTeamById,
   isTradeDeadlineModeDay,
+  recordBlockbusterTradeRivalry,
+  rivalryTradePenalty,
   tradeDraftPickOwnership as tradeDraftPickOwnershipCore,
   tradeIFABonusPool as tradeIFABonusPoolCore,
 } from '@mbd/sim-core';
@@ -243,6 +245,13 @@ function assetValue(state: FullGameState, asset: TradeAsset): number {
   }
 }
 
+function playerRatingsForAssets(state: FullGameState, assets: TradeAsset[]): number[] {
+  return assets
+    .filter((asset): asset is Extract<TradeAsset, { type: 'player' }> => asset.type === 'player')
+    .map((asset) => state.players.find((candidate) => candidate.id === asset.playerId)?.overallRating ?? 0)
+    .filter((rating) => rating > 0);
+}
+
 function compareAssetPackages(
   state: FullGameState,
   offeringAssets: TradeAsset[],
@@ -253,9 +262,15 @@ function compareAssetPackages(
   const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const maxValue = Math.max(offerValue, requestValue, 1);
+  const rivalryPenalty = rivalryTradePenalty(
+    state.rivalries,
+    fromTeamId,
+    toTeamId,
+    playerRatingsForAssets(state, requestingAssets),
+  );
   const fairness = getDifficultyAdjustedTradeFairness(
     state,
-    Math.max(-100, Math.min(100, Math.round(((requestValue - offerValue) / maxValue) * 100))),
+    Math.max(-100, Math.min(100, Math.round((((requestValue - offerValue) / maxValue) * 100) + rivalryPenalty))),
     fromTeamId,
     toTeamId,
   );
@@ -907,10 +922,25 @@ function executeAcceptedTrade(
   },
   fairnessScore: number,
 ) {
+  const tradePackageValue = compareAssetPackages(
+    state,
+    proposal.offeringAssets,
+    proposal.requestingAssets,
+    proposal.fromTeamId,
+    proposal.toTeamId,
+  );
+  const tradeImpactScore = Math.max(tradePackageValue.offerValue, tradePackageValue.requestValue);
   applyTradeAssets(state, proposal.fromTeamId, proposal.toTeamId, proposal.offeringAssets, proposal.requestingAssets);
   state.rosterStates.set(proposal.fromTeamId, buildRosterState(proposal.fromTeamId, state.players));
   state.rosterStates.set(proposal.toTeamId, buildRosterState(proposal.toTeamId, state.players));
   addTradeHistoryEntry(state, buildTradeHistoryEntry(state, proposal, fairnessScore));
+  state.rivalries = recordBlockbusterTradeRivalry(state.rivalries, {
+    season: state.season,
+    fromTeamId: proposal.fromTeamId,
+    toTeamId: proposal.toTeamId,
+    impactScore: tradeImpactScore,
+    summary: 'Blockbuster trade changed the tone of the matchup',
+  });
 }
 
 function buildMonthlyTradeCandidates(state: FullGameState) {

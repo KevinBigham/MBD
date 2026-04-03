@@ -18,6 +18,7 @@ import {
   getTeamBudget,
   getTeamById,
   initializePlayerDevelopmentProfile,
+  seedHistoricalRivalries,
   toDisplayRating,
 } from '@mbd/sim-core';
 import { createEmptyMonthlyPulseState } from './sim.worker.monthlyPulse.js';
@@ -326,7 +327,7 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     ownerState,
     briefingQueue: [],
     storyFlags: new Map(),
-    rivalries: new Map(),
+    rivalries: seedHistoricalRivalries(new Map()),
     awardHistory: [],
     hallOfFame: [],
     hallOfFameBallot: [],

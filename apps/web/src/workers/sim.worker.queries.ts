@@ -215,6 +215,17 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
 
   const pressRoomFeed = buildPressRoomFeed(s, 12);
   const briefingCount = pressRoomFeed.filter((entry) => entry.source === 'briefing').length;
+  const rivalries = Array.from(getRivalriesForTeam(s, s.userTeamId).values())
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 3)
+    .map((rivalry) => ({
+      id: rivalry.id,
+      opponentTeamId: rivalry.teamA === s.userTeamId ? rivalry.teamB : rivalry.teamA,
+      intensity: rivalry.intensity,
+      summary: rivalry.summary,
+      currentSeasonRecord: `${getTeamById(rivalry.teamA)?.abbreviation ?? rivalry.teamA.toUpperCase()} ${rivalry.currentSeasonWinsA ?? 0}-${rivalry.currentSeasonWinsB ?? 0} ${getTeamById(rivalry.teamB)?.abbreviation ?? rivalry.teamB.toUpperCase()}`,
+      historicalRecord: `${getTeamById(rivalry.teamA)?.abbreviation ?? rivalry.teamA.toUpperCase()} ${rivalry.historicalWinsA ?? 0}-${rivalry.historicalWinsB ?? 0} ${getTeamById(rivalry.teamB)?.abbreviation ?? rivalry.teamB.toUpperCase()}`,
+    }));
 
   return {
     franchise: {
@@ -263,6 +274,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
           level: topProspect.rosterStatus,
         }
         : null,
+      rivalries,
     },
     divisionStandings: divisionView,
     pressRoom: {

@@ -80,6 +80,7 @@ import {
   recordExtensionResults,
   recordFASigning,
   recordIFASigning,
+  recordStarDefectionRivalry,
   recordQualifyingOfferResults,
   recordTenderDecisions,
   resolveArbitration,
@@ -158,7 +159,7 @@ import type {
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
-import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool } from './sim.worker.setup.js';
+import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool, getTeamPayrollCap } from './sim.worker.setup.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -3783,6 +3784,13 @@ function applyNewFreeAgencySignings(
 
     if (previousTeamId) {
       s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+      s.rivalries = recordStarDefectionRivalry(s.rivalries, {
+        season: s.season,
+        fromTeamId: previousTeamId,
+        toTeamId: teamId,
+        playerName: `${player.firstName} ${player.lastName}`,
+        starScore: player.overallRating,
+      });
     }
     s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
 
@@ -3839,7 +3847,7 @@ function simulateFreeAgencyDays(
     const teamBudgets = new Map(
       TEAMS
         .filter((team) => team.id !== s.userTeamId)
-        .map((team) => [team.id, getDifficultyAdjustedBudget(s, team.id)] as const),
+        .map((team) => [team.id, getTeamPayrollCap(s, team.id)] as const),
     );
     const teamPayrolls = buildFreeAgencyPayrolls(s);
     const teamNeeds = buildFreeAgencyNeeds(s);

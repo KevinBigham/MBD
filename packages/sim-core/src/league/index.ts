@@ -67,8 +67,21 @@ export type {
 } from './awards.js';
 
 export {
+  getRivalry,
+  seedHistoricalRivalries,
   upsertRivalry,
+  recordRivalryGame,
   deriveRivalriesFromStandings,
+  finalizeSeasonRivalries,
+  recordBlockbusterTradeRivalry,
+  recordStarDefectionRivalry,
+  rivalryTradePenalty,
+  rivalryGameModifier,
+} from './rivalries.js';
+export type {
+  RivalrySeasonReviewContext,
+  RivalryTradeContext,
+  RivalryDefectionContext,
 } from './rivalries.js';
 
 export {

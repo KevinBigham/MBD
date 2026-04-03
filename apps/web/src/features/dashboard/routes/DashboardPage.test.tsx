@@ -119,6 +119,16 @@ describe('DashboardPage', () => {
             readiness: 410,
             level: 'AAA',
           },
+          rivalries: [
+            {
+              id: 'nyy-bos',
+              opponentTeamId: 'bos',
+              intensity: 84,
+              summary: 'Every series is carrying real postseason weight.',
+              currentSeasonRecord: 'NYY 8-5 BOS',
+              historicalRecord: 'NYY 144-132 BOS',
+            },
+          ],
         },
         divisionStandings: [
           {
@@ -222,6 +232,11 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Roster Snapshot');
     expect(container.textContent).toContain('Front Office Intel');
     expect(container.textContent).toContain('Trade Inbox');
+    expect(container.textContent).toContain('Top Rivalry');
+    expect(container.textContent).toContain('Rivalry Board');
+    expect(container.textContent).toContain('NYY vs BOS');
+    expect(container.textContent).toContain('NYY 8-5 BOS');
+    expect(container.textContent).toContain('NYY 144-132 BOS');
     expect(container.textContent).toContain('34 days until trade deadline');
     expect(container.textContent).toContain('League Trade Ticker');
     expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');

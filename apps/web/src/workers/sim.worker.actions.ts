@@ -31,6 +31,8 @@ import {
   promotePlayer,
   reconcileDevelopmentPipeline,
   recordRetirements,
+  recordStarDefectionRivalry,
+  rivalryGameModifier,
   runMonthlyDevelopmentCheckpoint,
   simulateDay,
   simulateMonth,
@@ -128,6 +130,7 @@ import {
   recordSeasonArchive,
   ensureNarrativeState,
   ensureAwardHistoryForSeason,
+  finalizeRivalriesForSeason,
   finalizeSeasonHistoryRetirements,
   recordBreakoutNarratives,
   recordSeasonHistory,
@@ -403,6 +406,7 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
     return;
   }
 
+  finalizeRivalriesForSeason(s);
   ensureAwardHistoryForSeason(s);
   queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
   const seasonMoments = applyPostseasonConsequences(s);
@@ -523,12 +527,28 @@ function simWeekInternal(): SimResultDTO {
 }
 
 function buildTeamPerformanceModifiers(s: FullGameState): Map<string, number> {
-  return new Map(
+  const modifiers = new Map(
     TEAMS.map((team) => [
       team.id,
       chemistryScoreToModifier(s.teamChemistry.get(team.id)?.score ?? 50),
     ] as const),
   );
+  const todayGames = s.schedule.filter((game) => game.day === s.day);
+
+  for (const game of todayGames) {
+    const homeChemistry = s.teamChemistry.get(game.homeTeamId)?.score ?? 50;
+    const awayChemistry = s.teamChemistry.get(game.awayTeamId)?.score ?? 50;
+    modifiers.set(
+      game.homeTeamId,
+      Number(((modifiers.get(game.homeTeamId) ?? 1) + rivalryGameModifier(s.rivalries, game.homeTeamId, game.awayTeamId, homeChemistry)).toFixed(4)),
+    );
+    modifiers.set(
+      game.awayTeamId,
+      Number(((modifiers.get(game.awayTeamId) ?? 1) + rivalryGameModifier(s.rivalries, game.awayTeamId, game.homeTeamId, awayChemistry)).toFixed(4)),
+    );
+  }
+
+  return modifiers;
 }
 
 function normalizeLeagueActiveRosters(s: FullGameState) {
@@ -1343,6 +1363,13 @@ export const actionApi = {
     });
 
     s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+    s.rivalries = recordStarDefectionRivalry(s.rivalries, {
+      season: s.season,
+      fromTeamId: previousTeamId,
+      toTeamId: s.userTeamId,
+      playerName: `${player.firstName} ${player.lastName}`,
+      starScore: player.overallRating,
+    });
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
     if (result.reason.toLowerCase().includes('clubhouse fit feels right')) {
       s.news.unshift({

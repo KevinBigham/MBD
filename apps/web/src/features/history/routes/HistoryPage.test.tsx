@@ -334,6 +334,12 @@ describe('HistoryPage', () => {
           intensity: 84,
           summary: 'Every series is carrying real postseason weight.',
           reasons: ['division race', 'recent playoffs'],
+          origin: 'historical',
+          currentSeasonWinsA: 8,
+          currentSeasonWinsB: 5,
+          historicalWinsA: 144,
+          historicalWinsB: 132,
+          eventHistory: [],
         },
       ]),
       getHallOfFame: vi.fn().mockResolvedValue([
@@ -481,6 +487,12 @@ describe('HistoryPage', () => {
     expect(container.textContent).toContain('Records');
     expect(container.textContent).toContain('Most Home Runs');
     expect(container.textContent).toContain('Mike Trout is on pace for 61 HR');
+    expect(container.textContent).toContain('Origin');
+    expect(container.textContent).toContain('Historical');
+    expect(container.textContent).toContain('Current season');
+    expect(container.textContent).toContain('NYY 8-5 BOS');
+    expect(container.textContent).toContain('Historical record');
+    expect(container.textContent).toContain('NYY 144-132 BOS');
 
     await clickButton('timeline');
     expect(container.textContent).toContain('Dynasty Timeline');

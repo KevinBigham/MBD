@@ -115,6 +115,11 @@ function formatAwardLabel(value: string): string {
   return value.replace(/_/g, ' ');
 }
 
+function formatRivalryOrigin(origin: Rivalry['origin']): string {
+  if (!origin) return 'Emergent';
+  return origin.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 function uniqueStrings(values: string[]): string[] {
   return values.filter((value, index) => value.length > 0 && values.indexOf(value) === index);
 }
@@ -451,6 +456,7 @@ export default function HistoryPage() {
     if (!teamId) return 'Unknown team';
     return displayNames.teams[teamId] ?? teamId.toUpperCase();
   };
+  const teamAbbreviation = (teamId: string) => getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
   const selectedAchievement = achievements.find((achievement) => achievement.id === selectedAchievementId) ?? achievements[0] ?? null;
   const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked).length;
   const groupedStandings = groupArchiveStandings(selectedArchive);
@@ -552,6 +558,26 @@ export default function HistoryPage() {
                       </div>
                       <div className="mt-1 font-heading text-xs text-dynasty-muted">
                         {rivalry.summary}
+                      </div>
+                      <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        <div className="rounded border border-dynasty-border/70 px-2 py-2">
+                          <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Origin</div>
+                          <div className="mt-1 font-heading text-xs text-dynasty-textBright">
+                            {formatRivalryOrigin(rivalry.origin)}
+                          </div>
+                        </div>
+                        <div className="rounded border border-dynasty-border/70 px-2 py-2">
+                          <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Current season</div>
+                          <div className="mt-1 font-heading text-xs text-dynasty-textBright">
+                            {teamAbbreviation(rivalry.teamA)} {rivalry.currentSeasonWinsA ?? 0}-{rivalry.currentSeasonWinsB ?? 0} {teamAbbreviation(rivalry.teamB)}
+                          </div>
+                        </div>
+                        <div className="rounded border border-dynasty-border/70 px-2 py-2">
+                          <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Historical record</div>
+                          <div className="mt-1 font-heading text-xs text-dynasty-textBright">
+                            {teamAbbreviation(rivalry.teamA)} {rivalry.historicalWinsA ?? 0}-{rivalry.historicalWinsB ?? 0} {teamAbbreviation(rivalry.teamB)}
+                          </div>
+                        </div>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {rivalry.reasons.map((reason) => (

@@ -24,10 +24,14 @@ import {
   evaluateOwnerState,
   evaluatePlayerTradeValue,
   finalizeAwardResults,
+  finalizeSeasonRivalries,
   getPersonalityArchetype,
+  getRivalry,
   getTeamBudget,
   getTeamById,
   getUnreadNews,
+  recordRivalryGame,
+  seedHistoricalRivalries,
   TEAMS,
   toDisplayRating,
   type Coach,
@@ -138,6 +142,75 @@ function pushNarrativeStory(
 
 function ownerFlag(level: 'concern' | 'meeting' | 'fired', season: number): string {
   return `owner_${level}_${season}`;
+}
+
+function rivalryFlag(level: 'story', rivalryId: string, season: number): string {
+  return `rivalry_${level}_${rivalryId}_${season}`;
+}
+
+function publishRivalryGameStories(
+  state: FullGameState,
+  gameResults: Array<{ homeTeamId: string; awayTeamId: string; homeScore: number; awayScore: number }>,
+) {
+  for (const game of gameResults) {
+    state.rivalries = recordRivalryGame(state.rivalries, game, state.season);
+    const rivalry = getRivalry(state.rivalries, game.homeTeamId, game.awayTeamId);
+    if (!rivalry || rivalry.intensity < 60) {
+      continue;
+    }
+
+    const involvesUser = game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId;
+    if (!involvesUser) {
+      continue;
+    }
+
+    const winnerId = game.homeScore > game.awayScore ? game.homeTeamId : game.awayTeamId;
+    const loserId = winnerId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
+    const storyId = rivalryFlag('story', rivalry.id, state.day);
+    if ((state.storyFlags.get(state.userTeamId) ?? []).includes(storyId)) {
+      continue;
+    }
+
+    setStoryFlag(state, state.userTeamId, storyId);
+    pushNarrativeStory(state, {
+      id: storyId,
+      headline: winnerId === state.userTeamId
+        ? `Win over rival ${abbreviateTeam(loserId)} keeps the series hot`
+        : `${abbreviateTeam(winnerId)} hands the rival another punch`,
+      body: `${rivalry.summary} Current season series: ${abbreviateTeam(rivalry.teamA)} ${rivalry.currentSeasonWinsA ?? 0}-${rivalry.currentSeasonWinsB ?? 0} ${abbreviateTeam(rivalry.teamB)}.`,
+      priority: rivalry.intensity >= 80 ? 1 : 2,
+      category: 'rivalry',
+      tag: rivalry.intensity >= 80 ? 'BREAKING' : 'WATCH',
+      timestamp: `S${state.season}D${state.day}`,
+      relatedPlayerIds: [],
+      relatedTeamIds: [winnerId, loserId],
+    });
+  }
+}
+
+function abbreviateTeam(teamId: string): string {
+  return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
+}
+
+export function finalizeRivalriesForSeason(state: FullGameState) {
+  const playoffSeries = [
+    ...(state.playoffBracket?.completedRounds.flatMap((round) => round.series) ?? []),
+    ...(state.playoffBracket?.currentRoundSeries ?? []),
+  ]
+    .filter((series) => series.winnerId && series.loserId)
+    .map((series) => ({
+      higherSeed: series.higherSeed,
+      lowerSeed: series.lowerSeed,
+      winnerId: series.winnerId!,
+      loserId: series.loserId!,
+      round: series.round,
+    }));
+
+  state.rivalries = finalizeSeasonRivalries(state.rivalries, {
+    season: state.season,
+    standingsByDivision: state.seasonState.standings.getFullStandings(),
+    playoffSeries,
+  });
 }
 
 function syncUserOwnerEscalation(
@@ -790,6 +863,10 @@ function archiveTimelineEvents(
   const hallOfFameEvents = state.hallOfFame
     .filter((entry) => entry.inductionSeason === state.season + 1)
     .map((entry) => `Hall of Fame: ${entry.playerName}`);
+  const rivalryEvents = Array.from(state.rivalries.values())
+    .flatMap((rivalry) => (rivalry.eventHistory ?? [])
+      .filter((event) => event.season === state.season)
+      .map((event) => `${abbreviateTeam(rivalry.teamA)}-${abbreviateTeam(rivalry.teamB)}: ${event.summary}`));
 
   return uniqueStrings([
     state.playoffBracket?.champion === state.userTeamId ? 'Won the World Series' : '',
@@ -798,6 +875,7 @@ function archiveTimelineEvents(
     ...userAwards.map((entry) => `${entry.league} ${entry.award.replace(/_/g, ' ')}: ${entry.playerId}`),
     ...transactions.slice(0, 3).map((entry) => entry.headline),
     ...draftClass.slice(0, 2).map((pick) => `Drafted ${pick.playerName}`),
+    ...rivalryEvents.slice(0, 2),
     ...hallOfFameEvents,
   ], 8);
 }
@@ -891,6 +969,7 @@ export function rebuildBriefing(state: FullGameState) {
 
 export function ensureNarrativeState(state: FullGameState) {
   ensurePlayerPersonalityTraits(state);
+  state.rivalries = seedHistoricalRivalries(state.rivalries);
   const activePlayerIds = new Set(state.players.map((player) => player.id));
   for (const playerId of Array.from(state.playerMorale.keys())) {
     if (!activePlayerIds.has(playerId)) {
@@ -930,6 +1009,7 @@ export function refreshNarrativeState(
   gameResults: Array<{ homeTeamId: string; awayTeamId: string; homeScore: number; awayScore: number }>,
 ) {
   ensureNarrativeState(state);
+  publishRivalryGameStories(state, gameResults);
 
   for (const game of gameResults) {
     const winnerId = game.homeScore > game.awayScore ? game.homeTeamId : game.awayTeamId;
@@ -986,6 +1066,7 @@ export function refreshNarrativeState(
   state.rivalries = deriveRivalriesFromStandings(
     state.rivalries,
     state.seasonState.standings.getFullStandings(),
+    state.season,
   );
   const newMentorRelationships = syncMentorRelationships(state);
   publishMentorRelationshipStories(state, newMentorRelationships);

@@ -190,6 +190,15 @@ export const RivalrySchema = z.object({
   historicalWinsA: z.number().int().min(0).optional(),
   historicalWinsB: z.number().int().min(0).optional(),
   lastMetSeason: z.number().int().min(0).optional(),
+  closeRaceStreak: z.number().int().min(0).optional(),
+  playoffSeriesStreak: z.number().int().min(0).optional(),
+  lastTradeSeason: z.number().int().min(0).optional(),
+  lastDefectionSeason: z.number().int().min(0).optional(),
+  eventHistory: z.array(z.object({
+    season: z.number().int().min(1),
+    type: z.enum(["historical", "division_race", "playoff", "trade", "defection", "series_result"]),
+    summary: z.string(),
+  })).optional(),
 });
 export type Rivalry = z.infer<typeof RivalrySchema>;
 
