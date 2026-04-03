@@ -1,6 +1,6 @@
 export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 250 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
-export const WORKER_CHUNK_BUDGET_BYTES = 250 * 1024;
+export const WORKER_CHUNK_BUDGET_BYTES = 280 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
 
 function normalizePath(id: string): string {

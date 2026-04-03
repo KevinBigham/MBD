@@ -557,7 +557,12 @@ export function resolveHistoryDisplayNames(
     uniqueStrings(playerIds)
       .map((playerId) => {
         const player = state.players.find((candidate) => candidate.id === playerId);
-        return player ? [playerId, playerLabel(player)] : [playerId, playerId];
+        if (player) {
+          return [playerId, playerLabel(player)];
+        }
+
+        const historicalPlayer = state.historicalPlayers.find((candidate) => candidate.playerId === playerId);
+        return historicalPlayer ? [playerId, historicalPlayer.fullName] : [playerId, playerId];
       }),
   );
   const teams = Object.fromEntries(

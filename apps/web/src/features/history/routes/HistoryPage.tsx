@@ -1,7 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { History, Award, Flame, Trophy } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
-import type { AwardHistoryEntry, Rivalry, SeasonHistoryEntry, SeasonStatLeader } from '@mbd/contracts';
+import { Link } from 'react-router-dom';
+import type {
+  AwardHistoryEntry,
+  RecordBookEntry,
+  RecordWatchEntry,
+  Rivalry,
+  SeasonHistoryEntry,
+  SeasonStatLeader,
+} from '@mbd/contracts';
 import type { AwardRaceEntry, AwardRaces } from '@mbd/sim-core';
 import { AnimatedNumber } from '@/shared/components/AnimatedNumber';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
@@ -54,6 +62,11 @@ interface DynastyScoreSummary {
   };
 }
 
+interface RecordBookView {
+  franchise: RecordBookEntry[];
+  league: RecordBookEntry[];
+}
+
 interface AchievementView {
   id: string;
   category: 'dynasty' | 'development' | 'moneyball' | 'records' | 'longevity';
@@ -93,6 +106,8 @@ function collectHistoryIds(
   awardRaces: AwardRaces | null,
   awardHistory: AwardHistoryEntry[],
   seasonHistory: SeasonHistoryEntry[],
+  recordBook: RecordBookView,
+  recordWatch: RecordWatchEntry[],
   rivalries: Rivalry[],
   hallOfFame: HallOfFameEntryView[],
 ): { playerIds: string[]; teamIds: string[] } {
@@ -102,6 +117,9 @@ function collectHistoryIds(
     ...(awardRaces?.roy ?? []).map((entry) => entry.playerId),
     ...awardHistory.map((entry) => entry.playerId),
     ...hallOfFame.map((entry) => entry.playerId),
+    ...recordBook.franchise.flatMap((entry) => entry.holders.map((holder) => holder.playerId ?? '')),
+    ...recordBook.league.flatMap((entry) => entry.holders.map((holder) => holder.playerId ?? '')),
+    ...recordWatch.map((entry) => entry.playerId),
     ...seasonHistory.flatMap((entry) => [
       ...entry.awards.map((award) => award.playerId),
       ...entry.statLeaders.hr.map((leader) => leader.playerId),
@@ -120,6 +138,9 @@ function collectHistoryIds(
     ...(awardRaces?.roy ?? []).map((entry) => entry.teamId),
     ...awardHistory.map((entry) => entry.teamId),
     ...hallOfFame.flatMap((entry) => entry.teamIds),
+    ...recordBook.franchise.flatMap((entry) => entry.holders.map((holder) => holder.teamId ?? '')),
+    ...recordBook.league.flatMap((entry) => entry.holders.map((holder) => holder.teamId ?? '')),
+    ...recordWatch.map((entry) => entry.teamId),
     ...seasonHistory.flatMap((entry) => [
       entry.championTeamId ?? '',
       entry.runnerUpTeamId ?? '',
@@ -167,6 +188,8 @@ export default function HistoryPage() {
   const [awardRaces, setAwardRaces] = useState<AwardRaces | null>(null);
   const [awardHistory, setAwardHistory] = useState<AwardHistoryEntry[]>([]);
   const [seasonHistory, setSeasonHistory] = useState<SeasonHistoryEntry[]>([]);
+  const [recordBook, setRecordBook] = useState<RecordBookView>({ franchise: [], league: [] });
+  const [recordWatch, setRecordWatch] = useState<RecordWatchEntry[]>([]);
   const [rivalries, setRivalries] = useState<Rivalry[]>([]);
   const [hallOfFame, setHallOfFame] = useState<HallOfFameEntryView[]>([]);
   const [franchiseTimeline, setFranchiseTimeline] = useState<FranchiseTimelineEntryView[]>([]);
@@ -180,10 +203,18 @@ export default function HistoryPage() {
     if (!isInitialized || !workerReady) return;
     setLoading(true);
     try {
-      const [races, awards, seasons, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData] = await Promise.all([
+      const recordBookPromise = typeof worker.getRecordBook === 'function'
+        ? worker.getRecordBook(userTeamId)
+        : Promise.resolve({ franchise: [], league: [] });
+      const recordWatchPromise = typeof worker.getRecordWatchList === 'function'
+        ? worker.getRecordWatchList(userTeamId)
+        : Promise.resolve([]);
+      const [races, awards, seasons, recordBookData, recordWatchData, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData] = await Promise.all([
         worker.getAwardRaces(),
         worker.getAwardHistory(),
         worker.getSeasonHistory(),
+        recordBookPromise,
+        recordWatchPromise,
         worker.getRivalries(userTeamId),
         worker.getHallOfFame(),
         worker.getFranchiseTimeline(),
@@ -193,6 +224,8 @@ export default function HistoryPage() {
       const nextAwardRaces = races ?? null;
       const nextAwardHistory = awards ?? [];
       const nextSeasonHistory = seasons ?? [];
+      const nextRecordBook = (recordBookData ?? { franchise: [], league: [] }) as RecordBookView;
+      const nextRecordWatch = (recordWatchData ?? []) as RecordWatchEntry[];
       const nextRivalries = rivalriesData ?? [];
       const nextHallOfFame = hallOfFameData ?? [];
       const nextTimeline = timelineData ?? [];
@@ -200,6 +233,8 @@ export default function HistoryPage() {
         nextAwardRaces as AwardRaces | null,
         nextAwardHistory as AwardHistoryEntry[],
         nextSeasonHistory as SeasonHistoryEntry[],
+        nextRecordBook,
+        nextRecordWatch,
         nextRivalries as Rivalry[],
         nextHallOfFame as HallOfFameEntryView[],
       );
@@ -210,6 +245,8 @@ export default function HistoryPage() {
       setAwardRaces(nextAwardRaces as AwardRaces | null);
       setAwardHistory(nextAwardHistory as AwardHistoryEntry[]);
       setSeasonHistory(nextSeasonHistory as SeasonHistoryEntry[]);
+      setRecordBook(nextRecordBook);
+      setRecordWatch(nextRecordWatch);
       setRivalries(nextRivalries as Rivalry[]);
       setHallOfFame(nextHallOfFame as HallOfFameEntryView[]);
       setFranchiseTimeline(nextTimeline as FranchiseTimelineEntryView[]);
@@ -321,6 +358,32 @@ export default function HistoryPage() {
           </div>
         </section>
       </div>
+
+      <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-accent-info" />
+          <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Records</h2>
+        </div>
+        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr_0.8fr]">
+          <RecordBookColumn
+            entries={recordBook.franchise}
+            playerName={playerName}
+            teamName={teamName}
+            title="Franchise Record Book"
+          />
+          <RecordBookColumn
+            entries={recordBook.league}
+            playerName={playerName}
+            teamName={teamName}
+            title="League Record Book"
+          />
+          <RecordWatchPanel
+            entries={recordWatch}
+            playerName={playerName}
+            teamName={teamName}
+          />
+        </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
@@ -639,6 +702,120 @@ function AwardRaceCard({
         )) : (
           <div className="font-heading text-sm text-dynasty-muted">
             No race data yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecordBookColumn({
+  title,
+  entries,
+  playerName,
+  teamName,
+}: {
+  title: string;
+  entries: RecordBookEntry[];
+  playerName: (playerId: string) => string;
+  teamName: (teamId: string | null) => string;
+}) {
+  return (
+    <div>
+      <div className="mb-3 font-heading text-xs uppercase tracking-[0.16em] text-dynasty-muted">
+        {title}
+      </div>
+      <div className="space-y-3">
+        {entries.length > 0 ? entries.map((entry) => (
+          <div key={entry.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+            <div className="font-heading text-sm text-dynasty-textBright">{entry.label}</div>
+            {entry.qualifier && (
+              <div className="mt-1 font-heading text-[11px] uppercase text-dynasty-muted">
+                {entry.qualifier}
+              </div>
+            )}
+            <div className="mt-2 space-y-2">
+              {entry.holders.length > 0 ? entry.holders.map((holder, index) => (
+                <div key={`${entry.id}-${holder.playerId ?? 'team'}-${index}`} className="flex items-start justify-between gap-3">
+                  <div>
+                    {holder.playerId ? (
+                      <Link className="font-heading text-sm text-accent-primary hover:text-accent-primary/80" to={`/players/${holder.playerId}`}>
+                        {playerName(holder.playerId)}
+                      </Link>
+                    ) : (
+                      <div className="font-heading text-sm text-dynasty-text">
+                        {teamName(holder.teamId)}
+                      </div>
+                    )}
+                    <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                      {holder.teamId ? teamName(holder.teamId) : 'Team record'}
+                      {holder.season ? ` · Season ${holder.season}` : ''}
+                    </div>
+                  </div>
+                  <div className="font-data text-sm text-dynasty-textBright">{holder.displayValue}</div>
+                </div>
+              )) : (
+                <div className="font-heading text-xs text-dynasty-muted">
+                  {entry.trackingFromSeason
+                    ? `Tracking from Season ${entry.trackingFromSeason}.`
+                    : 'No official holder recorded yet.'}
+                </div>
+              )}
+            </div>
+          </div>
+        )) : (
+          <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
+            No records tracked yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecordWatchPanel({
+  entries,
+  playerName,
+  teamName,
+}: {
+  entries: RecordWatchEntry[];
+  playerName: (playerId: string) => string;
+  teamName: (teamId: string | null) => string;
+}) {
+  return (
+    <div>
+      <div className="mb-3 font-heading text-xs uppercase tracking-[0.16em] text-dynasty-muted">
+        Active Record Watch
+      </div>
+      <div className="space-y-3">
+        {entries.length > 0 ? entries.map((entry) => (
+          <div key={entry.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+            <div className="flex items-center justify-between gap-3">
+              <Link className="font-heading text-sm text-accent-primary hover:text-accent-primary/80" to={`/players/${entry.playerId}`}>
+                {playerName(entry.playerId)}
+              </Link>
+              <div className="font-data text-xs text-dynasty-muted">{teamName(entry.teamId)}</div>
+            </div>
+            <div className="mt-2 font-heading text-xs uppercase text-dynasty-muted">
+              {entry.recordLabel}
+            </div>
+            <div className="mt-2">
+              <ProgressFill
+                toneClassName="bg-accent-info"
+                trackClassName="bg-dynasty-surface"
+                value={Math.max(6, Math.min(100, entry.progressRatio * 100))}
+              />
+            </div>
+            <div className="mt-2 font-data text-xs text-dynasty-textBright">
+              {entry.currentValue} now · {entry.projectedValue} projected
+            </div>
+            <div className="mt-2 font-heading text-xs text-dynasty-muted">
+              {entry.summary}
+            </div>
+          </div>
+        )) : (
+          <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
+            No one is within record range right now.
           </div>
         )}
       </div>

@@ -15,7 +15,10 @@ import {
   getTopFreeAgents,
   getUnreadNews,
   scoutPlayer,
+  toInternalRating,
+  toLetterGrade,
 } from '@mbd/sim-core';
+import type { HistoricalPlayer } from '@mbd/contracts';
 import type {
   FreeAgent,
   GeneratedPlayer,
@@ -273,6 +276,86 @@ function teamNameFromId(teamId: string): string {
   return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
 }
 
+function buildHistoricalSummary(player: HistoricalPlayer) {
+  return {
+    playerId: player.playerId,
+    fullName: player.fullName,
+    position: player.position,
+    lastKnownTeamId: player.lastKnownTeamId,
+    active: player.active,
+    retiredSeason: player.retiredSeason,
+    seasonsPlayed: player.seasonsPlayed,
+    personalityTraits: [...player.personalityTraits],
+  };
+}
+
+function buildHistoricalPlayerDTO(player: HistoricalPlayer): PlayerDTO {
+  const displayRating = player.peakOverall ?? 50;
+  const overallRating = toInternalRating(displayRating);
+
+  return {
+    id: player.playerId,
+    firstName: player.firstName,
+    lastName: player.lastName,
+    age: 0,
+    position: player.position,
+    overallRating,
+    displayRating,
+    letterGrade: toLetterGrade(overallRating),
+    rosterStatus: player.active ? 'MLB' : 'RETIRED',
+    teamId: player.lastKnownTeamId,
+    serviceTimeDays: player.seasonsPlayed * 172,
+    optionYearsUsed: 0,
+    isOutOfOptions: false,
+    minorLeagueLevel: null,
+    contract: {
+      years: 0,
+      annualSalary: 0,
+      totalValue: 0,
+      noTradeClause: false,
+      noTradeClauseType: 'none',
+      playerOption: false,
+      teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
+    },
+    ceiling: null,
+    floor: null,
+    developmentProgram: null,
+    developmentTrajectory: 'on_track',
+    personalityTraits: [...player.personalityTraits],
+    extensionHistory: [],
+    stats: null,
+    advanced: null,
+    historical: true,
+    historicalSummary: buildHistoricalSummary(player),
+  };
+}
+
+function decorateHistoricalPlayer(playerView: PlayerDTO, historicalPlayer: HistoricalPlayer | null): PlayerDTO {
+  if (!historicalPlayer) {
+    return playerView;
+  }
+
+  return {
+    ...playerView,
+    personalityTraits: playerView.personalityTraits ?? [...historicalPlayer.personalityTraits],
+    historical: !historicalPlayer.active || playerView.rosterStatus === 'RETIRED',
+    historicalSummary: buildHistoricalSummary(historicalPlayer),
+  };
+}
+
+function matchesPlayerQuery(
+  player: Pick<HistoricalPlayer, 'firstName' | 'lastName' | 'fullName'>,
+  normalizedQuery: string,
+): boolean {
+  return player.firstName.toLowerCase().includes(normalizedQuery)
+    || player.lastName.toLowerCase().includes(normalizedQuery)
+    || player.fullName.toLowerCase().includes(normalizedQuery);
+}
+
 function formatMinorLevel(level: string): string {
   switch (level) {
     case 'A_PLUS':
@@ -527,8 +610,13 @@ export const queryApi = {
     }
 
     const player = state.players.find((candidate) => candidate.id === playerId);
+    const historicalPlayer = state.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
     const advanced = player ? getAdvancedStatsForPlayer(state, player.id) : null;
-    return player ? toPlayerDTO(player, undefined, advanced) : null;
+    if (player) {
+      return decorateHistoricalPlayer(toPlayerDTO(player, undefined, advanced), historicalPlayer);
+    }
+
+    return historicalPlayer ? buildHistoricalPlayerDTO(historicalPlayer) : null;
   },
 
   getAdvancedStats(playerId: string) {
@@ -641,15 +729,25 @@ export const queryApi = {
       return [];
     }
 
+    const s = state;
     const normalized = query.toLowerCase();
-    return state.players
+    const liveResults = s.players
       .filter((player) =>
         player.firstName.toLowerCase().includes(normalized)
         || player.lastName.toLowerCase().includes(normalized)
         || `${player.firstName} ${player.lastName}`.toLowerCase().includes(normalized),
       )
-      .slice(0, limit)
-      .map((player) => toPlayerDTO(player));
+      .map((player) => {
+        const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === player.id) ?? null;
+        return decorateHistoricalPlayer(toPlayerDTO(player), historicalPlayer);
+      });
+
+    const seenIds = new Set(liveResults.map((player) => player.id));
+    const historicalResults = s.historicalPlayers
+      .filter((player) => !seenIds.has(player.playerId) && matchesPlayerQuery(player, normalized))
+      .map(buildHistoricalPlayerDTO);
+
+    return [...liveResults, ...historicalResults].slice(0, limit);
   },
 
   getInjuries(teamId: string) {
@@ -920,6 +1018,30 @@ export const queryApi = {
 
   getSeasonHistory() {
     return getSeasonHistory(requireState());
+  },
+
+  getRecordBook(teamId?: string) {
+    const s = requireState();
+    const resolvedTeamId = teamId ?? s.userTeamId;
+    const sortEntries = (left: { category: string; label: string }, right: { category: string; label: string }) =>
+      left.category.localeCompare(right.category) || left.label.localeCompare(right.label);
+
+    return {
+      franchise: s.recordBook
+        .filter((entry) => entry.scope === 'franchise' && entry.teamId === resolvedTeamId)
+        .sort(sortEntries),
+      league: s.recordBook
+        .filter((entry) => entry.scope === 'league')
+        .sort(sortEntries),
+    };
+  },
+
+  getRecordWatchList(teamId?: string) {
+    const s = requireState();
+    const resolvedTeamId = teamId ?? s.userTeamId;
+    return s.recordWatch
+      .filter((entry) => entry.teamId === resolvedTeamId)
+      .sort((left, right) => right.progressRatio - left.progressRatio || right.projectedValue - left.projectedValue);
   },
 
   resolveHistoryDisplayNames(playerIds: string[], teamIds: string[]) {

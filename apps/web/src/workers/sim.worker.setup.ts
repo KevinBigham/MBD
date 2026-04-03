@@ -3,6 +3,7 @@ import {
   GameRNG,
   TEAMS,
   assignGMPersonality,
+  backfillLegacyRecordBook,
   buildRosterState,
   createSeasonState,
   generateCoachFreeAgents,
@@ -216,6 +217,14 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     rosterStates.set(teamId, buildRosterState(teamId, players));
   }
 
+  const recordBook = backfillLegacyRecordBook({
+    currentSeason: 1,
+    franchiseTeamId: options.userTeamId,
+    franchiseTimeline: [],
+    seasonHistory: [],
+    careerStats: [],
+  });
+
   return {
     rng,
     season: 1,
@@ -256,6 +265,12 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     hallOfFameBallot: [],
     franchiseTimeline: [],
     careerStats: [],
+    recordBook,
+    recordWatch: [],
+    seasonArchive: [],
+    historicalPlayers: [],
+    mentorRelationships: [],
+    frontOfficeState: new Map(),
     seasonHistory: [],
     tradeState: createEmptyTradeState(),
     franchise: createDefaultFranchiseState(options.userTeamId, 1, 1, {

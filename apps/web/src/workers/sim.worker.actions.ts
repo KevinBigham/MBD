@@ -142,6 +142,7 @@ import {
   accrueCareerStatsForSeason,
   enrichFranchiseTimelineWithDepartures,
   processHallOfFameForRetirements,
+  syncHistoricalPlayersForRetirements,
   upsertFranchiseTimelineEntry,
 } from './sim.worker.legacy.js';
 import {
@@ -156,6 +157,7 @@ import {
   getDifficultyAdjustedCompetitiveAav,
   type NewGameOptions,
 } from './sim.worker.setup.js';
+import { syncRecordTracking } from './sim.worker.records.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -414,6 +416,11 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     ensureAwardHistoryForSeason(s);
     queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
     maybeQueuePlayoffClinchMoment(s);
+    syncRecordTracking(s, {
+      includeCurrentSeasonPlayoffAppearance: true,
+      clearWatches: true,
+      publishBrokenRecords: true,
+    });
     captureSeasonAchievementFacts(s);
     syncAchievementState(s);
     clearPendingTradeOffers(s);
@@ -479,6 +486,7 @@ function simWeekInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  syncRecordTracking(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
 }
 
@@ -520,6 +528,7 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  syncRecordTracking(s, { publishWatchStories: true, publishBrokenRecords: true });
   s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
   recordMonthlyDivisionLead(s);
   syncAchievementState(s);
@@ -528,6 +537,11 @@ function simMonthInternal(): SimResultDTO {
 
 function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   accrueCareerStatsForSeason(s);
+  syncRecordTracking(s, {
+    includeCurrentSeasonPlayoffAppearance: true,
+    clearWatches: true,
+    publishBrokenRecords: true,
+  });
 
   const beforePlayers = s.players;
   const kernelPlayers = s.players.map((player) => developPlayer(s.rng.fork(), player));
@@ -541,6 +555,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.players = developedPlayers;
 
   const retired = determineRetirements(s.rng.fork(), s.players);
+  syncHistoricalPlayersForRetirements(s, retired);
   const inductees = processHallOfFameForRetirements(s, retired);
   queueHallOfFameMoments(s, inductees);
   syncAchievementState(s);
@@ -615,6 +630,7 @@ function simDayInternal(): SimResultDTO {
     processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
+    syncRecordTracking(s);
     return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
   }
 

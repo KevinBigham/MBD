@@ -14,7 +14,7 @@ import type { GeneratedPlayer } from '../player/generation.js';
 
 export type NewsPriority = 1 | 2 | 3 | 4 | 5;
 
-export type NewsTag = 'BREAKING' | 'ANALYSIS' | 'RECAP' | 'RUMOR';
+export type NewsTag = 'BREAKING' | 'ANALYSIS' | 'RECAP' | 'RUMOR' | 'WATCH';
 
 export type NewsCategory =
   | 'injury'

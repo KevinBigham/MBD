@@ -177,4 +177,72 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('wOBA');
     expect(container.textContent).toContain('4.8');
   });
+
+  it('renders a read-only historical fallback when the player is retired from the live pool', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getPlayer: vi.fn().mockResolvedValue({
+        id: 'historic-1',
+        firstName: 'Derek',
+        lastName: 'Legacy',
+        age: 39,
+        position: 'SS',
+        overallRating: 72,
+        displayRating: 68,
+        letterGrade: 'A',
+        rosterStatus: 'RETIRED',
+        teamId: 'nyy',
+        ceiling: null,
+        floor: null,
+        developmentProgram: null,
+        developmentTrajectory: 'on_track',
+        contract: {
+          years: 0,
+          annualSalary: 0,
+          totalValue: 0,
+          noTradeClause: false,
+          noTradeClauseType: 'none',
+          playerOption: false,
+          teamOption: false,
+          optOutYears: [],
+          signingBonus: 0,
+          buyoutAmount: 0,
+          deferredMoney: [],
+        },
+        extensionHistory: [],
+        stats: null,
+        historical: true,
+        historicalSummary: {
+          playerId: 'historic-1',
+          fullName: 'Derek Legacy',
+          position: 'SS',
+          lastKnownTeamId: 'nyy',
+          active: false,
+          retiredSeason: 4,
+          seasonsPlayed: 16,
+          personalityTraits: ['Leader', 'Fan Favorite'],
+        },
+      }),
+      getAdvancedStats: vi.fn().mockResolvedValue(null),
+      getPersonalityProfile: vi.fn().mockResolvedValue(null),
+      getDevelopmentReports: vi.fn().mockResolvedValue(null),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/players/historic-1']}>
+          <Routes>
+            <Route path="/players/:playerId" element={<PlayerProfilePage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Historical Profile');
+    expect(container.textContent).toContain('Season 4');
+    expect(container.textContent).toContain('Leader');
+    expect(container.textContent).toContain('Fan Favorite');
+  });
 });

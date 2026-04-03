@@ -9,6 +9,7 @@ import {
 } from '@mbd/sim-core';
 import type { GeneratedPlayer, PlayerGameStats } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
+import { buildAdvancedStatsIndex } from './sim.worker.stats.js';
 
 function teamLabel(teamId: string): string {
   const team = getTeamById(teamId);
@@ -44,6 +45,9 @@ function ensureCareerEntry(
     peakOverall: toDisplayRating(player.overallRating),
     championshipRings: 0,
     allStarSelections: 0,
+    gamesPlayed: 0,
+    saves: 0,
+    war: 0,
     batting: player.pitcherAttributes
       ? null
       : {
@@ -76,6 +80,9 @@ function applySeasonStatsToCareer(entry: CareerStatsLedger, stats: PlayerGameSta
       rbi: entry.batting.rbi + stats.rbi,
     };
   }
+
+  entry.gamesPlayed = (entry.gamesPlayed ?? 0) + (stats.gamesPlayed ?? 0);
+  entry.saves = (entry.saves ?? 0) + (stats.saves ?? 0);
 
   if (entry.pitching) {
     entry.pitching = {
@@ -143,6 +150,7 @@ function updateTimelineScores(entries: FranchiseTimelineEntry[]) {
 
 export function accrueCareerStatsForSeason(state: FullGameState) {
   const championId = state.playoffBracket?.champion ?? null;
+  const advancedIndex = buildAdvancedStatsIndex(state);
 
   for (const player of state.players) {
     if (!qualifyingSeason(state, player)) {
@@ -161,7 +169,38 @@ export function accrueCareerStatsForSeason(state: FullGameState) {
       entry.championshipRings += 1;
     }
     applySeasonStatsToCareer(entry, state.seasonState.playerSeasonStats.get(player.id));
+    entry.war = Number(((entry.war ?? 0) + (advancedIndex.get(player.id)?.war ?? 0)).toFixed(1));
   }
+}
+
+export function syncHistoricalPlayersForRetirements(state: FullGameState, retiredPlayerIds: string[]) {
+  const byId = new Map(state.historicalPlayers.map((player) => [player.playerId, player]));
+
+  for (const playerId of retiredPlayerIds) {
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      continue;
+    }
+
+    const ledger = state.careerStats.find((entry) => entry.playerId === playerId);
+    byId.set(playerId, {
+      playerId,
+      fullName: `${player.firstName} ${player.lastName}`,
+      firstName: player.firstName,
+      lastName: player.lastName,
+      position: player.position,
+      lastKnownTeamId: player.teamId,
+      active: false,
+      retiredSeason: state.season,
+      seasonsPlayed: ledger?.seasonsPlayed ?? Math.round(player.serviceTimeDays / 172),
+      peakOverall: ledger?.peakOverall ?? toDisplayRating(player.overallRating),
+      personalityTraits: [...(player.personalityTraits ?? [])],
+    });
+  }
+
+  state.historicalPlayers = Array.from(byId.values()).sort((left, right) =>
+    left.fullName.localeCompare(right.fullName),
+  );
 }
 
 export function upsertFranchiseTimelineEntry(state: FullGameState) {

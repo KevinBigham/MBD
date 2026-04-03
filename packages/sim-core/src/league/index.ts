@@ -60,6 +60,20 @@ export {
 } from './rivalries.js';
 
 export {
+  backfillLegacyRecordBook,
+  getRecordWatchList,
+  updateRecordBook,
+} from './records.js';
+export type {
+  BrokenRecord,
+  LegacyRecordBookArgs,
+  PlayerSeasonRecord,
+  RecordWatchArgs,
+  TeamStandingRecord,
+  UpdateRecordBookArgs,
+} from './records.js';
+
+export {
   evaluateHOFCandidate,
   processHOFInductions,
   calculateDynastyScore,

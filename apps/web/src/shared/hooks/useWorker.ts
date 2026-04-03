@@ -556,6 +556,14 @@ export function useWorker() {
   );
   const getAwardHistory = useCallback(async () => api.getAwardHistory(), [api]);
   const getSeasonHistory = useCallback(async () => api.getSeasonHistory(), [api]);
+  const getRecordBook = useCallback(
+    async (teamId?: string) => api.getRecordBook(teamId),
+    [api],
+  );
+  const getRecordWatchList = useCallback(
+    async (teamId?: string) => api.getRecordWatchList(teamId),
+    [api],
+  );
   const resolveHistoryDisplayNames = useCallback(
     async (playerIds: string[], teamIds: string[]) => api.resolveHistoryDisplayNames(playerIds, teamIds),
     [api],
@@ -610,7 +618,7 @@ export function useWorker() {
     proceedToOffseason, startNextSeason,
     getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
-    getAwardHistory, getSeasonHistory, resolveHistoryDisplayNames,
+    getAwardHistory, getSeasonHistory, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames,
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
     subscribeToFlowUpdates,

@@ -126,6 +126,45 @@ describe('HistoryPage', () => {
           },
         },
       ]),
+      getRecordBook: vi.fn().mockResolvedValue({
+        franchise: [
+          {
+            id: 'franchise:nyy:individual_single_season:hr',
+            scope: 'franchise',
+            teamId: 'nyy',
+            category: 'individual_single_season',
+            stat: 'hr',
+            label: 'Most Home Runs',
+            qualifier: null,
+            holders: [{
+              playerId: 'player-mvp',
+              playerName: 'Mike Trout',
+              teamId: 'nyy',
+              season: 2,
+              value: 44,
+              displayValue: '44',
+            }],
+            trackingFromSeason: null,
+            note: null,
+          },
+        ],
+        league: [],
+      }),
+      getRecordWatchList: vi.fn().mockResolvedValue([
+        {
+          id: 'watch-1',
+          recordId: 'franchise:nyy:individual_single_season:hr',
+          playerId: 'player-mvp',
+          playerName: 'Mike Trout',
+          teamId: 'nyy',
+          recordLabel: 'Most Home Runs',
+          currentValue: 24,
+          projectedValue: 61,
+          holderValue: 44,
+          progressRatio: 0.55,
+          summary: 'Mike Trout is on pace for 61 HR. Franchise record is 44.',
+        },
+      ]),
       getRivalries: vi.fn().mockResolvedValue([
         {
           id: 'nyy-bos',
@@ -262,6 +301,9 @@ describe('HistoryPage', () => {
     expect(container.textContent).toContain('Boston Red Sox');
     expect(container.textContent).toContain('Season 2 Recap');
     expect(container.textContent).toContain('New York Yankees def. Los Angeles Dodgers (4-2)');
+    expect(container.textContent).toContain('Records');
+    expect(container.textContent).toContain('Most Home Runs');
+    expect(container.textContent).toContain('Mike Trout is on pace for 61 HR');
     expect(container.textContent).toContain('Anthony Rizzo');
     expect(container.textContent).toContain('Deadline blockbuster reshaped the race');
     expect(container.textContent).toContain('97-65');

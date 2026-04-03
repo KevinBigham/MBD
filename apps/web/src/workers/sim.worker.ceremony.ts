@@ -5,6 +5,7 @@ import type {
   CeremonyState,
   FranchiseState,
   HallOfFameEntry,
+  RecordBookEntry,
 } from '@mbd/contracts';
 import {
   checkMilestones,
@@ -43,6 +44,9 @@ export function createDefaultFranchiseState(
     teamName: overrides.teamName ?? (team ? `${team.city} ${team.name}` : userTeamId.toUpperCase()),
     teamAbbreviation: overrides.teamAbbreviation ?? (team?.abbreviation ?? userTeamId.toUpperCase()),
     teamDivision: overrides.teamDivision ?? (team?.division ?? 'UNKNOWN'),
+    status: overrides.status ?? 'active',
+    endedAt: overrides.endedAt ?? null,
+    endReason: overrides.endReason ?? null,
     onboarding: overrides.onboarding ?? {
       welcomeBriefingSeen: true,
       firstMonthlyPulseSeen: true,
@@ -217,6 +221,37 @@ export function queueHallOfFameMoments(state: FullGameState, inductees: HallOfFa
       relatedPlayerIds: [inductee.playerId],
     });
   }
+}
+
+export function queueRecordBrokenMoment(state: FullGameState, entry: RecordBookEntry) {
+  const holder = entry.holders[0];
+  if (!holder) {
+    return;
+  }
+
+  const subject = holder.playerName ?? teamLabel(holder.teamId ?? state.userTeamId);
+  const scopeLabel = entry.scope === 'franchise' ? 'Franchise Record' : 'League Record';
+  const detailLines = [
+    `${subject} now owns the ${entry.label} mark at ${holder.displayValue}.`,
+  ];
+
+  if (holder.season != null) {
+    detailLines.push(`Set in Season ${holder.season}.`);
+  }
+
+  queueCeremonyMoment(state, {
+    id: `record-broken-${entry.id}-${holder.playerId ?? holder.teamId ?? 'team'}`,
+    type: 'record_broken',
+    title: 'RECORD BROKEN',
+    subtitle: scopeLabel,
+    detailLines,
+    soundEffect: 'achievement_unlock',
+    autoDismissMs: 5000,
+    createdAt: currentTimestamp(state),
+    theme: 'historic',
+    relatedTeamIds: holder.teamId ? [holder.teamId] : [],
+    relatedPlayerIds: holder.playerId ? [holder.playerId] : [],
+  });
 }
 
 function buildCumulativeMilestoneStats(state: FullGameState) {

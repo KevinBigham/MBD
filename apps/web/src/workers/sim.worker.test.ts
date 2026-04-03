@@ -174,6 +174,7 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
   return {
     playerId: 'player',
     teamId: 'nyy',
+    gamesPlayed: 0,
     pa: 0,
     ab: 0,
     hits: 0,
@@ -195,6 +196,7 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
     hitBatters: 0,
     flyBallsAllowed: 0,
     wins: 0,
+    saves: 0,
     losses: 0,
     ...overrides,
   };
@@ -477,6 +479,131 @@ describe('sim worker narrative APIs', () => {
     expect(firstDecisionId).toBeTruthy();
     expect(monthlyApi.dismissDecisionSpotlight(firstDecisionId!)).toEqual({ success: true });
     expect(monthlyApi.getMonthlyPulse()?.decisionQueue.some((item) => item.id === firstDecisionId)).toBe(false);
+  });
+
+  it('publishes record watch stories after monthly sim when a user player is on pace', () => {
+    startGame(1253, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 31,
+    };
+
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')!;
+    hrEntry.holders = [{
+      playerId: 'historic-hr-holder',
+      playerName: 'Historic Slugger',
+      teamId: 'nyy',
+      season: 1,
+      value: 44,
+      displayValue: '44',
+    }];
+    hrEntry.trackingFromSeason = null;
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: 'nyy',
+      gamesPlayed: 31,
+      pa: 140,
+      ab: 120,
+      hits: 48,
+      hr: 16,
+      rbi: 42,
+    }));
+
+    api.simMonth();
+
+    const watches = (api as typeof api & {
+      getRecordWatchList: (teamId?: string) => Array<{ playerId: string; recordLabel: string }>;
+    }).getRecordWatchList('nyy');
+    const news = (api as typeof api & {
+      getNews: (limit?: number) => Array<{ category: string; tag?: string }>;
+    }).getNews(20);
+
+    expect(watches.some((entry) => entry.playerId === hitter.id && entry.recordLabel === 'Most Home Runs')).toBe(true);
+    expect(news.some((item) => item.category === 'record' && item.tag === 'WATCH')).toBe(true);
+  });
+
+  it('queues a record broken ceremony when the user club passes a tracked mark', () => {
+    startGame(1254, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 31,
+    };
+
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')!;
+    hrEntry.holders = [{
+      playerId: 'historic-hr-holder',
+      playerName: 'Historic Slugger',
+      teamId: 'nyy',
+      season: 1,
+      value: 10,
+      displayValue: '10',
+    }];
+    hrEntry.trackingFromSeason = null;
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: 'nyy',
+      gamesPlayed: 31,
+      pa: 140,
+      ab: 120,
+      hits: 48,
+      hr: 12,
+      rbi: 39,
+    }));
+
+    api.simMonth();
+
+    expect(requireState().ceremony.pendingMoments.some((moment) => moment.type === 'record_broken')).toBe(true);
+    const recordBook = (api as typeof api & {
+      getRecordBook: (teamId?: string) => {
+        franchise: Array<{ id: string; holders: Array<{ playerId: string | null; value: number }> }>;
+      };
+    }).getRecordBook('nyy');
+    expect(recordBook.franchise.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')?.holders[0]?.playerId).toBe(hitter.id);
+  });
+
+  it('returns historical player data after a retired player leaves the live pool', () => {
+    startGame(1255, 'nyy');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'nyy' && candidate.rosterStatus === 'MLB')!;
+
+    state.historicalPlayers = [{
+      playerId: player.id,
+      fullName: `${player.firstName} ${player.lastName}`,
+      firstName: player.firstName,
+      lastName: player.lastName,
+      position: player.position,
+      lastKnownTeamId: player.teamId,
+      active: false,
+      retiredSeason: state.season,
+      seasonsPlayed: 14,
+      peakOverall: 71,
+      personalityTraits: ['Leader'],
+    }];
+    state.players = state.players.filter((candidate) => candidate.id !== player.id);
+
+    const historicalPlayer = (api as typeof api & {
+      getPlayer: (playerId: string) => {
+        historical?: boolean;
+        personalityTraits?: string[];
+        historicalSummary?: { retiredSeason: number | null };
+      } | null;
+    }).getPlayer(player.id);
+
+    expect(historicalPlayer?.historical).toBe(true);
+    expect(historicalPlayer?.personalityTraits).toContain('Leader');
+    expect(historicalPlayer?.historicalSummary?.retiredSeason).toBe(state.season);
   });
 
   it('routes offseason progression through extensions before qualifying offers', () => {

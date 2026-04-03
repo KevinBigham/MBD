@@ -133,19 +133,25 @@ import type {
   BriefingItem,
   CareerStatsLedger,
   CeremonyState,
+  FrontOfficeState,
   DraftCompensatoryPick,
   DraftPickOwnership,
   FranchiseState,
   FranchiseTimelineEntry,
   HallOfFameBallotEntry,
   HallOfFameEntry,
+  HistoricalPlayer,
   DraftSignability,
+  MentorRelationship,
   DraftState as PersistentDraftState,
   MinorLeagueState,
   MonthlyPulseState,
   OwnerState,
   PlayerMorale,
+  RecordBookEntry,
+  RecordWatchEntry,
   Rivalry,
+  SeasonArchiveEntry,
   SeasonHistoryEntry,
   TeamChemistry,
   TradeState,
@@ -199,6 +205,12 @@ export interface FullGameState {
   hallOfFameBallot: HallOfFameBallotEntry[];
   franchiseTimeline: FranchiseTimelineEntry[];
   careerStats: CareerStatsLedger[];
+  recordBook: RecordBookEntry[];
+  recordWatch: RecordWatchEntry[];
+  seasonArchive: SeasonArchiveEntry[];
+  historicalPlayers: HistoricalPlayer[];
+  mentorRelationships: MentorRelationship[];
+  frontOfficeState: Map<string, FrontOfficeState>;
   seasonHistory: SeasonHistoryEntry[];
   tradeState: TradeState;
   franchise: FranchiseState;
@@ -265,6 +277,7 @@ export interface PlayerDTO {
   floor: number | null;
   developmentProgram: string | null;
   developmentTrajectory: string;
+  personalityTraits?: string[];
   extensionHistory: Array<{
     season: number;
     teamId: string;
@@ -300,6 +313,17 @@ export interface PlayerDTO {
     era: string;
   } | null;
   advanced: PlayerAdvancedStatsDTO | null;
+  historical?: boolean;
+  historicalSummary?: {
+    playerId: string;
+    fullName: string;
+    position: string;
+    lastKnownTeamId: string;
+    active: boolean;
+    retiredSeason: number | null;
+    seasonsPlayed: number;
+    personalityTraits: string[];
+  } | null;
 }
 
 export interface SimResultDTO {
@@ -3121,9 +3145,12 @@ export function toPlayerDTO(
     floor: player.floor ?? null,
     developmentProgram: player.developmentProgram ?? null,
     developmentTrajectory: player.developmentTrajectory ?? 'on_track',
+    personalityTraits: [...(player.personalityTraits ?? [])],
     extensionHistory: [...(player.extensionHistory ?? [])],
     stats: statBlock,
     advanced: advanced ?? null,
+    historical: false,
+    historicalSummary: null,
   };
 }
 

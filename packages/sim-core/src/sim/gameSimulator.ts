@@ -36,6 +36,7 @@ export interface GameBoxScore {
 export interface PlayerGameStats {
   playerId: string;
   teamId: string;
+  gamesPlayed?: number;
   pa: number;
   ab: number;
   hits: number;
@@ -58,6 +59,7 @@ export interface PlayerGameStats {
   hitBatters: number;
   flyBallsAllowed: number;
   wins: number;
+  saves?: number;
   losses: number;
 }
 
@@ -108,11 +110,12 @@ export function simulateGame(
     if (!stats) {
       stats = {
         playerId: player.id, teamId,
+        gamesPlayed: 1,
         pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0,
         rbi: 0, bb: 0, k: 0, runs: 0, hbp: 0, sacFlies: 0,
         ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,
         homeRunsAllowed: 0, hitBatters: 0, flyBallsAllowed: 0,
-        wins: 0, losses: 0,
+        wins: 0, saves: 0, losses: 0,
       };
       playerStats.set(player.id, stats);
     }
@@ -179,13 +182,21 @@ export function simulateGame(
 
   // Update pitcher IP
   updatePitcherStats(playerStats, homePitcher, away.pitcher, awayScore, homeScore);
-  if (homeScore > awayScore) {
-    getStats(homePitcher, home.teamId).wins++;
-    getStats(awayPitcher, away.teamId).losses++;
-  } else {
-    getStats(awayPitcher, away.teamId).wins++;
-    getStats(homePitcher, home.teamId).losses++;
+  const homeWon = homeScore > awayScore;
+  const margin = Math.abs(homeScore - awayScore);
+  const winningPitcher = homeWon
+    ? (homePitcher.id !== home.pitcher.id && margin <= 3 ? home.pitcher : homePitcher)
+    : (awayPitcher.id !== away.pitcher.id && margin <= 3 ? away.pitcher : awayPitcher);
+  const savingPitcher = homeWon
+    ? (homePitcher.id !== winningPitcher.id && margin <= 3 ? homePitcher : null)
+    : (awayPitcher.id !== winningPitcher.id && margin <= 3 ? awayPitcher : null);
+  const losingPitcher = homeWon ? awayPitcher : homePitcher;
+
+  getStats(winningPitcher, homeWon ? home.teamId : away.teamId).wins++;
+  if (savingPitcher) {
+    getStats(savingPitcher, homeWon ? home.teamId : away.teamId).saves!++;
   }
+  getStats(losingPitcher, homeWon ? away.teamId : home.teamId).losses++;
 
   return {
     boxScore: {

@@ -14,6 +14,7 @@ export const NewsTagEnum = z.enum([
   "ANALYSIS",
   "RECAP",
   "RUMOR",
+  "WATCH",
 ]);
 export type NewsTag = z.infer<typeof NewsTagEnum>;
 
@@ -133,6 +134,15 @@ export const OwnerStateSchema = z.object({
   hotSeat: z.boolean(),
   summary: z.string(),
   expectations: OwnerExpectationsSchema,
+  spendingWillingness: z.enum(["cheap", "moderate", "lavish"]).optional(),
+  winNowPressure: z.number().min(0).max(100).optional(),
+  meddlingLevel: z.number().min(0).max(100).optional(),
+  satisfaction: z.number().min(0).max(100).optional(),
+  annualBudget: z.number().min(0).optional(),
+  payrollCap: z.number().min(0).optional(),
+  draftBonusPool: z.number().min(0).optional(),
+  ifaBonusPool: z.number().min(0).optional(),
+  staffBudget: z.number().min(0).optional(),
 });
 export type OwnerState = z.infer<typeof OwnerStateSchema>;
 
@@ -173,6 +183,13 @@ export const RivalrySchema = z.object({
   intensity: z.number().min(0).max(100),
   summary: z.string(),
   reasons: z.array(z.string()),
+  origin: z.enum(["historical", "division_race", "playoff", "trade", "defection"]).optional(),
+  active: z.boolean().optional(),
+  currentSeasonWinsA: z.number().int().min(0).optional(),
+  currentSeasonWinsB: z.number().int().min(0).optional(),
+  historicalWinsA: z.number().int().min(0).optional(),
+  historicalWinsB: z.number().int().min(0).optional(),
+  lastMetSeason: z.number().int().min(0).optional(),
 });
 export type Rivalry = z.infer<typeof RivalrySchema>;
 
@@ -213,6 +230,9 @@ export const CareerStatsLedgerSchema = z.object({
   peakOverall: z.number().int().min(0).max(100),
   championshipRings: z.number().int().min(0),
   allStarSelections: z.number().int().min(0),
+  gamesPlayed: z.number().int().min(0).optional(),
+  saves: z.number().int().min(0).optional(),
+  war: z.number().optional(),
   batting: CareerBattingTotalsSchema.nullable(),
   pitching: CareerPitchingTotalsSchema.nullable(),
 });
@@ -295,6 +315,136 @@ export const BlockbusterTradeSummarySchema = z.object({
   teamIds: z.array(z.string()),
 });
 export type BlockbusterTradeSummary = z.infer<typeof BlockbusterTradeSummarySchema>;
+
+export const RecordBookHolderSchema = z.object({
+  playerId: z.string().nullable(),
+  playerName: z.string().nullable(),
+  teamId: z.string().nullable(),
+  season: z.number().int().min(1).nullable(),
+  value: z.number(),
+  displayValue: z.string().min(1),
+});
+export type RecordBookHolder = z.infer<typeof RecordBookHolderSchema>;
+
+export const RecordBookEntrySchema = z.object({
+  id: z.string(),
+  scope: z.enum(["franchise", "league"]),
+  teamId: z.string().nullable(),
+  category: z.enum(["team_single_season", "individual_single_season", "career", "streak"]),
+  stat: z.string().min(1),
+  label: z.string().min(1),
+  qualifier: z.string().nullable().default(null),
+  holders: z.array(RecordBookHolderSchema).default([]),
+  trackingFromSeason: z.number().int().min(1).nullable().default(null),
+  note: z.string().nullable().default(null),
+});
+export type RecordBookEntry = z.infer<typeof RecordBookEntrySchema>;
+
+export const RecordWatchEntrySchema = z.object({
+  id: z.string(),
+  recordId: z.string(),
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  teamId: z.string(),
+  recordLabel: z.string().min(1),
+  currentValue: z.number(),
+  projectedValue: z.number(),
+  holderValue: z.number(),
+  progressRatio: z.number().min(0).max(2),
+  summary: z.string(),
+});
+export type RecordWatchEntry = z.infer<typeof RecordWatchEntrySchema>;
+
+export const HistoricalPlayerSchema = z.object({
+  playerId: z.string(),
+  fullName: z.string().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  position: z.string().min(1),
+  lastKnownTeamId: z.string(),
+  active: z.boolean(),
+  retiredSeason: z.number().int().min(1).nullable().default(null),
+  seasonsPlayed: z.number().int().min(0).default(0),
+  peakOverall: z.number().int().min(0).max(100).nullable().default(null),
+  personalityTraits: z.array(z.string()).default([]),
+});
+export type HistoricalPlayer = z.infer<typeof HistoricalPlayerSchema>;
+
+export const MentorRelationshipSchema = z.object({
+  veteranPlayerId: z.string(),
+  rookiePlayerId: z.string(),
+  teamId: z.string(),
+  startedSeason: z.number().int().min(1),
+  summary: z.string(),
+});
+export type MentorRelationship = z.infer<typeof MentorRelationshipSchema>;
+
+export const FrontOfficeStateSchema = z.object({
+  teamId: z.string(),
+  reputation: z.number().min(0).max(100),
+  draftScore: z.number(),
+  tradeScore: z.number(),
+  freeAgencyScore: z.number(),
+  playoffScore: z.number(),
+  summary: z.string(),
+});
+export type FrontOfficeState = z.infer<typeof FrontOfficeStateSchema>;
+
+export const SeasonArchiveStandingSchema = z.object({
+  teamId: z.string(),
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+  divisionRank: z.number().int().min(1),
+  gamesBack: z.number(),
+});
+export type SeasonArchiveStanding = z.infer<typeof SeasonArchiveStandingSchema>;
+
+export const SeasonArchivePlayoffSeriesSchema = z.object({
+  round: z.string().min(1),
+  winnerTeamId: z.string().nullable(),
+  loserTeamId: z.string().nullable(),
+  result: z.string().nullable(),
+});
+export type SeasonArchivePlayoffSeries = z.infer<typeof SeasonArchivePlayoffSeriesSchema>;
+
+export const SeasonArchiveTransactionSchema = z.object({
+  headline: z.string().min(1),
+  summary: z.string(),
+  playerIds: z.array(z.string()).default([]),
+  teamIds: z.array(z.string()).default([]),
+  impactScore: z.number().default(0),
+});
+export type SeasonArchiveTransaction = z.infer<typeof SeasonArchiveTransactionSchema>;
+
+export const SeasonArchiveDraftPickSchema = z.object({
+  pickNumber: z.number().int().min(1),
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  teamId: z.string(),
+  currentStatus: z.string().min(1),
+});
+export type SeasonArchiveDraftPick = z.infer<typeof SeasonArchiveDraftPickSchema>;
+
+export const SeasonArchiveFinancialSchema = z.object({
+  teamId: z.string(),
+  payroll: z.number().min(0),
+  budget: z.number().min(0),
+});
+export type SeasonArchiveFinancial = z.infer<typeof SeasonArchiveFinancialSchema>;
+
+export const SeasonArchiveEntrySchema = z.object({
+  season: z.number().int().min(1),
+  standings: z.array(SeasonArchiveStandingSchema).default([]),
+  playoffSeries: z.array(SeasonArchivePlayoffSeriesSchema).default([]),
+  awards: z.array(AwardHistoryEntrySchema).default([]),
+  statLeaders: SeasonStatLeadersSchema,
+  transactions: z.array(SeasonArchiveTransactionSchema).default([]),
+  draftClass: z.array(SeasonArchiveDraftPickSchema).default([]),
+  financials: z.array(SeasonArchiveFinancialSchema).default([]),
+  userSummary: z.lazy(() => UserSeasonSummarySchema).nullable().default(null),
+  timelineEvents: z.array(z.string()).default([]),
+});
+export type SeasonArchiveEntry = z.infer<typeof SeasonArchiveEntrySchema>;
 
 export const UserSeasonSummarySchema = z.object({
   teamId: z.string(),

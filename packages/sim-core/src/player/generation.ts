@@ -212,6 +212,7 @@ export interface GeneratedPlayer {
   developmentProgram?: DevelopmentProgram;
   developmentTrajectory?: DevelopmentTrajectory;
   extensionHistory?: ExtensionHistoryEntry[];
+  personalityTraits?: string[];
   potentialRating?: number;
 }
 
@@ -433,6 +434,7 @@ export function generatePlayer(
     optionYearsUsed: 0,
     isOutOfOptions: false,
     minorLeagueLevel,
+    personalityTraits: [],
   };
 }
 
