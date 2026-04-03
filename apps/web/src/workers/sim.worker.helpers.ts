@@ -28,6 +28,7 @@ import {
   determineDraftOrder,
   forfeitHighestEligiblePick,
   generateDraftClass,
+  generateScoutConflict,
   getDaysUntilTradeDeadline,
   getTeamById,
   getTradeDeadlineDay,
@@ -41,6 +42,7 @@ import {
   serviceDaysToYears,
   toDisplayRating,
   toLetterGrade,
+  resolveScoutConflicts,
   advanceInjury,
   describeInjury,
   processInjuries,
@@ -413,6 +415,7 @@ export interface DraftRoomProspect {
   bigBoardRank: number | null;
   age: number;
   origin: string;
+  scoutConflict: ScoutConflict | null;
 }
 
 export interface DraftCompensationContext {
@@ -479,6 +482,7 @@ export interface IFAProspectView {
   ceiling: number | null;
   floor: number | null;
   notes: string | null;
+  scoutConflict: ScoutConflict | null;
 }
 
 export interface IFAPoolView {
@@ -512,6 +516,7 @@ export interface IFAReportView {
   floor: number;
   notes: string;
   reliability: number;
+  scoutConflict?: ScoutConflict | null;
 }
 
 export type SeasonFlowStatus =
@@ -1526,6 +1531,103 @@ function originLabel(origin: string): string {
   }
 }
 
+function stableProspectSeed(baseSeed: number, scope: string, prospectId: string): number {
+  let hash = baseSeed;
+  const key = `${scope}:${prospectId}`;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = ((hash * 31) + key.charCodeAt(index)) | 0;
+  }
+  return hash === 0 ? baseSeed + 97 : hash;
+}
+
+function ensureDraftScoutConflicts(s: FullGameState, prospects: DraftProspect[]): Map<string, ScoutConflict> {
+  const existing = new Map(
+    s.scoutConflicts
+      .filter((entry) => entry.prospectType === 'draft' && entry.teamId === s.userTeamId)
+      .map((entry) => [entry.prospectId, entry] as const),
+  );
+  const staff = s.scoutingStaffs.get(s.userTeamId) ?? [];
+  const topProspects = [...prospects]
+    .sort((left, right) => right.scoutingGrade - left.scoutingGrade || left.player.id.localeCompare(right.player.id))
+    .slice(0, 50);
+  const generated: ScoutConflict[] = [];
+
+  for (const prospect of topProspects) {
+    if (existing.has(prospect.player.id)) {
+      continue;
+    }
+
+    const conflict = generateScoutConflict(
+      new GameRNG(stableProspectSeed(s.rng.getSeed(), `draft-${s.season}`, prospect.player.id)),
+      prospect,
+      staff,
+      s.season,
+      s.userTeamId,
+    );
+    existing.set(conflict.prospectId, conflict);
+    generated.push(conflict);
+  }
+
+  if (generated.length > 0) {
+    s.scoutConflicts = [...s.scoutConflicts, ...generated];
+  }
+
+  return existing;
+}
+
+function ensureIFAScoutConflicts(s: FullGameState, prospects: InternationalProspect[]): Map<string, ScoutConflict> {
+  const existing = new Map(
+    s.scoutConflicts
+      .filter((entry) => entry.prospectType === 'ifa' && entry.teamId === s.userTeamId)
+      .map((entry) => [entry.prospectId, entry] as const),
+  );
+  const staff = s.scoutingStaffs.get(s.userTeamId) ?? [];
+  const generated: ScoutConflict[] = [];
+
+  for (const prospect of prospects) {
+    if (existing.has(prospect.id)) {
+      continue;
+    }
+
+    const conflict = generateScoutConflict(
+      new GameRNG(stableProspectSeed(s.rng.getSeed(), `ifa-${s.season}`, prospect.id)),
+      prospect,
+      staff,
+      s.season,
+      s.userTeamId,
+    );
+    existing.set(conflict.prospectId, conflict);
+    generated.push(conflict);
+  }
+
+  if (generated.length > 0) {
+    s.scoutConflicts = [...s.scoutConflicts, ...generated];
+  }
+
+  return existing;
+}
+
+export function resolvePersistedScoutConflicts(s: FullGameState) {
+  if (s.scoutConflicts.length === 0) {
+    return;
+  }
+
+  const outcomes = s.players
+    .map((player) => ({
+      prospectId: player.id,
+      actualGrade: toDisplayRating(player.overallRating),
+      mlbSeasons: Math.floor((s.serviceTime.get(player.id) ?? player.serviceTimeDays ?? 0) / 172),
+    }))
+    .filter((entry) => entry.mlbSeasons >= 2);
+
+  s.scoutConflicts = resolveScoutConflicts(
+    new GameRNG(stableProspectSeed(s.rng.getSeed(), `resolve-${s.season}`, s.userTeamId)),
+    s.scoutConflicts,
+    outcomes,
+    s.season,
+  );
+}
+
 function isDraftSessionState(value: DraftClass | DraftSessionState): value is DraftSessionState {
   return Array.isArray((value as DraftSessionState).draftOrder)
     && Array.isArray((value as DraftSessionState).pickSlots)
@@ -1861,6 +1963,7 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
     };
   }
 
+  const scoutConflicts = ensureDraftScoutConflicts(s, session.prospects);
   const sortedProspects = [...session.prospects].sort((left, right) => {
     const leftBoardRank = bigBoardIndex.get(left.player.id);
     const rightBoardRank = bigBoardIndex.get(right.player.id);
@@ -1897,6 +2000,7 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
     bigBoardRank: bigBoardIndex.get(prospect.player.id) != null ? (bigBoardIndex.get(prospect.player.id)! + 1) : null,
     age: prospect.player.age,
     origin: originLabel(prospect.collegeOrHS),
+    scoutConflict: scoutConflicts.get(prospect.player.id) ?? null,
   }));
 
   const currentSlot = session.status === 'complete' ? null : getCurrentDraftSlot(session);
@@ -1974,6 +2078,7 @@ export function buildIFAPoolView(s: FullGameState): IFAPoolView {
   const staffAccuracy = getInternationalScoutAccuracy(
     s.scoutingStaffs.get(s.userTeamId) ?? [],
   );
+  const scoutConflicts = ensureIFAScoutConflicts(s, internationalState.ifaPool);
 
   return {
     season: internationalState.season,
@@ -2014,6 +2119,7 @@ export function buildIFAPoolView(s: FullGameState): IFAPoolView {
           ceiling: report?.ceiling ?? null,
           floor: report?.floor ?? null,
           notes: report?.notes ?? null,
+          scoutConflict: scoutConflicts.get(prospect.id) ?? null,
         };
       }),
   };
@@ -2073,6 +2179,7 @@ export function scoutUserIFAPlayer(
       floor: report.floor,
       notes: report.notes,
       reliability: Math.max(1, Math.min(5, Math.round(report.reliability * 5))),
+      scoutConflict: ensureIFAScoutConflicts(s, [prospect]).get(playerId) ?? null,
     },
   };
 }

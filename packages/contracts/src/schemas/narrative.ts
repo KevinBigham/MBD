@@ -15,6 +15,7 @@ export const NewsTagEnum = z.enum([
   "RECAP",
   "RUMOR",
   "WATCH",
+  "DEBATE",
 ]);
 export type NewsTag = z.infer<typeof NewsTagEnum>;
 
@@ -508,6 +509,13 @@ export const ScoutConflictSchema = z.object({
   resolved: z.boolean().default(false),
   headline: z.string().min(1),
   opinions: z.array(ScoutOpinionSchema).length(3),
+  divergence: z.number().int().min(0).default(0),
+  debateGenerated: z.boolean().default(false),
+  resolution: z.object({
+    season: z.number().int().min(1),
+    actualGrade: z.number().int().min(20).max(80),
+    closestSource: ScoutOpinionSourceEnum,
+  }).nullable().default(null),
   winningSource: ScoutOpinionSourceEnum.nullable().default(null),
   outcomeSummary: z.string().nullable().default(null),
 });

@@ -345,11 +345,16 @@ export {
   tradeIFABonusPool,
   convertIFAProspectToPlayer,
   signIFAProspect,
+  generateScoutConflict,
+  resolveScoutConflicts,
 } from './scouting/index.js';
 export type {
   ScoutBias,
   Scout,
   ScoutReport,
+  ScoutConflict,
+  ScoutOpinion,
+  ScoutOpinionSource,
   InternationalRegion,
   InternationalNationality,
   IFAProspectStatus,
