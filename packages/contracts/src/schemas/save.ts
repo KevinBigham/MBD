@@ -17,11 +17,17 @@ import {
   AwardHistoryEntrySchema,
   BriefingItemSchema,
   CareerStatsLedgerSchema,
+  ChallengeStateSchema,
+  ConsequenceWatcherSchema,
+  DynastyCardSchema,
+  FanSentimentSchema,
   FrontOfficeStateSchema,
   FranchiseTimelineEntrySchema,
+  GMCareerSchema,
   HallOfFameBallotEntrySchema,
   HallOfFameEntrySchema,
   HistoricalPlayerSchema,
+  JobMarketSchema,
   MentorRelationshipSchema,
   NewsItemSchema,
   OwnerStateSchema,
@@ -29,8 +35,10 @@ import {
   RecordBookEntrySchema,
   RecordWatchEntrySchema,
   RivalrySchema,
+  ScoutConflictSchema,
   SeasonArchiveEntrySchema,
   TeamChemistrySchema,
+  WinLossRecordSchema,
   SeasonHistoryEntrySchema,
   type NewsTag,
 } from "./narrative.js";
@@ -280,6 +288,20 @@ export const NarrativeSnapshotSchema = z.object({
   historicalPlayers: z.array(HistoricalPlayerSchema).default([]),
   mentorRelationships: z.array(MentorRelationshipSchema).default([]),
   frontOfficeState: z.array(z.tuple([z.string(), FrontOfficeStateSchema])).default([]),
+  gmCareer: GMCareerSchema.optional(),
+  jobMarket: JobMarketSchema.default({
+    availableJobs: [],
+    applicationDeadlineSeason: null,
+  }),
+  consequenceWatchers: z.array(ConsequenceWatcherSchema).default([]),
+  fanSentiment: FanSentimentSchema.default({
+    score: 50,
+    summary: "Fan sentiment is stable.",
+    updatedAt: "S1D1",
+  }),
+  scoutConflicts: z.array(ScoutConflictSchema).default([]),
+  dynastyCards: z.array(DynastyCardSchema).default([]),
+  challengeState: ChallengeStateSchema.nullable().default(null),
   seasonHistory: z.array(SeasonHistoryEntrySchema),
 });
 export type NarrativeSnapshot = z.infer<typeof NarrativeSnapshotSchema>;
@@ -415,7 +437,7 @@ const MinorLeagueStateV7Schema = z.object({
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 12;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 13;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -456,6 +478,11 @@ export const GameSnapshotSchema = z.object({
   rule5OfferBackStates: z.array(Rule5StateEntrySchema),
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(12),
+});
+export type GameSnapshotV12 = z.infer<typeof GameSnapshotV12Schema>;
 
 export const GameSnapshotV11Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(11),
@@ -799,6 +826,7 @@ function createDefaultFranchiseState(userTeamId: string, season: number, day: nu
   return {
     gmName: "General Manager",
     difficulty: "standard" as const,
+    playMode: "standard" as const,
     createdAt: `S${season}D${day}`,
     teamId: userTeamId,
     teamName: teamCode,
@@ -846,6 +874,20 @@ function createEmptyPhase11NarrativeState() {
     historicalPlayers: [],
     mentorRelationships: [],
     frontOfficeState: [],
+    gmCareer: undefined,
+    jobMarket: {
+      availableJobs: [],
+      applicationDeadlineSeason: null,
+    },
+    consequenceWatchers: [],
+    fanSentiment: {
+      score: 50,
+      summary: "Fan sentiment is stable.",
+      updatedAt: "S1D1",
+    },
+    scoutConflicts: [],
+    dynastyCards: [],
+    challengeState: null,
   };
 }
 
@@ -1083,6 +1125,111 @@ function createPhase11MigrationState(
     historicalPlayers: createHistoricalPlayers(players, careerStats),
     mentorRelationships: [],
     frontOfficeState: [],
+  };
+}
+
+function parseWinLossRecord(
+  record: string,
+  fallbackWins: number,
+): z.infer<typeof WinLossRecordSchema> {
+  const match = /^(\d+)-(\d+)$/.exec(record);
+  if (match) {
+    return {
+      wins: Number(match[1]),
+      losses: Number(match[2]),
+    };
+  }
+
+  return {
+    wins: fallbackWins,
+    losses: Math.max(0, 162 - fallbackWins),
+  };
+}
+
+function findStandingsRecord(
+  standings: z.infer<typeof StandingsRecordSchema>[],
+  teamId: string,
+): z.infer<typeof WinLossRecordSchema> {
+  const record = standings.find((entry) => entry.teamId === teamId);
+  return {
+    wins: record?.wins ?? 0,
+    losses: record?.losses ?? 0,
+  };
+}
+
+function createPhase12MigrationState(
+  userTeamId: string,
+  season: number,
+  day: number,
+  standings: z.infer<typeof StandingsRecordSchema>[],
+  franchiseTimeline: z.infer<typeof FranchiseTimelineEntrySchema>[],
+  frontOfficeState: Array<[string, z.infer<typeof FrontOfficeStateSchema>]>,
+) {
+  const franchiseHistory = franchiseTimeline
+    .filter((entry) => entry.teamId === userTeamId)
+    .sort((left, right) => left.season - right.season);
+  const currentRecord = findStandingsRecord(standings, userTeamId);
+  const timelineRecord = franchiseHistory.reduce<z.infer<typeof WinLossRecordSchema>>((totals, entry) => {
+    const parsed = parseWinLossRecord(entry.record, entry.winTotal);
+    return {
+      wins: totals.wins + parsed.wins,
+      losses: totals.losses + parsed.losses,
+    };
+  }, {
+    wins: 0,
+    losses: 0,
+  });
+  const overallRecord = {
+    wins: timelineRecord.wins + currentRecord.wins,
+    losses: timelineRecord.losses + currentRecord.losses,
+  };
+  const championships = franchiseHistory.filter((entry) => entry.championship).length;
+  const reputation = frontOfficeState.find(([teamId]) => teamId === userTeamId)?.[1]?.reputation ?? 50;
+  const hiredSeason = franchiseHistory[0]?.season ?? Math.max(1, season - Math.max(0, franchiseHistory.length));
+  const seasonsManaged = Math.max(1, franchiseHistory.length + ((currentRecord.wins + currentRecord.losses) > 0 ? 1 : 0));
+
+  return {
+    franchise: createDefaultFranchiseState(userTeamId, season, day),
+    narrative: {
+      gmCareer: {
+        careerHistory: [
+          {
+            teamId: userTeamId,
+            seasons: seasonsManaged,
+            record: overallRecord,
+            championships,
+            hiredSeason,
+            firedSeason: null,
+            firedReason: null,
+            reputation,
+          },
+        ],
+        currentTeamId: userTeamId,
+        reputation,
+        overallRecord,
+        championships,
+        hiredSeason,
+        firedSeasons: [],
+        careerAchievements: championships > 0
+          ? [`Won ${championships} championship${championships === 1 ? "" : "s"}.`]
+          : [],
+        jobSearchActive: false,
+        lastFiredReason: null,
+      },
+      jobMarket: {
+        availableJobs: [],
+        applicationDeadlineSeason: null,
+      },
+      consequenceWatchers: [],
+      fanSentiment: {
+        score: 50,
+        summary: "Fan sentiment is stable.",
+        updatedAt: `S${season}D${day}`,
+      },
+      scoutConflicts: [],
+      dynastyCards: [],
+      challengeState: null,
+    },
   };
 }
 
@@ -1640,6 +1787,14 @@ function migrateGameSnapshotV10(snapshot: GameSnapshotV10): GameSnapshot {
 }
 
 function migrateGameSnapshotV11(snapshot: GameSnapshotV11): GameSnapshot {
+  const phase12State = createPhase12MigrationState(
+    snapshot.userTeamId,
+    snapshot.season,
+    snapshot.day,
+    snapshot.seasonState.standings,
+    snapshot.narrative.franchiseTimeline,
+    snapshot.narrative.frontOfficeState ?? [],
+  );
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
@@ -1652,6 +1807,35 @@ function migrateGameSnapshotV11(snapshot: GameSnapshotV11): GameSnapshot {
         snapshot.narrative.franchiseTimeline,
         snapshot.narrative.careerStats,
       ),
+      ...phase12State.narrative,
+    },
+    franchise: {
+      ...snapshot.franchise,
+      playMode: snapshot.franchise.playMode ?? phase12State.franchise.playMode,
+    },
+  });
+}
+
+function migrateGameSnapshotV12(snapshot: GameSnapshotV12): GameSnapshot {
+  const phase12State = createPhase12MigrationState(
+    snapshot.userTeamId,
+    snapshot.season,
+    snapshot.day,
+    snapshot.seasonState.standings,
+    snapshot.narrative.franchiseTimeline,
+    snapshot.narrative.frontOfficeState ?? [],
+  );
+
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      ...phase12State.narrative,
+    },
+    franchise: {
+      ...snapshot.franchise,
+      playMode: snapshot.franchise.playMode ?? phase12State.franchise.playMode,
     },
   });
 }
@@ -1673,6 +1857,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 12
+  ) {
+    return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
   }
 
   if (

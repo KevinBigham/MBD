@@ -28,6 +28,26 @@ function startGame(seed: number, userTeamId: string = 'nyy') {
   });
 }
 
+function startGameWithOptions(
+  options: Partial<{
+    seed: number;
+    userTeamId: string;
+    gmName: string;
+    difficulty: 'easy' | 'standard' | 'hard';
+    saveSlot: number;
+    playMode: 'standard' | 'career' | 'scenario';
+  }> = {},
+) {
+  return api.newGame({
+    seed: options.seed ?? 123,
+    userTeamId: options.userTeamId ?? 'nyy',
+    gmName: options.gmName ?? 'General Manager',
+    difficulty: options.difficulty ?? 'standard',
+    saveSlot: options.saveSlot ?? 1,
+    ...(options.playMode ? { playMode: options.playMode } : {}),
+  });
+}
+
 interface WorkerPlayerView {
   id: string;
   teamId: string;
@@ -175,6 +195,16 @@ interface MinorLeagueWorkerApi {
     playoffScore: number;
     summary: string;
   } | null;
+  getGMCareer: () => {
+    currentTeamId: string;
+    reputation: number;
+    overallRecord: { wins: number; losses: number };
+    careerHistory: Array<{ teamId: string; firedSeason: number | null }>;
+  } | null;
+  getJobMarket: () => {
+    availableJobs: Array<{ teamId: string; attractiveness: number }>;
+  } | null;
+  applyForJob: (teamId: string) => { success: boolean; teamId?: string; error?: string };
   acknowledgeMonthlyReport: (reportId: string) => { success: boolean };
   dismissDecisionSpotlight: (decisionId: string) => { success: boolean };
 }
@@ -360,7 +390,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('accepts object-based new game options and persists franchise identity settings', () => {
-    const result = api.newGame({
+    const result = startGameWithOptions({
       seed: 123,
       userTeamId: 'mtl',
       gmName: 'Alex Rivera',
@@ -408,6 +438,25 @@ describe('sim worker narrative APIs', () => {
     expect(previewA.topPlayers.length).toBeGreaterThan(0);
     expect(teamRoster.mlb.some((player) => player.id === previewA.topPlayers[0]?.playerId)).toBe(true);
     expect(creation.userTeamId).toBe('por');
+  });
+
+  it('initializes career mode and exposes the GM career ledger', () => {
+    startGameWithOptions({
+      seed: 919,
+      userTeamId: 'nyy',
+      gmName: 'Alex Rivera',
+      playMode: 'career',
+    });
+    const state = requireState();
+    const career = (api as typeof api & MinorLeagueWorkerApi).getGMCareer();
+
+    expect(state.franchise.playMode).toBe('career');
+    expect(career).toMatchObject({
+      currentTeamId: 'nyy',
+      reputation: 50,
+      overallRecord: { wins: 0, losses: 0 },
+    });
+    expect(career?.careerHistory).toHaveLength(1);
   });
 
   it('seeds coaching staffs and a coach free-agent market for a new game', () => {
@@ -596,6 +645,55 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().franchise.status).toBe('fired');
     expect(result.gamesPlayed).toBeGreaterThan(0);
     expect(api.proposeTrade([], [], 'bos').decision).toBe('rejected');
+  });
+
+  it('opens a job market instead of ending the save for career-mode dynasties', () => {
+    startGameWithOptions({
+      seed: 6262,
+      userTeamId: 'nyy',
+      playMode: 'career',
+    });
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 120;
+    (state.seasonState as typeof state.seasonState & { currentDay: number }).currentDay = 120;
+    const standingsRecord = state.seasonState.standings.getRecord('nyy');
+    if (!standingsRecord) {
+      throw new Error('Expected user standings record');
+    }
+    standingsRecord.wins = 24;
+    standingsRecord.losses = 89;
+    standingsRecord.streak = -6;
+    standingsRecord.last10 = [2, 8];
+    state.storyFlags.set('nyy', [`owner_meeting_${state.season}`]);
+    const owner = state.ownerState.get('nyy');
+    if (!owner) {
+      throw new Error('Expected owner state');
+    }
+    state.ownerState.set('nyy', {
+      ...owner,
+      satisfaction: 8,
+      patience: 12,
+      confidence: 10,
+      hotSeat: true,
+      summary: 'Ownership is ready to make a change.',
+    });
+
+    api.simWeek();
+
+    const career = (api as typeof api & MinorLeagueWorkerApi).getGMCareer();
+    const jobMarket = (api as typeof api & MinorLeagueWorkerApi).getJobMarket();
+
+    expect(requireState().franchise.status).toBe('active');
+    expect(jobMarket?.availableJobs.length).toBeGreaterThanOrEqual(3);
+    expect(career?.careerHistory[0]?.firedSeason).toBe(state.season);
+
+    const selectedTeamId = jobMarket?.availableJobs.find((job) => job.teamId !== 'nyy')?.teamId;
+    expect(selectedTeamId).toBeTruthy();
+
+    const result = (api as typeof api & MinorLeagueWorkerApi).applyForJob(selectedTeamId!);
+    expect(result.success).toBe(true);
+    expect(requireState().userTeamId).toBe(selectedTeamId);
   });
 
   it('publishes record watch stories after monthly sim when a user player is on pace', () => {

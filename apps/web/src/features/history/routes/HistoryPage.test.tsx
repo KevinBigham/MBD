@@ -47,6 +47,7 @@ describe('HistoryPage', () => {
       setUserTeamId: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
+      activeSaveSlot: 1,
     });
 
     mockedUseWorker.mockReturnValue({

@@ -4,19 +4,26 @@ import {
   type BriefingItem,
   type CareerStatsLedger,
   type CeremonyState,
+  type ChallengeState,
+  type ConsequenceWatcher,
+  type DynastyCard,
+  type FanSentiment,
   type FrontOfficeState,
   type FranchiseTimelineEntry,
   type FranchiseState,
   type GameSnapshot,
+  type GMCareer,
   type HallOfFameBallotEntry,
   type HallOfFameEntry,
   type HistoricalPlayer,
+  type JobMarket,
   type MentorRelationship,
   type OwnerState,
   type PlayerMorale,
   type RecordBookEntry,
   type RecordWatchEntry,
   type Rivalry,
+  type ScoutConflict,
   type SeasonArchiveEntry,
   type SeasonHistoryEntry,
   type TeamChemistry,
@@ -178,6 +185,90 @@ function deserializeInternationalScoutingState(
   };
 }
 
+function createEmptyJobMarket(): JobMarket {
+  return {
+    availableJobs: [],
+    applicationDeadlineSeason: null,
+  };
+}
+
+function createDefaultFanSentiment(season: number, day: number): FanSentiment {
+  return {
+    score: 50,
+    trend: 'stable',
+    summary: 'Fan sentiment is stable.',
+    updatedAt: `S${season}D${day}`,
+  };
+}
+
+function parseRecord(record: string, fallbackWins: number) {
+  const match = /^(\d+)-(\d+)$/.exec(record);
+  if (match) {
+    return {
+      wins: Number(match[1]),
+      losses: Number(match[2]),
+    };
+  }
+
+  return {
+    wins: fallbackWins,
+    losses: Math.max(0, 162 - fallbackWins),
+  };
+}
+
+function backfillGMCareer(
+  snapshot: GameSnapshot,
+  franchise: FranchiseState,
+): GMCareer {
+  const existingCareer = snapshot.narrative.gmCareer as GMCareer | undefined;
+  if (existingCareer) {
+    return existingCareer;
+  }
+
+  const franchiseHistory = (snapshot.narrative.franchiseTimeline as FranchiseTimelineEntry[])
+    .filter((entry) => entry.teamId === snapshot.userTeamId)
+    .sort((left, right) => left.season - right.season);
+  const currentRecord = snapshot.seasonState.standings.find((entry) => entry.teamId === snapshot.userTeamId);
+  const totals = franchiseHistory.reduce((record, entry) => {
+    const parsed = parseRecord(entry.record, entry.winTotal);
+    return {
+      wins: record.wins + parsed.wins,
+      losses: record.losses + parsed.losses,
+    };
+  }, {
+    wins: currentRecord?.wins ?? 0,
+    losses: currentRecord?.losses ?? 0,
+  });
+  const reputation = (snapshot.narrative.frontOfficeState as [string, FrontOfficeState][])
+    .find(([teamId]) => teamId === snapshot.userTeamId)?.[1]?.reputation ?? 50;
+  const championships = franchiseHistory.filter((entry) => entry.championship).length;
+  const hiredSeason = franchiseHistory[0]?.season ?? Math.max(1, snapshot.season - franchiseHistory.length);
+
+  return {
+    careerHistory: [
+      {
+        teamId: snapshot.userTeamId,
+        seasons: Math.max(1, franchiseHistory.length + ((totals.wins + totals.losses) > 0 ? 1 : 0)),
+        record: totals,
+        championships,
+        hiredSeason,
+        firedSeason: null,
+        firedReason: null,
+        reputation,
+      },
+    ],
+    currentTeamId: snapshot.userTeamId,
+    reputation,
+    overallRecord: totals,
+    championships,
+    hiredSeason,
+    firedSeasons: [],
+    careerAchievements: championships > 0 ? [`Won ${championships} championship${championships === 1 ? '' : 's'}.`] : [],
+    jobSearchActive: false,
+    lastFiredReason: null,
+  };
+}
+
 function validateSnapshot(snapshot: unknown): GameSnapshot {
   if (
     typeof snapshot === 'object' &&
@@ -193,6 +284,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 9 &&
     snapshot.schemaVersion !== 10 &&
     snapshot.schemaVersion !== 11 &&
+    snapshot.schemaVersion !== 12 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -252,6 +344,13 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       historicalPlayers: state.historicalPlayers,
       mentorRelationships: state.mentorRelationships,
       frontOfficeState: toEntries(state.frontOfficeState),
+      gmCareer: state.gmCareer,
+      jobMarket: state.jobMarket,
+      consequenceWatchers: state.consequenceWatchers,
+      fanSentiment: state.fanSentiment,
+      scoutConflicts: state.scoutConflicts,
+      dynastyCards: state.dynastyCards,
+      challengeState: state.challengeState,
       seasonHistory: state.seasonHistory,
     },
     monthlyPulse: state.monthlyPulse,
@@ -268,6 +367,9 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
   ensurePlayersHaveRule5Eligibility(players, snapshot.season);
   const serviceTime = fromEntries(snapshot.serviceTime);
   const seasonState = deserializeSeasonState(snapshot.seasonState);
+  const franchise = (snapshot.franchise as FranchiseState | undefined)
+    ?? createDefaultFranchiseState(snapshot.userTeamId, snapshot.season, snapshot.day);
+  const gmCareer = backfillGMCareer(snapshot, franchise);
 
   return {
     rng: GameRNG.fromState(snapshot.rng),
@@ -328,9 +430,16 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     mentorRelationships: snapshot.narrative.mentorRelationships as MentorRelationship[],
     frontOfficeState: fromEntries(snapshot.narrative.frontOfficeState as [string, FrontOfficeState][]),
     seasonHistory: snapshot.narrative.seasonHistory as SeasonHistoryEntry[],
+    gmCareer,
+    jobMarket: (snapshot.narrative.jobMarket as JobMarket | undefined) ?? createEmptyJobMarket(),
+    consequenceWatchers: (snapshot.narrative.consequenceWatchers as ConsequenceWatcher[] | undefined) ?? [],
+    fanSentiment: (snapshot.narrative.fanSentiment as FanSentiment | undefined)
+      ?? createDefaultFanSentiment(snapshot.season, snapshot.day),
+    scoutConflicts: (snapshot.narrative.scoutConflicts as ScoutConflict[] | undefined) ?? [],
+    dynastyCards: (snapshot.narrative.dynastyCards as DynastyCard[] | undefined) ?? [],
+    challengeState: (snapshot.narrative.challengeState as ChallengeState | null | undefined) ?? null,
     tradeState: snapshot.tradeState ?? createEmptyTradeState(),
-    franchise: (snapshot.franchise as FranchiseState | undefined)
-      ?? createDefaultFranchiseState(snapshot.userTeamId, snapshot.season, snapshot.day),
+    franchise,
     ceremony: (snapshot.ceremony as CeremonyState | undefined) ?? createEmptyCeremonyState(),
     achievements: (snapshot.achievements as AchievementState | undefined) ?? createEmptyAchievementState(),
   };

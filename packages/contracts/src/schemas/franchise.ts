@@ -7,6 +7,13 @@ export const DifficultyEnum = z.enum([
 ]);
 export type Difficulty = z.infer<typeof DifficultyEnum>;
 
+export const PlayModeEnum = z.enum([
+  "standard",
+  "career",
+  "scenario",
+]);
+export type PlayMode = z.infer<typeof PlayModeEnum>;
+
 export const FranchiseOnboardingSchema = z.object({
   welcomeBriefingSeen: z.boolean(),
   firstMonthlyPulseSeen: z.boolean(),
@@ -16,6 +23,7 @@ export type FranchiseOnboarding = z.infer<typeof FranchiseOnboardingSchema>;
 export const FranchiseStateSchema = z.object({
   gmName: z.string().min(1),
   difficulty: DifficultyEnum,
+  playMode: PlayModeEnum.default("standard"),
   createdAt: z.string(),
   teamId: z.string(),
   teamName: z.string().min(1),

@@ -66,6 +66,21 @@ interface OwnerState {
   summary: string;
 }
 
+interface ScoutOpinionView {
+  source: string;
+  overallGrade: number;
+  ceiling: number;
+  floor: number;
+  confidence: number;
+  summary: string;
+}
+
+interface ScoutConflictView {
+  divergence: number;
+  outcomeSummary: string | null;
+  opinions: ScoutOpinionView[];
+}
+
 interface IFAProspectView {
   id: string;
   playerName: string;
@@ -83,6 +98,7 @@ interface IFAProspectView {
   ceiling: number | null;
   floor: number | null;
   notes: string | null;
+  scoutConflict: ScoutConflictView | null;
 }
 
 interface IFAPoolView {
@@ -116,6 +132,7 @@ interface IFAReport {
   floor: number;
   notes: string;
   reliability: number;
+  scoutConflict?: ScoutConflictView | null;
 }
 
 function ScoutGradeBar({ label, grade, confidence }: { label: string; grade: number; confidence: number }) {
@@ -773,6 +790,32 @@ export default function ScoutingPage() {
                           <div className="font-heading text-[10px] uppercase text-dynasty-muted">Notes</div>
                           <p className="mt-1 font-heading text-xs italic text-dynasty-text">{ifaReport.notes}</p>
                         </div>
+                        {ifaReport.scoutConflict ? (
+                          <div className="border-t border-dynasty-border pt-3">
+                            <div className="font-heading text-[10px] uppercase text-dynasty-muted">
+                              Scout Debate · Divergence {ifaReport.scoutConflict.divergence}
+                            </div>
+                            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                              {ifaReport.scoutConflict.opinions.map((opinion) => (
+                                <div key={`${ifaReport.playerId}-${opinion.source}`} className="rounded border border-dynasty-border bg-dynasty-surface p-3">
+                                  <div className="font-heading text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+                                    {opinion.source.replace(/_/g, ' ')}
+                                  </div>
+                                  <div className="mt-2 font-data text-xl text-dynasty-textBright">{opinion.overallGrade}</div>
+                                  <div className="mt-1 font-data text-[10px] text-dynasty-muted">
+                                    Floor {opinion.floor} · Ceiling {opinion.ceiling} · Confidence {opinion.confidence}
+                                  </div>
+                                  <div className="mt-2 font-heading text-xs text-dynasty-muted">{opinion.summary}</div>
+                                </div>
+                              ))}
+                            </div>
+                            {ifaReport.scoutConflict.outcomeSummary ? (
+                              <div className="mt-3 font-heading text-xs text-dynasty-muted">
+                                {ifaReport.scoutConflict.outcomeSummary}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="border-t border-dynasty-border pt-3">
                           <div className="mb-2 font-heading text-[10px] uppercase text-dynasty-muted">Bonus Offer</div>
                           <div className="flex gap-2">
@@ -852,6 +895,11 @@ export default function ScoutingPage() {
                         <td className="py-2 pr-4">
                           <div className="font-heading text-sm text-dynasty-text">{prospect.playerName}</div>
                           <div className="font-data text-xs text-dynasty-muted">{prospect.position} / Age {prospect.age}</div>
+                          {prospect.scoutConflict ? (
+                            <div className="mt-1 font-data text-[10px] uppercase tracking-[0.16em] text-accent-warning">
+                              Divergence {prospect.scoutConflict.divergence}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="py-2 pr-4 font-data text-xs text-dynasty-muted">
                           {regionLabel(prospect.region)} / {prospect.country}

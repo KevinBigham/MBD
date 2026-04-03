@@ -17,6 +17,8 @@ import {
 } from '@/shared/lib/saveSystem';
 
 type SetupDifficulty = 'easy' | 'standard' | 'hard';
+type SetupPlayMode = 'standard' | 'career';
+type SetupWizardMode = 'dynasty' | 'scenario';
 
 interface SetupPreview {
   teamId: string;
@@ -36,6 +38,16 @@ interface SetupPreview {
     teamId: string;
     teamName: string;
   }>;
+}
+
+interface ScenarioCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: 'rookie' | 'standard' | 'hard' | 'legendary';
+  maxSeasons: number;
+  requiresCareerMode: boolean;
+  startingTeamId?: string;
 }
 
 const TEAM_OPTIONS = [
@@ -109,12 +121,17 @@ export default function SetupPage() {
   const [seed, setSeed] = useState<number>(() => Date.now());
   const [teamId, setTeamId] = useState<string>('nyy');
   const [difficulty, setDifficulty] = useState<SetupDifficulty>('standard');
+  const [playMode, setPlayMode] = useState<SetupPlayMode>('standard');
+  const [wizardMode, setWizardMode] = useState<SetupWizardMode>('dynasty');
   const [gmName, setGmName] = useState<string>(() => generateDefaultGMName(Date.now()));
   const [preview, setPreview] = useState<SetupPreview | null>(null);
+  const [scenarioCatalog, setScenarioCatalog] = useState<ScenarioCatalogEntry[]>([]);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [recoveryState, setRecoveryState] = useState<{
     slot: number;
     message: string;
   } | null>(null);
+  const selectedScenario = scenarioCatalog.find((entry) => entry.id === selectedScenarioId) ?? null;
 
   const refreshSaves = useCallback(async () => {
     const nextSaves = await listSaves();
@@ -129,13 +146,17 @@ export default function SetupPage() {
   }, [refreshSaves]);
 
   useEffect(() => {
-    if (!wizardOpen || !worker.isReady) {
+    if (!wizardOpen || !worker.isReady || typeof worker.getScenarioCatalog !== 'function') {
       return;
     }
 
+    const previewTeamId = wizardMode === 'scenario'
+      ? (selectedScenario?.startingTeamId ?? teamId)
+      : teamId;
+
     void worker.getSetupPreview({
       seed,
-      userTeamId: teamId,
+      userTeamId: previewTeamId,
       difficulty,
     }).then((nextPreview) => {
       setPreview((nextPreview ?? null) as SetupPreview | null);
@@ -143,7 +164,23 @@ export default function SetupPage() {
       console.error('Failed to build dynasty preview:', error);
       setStatus('Failed to build the dynasty preview.');
     });
-  }, [difficulty, seed, teamId, worker, wizardOpen]);
+  }, [difficulty, seed, selectedScenario?.startingTeamId, teamId, worker, wizardMode, wizardOpen]);
+
+  useEffect(() => {
+    if (!wizardOpen || !worker.isReady) {
+      return;
+    }
+
+    void worker.getScenarioCatalog().then((catalog) => {
+      const nextCatalog = (catalog ?? []) as ScenarioCatalogEntry[];
+      setScenarioCatalog(nextCatalog);
+      if (!selectedScenarioId && nextCatalog.length > 0) {
+        setSelectedScenarioId(nextCatalog[0]!.id);
+      }
+    }).catch((error) => {
+      console.error('Failed to load scenario catalog:', error);
+    });
+  }, [selectedScenarioId, worker, wizardOpen]);
 
   const saveMap = useMemo(() => new Map(saves.map((save) => [save.slotNumber, save])), [saves]);
 
@@ -237,6 +274,8 @@ export default function SetupPage() {
     const nextSeed = Date.now();
     setSeed(nextSeed);
     setGmName(generateDefaultGMName(nextSeed));
+    setPlayMode('standard');
+    setWizardMode('dynasty');
     setWizardOpen(true);
     setStatus('');
   }
@@ -252,10 +291,16 @@ export default function SetupPage() {
     try {
       const result = await worker.newGame({
         seed,
-        userTeamId: teamId,
+        userTeamId: wizardMode === 'scenario'
+          ? (selectedScenario?.startingTeamId ?? teamId)
+          : teamId,
         gmName: finalGmName,
         difficulty,
         saveSlot: selectedSlot,
+        playMode: wizardMode === 'scenario'
+          ? (selectedScenario?.requiresCareerMode ? 'career' : 'standard')
+          : playMode,
+        scenarioId: wizardMode === 'scenario' ? (selectedScenarioId ?? undefined) : undefined,
       });
       const snapshot = await worker.exportSnapshot();
       await saveGame(selectedSlot, `${finalGmName} • ${result.teamName}`, snapshot);
@@ -432,10 +477,73 @@ export default function SetupPage() {
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-success">New Dynasty</div>
               <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">Start in Slot {selectedSlot}</h2>
               <p className="mt-2 font-heading text-sm text-dynasty-muted">
-                Pick a club, set the challenge level, and enter the league with a GM identity that follows your legacy.
+                Pick a club, choose whether this save ends on firing or continues as a career, and enter the league with a GM identity that follows your legacy.
               </p>
 
               <div className="mt-6 space-y-5">
+                <div>
+                  <span className="font-heading text-sm text-dynasty-textBright">Start Type</span>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setWizardMode('dynasty')}
+                      className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                        wizardMode === 'dynasty'
+                          ? 'border-accent-primary bg-accent-primary/10'
+                          : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                      }`}
+                    >
+                      <div className="font-heading text-sm text-dynasty-textBright">Open Dynasty</div>
+                      <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                        Standard team selection with standard or career play modes.
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWizardMode('scenario')}
+                      className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                        wizardMode === 'scenario'
+                          ? 'border-accent-primary bg-accent-primary/10'
+                          : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                      }`}
+                    >
+                      <div className="font-heading text-sm text-dynasty-textBright">Challenge Scenario</div>
+                      <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                        Fixed-club starts with explicit win conditions and local leaderboard tracking.
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {wizardMode === 'scenario' ? (
+                  <div>
+                    <span className="font-heading text-sm text-dynasty-textBright">Scenario</span>
+                    <div className="mt-2 space-y-2">
+                      {scenarioCatalog.map((scenario) => (
+                        <button
+                          key={scenario.id}
+                          type="button"
+                          onClick={() => setSelectedScenarioId(scenario.id)}
+                          className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                            selectedScenarioId === scenario.id
+                              ? 'border-accent-warning bg-accent-warning/10'
+                              : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="font-heading text-sm text-dynasty-textBright">{scenario.name}</div>
+                            <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                              {scenario.difficulty} · {scenario.maxSeasons} seasons
+                            </div>
+                          </div>
+                          <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                            {scenario.description}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
                 <label className="block">
                   <span className="font-heading text-sm text-dynasty-textBright">Team</span>
                   <select
@@ -449,6 +557,7 @@ export default function SetupPage() {
                     ))}
                   </select>
                 </label>
+                )}
 
                 <label className="block">
                   <span className="font-heading text-sm text-dynasty-textBright">Difficulty</span>
@@ -463,6 +572,48 @@ export default function SetupPage() {
                     <option value="hard">Hard</option>
                   </select>
                 </label>
+
+                {wizardMode === 'dynasty' ? (
+                <div>
+                  <span className="font-heading text-sm text-dynasty-textBright">Mode</span>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setPlayMode('standard')}
+                      className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                        playMode === 'standard'
+                          ? 'border-accent-primary bg-accent-primary/10'
+                          : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                      }`}
+                    >
+                      <div className="font-heading text-sm text-dynasty-textBright">Standard Dynasty</div>
+                      <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                        Traditional save. If ownership fires you, the dynasty becomes read-only.
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlayMode('career')}
+                      className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                        playMode === 'career'
+                          ? 'border-accent-primary bg-accent-primary/10'
+                          : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                      }`}
+                    >
+                      <div className="font-heading text-sm text-dynasty-textBright">GM Career</div>
+                      <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                        Firing opens the job market so the save continues with a new club.
+                      </div>
+                    </button>
+                  </div>
+                </div>
+                ) : (
+                  <div className="rounded-lg border border-dynasty-border bg-dynasty-base p-4 font-heading text-xs text-dynasty-muted">
+                    {selectedScenario?.requiresCareerMode
+                      ? 'This scenario uses career-mode rules. Firing keeps the save alive through the job market.'
+                      : 'Scenario saves still follow standard firing rules unless the challenge explicitly says otherwise.'}
+                  </div>
+                )}
 
                 <label className="block">
                   <span className="font-heading text-sm text-dynasty-textBright">GM Name</span>
@@ -488,7 +639,7 @@ export default function SetupPage() {
                     onClick={() => void handleBeginDynasty()}
                     className="rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
                   >
-                    Begin Season 1
+                    {wizardMode === 'scenario' ? 'Launch Scenario' : 'Begin Season 1'}
                   </button>
                 </div>
               </div>
@@ -496,9 +647,15 @@ export default function SetupPage() {
 
             <div className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-warning">Season Preview</div>
-              <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">{preview?.teamName ?? 'Preparing Preview'}</h2>
+              <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">
+                {wizardMode === 'scenario'
+                  ? (selectedScenario?.name ?? 'Preparing Scenario')
+                  : (preview?.teamName ?? 'Preparing Preview')}
+              </h2>
               <p className="mt-3 font-heading text-sm leading-6 text-dynasty-muted">
-                {preview?.teamIdentityBlurb ?? 'Running the numbers on your opening roster and division outlook.'}
+                {wizardMode === 'scenario'
+                  ? (selectedScenario?.description ?? 'Loading the scenario framing and opening roster context.')
+                  : (preview?.teamIdentityBlurb ?? 'Running the numbers on your opening roster and division outlook.')}
               </p>
 
               <div className="mt-5 grid gap-4 md:grid-cols-3">

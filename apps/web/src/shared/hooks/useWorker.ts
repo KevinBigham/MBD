@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore, useCallback } from 'react';
 import * as Comlink from 'comlink';
 import { toast } from 'sonner';
-import type { TradeAsset } from '@mbd/contracts';
+import type { PlayMode, TradeAsset } from '@mbd/contracts';
 import type { LeaderboardStatKey } from '@mbd/sim-core';
 import type { WorkerApi } from '@/workers/sim.worker';
 import {
@@ -39,6 +39,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'dismissDecisionSpotlight',
   'dismissCeremonyMoment',
   'dismissWelcomeBriefing',
+  'applyForJob',
   'simToPlayoffs',
   'simPlayoffGame',
   'simPlayoffSeries',
@@ -266,6 +267,8 @@ export function useWorker() {
       gmName: string;
       difficulty: 'easy' | 'standard' | 'hard';
       saveSlot: number;
+      playMode?: PlayMode;
+      scenarioId?: string;
     }) => runMutation(() => api.newGame(options)),
     [api, runMutation],
   );
@@ -545,6 +548,24 @@ export function useWorker() {
     async (teamId?: string) => api.getOwnerState(teamId),
     [api],
   );
+  const getGMCareer = useCallback(async () => api.getGMCareer(), [api]);
+  const getJobMarket = useCallback(async () => api.getJobMarket(), [api]);
+  const getScoutConflicts = useCallback(
+    async (teamId?: string) => api.getScoutConflicts(teamId),
+    [api],
+  );
+  const getScoutConflict = useCallback(
+    async (prospectId: string) => api.getScoutConflict(prospectId),
+    [api],
+  );
+  const getDynastyCards = useCallback(async () => api.getDynastyCards(), [api]);
+  const getDynastyLeaderboard = useCallback(async () => api.getDynastyLeaderboard(), [api]);
+  const getScenarioCatalog = useCallback(async () => api.getScenarioCatalog(), [api]);
+  const getScenarioProgress = useCallback(async () => api.getScenarioProgress(), [api]);
+  const applyForJob = useCallback(
+    async (teamId: string) => runMutation(() => api.applyForJob(teamId)),
+    [api, runMutation],
+  );
   const getPersonalityProfile = useCallback(
     async (playerId: string) => api.getPersonalityProfile(playerId),
     [api],
@@ -624,7 +645,7 @@ export function useWorker() {
     getCoachingStaff, getCoachFreeAgents, getCoachMarket, hireCoach, fireCoach,
     getDevelopmentReport, getDevelopmentReports, getCoachingImpact, getStaffBudget, getDevelopmentPipeline,
     proceedToOffseason, startNextSeason,
-    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
+    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getGMCareer, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory, getSeasonArchive, compareSeasons, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames,
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,

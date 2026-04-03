@@ -20,6 +20,11 @@ export {
   buildSigningConsequenceBundle,
   buildPostseasonConsequenceBundle,
   buildRetirementConsequenceBundle,
+  buildTradeAftermathChain,
+  appendConsequenceWatchers,
+  evaluateConsequenceWatchers,
+  calculateRushingRisk,
+  calculateFanSentiment,
 } from './consequences.js';
 
 export type {
@@ -41,4 +46,9 @@ export type {
   PostseasonConsequenceContext,
   RetirementConsequenceContext,
   UserPostseasonOutcome,
+  TradeAftermathChainContext,
+  EvaluateConsequenceWatchersContext,
+  EvaluateConsequenceWatchersResult,
+  RushingRisk,
+  FanSentimentContext,
 } from './consequences.js';

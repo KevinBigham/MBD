@@ -254,7 +254,7 @@ function CurrentPickPanel({
                 </div>
               </div>
             </div>
-            <div className="mt-4 flex gap-2">
+              <div className="mt-4 flex gap-2">
               <button
                 onClick={onScout}
                 disabled={scouting}
@@ -269,6 +269,36 @@ function CurrentPickPanel({
                 {selectedProspect.bigBoardRank ? `Big Board #${selectedProspect.bigBoardRank}` : 'Add To Board'}
               </button>
             </div>
+            {selectedProspect.scoutConflict ? (
+              <div className="mt-4 rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">
+                  Scout Debate · Divergence {selectedProspect.scoutConflict.divergence}
+                </div>
+                <div className="mt-2 grid gap-3 lg:grid-cols-3">
+                  {selectedProspect.scoutConflict.opinions.map((opinion) => (
+                    <div key={`${selectedProspect.id}-${opinion.source}`} className="rounded border border-dynasty-border bg-dynasty-surface p-3">
+                      <div className="font-heading text-xs uppercase tracking-[0.16em] text-dynasty-muted">
+                        {opinion.source.replace(/_/g, ' ')}
+                      </div>
+                      <div className={`mt-2 font-data text-2xl ${gradeTextClass(opinion.overallGrade)}`}>
+                        {opinion.overallGrade}
+                      </div>
+                      <div className="mt-1 font-data text-[11px] text-dynasty-muted">
+                        Floor {opinion.floor} · Ceiling {opinion.ceiling} · Confidence {opinion.confidence}
+                      </div>
+                      <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                        {opinion.summary}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {selectedProspect.scoutConflict.outcomeSummary ? (
+                  <div className="mt-3 font-heading text-xs text-dynasty-muted">
+                    {selectedProspect.scoutConflict.outcomeSummary}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <button
               onClick={onDraft}
               disabled={!userOnClock || drafting}

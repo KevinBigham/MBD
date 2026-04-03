@@ -1,4 +1,4 @@
-import type { Difficulty } from '@mbd/contracts';
+import type { Difficulty, PlayMode } from '@mbd/contracts';
 import {
   GameRNG,
   TEAMS,
@@ -17,6 +17,7 @@ import {
   generateScoutingStaff,
   getTeamBudget,
   getTeamById,
+  initializeGMCareer,
   initializePlayerDevelopmentProfile,
   seedHistoricalRivalries,
   toDisplayRating,
@@ -42,6 +43,8 @@ export interface NewGameOptions {
   gmName: string;
   difficulty: Difficulty;
   saveSlot: number;
+  playMode?: PlayMode;
+  scenarioId?: string;
 }
 
 export interface SetupPreview {
@@ -169,12 +172,15 @@ export function getTeamTradeReputationModifier(
 }
 
 export function getTeamFreeAgencyAppealScore(
-  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState'>>,
+  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState' | 'fanSentiment' | 'userTeamId'>>,
   teamId: string,
 ): number {
   const chemistryScore = state.teamChemistry.get(teamId)?.score ?? 50;
   const reputationAppeal = frontOfficeFreeAgencyAppeal(state.frontOfficeState?.get(teamId)?.reputation ?? 50);
-  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3))));
+  const fanModifier = state.userTeamId === teamId && state.fanSentiment
+    ? Math.max(-3, Math.min(3, Math.round((state.fanSentiment.score - 50) / 16)))
+    : 0;
+  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3) + fanModifier)));
 }
 
 function payrollTierForBudget(budget: number): string {
@@ -249,6 +255,22 @@ function teamIdentityBlurb(teamId: string, payrollTier: string, farmSystemRating
   return `${team?.city ?? teamId.toUpperCase()} enters with ${marketLine}. ${pipelineLine}`;
 }
 
+function createEmptyJobMarket() {
+  return {
+    availableJobs: [],
+    applicationDeadlineSeason: null,
+  };
+}
+
+function createDefaultFanSentiment(season: number, day: number) {
+  return {
+    score: 50,
+    trend: 'stable' as const,
+    summary: 'Fan sentiment is stable.',
+    updatedAt: `S${season}D${day}`,
+  };
+}
+
 export function buildNewGameState(options: NewGameOptions): FullGameState {
   const rng = new GameRNG(options.seed);
   const teamIds = TEAMS.map((team) => team.id);
@@ -292,6 +314,8 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     seasonHistory: [],
     careerStats: [],
   });
+  const playMode = options.playMode ?? 'standard';
+  const gmCareer = initializeGMCareer(new GameRNG(options.seed + 40_001), options.userTeamId, options.gmName, 1);
 
   return {
     rng,
@@ -340,10 +364,18 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     mentorRelationships: [],
     frontOfficeState,
     seasonHistory: [],
+    gmCareer,
+    jobMarket: createEmptyJobMarket(),
+    consequenceWatchers: [],
+    fanSentiment: createDefaultFanSentiment(1, 1),
+    scoutConflicts: [],
+    dynastyCards: [],
+    challengeState: null,
     tradeState: createEmptyTradeState(),
     franchise: createDefaultFranchiseState(options.userTeamId, 1, 1, {
       gmName: options.gmName,
       difficulty: options.difficulty,
+      playMode,
       onboarding: {
         welcomeBriefingSeen: false,
         firstMonthlyPulseSeen: false,

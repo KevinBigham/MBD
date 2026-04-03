@@ -33,6 +33,10 @@ export {
   convertIFAProspectToPlayer,
   signIFAProspect,
 } from './international.js';
+export {
+  generateScoutConflict,
+  resolveScoutConflicts,
+} from './conflicts.js';
 export type {
   InternationalRegion,
   InternationalNationality,
@@ -44,3 +48,8 @@ export type {
   InternationalScoutingState,
   SignIFAProspectResult,
 } from './international.js';
+export type {
+  ScoutConflict,
+  ScoutOpinion,
+  ScoutOpinionSource,
+} from '@mbd/contracts';

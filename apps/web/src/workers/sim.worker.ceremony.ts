@@ -39,6 +39,7 @@ export function createDefaultFranchiseState(
   return {
     gmName: overrides.gmName ?? 'General Manager',
     difficulty: overrides.difficulty ?? 'standard',
+    playMode: overrides.playMode ?? 'standard',
     createdAt: overrides.createdAt ?? `S${season}D${day}`,
     teamId: overrides.teamId ?? userTeamId,
     teamName: overrides.teamName ?? (team ? `${team.city} ${team.name}` : userTeamId.toUpperCase()),

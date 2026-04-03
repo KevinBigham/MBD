@@ -25,7 +25,7 @@ import {
 
 function createSnapshot(): GameSnapshot {
   return {
-    schemaVersion: 12,
+    schemaVersion: 13,
     rng: { seed: 7, callCount: 14 },
     season: 3,
     day: 97,
@@ -163,7 +163,7 @@ describe('saveSystem helpers', () => {
     clearPerformanceMetrics();
   });
 
-  it('builds a v12 save record from a canonical snapshot', () => {
+  it('builds a v13 save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
     const record = buildSaveRecord(2, 'Dynasty Slot', snapshot);
@@ -173,10 +173,10 @@ describe('saveSystem helpers', () => {
     expect(record.season).toBe(3);
     expect(record.day).toBe(97);
     expect(record.phase).toBe('regular');
-    expect(record.schemaVersion).toBe(12);
+    expect(record.schemaVersion).toBe(13);
     expect(record.hasSnapshot).toBe(true);
     expect(record.snapshot?.rng.callCount).toBe(14);
-    expect(record.snapshot?.schemaVersion).toBe(12);
+    expect(record.snapshot?.schemaVersion).toBe(13);
     expect(record.snapshot?.narrative.seasonHistory[0]?.worldSeriesRecord).toBe('4-2');
     expect(record.snapshot?.tradeState.pendingOffers).toEqual([]);
     expect(record.snapshot?.rule5Session).toBeNull();
@@ -199,7 +199,7 @@ describe('saveSystem helpers', () => {
     const imported = importSnapshotFromJson(serialized);
 
     expect(imported.name).toBe('Dynasty Export');
-    expect(imported.snapshot.schemaVersion).toBe(12);
+    expect(imported.snapshot.schemaVersion).toBe(13);
     expect(imported.snapshot.franchise.gmName).toBe('General Manager');
   });
 
@@ -230,7 +230,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.legacyState).toBe('{"old":true}');
   });
 
-  it('migrates v2 snapshots to v12 on load', () => {
+  it('migrates v2 snapshots to v13 on load', () => {
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-3',
       slotNumber: 3,
@@ -313,8 +313,8 @@ describe('saveSystem helpers', () => {
       // This fixture intentionally uses the legacy v2 shape.
     } as any);
 
-    expect(normalized.schemaVersion).toBe(12);
-    expect(normalized.snapshot?.schemaVersion).toBe(12);
+    expect(normalized.schemaVersion).toBe(13);
+    expect(normalized.snapshot?.schemaVersion).toBe(13);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].wins).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].losses).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].hbp).toBe(0);
@@ -337,7 +337,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('migrates v3 snapshots to v12 on load', () => {
+  it('migrates v3 snapshots to v13 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-5',
@@ -351,8 +351,8 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(12);
-    expect(normalized.snapshot?.schemaVersion).toBe(12);
+    expect(normalized.schemaVersion).toBe(13);
+    expect(normalized.snapshot?.schemaVersion).toBe(13);
     expect(normalized.snapshot?.tradeState.tradeHistory).toEqual([]);
     expect(normalized.snapshot?.rule5Obligations).toEqual([]);
     expect(normalized.snapshot?.monthlyPulse).toEqual({
@@ -361,7 +361,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('migrates v4 snapshots to v12 on load', () => {
+  it('migrates v4 snapshots to v13 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-6',
@@ -385,8 +385,8 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(12);
-    expect(normalized.snapshot?.schemaVersion).toBe(12);
+    expect(normalized.schemaVersion).toBe(13);
+    expect(normalized.snapshot?.schemaVersion).toBe(13);
     expect(normalized.snapshot?.narrative.hallOfFame).toEqual([]);
     expect(normalized.snapshot?.narrative.hallOfFameBallot).toEqual([]);
     expect(normalized.snapshot?.narrative.franchiseTimeline).toEqual([]);
@@ -503,7 +503,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('repairs a legacy snapshot payload and promotes it into the canonical v12 save shape', async () => {
+  it('repairs a legacy snapshot payload and promotes it into the canonical v13 save shape', async () => {
     const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-3' as never);
     vi.spyOn(db.saves, 'get').mockResolvedValue({
       id: 'save-slot-3',
@@ -526,7 +526,7 @@ describe('saveSystem helpers', () => {
       status: 'ok',
       save: expect.objectContaining({
         slotNumber: 3,
-        schemaVersion: 12,
+        schemaVersion: 13,
         hasSnapshot: true,
       }),
     });

@@ -47,6 +47,19 @@ interface DashboardSummary {
     chemistry: { score: number; tier: string; summary: string } | null;
     frontOffice: { reputation: number; summary: string } | null;
   };
+  fanSentiment: {
+    score: number;
+    trend: 'rising' | 'stable' | 'falling';
+    summary: string;
+  };
+  challenge: {
+    scenarioId: string;
+    name: string;
+    progress: number;
+    completed: boolean;
+    failed: boolean;
+    summary: string;
+  } | null;
   momentum: {
     last10: string;
     streak: string;
@@ -123,6 +136,25 @@ interface TradeDeadlineStateView {
   }>;
 }
 
+interface GMCareerView {
+  currentTeamId: string;
+  reputation: number;
+  overallRecord: { wins: number; losses: number };
+  careerHistory: Array<{ teamId: string; firedSeason: number | null }>;
+  jobSearchActive: boolean;
+  lastFiredReason: string | null;
+}
+
+interface JobMarketView {
+  availableJobs: Array<{
+    teamId: string;
+    budget: string;
+    expectations: string;
+    difficulty: string;
+    attractiveness: number;
+  }>;
+}
+
 function ownerTone(patience: number | undefined): string {
   if (patience == null) return 'bg-dynasty-border';
   if (patience >= 65) return 'bg-accent-success';
@@ -139,6 +171,17 @@ function chemistryTone(tier: string | undefined): string {
     case 'tense':
       return 'text-accent-warning';
     case 'fractured':
+      return 'text-accent-danger';
+    default:
+      return 'text-dynasty-text';
+  }
+}
+
+function fanTrendTone(trend: DashboardSummary['fanSentiment']['trend'] | undefined): string {
+  switch (trend) {
+    case 'rising':
+      return 'text-accent-success';
+    case 'falling':
       return 'text-accent-danger';
     default:
       return 'text-dynasty-text';
@@ -167,21 +210,28 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const worker = useWorker();
-  const { isInitialized, userTeamId, season, day, phase } = useGameStore();
+  const { isInitialized, userTeamId, season, day, phase, playerCount, activeSaveSlot, initializeGame } = useGameStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
+  const [career, setCareer] = useState<GMCareerView | null>(null);
+  const [jobMarket, setJobMarket] = useState<JobMarketView | null>(null);
   const [loading, setLoading] = useState(true);
+  const [applyingTeamId, setApplyingTeamId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
     setLoading(true);
     try {
-      const [nextSummary, nextDeadlineState] = await Promise.all([
+      const [nextSummary, nextDeadlineState, nextCareer, nextJobMarket] = await Promise.all([
         worker.getDashboardSummary(),
         worker.getTradeDeadlineState(),
+        worker.getGMCareer(),
+        worker.getJobMarket(),
       ]);
       setSummary((nextSummary ?? null) as DashboardSummary | null);
       setDeadlineState((nextDeadlineState ?? null) as TradeDeadlineStateView | null);
+      setCareer((nextCareer ?? null) as GMCareerView | null);
+      setJobMarket((nextJobMarket ?? null) as JobMarketView | null);
     } catch (err) {
       console.error('Failed to fetch dashboard summary:', err);
     } finally {
@@ -197,6 +247,31 @@ export default function DashboardPage() {
   const headlineFeed = summary?.pressRoom.feed.slice(0, 4) ?? [];
   const ownerMeterValue = summary?.franchise.owner?.satisfaction ?? summary?.franchise.owner?.patience ?? 0;
   const topRivalry = summary?.intel.rivalries?.[0] ?? null;
+
+  const handleApplyForJob = useCallback(async (teamId: string) => {
+    setApplyingTeamId(teamId);
+    try {
+      const result = await worker.applyForJob(teamId);
+      if (result?.success) {
+        initializeGame({
+          season,
+          day,
+          phase,
+          playerCount,
+          userTeamId: result.teamId ?? teamId,
+          teamName: result.teamName ?? summary?.franchise.teamName ?? 'Franchise',
+          gmName: summary?.franchise.gmName ?? 'General Manager',
+          difficulty: summary?.franchise.difficulty ?? 'standard',
+          activeSaveSlot,
+        });
+        await fetchData();
+      }
+    } catch (error) {
+      console.error('Failed to apply for job:', error);
+    } finally {
+      setApplyingTeamId(null);
+    }
+  }, [activeSaveSlot, day, fetchData, initializeGame, phase, playerCount, season, summary, worker]);
 
   return (
     <PageShell loading={loading && summary == null} skeleton={<DashboardSkeleton />}>
@@ -264,6 +339,55 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
+      {career?.jobSearchActive && (jobMarket?.availableJobs.length ?? 0) > 0 ? (
+        <section className="rounded-lg border border-accent-warning/40 bg-accent-warning/10 p-5">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Career Crossroads</div>
+              <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">Ownership made a change</h2>
+              <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
+                {career.lastFiredReason ?? 'Your last club moved on.'} Career mode keeps the save alive, but you need a new franchise before baseball operations can continue.
+              </p>
+              <div className="mt-3 font-data text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+                Career record {career.overallRecord.wins}-{career.overallRecord.losses} · Reputation {career.reputation}
+              </div>
+            </div>
+            <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 font-heading text-sm text-dynasty-muted">
+              Select one opening to take over immediately.
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 xl:grid-cols-2">
+            {jobMarket?.availableJobs.map((job) => (
+              <div key={job.teamId} className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-heading text-base text-dynasty-textBright">{job.teamId.toUpperCase()}</div>
+                    <div className="mt-1 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+                      {job.budget} · {job.expectations}
+                    </div>
+                  </div>
+                  <div className="font-data text-lg text-accent-primary">{job.attractiveness}</div>
+                </div>
+                <div className="mt-3 font-heading text-sm text-dynasty-muted">
+                  {job.difficulty}
+                </div>
+                <button
+                  type="button"
+                  disabled={applyingTeamId != null}
+                  onClick={() => {
+                    void handleApplyForJob(job.teamId);
+                  }}
+                  className="mt-4 rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
+                >
+                  {applyingTeamId === job.teamId ? 'Applying...' : `Take Over ${job.teamId.toUpperCase()}`}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {summary?.franchise.status === 'fired' ? (
         <section className="rounded-lg border border-accent-danger/40 bg-accent-danger/10 p-4">
           <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-danger">Dynasty Ended</div>
@@ -272,6 +396,37 @@ export default function DashboardPage() {
           </div>
         </section>
       ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Fan Mood</div>
+          <div className={`mt-2 font-data text-3xl ${fanTrendTone(summary?.fanSentiment?.trend)}`}>
+            <AnimatedNumber value={summary?.fanSentiment?.score ?? 50} formatter={(value) => `${Math.round(value)}`} />
+          </div>
+          <div className="mt-2 font-heading text-sm text-dynasty-muted">
+            {summary?.fanSentiment?.summary ?? 'Fans are waiting for the next stretch to define the season.'}
+          </div>
+        </div>
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Challenge Status</div>
+          {summary?.challenge ? (
+            <>
+              <div className="mt-2 font-heading text-lg text-dynasty-textBright">{summary.challenge.name}</div>
+              <div className="mt-2">
+                <ProgressFill
+                  toneClassName={summary.challenge.completed ? 'bg-accent-success' : summary.challenge.failed ? 'bg-accent-danger' : 'bg-accent-warning'}
+                  value={(summary.challenge.progress ?? 0) * 100}
+                />
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">{summary.challenge.summary}</div>
+            </>
+          ) : (
+            <div className="mt-2 font-heading text-sm text-dynasty-muted">
+              No challenge scenario is active in this save.
+            </div>
+          )}
+        </div>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">

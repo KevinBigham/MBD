@@ -199,6 +199,21 @@ export type {
 
 // Sim
 export {
+  initializeGMCareer,
+  recordSeasonResult,
+  processGMFiring,
+  applyForJob,
+  getCareerLegacyScore,
+  generateJobMarket,
+} from './career/index.js';
+export type {
+  CareerStandingsEntry,
+  GMCareer,
+  GMCareerEntry,
+  JobMarket,
+  JobOpening,
+} from './career/index.js';
+export {
   REGULAR_SEASON_MONTHS,
   getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,
@@ -330,11 +345,16 @@ export {
   tradeIFABonusPool,
   convertIFAProspectToPlayer,
   signIFAProspect,
+  generateScoutConflict,
+  resolveScoutConflicts,
 } from './scouting/index.js';
 export type {
   ScoutBias,
   Scout,
   ScoutReport,
+  ScoutConflict,
+  ScoutOpinion,
+  ScoutOpinionSource,
   InternationalRegion,
   InternationalNationality,
   IFAProspectStatus,
@@ -546,6 +566,11 @@ export {
   buildSigningConsequenceBundle,
   buildPostseasonConsequenceBundle,
   buildRetirementConsequenceBundle,
+  buildTradeAftermathChain,
+  appendConsequenceWatchers,
+  evaluateConsequenceWatchers,
+  calculateRushingRisk,
+  calculateFanSentiment,
 } from './narrative/index.js';
 export type {
   NewsPriority,
@@ -563,4 +588,27 @@ export type {
   PostseasonConsequenceContext,
   RetirementConsequenceContext,
   UserPostseasonOutcome,
+  TradeAftermathChainContext,
+  EvaluateConsequenceWatchersContext,
+  EvaluateConsequenceWatchersResult,
+  RushingRisk,
+  FanSentimentContext,
 } from './narrative/index.js';
+
+// Sharing
+export {
+  generateDynastyCard,
+  generateSeasonRecapCard,
+  generateChampionshipCard,
+  calculateDynastyLeaderboardScore,
+} from './sharing/index.js';
+
+// Scenarios
+export {
+  SCENARIO_LIBRARY,
+  getScenarioById,
+  readScenarioRecord,
+  applyScenarioOverrides,
+  evaluateScenarioProgress,
+  completeScenario,
+} from './scenarios/index.js';
