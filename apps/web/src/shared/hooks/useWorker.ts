@@ -92,8 +92,22 @@ export function useWorker() {
   const ping = useCallback(async () => api.ping(), [api]);
 
   const newGame = useCallback(
-    async (seed: number, userTeamId?: string) => runMutation(() => api.newGame(seed, userTeamId)),
+    async (options: {
+      seed: number;
+      userTeamId: string;
+      gmName: string;
+      difficulty: 'easy' | 'standard' | 'hard';
+      saveSlot: number;
+    }) => runMutation(() => api.newGame(options)),
     [api, runMutation],
+  );
+  const getSetupPreview = useCallback(
+    async (options: {
+      seed: number;
+      userTeamId: string;
+      difficulty: 'easy' | 'standard' | 'hard';
+    }) => api.getSetupPreview(options),
+    [api],
   );
 
   const simDay = useCallback(async () => runMutation(() => api.simDay()), [api, runMutation]);
@@ -105,6 +119,14 @@ export function useWorker() {
   );
   const dismissDecisionSpotlight = useCallback(
     async (decisionId: string) => runMutation(() => api.dismissDecisionSpotlight(decisionId)),
+    [api, runMutation],
+  );
+  const dismissCeremonyMoment = useCallback(
+    async (momentId: string) => runMutation(() => api.dismissCeremonyMoment(momentId)),
+    [api, runMutation],
+  );
+  const dismissWelcomeBriefing = useCallback(
+    async () => runMutation(() => api.dismissWelcomeBriefing()),
     [api, runMutation],
   );
   const simToPlayoffs = useCallback(async () => runMutation(() => api.simToPlayoffs()), [api, runMutation]);
@@ -149,8 +171,10 @@ export function useWorker() {
   const getHallOfFame = useCallback(async () => api.getHallOfFame(), [api]);
   const getFranchiseTimeline = useCallback(async () => api.getFranchiseTimeline(), [api]);
   const getDynastyScore = useCallback(async () => api.getDynastyScore(), [api]);
+  const getAchievements = useCallback(async () => api.getAchievements(), [api]);
   const getDashboardSummary = useCallback(async () => api.getDashboardSummary(), [api]);
   const getMonthlyPulse = useCallback(async () => api.getMonthlyPulse(), [api]);
+  const getCeremonyState = useCallback(async () => api.getCeremonyState(), [api]);
   const getSeasonFlowState = useCallback(async () => api.getSeasonFlowState(), [api]);
   const getScoutingStaff = useCallback(async () => api.getScoutingStaff(), [api]);
   const scoutPlayerReport = useCallback(
@@ -233,6 +257,7 @@ export function useWorker() {
   );
   const getTradeOffers = useCallback(async () => api.getTradeOffers(), [api]);
   const getTradeHistory = useCallback(async () => api.getTradeHistory(), [api]);
+  const getTradeDeadlineState = useCallback(async () => api.getTradeDeadlineState(), [api]);
   const getTradeAssetInventory = useCallback(async (teamId: string) => api.getTradeAssetInventory(teamId), [api]);
   const proposeTrade = useCallback(
     async (offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) =>
@@ -415,15 +440,15 @@ export function useWorker() {
   );
 
   return {
-    ping, newGame, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, simToPlayoffs,
+    ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot,
     getStandings, getTeamRoster, getFullRoster, getPlayer, getAdvancedStats,
-    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getMonthlyPulse, getSeasonFlowState,
+    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getAchievements, getDashboardSummary, getMonthlyPulse, getCeremonyState, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
-    getTradeOffers, getTradeHistory, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
+    getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
     getPromotionCandidates, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,

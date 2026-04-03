@@ -45,8 +45,11 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { buildAchievementView } from './sim.worker.achievements.js';
+import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
+import { buildSetupPreview, getDifficultyAdjustedBudget } from './sim.worker.setup.js';
 import {
   getAwardHistory,
   getPersonalityProfileForPlayer,
@@ -56,6 +59,7 @@ import {
 } from './sim.worker.narrative.js';
 import {
   buildTradeAssetInventoryView,
+  buildTradeDeadlineStateView,
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
@@ -188,7 +192,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
 
   const finances = {
     payroll: calculateTeamPayroll(s.userTeamId, getTeamPlayers(s.userTeamId)).totalPayroll,
-    budget: getTeamBudget(s.userTeamId),
+    budget: getDifficultyAdjustedBudget(s, s.userTeamId),
   };
 
   const expiringContracts = mlbPlayers
@@ -213,10 +217,14 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
     franchise: {
       teamName: teamNameFromId(s.userTeamId),
       abbreviation: getTeamById(s.userTeamId)?.abbreviation ?? s.userTeamId.toUpperCase(),
+      gmName: s.franchise.gmName,
+      difficulty: s.franchise.difficulty,
+      welcomeBriefingPending: !s.franchise.onboarding.welcomeBriefingSeen,
       season: s.season,
       record: userStanding ? `${userStanding.wins}-${userStanding.losses}` : '0-0',
       division: userDivision,
       divisionRank: userStanding?.divisionRank ?? 1,
+      achievementCount: s.achievements.unlocked.length,
       dynasty,
       owner: ownerState,
       chemistry,
@@ -429,6 +437,14 @@ function getAffiliateBoxScoreView(boxScoreId: string) {
 }
 
 export const queryApi = {
+  getSetupPreview(options: {
+    seed: number;
+    userTeamId: string;
+    difficulty: 'easy' | 'standard' | 'hard';
+  }) {
+    return buildSetupPreview(options);
+  },
+
   getState() {
     if (!state) {
       return null;
@@ -596,12 +612,20 @@ export const queryApi = {
     return state ? getDynastyScoreSummary(state) : null;
   },
 
+  getAchievements() {
+    return state ? buildAchievementView(state) : [];
+  },
+
   getDashboardSummary() {
     return state ? buildDashboardSummary(state) : null;
   },
 
   getMonthlyPulse() {
     return state ? getMonthlyPulse(state) : null;
+  },
+
+  getCeremonyState() {
+    return state ? getCeremonyStateView(state) : { activeMoment: null, queueLength: 0 };
   },
 
   getSeasonFlowState() {
@@ -762,7 +786,7 @@ export const queryApi = {
     const s = requireState();
     const resolvedTeamId = teamId ?? s.userTeamId;
     const payroll = calculateCoachingPayroll(s.coachingStaffs.get(resolvedTeamId) ?? []);
-    const budget = calculateStaffBudget(getTeamBudget(resolvedTeamId));
+    const budget = calculateStaffBudget(getDifficultyAdjustedBudget(requireState(), resolvedTeamId));
     return {
       payroll,
       budget,
@@ -827,6 +851,10 @@ export const queryApi = {
 
   getTradeHistory() {
     return buildTradeHistoryView(requireState());
+  },
+
+  getTradeDeadlineState() {
+    return buildTradeDeadlineStateView(requireState());
   },
 
   getTradeAssetInventory(teamId: string) {
@@ -900,7 +928,7 @@ export const queryApi = {
 
   getTeamFinances(teamId: string) {
     const payroll = calculateTeamPayroll(teamId, getTeamPlayers(teamId)).totalPayroll;
-    const budget = getTeamBudget(teamId);
+    const budget = getDifficultyAdjustedBudget(requireState(), teamId);
     const luxuryTax = calculateLuxuryTax(payroll);
     return {
       payroll,

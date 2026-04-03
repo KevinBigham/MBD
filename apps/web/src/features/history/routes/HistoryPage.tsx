@@ -49,6 +49,21 @@ interface DynastyScoreSummary {
   };
 }
 
+interface AchievementView {
+  id: string;
+  category: 'dynasty' | 'development' | 'moneyball' | 'records' | 'longevity';
+  name: string;
+  description: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  unlockSummary: string | null;
+  progress: {
+    current: number;
+    target: number;
+    summary?: string;
+  };
+}
+
 const EMPTY_DISPLAY_NAMES: HistoryDisplayNames = {
   players: {},
   teams: {},
@@ -134,12 +149,14 @@ export default function HistoryPage() {
   const [hallOfFame, setHallOfFame] = useState<HallOfFameEntryView[]>([]);
   const [franchiseTimeline, setFranchiseTimeline] = useState<FranchiseTimelineEntryView[]>([]);
   const [dynastyScore, setDynastyScore] = useState<DynastyScoreSummary | null>(null);
+  const [achievements, setAchievements] = useState<AchievementView[]>([]);
+  const [selectedAchievementId, setSelectedAchievementId] = useState<string | null>(null);
   const [displayNames, setDisplayNames] = useState<HistoryDisplayNames>(EMPTY_DISPLAY_NAMES);
 
   const fetchHistory = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
     try {
-      const [races, awards, seasons, rivalriesData, hallOfFameData, timelineData, dynastyData] = await Promise.all([
+      const [races, awards, seasons, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData] = await Promise.all([
         worker.getAwardRaces(),
         worker.getAwardHistory(),
         worker.getSeasonHistory(),
@@ -147,6 +164,7 @@ export default function HistoryPage() {
         worker.getHallOfFame(),
         worker.getFranchiseTimeline(),
         worker.getDynastyScore(),
+        worker.getAchievements(),
       ]);
       const nextAwardRaces = races ?? null;
       const nextAwardHistory = awards ?? [];
@@ -172,6 +190,8 @@ export default function HistoryPage() {
       setHallOfFame(nextHallOfFame as HallOfFameEntryView[]);
       setFranchiseTimeline(nextTimeline as FranchiseTimelineEntryView[]);
       setDynastyScore((dynastyData ?? null) as DynastyScoreSummary | null);
+      setAchievements((achievementData ?? []) as AchievementView[]);
+      setSelectedAchievementId((current) => current ?? (((achievementData ?? []) as AchievementView[])[0]?.id ?? null));
       setDisplayNames((resolvedNames ?? EMPTY_DISPLAY_NAMES) as HistoryDisplayNames);
     } catch (err) {
       console.error('Failed to fetch history data:', err);
@@ -187,6 +207,8 @@ export default function HistoryPage() {
     if (!teamId) return 'Unknown team';
     return displayNames.teams[teamId] ?? teamId.toUpperCase();
   };
+  const selectedAchievement = achievements.find((achievement) => achievement.id === selectedAchievementId) ?? achievements[0] ?? null;
+  const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked).length;
 
   return (
     <div className="space-y-6">
@@ -301,6 +323,68 @@ export default function HistoryPage() {
                 Retired legends will appear here once the Hall of Fame begins to fill.
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-accent-warning" />
+            <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Trophy Room</h2>
+            <div className="ml-auto font-data text-[11px] text-dynasty-muted">
+              {unlockedAchievements}/{achievements.length}
+            </div>
+          </div>
+          {selectedAchievement && (
+            <div className="mb-4 rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-heading text-sm text-dynasty-textBright">{selectedAchievement.name}</div>
+                  <div className="mt-1 font-heading text-xs uppercase text-dynasty-muted">{selectedAchievement.category}</div>
+                </div>
+                <div className={`font-data text-xs ${selectedAchievement.unlocked ? 'text-accent-warning' : 'text-dynasty-muted'}`}>
+                  {selectedAchievement.unlocked ? (selectedAchievement.unlockedAt ?? 'Unlocked') : 'Locked'}
+                </div>
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-text">{selectedAchievement.description}</div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-dynasty-surface">
+                <div
+                  className={`h-full rounded-full ${selectedAchievement.unlocked ? 'bg-accent-warning' : 'bg-accent-primary'}`}
+                  style={{ width: `${Math.max(6, Math.min(100, (selectedAchievement.progress.current / Math.max(1, selectedAchievement.progress.target)) * 100))}%` }}
+                />
+              </div>
+              <div className="mt-2 font-data text-xs text-dynasty-muted">
+                {selectedAchievement.progress.current} / {selectedAchievement.progress.target}
+                {selectedAchievement.progress.summary ? ` ${selectedAchievement.progress.summary}` : ''}
+              </div>
+              {selectedAchievement.unlockSummary && (
+                <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                  {selectedAchievement.unlockSummary}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="grid gap-3 md:grid-cols-2">
+            {achievements.map((achievement) => (
+              <button
+                key={achievement.id}
+                className={`rounded border px-3 py-3 text-left transition-colors ${
+                  achievement.unlocked
+                    ? 'border-accent-warning/40 bg-accent-warning/10'
+                    : 'border-dynasty-border bg-dynasty-elevated'
+                } ${selectedAchievement?.id === achievement.id ? 'ring-1 ring-accent-primary' : ''}`}
+                onClick={() => setSelectedAchievementId(achievement.id)}
+                type="button"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-heading text-sm text-dynasty-text">{achievement.name}</div>
+                  <div className="font-data text-[10px] uppercase text-dynasty-muted">{achievement.category}</div>
+                </div>
+                <div className="mt-2 font-heading text-xs text-dynasty-muted">{achievement.description}</div>
+                <div className="mt-3 font-data text-xs text-dynasty-muted">
+                  {achievement.progress.current} / {achievement.progress.target}
+                </div>
+              </button>
+            ))}
           </div>
         </section>
 

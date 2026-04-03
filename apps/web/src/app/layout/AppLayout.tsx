@@ -1,16 +1,23 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { SimControls } from './SimControls';
 import { CommandPalette } from './CommandPalette';
+import { MomentCardOverlay } from './MomentCardOverlay';
 import { SeasonFlowCard } from './SeasonFlowCard';
 import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
-import type { MonthlyPulseState } from '@mbd/contracts';
+import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
+import { saveGame } from '@/shared/lib/saveSystem';
+import type { CeremonyMoment, MonthlyPulseState } from '@mbd/contracts';
+
+interface MonthlyPulseView extends MonthlyPulseState {
+  onboardingGuide?: string | null;
+}
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -25,16 +32,81 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
+function resolveAmbientMode(
+  pathname: string,
+  phase: string,
+  initialized: boolean,
+  overlayVisible: boolean,
+  celebrationVisible: boolean,
+): AmbientMode | null {
+  if (!initialized) {
+    return null;
+  }
+
+  if (celebrationVisible) {
+    return 'celebration';
+  }
+
+  if (overlayVisible) {
+    return 'press-room';
+  }
+
+  if (pathname.startsWith('/draft')) {
+    return 'draft-room';
+  }
+
+  if (pathname.startsWith('/press-room')) {
+    return 'press-room';
+  }
+
+  if (
+    pathname.startsWith('/settings')
+    || pathname.startsWith('/offseason')
+    || pathname.startsWith('/free-agency')
+  ) {
+    return 'office';
+  }
+
+  if (phase === 'regular' || phase === 'playoffs') {
+    return 'ballpark';
+  }
+
+  return 'office';
+}
+
 export function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
-  const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseState | null>(null);
+  const [activeMoment, setActiveMoment] = useState<CeremonyMoment | null>(null);
+  const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseView | null>(null);
   const [monthlyPulseBusy, setMonthlyPulseBusy] = useState(false);
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { setSimulating, updateFromSim, initializeGame, isInitialized, isSimulating } = useGameStore();
-  const initialized = useRef(false);
+  const {
+    phase,
+    season,
+    teamName,
+    gmName,
+    activeSaveSlot,
+    setSimulating,
+    updateFromSim,
+    isInitialized,
+    isSimulating,
+  } = useGameStore();
+  const audioMuted = useAudioPreferencesStore((state) => state.muted);
+  const audioVolume = useAudioPreferencesStore((state) => state.volume);
+  const commandPaletteOpenRef = useRef<boolean | null>(null);
+
+  const persistActiveSlot = useCallback(async (targetSeason: number) => {
+    if (activeSaveSlot == null) {
+      return;
+    }
+
+    const snapshot = await worker.exportSnapshot();
+    await saveGame(activeSaveSlot, `${gmName} • ${teamName} • Season ${targetSeason}`, snapshot);
+  }, [activeSaveSlot, gmName, teamName, worker]);
 
   const refreshSeasonFlow = useCallback(async () => {
     if (!workerReady) return;
@@ -45,76 +117,85 @@ export function AppLayout() {
   const refreshMonthlyPulse = useCallback(async () => {
     if (!workerReady) return;
     const next = await worker.getMonthlyPulse();
-    setMonthlyPulse(next as MonthlyPulseState);
+    setMonthlyPulse(next as MonthlyPulseView);
   }, [worker, workerReady]);
 
-  // Auto-initialize a new game when the worker is ready
-  useEffect(() => {
-    if (!workerReady || initialized.current || isInitialized) return;
-
-    initialized.current = true;
-
-    (async () => {
-      try {
-        const latestSave = await loadMostRecentSnapshot();
-        if (latestSave?.snapshot) {
-          const result = await worker.importSnapshot(latestSave.snapshot);
-          initializeGame({
-            season: result.season,
-            day: result.day,
-            phase: result.phase,
-            playerCount: result.playerCount,
-            userTeamId: result.userTeamId,
-          });
-          await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
-          return;
-        }
-
-        const result = await worker.newGame(Date.now(), 'nyy');
-        initializeGame({
-          season: result.season,
-          day: result.day,
-          phase: result.phase,
-          playerCount: result.playerCount,
-          userTeamId: 'nyy',
-        });
-        await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
-      } catch (err: unknown) {
-        console.error('Failed to initialize game:', err);
-      }
-    })();
-  }, [workerReady, initializeGame, isInitialized, refreshMonthlyPulse, refreshSeasonFlow, worker]); // eslint-disable-line react-hooks/exhaustive-deps
+  const refreshCeremony = useCallback(async () => {
+    if (!workerReady) return;
+    const next = await worker.getCeremonyState();
+    setActiveMoment(((next as { activeMoment: CeremonyMoment | null })?.activeMoment) ?? null);
+  }, [worker, workerReady]);
 
   useEffect(() => {
     if (!workerReady || !isInitialized) return;
 
     void refreshSeasonFlow();
+    void refreshCeremony();
     void refreshMonthlyPulse();
     return worker.subscribeToFlowUpdates(() => {
       void refreshSeasonFlow();
+      void refreshCeremony();
       void refreshMonthlyPulse();
     });
-  }, [isInitialized, refreshMonthlyPulse, refreshSeasonFlow, worker, workerReady]);
+  }, [isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, worker, workerReady]);
 
   const handleSim = useCallback(
-    async (simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>) => {
+    async (
+      simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>,
+      options: { autoSave?: boolean } = {},
+    ) => {
       if (!workerReady || !isInitialized) return;
       setSimulating(true);
       try {
         const result = await simFn();
         updateFromSim(result);
-        await Promise.all([refreshSeasonFlow(), refreshMonthlyPulse()]);
+        await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
+        if (options.autoSave || result.phase !== phase || result.season !== season) {
+          await persistActiveSlot(result.season);
+        }
       } catch (err) {
         console.error('Simulation error:', err);
       } finally {
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, refreshMonthlyPulse, refreshSeasonFlow, setSimulating, updateFromSim]
+    [workerReady, isInitialized, persistActiveSlot, phase, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, season, setSimulating, updateFromSim]
   );
 
-  const activeReport = monthlyPulse?.pendingReport ?? null;
+  const activeReport = activeMoment ? null : (monthlyPulse?.pendingReport ?? null);
   const activeDecision = activeReport ? null : (monthlyPulse?.decisionQueue[0] ?? null);
+  const ambientMode = resolveAmbientMode(
+    location.pathname,
+    phase,
+    isInitialized,
+    activeReport != null || activeDecision != null,
+    activeMoment != null,
+  );
+
+  useEffect(() => {
+    getAudioEngine().setVolume(audioVolume);
+  }, [audioVolume]);
+
+  useEffect(() => {
+    getAudioEngine().setMuted(audioMuted);
+  }, [audioMuted]);
+
+  useEffect(() => {
+    getAudioEngine().setAmbient(ambientMode);
+  }, [ambientMode]);
+
+  useEffect(() => {
+    if (commandPaletteOpenRef.current == null) {
+      commandPaletteOpenRef.current = commandPaletteOpen;
+      return;
+    }
+
+    if (commandPaletteOpenRef.current !== commandPaletteOpen) {
+      getAudioEngine().playEffect(commandPaletteOpen ? 'modal_open' : 'modal_close');
+    }
+
+    commandPaletteOpenRef.current = commandPaletteOpen;
+  }, [commandPaletteOpen]);
 
   const handleMonthlyReportContinue = useCallback(async () => {
     if (!activeReport) return;
@@ -128,6 +209,18 @@ export function AppLayout() {
       setMonthlyPulseBusy(false);
     }
   }, [activeReport, refreshMonthlyPulse, worker]);
+
+  const handleMomentDismiss = useCallback(async (momentId: string) => {
+    setMonthlyPulseBusy(true);
+    try {
+      await worker.dismissCeremonyMoment(momentId);
+      await Promise.all([refreshCeremony(), refreshMonthlyPulse()]);
+    } catch (err) {
+      console.error('Failed to dismiss ceremony moment:', err);
+    } finally {
+      setMonthlyPulseBusy(false);
+    }
+  }, [refreshCeremony, refreshMonthlyPulse, worker]);
 
   const handleDecisionDismiss = useCallback(async () => {
     if (!activeDecision) return;
@@ -213,7 +306,7 @@ export function AppLayout() {
       }
 
       if (event.ctrlKey || event.metaKey) {
-        void handleSim(() => worker.simMonth());
+        void handleSim(() => worker.simMonth(), { autoSave: true });
         return;
       }
 
@@ -226,6 +319,10 @@ export function AppLayout() {
     };
   }, [commandPaletteOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
 
+  if (!isInitialized) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="flex h-screen flex-col bg-dynasty-base">
       {/* Top bar */}
@@ -235,28 +332,17 @@ export function AppLayout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-6">
-          {!isInitialized ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <div className="font-brand text-4xl text-accent-primary">MBD</div>
-                <div className="mt-2 font-heading text-dynasty-muted">
-                  Generating league...
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {seasonFlow && (
-                <SeasonFlowCard
-                  flow={seasonFlow}
-                  actionBusy={isSimulating}
-                  onAction={() => void handleFlowAction()}
-                  onSecondaryAction={() => void handleFlowAction(seasonFlow.secondaryAction)}
-                />
-              )}
-              <Outlet />
-            </>
-          )}
+          <>
+            {seasonFlow && (
+              <SeasonFlowCard
+                flow={seasonFlow}
+                actionBusy={isSimulating}
+                onAction={() => void handleFlowAction()}
+                onSecondaryAction={() => void handleFlowAction(seasonFlow.secondaryAction)}
+              />
+            )}
+            <Outlet />
+          </>
         </main>
       </div>
 
@@ -264,8 +350,8 @@ export function AppLayout() {
       <SimControls
         onSimDay={() => handleSim(() => worker.simDay())}
         onSimWeek={() => handleSim(() => worker.simWeek())}
-        onSimMonth={() => handleSim(() => worker.simMonth())}
-        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs())}
+        onSimMonth={() => handleSim(() => worker.simMonth(), { autoSave: true })}
+        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs(), { autoSave: true })}
         onFlowAction={() => void handleFlowAction()}
         flow={seasonFlow}
       />
@@ -276,9 +362,16 @@ export function AppLayout() {
         onOpenChange={setCommandPaletteOpen}
       />
 
+      <MomentCardOverlay
+        moment={activeMoment}
+        busy={isSimulating || monthlyPulseBusy}
+        onDismiss={(momentId) => void handleMomentDismiss(momentId)}
+      />
+
       <MonthlyPulseOverlay
         report={activeReport}
         decision={activeDecision}
+        onboardingGuide={activeReport ? monthlyPulse?.onboardingGuide ?? null : null}
         busy={isSimulating || monthlyPulseBusy}
         onContinue={() => void handleMonthlyReportContinue()}
         onDecisionDismiss={() => void handleDecisionDismiss()}

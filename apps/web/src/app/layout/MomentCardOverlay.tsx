@@ -1,0 +1,153 @@
+import { useEffect, useRef } from 'react';
+import { ArrowRight, Sparkles, Trophy, X } from 'lucide-react';
+import type { CeremonyMoment } from '@mbd/contracts';
+import { getAudioEngine } from '@/shared/lib/audio';
+
+interface MomentCardOverlayProps {
+  moment: CeremonyMoment | null;
+  busy: boolean;
+  onDismiss: (momentId: string) => void;
+}
+
+function toneForTheme(theme: CeremonyMoment['theme'] | undefined): string {
+  switch (theme) {
+    case 'future':
+      return 'from-accent-info/30 via-transparent to-accent-success/10';
+    case 'historic':
+      return 'from-accent-warning/30 via-transparent to-accent-danger/10';
+    case 'celebration':
+    default:
+      return 'from-accent-primary/30 via-transparent to-accent-warning/10';
+  }
+}
+
+export function MomentCardOverlay({ moment, busy, onDismiss }: MomentCardOverlayProps) {
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+
+  useEffect(() => {
+    if (!moment) {
+      return;
+    }
+
+    getAudioEngine().playEffect(moment.soundEffect);
+  }, [moment]);
+
+  useEffect(() => {
+    if (!moment) {
+      return;
+    }
+
+    let remainingMs = moment.autoDismissMs;
+    let startedAt = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const clearScheduledDismiss = () => {
+      if (timeoutId != null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const scheduleDismiss = () => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
+
+      startedAt = Date.now();
+      timeoutId = setTimeout(() => {
+        dismissRef.current(moment.id);
+      }, remainingMs);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        clearScheduledDismiss();
+        if (startedAt > 0) {
+          remainingMs = Math.max(0, remainingMs - (Date.now() - startedAt));
+          startedAt = 0;
+        }
+        return;
+      }
+
+      clearScheduledDismiss();
+      scheduleDismiss();
+    };
+
+    scheduleDismiss();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearScheduledDismiss();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [moment]);
+
+  if (!moment) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        aria-label="Dismiss moment card"
+        className="absolute inset-0 cursor-default bg-black/75 backdrop-blur-sm"
+        disabled={busy}
+        onClick={() => onDismiss(moment.id)}
+        type="button"
+      />
+
+      <section className={`relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-dynasty-border bg-[linear-gradient(180deg,rgba(14,18,22,0.98),rgba(10,13,16,0.98))] shadow-2xl animate-ceremony-fade-in`}>
+        <div className={`absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_38%)]`} aria-hidden="true" />
+        <div className={`absolute inset-0 bg-gradient-to-br ${toneForTheme(moment.theme)}`} aria-hidden="true" />
+
+        <div className="relative p-6 sm:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-accent-warning/30 bg-accent-warning/10 px-3 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">
+              <Sparkles className="h-3.5 w-3.5" />
+              Moment
+            </div>
+            <button
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-dynasty-border bg-dynasty-surface text-dynasty-muted transition-colors hover:border-accent-primary hover:text-accent-primary"
+              disabled={busy}
+              onClick={() => onDismiss(moment.id)}
+              type="button"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-8 flex flex-col gap-5">
+            <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-accent-primary/25 bg-accent-primary/10 text-accent-primary">
+              <Trophy className="h-7 w-7" />
+            </div>
+            <div>
+              <h2 className="font-brand text-4xl tracking-[0.06em] text-dynasty-textBright sm:text-5xl">
+                {moment.title}
+              </h2>
+              <p className="mt-3 font-heading text-lg text-dynasty-text">{moment.subtitle}</p>
+            </div>
+            <div className="grid gap-3">
+              {moment.detailLines.map((detail) => (
+                <div key={detail} className="rounded-xl border border-dynasty-border bg-dynasty-elevated/90 px-4 py-3 font-heading text-sm text-dynasty-text">
+                  {detail}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-end">
+            <button
+              className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={busy}
+              onClick={() => onDismiss(moment.id)}
+              type="button"
+            >
+              Keep Going
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

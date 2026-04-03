@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 interface FreeAgentRow {
   id: string;
@@ -85,6 +86,7 @@ export default function FreeAgencyPage() {
           ? `Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.`
           : `Rejected: ${result.reason}`);
         if (result.accepted) {
+          getAudioEngine().playEffect('free_agent_signed');
           setAgents(prev => prev.filter(a => a.id !== selectedPlayer.id));
           setSelectedPlayer(null);
         }
@@ -138,7 +140,10 @@ export default function FreeAgencyPage() {
           {(['all', 'hitters', 'pitchers'] as PositionFilter[]).map(f => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
+              onClick={() => {
+                getAudioEngine().playEffect('tab_switch');
+                setFilter(f);
+              }}
               className={`rounded px-3 py-1.5 font-heading text-xs capitalize transition-colors ${
                 filter === f
                   ? 'bg-accent-primary text-white'

@@ -8,6 +8,8 @@ import {
   parseGameSnapshot,
 } from '../../../../../packages/contracts/src/schemas/save';
 
+export const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
+
 export interface SaveData {
   id: string;
   slotNumber: number;

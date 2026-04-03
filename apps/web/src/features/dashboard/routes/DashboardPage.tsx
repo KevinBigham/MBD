@@ -20,6 +20,9 @@ interface DashboardSummary {
   franchise: {
     teamName: string;
     abbreviation: string;
+    gmName: string;
+    difficulty: 'easy' | 'standard' | 'hard';
+    welcomeBriefingPending: boolean;
     season: number;
     record: string;
     division: string;
@@ -87,6 +90,15 @@ interface DashboardSummary {
   };
 }
 
+interface TradeDeadlineStateView {
+  daysUntilDeadline: number | null;
+  ticker: Array<{
+    id: string;
+    summary: string;
+    timestamp: string;
+  }>;
+}
+
 function ownerTone(patience: number | undefined): string {
   if (patience == null) return 'bg-dynasty-border';
   if (patience >= 65) return 'bg-accent-success';
@@ -113,12 +125,17 @@ export default function DashboardPage() {
   const worker = useWorker();
   const { isInitialized, userTeamId, season, day, phase } = useGameStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
     try {
-      const nextSummary = await worker.getDashboardSummary();
+      const [nextSummary, nextDeadlineState] = await Promise.all([
+        worker.getDashboardSummary(),
+        worker.getTradeDeadlineState(),
+      ]);
       setSummary((nextSummary ?? null) as DashboardSummary | null);
+      setDeadlineState((nextDeadlineState ?? null) as TradeDeadlineStateView | null);
     } catch (err) {
       console.error('Failed to fetch dashboard summary:', err);
     }
@@ -146,6 +163,53 @@ export default function DashboardPage() {
           <span className="font-data text-sm text-dynasty-muted">{summary?.franchise.dynasty.score ?? 0} pts</span>
         </div>
       </div>
+
+      {phase === 'regular' && deadlineState?.daysUntilDeadline != null ? (
+        <section className="rounded-lg border border-accent-warning/30 bg-accent-warning/10 p-4">
+          <div className="font-heading text-sm text-accent-warning">
+            {deadlineState.daysUntilDeadline} days until trade deadline
+          </div>
+          <div className="mt-1 font-heading text-xs text-dynasty-muted">
+            The market is tightening. Monitor hot offers and the league wire from Trade Center.
+          </div>
+        </section>
+      ) : null}
+
+      {summary?.franchise.welcomeBriefingPending ? (
+        <section className="rounded-lg border border-accent-info/30 bg-accent-info/10 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">First Day Briefing</div>
+              <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">
+                Welcome, GM {summary.franchise.gmName}
+              </h2>
+              <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
+                Your roster hub is the fastest way to check the 26-man group, standings tracks the division race, and the draft room becomes live when June arrives. Difficulty is set to {summary.franchise.difficulty}.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link to="/roster" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
+                  Go to Roster
+                </Link>
+                <Link to="/league/standings" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
+                  Check Standings
+                </Link>
+                <Link to="/draft" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
+                  Open Draft Room
+                </Link>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void worker.dismissWelcomeBriefing().then(() => fetchData());
+              }}
+              className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+            >
+              Dismiss
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
@@ -304,6 +368,30 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+          <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
+            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+              <ArrowLeftRight className="h-4 w-4 text-accent-warning" />
+              League Trade Ticker
+            </h2>
+            <Link to="/trade" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+              Trade Center <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="space-y-3 p-4">
+            {(deadlineState?.ticker ?? []).length > 0 ? deadlineState?.ticker.map((item) => (
+              <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">{item.timestamp}</div>
+                <div className="mt-2 font-heading text-sm text-dynasty-text">{item.summary}</div>
+              </div>
+            )) : (
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
+                No completed trades on the wire yet.
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
           <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
             <h2 className="font-heading text-sm font-semibold text-dynasty-text">Division Standings</h2>

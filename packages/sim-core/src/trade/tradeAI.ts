@@ -8,6 +8,7 @@
 
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { isTradeDeadlineModeDay } from '../sim/calendar.js';
 import { evaluatePlayerTradeValue, comparePackages } from './valuation.js';
 
 // ---------------------------------------------------------------------------
@@ -53,7 +54,6 @@ const MIN_TRADEABLE_VALUE = 15;
 const TRADE_ID_SEGMENTS = 3;
 const TOP_PROSPECT_POTENTIAL_THRESHOLD = 320;
 const TOP_PROSPECT_AGE_THRESHOLD = 24;
-const TRADE_DEADLINE_BUY_SELL_DAY = 92;
 const MAX_PROPOSAL_FAIRNESS_ABS = 22;
 const RENTAL_PLAYER_AGE_THRESHOLD = 28;
 
@@ -127,6 +127,10 @@ function isRentalPlayer(player: GeneratedPlayer): boolean {
 
 function isBalancedProposal(fairness: number): boolean {
   return Math.abs(fairness) <= MAX_PROPOSAL_FAIRNESS_ABS;
+}
+
+function proposalFairnessCap(atDeadline: boolean, isContender: boolean): number {
+  return atDeadline && isContender ? 35 : MAX_PROPOSAL_FAIRNESS_ABS;
 }
 
 /**
@@ -294,7 +298,7 @@ export function generateAITradeOffers(
   isContender: boolean,
   context: TradeGenerationContext = {},
 ): TradeProposal[] {
-  const deadlineMode = (context.currentDay ?? 1) >= TRADE_DEADLINE_BUY_SELL_DAY;
+  const deadlineMode = isTradeDeadlineModeDay(context.currentDay ?? 1);
   const contenderTeamIds = new Set(context.contenderTeamIds ?? []);
 
   if (!isContender && deadlineMode) {
@@ -393,12 +397,32 @@ export function generateAITradeOffers(
 
     if (offerPackage.length === 0) continue;
 
+    if (deadlineMode && isContender && packageValue < targetValue) {
+      const prospectSweetener = teamPlayers
+        .filter((player) =>
+          !player.contract.noTradeClause
+          && !offerPackage.some((candidate) => candidate.id === player.id)
+          && player.rosterStatus !== 'MLB'
+          && isFutureValueTarget(player),
+        )
+        .sort((left, right) =>
+          evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall
+          || left.id.localeCompare(right.id),
+        )[0];
+
+      if (prospectSweetener) {
+        offerPackage.push(prospectSweetener);
+        packageValue += evaluatePlayerTradeValue(prospectSweetener).overall;
+      }
+    }
+
     // Check if AI itself thinks this is reasonable
     const { fairness } = comparePackages(offerPackage, [target]);
     const selfThreshold = ACCEPTANCE_THRESHOLDS[gmPersonality];
+    const fairnessCap = proposalFairnessCap(deadlineMode, isContender);
 
     // AI won't propose trades it wouldn't accept itself (but in reverse)
-    if (fairness < selfThreshold || !isBalancedProposal(fairness)) continue;
+    if (fairness < selfThreshold || Math.abs(fairness) > fairnessCap) continue;
 
     const reason = buildTradeReason(weakPos, isContender, gmPersonality, deadlineMode);
 

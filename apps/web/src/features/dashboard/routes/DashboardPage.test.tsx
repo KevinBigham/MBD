@@ -55,6 +55,9 @@ describe('DashboardPage', () => {
         franchise: {
           teamName: 'New York Yankees',
           abbreviation: 'NYY',
+          gmName: 'Alex Rivera',
+          difficulty: 'hard',
+          welcomeBriefingPending: true,
           season: 4,
           record: '50-38',
           division: 'AL_EAST',
@@ -167,6 +170,21 @@ describe('DashboardPage', () => {
           newsCount: 8,
         },
       }),
+      getTradeDeadlineState: vi.fn().mockResolvedValue({
+        deadlineDay: 122,
+        daysUntilDeadline: 34,
+        deadlineMode: false,
+        hotOffers: [],
+        ticker: [
+          {
+            id: 'ticker-1',
+            summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+            timestamp: 'S4D88',
+          },
+        ],
+        recap: null,
+      }),
+      dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
     } as unknown as ReturnType<typeof useWorker>);
   });
 
@@ -191,11 +209,15 @@ describe('DashboardPage', () => {
     });
 
     expect(container.textContent).toContain('Dynasty Score');
+    expect(container.textContent).toContain('Welcome, GM Alex Rivera');
     expect(container.textContent).toContain('B');
     expect(container.textContent).toContain('Season Momentum');
     expect(container.textContent).toContain('Roster Snapshot');
     expect(container.textContent).toContain('Front Office Intel');
     expect(container.textContent).toContain('Trade Inbox');
+    expect(container.textContent).toContain('34 days until trade deadline');
+    expect(container.textContent).toContain('League Trade Ticker');
+    expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
     expect(container.textContent).toContain('Spencer Jones');
     expect(container.textContent).toContain('Aaron Judge');
     expect(container.textContent).toContain('Press Room');

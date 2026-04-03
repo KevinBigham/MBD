@@ -22,6 +22,11 @@ import type {
   TeamChemistry,
 } from '@mbd/contracts';
 import type { FullGameState } from './sim.worker.helpers';
+import {
+  createDefaultFranchiseState,
+  createEmptyAchievementState,
+  createEmptyCeremonyState,
+} from './sim.worker.ceremony';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot';
 
 function createNarrativeSample(userTeamId: string) {
@@ -188,6 +193,9 @@ function createState(): FullGameState {
     hallOfFameBallot: [],
     franchiseTimeline: [],
     careerStats: [],
+    franchise: createDefaultFranchiseState('nyy', 1, dayOne.newState.currentDay),
+    ceremony: createEmptyCeremonyState(),
+    achievements: createEmptyAchievementState(),
   };
 }
 
@@ -226,7 +234,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(10);
+    expect(snapshot.schemaVersion).toBe(11);
     expect((snapshot as GameSnapshot & {
       monthlyPulse?: { pendingReport: null; decisionQueue: unknown[] };
     }).monthlyPulse).toEqual({
@@ -285,6 +293,29 @@ describe('snapshot helpers', () => {
       pendingReport: null,
       decisionQueue: [],
     });
+  });
+
+  it('migrates v10 snapshots into the v11 franchise, ceremony, and achievement shape', () => {
+    const original = createState();
+    const exported = exportGameSnapshot(original) as GameSnapshot & {
+      schemaVersion: number;
+      franchise?: unknown;
+      ceremony?: unknown;
+      achievements?: unknown;
+    };
+
+    const restored = importGameSnapshot({
+      ...exported,
+      schemaVersion: 10,
+      franchise: undefined,
+      ceremony: undefined,
+      achievements: undefined,
+    });
+
+    expect(restored.franchise.gmName).toBe('General Manager');
+    expect(restored.ceremony.pendingMoments).toEqual([]);
+    expect(restored.ceremony.seenMomentIds).toEqual([]);
+    expect(restored.achievements.unlocked).toEqual([]);
   });
 
   it('does not persist pending extension negotiations in snapshots', () => {

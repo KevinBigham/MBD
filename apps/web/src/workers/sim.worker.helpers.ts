@@ -28,7 +28,9 @@ import {
   determineDraftOrder,
   forfeitHighestEligiblePick,
   generateDraftClass,
+  getDaysUntilTradeDeadline,
   getTeamById,
+  getTradeDeadlineDay,
   getOffseasonLength,
   getQualifyingOfferEligiblePlayers,
   getRegularSeasonMonthForDay,
@@ -126,11 +128,14 @@ import type {
   GMPersonality,
 } from '@mbd/sim-core';
 import type {
+  AchievementState,
   AwardHistoryEntry,
   BriefingItem,
   CareerStatsLedger,
+  CeremonyState,
   DraftCompensatoryPick,
   DraftPickOwnership,
+  FranchiseState,
   FranchiseTimelineEntry,
   HallOfFameBallotEntry,
   HallOfFameEntry,
@@ -146,6 +151,8 @@ import type {
   TradeState,
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
+import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
+import { getDifficultyAdjustedBudget } from './sim.worker.setup.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -194,6 +201,9 @@ export interface FullGameState {
   careerStats: CareerStatsLedger[];
   seasonHistory: SeasonHistoryEntry[];
   tradeState: TradeState;
+  franchise: FranchiseState;
+  ceremony: CeremonyState;
+  achievements: AchievementState;
 }
 
 export let state: FullGameState | null = null;
@@ -704,7 +714,7 @@ function buildExtensionContextForTeam(
     season: s.season,
     teamId,
     teamWinPct,
-    teamBudget: getTeamBudget(teamId),
+    teamBudget: getDifficultyAdjustedBudget(s, teamId),
     currentPayroll: payroll.totalPayroll,
     futureCommitments: payroll.futureCommitments,
     controlYearsByPlayer,
@@ -2901,7 +2911,10 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
 
   if (s.phase === 'regular') {
     const currentMonth = getRegularSeasonMonthForDay(s.day);
-    const daysUntilTradeDeadline = Math.max(0, 120 - s.day);
+    const tradeDeadlineDay = getTradeDeadlineDay();
+    const daysUntilTradeDeadline = s.day <= tradeDeadlineDay
+      ? getDaysUntilTradeDeadline(s.day)
+      : 0;
     return {
       status: 'regular',
       season: s.season,
@@ -3163,6 +3176,7 @@ export function processDayInjuriesAndNews(s: FullGameState): void {
     }, s.players, s.season, s.day);
     s.news.push(...mNews);
   }
+  queueCareerMilestoneMoments(s);
 
   s.news = deduplicateNews(s.news);
 }

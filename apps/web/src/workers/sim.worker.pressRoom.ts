@@ -1,4 +1,4 @@
-import { getTeamById } from '@mbd/sim-core';
+import { getDaysUntilTradeDeadline, getTradeDeadlineDay, getTeamById, isTradeDeadlineModeDay } from '@mbd/sim-core';
 import type { PressRoomEntry, PressRoomSource } from '../shared/types/pressRoom.js';
 import type { FullGameState } from './sim.worker.helpers.js';
 
@@ -35,9 +35,9 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
   const timestamp = `S${state.season}D${state.day}`;
   const userTeam = getTeamById(state.userTeamId);
   const userTeamName = userTeam ? `${userTeam.city} ${userTeam.name}` : state.userTeamId.toUpperCase();
-  const deadlineDays = Math.max(0, 122 - state.day);
+  const deadlineDays = state.day <= getTradeDeadlineDay() ? getDaysUntilTradeDeadline(state.day) : 0;
 
-  if (state.day >= 92 && state.day <= 122 && state.tradeState.pendingOffers.length > 0) {
+  if (isTradeDeadlineModeDay(state.day) && state.tradeState.pendingOffers.length > 0) {
     entries.push({
       id: `synthetic-rumor-${state.season}-${state.day}`,
       source: 'news',

@@ -1,8 +1,10 @@
 import {
   buildLeagueAdvancedContext,
   calculateAdvancedStatLine,
+  getDaysUntilTradeDeadline,
   getPromotionCandidates,
   getRegularSeasonMonthForDay,
+  getTradeDeadlineDay,
   getRosterComplianceIssues,
   getTeamById,
   getNextMonthStartDay,
@@ -259,6 +261,7 @@ export function generateMonthlyPulse(
     .slice(0, 3)
     .map((playerId) => formatPlayerName(s, playerId));
   const completedDay = s.phase === 'regular' ? s.day - 1 : context.month.endDay;
+  const tradeDeadlineDay = getTradeDeadlineDay();
   const monthRecord = {
     wins: afterRecord.wins - context.teamRecordBefore.wins,
     losses: afterRecord.losses - context.teamRecordBefore.losses,
@@ -279,8 +282,8 @@ export function generateMonthlyPulse(
     keyInjuries: newInjuries,
     keyReturns: returns,
     tradeDeadlineCountdown:
-      context.month.month >= 7 && context.month.month <= 8 && completedDay < 122
-        ? Math.max(0, 122 - completedDay)
+      context.month.month >= 7 && context.month.month <= 8 && completedDay < tradeDeadlineDay
+        ? getDaysUntilTradeDeadline(completedDay)
         : null,
     upcomingScheduleDifficulty: buildScheduleDifficulty(s),
   };
@@ -292,12 +295,27 @@ export function generateMonthlyPulse(
 }
 
 export function getMonthlyPulse(s: FullGameState): MonthlyPulseState {
-  return s.monthlyPulse;
+  return {
+    ...s.monthlyPulse,
+    onboardingGuide: !s.franchise.onboarding.firstMonthlyPulseSeen
+      ? 'Monthly Pulse is your checkpoint. Read the report, scan injuries and returns, then use the decision spotlight to jump straight to the biggest issue.'
+      : null,
+  } as MonthlyPulseState;
 }
 
 export function acknowledgeMonthlyReport(s: FullGameState, reportId: string): { success: boolean } {
   if (s.monthlyPulse.pendingReport?.id !== reportId) {
     return { success: false };
+  }
+
+  if (!s.franchise.onboarding.firstMonthlyPulseSeen) {
+    s.franchise = {
+      ...s.franchise,
+      onboarding: {
+        ...s.franchise.onboarding,
+        firstMonthlyPulseSeen: true,
+      },
+    };
   }
 
   s.monthlyPulse = {

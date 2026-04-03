@@ -93,11 +93,33 @@ import type {
 } from './sim.worker.helpers.js';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
 import {
+  captureSeasonAchievementFacts,
+  recordDraftedHomegrownPlayer,
+  recordExtensionCompleted,
+  recordFreeAgentSigning,
+  recordInternationalHomegrownPlayer,
+  recordMonthlyDivisionLead,
+  recordProspectCallup,
+  syncAchievementState,
+} from './sim.worker.achievements.js';
+import {
+  createDefaultFranchiseState,
+  createEmptyAchievementState,
+  createEmptyCeremonyState,
+  dismissCeremonyMoment as dismissCeremonyMomentState,
+  maybeQueuePlayoffClinchMoment,
+  queueAwardMoments,
+  queueHallOfFameMoments,
+  queuePlayoffSeriesMoment,
+  queueProspectDebutMoment,
+} from './sim.worker.ceremony.js';
+import {
   clearPendingTradeOffers,
   isTradeMarketOpen,
   processTradeMarketActivity,
   proposeTradePackage,
   recordAcceptedUserTrade,
+  resetTradeDeadlineState,
   respondToTradeOffer,
 } from './sim.worker.trade.js';
 import {
@@ -129,6 +151,11 @@ import {
   dismissDecisionSpotlight,
   generateMonthlyPulse,
 } from './sim.worker.monthlyPulse.js';
+import {
+  buildNewGameState,
+  getDifficultyAdjustedCompetitiveAav,
+  type NewGameOptions,
+} from './sim.worker.setup.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -325,6 +352,7 @@ function recordPlayoffProgressCoverage(
         1,
       );
       applySeriesOutcomeConsequences(s, series.winnerId ?? series.higherSeed.teamId, series.loserId ?? series.lowerSeed.teamId);
+      queuePlayoffSeriesMoment(s, series);
     }
   }
 
@@ -352,9 +380,12 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
   }
 
   ensureAwardHistoryForSeason(s);
+  queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
   const seasonMoments = applyPostseasonConsequences(s);
   recordSeasonHistory(s, seasonMoments);
   upsertFranchiseTimelineEntry(s);
+  captureSeasonAchievementFacts(s);
+  syncAchievementState(s);
   clearPendingTradeOffers(s);
 }
 
@@ -381,6 +412,10 @@ function playoffResult(s: FullGameState, gamesPlayed: number): SimResultDTO {
 function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonComplete: boolean): SimResultDTO {
   if (seasonComplete) {
     ensureAwardHistoryForSeason(s);
+    queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
+    maybeQueuePlayoffClinchMoment(s);
+    captureSeasonAchievementFacts(s);
+    syncAchievementState(s);
     clearPendingTradeOffers(s);
     s.phase = 'playoffs';
     s.day = 1;
@@ -465,6 +500,8 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   refreshNarrativeState(s, result.games);
   s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
+  recordMonthlyDivisionLead(s);
+  syncAchievementState(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
 }
 
@@ -483,7 +520,9 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.players = developedPlayers;
 
   const retired = determineRetirements(s.rng.fork(), s.players);
-  processHallOfFameForRetirements(s, retired);
+  const inductees = processHallOfFameForRetirements(s, retired);
+  queueHallOfFameMoments(s, inductees);
+  syncAchievementState(s);
   enrichFranchiseTimelineWithDepartures(s, retired);
   if (s.offseasonState) {
     s.offseasonState = recordRetirements(
@@ -614,81 +653,10 @@ function simDayInternal(): SimResultDTO {
 }
 
 export const actionApi = {
-  newGame(seed: number, userTeamId: string = 'nyy') {
-    const rng = new GameRNG(seed);
-    const teamIds = TEAMS.map((team) => team.id);
-    const developmentRng = new GameRNG(seed + 10_001);
-    const coachingRng = new GameRNG(seed + 20_001);
-    const coachPoolRng = new GameRNG(seed + 30_001);
-    const players = generateLeaguePlayers(rng.fork(), teamIds)
-      .map((player) => initializePlayerDevelopmentProfile(developmentRng.fork(), player));
-    ensurePlayersHaveRule5Eligibility(players, 1);
-    const schedule = generateSchedule(rng.fork());
-    const seasonState = createSeasonState(1, teamIds);
-
-    const serviceTime = new Map<string, number>();
-    for (const player of players) {
-      if (player.rosterStatus === 'MLB') {
-        const yearsOfService = rng.nextInt(0, 8);
-        serviceTime.set(player.id, yearsOfService);
-        player.serviceTimeDays = yearsOfService * 172;
-      }
-    }
-
-    const scoutingStaffs = new Map();
-    const gmPersonalities = new Map();
-    const coachingStaffs = new Map();
-    const rosterStates = new Map();
-    for (const teamId of teamIds) {
-      scoutingStaffs.set(teamId, generateScoutingStaff(rng.fork(), teamId));
-      gmPersonalities.set(teamId, assignGMPersonality(rng.fork(), teamId));
-      coachingStaffs.set(teamId, generateCoachingStaff(coachingRng.fork(), teamId));
-      rosterStates.set(teamId, buildRosterState(teamId, players));
-    }
-
-    setState({
-      rng,
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      players,
-      schedule,
-      seasonState,
-      userTeamId,
-      playoffBracket: null,
-      injuries: new Map(),
-      serviceTime,
-      scoutingStaffs,
-      gmPersonalities,
-      coachingStaffs,
-      coachFreeAgentPool: generateCoachFreeAgents(coachPoolRng),
-      pendingExtensionNegotiations: new Map(),
-      offseasonState: null,
-      rule5Session: null,
-      rule5Obligations: [],
-      rule5OfferBackStates: [],
-      draftClass: null,
-      freeAgencyMarket: null,
-      news: [],
-      rosterStates,
-      internationalScoutingState: createEmptyInternationalScoutingState(1),
-      draftState: createEmptyDraftState(),
-      minorLeagueState: createEmptyMinorLeagueState(1),
-      monthlyPulse: createEmptyMonthlyPulseState(),
-      playerMorale: new Map(),
-      teamChemistry: new Map(),
-      ownerState: new Map(),
-      briefingQueue: [],
-      storyFlags: new Map(),
-      rivalries: new Map(),
-      awardHistory: [],
-      hallOfFame: [],
-      hallOfFameBallot: [],
-      franchiseTimeline: [],
-      careerStats: [],
-      seasonHistory: [],
-      tradeState: createEmptyTradeState(),
-    });
+  newGame(options: NewGameOptions) {
+    resetTradeDeadlineState();
+    const initialState = buildNewGameState(options);
+    setState(initialState);
     ensureNarrativeState(requireState());
 
     return {
@@ -696,9 +664,13 @@ export const actionApi = {
       season: 1,
       day: 1,
       phase: 'preseason' as const,
-      playerCount: players.length,
-      teamCount: teamIds.length,
-      gamesScheduled: schedule.length,
+      userTeamId: options.userTeamId,
+      teamName: initialState.franchise.teamName,
+      gmName: initialState.franchise.gmName,
+      difficulty: initialState.franchise.difficulty,
+      playerCount: initialState.players.length,
+      teamCount: TEAMS.length,
+      gamesScheduled: initialState.schedule.length,
       flowStateChanged: true as const,
     };
   },
@@ -721,6 +693,26 @@ export const actionApi = {
 
   dismissDecisionSpotlight(decisionId: string) {
     return dismissDecisionSpotlight(requireState(), decisionId);
+  },
+
+  dismissWelcomeBriefing() {
+    const s = requireState();
+    if (s.franchise.onboarding.welcomeBriefingSeen) {
+      return { success: true as const };
+    }
+
+    s.franchise = {
+      ...s.franchise,
+      onboarding: {
+        ...s.franchise.onboarding,
+        welcomeBriefingSeen: true,
+      },
+    };
+    return { success: true as const };
+  },
+
+  dismissCeremonyMoment(momentId: string) {
+    return dismissCeremonyMomentState(requireState(), momentId);
   },
 
   simToPlayoffs(): SimResultDTO {
@@ -867,9 +859,11 @@ export const actionApi = {
   },
 
   importSnapshot(snapshot: unknown) {
+    resetTradeDeadlineState();
     setState(importGameSnapshot(snapshot));
     const s = requireState();
     ensureNarrativeState(s);
+    syncAchievementState(s, { publish: false });
     return {
       success: true as const,
       season: s.season,
@@ -877,6 +871,9 @@ export const actionApi = {
       phase: s.phase,
       playerCount: s.players.length,
       userTeamId: s.userTeamId,
+      teamName: s.franchise.teamName,
+      gmName: s.franchise.gmName,
+      difficulty: s.franchise.difficulty,
       flowStateChanged: true as const,
     };
   },
@@ -911,8 +908,15 @@ export const actionApi = {
   },
 
   signDraftPick(playerId: string, bonusAmount: number) {
+    const s = requireState();
+    const result = signUserDraftPick(s, playerId, bonusAmount);
+    if (result.success && result.signed) {
+      const player = s.players.find((candidate) => candidate.id === playerId);
+      recordDraftedHomegrownPlayer(s, playerId, player?.rosterStatus ?? 'ROOKIE');
+      syncAchievementState(s);
+    }
     return {
-      ...signUserDraftPick(requireState(), playerId, bonusAmount),
+      ...result,
       flowStateChanged: true,
     };
   },
@@ -925,12 +929,17 @@ export const actionApi = {
   },
 
   proposeTrade(offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) {
-    return proposeTradePackage(
-      requireState(),
+    const s = requireState();
+    const result = proposeTradePackage(
+      s,
       offeringAssets,
       requestingAssets,
       toTeamId,
     );
+    if (result.decision === 'accepted') {
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   respondToTradeOffer(
@@ -938,7 +947,12 @@ export const actionApi = {
     action: 'accept' | 'decline' | 'counter',
     counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
   ) {
-    return respondToTradeOffer(requireState(), offerId, action, counterPackage);
+    const s = requireState();
+    const result = respondToTradeOffer(s, offerId, action, counterPackage);
+    if (result.success && result.decision === 'accepted') {
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   promotePlayerAction(playerId: string) {
@@ -978,6 +992,9 @@ export const actionApi = {
           streak: 'call-up watch',
         },
       }, s.players, s.season, s.day));
+      queueProspectDebutMoment(s, promotedPlayer.id, player.rosterStatus);
+      recordProspectCallup(s, promotedPlayer.id);
+      syncAchievementState(s);
     }
     return { success: result.success, error: result.error };
   },
@@ -1093,7 +1110,10 @@ export const actionApi = {
       teamOption: false,
       signingBonus: 0,
     };
-    const result = makeUserOffer(s.freeAgencyMarket, offer);
+    const result = makeUserOffer(s.freeAgencyMarket, {
+      ...offer,
+      annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
+    });
     if (!result.accepted || !freeAgent) {
       return result;
     }
@@ -1133,11 +1153,19 @@ export const actionApi = {
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
     applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
+    recordFreeAgentSigning(s, playerId, salary);
+    syncAchievementState(s);
     return result;
   },
 
   negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
-    return negotiatePlayerExtension(requireState(), playerId, offer);
+    const s = requireState();
+    const result = negotiatePlayerExtension(s, playerId, offer);
+    if (result?.status === 'accepted') {
+      recordExtensionCompleted(s);
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   issueQualifyingOffer(playerId: string) {
@@ -1177,7 +1205,13 @@ export const actionApi = {
   },
 
   signIFAPlayer(playerId: string, bonusAmount: number) {
-    const result = signUserIFAPlayer(requireState(), playerId, bonusAmount);
+    const s = requireState();
+    const result = signUserIFAPlayer(s, playerId, bonusAmount);
+    if (result.success) {
+      const player = s.players.find((candidate) => candidate.id === playerId);
+      recordInternationalHomegrownPlayer(s, playerId, player?.rosterStatus ?? 'INTERNATIONAL');
+      syncAchievementState(s);
+    }
     return result.success ? { ...result, flowStateChanged: true as const } : result;
   },
 

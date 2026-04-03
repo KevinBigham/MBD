@@ -231,6 +231,33 @@ export type {
 } from "./schemas/monthlyPulse.js";
 
 export {
+  DifficultyEnum,
+  FranchiseOnboardingSchema,
+  FranchiseStateSchema,
+  CeremonySoundEffectEnum,
+  CeremonyMomentTypeEnum,
+  CeremonyMomentThemeEnum,
+  CeremonyMomentSchema,
+  CeremonyStateSchema,
+  AchievementUnlockSchema,
+  AchievementProgressSchema,
+  AchievementStateSchema,
+} from "./schemas/franchise.js";
+export type {
+  Difficulty,
+  FranchiseOnboarding,
+  FranchiseState,
+  CeremonySoundEffect,
+  CeremonyMomentType,
+  CeremonyMomentTheme,
+  CeremonyMoment,
+  CeremonyState,
+  AchievementUnlock,
+  AchievementProgress,
+  AchievementState,
+} from "./schemas/franchise.js";
+
+export {
   SaveMetaSchema,
   SaveSlotSchema,
   CURRENT_GAME_SNAPSHOT_VERSION,

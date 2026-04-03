@@ -51,6 +51,9 @@ describe('Sidebar', () => {
     });
 
     getDashboardSummary = vi.fn().mockResolvedValue({
+      franchise: {
+        achievementCount: 3,
+      },
       pressRoom: {
         briefingCount: 4,
         newsCount: 8,
@@ -85,6 +88,8 @@ describe('Sidebar', () => {
 
     expect(container.textContent).toContain('Press Room');
     expect(container.textContent).toContain('12');
+    expect(container.textContent).toContain('History');
+    expect(container.textContent).toContain('3');
     expect(getDashboardSummary).toHaveBeenCalledTimes(1);
   });
 });

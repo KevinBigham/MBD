@@ -30,6 +30,11 @@ import {
 import { MonthlyPulseStateSchema } from "./monthlyPulse.js";
 import { TradeStateSchema } from "./trade.js";
 import {
+  AchievementStateSchema,
+  CeremonyStateSchema,
+  FranchiseStateSchema,
+} from "./franchise.js";
+import {
   DraftCompensatoryPickSchema,
   DraftPickOwnershipSchema,
   DraftScoutingReportSchema,
@@ -394,13 +399,50 @@ const MinorLeagueStateV7Schema = z.object({
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 10;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 11;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
 
 export const GameSnapshotSchema = z.object({
   schemaVersion: z.literal(CURRENT_GAME_SNAPSHOT_VERSION),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(SnapshotPlayerSchema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateSchema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  coachingStaffs: z.array(CoachingStaffEntrySchema),
+  coachFreeAgentPool: z.array(CoachSchema),
+  narrative: NarrativeSnapshotSchema,
+  monthlyPulse: MonthlyPulseStateSchema,
+  tradeState: TradeStateSchema,
+  franchise: FranchiseStateSchema,
+  ceremony: CeremonyStateSchema,
+  achievements: AchievementStateSchema,
+  internationalScoutingState: InternationalScoutingStateSchema,
+  draftState: DraftStateSchema,
+  minorLeagueState: MinorLeagueStateSchema,
+  rule5Session: Rule5SessionSchema,
+  rule5Obligations: z.array(Rule5StateEntrySchema),
+  rule5OfferBackStates: z.array(Rule5StateEntrySchema),
+});
+export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV10Schema = z.object({
+  schemaVersion: z.literal(10),
   rng: GameRNGStateSchema,
   season: z.number().int().min(1),
   day: z.number().int().min(1),
@@ -431,7 +473,7 @@ export const GameSnapshotSchema = z.object({
   rule5Obligations: z.array(Rule5StateEntrySchema),
   rule5OfferBackStates: z.array(Rule5StateEntrySchema),
 });
-export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+export type GameSnapshotV10 = z.infer<typeof GameSnapshotV10Schema>;
 
 export const GameSnapshotV9Schema = z.object({
   schemaVersion: z.literal(9),
@@ -724,6 +766,46 @@ function createEmptyTradeState() {
   return {
     pendingOffers: [],
     tradeHistory: [],
+  };
+}
+
+function createDefaultFranchiseState(userTeamId: string, season: number, day: number) {
+  const teamCode = userTeamId.toUpperCase();
+  return {
+    gmName: "General Manager",
+    difficulty: "standard" as const,
+    createdAt: `S${season}D${day}`,
+    teamId: userTeamId,
+    teamName: teamCode,
+    teamAbbreviation: teamCode,
+    teamDivision: "UNKNOWN",
+    onboarding: {
+      welcomeBriefingSeen: true,
+      firstMonthlyPulseSeen: true,
+    },
+  };
+}
+
+function createEmptyCeremonyState() {
+  return {
+    pendingMoments: [],
+    seenMomentIds: [],
+  };
+}
+
+function createEmptyAchievementState() {
+  return {
+    unlocked: [],
+    progress: [],
+    counters: [],
+  };
+}
+
+function createEmptyPhase9State(userTeamId: string, season: number, day: number) {
+  return {
+    franchise: createDefaultFranchiseState(userTeamId, season, day),
+    ceremony: createEmptyCeremonyState(),
+    achievements: createEmptyAchievementState(),
   };
 }
 
@@ -1104,6 +1186,7 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1130,6 +1213,7 @@ function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1156,6 +1240,7 @@ function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1180,6 +1265,7 @@ function migrateGameSnapshotV5(snapshot: GameSnapshotV5): GameSnapshot {
     ...createEmptyRule5State(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1203,6 +1289,7 @@ function migrateGameSnapshotV6(snapshot: GameSnapshotV6): GameSnapshot {
     monthlyPulse: createEmptyMonthlyPulseState(),
     ...createEmptyPhase6State(snapshot.season),
     ...createEmptyPhase7State(snapshot.season, teamIds),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1227,6 +1314,7 @@ function migrateGameSnapshotV7(snapshot: GameSnapshotV7): GameSnapshot {
     minorLeagueState: upgradeMinorLeagueState(snapshot.minorLeagueState),
     monthlyPulse: createEmptyMonthlyPulseState(),
     ...createEmptyPhase7State(snapshot.season, teamIds),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1244,6 +1332,7 @@ function migrateGameSnapshotV8(snapshot: GameSnapshotV8): GameSnapshot {
       briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
     },
     monthlyPulse: createEmptyMonthlyPulseState(),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1261,6 +1350,15 @@ function migrateGameSnapshotV9(snapshot: GameSnapshotV9): GameSnapshot {
       briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
     },
     monthlyPulse: createEmptyMonthlyPulseState(),
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
+  });
+}
+
+function migrateGameSnapshotV10(snapshot: GameSnapshotV10): GameSnapshot {
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),
   });
 }
 
@@ -1281,6 +1379,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 10
+  ) {
+    return migrateGameSnapshotV10(GameSnapshotV10Schema.parse(snapshotLike));
   }
 
   if (

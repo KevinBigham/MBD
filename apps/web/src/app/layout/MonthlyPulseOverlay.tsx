@@ -1,9 +1,12 @@
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, ArrowRight, Clock3, Sparkles, X } from 'lucide-react';
 import type { DecisionSpotlightItem, MonthlyReport } from '@mbd/contracts';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 interface MonthlyPulseOverlayProps {
   report: MonthlyReport | null;
   decision: DecisionSpotlightItem | null;
+  onboardingGuide?: string | null;
   busy: boolean;
   onContinue: () => void;
   onDecisionDismiss: () => void;
@@ -24,11 +27,28 @@ function urgencyTone(urgency: DecisionSpotlightItem['urgency']): string {
 export function MonthlyPulseOverlay({
   report,
   decision,
+  onboardingGuide,
   busy,
   onContinue,
   onDecisionDismiss,
   onDecisionAction,
 }: MonthlyPulseOverlayProps) {
+  const visible = report != null || decision != null;
+  const visibleRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (visibleRef.current == null) {
+      visibleRef.current = visible;
+      return;
+    }
+
+    if (visibleRef.current !== visible) {
+      getAudioEngine().playEffect(visible ? 'modal_open' : 'modal_close');
+    }
+
+    visibleRef.current = visible;
+  }, [visible]);
+
   if (!report && !decision) {
     return null;
   }
@@ -99,6 +119,12 @@ export function MonthlyPulseOverlay({
             </div>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {onboardingGuide ? (
+                <div className="rounded-lg border border-accent-info/30 bg-accent-info/10 p-4 md:col-span-2">
+                  <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">How to Read This</div>
+                  <div className="mt-2 font-heading text-sm leading-6 text-dynasty-text">{onboardingGuide}</div>
+                </div>
+              ) : null}
               <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Key Injuries</div>
                 <div className="mt-2 space-y-2">

@@ -1,5 +1,6 @@
 import { Play, FastForward, SkipForward, Zap } from 'lucide-react';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 import type { SeasonFlowState } from './seasonFlow';
 
 interface SimControlsProps {
@@ -23,7 +24,10 @@ interface SimButtonProps {
 function SimButton({ onClick, disabled, icon, label, shortLabel, tooltip }: SimButtonProps) {
   return (
     <button
-      onClick={onClick}
+      onClick={() => {
+        getAudioEngine().playEffect('button_click');
+        onClick();
+      }}
       disabled={disabled}
       title={tooltip}
       className="focus-ring flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-40"
@@ -101,7 +105,10 @@ export function SimControls({
         ) : (
           <div className="flex flex-1">
             <button
-              onClick={onFlowAction}
+              onClick={() => {
+                getAudioEngine().playEffect('button_click');
+                onFlowAction();
+              }}
               disabled={isSimulating || !flow?.actionLabel}
               className="focus-ring flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-40"
             >

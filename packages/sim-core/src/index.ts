@@ -130,8 +130,17 @@ export {
   evaluateHOFCandidate,
   processHOFInductions,
   calculateDynastyScore,
+  ACHIEVEMENT_DEFINITIONS,
+  checkAchievements,
 } from './league/index.js';
 export type {
+  AchievementCategory,
+  AchievementDefinition,
+  AchievementMetricMap,
+  AchievementProgressValue,
+  AchievementUnlockResult,
+  CheckAchievementsArgs,
+  CheckAchievementsResult,
   PersonalityArchetype,
   MoraleEvent,
   OwnerEvaluationContext,
@@ -154,8 +163,11 @@ export type {
 // Sim
 export {
   REGULAR_SEASON_MONTHS,
+  getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,
+  getTradeDeadlineDay,
   getNextMonthStartDay,
+  isTradeDeadlineModeDay,
   resolvePlateAppearance,
   advanceRunners,
   freshRunnerState,

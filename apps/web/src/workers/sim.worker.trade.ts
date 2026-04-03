@@ -17,8 +17,11 @@ import {
   generateAITradeOffers,
   generateNews,
   generateNewsId,
+  getDaysUntilTradeDeadline,
+  getTradeDeadlineDay,
   getRemainingIFABudget,
   getTeamById,
+  isTradeDeadlineModeDay,
   tradeDraftPickOwnership as tradeDraftPickOwnershipCore,
   tradeIFABonusPool as tradeIFABonusPoolCore,
 } from '@mbd/sim-core';
@@ -27,8 +30,10 @@ import type { FullGameState } from './sim.worker.helpers.js';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
+import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
 
-export const TRADE_DEADLINE_DAY = 120;
+export const TRADE_DEADLINE_DAY = getTradeDeadlineDay();
+const DEADLINE_ACTIVITY_CHECKPOINTS = [92, 106, 114, 120] as const;
 
 export interface TradeAssetView {
   key: string;
@@ -69,6 +74,45 @@ export interface TradeHistoryView {
   requestingAssets: TradeAssetView[];
 }
 
+export interface HotTradeOfferView extends TradeOfferView {
+  urgencyTag: 'ACTIVE' | 'EXPIRING SOON' | 'FINAL OFFER';
+  bidderCount: number;
+  biddingSummary: string | null;
+}
+
+export interface TradeTickerItem {
+  id: string;
+  summary: string;
+  timestamp: string;
+}
+
+export interface TradeDeadlineRecapItem {
+  id: string;
+  summary: string;
+  outcome: 'completed' | 'missed';
+  timestamp: string;
+}
+
+export interface TradeDeadlineRecapView {
+  season: number;
+  deadlineDay: number;
+  analysisHeadline: string;
+  analysisBody: string;
+  yourTrades: TradeDeadlineRecapItem[];
+  majorMoves: TradeTickerItem[];
+  winners: string[];
+  losers: string[];
+}
+
+export interface TradeDeadlineStateView {
+  deadlineDay: number;
+  daysUntilDeadline: number | null;
+  deadlineMode: boolean;
+  hotOffers: HotTradeOfferView[];
+  ticker: TradeTickerItem[];
+  recap: TradeDeadlineRecapView | null;
+}
+
 export interface TradeAssetInventoryView {
   draftPicks: Array<{
     key: string;
@@ -89,6 +133,8 @@ export interface TradeOfferResponseResult {
   decision: 'accepted' | 'declined' | 'countered' | 'rejected';
   message: string;
 }
+
+let tradeDeadlineRecapCache: TradeDeadlineRecapView | null = null;
 
 function teamName(teamId: string): string {
   const team = getTeamById(teamId);
@@ -201,11 +247,18 @@ function compareAssetPackages(
   state: FullGameState,
   offeringAssets: TradeAsset[],
   requestingAssets: TradeAsset[],
+  fromTeamId: string = state.userTeamId,
+  toTeamId: string = '',
 ) {
   const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const maxValue = Math.max(offerValue, requestValue, 1);
-  const fairness = Math.max(-100, Math.min(100, Math.round(((requestValue - offerValue) / maxValue) * 100)));
+  const fairness = getDifficultyAdjustedTradeFairness(
+    state,
+    Math.max(-100, Math.min(100, Math.round(((requestValue - offerValue) / maxValue) * 100))),
+    fromTeamId,
+    toTeamId,
+  );
   return { fairness, offerValue, requestValue };
 }
 
@@ -465,6 +518,185 @@ function buildTradeViews<T extends PersistentTradeOffer | TradeHistoryEntry>(
   }));
 }
 
+function parseTimestampDay(stamp: string | undefined): number | null {
+  if (!stamp) {
+    return null;
+  }
+
+  const match = /^S(\d+)D(\d+)$/.exec(stamp);
+  if (!match) {
+    return null;
+  }
+
+  return Number(match[2]);
+}
+
+function tradeUrgencyTag(state: FullGameState, offer: PersistentTradeOffer): HotTradeOfferView['urgencyTag'] {
+  const daysUntilDeadline = getDaysUntilTradeDeadline(state.day);
+  const createdAtDay = parseTimestampDay(offer.createdAt);
+
+  if (daysUntilDeadline <= 2) {
+    return 'FINAL OFFER';
+  }
+
+  if (daysUntilDeadline <= 7 || (createdAtDay != null && state.day - createdAtDay >= 14)) {
+    return 'EXPIRING SOON';
+  }
+
+  return 'ACTIVE';
+}
+
+function offerBidderCount(state: FullGameState, offer: PersistentTradeOffer): number {
+  const requestedPlayers = offer.requestingAssets
+    .filter((asset): asset is Extract<TradeAsset, { type: 'player' }> => asset.type === 'player')
+    .map((asset) => asset.playerId);
+
+  if (requestedPlayers.length === 0) {
+    return 1;
+  }
+
+  let highestCount = 1;
+  for (const playerId of requestedPlayers) {
+    const directCompetition = state.tradeState.pendingOffers.filter((candidate) =>
+      candidate.id !== offer.id
+      && candidate.requestingAssets.some((asset) => asset.type === 'player' && asset.playerId === playerId),
+    ).length;
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    const contenderInterest = player
+      && player.teamId === state.userTeamId
+      && isTradeDeadlineModeDay(state.day)
+      && player.contract.years <= 1
+      ? Array.from(new Set(state.players.map((candidate) => candidate.teamId)))
+        .filter((teamId): teamId is string => Boolean(teamId) && teamId !== state.userTeamId && isContender(state, teamId))
+        .length
+      : 0;
+
+    highestCount = Math.max(
+      highestCount,
+      1 + directCompetition + Math.min(2, contenderInterest > 3 ? 2 : contenderInterest > 0 ? 1 : 0),
+    );
+  }
+
+  return Math.min(highestCount, 5);
+}
+
+function offerBiddingSummary(state: FullGameState, offer: PersistentTradeOffer, bidderCount: number): string | null {
+  if (bidderCount <= 1) {
+    return null;
+  }
+
+  const primaryTarget = buildAssetSummary(state, offer.requestingAssets);
+  return `${bidderCount} clubs are in on ${primaryTarget || 'this player'}.`;
+}
+
+function buildTickerItems(trades: TradeHistoryEntry[]): TradeTickerItem[] {
+  return [...trades]
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+    .slice(0, 8)
+    .map((trade) => ({
+      id: trade.id,
+      summary: trade.summary,
+      timestamp: trade.timestamp,
+    }));
+}
+
+function isDeadlineTradeEntry(entry: TradeHistoryEntry, season: number): boolean {
+  const match = /^S(\d+)D(\d+)$/.exec(entry.timestamp);
+  if (!match) {
+    return false;
+  }
+
+  const [, entrySeason, entryDay] = match;
+  return Number(entrySeason) === season && Number(entryDay) >= 92 && Number(entryDay) <= TRADE_DEADLINE_DAY;
+}
+
+function buildDeadlineRecap(
+  state: FullGameState,
+  expiredOffers: PersistentTradeOffer[],
+): TradeDeadlineRecapView | null {
+  const deadlineTrades = state.tradeState.tradeHistory.filter((entry) => isDeadlineTradeEntry(entry, state.season));
+  const yourTrades: TradeDeadlineRecapItem[] = [
+    ...deadlineTrades
+      .filter((entry) => entry.fromTeamId === state.userTeamId || entry.toTeamId === state.userTeamId)
+      .map((entry) => ({
+        id: entry.id,
+        summary: entry.summary,
+        outcome: 'completed' as const,
+        timestamp: entry.timestamp,
+      })),
+    ...expiredOffers
+      .filter((offer) => offer.toTeamId === state.userTeamId || offer.fromTeamId === state.userTeamId)
+      .map((offer) => ({
+        id: `missed-${offer.id}`,
+        summary: `${teamName(offer.fromTeamId)} offer for ${buildAssetSummary(state, offer.requestingAssets) || 'assets'} expired at the deadline.`,
+        outcome: 'missed' as const,
+        timestamp: timestamp(),
+      })),
+  ];
+
+  if (deadlineTrades.length === 0 && yourTrades.length === 0) {
+    return null;
+  }
+
+  const scoreByTeam = new Map<string, number>();
+  for (const trade of deadlineTrades) {
+    scoreByTeam.set(trade.fromTeamId, (scoreByTeam.get(trade.fromTeamId) ?? 0) + trade.fairnessScore);
+    scoreByTeam.set(trade.toTeamId, (scoreByTeam.get(trade.toTeamId) ?? 0) - trade.fairnessScore);
+  }
+
+  const rankedTeams = [...scoreByTeam.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  const winners = rankedTeams
+    .filter(([, score]) => score > 0)
+    .slice(0, 2)
+    .map(([teamId]) => teamName(teamId));
+  const losers = [...rankedTeams]
+    .reverse()
+    .filter(([, score]) => score < 0)
+    .slice(0, 2)
+    .map(([teamId]) => teamName(teamId));
+  const analysisHeadline = 'Deadline winners and losers';
+  const analysisBody = [
+    winners.length > 0 ? `Winners: ${winners.join(', ')} pushed the market hardest.` : 'No clear league-wide winner emerged.',
+    losers.length > 0 ? `Losers: ${losers.join(', ')} paid a steeper price or stood still.` : 'No obvious loser separated from the pack.',
+    yourTrades.length > 0
+      ? `${yourTrades.filter((trade) => trade.outcome === 'completed').length} completed move${yourTrades.filter((trade) => trade.outcome === 'completed').length === 1 ? '' : 's'} and ${yourTrades.filter((trade) => trade.outcome === 'missed').length} missed thread${yourTrades.filter((trade) => trade.outcome === 'missed').length === 1 ? '' : 's'} shaped your day.`
+      : 'Your club stayed quiet as the deadline passed.',
+  ].join(' ');
+
+  return {
+    season: state.season,
+    deadlineDay: TRADE_DEADLINE_DAY,
+    analysisHeadline,
+    analysisBody,
+    yourTrades,
+    majorMoves: buildTickerItems(deadlineTrades).slice(0, 5),
+    winners,
+    losers,
+  };
+}
+
+function publishDeadlineAnalysis(state: FullGameState, recap: TradeDeadlineRecapView) {
+  const analysisItem = {
+    id: `deadline-analysis-${state.season}`,
+    headline: recap.analysisHeadline,
+    body: recap.analysisBody,
+    priority: 2 as const,
+    category: 'trade' as const,
+    tag: 'ANALYSIS' as const,
+    timestamp: timestamp(),
+    relatedPlayerIds: [],
+    relatedTeamIds: [state.userTeamId],
+    read: false,
+  };
+
+  state.news = deduplicateNews([analysisItem, ...state.news]);
+  pushBriefing(
+    state,
+    createBriefingItem(recap.analysisHeadline, recap.analysisBody, [], [state.userTeamId]),
+  );
+}
+
 function positionNeedLabel(position: string): string {
   switch (position) {
     case 'SP':
@@ -497,7 +729,7 @@ function recordTradeRumor(state: FullGameState, proposal: TradeProposal) {
         targetPlayerId: proposal.playersRequested[0],
         targetName: targetPlayer ? `${targetPlayer.firstName} ${targetPlayer.lastName}` : 'a league target',
         need: positionNeedLabel(targetPlayer?.position ?? 'depth'),
-        daysToDeadline: Math.max(0, TRADE_DEADLINE_DAY - state.day),
+        daysToDeadline: getDaysUntilTradeDeadline(state.day),
       },
     },
     state.players,
@@ -522,6 +754,42 @@ export function buildTradeOffersView(state: FullGameState): TradeOfferView[] {
 
 export function buildTradeHistoryView(state: FullGameState): TradeHistoryView[] {
   return buildTradeViews(state, state.tradeState.tradeHistory) as TradeHistoryView[];
+}
+
+function buildHotTradeOfferView(state: FullGameState, offer: PersistentTradeOffer): HotTradeOfferView {
+  const bidderCount = offerBidderCount(state, offer);
+  return {
+    ...(buildTradeViews(state, [offer])[0] as TradeOfferView),
+    urgencyTag: tradeUrgencyTag(state, offer),
+    bidderCount,
+    biddingSummary: offerBiddingSummary(state, offer, bidderCount),
+  };
+}
+
+function deriveTradeDeadlineRecap(state: FullGameState): TradeDeadlineRecapView | null {
+  if (tradeDeadlineRecapCache?.season === state.season) {
+    return tradeDeadlineRecapCache;
+  }
+
+  if (state.day <= TRADE_DEADLINE_DAY) {
+    return null;
+  }
+
+  return buildDeadlineRecap(state, []);
+}
+
+export function buildTradeDeadlineStateView(state: FullGameState): TradeDeadlineStateView {
+  return {
+    deadlineDay: TRADE_DEADLINE_DAY,
+    daysUntilDeadline:
+      state.phase === 'regular' && state.day <= TRADE_DEADLINE_DAY
+        ? getDaysUntilTradeDeadline(state.day)
+        : null,
+    deadlineMode: state.phase === 'regular' && isTradeDeadlineModeDay(state.day),
+    hotOffers: state.tradeState.pendingOffers.map((offer) => buildHotTradeOfferView(state, offer)),
+    ticker: buildTickerItems(state.tradeState.tradeHistory),
+    recap: deriveTradeDeadlineRecap(state),
+  };
 }
 
 export function buildTradeAssetInventoryView(state: FullGameState, teamId: string): TradeAssetInventoryView {
@@ -563,6 +831,10 @@ export function clearPendingTradeOffers(state: FullGameState) {
   };
 }
 
+export function resetTradeDeadlineState() {
+  tradeDeadlineRecapCache = null;
+}
+
 function recordLeagueTradeNews(state: FullGameState, proposal: TradeProposal) {
   const players = state.players.filter((player) =>
     proposal.playersOffered.includes(player.id) || proposal.playersRequested.includes(player.id),
@@ -589,13 +861,20 @@ function recordLeagueTradeNews(state: FullGameState, proposal: TradeProposal) {
 
   if (items.length === 0) return;
 
-  state.news = deduplicateNews([...items, ...state.news]);
+  const taggedItems = isTradeDeadlineModeDay(state.day)
+    ? items.map((item) => ({
+      ...item,
+      tag: 'BREAKING' as const,
+    }))
+    : items;
+
+  state.news = deduplicateNews([...taggedItems, ...state.news]);
   const userDivision = getTeamById(state.userTeamId)?.division;
   const involvesRelevantTeam = [proposal.fromTeamId, proposal.toTeamId].some((teamId) =>
     teamId === state.userTeamId || getTeamById(teamId)?.division === userDivision,
   );
   if (involvesRelevantTeam) {
-    for (const item of items) {
+    for (const item of taggedItems) {
       pushBriefing(state, createBriefingItem(item.headline, item.body, item.relatedPlayerIds, item.relatedTeamIds));
     }
   }
@@ -670,12 +949,172 @@ function buildMonthlyTradeCandidates(state: FullGameState) {
   };
 }
 
-function generateMonthlyTradeActivity(state: FullGameState) {
+function rankedDeadlineTeams(state: FullGameState, excludeTeamIds: string[] = []): string[] {
+  const excluded = new Set(excludeTeamIds);
+  return Array.from(new Set(state.players.map((player) => player.teamId).filter(Boolean)))
+    .filter((teamId): teamId is string => Boolean(teamId) && !excluded.has(teamId))
+    .sort((left, right) => {
+      const leftAggressive = state.gmPersonalities.get(left) === 'aggressive' ? 1 : 0;
+      const rightAggressive = state.gmPersonalities.get(right) === 'aggressive' ? 1 : 0;
+      if (rightAggressive !== leftAggressive) {
+        return rightAggressive - leftAggressive;
+      }
+      const leftContender = isContender(state, left) ? 1 : 0;
+      const rightContender = isContender(state, right) ? 1 : 0;
+      if (rightContender !== leftContender) {
+        return rightContender - leftContender;
+      }
+      return left.localeCompare(right);
+    });
+}
+
+function pickFallbackTradeChip(
+  state: FullGameState,
+  teamId: string,
+  direction: 'offer' | 'target',
+) {
+  const players = state.players
+    .filter((player) =>
+      player.teamId === teamId
+      && player.rosterStatus === 'MLB'
+      && player.pitcherAttributes == null,
+    )
+    .sort((left, right) => {
+      if (direction === 'target') {
+        if (left.contract.years !== right.contract.years) {
+          return left.contract.years - right.contract.years;
+        }
+      }
+      if (right.overallRating !== left.overallRating) {
+        return right.overallRating - left.overallRating;
+      }
+      return left.id.localeCompare(right.id);
+    });
+
+  return players[0] ?? null;
+}
+
+function buildFallbackTradePackage(
+  state: FullGameState,
+  fromTeamId: string,
+  toTeamId: string,
+) {
+  const offered = pickFallbackTradeChip(state, fromTeamId, 'offer');
+  const requested = pickFallbackTradeChip(state, toTeamId, 'target');
+  if (!offered || !requested || offered.id === requested.id) {
+    return null;
+  }
+
+  const offeringAssets = playerAssets([offered.id]);
+  const requestingAssets = playerAssets([requested.id]);
+  return {
+    offeringAssets,
+    requestingAssets,
+    fairnessScore: compareAssetPackages(state, offeringAssets, requestingAssets, fromTeamId, toTeamId).fairness,
+  };
+}
+
+function createFallbackUserDeadlineOffer(state: FullGameState): boolean {
+  const signatures = existingTradeSignatures(state);
+
+  for (const fromTeamId of rankedDeadlineTeams(state, [state.userTeamId])) {
+    const fallback = buildFallbackTradePackage(state, fromTeamId, state.userTeamId);
+    if (!fallback) {
+      continue;
+    }
+
+    const signature = tradeSignature(
+      fromTeamId,
+      state.userTeamId,
+      fallback.offeringAssets,
+      fallback.requestingAssets,
+    );
+    if (signatures.has(signature)) {
+      continue;
+    }
+
+    addPendingOffer(state, {
+      id: `deadline-fallback-offer-${state.season}-${state.day}-${fromTeamId}`,
+      fromTeamId,
+      toTeamId: state.userTeamId,
+      offeringAssets: fallback.offeringAssets,
+      requestingAssets: fallback.requestingAssets,
+      fairnessScore: fallback.fairnessScore,
+      message: `The ${teamName(fromTeamId)} are making one more push before the deadline.`,
+      createdAt: timestamp(),
+    });
+    return true;
+  }
+
+  return false;
+}
+
+function createFallbackLeagueDeadlineTrade(state: FullGameState): boolean {
+  const signatures = existingTradeSignatures(state);
+  const rankedTeams = rankedDeadlineTeams(state, [state.userTeamId]);
+
+  for (const fromTeamId of rankedTeams) {
+    for (const toTeamId of rankedTeams) {
+      if (fromTeamId === toTeamId) {
+        continue;
+      }
+
+      const fallback = buildFallbackTradePackage(state, fromTeamId, toTeamId);
+      if (!fallback) {
+        continue;
+      }
+
+      const signature = tradeSignature(
+        fromTeamId,
+        toTeamId,
+        fallback.offeringAssets,
+        fallback.requestingAssets,
+      );
+      if (signatures.has(signature)) {
+        continue;
+      }
+
+      executeAcceptedTrade(state, {
+        id: `deadline-fallback-trade-${state.season}-${state.day}-${fromTeamId}-${toTeamId}`,
+        fromTeamId,
+        toTeamId,
+        offeringAssets: fallback.offeringAssets,
+        requestingAssets: fallback.requestingAssets,
+      }, fallback.fairnessScore);
+      recordLeagueTradeNews(state, {
+        id: `deadline-fallback-trade-${state.season}-${state.day}-${fromTeamId}-${toTeamId}`,
+        fromTeamId,
+        toTeamId,
+        playersOffered: assetPlayerIds(fallback.offeringAssets),
+        playersRequested: assetPlayerIds(fallback.requestingAssets),
+        status: 'accepted',
+        reason: 'deadline fallback',
+      });
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function generateMonthlyTradeActivity(
+  state: FullGameState,
+  options: {
+    userOfferRange?: readonly [number, number];
+    aiTradeRange?: readonly [number, number];
+    rumorRepeats?: number;
+  } = {},
+) {
   const { userCandidates, aiCandidates } = buildMonthlyTradeCandidates(state);
-  const userOfferTarget = state.rng.nextInt(1, 3);
+  const [userOfferMin, userOfferMax] = options.userOfferRange ?? [1, 3];
+  const [aiTradeMin, aiTradeMax] = options.aiTradeRange ?? [0, 1];
+  const rumorRepeats = options.rumorRepeats ?? 1;
+  const userOfferTarget = state.rng.nextInt(userOfferMin, Math.max(userOfferMin, userOfferMax));
 
   for (const proposal of userCandidates.slice(0, userOfferTarget)) {
-    recordTradeRumor(state, proposal);
+    for (let repeat = 0; repeat < rumorRepeats; repeat++) {
+      recordTradeRumor(state, proposal);
+    }
     const fairnessScore = fairValueForProposal(state, proposal);
     addPendingOffer(state, buildPersistentOffer(state, {
       ...proposal,
@@ -684,8 +1123,11 @@ function generateMonthlyTradeActivity(state: FullGameState) {
     }, fairnessScore));
   }
 
-  for (const proposal of aiCandidates.slice(0, 1)) {
-    recordTradeRumor(state, proposal);
+  const aiTradeTarget = state.rng.nextInt(aiTradeMin, Math.max(aiTradeMin, aiTradeMax));
+  for (const proposal of aiCandidates.slice(0, aiTradeTarget)) {
+    for (let repeat = 0; repeat < rumorRepeats; repeat++) {
+      recordTradeRumor(state, proposal);
+    }
     const gm = state.gmPersonalities.get(proposal.toTeamId);
     if (!gm || !playersStillMatchProposal(state, proposal)) continue;
     const result = evaluateTradeProposal(
@@ -708,6 +1150,24 @@ function generateMonthlyTradeActivity(state: FullGameState) {
   }
 }
 
+function generateDeadlineTradeBurst(state: FullGameState) {
+  const pendingOffersBefore = state.tradeState.pendingOffers.length;
+  const tradeHistoryBefore = state.tradeState.tradeHistory.length;
+  generateMonthlyTradeActivity(state, {
+    userOfferRange: [2, 4],
+    aiTradeRange: [1, 2],
+    rumorRepeats: 3,
+  });
+
+  if (state.tradeState.pendingOffers.length === pendingOffersBefore) {
+    createFallbackUserDeadlineOffer(state);
+  }
+
+  if (state.tradeState.tradeHistory.length === tradeHistoryBefore) {
+    createFallbackLeagueDeadlineTrade(state);
+  }
+}
+
 export function processTradeMarketActivity(
   state: FullGameState,
   previousDay: number,
@@ -718,6 +1178,11 @@ export function processTradeMarketActivity(
   }
 
   if (previousDay <= TRADE_DEADLINE_DAY && currentDay > TRADE_DEADLINE_DAY) {
+    const expiredOffers = [...state.tradeState.pendingOffers];
+    tradeDeadlineRecapCache = buildDeadlineRecap(state, expiredOffers);
+    if (tradeDeadlineRecapCache) {
+      publishDeadlineAnalysis(state, tradeDeadlineRecapCache);
+    }
     clearPendingTradeOffers(state);
   }
 
@@ -727,6 +1192,12 @@ export function processTradeMarketActivity(
     const windowStartDay = windowIndex * 30 + 1;
     if (windowStartDay > TRADE_DEADLINE_DAY) continue;
     generateMonthlyTradeActivity(state);
+  }
+
+  for (const checkpointDay of DEADLINE_ACTIVITY_CHECKPOINTS) {
+    if (previousDay < checkpointDay && checkpointDay <= currentDay && checkpointDay <= TRADE_DEADLINE_DAY) {
+      generateDeadlineTradeBurst(state);
+    }
   }
 }
 
@@ -743,7 +1214,7 @@ export function recordAcceptedUserTrade(
   addTradeHistoryEntry(state, buildTradeHistoryEntry(
     state,
     proposal,
-    compareAssetPackages(state, proposal.offeringAssets, proposal.requestingAssets).fairness,
+    compareAssetPackages(state, proposal.offeringAssets, proposal.requestingAssets, proposal.fromTeamId, proposal.toTeamId).fairness,
   ));
 }
 
@@ -825,7 +1296,7 @@ export function proposeTradePackage(
     reason: '',
   };
 
-  const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets).fairness;
+  const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets, state.userTeamId, toTeamId).fairness;
   const usesNonPlayerAssets = hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets);
   const result = usesNonPlayerAssets
     ? {
@@ -974,7 +1445,7 @@ export function respondToTradeOffer(
   const usesNonPlayerAssets = hasNonPlayerAssets(counterPackage.offeringAssets) || hasNonPlayerAssets(counterPackage.requestingAssets);
   const result = usesNonPlayerAssets
     ? {
-      decision: (-compareAssetPackages(state, counterPackage.offeringAssets, counterPackage.requestingAssets).fairness >= -10
+      decision: (-compareAssetPackages(state, counterPackage.offeringAssets, counterPackage.requestingAssets, state.userTeamId, offer.fromTeamId).fairness >= -10
         ? 'accepted'
         : 'rejected') as 'accepted' | 'rejected',
       reason: 'Counter framework evaluated.',
@@ -998,6 +1469,8 @@ export function respondToTradeOffer(
       state,
       counterPackage.offeringAssets,
       counterPackage.requestingAssets,
+      state.userTeamId,
+      offer.fromTeamId,
     ).fairness;
     executeAcceptedTrade(state, {
       id: counterProposal.id,
