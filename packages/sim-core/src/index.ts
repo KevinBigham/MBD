@@ -586,6 +586,9 @@ export {
   pruneTickerFeed,
   detectNewStoryArcs,
   advanceStoryArcs,
+  detectBreakoutCountdowns,
+  generateDebutFlashback,
+  generatePressConference,
 } from './narrative/index.js';
 export type {
   NewsPriority,
@@ -618,6 +621,9 @@ export type {
   TickerStandingsChangeContext,
   TickerTradeContext,
   StoryArcSnapshot,
+  BreakoutCountdown,
+  BreakoutCountdownSnapshot,
+  PressConferenceContext,
 } from './narrative/index.js';
 
 // Sharing

@@ -1029,12 +1029,14 @@ export const queryApi = {
     const minorLeagueProgression = getMinorLeagueProgressionView(s, playerId);
     const prospectBond = getProspectBondView(s, playerId);
     const activeSetback = getActiveDevelopmentSetbackView(s, playerId);
+    const debutFlashback = s.debutFlashbacks.find((entry) => entry.playerId === playerId) ?? null;
     if (
       reports.length === 0
       && recommendations.length === 0
       && minorLeagueProgression.length === 0
       && !prospectBond
       && !activeSetback
+      && !debutFlashback
     ) {
       return null;
     }
@@ -1052,6 +1054,7 @@ export const queryApi = {
       minorLeagueProgression,
       prospectBond,
       activeSetback,
+      debutFlashback,
     };
   },
 

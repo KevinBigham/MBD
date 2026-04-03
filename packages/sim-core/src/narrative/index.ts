@@ -34,6 +34,11 @@ export {
   detectNewStoryArcs,
   advanceStoryArcs,
 } from './storyArcs.js';
+export {
+  detectBreakoutCountdowns,
+  generateDebutFlashback,
+  generatePressConference,
+} from './farmNarratives.js';
 
 export type {
   // Types
@@ -74,3 +79,8 @@ export type {
 export type {
   StoryArcSnapshot,
 } from './storyArcs.js';
+export type {
+  BreakoutCountdown,
+  BreakoutCountdownSnapshot,
+  PressConferenceContext,
+} from './farmNarratives.js';

@@ -203,6 +203,7 @@ export function recordProspectBondDebuts(
   state: Pick<ProspectFarmState, 'season' | 'players' | 'seasonStats' | 'seasonState' | 'prospectBonds'>,
 ) {
   const seasonStats = getSeasonStats(state);
+  const debutedPlayerIds: string[] = [];
   state.prospectBonds = sortBonds(state.prospectBonds.map((bond) => {
     if (bond.debutSeason != null) {
       return bond;
@@ -219,11 +220,13 @@ export function recordProspectBondDebuts(
       debutSeason: state.season,
       bondStrength: clamp(bond.bondStrength + 15, 0, 100),
     }, `MLB Debut, ${state.season}`);
+    debutedPlayerIds.push(player.id);
     return {
       ...nextBond,
       loyaltyModifier: getProspectLoyaltyModifier(nextBond),
     };
   }));
+  return debutedPlayerIds;
 }
 
 export function applySeasonEndProspectBondUpdates(

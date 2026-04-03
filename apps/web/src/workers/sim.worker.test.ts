@@ -2490,7 +2490,7 @@ describe('sim worker narrative APIs', () => {
     expect(ceremony.activeMoment?.title).toContain('POSTSEASON BOUND');
   });
 
-  it('queues a prospect debut moment when a user prospect reaches MLB', () => {
+  it('queues a prospect debut flashback on a homegrown player first MLB game', () => {
     startGame(3441, 'nyy');
     api.simDay();
     api.simDay();
@@ -2502,18 +2502,58 @@ describe('sim worker narrative APIs', () => {
       ...rosterState.fortyManRoster.filter((playerId) => playerId !== promotionTarget.id).slice(0, 39),
       promotionTarget.id,
     ];
+    state.prospectBonds = [{
+      prospectId: promotionTarget.id,
+      draftedSeason: state.season,
+      debutSeason: null,
+      currentLevel: 'AAA',
+      bondStrength: 32,
+      milestones: ['Drafted Round 1, 1', 'Promoted to AAA, 1'],
+      loyaltyModifier: 0.32,
+    }];
+    state.playerOrigins.set(promotionTarget.id, {
+      playerId: promotionTarget.id,
+      originTeamId: 'nyy',
+      acquisitionType: 'draft',
+      acquiredSeason: state.season,
+      draftSeason: state.season,
+      draftRound: 1,
+      draftPickNumber: 8,
+      originalGrade: 63,
+      bonusAmount: 4.9,
+    });
 
     const result = api.promotePlayer(promotionTarget.id);
-    const ceremony = (api as typeof api & {
+    state.seasonState.playerSeasonStats.set(promotionTarget.id, createPlayerStats({
+      playerId: promotionTarget.id,
+      teamId: 'nyy',
+      pa: 4,
+      ab: 4,
+      hits: 2,
+    }));
+
+    api.simDay();
+
+    const ceremonyState = (api as typeof api & {
       getCeremonyState: () => {
-        activeMoment: { type: string; title: string; subtitle: string } | null;
+        activeMoment: { type: string; title: string; subtitle: string; detailLines: string[] } | null;
       };
     }).getCeremonyState();
+    const flashback = requireState().debutFlashbacks.find((entry) => entry.playerId === promotionTarget.id);
+    const debutMoment = requireState().ceremony.pendingMoments.find((moment) => moment.type === 'prospect_debut');
 
     expect(result.success).toBe(true);
-    expect(ceremony.activeMoment?.type).toBe('prospect_debut');
-    expect(ceremony.activeMoment?.title).toContain('THE FUTURE IS NOW');
-    expect(ceremony.activeMoment?.subtitle).toContain(promotionTarget.lastName);
+    expect(flashback).toMatchObject({
+      playerId: promotionTarget.id,
+      draftRound: 1,
+      debutSeason: state.season,
+    });
+    expect(ceremonyState.queueLength).toBeGreaterThan(0);
+    expect(debutMoment?.type).toBe('prospect_debut');
+    expect(debutMoment?.title).toContain('THE FUTURE IS NOW');
+    expect(debutMoment?.subtitle).toContain(promotionTarget.lastName);
+    expect(debutMoment?.detailLines[0]).toContain('Round 1');
+    expect(requireState().debutFlashbacks.filter((entry) => entry.playerId === promotionTarget.id)).toHaveLength(1);
   });
 
   it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {
@@ -2755,6 +2795,18 @@ describe('sim worker narrative APIs', () => {
         relatedTeamIds: ['nyy', 'bos'],
         read: false,
       },
+      {
+        id: 'press-conference-1',
+        headline: 'Press Conference: New York Yankees',
+        body: 'The room carried a sharper edge: Why should fans stay patient?',
+        priority: 3,
+        category: 'press_conference',
+        tag: 'ANALYSIS',
+        timestamp: 'S1D10',
+        relatedPlayerIds: [],
+        relatedTeamIds: ['nyy'],
+        read: false,
+      },
     ];
     state.briefingQueue = [
       {
@@ -2811,21 +2863,28 @@ describe('sim worker narrative APIs', () => {
       }),
       expect.objectContaining({
         id: 'news-breaker',
-        source: 'news',
+        source: 'league_wire',
         category: 'trade',
         headline: 'Breaking trade headline',
         timestamp: 'S1D10',
       }),
       expect.objectContaining({
+        id: 'press-conference-1',
+        source: 'press_conference',
+        category: 'press_conference',
+        headline: 'Press Conference: New York Yankees',
+        timestamp: 'S1D10',
+      }),
+      expect.objectContaining({
         id: 'news-read-feature',
-        source: 'news',
+        source: 'league_wire',
         category: 'performance',
         headline: 'Read feature still belongs in the archive',
         timestamp: 'S1D9',
       }),
       expect.objectContaining({
         id: 'synthetic-rivalry-bos:nyy-1-1',
-        source: 'news',
+        source: 'league_wire',
         category: 'rivalry',
         headline: 'Rivalry watch: NYY vs BOS',
         timestamp: 'S1D1',

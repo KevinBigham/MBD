@@ -37,6 +37,7 @@ export const NewsCategoryEnum = z.enum([
   "award",
   "record",
   "playoff",
+  "press_conference",
 ]);
 export type NewsCategory = z.infer<typeof NewsCategoryEnum>;
 

@@ -78,7 +78,7 @@ describe('PressRoomPage', () => {
         },
         {
           id: 'news-signing-1',
-          source: 'news',
+          source: 'league_wire',
           category: 'signing',
           tag: 'BREAKING',
           priority: 1,
@@ -87,6 +87,18 @@ describe('PressRoomPage', () => {
           timestamp: 'S3D42',
           relatedTeamIds: ['bos'],
           relatedPlayerIds: ['player-ace'],
+        },
+        {
+          id: 'press-conference-1',
+          source: 'press_conference',
+          category: 'press_conference',
+          tag: 'ANALYSIS',
+          priority: 3,
+          headline: 'Press Conference: New York Yankees',
+          body: 'A calmer room framed the question this way: Your prospect pipeline is drawing real attention.',
+          timestamp: 'S3D44',
+          relatedTeamIds: ['nyy'],
+          relatedPlayerIds: [],
         },
       ]),
     } as unknown as ReturnType<typeof useWorker>);
@@ -115,7 +127,9 @@ describe('PressRoomPage', () => {
     expect(container.textContent).toContain('Press Room');
     expect(container.textContent).toContain('Owner pressure is rising.');
     expect(container.textContent).toContain('Breaking trade headline');
+    expect(container.textContent).toContain('Press Conference: New York Yankees');
     expect(container.textContent).toContain('briefing');
+    expect(container.textContent).toContain('press_conference');
     expect(container.textContent).toContain('owner');
     expect(container.textContent).toContain('trade');
     expect(container.textContent).toContain('BREAKING');

@@ -132,7 +132,6 @@ import {
   queueAwardMoments,
   queueHallOfFameMoments,
   queuePlayoffSeriesMoment,
-  queueProspectDebutMoment,
 } from './sim.worker.ceremony.js';
 import {
   clearPendingTradeOffers,
@@ -193,6 +192,11 @@ import {
   getLoyaltyAdjustedAppeal,
   recordProspectBondDebuts,
 } from './sim.worker.farm.js';
+import {
+  applyBreakoutCountdowns,
+  applyDebutFlashbacks,
+  applyMonthlyPressConference,
+} from './sim.worker.narrativeFarm.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -708,6 +712,8 @@ function applyMonthlyDevelopmentCheckpoints(
     s.minorLeagueState = checkpoint.state;
     applyDevelopmentSetbackCheckpoint(s, month);
     advanceMonthlyStoryArcs(s, s.season, currentDay);
+    applyBreakoutCountdowns(s);
+    applyMonthlyPressConference(s);
   }
 }
 
@@ -748,7 +754,7 @@ function simWeekInternal(): SimResultDTO {
     previousInjuryIds,
     previousTradeCount,
   });
-  recordProspectBondDebuts(s);
+  applyDebutFlashbacks(s, recordProspectBondDebuts(s));
   resolveConsequenceChains(s);
   syncRecordTracking(s);
   updateScenarioProgress(s);
@@ -855,7 +861,7 @@ function simMonthInternal(): SimResultDTO {
     previousInjuryIds,
     previousTradeCount,
   });
-  recordProspectBondDebuts(s);
+  applyDebutFlashbacks(s, recordProspectBondDebuts(s));
   resolveConsequenceChains(s);
   refreshFanSentiment(s);
   syncRecordTracking(s, { publishWatchStories: true, publishBrokenRecords: true });
@@ -990,7 +996,7 @@ function simDayInternal(): SimResultDTO {
       previousInjuryIds,
       previousTradeCount,
     });
-    recordProspectBondDebuts(s);
+    applyDebutFlashbacks(s, recordProspectBondDebuts(s));
     resolveConsequenceChains(s);
     syncRecordTracking(s);
     updateScenarioProgress(s);
@@ -1515,7 +1521,6 @@ export const actionApi = {
           streak: 'call-up watch',
         },
       }, s.players, s.season, s.day));
-      queueProspectDebutMoment(s, promotedPlayer.id, player.rosterStatus);
       recordProspectCallup(s, promotedPlayer.id);
       syncAchievementState(s);
     }

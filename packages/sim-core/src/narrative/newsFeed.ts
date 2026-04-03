@@ -33,7 +33,8 @@ export type NewsCategory =
   | 'rivalry'
   | 'award'
   | 'record'
-  | 'playoff';
+  | 'playoff'
+  | 'press_conference';
 
 export interface NewsItem {
   id: string;

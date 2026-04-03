@@ -13,9 +13,16 @@ function priorityTone(priority: number): string {
 }
 
 function sourceTone(source: PressRoomEntry['source']): string {
-  return source === 'briefing'
-    ? 'border-accent-info/40 bg-accent-info/10 text-accent-info'
-    : 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
+  switch (source) {
+    case 'briefing':
+      return 'border-accent-info/40 bg-accent-info/10 text-accent-info';
+    case 'press_conference':
+      return 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary';
+    case 'league_wire':
+      return 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
+    default:
+      return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
+  }
 }
 
 function tagTone(tag: PressRoomEntry['tag']): string {

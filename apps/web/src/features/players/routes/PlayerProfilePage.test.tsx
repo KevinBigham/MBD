@@ -203,6 +203,16 @@ describe('PlayerProfilePage', () => {
           summary: 'Marco Ascension is tearing through upper-level pitching.',
           active: true,
         },
+        debutFlashback: {
+          playerId: 'player-1',
+          playerName: 'Marco Ascension',
+          draftSeason: 3,
+          draftRound: 1,
+          originalGrade: 64,
+          debutSeason: 5,
+          debutOverall: 58,
+          journeyHighlights: ['Drafted Round 1, 3', 'Promoted to AAA, 5'],
+        },
       }),
     } as unknown as ReturnType<typeof useWorker>);
 
@@ -226,6 +236,8 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Improved first-step reads');
     expect(container.textContent).toContain('Development Path');
     expect(container.textContent).toContain('Prospect Bond');
+    expect(container.textContent).toContain('Debut Flashback');
+    expect(container.textContent).toContain('Original grade 64 to debut overall 58.');
     expect(container.textContent).toContain('Bond');
     expect(container.textContent).toContain('Marco Ascension is tearing through upper-level pitching.');
     expect(container.textContent).toContain('Extension History');
@@ -296,6 +308,7 @@ describe('PlayerProfilePage', () => {
         minorLeagueProgression: [],
         prospectBond: null,
         activeSetback: null,
+        debutFlashback: null,
       }),
     } as unknown as ReturnType<typeof useWorker>);
 

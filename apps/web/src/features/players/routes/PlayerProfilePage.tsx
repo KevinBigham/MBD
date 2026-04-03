@@ -169,6 +169,16 @@ interface DevelopmentReportsView {
     summary: string;
     active: boolean;
   } | null;
+  debutFlashback: {
+    playerId: string;
+    playerName: string;
+    draftSeason: number;
+    draftRound: number;
+    originalGrade: number;
+    debutSeason: number;
+    debutOverall: number;
+    journeyHighlights: string[];
+  } | null;
 }
 
 function gradeColor(grade: string): string {
@@ -757,6 +767,31 @@ export default function PlayerProfilePage() {
             </CardContent>
           </Card>
         </div>
+      ) : null}
+
+      {developmentReports?.debutFlashback ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Debut Flashback</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-sm text-dynasty-text">
+                Season {developmentReports.debutFlashback.draftSeason} · Round {developmentReports.debutFlashback.draftRound}
+              </div>
+              <div className="mt-2 text-sm text-dynasty-muted">
+                Original grade {developmentReports.debutFlashback.originalGrade} to debut overall {developmentReports.debutFlashback.debutOverall}.
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {developmentReports.debutFlashback.journeyHighlights.map((highlight) => (
+                <div key={highlight} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-3 text-sm text-dynasty-muted">
+                  {highlight}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {player.stats ? (
