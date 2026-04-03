@@ -112,7 +112,12 @@ export function simulateDay(
     const awayTeam = buildGameTeam(game.awayTeamId, allPlayers);
 
     // Skip if either team can't field a lineup
-    if (homeTeam.lineup.length < 9 || awayTeam.lineup.length < 9) continue;
+    if (
+      homeTeam.lineup.length < 9
+      || awayTeam.lineup.length < 9
+      || !homeTeam.pitcher
+      || !awayTeam.pitcher
+    ) continue;
 
     const gameRng = rng.fork(); // Fork RNG for each game
     const { boxScore, playerStats } = simulateGame(

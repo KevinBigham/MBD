@@ -3,14 +3,17 @@ import { Save, Trash2, Upload, Volume2, VolumeX } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
 import { getAudioEngine } from '@/shared/lib/audio';
 import {
   SAVE_SLOTS,
   deleteSave,
   listSaves,
-  loadGame,
+  loadGameSafe,
+  repairSave,
   saveGame,
   type SaveData,
+  type SaveInspectionResult,
 } from '@/shared/lib/saveSystem';
 
 export default function SettingsPage() {
@@ -24,6 +27,10 @@ export default function SettingsPage() {
   const [saves, setSaves] = useState<SaveData[]>([]);
   const [status, setStatus] = useState<string>('');
   const [busySlot, setBusySlot] = useState<number | null>(null);
+  const [recoveryState, setRecoveryState] = useState<{
+    slot: number;
+    message: string;
+  } | null>(null);
 
   async function refreshSaves() {
     setSaves(await listSaves());
@@ -55,27 +62,17 @@ export default function SettingsPage() {
     setBusySlot(slot);
     setStatus('');
     try {
-      const save = await loadGame(slot);
-      if (!save) {
-        setStatus(`Slot ${slot} is empty.`);
+      const result = await loadGameSafe(slot);
+      if (result.status !== 'ok') {
+        setRecoveryState({
+          slot,
+          message: result.status === 'empty'
+            ? `Slot ${slot} is empty.`
+            : result.message,
+        });
         return;
       }
-      if (!save.snapshot) {
-        setStatus(`Slot ${slot} is legacy metadata only and cannot be resumed.`);
-        return;
-      }
-      const result = await worker.importSnapshot(save.snapshot);
-      initializeGame({
-        season: result.season,
-        day: result.day,
-        phase: result.phase,
-        playerCount: result.playerCount,
-        userTeamId: result.userTeamId,
-        teamName: result.teamName,
-        gmName: result.gmName,
-        difficulty: result.difficulty,
-        activeSaveSlot: slot,
-      });
+      await continueFromInspection(result);
       setStatus(`Loaded slot ${slot}.`);
     } catch (error) {
       console.error('Failed to load game:', error);
@@ -90,6 +87,7 @@ export default function SettingsPage() {
     setStatus('');
     try {
       await deleteSave(slot);
+      setRecoveryState((current) => (current?.slot === slot ? null : current));
       await refreshSaves();
       setStatus(`Deleted slot ${slot}.`);
     } catch (error) {
@@ -98,6 +96,49 @@ export default function SettingsPage() {
     } finally {
       setBusySlot(null);
     }
+  }
+
+  async function continueFromInspection(result: Extract<SaveInspectionResult, { status: 'ok' }>) {
+    const imported = await worker.importSnapshot(result.save.snapshot);
+    initializeGame({
+      season: imported.season,
+      day: imported.day,
+      phase: imported.phase,
+      playerCount: imported.playerCount,
+      userTeamId: imported.userTeamId,
+      teamName: imported.teamName,
+      gmName: imported.gmName,
+      difficulty: imported.difficulty,
+      activeSaveSlot: result.slot,
+    });
+  }
+
+  async function handleRepair(slot: number) {
+    setBusySlot(slot);
+    setStatus('');
+    try {
+      const repaired = await repairSave(slot);
+      if (repaired.status !== 'ok') {
+        setStatus(`Unable to repair slot ${slot}.`);
+        return;
+      }
+
+      setRecoveryState(null);
+      await refreshSaves();
+      await continueFromInspection(repaired);
+      setStatus(`Repaired and loaded slot ${slot}.`);
+    } catch (error) {
+      console.error('Failed to repair save:', error);
+      setStatus(`Failed to repair slot ${slot}.`);
+    } finally {
+      setBusySlot(null);
+    }
+  }
+
+  async function handleStartFresh(slot: number) {
+    await handleDelete(slot);
+    setRecoveryState(null);
+    setStatus(`Slot ${slot} is ready for a new dynasty.`);
   }
 
   function handleMuteToggle() {
@@ -140,6 +181,18 @@ export default function SettingsPage() {
           {status}
         </div>
       )}
+
+      {recoveryState ? (
+        <SaveRecoveryDialog
+          slot={recoveryState.slot}
+          message={recoveryState.message}
+          busy={busySlot === recoveryState.slot}
+          onRepair={() => void handleRepair(recoveryState.slot)}
+          onStartFresh={() => void handleStartFresh(recoveryState.slot)}
+          onDelete={() => void handleDelete(recoveryState.slot)}
+          onClose={() => setRecoveryState(null)}
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
@@ -265,7 +318,7 @@ export default function SettingsPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={disabled || !save?.snapshot || !workerReady}
+                    disabled={disabled || !save || !workerReady}
                     onClick={() => void handleLoad(slot)}
                     className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
                   >

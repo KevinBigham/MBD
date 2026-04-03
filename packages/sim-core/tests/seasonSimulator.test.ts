@@ -7,6 +7,7 @@ import {
   generateSchedule,
   getNextMonthStartDay,
   getRegularSeasonMonthForDay,
+  simulateDay,
   simulateMonth,
 } from '../src/index.js';
 
@@ -62,5 +63,16 @@ describe('simulateMonth', () => {
 
     expect(result.newState.currentDay).toBe(163);
     expect(result.newState.currentDay).not.toBeGreaterThan(163);
+  });
+
+  it('skips games cleanly when a team cannot field a pitcher', () => {
+    const openingDay = buildSeasonInputs(1);
+    const strippedPlayers = openingDay.players.filter((player) =>
+      !(player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null),
+    );
+
+    expect(() =>
+      simulateDay(openingDay.rng, openingDay.seasonState, openingDay.schedule, strippedPlayers),
+    ).not.toThrow();
   });
 });

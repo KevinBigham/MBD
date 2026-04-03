@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore, useCallback } from 'react';
 import * as Comlink from 'comlink';
+import { toast } from 'sonner';
 import type { TradeAsset } from '@mbd/contracts';
 import type { LeaderboardStatKey } from '@mbd/sim-core';
 import type { WorkerApi } from '@/workers/sim.worker';
@@ -9,6 +10,16 @@ import {
   measureAsyncOperation,
 } from '@/shared/lib/performance';
 
+type WorkerMethodName = keyof WorkerApi;
+type WorkerMethodParameters<K extends WorkerMethodName> =
+  WorkerApi[K] extends (...args: infer Args) => unknown ? Args : never;
+type WorkerMethodReturn<K extends WorkerMethodName> =
+  WorkerApi[K] extends (...args: never[]) => infer Result ? Awaited<Result> : never;
+type WorkerProxy = {
+  [K in WorkerMethodName]:
+    (...args: WorkerMethodParameters<K>) => Promise<WorkerMethodReturn<K>>;
+};
+
 // ---------------------------------------------------------------------------
 // Singleton worker — shared across all components
 // ---------------------------------------------------------------------------
@@ -16,8 +27,56 @@ import {
 let singletonApi: Comlink.Remote<WorkerApi> | null = null;
 let singletonWorker: Worker | null = null;
 let ready = false;
+let workerStatus: 'idle' | 'initializing' | 'ready' | 'error' | 'restarting' = 'idle';
 const listeners = new Set<() => void>();
 const flowListeners = new Set<() => void>();
+const mutationMethods = new Set<WorkerMethodName>([
+  'newGame',
+  'simDay',
+  'simWeek',
+  'simMonth',
+  'acknowledgeMonthlyReport',
+  'dismissDecisionSpotlight',
+  'dismissCeremonyMoment',
+  'dismissWelcomeBriefing',
+  'simToPlayoffs',
+  'simPlayoffGame',
+  'simPlayoffSeries',
+  'simPlayoffRound',
+  'simRemainingPlayoffs',
+  'importSnapshot',
+  'scoutPlayerReport',
+  'scoutIFAPlayer',
+  'signIFAPlayer',
+  'tradeIFAPoolSpace',
+  'startDraft',
+  'makeDraftPick',
+  'scoutDraftPlayer',
+  'toggleDraftBigBoard',
+  'signDraftPick',
+  'simulateRemainingDraft',
+  'proposeTrade',
+  'respondToTradeOffer',
+  'markNewsRead',
+  'promotePlayer',
+  'demotePlayer',
+  'designateForAssignment',
+  'claimOffWaivers',
+  'negotiateExtension',
+  'issueQualifyingOffer',
+  'resolveQualifyingOffers',
+  'hireCoach',
+  'fireCoach',
+  'proceedToOffseason',
+  'startNextSeason',
+  'advanceOffseason',
+  'skipOffseasonPhase',
+  'toggleRule5Protection',
+  'lockRule5Protection',
+  'makeRule5Pick',
+  'passRule5Pick',
+  'resolveRule5OfferBack',
+]);
 
 function notifyListeners() {
   for (const l of listeners) l();
@@ -27,23 +86,109 @@ function notifyFlowListeners() {
   for (const listener of flowListeners) listener();
 }
 
+function setWorkerStatus(nextStatus: typeof workerStatus) {
+  workerStatus = nextStatus;
+  notifyListeners();
+}
+
+function isFatalWorkerError(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return /worker|terminated|MessagePort|postMessage|channel|closed|cannot be used|proxy is released|DataCloneError/i.test(message);
+}
+
+function invalidateWorker(nextStatus: typeof workerStatus = 'error') {
+  ready = false;
+  singletonApi = null;
+  if (singletonWorker) {
+    singletonWorker.terminate();
+    singletonWorker = null;
+  }
+  setWorkerStatus(nextStatus);
+}
+
+async function restartWorkerInternal() {
+  invalidateWorker('restarting');
+  const api = getOrCreateWorker();
+  await api.ping();
+  ready = true;
+  setWorkerStatus('ready');
+  return api;
+}
+
+async function invokeWorkerMethod<K extends WorkerMethodName>(
+  methodName: K,
+  args: WorkerMethodParameters<K>,
+): Promise<WorkerMethodReturn<K>> {
+  const call = async (api: Comlink.Remote<WorkerApi>) => {
+    const methodMap = api as unknown as Record<string, ((...methodArgs: unknown[]) => Promise<unknown>) | undefined>;
+    const method = methodMap[methodName as string];
+    if (!method) {
+      throw new Error(`Worker method ${String(methodName)} is unavailable.`);
+    }
+    return method(...(args as unknown[]));
+  };
+
+  try {
+    const result = await call(getOrCreateWorker());
+    if (mutationMethods.has(methodName) && isFlowAwareResult(result) && result.flowStateChanged) {
+      notifyFlowListeners();
+    }
+    return result as WorkerMethodReturn<K>;
+  } catch (error) {
+    console.error(`Worker ${String(methodName)} failed:`, error);
+    const fatal = isFatalWorkerError(error);
+
+    if (fatal && !mutationMethods.has(methodName)) {
+      try {
+        const restartedApi = await restartWorkerInternal();
+        return await call(restartedApi) as WorkerMethodReturn<K>;
+      } catch (retryError) {
+        console.error(`Worker ${String(methodName)} retry failed:`, retryError);
+        toast.error('The simulation worker failed and could not recover.');
+        throw retryError;
+      }
+    }
+
+    if (fatal) {
+      try {
+        await restartWorkerInternal();
+      } catch (restartError) {
+        console.error('Worker restart failed:', restartError);
+      }
+    }
+
+    toast.error('The simulation worker failed. Please try again.');
+    throw error;
+  }
+}
+
 function getOrCreateWorker(): Comlink.Remote<WorkerApi> {
   if (singletonApi) return singletonApi;
 
+  setWorkerStatus('initializing');
   singletonWorker = new Worker(
     new URL('../../workers/sim.worker.ts', import.meta.url),
     { type: 'module' },
   );
+  singletonWorker.addEventListener('error', (event) => {
+    console.error('Worker runtime error:', event.error ?? event.message);
+    invalidateWorker('error');
+  });
+  singletonWorker.addEventListener('messageerror', (event) => {
+    console.error('Worker message error:', event);
+    invalidateWorker('error');
+  });
   singletonApi = Comlink.wrap<WorkerApi>(singletonWorker);
 
   singletonApi
     .ping()
     .then(() => {
       ready = true;
-      notifyListeners();
+      setWorkerStatus('ready');
     })
     .catch((err: unknown) => {
       console.error('Worker ping failed:', err);
+      invalidateWorker('error');
     });
 
   return singletonApi;
@@ -65,6 +210,10 @@ function getSnapshot() {
   return ready;
 }
 
+function getWorkerStatusSnapshot() {
+  return workerStatus;
+}
+
 function isFlowAwareResult(value: unknown): value is { flowStateChanged?: boolean } {
   return typeof value === 'object' && value !== null && 'flowStateChanged' in value;
 }
@@ -74,8 +223,25 @@ function isFlowAwareResult(value: unknown): value is { flowStateChanged?: boolea
 // ---------------------------------------------------------------------------
 
 export function useWorker() {
-  const api = useMemo(() => getOrCreateWorker(), []);
   const isReady = useSyncExternalStore(subscribe, getSnapshot);
+  const currentWorkerStatus = useSyncExternalStore(subscribe, getWorkerStatusSnapshot);
+  const api = useMemo(
+    () =>
+      new Proxy({} as Comlink.Remote<WorkerApi>, {
+        get(_target, property) {
+          if (typeof property !== 'string') {
+            return undefined;
+          }
+
+          return (...args: unknown[]) =>
+            invokeWorkerMethod(
+              property as WorkerMethodName,
+              args as WorkerMethodParameters<WorkerMethodName>,
+            );
+        },
+      }),
+    [],
+  ) as WorkerProxy;
   type ScoutIFAResult = Awaited<ReturnType<WorkerApi['scoutIFAPlayer']>>;
   type SignIFAResult = Awaited<ReturnType<WorkerApi['signIFAPlayer']>>;
   type TradeIFAPoolResult = Awaited<ReturnType<WorkerApi['tradeIFAPoolSpace']>>;
@@ -84,17 +250,14 @@ export function useWorker() {
   type CoachMutationResult = Awaited<ReturnType<WorkerApi['hireCoach']>>;
 
   const runMutation = useCallback(
-    async <T,>(operation: () => Promise<T>) => {
-      const result = await operation();
-      if (isFlowAwareResult(result) && result.flowStateChanged) {
-        notifyFlowListeners();
-      }
-      return result;
-    },
+    async <T,>(operation: () => Promise<T>) => operation(),
     [],
   );
 
   const ping = useCallback(async () => api.ping(), [api]);
+  const restartWorker = useCallback(async () => {
+    await restartWorkerInternal();
+  }, []);
 
   const newGame = useCallback(
     async (options: {
@@ -202,36 +365,24 @@ export function useWorker() {
   );
   const getIFAPool = useCallback(async () => api.getIFAPool(), [api]);
   const scoutIFAPlayer = useCallback(
-    async (playerId: string): Promise<ScoutIFAResult> => {
-      const result = await api.scoutIFAPlayer(playerId);
-      return result as ScoutIFAResult;
-    },
+    async (playerId: string): Promise<ScoutIFAResult> =>
+      api.scoutIFAPlayer(playerId) as Promise<ScoutIFAResult>,
     [api],
   );
   const signIFAPlayer = useCallback(
     async (
       playerId: string,
       bonusAmount: number,
-    ): Promise<SignIFAResult> => {
-      const result = await api.signIFAPlayer(playerId, bonusAmount);
-      if (isFlowAwareResult(result) && result.flowStateChanged) {
-        notifyFlowListeners();
-      }
-      return result as SignIFAResult;
-    },
+    ): Promise<SignIFAResult> =>
+      api.signIFAPlayer(playerId, bonusAmount) as Promise<SignIFAResult>,
     [api],
   );
   const tradeIFAPoolSpace = useCallback(
     async (
       toTeamId: string,
       amount: number,
-    ): Promise<TradeIFAPoolResult> => {
-      const result = await api.tradeIFAPoolSpace(toTeamId, amount);
-      if (isFlowAwareResult(result) && result.flowStateChanged) {
-        notifyFlowListeners();
-      }
-      return result as TradeIFAPoolResult;
-    },
+    ): Promise<TradeIFAPoolResult> =>
+      api.tradeIFAPoolSpace(toTeamId, amount) as Promise<TradeIFAPoolResult>,
     [api],
   );
   const getDraftClass = useCallback(async () => api.getDraftClass(), [api]);
@@ -241,33 +392,15 @@ export function useWorker() {
     [api, runMutation],
   );
   const scoutDraftPlayer = useCallback(
-    async (prospectId: string) => {
-      const result = await api.scoutDraftPlayer(prospectId);
-      if (isFlowAwareResult(result) && result.flowStateChanged) {
-        notifyFlowListeners();
-      }
-      return result;
-    },
+    async (prospectId: string) => api.scoutDraftPlayer(prospectId),
     [api],
   );
   const toggleDraftBigBoard = useCallback(
-    async (prospectId: string) => {
-      const result = await api.toggleDraftBigBoard(prospectId);
-      if (isFlowAwareResult(result) && result.flowStateChanged) {
-        notifyFlowListeners();
-      }
-      return result;
-    },
+    async (prospectId: string) => api.toggleDraftBigBoard(prospectId),
     [api],
   );
   const signDraftPick = useCallback(
-    async (playerId: string, bonusAmount: number) => {
-      const result = await api.signDraftPick(playerId, bonusAmount);
-      if (isFlowAwareResult(result) && result.flowStateChanged) {
-        notifyFlowListeners();
-      }
-      return result;
-    },
+    async (playerId: string, bonusAmount: number) => api.signDraftPick(playerId, bonusAmount),
     [api],
   );
   const simulateRemainingDraft = useCallback(
@@ -481,6 +614,8 @@ export function useWorker() {
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
     subscribeToFlowUpdates,
+    restartWorker,
+    workerStatus: currentWorkerStatus,
     isReady,
   };
 }

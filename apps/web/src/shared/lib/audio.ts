@@ -189,7 +189,13 @@ export class AudioEngine {
       return this.context;
     }
 
-    const nextContext = this.createContext();
+    let nextContext: AudioContext | null = null;
+    try {
+      nextContext = this.createContext();
+    } catch {
+      return null;
+    }
+
     if (!nextContext) {
       return null;
     }

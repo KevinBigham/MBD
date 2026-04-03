@@ -8,7 +8,8 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import {
   deleteSave,
   listSaves,
-  loadGame,
+  loadGameSafe,
+  repairSave,
   saveGame,
 } from '@/shared/lib/saveSystem';
 
@@ -35,13 +36,16 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   deleteSave: vi.fn(),
   listSaves: vi.fn(),
   loadGame: vi.fn(),
+  loadGameSafe: vi.fn(),
+  repairSave: vi.fn(),
   saveGame: vi.fn(),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedListSaves = vi.mocked(listSaves);
-const mockedLoadGame = vi.mocked(loadGame);
+const mockedLoadGameSafe = vi.mocked(loadGameSafe);
+const mockedRepairSave = vi.mocked(repairSave);
 const mockedSaveGame = vi.mocked(saveGame);
 const mockedDeleteSave = vi.mocked(deleteSave);
 
@@ -158,24 +162,49 @@ describe('SetupPage', () => {
         updatedAt: '2026-04-02T12:00:00.000Z',
       },
     ] as never);
-    mockedLoadGame.mockResolvedValue({
-      id: 'save-slot-1',
-      slotNumber: 1,
-      name: 'Yankees Year 4',
-      season: 4,
-      day: 88,
-      phase: 'regular',
-      schemaVersion: 11,
-      hasSnapshot: true,
-      snapshot: {
-        schemaVersion: 11,
+    mockedLoadGameSafe.mockResolvedValue({
+      status: 'ok',
+      save: {
+        id: 'save-slot-1',
+        slotNumber: 1,
+        name: 'Yankees Year 4',
         season: 4,
         day: 88,
         phase: 'regular',
+        schemaVersion: 11,
+        hasSnapshot: true,
+        snapshot: {
+          schemaVersion: 11,
+          season: 4,
+          day: 88,
+          phase: 'regular',
+        },
+        legacyState: null,
+        createdAt: '2026-04-02T00:00:00.000Z',
+        updatedAt: '2026-04-02T12:00:00.000Z',
       },
-      legacyState: null,
-      createdAt: '2026-04-02T00:00:00.000Z',
-      updatedAt: '2026-04-02T12:00:00.000Z',
+    } as never);
+    mockedRepairSave.mockResolvedValue({
+      status: 'ok',
+      save: {
+        id: 'save-slot-1',
+        slotNumber: 1,
+        name: 'Recovered Yankees Year 4',
+        season: 4,
+        day: 88,
+        phase: 'regular',
+        schemaVersion: 11,
+        hasSnapshot: true,
+        snapshot: {
+          schemaVersion: 11,
+          season: 4,
+          day: 88,
+          phase: 'regular',
+        },
+        legacyState: null,
+        createdAt: '2026-04-02T00:00:00.000Z',
+        updatedAt: '2026-04-02T12:00:00.000Z',
+      },
     } as never);
   });
 
@@ -272,7 +301,7 @@ describe('SetupPage', () => {
       await Promise.resolve();
     });
 
-    expect(mockedLoadGame).toHaveBeenCalledWith(1);
+    expect(mockedLoadGameSafe).toHaveBeenCalledWith(1);
     expect(vi.mocked(workerMock.importSnapshot)).toHaveBeenCalled();
     expect(storeMock.initializeGame).toHaveBeenCalled();
     expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
@@ -287,5 +316,51 @@ describe('SetupPage', () => {
     });
 
     expect(mockedDeleteSave).toHaveBeenCalledWith(1);
+  });
+
+  it('offers repair, fresh start, and delete actions when a save is corrupt', async () => {
+    mockedLoadGameSafe.mockResolvedValueOnce({
+      status: 'corrupt',
+      slot: 1,
+      message: 'Snapshot payload is invalid.',
+    } as never);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <SetupPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const continueButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Continue'),
+    );
+
+    await act(async () => {
+      continueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Try to repair');
+    expect(container.textContent).toContain('Start fresh');
+    expect(container.textContent).toContain('Delete this save');
+
+    const repairButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Try to repair'),
+    );
+
+    await act(async () => {
+      repairButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedRepairSave).toHaveBeenCalledWith(1);
+    expect(vi.mocked(workerMock.importSnapshot)).toHaveBeenCalled();
+    expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
   });
 });

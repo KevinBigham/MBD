@@ -148,6 +148,34 @@ describe('evaluateTradeProposal', () => {
 
     expect(result.decision).toBe('rejected');
   });
+
+  it('rejects proposals that reference missing player ids instead of throwing', () => {
+    const roster = generateTeamRoster(new GameRNG(2004), 'NYY').filter((player) => player.rosterStatus === 'MLB');
+    const opponent = generateTeamRoster(new GameRNG(2005), 'BOS').filter((player) => player.rosterStatus === 'MLB');
+    const proposal: TradeProposal = {
+      id: 'missing-player-test',
+      fromTeamId: 'NYY',
+      toTeamId: 'BOS',
+      playersOffered: ['missing-offer'],
+      playersRequested: [opponent[0]!.id],
+      status: 'proposed',
+      reason: 'Broken trade payload',
+    };
+
+    const result = evaluateTradeProposal(
+      new GameRNG(2006),
+      proposal,
+      roster,
+      opponent,
+      'analytical',
+      false,
+    );
+
+    expect(result).toMatchObject({
+      decision: 'rejected',
+      reason: 'Invalid trade: missing players.',
+    });
+  });
 });
 
 describe('generateAITradeOffers', () => {

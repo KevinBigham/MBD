@@ -9,7 +9,7 @@ import {
   useAudioPreferencesStore,
 } from '@/shared/hooks/useAudioPreferencesStore';
 import { resetAudioEngineForTest } from '@/shared/lib/audio';
-import { listSaves } from '@/shared/lib/saveSystem';
+import { listSaves, loadGameSafe, repairSave } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -24,12 +24,16 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   deleteSave: vi.fn(),
   listSaves: vi.fn(),
   loadGame: vi.fn(),
+  loadGameSafe: vi.fn(),
+  repairSave: vi.fn(),
   saveGame: vi.fn(),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedListSaves = vi.mocked(listSaves);
+const mockedLoadGameSafe = vi.mocked(loadGameSafe);
+const mockedRepairSave = vi.mocked(repairSave);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -93,6 +97,50 @@ describe('SettingsPage', () => {
     } as unknown as ReturnType<typeof useGameStore>);
 
     mockedListSaves.mockResolvedValue([]);
+    mockedLoadGameSafe.mockResolvedValue({
+      status: 'ok',
+      save: {
+        id: 'save-slot-1',
+        slotNumber: 1,
+        name: 'Healthy Save',
+        season: 3,
+        day: 87,
+        phase: 'regular',
+        schemaVersion: 11,
+        hasSnapshot: true,
+        snapshot: {
+          schemaVersion: 11,
+          season: 3,
+          day: 87,
+          phase: 'regular',
+        },
+        legacyState: null,
+        createdAt: '2026-04-02T00:00:00.000Z',
+        updatedAt: '2026-04-02T12:00:00.000Z',
+      },
+    } as never);
+    mockedRepairSave.mockResolvedValue({
+      status: 'ok',
+      save: {
+        id: 'save-slot-1',
+        slotNumber: 1,
+        name: 'Recovered Save',
+        season: 3,
+        day: 87,
+        phase: 'regular',
+        schemaVersion: 11,
+        hasSnapshot: true,
+        snapshot: {
+          schemaVersion: 11,
+          season: 3,
+          day: 87,
+          phase: 'regular',
+        },
+        legacyState: null,
+        createdAt: '2026-04-02T00:00:00.000Z',
+        updatedAt: '2026-04-02T12:00:00.000Z',
+      },
+    } as never);
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -151,5 +199,53 @@ describe('SettingsPage', () => {
 
     expect(useAudioPreferencesStore.getState().volume).toBe(0.42);
     expect(container.textContent).toContain('42%');
+  });
+
+  it('shows the recovery options when a save slot is corrupt', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      importSnapshot: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+    mockedListSaves.mockResolvedValueOnce([
+      {
+        id: 'save-slot-1',
+        slotNumber: 1,
+        name: 'Broken Save',
+        season: 3,
+        day: 87,
+        phase: 'regular',
+        schemaVersion: 11,
+        hasSnapshot: true,
+        snapshot: null,
+        legacyState: null,
+        createdAt: '2026-04-02T00:00:00.000Z',
+        updatedAt: '2026-04-02T12:00:00.000Z',
+      },
+    ] as never);
+    mockedLoadGameSafe.mockResolvedValueOnce({
+      status: 'corrupt',
+      slot: 1,
+      message: 'Snapshot payload is invalid.',
+    } as never);
+
+    await act(async () => {
+      root.render(<SettingsPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const loadButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Load'),
+    );
+
+    await act(async () => {
+      loadButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Try to repair');
+    expect(container.textContent).toContain('Delete this save');
+    expect(container.textContent).toContain('Start fresh');
   });
 });

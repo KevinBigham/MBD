@@ -30,6 +30,12 @@ export interface SaveData {
   gameState?: string;
 }
 
+export type SaveInspectionResult =
+  | { status: 'ok'; slot: number; save: SaveData }
+  | { status: 'empty'; slot: number }
+  | { status: 'legacy'; slot: number; save: SaveData; message: string }
+  | { status: 'corrupt'; slot: number; message: string; raw?: Partial<SaveData> | null };
+
 interface AutoSaveJob {
   slot: number;
   name: string;
@@ -82,6 +88,27 @@ class MBDDatabase extends Dexie {
 }
 
 export const db = new MBDDatabase();
+
+function tryParseSnapshot(snapshotLike: unknown): GameSnapshot | null {
+  try {
+    return snapshotLike ? parseGameSnapshot(snapshotLike) : null;
+  } catch {
+    return null;
+  }
+}
+
+function tryParseLegacySnapshot(legacyState: string | null | undefined): GameSnapshot | null {
+  if (!legacyState) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(legacyState) as unknown;
+    return parseGameSnapshot(parsed);
+  } catch {
+    return null;
+  }
+}
 
 function scheduleOnIdle(callback: () => void): IdleCancel {
   const globalWindow = typeof window !== 'undefined' ? window : null;
@@ -178,7 +205,7 @@ export function createAutoSaveScheduler(
 }
 
 export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
-  const snapshot = raw.snapshot ? parseGameSnapshot(raw.snapshot) : null;
+  const snapshot = tryParseSnapshot(raw.snapshot);
 
   return {
     id: raw.id ?? `save-slot-${raw.slotNumber ?? 1}`,
@@ -193,6 +220,50 @@ export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
     legacyState: raw.legacyState ?? raw.gameState ?? null,
     createdAt: raw.createdAt ?? new Date(0).toISOString(),
     updatedAt: raw.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+function inspectRawSaveRecord(slot: number, raw: Partial<SaveData> | undefined): SaveInspectionResult {
+  if (!raw) {
+    return { status: 'empty', slot };
+  }
+
+  const snapshot = tryParseSnapshot(raw.snapshot);
+  if (snapshot) {
+    return {
+      status: 'ok',
+      slot,
+      save: normalizeLoadedSaveRecord({
+        ...raw,
+        snapshot,
+      }),
+    };
+  }
+
+  const normalized = normalizeLoadedSaveRecord(raw);
+  if (normalized.legacyState) {
+    return {
+      status: 'legacy',
+      slot,
+      save: normalized,
+      message: 'This save needs repair before it can be loaded.',
+    };
+  }
+
+  if (raw.snapshot != null || raw.hasSnapshot) {
+    return {
+      status: 'corrupt',
+      slot,
+      message: 'This save could not be parsed.',
+      raw,
+    };
+  }
+
+  return {
+    status: 'legacy',
+    slot,
+    save: normalized,
+    message: 'This save only has legacy metadata and needs repair before it can be loaded.',
   };
 }
 
@@ -262,6 +333,17 @@ export async function loadGame(
   }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
+export async function inspectSave(slot: number): Promise<SaveInspectionResult> {
+  return measureAsyncOperation('save.inspect', async () => {
+    const raw = await db.saves.get(`save-slot-${slot}`);
+    return inspectRawSaveRecord(slot, raw);
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
+}
+
+export async function loadGameSafe(slot: number): Promise<SaveInspectionResult> {
+  return inspectSave(slot);
+}
+
 export async function listSaves(): Promise<SaveData[]> {
   const saves = await db.saves.orderBy('slotNumber').toArray();
   return saves.map(normalizeLoadedSaveRecord);
@@ -277,6 +359,34 @@ export async function loadMostRecentSnapshot(): Promise<SaveData | undefined> {
 export async function deleteSave(slot: number): Promise<void> {
   const id = `save-slot-${slot}`;
   await db.saves.delete(id);
+}
+
+export async function repairSave(slot: number): Promise<SaveInspectionResult> {
+  const id = `save-slot-${slot}`;
+  return measureAsyncOperation('save.repair', async () => {
+    const raw = await db.saves.get(id);
+    if (!raw) {
+      return { status: 'empty', slot } as SaveInspectionResult;
+    }
+
+    const repairedSnapshot = tryParseSnapshot(raw.snapshot) ?? tryParseLegacySnapshot(raw.legacyState ?? raw.gameState);
+    if (!repairedSnapshot) {
+      return {
+        status: 'corrupt',
+        slot,
+        message: 'Unable to repair this save.',
+        raw,
+      } satisfies SaveInspectionResult;
+    }
+
+    const repairedRecord = buildSaveRecord(slot, raw.name ?? `Slot ${slot}`, repairedSnapshot, raw as SaveData);
+    await db.saves.put(repairedRecord);
+    return {
+      status: 'ok',
+      slot,
+      save: repairedRecord,
+    } satisfies SaveInspectionResult;
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
 const autoSaveScheduler = createAutoSaveScheduler((job) =>

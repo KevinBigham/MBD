@@ -7,8 +7,11 @@ import {
   createAutoSaveScheduler,
   db,
   flushAutoSaveQueueForTesting,
+  inspectSave,
   loadGame,
+  loadGameSafe,
   normalizeLoadedSaveRecord,
+  repairSave,
   saveGame,
   scheduleAutoSave,
 } from './saveSystem';
@@ -443,5 +446,83 @@ describe('saveSystem helpers', () => {
     await scheduled;
 
     expect(putSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks an invalid snapshot payload as corrupt instead of throwing during inspection', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Broken Save',
+      season: 5,
+      day: 44,
+      phase: 'regular',
+      schemaVersion: 11,
+      hasSnapshot: true,
+      snapshot: { schemaVersion: 11, broken: true },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadGameSafe(2)).resolves.toMatchObject({
+      status: 'corrupt',
+      slot: 2,
+    });
+    await expect(inspectSave(2)).resolves.toMatchObject({
+      status: 'corrupt',
+      slot: 2,
+    });
+  });
+
+  it('repairs a legacy snapshot payload and promotes it into the canonical v11 save shape', async () => {
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-3' as never);
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-3',
+      slotNumber: 3,
+      name: 'Repairable Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 1,
+      hasSnapshot: false,
+      snapshot: null,
+      legacyState: JSON.stringify(createSnapshot()),
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    const repaired = await repairSave(3);
+
+    expect(repaired).toMatchObject({
+      status: 'ok',
+      save: expect.objectContaining({
+        slotNumber: 3,
+        schemaVersion: 11,
+        hasSnapshot: true,
+      }),
+    });
+    expect(putSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a corrupt repair result when no migration path can salvage the record', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-4',
+      slotNumber: 4,
+      name: 'Unrepairable Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 1,
+      hasSnapshot: false,
+      snapshot: null,
+      legacyState: '{"broken-json"',
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(repairSave(4)).resolves.toMatchObject({
+      status: 'corrupt',
+      slot: 4,
+    });
   });
 });

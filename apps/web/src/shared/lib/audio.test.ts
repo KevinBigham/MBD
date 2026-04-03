@@ -235,4 +235,22 @@ describe('AudioEngine', () => {
     expect(engine.hasContext()).toBe(false);
     expect(engine.hasActiveAmbient()).toBe(false);
   });
+
+  it('gracefully stays silent when the browser blocks audio context creation', () => {
+    const engine = new AudioEngine({
+      createContext: () => {
+        throw new Error('Audio context blocked');
+      },
+      prefersReducedMotion: () => false,
+    });
+
+    expect(() => {
+      engine.setMuted(false);
+      engine.playEffect('button_click');
+      engine.setAmbient('office');
+    }).not.toThrow();
+
+    expect(engine.hasContext()).toBe(false);
+    expect(engine.hasActiveAmbient()).toBe(false);
+  });
 });

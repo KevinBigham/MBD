@@ -3,13 +3,16 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Play, PlusCircle, Shield, Trash2, Trophy } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
 import {
   SAVE_SLOTS,
   deleteSave,
   listSaves,
-  loadGame,
+  loadGameSafe,
+  repairSave,
   saveGame,
   type SaveData,
+  type SaveInspectionResult,
 } from '@/shared/lib/saveSystem';
 
 type SetupDifficulty = 'easy' | 'standard' | 'hard';
@@ -107,6 +110,10 @@ export default function SetupPage() {
   const [difficulty, setDifficulty] = useState<SetupDifficulty>('standard');
   const [gmName, setGmName] = useState<string>(() => generateDefaultGMName(Date.now()));
   const [preview, setPreview] = useState<SetupPreview | null>(null);
+  const [recoveryState, setRecoveryState] = useState<{
+    slot: number;
+    message: string;
+  } | null>(null);
 
   const refreshSaves = useCallback(async () => {
     const nextSaves = await listSaves();
@@ -146,25 +153,18 @@ export default function SetupPage() {
     setBusySlot(slot);
     setStatus('');
     try {
-      const save = await loadGame(slot);
-      if (!save?.snapshot) {
-        setStatus(`Slot ${slot} cannot be resumed.`);
+      const result = await loadGameSafe(slot);
+      if (result.status !== 'ok') {
+        setRecoveryState({
+          slot,
+          message: result.status === 'empty'
+            ? `Slot ${slot} is empty.`
+            : result.message,
+        });
         return;
       }
 
-      const result = await worker.importSnapshot(save.snapshot);
-      initializeGame({
-        season: result.season,
-        day: result.day,
-        phase: result.phase,
-        playerCount: result.playerCount,
-        userTeamId: result.userTeamId,
-        teamName: result.teamName,
-        gmName: result.gmName,
-        difficulty: result.difficulty,
-        activeSaveSlot: slot,
-      });
-      navigate('/dashboard');
+      await continueFromInspection(result);
     } catch (error) {
       console.error('Failed to continue save:', error);
       setStatus(`Failed to load slot ${slot}.`);
@@ -178,6 +178,7 @@ export default function SetupPage() {
     setStatus('');
     try {
       await deleteSave(slot);
+      setRecoveryState((current) => (current?.slot === slot ? null : current));
       await refreshSaves();
     } catch (error) {
       console.error('Failed to delete save:', error);
@@ -185,6 +186,50 @@ export default function SetupPage() {
     } finally {
       setBusySlot(null);
     }
+  }
+
+  async function continueFromInspection(result: Extract<SaveInspectionResult, { status: 'ok' }>) {
+    const imported = await worker.importSnapshot(result.save.snapshot);
+    initializeGame({
+      season: imported.season,
+      day: imported.day,
+      phase: imported.phase,
+      playerCount: imported.playerCount,
+      userTeamId: imported.userTeamId,
+      teamName: imported.teamName,
+      gmName: imported.gmName,
+      difficulty: imported.difficulty,
+      activeSaveSlot: result.slot,
+    });
+    navigate('/dashboard');
+  }
+
+  async function handleRepair(slot: number) {
+    setBusySlot(slot);
+    setStatus('');
+    try {
+      const repaired = await repairSave(slot);
+      if (repaired.status !== 'ok') {
+        setStatus(`Unable to repair slot ${slot}.`);
+        return;
+      }
+
+      setRecoveryState(null);
+      await refreshSaves();
+      await continueFromInspection(repaired);
+    } catch (error) {
+      console.error('Failed to repair save:', error);
+      setStatus(`Failed to repair slot ${slot}.`);
+    } finally {
+      setBusySlot(null);
+    }
+  }
+
+  async function handleStartFresh(slot: number) {
+    await handleDelete(slot);
+    setRecoveryState(null);
+    setSelectedSlot(slot);
+    openWizard();
   }
 
   function openWizard() {
@@ -265,12 +310,24 @@ export default function SetupPage() {
               </button>
             </div>
           </div>
-          {status ? (
-            <div className="mt-4 rounded-lg border border-accent-warning/40 bg-accent-warning/10 px-4 py-3 font-heading text-sm text-accent-warning">
-              {status}
-            </div>
-          ) : null}
+      {status ? (
+        <div className="mt-4 rounded-lg border border-accent-warning/40 bg-accent-warning/10 px-4 py-3 font-heading text-sm text-accent-warning">
+          {status}
+        </div>
+      ) : null}
         </section>
+
+        {recoveryState ? (
+          <SaveRecoveryDialog
+            slot={recoveryState.slot}
+            message={recoveryState.message}
+            busy={busySlot === recoveryState.slot}
+            onRepair={() => void handleRepair(recoveryState.slot)}
+            onStartFresh={() => void handleStartFresh(recoveryState.slot)}
+            onDelete={() => void handleDelete(recoveryState.slot)}
+            onClose={() => setRecoveryState(null)}
+          />
+        ) : null}
 
         <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
           <div className="flex items-center justify-between gap-4">
