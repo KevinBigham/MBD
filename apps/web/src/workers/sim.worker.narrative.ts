@@ -25,11 +25,13 @@ import {
   evaluatePlayerTradeValue,
   finalizeAwardResults,
   finalizeSeasonRivalries,
+  generateJobMarket,
   getPersonalityArchetype,
   getRivalry,
   getTeamBudget,
   getTeamById,
   getUnreadNews,
+  processGMFiring,
   recordRivalryGame,
   seedHistoricalRivalries,
   TEAMS,
@@ -280,12 +282,30 @@ function syncUserOwnerEscalation(
   ) {
     const endReason = 'Owner fired the GM after satisfaction collapsed.';
     setStoryFlag(state, state.userTeamId, ownerFlag('fired', state.season));
-    state.franchise = {
-      ...state.franchise,
-      status: 'fired',
-      endedAt: `S${state.season}D${state.day}`,
-      endReason,
-    };
+    if (state.franchise.playMode === 'career') {
+      const standings = Object.values(state.seasonState.standings.getFullStandings())
+        .flatMap((division) => division)
+        .map((entry) => ({
+          teamId: entry.teamId,
+          wins: entry.wins,
+          losses: entry.losses,
+        }));
+      state.gmCareer = processGMFiring(state.gmCareer, endReason, state.season);
+      state.jobMarket = generateJobMarket(state.rng.fork(), state.gmCareer, TEAMS, standings);
+      state.franchise = {
+        ...state.franchise,
+        status: 'active',
+        endedAt: null,
+        endReason: null,
+      };
+    } else {
+      state.franchise = {
+        ...state.franchise,
+        status: 'fired',
+        endedAt: `S${state.season}D${state.day}`,
+        endReason,
+      };
+    }
     pushNarrativeStory(
       state,
       {
@@ -305,7 +325,9 @@ function syncUserOwnerEscalation(
         category: 'owner',
         tag: 'BREAKING',
         headline: 'The front office has been dismissed.',
-        body: 'This dynasty is now locked in read-only mode. History remains available for review.',
+        body: state.franchise.playMode === 'career'
+          ? 'Career mode continues through the job market. Review the available openings and apply for a new club.'
+          : 'This dynasty is now locked in read-only mode. History remains available for review.',
         relatedTeamIds: [state.userTeamId],
         relatedPlayerIds: [],
         timestamp: `S${state.season}D${state.day}`,

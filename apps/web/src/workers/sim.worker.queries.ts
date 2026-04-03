@@ -1017,6 +1017,14 @@ export const queryApi = {
     return s.frontOfficeState.get(teamId ?? s.userTeamId) ?? null;
   },
 
+  getGMCareer() {
+    return requireState().gmCareer;
+  },
+
+  getJobMarket() {
+    return requireState().jobMarket;
+  },
+
   getPersonalityProfile(playerId: string) {
     return getPersonalityProfileForPlayer(requireState(), playerId);
   },

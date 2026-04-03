@@ -1,4 +1,5 @@
 import {
+  applyForJob as applyForJobCareer,
   autoFillMLBRoster,
   GameRNG,
   TEAMS,
@@ -14,6 +15,8 @@ import {
   dfaPlayer,
   evaluateTradeProposal,
   executeTrade,
+  createFrontOfficeState,
+  createOwnerState,
   generateDraftClass,
   generateCoachFreeAgents,
   generateCoachingStaff,
@@ -21,6 +24,7 @@ import {
   generateLeaguePlayers,
   generateSchedule,
   generateScoutingStaff,
+  getTeamBudget,
   getRegularSeasonMonthForDay,
   getTeamById,
   initializePlayerDevelopmentProfile,
@@ -189,11 +193,14 @@ function applyAISigningProgress(
 }
 
 function franchiseLockMessage(s: FullGameState): string {
+  if (s.gmCareer.jobSearchActive) {
+    return s.gmCareer.lastFiredReason ?? 'The GM has been dismissed and must accept a new job before continuing.';
+  }
   return s.franchise.endReason ?? 'Owner fired the GM. This dynasty is now read-only.';
 }
 
 function syncFranchiseTerminationFromOwner(s: FullGameState): boolean {
-  return s.franchise.status === 'fired';
+  return s.franchise.status === 'fired' || s.gmCareer.jobSearchActive;
 }
 
 function blockedSimResult(s: FullGameState): SimResultDTO {
@@ -853,6 +860,39 @@ export const actionApi = {
 
   dismissCeremonyMoment(momentId: string) {
     return dismissCeremonyMomentState(requireState(), momentId);
+  },
+
+  applyForJob(teamId: string) {
+    const s = requireState();
+    if (!s.gmCareer.jobSearchActive) {
+      return { success: false as const, error: 'No active job search.' };
+    }
+
+    if (!s.jobMarket.availableJobs.some((job) => job.teamId === teamId)) {
+      return { success: false as const, error: 'Job opening not available.' };
+    }
+
+    s.gmCareer = applyForJobCareer(s.gmCareer, teamId, s.season);
+    s.userTeamId = teamId;
+    s.jobMarket = {
+      availableJobs: [],
+      applicationDeadlineSeason: null,
+    };
+    s.franchise = createDefaultFranchiseState(teamId, s.season, s.day, {
+      gmName: s.franchise.gmName,
+      difficulty: s.franchise.difficulty,
+      playMode: s.franchise.playMode,
+      createdAt: s.franchise.createdAt,
+      onboarding: s.franchise.onboarding,
+    });
+    s.ownerState.set(teamId, createOwnerState(teamId, getTeamBudget(teamId)));
+    s.frontOfficeState.set(teamId, createFrontOfficeState(teamId));
+
+    return {
+      success: true as const,
+      teamId,
+      teamName: s.franchise.teamName,
+    };
   },
 
   simToPlayoffs(): SimResultDTO {

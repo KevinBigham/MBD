@@ -199,6 +199,21 @@ export type {
 
 // Sim
 export {
+  initializeGMCareer,
+  recordSeasonResult,
+  processGMFiring,
+  applyForJob,
+  getCareerLegacyScore,
+  generateJobMarket,
+} from './career/index.js';
+export type {
+  CareerStandingsEntry,
+  GMCareer,
+  GMCareerEntry,
+  JobMarket,
+  JobOpening,
+} from './career/index.js';
+export {
   REGULAR_SEASON_MONTHS,
   getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,

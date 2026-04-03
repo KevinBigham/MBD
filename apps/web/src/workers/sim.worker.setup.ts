@@ -1,4 +1,4 @@
-import type { Difficulty } from '@mbd/contracts';
+import type { Difficulty, PlayMode } from '@mbd/contracts';
 import {
   GameRNG,
   TEAMS,
@@ -17,6 +17,7 @@ import {
   generateScoutingStaff,
   getTeamBudget,
   getTeamById,
+  initializeGMCareer,
   initializePlayerDevelopmentProfile,
   seedHistoricalRivalries,
   toDisplayRating,
@@ -42,6 +43,7 @@ export interface NewGameOptions {
   gmName: string;
   difficulty: Difficulty;
   saveSlot: number;
+  playMode?: PlayMode;
 }
 
 export interface SetupPreview {
@@ -249,6 +251,21 @@ function teamIdentityBlurb(teamId: string, payrollTier: string, farmSystemRating
   return `${team?.city ?? teamId.toUpperCase()} enters with ${marketLine}. ${pipelineLine}`;
 }
 
+function createEmptyJobMarket() {
+  return {
+    availableJobs: [],
+    applicationDeadlineSeason: null,
+  };
+}
+
+function createDefaultFanSentiment(season: number, day: number) {
+  return {
+    score: 50,
+    summary: 'Fan sentiment is stable.',
+    updatedAt: `S${season}D${day}`,
+  };
+}
+
 export function buildNewGameState(options: NewGameOptions): FullGameState {
   const rng = new GameRNG(options.seed);
   const teamIds = TEAMS.map((team) => team.id);
@@ -292,6 +309,8 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     seasonHistory: [],
     careerStats: [],
   });
+  const playMode = options.playMode ?? 'standard';
+  const gmCareer = initializeGMCareer(new GameRNG(options.seed + 40_001), options.userTeamId, options.gmName, 1);
 
   return {
     rng,
@@ -340,10 +359,18 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     mentorRelationships: [],
     frontOfficeState,
     seasonHistory: [],
+    gmCareer,
+    jobMarket: createEmptyJobMarket(),
+    consequenceWatchers: [],
+    fanSentiment: createDefaultFanSentiment(1, 1),
+    scoutConflicts: [],
+    dynastyCards: [],
+    challengeState: null,
     tradeState: createEmptyTradeState(),
     franchise: createDefaultFranchiseState(options.userTeamId, 1, 1, {
       gmName: options.gmName,
       difficulty: options.difficulty,
+      playMode,
       onboarding: {
         welcomeBriefingSeen: false,
         firstMonthlyPulseSeen: false,

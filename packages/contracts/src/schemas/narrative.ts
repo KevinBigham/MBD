@@ -399,6 +399,146 @@ export const FrontOfficeStateSchema = z.object({
 });
 export type FrontOfficeState = z.infer<typeof FrontOfficeStateSchema>;
 
+export const WinLossRecordSchema = z.object({
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+});
+export type WinLossRecord = z.infer<typeof WinLossRecordSchema>;
+
+export const GMCareerEntrySchema = z.object({
+  teamId: z.string(),
+  seasons: z.number().int().min(0),
+  record: WinLossRecordSchema,
+  championships: z.number().int().min(0),
+  hiredSeason: z.number().int().min(1),
+  firedSeason: z.number().int().min(1).nullable(),
+  firedReason: z.string().nullable(),
+  reputation: z.number().min(0).max(100),
+});
+export type GMCareerEntry = z.infer<typeof GMCareerEntrySchema>;
+
+export const GMCareerSchema = z.object({
+  careerHistory: z.array(GMCareerEntrySchema).default([]),
+  currentTeamId: z.string(),
+  reputation: z.number().min(0).max(100),
+  overallRecord: WinLossRecordSchema,
+  championships: z.number().int().min(0),
+  hiredSeason: z.number().int().min(1),
+  firedSeasons: z.array(z.number().int().min(1)).default([]),
+  careerAchievements: z.array(z.string()).default([]),
+  jobSearchActive: z.boolean().default(false),
+  lastFiredReason: z.string().nullable().default(null),
+});
+export type GMCareer = z.infer<typeof GMCareerSchema>;
+
+export const JobOpeningSchema = z.object({
+  teamId: z.string(),
+  ownerArchetype: z.string().min(1),
+  budget: z.string().min(1),
+  expectations: z.string().min(1),
+  difficulty: z.string().min(1),
+  attractiveness: z.number(),
+});
+export type JobOpening = z.infer<typeof JobOpeningSchema>;
+
+export const JobMarketSchema = z.object({
+  availableJobs: z.array(JobOpeningSchema).default([]),
+  applicationDeadlineSeason: z.number().int().min(1).nullable().default(null),
+});
+export type JobMarket = z.infer<typeof JobMarketSchema>;
+
+export const ConsequenceWatcherSchema = z.object({
+  id: z.string(),
+  type: z.string().min(1),
+  createdSeason: z.number().int().min(1),
+  createdDay: z.number().int().min(1),
+  expiresDay: z.number().int().min(1),
+  context: z.record(z.string(), z.unknown()).default({}),
+  resolved: z.boolean().default(false),
+});
+export type ConsequenceWatcher = z.infer<typeof ConsequenceWatcherSchema>;
+
+export const FanSentimentSchema = z.object({
+  score: z.number().min(0).max(100),
+  summary: z.string(),
+  updatedAt: z.string(),
+});
+export type FanSentiment = z.infer<typeof FanSentimentSchema>;
+
+export const ScoutOpinionSourceEnum = z.enum([
+  "scout_director",
+  "analytics_head",
+  "manager",
+]);
+export type ScoutOpinionSource = z.infer<typeof ScoutOpinionSourceEnum>;
+
+export const ScoutOpinionSchema = z.object({
+  source: ScoutOpinionSourceEnum,
+  overallGrade: z.number().int().min(20).max(80),
+  ceiling: z.number().int().min(20).max(80),
+  floor: z.number().int().min(20).max(80),
+  summary: z.string().min(1),
+  confidence: z.number().int().min(1).max(20),
+});
+export type ScoutOpinion = z.infer<typeof ScoutOpinionSchema>;
+
+export const ScoutConflictSchema = z.object({
+  prospectId: z.string(),
+  teamId: z.string().nullable().default(null),
+  prospectType: z.enum(["draft", "ifa"]),
+  createdSeason: z.number().int().min(1),
+  resolutionSeason: z.number().int().min(1),
+  resolved: z.boolean().default(false),
+  headline: z.string().min(1),
+  opinions: z.array(ScoutOpinionSchema).length(3),
+  winningSource: ScoutOpinionSourceEnum.nullable().default(null),
+  outcomeSummary: z.string().nullable().default(null),
+});
+export type ScoutConflict = z.infer<typeof ScoutConflictSchema>;
+
+export const DynastyCardTypeEnum = z.enum([
+  "championship_run",
+  "draft_class",
+  "trade_network",
+  "farm_pipeline",
+  "career_overview",
+  "season_recap",
+  "underdog_story",
+  "scenario_complete",
+]);
+export type DynastyCardType = z.infer<typeof DynastyCardTypeEnum>;
+
+export const DynastyCardStatSchema = z.object({
+  label: z.string().min(1),
+  value: z.string().min(1),
+});
+export type DynastyCardStat = z.infer<typeof DynastyCardStatSchema>;
+
+export const DynastyCardSchema = z.object({
+  id: z.string(),
+  type: DynastyCardTypeEnum,
+  title: z.string().min(1),
+  subtitle: z.string().min(1),
+  stats: z.array(DynastyCardStatSchema).default([]),
+  highlights: z.array(z.string()).default([]),
+  generatedAt: z.string(),
+  teamId: z.string().nullable().default(null),
+  season: z.number().int().min(1).nullable().default(null),
+  textSummary: z.string().min(1).default(""),
+});
+export type DynastyCard = z.infer<typeof DynastyCardSchema>;
+
+export const ChallengeStateSchema = z.object({
+  scenarioId: z.string(),
+  startSeason: z.number().int().min(1),
+  maxSeasons: z.number().int().min(1),
+  progress: z.number().min(0).max(1),
+  completed: z.boolean(),
+  completedSeason: z.number().int().min(1).nullable().default(null),
+  summary: z.string().min(1),
+});
+export type ChallengeState = z.infer<typeof ChallengeStateSchema>;
+
 export const SeasonArchiveStandingSchema = z.object({
   teamId: z.string(),
   wins: z.number().int().min(0),

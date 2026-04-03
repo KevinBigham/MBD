@@ -202,6 +202,18 @@ describe('DashboardPage', () => {
         recap: null,
       }),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
+      getGMCareer: vi.fn().mockResolvedValue({
+        currentTeamId: 'nyy',
+        reputation: 64,
+        overallRecord: { wins: 312, losses: 254 },
+        careerHistory: [{ teamId: 'nyy', firedSeason: null }],
+        jobSearchActive: false,
+        lastFiredReason: null,
+      }),
+      getJobMarket: vi.fn().mockResolvedValue({
+        availableJobs: [],
+      }),
+      applyForJob: vi.fn().mockResolvedValue({ success: true, teamId: 'bos', teamName: 'Boston Red Sox' }),
     } as unknown as ReturnType<typeof useWorker>);
   });
 
@@ -255,6 +267,9 @@ describe('DashboardPage', () => {
       getDashboardSummary: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       getTradeDeadlineState: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
+      getGMCareer: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+      getJobMarket: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+      applyForJob: vi.fn().mockResolvedValue({ success: true }),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -266,5 +281,135 @@ describe('DashboardPage', () => {
     });
 
     expect(container.querySelector('[data-testid="dashboard-loading"]')).toBeTruthy();
+  });
+
+  it('shows the career job market and lets the user take over a new team', async () => {
+    const applyForJob = vi.fn().mockResolvedValue({ success: true, teamId: 'bos', teamName: 'Boston Red Sox' });
+    const initializeGame = vi.fn();
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 88,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      activeSaveSlot: 2,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame,
+    });
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getDashboardSummary: vi.fn().mockResolvedValue({
+        franchise: {
+          teamName: 'New York Yankees',
+          abbreviation: 'NYY',
+          gmName: 'Alex Rivera',
+          difficulty: 'hard',
+          welcomeBriefingPending: false,
+          season: 4,
+          record: '50-38',
+          division: 'AL_EAST',
+          divisionRank: 1,
+          dynasty: { score: 215, grade: 'B' },
+          status: 'active',
+          endReason: null,
+          owner: null,
+          chemistry: null,
+          frontOffice: {
+            reputation: 64,
+            summary: 'The front office has built real credibility around the league.',
+          },
+        },
+        momentum: {
+          last10: '7-3',
+          streak: 'W3',
+          runDifferential: 21,
+          seasonRunDiffPerGame: 0.24,
+          last30RunDiffPerGame: 0.48,
+          playoffProbability: 74,
+        },
+        roster: {
+          topPerformers: [],
+          injuredCount: 0,
+          nextReturnDays: null,
+          payroll: 212.4,
+          budget: 235,
+          luxuryTax: 16.2,
+        },
+        intel: {
+          tradeInboxCount: 0,
+          expiringContracts: [],
+          topProspect: null,
+          rivalries: [],
+        },
+        divisionStandings: [],
+        pressRoom: {
+          latest: null,
+          feed: [],
+          briefingCount: 0,
+          newsCount: 0,
+        },
+      }),
+      getTradeDeadlineState: vi.fn().mockResolvedValue(null),
+      dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
+      getGMCareer: vi.fn().mockResolvedValue({
+        currentTeamId: 'nyy',
+        reputation: 58,
+        overallRecord: { wins: 312, losses: 254 },
+        careerHistory: [{ teamId: 'nyy', firedSeason: 4 }],
+        jobSearchActive: true,
+        lastFiredReason: 'Owner fired the GM after satisfaction collapsed.',
+      }),
+      getJobMarket: vi.fn().mockResolvedValue({
+        availableJobs: [
+          {
+            teamId: 'bos',
+            budget: 'Premier budget',
+            expectations: 'Win now',
+            difficulty: 'High pressure',
+            attractiveness: 88,
+          },
+        ],
+      }),
+      applyForJob,
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Career Crossroads');
+    expect(container.textContent).toContain('Take Over BOS');
+
+    const takeOverButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Take Over BOS'),
+    );
+    await act(async () => {
+      takeOverButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(applyForJob).toHaveBeenCalledWith('bos');
+    expect(initializeGame).toHaveBeenCalledWith(expect.objectContaining({
+      userTeamId: 'bos',
+      teamName: 'Boston Red Sox',
+    }));
   });
 });

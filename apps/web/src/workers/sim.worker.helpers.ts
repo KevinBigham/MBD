@@ -134,14 +134,20 @@ import type {
   BriefingItem,
   CareerStatsLedger,
   CeremonyState,
+  ChallengeState,
+  ConsequenceWatcher,
+  DynastyCard,
+  FanSentiment,
   FrontOfficeState,
   DraftCompensatoryPick,
   DraftPickOwnership,
   FranchiseState,
   FranchiseTimelineEntry,
+  GMCareer,
   HallOfFameBallotEntry,
   HallOfFameEntry,
   HistoricalPlayer,
+  JobMarket,
   DraftSignability,
   MentorRelationship,
   DraftState as PersistentDraftState,
@@ -152,6 +158,7 @@ import type {
   RecordBookEntry,
   RecordWatchEntry,
   Rivalry,
+  ScoutConflict,
   SeasonArchiveEntry,
   SeasonHistoryEntry,
   TeamChemistry,
@@ -213,6 +220,13 @@ export interface FullGameState {
   mentorRelationships: MentorRelationship[];
   frontOfficeState: Map<string, FrontOfficeState>;
   seasonHistory: SeasonHistoryEntry[];
+  gmCareer: GMCareer;
+  jobMarket: JobMarket;
+  consequenceWatchers: ConsequenceWatcher[];
+  fanSentiment: FanSentiment;
+  scoutConflicts: ScoutConflict[];
+  dynastyCards: DynastyCard[];
+  challengeState: ChallengeState | null;
   tradeState: TradeState;
   franchise: FranchiseState;
   ceremony: CeremonyState;

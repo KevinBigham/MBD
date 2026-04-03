@@ -17,6 +17,7 @@ import {
 } from '@/shared/lib/saveSystem';
 
 type SetupDifficulty = 'easy' | 'standard' | 'hard';
+type SetupPlayMode = 'standard' | 'career';
 
 interface SetupPreview {
   teamId: string;
@@ -109,6 +110,7 @@ export default function SetupPage() {
   const [seed, setSeed] = useState<number>(() => Date.now());
   const [teamId, setTeamId] = useState<string>('nyy');
   const [difficulty, setDifficulty] = useState<SetupDifficulty>('standard');
+  const [playMode, setPlayMode] = useState<SetupPlayMode>('standard');
   const [gmName, setGmName] = useState<string>(() => generateDefaultGMName(Date.now()));
   const [preview, setPreview] = useState<SetupPreview | null>(null);
   const [recoveryState, setRecoveryState] = useState<{
@@ -237,6 +239,7 @@ export default function SetupPage() {
     const nextSeed = Date.now();
     setSeed(nextSeed);
     setGmName(generateDefaultGMName(nextSeed));
+    setPlayMode('standard');
     setWizardOpen(true);
     setStatus('');
   }
@@ -256,6 +259,7 @@ export default function SetupPage() {
         gmName: finalGmName,
         difficulty,
         saveSlot: selectedSlot,
+        playMode,
       });
       const snapshot = await worker.exportSnapshot();
       await saveGame(selectedSlot, `${finalGmName} • ${result.teamName}`, snapshot);
@@ -432,7 +436,7 @@ export default function SetupPage() {
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-success">New Dynasty</div>
               <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">Start in Slot {selectedSlot}</h2>
               <p className="mt-2 font-heading text-sm text-dynasty-muted">
-                Pick a club, set the challenge level, and enter the league with a GM identity that follows your legacy.
+                Pick a club, choose whether this save ends on firing or continues as a career, and enter the league with a GM identity that follows your legacy.
               </p>
 
               <div className="mt-6 space-y-5">
@@ -463,6 +467,40 @@ export default function SetupPage() {
                     <option value="hard">Hard</option>
                   </select>
                 </label>
+
+                <div>
+                  <span className="font-heading text-sm text-dynasty-textBright">Mode</span>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setPlayMode('standard')}
+                      className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                        playMode === 'standard'
+                          ? 'border-accent-primary bg-accent-primary/10'
+                          : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                      }`}
+                    >
+                      <div className="font-heading text-sm text-dynasty-textBright">Standard Dynasty</div>
+                      <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                        Traditional save. If ownership fires you, the dynasty becomes read-only.
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlayMode('career')}
+                      className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                        playMode === 'career'
+                          ? 'border-accent-primary bg-accent-primary/10'
+                          : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                      }`}
+                    >
+                      <div className="font-heading text-sm text-dynasty-textBright">GM Career</div>
+                      <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                        Firing opens the job market so the save continues with a new club.
+                      </div>
+                    </button>
+                  </div>
+                </div>
 
                 <label className="block">
                   <span className="font-heading text-sm text-dynasty-textBright">GM Name</span>

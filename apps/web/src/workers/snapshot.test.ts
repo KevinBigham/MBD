@@ -11,6 +11,7 @@ import {
   generateLeaguePlayers,
   generateSchedule,
   generateScoutingStaff,
+  initializeGMCareer,
   simulateDay,
 } from '@mbd/sim-core';
 import type {
@@ -208,6 +209,20 @@ function createState(): FullGameState {
     mentorRelationships: [],
     frontOfficeState: new Map(),
     franchise: createDefaultFranchiseState('nyy', 1, dayOne.newState.currentDay),
+    gmCareer: initializeGMCareer(new GameRNG(99), 'nyy', 'General Manager', 1),
+    jobMarket: {
+      availableJobs: [],
+      applicationDeadlineSeason: null,
+    },
+    consequenceWatchers: [],
+    fanSentiment: {
+      score: 50,
+      summary: 'Fan sentiment is stable.',
+      updatedAt: `S1D${dayOne.newState.currentDay}`,
+    },
+    scoutConflicts: [],
+    dynastyCards: [],
+    challengeState: null,
     ceremony: createEmptyCeremonyState(),
     achievements: createEmptyAchievementState(),
   };
@@ -248,7 +263,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(12);
+    expect(snapshot.schemaVersion).toBe(13);
     expect((snapshot as GameSnapshot & {
       monthlyPulse?: { pendingReport: null; decisionQueue: unknown[] };
     }).monthlyPulse).toEqual({
@@ -361,6 +376,83 @@ describe('snapshot helpers', () => {
     expect(restored.historicalPlayers.length).toBeGreaterThan(0);
     expect(restored.mentorRelationships).toEqual([]);
     expect(restored.frontOfficeState.size).toBe(0);
+  });
+
+  it('migrates v12 snapshots into the v13 career and replayability state shape', () => {
+    const original = createState();
+    original.season = 4;
+    original.franchiseTimeline = [
+      {
+        season: 1,
+        teamId: 'nyy',
+        record: '81-81',
+        winTotal: 81,
+        playoffResult: 'Missed playoffs',
+        championship: false,
+        worldSeriesAppearance: false,
+        playoffAppearance: false,
+        divisionTitle: false,
+        awardWinnerCount: 0,
+        keyAcquisitions: [],
+        keyDepartures: [],
+        dynastyScore: 10,
+      },
+      {
+        season: 2,
+        teamId: 'nyy',
+        record: '93-69',
+        winTotal: 93,
+        playoffResult: 'World Series champion',
+        championship: true,
+        worldSeriesAppearance: true,
+        playoffAppearance: true,
+        divisionTitle: true,
+        awardWinnerCount: 2,
+        keyAcquisitions: [],
+        keyDepartures: [],
+        dynastyScore: 35,
+      },
+      {
+        season: 3,
+        teamId: 'nyy',
+        record: '88-74',
+        winTotal: 88,
+        playoffResult: 'Division Series exit',
+        championship: false,
+        worldSeriesAppearance: false,
+        playoffAppearance: true,
+        divisionTitle: false,
+        awardWinnerCount: 1,
+        keyAcquisitions: [],
+        keyDepartures: [],
+        dynastyScore: 42,
+      },
+    ];
+    const userRecord = original.seasonState.standings.getRecord('nyy');
+    if (!userRecord) {
+      throw new Error('Expected user record');
+    }
+    userRecord.wins = 76;
+    userRecord.losses = 54;
+
+    const exported = exportGameSnapshot(original) as GameSnapshot & {
+      schemaVersion: number;
+    };
+
+    const restored = importGameSnapshot({
+      ...exported,
+      schemaVersion: 12,
+    });
+
+    expect(restored.franchise.playMode).toBe('standard');
+    expect(restored.gmCareer.currentTeamId).toBe('nyy');
+    expect(restored.gmCareer.overallRecord).toEqual({ wins: 338, losses: 278 });
+    expect(restored.gmCareer.championships).toBe(1);
+    expect(restored.jobMarket.availableJobs).toEqual([]);
+    expect(restored.consequenceWatchers).toEqual([]);
+    expect(restored.scoutConflicts).toEqual([]);
+    expect(restored.dynastyCards).toEqual([]);
+    expect(restored.challengeState).toBeNull();
   });
 
   it('does not persist pending extension negotiations in snapshots', () => {
