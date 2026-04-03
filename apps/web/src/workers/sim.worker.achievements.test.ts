@@ -19,9 +19,19 @@ import {
   syncAchievementState,
 } from './sim.worker.achievements';
 
+function startGame(seed: number, userTeamId: string = 'nyy') {
+  return api.newGame({
+    seed,
+    userTeamId,
+    gmName: 'General Manager',
+    difficulty: 'standard',
+    saveSlot: 1,
+  });
+}
+
 describe('worker achievement state', () => {
   beforeEach(() => {
-    api.newGame(991, 'nyy');
+    startGame(991, 'nyy');
   });
 
   it('unlocks achievements once and publishes a ceremony card plus breaking-style news', () => {

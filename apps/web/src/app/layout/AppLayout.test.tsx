@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './AppLayout';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
+import { saveGame } from '@/shared/lib/saveSystem';
 
 vi.mock('./Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
@@ -24,12 +24,12 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 }));
 
 vi.mock('@/shared/lib/saveSystem', () => ({
-  loadMostRecentSnapshot: vi.fn(),
+  saveGame: vi.fn(),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
-const mockedLoadMostRecentSnapshot = vi.mocked(loadMostRecentSnapshot);
+const mockedSaveGame = vi.mocked(saveGame);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -65,6 +65,7 @@ function createWorkerMock(flow: Record<string, unknown>) {
     simRemainingPlayoffs: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'playoffs', gamesPlayed: 11 }),
     proceedToOffseason: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'offseason', gamesPlayed: 0 }),
     startNextSeason: vi.fn().mockResolvedValue({ season: 4, day: 1, phase: 'preseason', gamesPlayed: 0 }),
+    exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 11, season: 3, day: 117, phase: 'regular' }),
   };
 }
 
@@ -77,7 +78,6 @@ describe('AppLayout', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    mockedLoadMostRecentSnapshot.mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -97,6 +97,9 @@ describe('AppLayout', () => {
       isInitialized: true,
       userTeamId: 'nyy',
       teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: null,
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -106,6 +109,7 @@ describe('AppLayout', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -186,6 +190,9 @@ describe('AppLayout', () => {
       isInitialized: true,
       userTeamId: 'nyy',
       teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: null,
       playerCount: 780,
       gamesPlayed: 162,
       isSimulating: false,
@@ -195,6 +202,7 @@ describe('AppLayout', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -262,6 +270,9 @@ describe('AppLayout', () => {
       isInitialized: true,
       userTeamId: 'nyy',
       teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: null,
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -271,6 +282,7 @@ describe('AppLayout', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -329,6 +341,9 @@ describe('AppLayout', () => {
       isInitialized: true,
       userTeamId: 'nyy',
       teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: null,
       playerCount: 780,
       gamesPlayed: 117,
       isSimulating: false,
@@ -338,6 +353,7 @@ describe('AppLayout', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -467,6 +483,9 @@ describe('AppLayout', () => {
       isInitialized: true,
       userTeamId: 'nyy',
       teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: null,
       playerCount: 780,
       gamesPlayed: 180,
       isSimulating: false,
@@ -476,6 +495,7 @@ describe('AppLayout', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -573,5 +593,141 @@ describe('AppLayout', () => {
     expect(worker.dismissCeremonyMoment).toHaveBeenCalledWith('moment-world-series');
     expect(container.textContent).toContain('Monthly Report');
     expect(container.textContent).toContain('October');
+  });
+
+  it('does not auto-load or auto-create a dynasty when the app shell mounts', async () => {
+    const worker = createWorkerMock({
+      status: 'regular',
+      season: 1,
+      phaseLabel: 'Season 1 — Day 1/162',
+      detailLabel: 'Ready',
+      progress: 0,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: null,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+    mockedUseGameStore.mockReturnValue({
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      isInitialized: false,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: null,
+      playerCount: 0,
+      gamesPlayed: 0,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/" element={<div>Setup</div>} />
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.newGame).not.toHaveBeenCalled();
+    expect(worker.importSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('auto-saves the active slot after a monthly advance', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 87,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: 3,
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock({
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 — Day 87/162',
+      detailLabel: 'Regular Season',
+      progress: 87 / 162,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 33,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const nextMonthButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Next Month'),
+    );
+
+    await act(async () => {
+      nextMonthButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.exportSnapshot).toHaveBeenCalled();
+    expect(mockedSaveGame).toHaveBeenCalledWith(3, expect.stringContaining('Alex Rivera'), expect.any(Object));
   });
 });

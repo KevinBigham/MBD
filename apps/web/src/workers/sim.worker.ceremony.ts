@@ -32,17 +32,18 @@ export function createDefaultFranchiseState(
   userTeamId: string,
   season: number,
   day: number,
+  overrides: Partial<FranchiseState> = {},
 ): FranchiseState {
   const team = getTeamById(userTeamId);
   return {
-    gmName: 'General Manager',
-    difficulty: 'standard',
-    createdAt: `S${season}D${day}`,
-    teamId: userTeamId,
-    teamName: team ? `${team.city} ${team.name}` : userTeamId.toUpperCase(),
-    teamAbbreviation: team?.abbreviation ?? userTeamId.toUpperCase(),
-    teamDivision: team?.division ?? 'UNKNOWN',
-    onboarding: {
+    gmName: overrides.gmName ?? 'General Manager',
+    difficulty: overrides.difficulty ?? 'standard',
+    createdAt: overrides.createdAt ?? `S${season}D${day}`,
+    teamId: overrides.teamId ?? userTeamId,
+    teamName: overrides.teamName ?? (team ? `${team.city} ${team.name}` : userTeamId.toUpperCase()),
+    teamAbbreviation: overrides.teamAbbreviation ?? (team?.abbreviation ?? userTeamId.toUpperCase()),
+    teamDivision: overrides.teamDivision ?? (team?.division ?? 'UNKNOWN'),
+    onboarding: overrides.onboarding ?? {
       welcomeBriefingSeen: true,
       firstMonthlyPulseSeen: true,
     },

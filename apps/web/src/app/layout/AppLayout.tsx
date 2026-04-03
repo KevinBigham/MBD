@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -12,8 +12,12 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
-import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
+import { saveGame } from '@/shared/lib/saveSystem';
 import type { CeremonyMoment, MonthlyPulseState } from '@mbd/contracts';
+
+interface MonthlyPulseView extends MonthlyPulseState {
+  onboardingGuide?: string | null;
+}
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -76,22 +80,33 @@ export function AppLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
   const [activeMoment, setActiveMoment] = useState<CeremonyMoment | null>(null);
-  const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseState | null>(null);
+  const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseView | null>(null);
   const [monthlyPulseBusy, setMonthlyPulseBusy] = useState(false);
   const worker = useWorker();
   const workerReady = worker.isReady;
   const {
     phase,
+    season,
+    teamName,
+    gmName,
+    activeSaveSlot,
     setSimulating,
     updateFromSim,
-    initializeGame,
     isInitialized,
     isSimulating,
   } = useGameStore();
   const audioMuted = useAudioPreferencesStore((state) => state.muted);
   const audioVolume = useAudioPreferencesStore((state) => state.volume);
-  const initialized = useRef(false);
   const commandPaletteOpenRef = useRef<boolean | null>(null);
+
+  const persistActiveSlot = useCallback(async (targetSeason: number) => {
+    if (activeSaveSlot == null) {
+      return;
+    }
+
+    const snapshot = await worker.exportSnapshot();
+    await saveGame(activeSaveSlot, `${gmName} • ${teamName} • Season ${targetSeason}`, snapshot);
+  }, [activeSaveSlot, gmName, teamName, worker]);
 
   const refreshSeasonFlow = useCallback(async () => {
     if (!workerReady) return;
@@ -102,7 +117,7 @@ export function AppLayout() {
   const refreshMonthlyPulse = useCallback(async () => {
     if (!workerReady) return;
     const next = await worker.getMonthlyPulse();
-    setMonthlyPulse(next as MonthlyPulseState);
+    setMonthlyPulse(next as MonthlyPulseView);
   }, [worker, workerReady]);
 
   const refreshCeremony = useCallback(async () => {
@@ -110,43 +125,6 @@ export function AppLayout() {
     const next = await worker.getCeremonyState();
     setActiveMoment(((next as { activeMoment: CeremonyMoment | null })?.activeMoment) ?? null);
   }, [worker, workerReady]);
-
-  // Auto-initialize a new game when the worker is ready
-  useEffect(() => {
-    if (!workerReady || initialized.current || isInitialized) return;
-
-    initialized.current = true;
-
-    (async () => {
-      try {
-        const latestSave = await loadMostRecentSnapshot();
-        if (latestSave?.snapshot) {
-          const result = await worker.importSnapshot(latestSave.snapshot);
-          initializeGame({
-            season: result.season,
-            day: result.day,
-            phase: result.phase,
-            playerCount: result.playerCount,
-            userTeamId: result.userTeamId,
-          });
-          await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
-          return;
-        }
-
-        const result = await worker.newGame(Date.now(), 'nyy');
-        initializeGame({
-          season: result.season,
-          day: result.day,
-          phase: result.phase,
-          playerCount: result.playerCount,
-          userTeamId: 'nyy',
-        });
-        await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
-      } catch (err: unknown) {
-        console.error('Failed to initialize game:', err);
-      }
-    })();
-  }, [workerReady, initializeGame, isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, worker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!workerReady || !isInitialized) return;
@@ -162,20 +140,26 @@ export function AppLayout() {
   }, [isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, worker, workerReady]);
 
   const handleSim = useCallback(
-    async (simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>) => {
+    async (
+      simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>,
+      options: { autoSave?: boolean } = {},
+    ) => {
       if (!workerReady || !isInitialized) return;
       setSimulating(true);
       try {
         const result = await simFn();
         updateFromSim(result);
         await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
+        if (options.autoSave || result.phase !== phase || result.season !== season) {
+          await persistActiveSlot(result.season);
+        }
       } catch (err) {
         console.error('Simulation error:', err);
       } finally {
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, setSimulating, updateFromSim]
+    [workerReady, isInitialized, persistActiveSlot, phase, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, season, setSimulating, updateFromSim]
   );
 
   const activeReport = activeMoment ? null : (monthlyPulse?.pendingReport ?? null);
@@ -322,7 +306,7 @@ export function AppLayout() {
       }
 
       if (event.ctrlKey || event.metaKey) {
-        void handleSim(() => worker.simMonth());
+        void handleSim(() => worker.simMonth(), { autoSave: true });
         return;
       }
 
@@ -335,6 +319,10 @@ export function AppLayout() {
     };
   }, [commandPaletteOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
 
+  if (!isInitialized) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="flex h-screen flex-col bg-dynasty-base">
       {/* Top bar */}
@@ -344,28 +332,17 @@ export function AppLayout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-6">
-          {!isInitialized ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <div className="font-brand text-4xl text-accent-primary">MBD</div>
-                <div className="mt-2 font-heading text-dynasty-muted">
-                  Generating league...
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {seasonFlow && (
-                <SeasonFlowCard
-                  flow={seasonFlow}
-                  actionBusy={isSimulating}
-                  onAction={() => void handleFlowAction()}
-                  onSecondaryAction={() => void handleFlowAction(seasonFlow.secondaryAction)}
-                />
-              )}
-              <Outlet />
-            </>
-          )}
+          <>
+            {seasonFlow && (
+              <SeasonFlowCard
+                flow={seasonFlow}
+                actionBusy={isSimulating}
+                onAction={() => void handleFlowAction()}
+                onSecondaryAction={() => void handleFlowAction(seasonFlow.secondaryAction)}
+              />
+            )}
+            <Outlet />
+          </>
         </main>
       </div>
 
@@ -373,8 +350,8 @@ export function AppLayout() {
       <SimControls
         onSimDay={() => handleSim(() => worker.simDay())}
         onSimWeek={() => handleSim(() => worker.simWeek())}
-        onSimMonth={() => handleSim(() => worker.simMonth())}
-        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs())}
+        onSimMonth={() => handleSim(() => worker.simMonth(), { autoSave: true })}
+        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs(), { autoSave: true })}
         onFlowAction={() => void handleFlowAction()}
         flow={seasonFlow}
       />
@@ -394,6 +371,7 @@ export function AppLayout() {
       <MonthlyPulseOverlay
         report={activeReport}
         decision={activeDecision}
+        onboardingGuide={activeReport ? monthlyPulse?.onboardingGuide ?? null : null}
         busy={isSimulating || monthlyPulseBusy}
         onContinue={() => void handleMonthlyReportContinue()}
         onDecisionDismiss={() => void handleDecisionDismiss()}

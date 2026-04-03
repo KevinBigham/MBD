@@ -92,8 +92,22 @@ export function useWorker() {
   const ping = useCallback(async () => api.ping(), [api]);
 
   const newGame = useCallback(
-    async (seed: number, userTeamId?: string) => runMutation(() => api.newGame(seed, userTeamId)),
+    async (options: {
+      seed: number;
+      userTeamId: string;
+      gmName: string;
+      difficulty: 'easy' | 'standard' | 'hard';
+      saveSlot: number;
+    }) => runMutation(() => api.newGame(options)),
     [api, runMutation],
+  );
+  const getSetupPreview = useCallback(
+    async (options: {
+      seed: number;
+      userTeamId: string;
+      difficulty: 'easy' | 'standard' | 'hard';
+    }) => api.getSetupPreview(options),
+    [api],
   );
 
   const simDay = useCallback(async () => runMutation(() => api.simDay()), [api, runMutation]);
@@ -109,6 +123,10 @@ export function useWorker() {
   );
   const dismissCeremonyMoment = useCallback(
     async (momentId: string) => runMutation(() => api.dismissCeremonyMoment(momentId)),
+    [api, runMutation],
+  );
+  const dismissWelcomeBriefing = useCallback(
+    async () => runMutation(() => api.dismissWelcomeBriefing()),
     [api, runMutation],
   );
   const simToPlayoffs = useCallback(async () => runMutation(() => api.simToPlayoffs()), [api, runMutation]);
@@ -422,7 +440,7 @@ export function useWorker() {
   );
 
   return {
-    ping, newGame, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, simToPlayoffs,
+    ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot,

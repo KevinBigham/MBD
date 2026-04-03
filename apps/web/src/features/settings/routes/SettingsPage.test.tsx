@@ -20,6 +20,7 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 }));
 
 vi.mock('@/shared/lib/saveSystem', () => ({
+  SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),
   listSaves: vi.fn(),
   loadGame: vi.fn(),

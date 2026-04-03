@@ -20,6 +20,9 @@ interface DashboardSummary {
   franchise: {
     teamName: string;
     abbreviation: string;
+    gmName: string;
+    difficulty: 'easy' | 'standard' | 'hard';
+    welcomeBriefingPending: boolean;
     season: number;
     record: string;
     division: string;
@@ -168,6 +171,42 @@ export default function DashboardPage() {
           </div>
           <div className="mt-1 font-heading text-xs text-dynasty-muted">
             The market is tightening. Monitor hot offers and the league wire from Trade Center.
+          </div>
+        </section>
+      ) : null}
+
+      {summary?.franchise.welcomeBriefingPending ? (
+        <section className="rounded-lg border border-accent-info/30 bg-accent-info/10 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">First Day Briefing</div>
+              <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">
+                Welcome, GM {summary.franchise.gmName}
+              </h2>
+              <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
+                Your roster hub is the fastest way to check the 26-man group, standings tracks the division race, and the draft room becomes live when June arrives. Difficulty is set to {summary.franchise.difficulty}.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link to="/roster" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
+                  Go to Roster
+                </Link>
+                <Link to="/league/standings" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
+                  Check Standings
+                </Link>
+                <Link to="/draft" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
+                  Open Draft Room
+                </Link>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void worker.dismissWelcomeBriefing().then(() => fetchData());
+              }}
+              className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+            >
+              Dismiss
+            </button>
           </div>
         </section>
       ) : null}

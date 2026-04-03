@@ -6,6 +6,9 @@ import { AppLayout } from '@/app/layout/AppLayout';
 const DashboardPage = lazy(
   () => import('@/features/dashboard/routes/DashboardPage')
 );
+const SetupPage = lazy(
+  () => import('@/features/setup/routes/SetupPage')
+);
 const RosterPage = lazy(
   () => import('@/features/roster/routes/RosterPage')
 );
@@ -72,8 +75,9 @@ export function AppRoutes() {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
+        <Route path="/" element={<SetupPage />} />
         <Route element={<AppLayout />}>
-          <Route index element={<DashboardPage />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="roster" element={<RosterPage />} />
           <Route path="minors" element={<MinorsPage />} />
           <Route path="players" element={<PlayersPage />} />
@@ -96,7 +100,7 @@ export function AppRoutes() {
           <Route path="history" element={<HistoryPage />} />
           <Route path="settings" element={<SettingsPage />} />
           {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>
     </Suspense>

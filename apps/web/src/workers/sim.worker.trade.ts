@@ -30,6 +30,7 @@ import type { FullGameState } from './sim.worker.helpers.js';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
+import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
 
 export const TRADE_DEADLINE_DAY = getTradeDeadlineDay();
 const DEADLINE_ACTIVITY_CHECKPOINTS = [92, 106, 114, 120] as const;
@@ -246,11 +247,18 @@ function compareAssetPackages(
   state: FullGameState,
   offeringAssets: TradeAsset[],
   requestingAssets: TradeAsset[],
+  fromTeamId: string = state.userTeamId,
+  toTeamId: string = '',
 ) {
   const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   const maxValue = Math.max(offerValue, requestValue, 1);
-  const fairness = Math.max(-100, Math.min(100, Math.round(((requestValue - offerValue) / maxValue) * 100)));
+  const fairness = getDifficultyAdjustedTradeFairness(
+    state,
+    Math.max(-100, Math.min(100, Math.round(((requestValue - offerValue) / maxValue) * 100))),
+    fromTeamId,
+    toTeamId,
+  );
   return { fairness, offerValue, requestValue };
 }
 
@@ -1002,7 +1010,7 @@ function buildFallbackTradePackage(
   return {
     offeringAssets,
     requestingAssets,
-    fairnessScore: compareAssetPackages(state, offeringAssets, requestingAssets).fairness,
+    fairnessScore: compareAssetPackages(state, offeringAssets, requestingAssets, fromTeamId, toTeamId).fairness,
   };
 }
 
@@ -1206,7 +1214,7 @@ export function recordAcceptedUserTrade(
   addTradeHistoryEntry(state, buildTradeHistoryEntry(
     state,
     proposal,
-    compareAssetPackages(state, proposal.offeringAssets, proposal.requestingAssets).fairness,
+    compareAssetPackages(state, proposal.offeringAssets, proposal.requestingAssets, proposal.fromTeamId, proposal.toTeamId).fairness,
   ));
 }
 
@@ -1288,7 +1296,7 @@ export function proposeTradePackage(
     reason: '',
   };
 
-  const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets).fairness;
+  const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets, state.userTeamId, toTeamId).fairness;
   const usesNonPlayerAssets = hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets);
   const result = usesNonPlayerAssets
     ? {
@@ -1437,7 +1445,7 @@ export function respondToTradeOffer(
   const usesNonPlayerAssets = hasNonPlayerAssets(counterPackage.offeringAssets) || hasNonPlayerAssets(counterPackage.requestingAssets);
   const result = usesNonPlayerAssets
     ? {
-      decision: (-compareAssetPackages(state, counterPackage.offeringAssets, counterPackage.requestingAssets).fairness >= -10
+      decision: (-compareAssetPackages(state, counterPackage.offeringAssets, counterPackage.requestingAssets, state.userTeamId, offer.fromTeamId).fairness >= -10
         ? 'accepted'
         : 'rejected') as 'accepted' | 'rejected',
       reason: 'Counter framework evaluated.',
@@ -1461,6 +1469,8 @@ export function respondToTradeOffer(
       state,
       counterPackage.offeringAssets,
       counterPackage.requestingAssets,
+      state.userTeamId,
+      offer.fromTeamId,
     ).fairness;
     executeAcceptedTrade(state, {
       id: counterProposal.id,

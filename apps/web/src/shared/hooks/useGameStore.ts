@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Difficulty } from '@mbd/contracts';
 
 interface GameState {
   season: number;
@@ -8,6 +9,9 @@ interface GameState {
   isInitialized: boolean;
   userTeamId: string;
   teamName: string;
+  gmName: string;
+  difficulty: Difficulty;
+  activeSaveSlot: number | null;
   playerCount: number;
   gamesPlayed: number;
   setSeason: (season: number) => void;
@@ -16,6 +20,7 @@ interface GameState {
   setSimulating: (simulating: boolean) => void;
   setInitialized: (initialized: boolean) => void;
   setUserTeamId: (teamId: string) => void;
+  setActiveSaveSlot: (slot: number | null) => void;
   updateFromSim: (data: {
     season: number;
     day: number;
@@ -28,6 +33,10 @@ interface GameState {
     phase: string;
     playerCount: number;
     userTeamId: string;
+    teamName?: string;
+    gmName?: string;
+    difficulty?: Difficulty;
+    activeSaveSlot?: number | null;
   }) => void;
 }
 
@@ -39,6 +48,9 @@ export const useGameStore = create<GameState>((set) => ({
   isInitialized: false,
   userTeamId: 'nyy',
   teamName: 'Yankees',
+  gmName: 'General Manager',
+  difficulty: 'standard',
+  activeSaveSlot: null,
   playerCount: 0,
   gamesPlayed: 0,
   setSeason: (season) => set({ season }),
@@ -47,6 +59,7 @@ export const useGameStore = create<GameState>((set) => ({
   setSimulating: (simulating) => set({ isSimulating: simulating }),
   setInitialized: (initialized) => set({ isInitialized: initialized }),
   setUserTeamId: (teamId) => set({ userTeamId: teamId }),
+  setActiveSaveSlot: (slot) => set({ activeSaveSlot: slot }),
   updateFromSim: (data) =>
     set({
       season: data.season,
@@ -61,6 +74,10 @@ export const useGameStore = create<GameState>((set) => ({
       phase: data.phase,
       playerCount: data.playerCount,
       userTeamId: data.userTeamId,
+      teamName: data.teamName ?? 'Franchise',
+      gmName: data.gmName ?? 'General Manager',
+      difficulty: data.difficulty ?? 'standard',
+      activeSaveSlot: data.activeSaveSlot ?? null,
       isInitialized: true,
     }),
 }));

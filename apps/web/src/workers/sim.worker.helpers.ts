@@ -152,6 +152,7 @@ import type {
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
+import { getDifficultyAdjustedBudget } from './sim.worker.setup.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -713,7 +714,7 @@ function buildExtensionContextForTeam(
     season: s.season,
     teamId,
     teamWinPct,
-    teamBudget: getTeamBudget(teamId),
+    teamBudget: getDifficultyAdjustedBudget(s, teamId),
     currentPayroll: payroll.totalPayroll,
     futureCommitments: payroll.futureCommitments,
     controlYearsByPlayer,

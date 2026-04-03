@@ -5,14 +5,13 @@ import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStor
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
 import {
+  SAVE_SLOTS,
   deleteSave,
   listSaves,
   loadGame,
   saveGame,
   type SaveData,
 } from '@/shared/lib/saveSystem';
-
-const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
 
 export default function SettingsPage() {
   const worker = useWorker();
@@ -72,6 +71,10 @@ export default function SettingsPage() {
         phase: result.phase,
         playerCount: result.playerCount,
         userTeamId: result.userTeamId,
+        teamName: result.teamName,
+        gmName: result.gmName,
+        difficulty: result.difficulty,
+        activeSaveSlot: slot,
       });
       setStatus(`Loaded slot ${slot}.`);
     } catch (error) {

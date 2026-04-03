@@ -6,6 +6,7 @@ import { getAudioEngine } from '@/shared/lib/audio';
 interface MonthlyPulseOverlayProps {
   report: MonthlyReport | null;
   decision: DecisionSpotlightItem | null;
+  onboardingGuide?: string | null;
   busy: boolean;
   onContinue: () => void;
   onDecisionDismiss: () => void;
@@ -26,6 +27,7 @@ function urgencyTone(urgency: DecisionSpotlightItem['urgency']): string {
 export function MonthlyPulseOverlay({
   report,
   decision,
+  onboardingGuide,
   busy,
   onContinue,
   onDecisionDismiss,
@@ -117,6 +119,12 @@ export function MonthlyPulseOverlay({
             </div>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {onboardingGuide ? (
+                <div className="rounded-lg border border-accent-info/30 bg-accent-info/10 p-4 md:col-span-2">
+                  <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">How to Read This</div>
+                  <div className="mt-2 font-heading text-sm leading-6 text-dynasty-text">{onboardingGuide}</div>
+                </div>
+              ) : null}
               <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Key Injuries</div>
                 <div className="mt-2 space-y-2">

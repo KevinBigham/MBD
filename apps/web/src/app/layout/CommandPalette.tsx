@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-import { loadMostRecentSnapshot, saveGame } from '@/shared/lib/saveSystem';
+import { saveGame } from '@/shared/lib/saveSystem';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -38,7 +38,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const worker = useWorker();
-  const { season, day, phase, userTeamId, initializeGame } = useGameStore();
+  const { season, day, teamName, gmName, activeSaveSlot } = useGameStore();
 
   useEffect(() => {
     if (!open) {
@@ -48,7 +48,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   const items: CommandItem[] = [
     // Navigation
-    { id: 'nav-office', label: 'Front Office', icon: <Briefcase className="h-4 w-4" />, action: () => navigate('/'), group: 'navigation' },
+    { id: 'nav-office', label: 'Front Office', icon: <Briefcase className="h-4 w-4" />, action: () => navigate('/dashboard'), group: 'navigation' },
     { id: 'nav-roster', label: 'Roster', icon: <Users className="h-4 w-4" />, action: () => navigate('/roster'), group: 'navigation' },
     { id: 'nav-minors', label: 'Minor League Hub', icon: <Users className="h-4 w-4" />, action: () => navigate('/minors'), group: 'navigation' },
     { id: 'nav-players', label: 'Players', icon: <User className="h-4 w-4" />, action: () => navigate('/players'), group: 'navigation' },
@@ -70,44 +70,22 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       action: async () => {
         if (!worker.isReady) return;
         const snapshot = await worker.exportSnapshot();
-        await saveGame(1, `Season ${season} Day ${day}`, snapshot);
+        await saveGame(activeSaveSlot ?? 1, `${gmName} • ${teamName} • Season ${season}`, snapshot);
       },
       group: 'actions',
     },
     {
       id: 'act-load',
-      label: 'Load Latest Save',
+      label: 'Open Save Hub',
       icon: <Save className="h-4 w-4" />,
-      action: async () => {
-        if (!worker.isReady) return;
-        const latestSave = await loadMostRecentSnapshot();
-        if (!latestSave?.snapshot) return;
-        const result = await worker.importSnapshot(latestSave.snapshot);
-        initializeGame({
-          season: result.season,
-          day: result.day,
-          phase: result.phase,
-          playerCount: result.playerCount,
-          userTeamId: result.userTeamId,
-        });
-      },
+      action: () => navigate('/'),
       group: 'actions',
     },
     {
       id: 'act-new',
-      label: 'New Game',
+      label: 'New Dynasty Setup',
       icon: <PlusCircle className="h-4 w-4" />,
-      action: async () => {
-        if (!worker.isReady) return;
-        const result = await worker.newGame(Date.now(), userTeamId);
-        initializeGame({
-          season: result.season,
-          day: result.day,
-          phase: result.phase,
-          playerCount: result.playerCount,
-          userTeamId,
-        });
-      },
+      action: () => navigate('/'),
       group: 'actions',
     },
   ];

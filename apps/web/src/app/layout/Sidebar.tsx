@@ -28,7 +28,7 @@ interface NavItem {
 }
 
 const baseMainNavItems: NavItem[] = [
-  { to: '/', label: 'Front Office', icon: <Briefcase className="h-5 w-5" /> },
+  { to: '/dashboard', label: 'Front Office', icon: <Briefcase className="h-5 w-5" /> },
   { to: '/roster', label: 'Roster', icon: <Users className="h-5 w-5" /> },
   { to: '/minors', label: 'Minors', icon: <Users className="h-5 w-5" /> },
   { to: '/players', label: 'Players', icon: <User className="h-5 w-5" /> },
@@ -50,7 +50,7 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   return (
     <NavLink
       to={item.to}
-      end={item.to === '/'}
+      end={item.to === '/dashboard'}
       onClick={() => {
         getAudioEngine().playEffect('tab_switch');
       }}

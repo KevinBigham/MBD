@@ -55,6 +55,9 @@ describe('DashboardPage', () => {
         franchise: {
           teamName: 'New York Yankees',
           abbreviation: 'NYY',
+          gmName: 'Alex Rivera',
+          difficulty: 'hard',
+          welcomeBriefingPending: true,
           season: 4,
           record: '50-38',
           division: 'AL_EAST',
@@ -181,6 +184,7 @@ describe('DashboardPage', () => {
         ],
         recap: null,
       }),
+      dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
     } as unknown as ReturnType<typeof useWorker>);
   });
 
@@ -205,6 +209,7 @@ describe('DashboardPage', () => {
     });
 
     expect(container.textContent).toContain('Dynasty Score');
+    expect(container.textContent).toContain('Welcome, GM Alex Rivera');
     expect(container.textContent).toContain('B');
     expect(container.textContent).toContain('Season Momentum');
     expect(container.textContent).toContain('Roster Snapshot');

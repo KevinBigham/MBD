@@ -151,6 +151,11 @@ import {
   dismissDecisionSpotlight,
   generateMonthlyPulse,
 } from './sim.worker.monthlyPulse.js';
+import {
+  buildNewGameState,
+  getDifficultyAdjustedCompetitiveAav,
+  type NewGameOptions,
+} from './sim.worker.setup.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -648,85 +653,10 @@ function simDayInternal(): SimResultDTO {
 }
 
 export const actionApi = {
-  newGame(seed: number, userTeamId: string = 'nyy') {
+  newGame(options: NewGameOptions) {
     resetTradeDeadlineState();
-    const rng = new GameRNG(seed);
-    const teamIds = TEAMS.map((team) => team.id);
-    const developmentRng = new GameRNG(seed + 10_001);
-    const coachingRng = new GameRNG(seed + 20_001);
-    const coachPoolRng = new GameRNG(seed + 30_001);
-    const players = generateLeaguePlayers(rng.fork(), teamIds)
-      .map((player) => initializePlayerDevelopmentProfile(developmentRng.fork(), player));
-    ensurePlayersHaveRule5Eligibility(players, 1);
-    const schedule = generateSchedule(rng.fork());
-    const seasonState = createSeasonState(1, teamIds);
-
-    const serviceTime = new Map<string, number>();
-    for (const player of players) {
-      if (player.rosterStatus === 'MLB') {
-        const yearsOfService = rng.nextInt(0, 8);
-        serviceTime.set(player.id, yearsOfService);
-        player.serviceTimeDays = yearsOfService * 172;
-      }
-    }
-
-    const scoutingStaffs = new Map();
-    const gmPersonalities = new Map();
-    const coachingStaffs = new Map();
-    const rosterStates = new Map();
-    for (const teamId of teamIds) {
-      scoutingStaffs.set(teamId, generateScoutingStaff(rng.fork(), teamId));
-      gmPersonalities.set(teamId, assignGMPersonality(rng.fork(), teamId));
-      coachingStaffs.set(teamId, generateCoachingStaff(coachingRng.fork(), teamId));
-      rosterStates.set(teamId, buildRosterState(teamId, players));
-    }
-
-    setState({
-      rng,
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      players,
-      schedule,
-      seasonState,
-      userTeamId,
-      playoffBracket: null,
-      injuries: new Map(),
-      serviceTime,
-      scoutingStaffs,
-      gmPersonalities,
-      coachingStaffs,
-      coachFreeAgentPool: generateCoachFreeAgents(coachPoolRng),
-      pendingExtensionNegotiations: new Map(),
-      offseasonState: null,
-      rule5Session: null,
-      rule5Obligations: [],
-      rule5OfferBackStates: [],
-      draftClass: null,
-      freeAgencyMarket: null,
-      news: [],
-      rosterStates,
-      internationalScoutingState: createEmptyInternationalScoutingState(1),
-      draftState: createEmptyDraftState(),
-      minorLeagueState: createEmptyMinorLeagueState(1),
-      monthlyPulse: createEmptyMonthlyPulseState(),
-      playerMorale: new Map(),
-      teamChemistry: new Map(),
-      ownerState: new Map(),
-      briefingQueue: [],
-      storyFlags: new Map(),
-      rivalries: new Map(),
-      awardHistory: [],
-      hallOfFame: [],
-      hallOfFameBallot: [],
-      franchiseTimeline: [],
-      careerStats: [],
-      seasonHistory: [],
-      tradeState: createEmptyTradeState(),
-      franchise: createDefaultFranchiseState(userTeamId, 1, 1),
-      ceremony: createEmptyCeremonyState(),
-      achievements: createEmptyAchievementState(),
-    });
+    const initialState = buildNewGameState(options);
+    setState(initialState);
     ensureNarrativeState(requireState());
 
     return {
@@ -734,9 +664,13 @@ export const actionApi = {
       season: 1,
       day: 1,
       phase: 'preseason' as const,
-      playerCount: players.length,
-      teamCount: teamIds.length,
-      gamesScheduled: schedule.length,
+      userTeamId: options.userTeamId,
+      teamName: initialState.franchise.teamName,
+      gmName: initialState.franchise.gmName,
+      difficulty: initialState.franchise.difficulty,
+      playerCount: initialState.players.length,
+      teamCount: TEAMS.length,
+      gamesScheduled: initialState.schedule.length,
       flowStateChanged: true as const,
     };
   },
@@ -759,6 +693,22 @@ export const actionApi = {
 
   dismissDecisionSpotlight(decisionId: string) {
     return dismissDecisionSpotlight(requireState(), decisionId);
+  },
+
+  dismissWelcomeBriefing() {
+    const s = requireState();
+    if (s.franchise.onboarding.welcomeBriefingSeen) {
+      return { success: true as const };
+    }
+
+    s.franchise = {
+      ...s.franchise,
+      onboarding: {
+        ...s.franchise.onboarding,
+        welcomeBriefingSeen: true,
+      },
+    };
+    return { success: true as const };
   },
 
   dismissCeremonyMoment(momentId: string) {
@@ -921,6 +871,9 @@ export const actionApi = {
       phase: s.phase,
       playerCount: s.players.length,
       userTeamId: s.userTeamId,
+      teamName: s.franchise.teamName,
+      gmName: s.franchise.gmName,
+      difficulty: s.franchise.difficulty,
       flowStateChanged: true as const,
     };
   },
@@ -1157,7 +1110,10 @@ export const actionApi = {
       teamOption: false,
       signingBonus: 0,
     };
-    const result = makeUserOffer(s.freeAgencyMarket, offer);
+    const result = makeUserOffer(s.freeAgencyMarket, {
+      ...offer,
+      annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
+    });
     if (!result.accepted || !freeAgent) {
       return result;
     }
