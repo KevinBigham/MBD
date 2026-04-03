@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, PlusCircle, Shield, Trash2, Trophy } from 'lucide-react';
+import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
@@ -279,7 +280,8 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-dynasty-base px-6 py-8 text-dynasty-text">
+    <PageShell>
+      <div className="min-h-screen bg-dynasty-base px-6 py-8 text-dynasty-text">
       <div className="mx-auto max-w-6xl space-y-8">
         <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -533,7 +535,8 @@ export default function SetupPage() {
           </section>
         ) : null}
       </div>
-    </div>
+      </div>
+    </PageShell>
   );
 }
 

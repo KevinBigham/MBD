@@ -1,7 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { History, Award, Flame, Trophy } from 'lucide-react';
+import { Skeleton } from '@mbd/ui';
 import type { AwardHistoryEntry, Rivalry, SeasonHistoryEntry, SeasonStatLeader } from '@mbd/contracts';
 import type { AwardRaceEntry, AwardRaces } from '@mbd/sim-core';
+import { AnimatedNumber } from '@/shared/components/AnimatedNumber';
+import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { PageShell } from '@/shared/components/PageShell';
+import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 
@@ -138,6 +143,23 @@ function collectHistoryIds(
   };
 }
 
+function HistorySkeleton() {
+  return (
+    <div className="space-y-6" data-testid="history-loading">
+      <div className="space-y-3">
+        <Skeleton className="h-12 w-72" />
+        <Skeleton className="h-4 w-80 max-w-full" />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <Skeleton className="h-44 rounded-lg" />
+        <Skeleton className="h-44 rounded-lg" />
+        <Skeleton className="h-72 rounded-lg" />
+        <Skeleton className="h-72 rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
 export default function HistoryPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -152,9 +174,11 @@ export default function HistoryPage() {
   const [achievements, setAchievements] = useState<AchievementView[]>([]);
   const [selectedAchievementId, setSelectedAchievementId] = useState<string | null>(null);
   const [displayNames, setDisplayNames] = useState<HistoryDisplayNames>(EMPTY_DISPLAY_NAMES);
+  const [loading, setLoading] = useState(true);
 
   const fetchHistory = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
+    setLoading(true);
     try {
       const [races, awards, seasons, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData] = await Promise.all([
         worker.getAwardRaces(),
@@ -195,6 +219,8 @@ export default function HistoryPage() {
       setDisplayNames((resolvedNames ?? EMPTY_DISPLAY_NAMES) as HistoryDisplayNames);
     } catch (err) {
       console.error('Failed to fetch history data:', err);
+    } finally {
+      setLoading(false);
     }
   }, [isInitialized, workerReady, worker, userTeamId]);
 
@@ -211,7 +237,8 @@ export default function HistoryPage() {
   const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked).length;
 
   return (
-    <div className="space-y-6">
+    <PageShell loading={loading && dynastyScore == null} skeleton={<HistorySkeleton />}>
+      <div className="space-y-6">
       <div>
         <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">
           Franchise History
@@ -230,7 +257,9 @@ export default function HistoryPage() {
           <div className="grid gap-4 md:grid-cols-[0.45fr_0.55fr]">
             <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
               <div className="font-brand text-5xl text-accent-primary">{dynastyScore?.grade ?? 'F'}</div>
-              <div className="mt-2 font-data text-sm text-dynasty-muted">{dynastyScore?.score ?? 0} total points</div>
+              <div className="mt-2 font-data text-sm text-dynasty-muted">
+                <AnimatedNumber value={dynastyScore?.score ?? 0} formatter={(value) => `${Math.round(value)} total points`} />
+              </div>
             </div>
             <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -334,6 +363,14 @@ export default function HistoryPage() {
               {unlockedAchievements}/{achievements.length}
             </div>
           </div>
+          {unlockedAchievements === 0 ? (
+            <div className="mb-4">
+              <EmptyStatePanel
+                description="Keep pushing seasons, titles, and milestones to fill the trophy room."
+                title="No achievements unlocked yet"
+              />
+            </div>
+          ) : null}
           {selectedAchievement && (
             <div className="mb-4 rounded border border-dynasty-border bg-dynasty-elevated p-4">
               <div className="flex items-center justify-between gap-3">
@@ -346,10 +383,11 @@ export default function HistoryPage() {
                 </div>
               </div>
               <div className="mt-2 font-heading text-sm text-dynasty-text">{selectedAchievement.description}</div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-dynasty-surface">
-                <div
-                  className={`h-full rounded-full ${selectedAchievement.unlocked ? 'bg-accent-warning' : 'bg-accent-primary'}`}
-                  style={{ width: `${Math.max(6, Math.min(100, (selectedAchievement.progress.current / Math.max(1, selectedAchievement.progress.target)) * 100))}%` }}
+              <div className="mt-3">
+                <ProgressFill
+                  toneClassName={selectedAchievement.unlocked ? 'bg-accent-warning' : 'bg-accent-primary'}
+                  trackClassName="bg-dynasty-surface"
+                  value={Math.max(6, Math.min(100, (selectedAchievement.progress.current / Math.max(1, selectedAchievement.progress.target)) * 100))}
                 />
               </div>
               <div className="mt-2 font-data text-xs text-dynasty-muted">
@@ -567,9 +605,10 @@ export default function HistoryPage() {
               The franchise timeline starts once the first season closes.
             </div>
           )}
-        </div>
-      </section>
-    </div>
+          </div>
+        </section>
+      </div>
+    </PageShell>
   );
 }
 

@@ -10,6 +10,10 @@ import {
   Scale,
   X,
 } from 'lucide-react';
+import { Skeleton } from '@mbd/ui';
+import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { PageShell } from '@/shared/components/PageShell';
+import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
@@ -399,6 +403,19 @@ function OfferCard({
   );
 }
 
+function TradeSkeleton() {
+  return (
+    <div className="space-y-4" data-testid="trade-loading">
+      <Skeleton className="h-12 w-64" />
+      <Skeleton className="h-16 rounded-lg" />
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <Skeleton className="h-[32rem] rounded-lg xl:col-span-4" />
+        <Skeleton className="h-[32rem] rounded-lg xl:col-span-8" />
+      </div>
+    </div>
+  );
+}
+
 function HistoryCard({ trade }: { trade: TradeHistoryView }) {
   const evaluation = fairnessText(trade.fairnessScore, trade.fromTeamAbbreviation, trade.toTeamAbbreviation);
   return (
@@ -450,6 +467,7 @@ export default function TradePage() {
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
   const [proposing, setProposing] = useState(false);
   const [activeCounterOfferId, setActiveCounterOfferId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const workerReady = worker.isReady;
   const otherTeams = ALL_TEAMS.filter((team) => team.id !== userTeamId);
@@ -489,13 +507,18 @@ export default function TradePage() {
 
   const loadTradeActivity = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
-    const [history, deadline] = await Promise.all([
-      getTradeHistory(),
-      getTradeDeadlineState(),
-    ]);
-    setTradeHistory((history as TradeHistoryView[]) ?? []);
-    setDeadlineState((deadline as TradeDeadlineStateView) ?? null);
-    setIncomingOffers(((deadline as TradeDeadlineStateView | null)?.hotOffers ?? []) as HotTradeOfferView[]);
+    setLoading(true);
+    try {
+      const [history, deadline] = await Promise.all([
+        getTradeHistory(),
+        getTradeDeadlineState(),
+      ]);
+      setTradeHistory((history as TradeHistoryView[]) ?? []);
+      setDeadlineState((deadline as TradeDeadlineStateView) ?? null);
+      setIncomingOffers(((deadline as TradeDeadlineStateView | null)?.hotOffers ?? []) as HotTradeOfferView[]);
+    } finally {
+      setLoading(false);
+    }
   }, [getTradeDeadlineState, getTradeHistory, isInitialized, workerReady]);
 
   useEffect(() => {
@@ -715,6 +738,9 @@ export default function TradePage() {
     if (phase !== 'regular') {
       return 'Trade market closed — reopens in offseason';
     }
+    if ((deadlineState?.daysUntilDeadline == null) && !(deadlineState?.deadlineMode ?? false)) {
+      return 'Deadline has passed';
+    }
     if (!tradeMarketOpen) {
       return 'Trade market closed — reopens in offseason';
     }
@@ -728,7 +754,8 @@ export default function TradePage() {
   }, [tradeResult]);
 
   return (
-    <div className="space-y-4">
+    <PageShell loading={loading && deadlineState == null} skeleton={<TradeSkeleton />}>
+      <div className="space-y-4">
       <div>
         <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Trade Center</h1>
         <p className="mt-1 font-heading text-sm text-dynasty-muted">
@@ -804,9 +831,10 @@ export default function TradePage() {
             </div>
             <div className="space-y-3 px-3 py-3">
               {incomingOffers.length === 0 ? (
-                <p className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
-                  No active trade offers.
-                </p>
+                <EmptyStatePanel
+                  description="The phones are quiet right now. Sim a few days or revisit the builder to spark fresh offers."
+                  title="No trade offers right now"
+                />
               ) : (
                 incomingOffers.map((offer) => (
                   <OfferCard
@@ -833,9 +861,10 @@ export default function TradePage() {
             </div>
             <div className="space-y-3 px-3 py-3">
               {(deadlineState?.ticker ?? []).length === 0 ? (
-                <p className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
-                  No league moves have hit the wire yet.
-                </p>
+                <EmptyStatePanel
+                  description="No ticker moves are active right now. Major trades will start scrolling here as the league reacts."
+                  title="No ticker moves are active right now"
+                />
               ) : (
                 (deadlineState?.ticker ?? []).map((item) => (
                   <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
@@ -1129,19 +1158,16 @@ export default function TradePage() {
 
               {(offeringAssets.length > 0 || requestingAssets.length > 0) && (
                 <div className="mt-4 space-y-2">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-dynasty-border">
-                    <div
-                      className="h-full transition-all duration-300"
-                      style={{
-                        width: `${Math.round(fairnessRatio(offerTotal, requestTotal) * 100)}%`,
-                        background: fairnessRatio(offerTotal, requestTotal) >= 0.4 && fairnessRatio(offerTotal, requestTotal) <= 0.6
-                          ? 'rgb(34 197 94)'
-                          : fairnessRatio(offerTotal, requestTotal) >= 0.3 && fairnessRatio(offerTotal, requestTotal) <= 0.7
-                            ? 'rgb(245 158 11)'
-                            : 'rgb(244 63 94)',
-                      }}
-                    />
-                  </div>
+                  <ProgressFill
+                    toneClassName={
+                      fairnessRatio(offerTotal, requestTotal) >= 0.4 && fairnessRatio(offerTotal, requestTotal) <= 0.6
+                        ? 'bg-accent-success'
+                        : fairnessRatio(offerTotal, requestTotal) >= 0.3 && fairnessRatio(offerTotal, requestTotal) <= 0.7
+                          ? 'bg-accent-warning'
+                          : 'bg-accent-danger'
+                    }
+                    value={Math.round(fairnessRatio(offerTotal, requestTotal) * 100)}
+                  />
                   <div className="flex items-center justify-between font-data text-xs">
                     <span className="text-dynasty-muted">Favors you</span>
                     <span className={packageFairness.color}>{packageFairness.text}</span>
@@ -1196,6 +1222,7 @@ export default function TradePage() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </PageShell>
   );
 }

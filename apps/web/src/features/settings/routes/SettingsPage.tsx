@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Save, Trash2, Upload, Volume2, VolumeX } from 'lucide-react';
+import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
@@ -165,7 +166,8 @@ export default function SettingsPage() {
   const volumePercent = Math.round(volume * 100);
 
   return (
-    <div className="space-y-6">
+    <PageShell>
+      <div className="space-y-6">
       <div>
         <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">
           Settings
@@ -354,6 +356,7 @@ export default function SettingsPage() {
           </p>
         </div>
       </div>
-    </div>
+      </div>
+    </PageShell>
   );
 }

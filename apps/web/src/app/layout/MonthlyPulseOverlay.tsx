@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { AlertTriangle, ArrowRight, Clock3, Sparkles, X } from 'lucide-react';
 import type { DecisionSpotlightItem, MonthlyReport } from '@mbd/contracts';
+import { AnimatedNumber } from '@/shared/components/AnimatedNumber';
+import { useEffectiveReducedMotion } from '@/shared/hooks/useEffectiveReducedMotion';
 import { getAudioEngine } from '@/shared/lib/audio';
 
 interface MonthlyPulseOverlayProps {
@@ -35,6 +37,7 @@ export function MonthlyPulseOverlay({
 }: MonthlyPulseOverlayProps) {
   const visible = report != null || decision != null;
   const visibleRef = useRef<boolean | null>(null);
+  const reducedMotion = useEffectiveReducedMotion();
 
   useEffect(() => {
     if (visibleRef.current == null) {
@@ -64,7 +67,7 @@ export function MonthlyPulseOverlay({
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
-      <section className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-dynasty-border bg-[radial-gradient(circle_at_top,rgba(181,166,114,0.1),transparent_42%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))] shadow-2xl">
+      <section className={`relative w-full max-w-3xl overflow-hidden rounded-2xl border border-dynasty-border bg-[radial-gradient(circle_at_top,rgba(181,166,114,0.1),transparent_42%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))] shadow-2xl ${reducedMotion ? '' : 'animate-ceremony-fade-in'}`}>
         {report ? (
           <div className="p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -81,17 +84,23 @@ export function MonthlyPulseOverlay({
               <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3">
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Division Move</div>
                 <div className="mt-2 font-brand text-3xl text-dynasty-textBright">
-                  {report.divisionMovement > 0 ? `+${report.divisionMovement}` : report.divisionMovement}
+                  <AnimatedNumber
+                    value={report.divisionMovement}
+                    formatter={(value) => {
+                      const rounded = Math.round(value);
+                      return rounded > 0 ? `+${rounded}` : `${rounded}`;
+                    }}
+                  />
                 </div>
               </div>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className={`rounded-lg border border-dynasty-border bg-dynasty-elevated p-4 ${reducedMotion ? '' : 'animate-ceremony-slide-up'}`}>
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Standing</div>
                 <div className="mt-2 font-heading text-xl text-dynasty-textBright">#{report.divisionRank}</div>
               </div>
-              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className={`rounded-lg border border-dynasty-border bg-dynasty-elevated p-4 ${reducedMotion ? '' : 'animate-ceremony-slide-up'}`} style={reducedMotion ? undefined : { animationDelay: '40ms' }}>
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Player of the Month</div>
                 <div className="mt-2 font-heading text-sm text-dynasty-textBright">
                   {report.playerOfTheMonth
@@ -99,7 +108,7 @@ export function MonthlyPulseOverlay({
                     : 'No clear standout'}
                 </div>
               </div>
-              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className={`rounded-lg border border-dynasty-border bg-dynasty-elevated p-4 ${reducedMotion ? '' : 'animate-ceremony-slide-up'}`} style={reducedMotion ? undefined : { animationDelay: '80ms' }}>
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Trade Deadline</div>
                 <div className="mt-2 font-heading text-sm text-dynasty-textBright">
                   {report.tradeDeadlineCountdown != null
@@ -107,7 +116,7 @@ export function MonthlyPulseOverlay({
                     : 'No immediate deadline pressure'}
                 </div>
               </div>
-              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className={`rounded-lg border border-dynasty-border bg-dynasty-elevated p-4 ${reducedMotion ? '' : 'animate-ceremony-slide-up'}`} style={reducedMotion ? undefined : { animationDelay: '120ms' }}>
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Next Month</div>
                 <div className="mt-2 font-heading text-sm text-dynasty-textBright">
                   {scheduleDifficulty.label}
@@ -174,10 +183,10 @@ export function MonthlyPulseOverlay({
             </div>
 
             <div className="mt-5 rounded-lg border border-dynasty-border bg-dynasty-elevated p-5">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-5 w-5 text-accent-warning" />
-                <p className="font-heading text-sm leading-6 text-dynasty-text">{decision.body}</p>
-              </div>
+                <div className={`flex items-start gap-3 ${reducedMotion ? '' : 'animate-ceremony-slide-up'}`}>
+                  <AlertTriangle className="mt-0.5 h-5 w-5 text-accent-warning" />
+                  <p className="font-heading text-sm leading-6 text-dynasty-text">{decision.body}</p>
+                </div>
             </div>
 
             <div className="mt-6 flex flex-wrap justify-end gap-3">
