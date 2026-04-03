@@ -7,13 +7,14 @@ import { CommandPalette } from './CommandPalette';
 import { MomentCardOverlay } from './MomentCardOverlay';
 import { SeasonFlowCard } from './SeasonFlowCard';
 import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
+import { TickerBar } from './TickerBar';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
 import { scheduleAutoSave } from '@/shared/lib/saveSystem';
-import type { CeremonyMoment, MonthlyPulseState } from '@mbd/contracts';
+import type { CeremonyMoment, MonthlyPulseState, TickerEntry } from '@mbd/contracts';
 
 interface MonthlyPulseView extends MonthlyPulseState {
   onboardingGuide?: string | null;
@@ -81,6 +82,7 @@ export function AppLayout() {
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
   const [activeMoment, setActiveMoment] = useState<CeremonyMoment | null>(null);
   const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseView | null>(null);
+  const [tickerFeed, setTickerFeed] = useState<TickerEntry[]>([]);
   const [monthlyPulseBusy, setMonthlyPulseBusy] = useState(false);
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -129,6 +131,12 @@ export function AppLayout() {
     setMonthlyPulse(next as MonthlyPulseView);
   }, [worker, workerReady]);
 
+  const refreshTickerFeed = useCallback(async () => {
+    if (!workerReady) return;
+    const next = await worker.getTickerFeed(20);
+    setTickerFeed(next as TickerEntry[]);
+  }, [worker, workerReady]);
+
   const refreshCeremony = useCallback(async () => {
     if (!workerReady) return;
     const next = await worker.getCeremonyState();
@@ -141,12 +149,14 @@ export function AppLayout() {
     void refreshSeasonFlow();
     void refreshCeremony();
     void refreshMonthlyPulse();
+    void refreshTickerFeed();
     return worker.subscribeToFlowUpdates(() => {
       void refreshSeasonFlow();
       void refreshCeremony();
       void refreshMonthlyPulse();
+      void refreshTickerFeed();
     });
-  }, [isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, worker, workerReady]);
+  }, [isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, refreshTickerFeed, worker, workerReady]);
 
   const handleSim = useCallback(
     async (
@@ -158,7 +168,7 @@ export function AppLayout() {
       try {
         const result = await simFn();
         updateFromSim(result);
-        await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse()]);
+        await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse(), refreshTickerFeed()]);
         if (options.autoSave || result.phase !== phase || result.season !== season) {
           await persistActiveSlot(result.season);
         }
@@ -300,6 +310,26 @@ export function AppLayout() {
     }
   }, [handleSim, navigate, seasonFlow?.action, seasonFlow?.status, worker]);
 
+  const handleTickerSelect = useCallback((entry: TickerEntry) => {
+    const playerId = entry.relatedPlayerIds[0];
+    if (playerId) {
+      navigate(`/players/${playerId}`);
+      return;
+    }
+
+    if (entry.category === 'standings') {
+      navigate('/standings');
+      return;
+    }
+
+    if (entry.category === 'trade' || entry.category === 'rumor') {
+      navigate('/trade');
+      return;
+    }
+
+    navigate('/press-room');
+  }, [navigate]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -367,6 +397,8 @@ export function AppLayout() {
           </>
         </main>
       </div>
+
+      <TickerBar entries={tickerFeed} onSelectEntry={handleTickerSelect} />
 
       {/* Bottom sim controls */}
       <SimControls

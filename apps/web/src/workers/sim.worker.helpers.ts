@@ -138,6 +138,7 @@ import type {
   CeremonyState,
   ChallengeState,
   ConsequenceWatcher,
+  DebutFlashback,
   DynastyCard,
   FanSentiment,
   FrontOfficeState,
@@ -156,7 +157,10 @@ import type {
   MinorLeagueState,
   MonthlyPulseState,
   OwnerState,
+  PlayerOrigin,
   PlayerMorale,
+  PlayerStoryArc,
+  ProspectBond,
   RecordBookEntry,
   RecordWatchEntry,
   Rivalry,
@@ -164,6 +168,7 @@ import type {
   SeasonArchiveEntry,
   SeasonHistoryEntry,
   TeamChemistry,
+  TickerEntry,
   TradeState,
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
@@ -210,6 +215,11 @@ export interface FullGameState {
   briefingQueue: BriefingItem[];
   storyFlags: Map<string, string[]>;
   rivalries: Map<string, Rivalry>;
+  tickerFeed: TickerEntry[];
+  playerStoryArcs: PlayerStoryArc[];
+  prospectBonds: ProspectBond[];
+  playerOrigins: Map<string, PlayerOrigin>;
+  debutFlashbacks: DebutFlashback[];
   awardHistory: AwardHistoryEntry[];
   hallOfFame: HallOfFameEntry[];
   hallOfFameBallot: HallOfFameBallotEntry[];

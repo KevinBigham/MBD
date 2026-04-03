@@ -360,6 +360,7 @@ export function useWorker() {
   const getDashboardSummary = useCallback(async () => api.getDashboardSummary(), [api]);
   const getMonthlyPulse = useCallback(async () => api.getMonthlyPulse(), [api]);
   const getCeremonyState = useCallback(async () => api.getCeremonyState(), [api]);
+  const getTickerFeed = useCallback(async (limit?: number) => api.getTickerFeed(limit), [api]);
   const getSeasonFlowState = useCallback(async () => api.getSeasonFlowState(), [api]);
   const getScoutingStaff = useCallback(async () => api.getScoutingStaff(), [api]);
   const scoutPlayerReport = useCallback(
@@ -634,7 +635,7 @@ export function useWorker() {
     getState,
     exportSnapshot, importSnapshot,
     getStandings, getTeamRoster, getFullRoster, getPlayer, getAdvancedStats,
-    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getAchievements, getDashboardSummary, getMonthlyPulse, getCeremonyState, getSeasonFlowState,
+    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getAchievements, getDashboardSummary, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeAssetInventory, proposeTrade, respondToTradeOffer,

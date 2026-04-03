@@ -1159,4 +1159,8 @@ export const queryApi = {
       capSpace: Math.max(0, budget - payroll),
     };
   },
+
+  getTickerFeed(limit = 25) {
+    return requireState().tickerFeed.slice(0, Math.max(1, limit));
+  },
 };

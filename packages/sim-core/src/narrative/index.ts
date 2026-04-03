@@ -26,6 +26,10 @@ export {
   calculateRushingRisk,
   calculateFanSentiment,
 } from './consequences.js';
+export {
+  generateTickerEntries,
+  pruneTickerFeed,
+} from './ticker.js';
 
 export type {
   // Types
@@ -52,3 +56,14 @@ export type {
   RushingRisk,
   FanSentimentContext,
 } from './consequences.js';
+export type {
+  TickerGenerationContext,
+  TickerInjuryContext,
+  TickerMilestoneContext,
+  TickerProspectCallupContext,
+  TickerRecordWatchContext,
+  TickerRumorCandidate,
+  TickerScoreContext,
+  TickerStandingsChangeContext,
+  TickerTradeContext,
+} from './ticker.js';

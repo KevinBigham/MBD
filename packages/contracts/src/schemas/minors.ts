@@ -111,12 +111,51 @@ export type PositionConversionRecommendation = z.infer<
   typeof PositionConversionRecommendationSchema
 >;
 
+export const MinorLeagueSeasonLineSchema = z.object({
+  season: z.number().int().min(1),
+  level: z.string().min(1),
+  gamesPlayed: z.number().int().min(0),
+  pa: z.number().int().min(0),
+  hits: z.number().int().min(0),
+  hr: z.number().int().min(0),
+  rbi: z.number().int().min(0),
+  avg: z.number().min(0),
+  ip: z.number().min(0),
+  era: z.number().min(0),
+  k: z.number().int().min(0),
+  bb: z.number().int().min(0),
+});
+export type MinorLeagueSeasonLine = z.infer<typeof MinorLeagueSeasonLineSchema>;
+
+export const DevelopmentSetbackTypeEnum = z.enum([
+  "mental_block",
+  "nagging_injury",
+  "off_field_distraction",
+  "hot_streak",
+]);
+export type DevelopmentSetbackType = z.infer<typeof DevelopmentSetbackTypeEnum>;
+
+export const DevelopmentSetbackSchema = z.object({
+  playerId: z.string(),
+  type: DevelopmentSetbackTypeEnum,
+  overallModifier: z.number().int(),
+  startSeason: z.number().int().min(1),
+  startMonth: z.number().int().min(1).max(12),
+  endSeason: z.number().int().min(1),
+  endMonth: z.number().int().min(1).max(12),
+  summary: z.string().min(1),
+  active: z.boolean().default(true),
+});
+export type DevelopmentSetback = z.infer<typeof DevelopmentSetbackSchema>;
+
 export const MinorLeagueStateSchema = z.object({
   serviceTimeLedger: z.array(z.tuple([z.string(), z.number().int().min(0)])),
   optionUsage: z.array(z.tuple([z.string(), z.array(z.number().int().min(0))])),
   waiverClaims: z.array(WaiverClaimSchema),
   affiliateStates: z.array(AffiliateStateSchema),
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
+  minorLeagueStatHistory: z.array(z.tuple([z.string(), z.array(MinorLeagueSeasonLineSchema)])).default([]),
+  activeDevelopmentSetbacks: z.array(DevelopmentSetbackSchema).default([]),
   processedDevelopmentMonths: z.array(z.number().int().min(1).max(12)),
   developmentLedger: z.array(DevelopmentLedgerEntrySchema),
   developmentReports: z.array(DevelopmentReportEntrySchema),

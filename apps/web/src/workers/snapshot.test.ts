@@ -16,12 +16,17 @@ import {
 } from '@mbd/sim-core';
 import type {
   BriefingItem,
+  DebutFlashback,
   GameSnapshot,
   OwnerState,
+  PlayerOrigin,
+  PlayerStoryArc,
   PlayerMorale,
+  ProspectBond,
   RecordBookEntry,
   RecordWatchEntry,
   Rivalry,
+  TickerEntry,
   TeamChemistry,
 } from '@mbd/contracts';
 import type { FullGameState } from './sim.worker.helpers';
@@ -101,6 +106,11 @@ function createNarrativeSample(userTeamId: string) {
     briefingQueue,
     storyFlags,
     rivalries,
+    tickerFeed: [] as TickerEntry[],
+    playerStoryArcs: [] as PlayerStoryArc[],
+    prospectBonds: [] as ProspectBond[],
+    playerOrigins: new Map<string, PlayerOrigin>(),
+    debutFlashbacks: [] as DebutFlashback[],
     awardHistory: [],
     recordBook: [] as RecordBookEntry[],
     recordWatch: [] as RecordWatchEntry[],
@@ -137,6 +147,8 @@ function createState(): FullGameState {
       player.serviceTimeDays = 172;
     }
   }
+
+  const narrative = createNarrativeSample('nyy');
 
   return {
     rng,
@@ -181,6 +193,8 @@ function createState(): FullGameState {
       waiverClaims: [],
       affiliateStates: [],
       affiliateBoxScores: [],
+      minorLeagueStatHistory: [],
+      activeDevelopmentSetbacks: [],
       processedDevelopmentMonths: [],
       developmentLedger: [],
       developmentReports: [],
@@ -193,7 +207,7 @@ function createState(): FullGameState {
       pendingReport: null,
       decisionQueue: [],
     },
-    ...createNarrativeSample('nyy'),
+    ...narrative,
     tradeState: {
       pendingOffers: [],
       tradeHistory: [],
@@ -202,12 +216,12 @@ function createState(): FullGameState {
     hallOfFameBallot: [],
     franchiseTimeline: [],
     careerStats: [],
-    recordBook: [],
-    recordWatch: [],
-    seasonArchive: [],
-    historicalPlayers: [],
-    mentorRelationships: [],
-    frontOfficeState: new Map(),
+    recordBook: narrative.recordBook,
+    recordWatch: narrative.recordWatch,
+    seasonArchive: narrative.seasonArchive,
+    historicalPlayers: narrative.historicalPlayers,
+    mentorRelationships: narrative.mentorRelationships,
+    frontOfficeState: narrative.frontOfficeState,
     franchise: createDefaultFranchiseState('nyy', 1, dayOne.newState.currentDay),
     gmCareer: initializeGMCareer(new GameRNG(99), 'nyy', 'General Manager', 1),
     jobMarket: {
@@ -235,6 +249,80 @@ describe('snapshot helpers', () => {
     const candidate = original.players.find(
       (player) => player.teamId === 'bos' && player.rosterStatus === 'AA',
     )!;
+    original.tickerFeed.push({
+      id: 'ticker-1',
+      timestamp: 'S1D2',
+      category: 'score',
+      text: 'Yankees defeats Red Sox 5-3.',
+      priority: 2,
+      relatedTeamIds: ['nyy', 'bos'],
+      relatedPlayerIds: [candidate.id],
+      expiresDay: 5,
+    });
+    original.playerStoryArcs.push({
+      playerId: candidate.id,
+      arcType: 'prospect_rise',
+      startSeason: 1,
+      startDay: 2,
+      phase: 'setup',
+      milestones: ['Drafted'],
+      resolvedSeason: null,
+    });
+    original.prospectBonds.push({
+      prospectId: candidate.id,
+      draftedSeason: 1,
+      debutSeason: null,
+      currentLevel: 'AA',
+      bondStrength: 25,
+      milestones: ['Drafted Round 2, 1'],
+      loyaltyModifier: 0.25,
+    });
+    original.playerOrigins.set(candidate.id, {
+      playerId: candidate.id,
+      originTeamId: 'bos',
+      acquisitionType: 'draft',
+      acquiredSeason: 1,
+      draftSeason: 1,
+      draftRound: 2,
+      draftPickNumber: 42,
+      originalGrade: 58,
+      bonusAmount: null,
+    });
+    original.debutFlashbacks.push({
+      playerId: candidate.id,
+      playerName: `${candidate.firstName} ${candidate.lastName}`,
+      draftSeason: 1,
+      draftRound: 2,
+      originalGrade: 58,
+      debutSeason: 3,
+      debutOverall: 61,
+      journeyHighlights: ['Drafted', 'Reached AA'],
+    });
+    original.minorLeagueState.minorLeagueStatHistory = [[candidate.id, [{
+      season: 1,
+      level: 'AA',
+      gamesPlayed: 54,
+      pa: 220,
+      hits: 63,
+      hr: 9,
+      rbi: 41,
+      avg: 0.286,
+      ip: 0,
+      era: 0,
+      k: 0,
+      bb: 0,
+    }]]];
+    original.minorLeagueState.activeDevelopmentSetbacks = [{
+      playerId: candidate.id,
+      type: 'mental_block',
+      overallModifier: -6,
+      startSeason: 1,
+      startMonth: 2,
+      endSeason: 1,
+      endMonth: 4,
+      summary: 'Struggling with consistency.',
+      active: true,
+    }];
 
     candidate.rule5EligibleAfterSeason = original.season;
     original.rule5Session = createRule5Session({
@@ -264,7 +352,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(13);
+    expect(snapshot.schemaVersion).toBe(14);
     expect((snapshot as GameSnapshot & {
       monthlyPulse?: { pendingReport: null; decisionQueue: unknown[] };
     }).monthlyPulse).toEqual({
@@ -314,6 +402,13 @@ describe('snapshot helpers', () => {
     expect(restored.rule5Session?.phase).toBe('protection_audit');
     expect(restored.rule5Obligations[0]?.status).toBe('active');
     expect(restored.rule5OfferBackStates[0]?.status).toBe('pending');
+    expect(restored.tickerFeed[0]?.id).toBe('ticker-1');
+    expect(restored.playerStoryArcs[0]?.playerId).toBe(candidate.id);
+    expect(restored.prospectBonds[0]?.prospectId).toBe(candidate.id);
+    expect(restored.playerOrigins.get(candidate.id)?.draftRound).toBe(2);
+    expect(restored.debutFlashbacks[0]?.playerId).toBe(candidate.id);
+    expect(restored.minorLeagueState.minorLeagueStatHistory[0]?.[0]).toBe(candidate.id);
+    expect(restored.minorLeagueState.activeDevelopmentSetbacks[0]?.playerId).toBe(candidate.id);
   });
 
   it('migrates v9 snapshots into the v10 monthly pulse shape', () => {
@@ -454,6 +549,87 @@ describe('snapshot helpers', () => {
     expect(restored.scoutConflicts).toEqual([]);
     expect(restored.dynastyCards).toEqual([]);
     expect(restored.challengeState).toBeNull();
+  });
+
+  it('migrates v13 snapshots into the v14 narrative ticker and farm-depth state shape', () => {
+    const original = createState();
+    original.season = 4;
+    const draftedProspect = original.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'AA',
+    )!;
+    original.seasonArchive = [
+      {
+        season: 3,
+        standings: [],
+        playoffSeries: [],
+        awards: [],
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        transactions: [],
+        draftClass: [{
+          pickNumber: 42,
+          playerId: draftedProspect.id,
+          playerName: `${draftedProspect.firstName} ${draftedProspect.lastName}`,
+          teamId: 'nyy',
+          currentStatus: 'AA',
+        }],
+        financials: [],
+        userSummary: null,
+        timelineEvents: [],
+      },
+    ];
+
+    const exported = exportGameSnapshot(original) as GameSnapshot & {
+      schemaVersion: number;
+      narrative: Record<string, unknown>;
+      minorLeagueState: Record<string, unknown>;
+    };
+
+    const restored = importGameSnapshot({
+      ...exported,
+      schemaVersion: 13,
+      narrative: {
+        ...exported.narrative,
+        tickerFeed: undefined,
+        playerStoryArcs: undefined,
+        prospectBonds: undefined,
+        playerOrigins: undefined,
+        debutFlashbacks: undefined,
+      },
+      minorLeagueState: {
+        ...exported.minorLeagueState,
+        minorLeagueStatHistory: undefined,
+        activeDevelopmentSetbacks: undefined,
+      },
+    });
+
+    expect(restored.tickerFeed).toEqual([]);
+    expect(restored.playerStoryArcs).toEqual([]);
+    expect(restored.debutFlashbacks).toEqual([]);
+    expect(restored.minorLeagueState.minorLeagueStatHistory).toEqual([]);
+    expect(restored.minorLeagueState.activeDevelopmentSetbacks).toEqual([]);
+    expect(restored.playerOrigins.get(draftedProspect.id)).toMatchObject({
+      playerId: draftedProspect.id,
+      originTeamId: 'nyy',
+      acquisitionType: 'draft',
+      draftSeason: 3,
+      draftRound: 2,
+      draftPickNumber: 42,
+      originalGrade: null,
+    });
+    expect(restored.prospectBonds.find((bond) => bond.prospectId === draftedProspect.id)).toMatchObject({
+      prospectId: draftedProspect.id,
+      draftedSeason: 3,
+      currentLevel: 'AA',
+      bondStrength: 30,
+      loyaltyModifier: 0.3,
+    });
   });
 
   it('does not persist pending extension negotiations in snapshots', () => {

@@ -571,6 +571,8 @@ export {
   evaluateConsequenceWatchers,
   calculateRushingRisk,
   calculateFanSentiment,
+  generateTickerEntries,
+  pruneTickerFeed,
 } from './narrative/index.js';
 export type {
   NewsPriority,
@@ -593,6 +595,15 @@ export type {
   EvaluateConsequenceWatchersResult,
   RushingRisk,
   FanSentimentContext,
+  TickerGenerationContext,
+  TickerInjuryContext,
+  TickerMilestoneContext,
+  TickerProspectCallupContext,
+  TickerRecordWatchContext,
+  TickerRumorCandidate,
+  TickerScoreContext,
+  TickerStandingsChangeContext,
+  TickerTradeContext,
 } from './narrative/index.js';
 
 // Sharing

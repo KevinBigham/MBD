@@ -19,6 +19,7 @@ import {
   CareerStatsLedgerSchema,
   ChallengeStateSchema,
   ConsequenceWatcherSchema,
+  DebutFlashbackSchema,
   DynastyCardSchema,
   FanSentimentSchema,
   FrontOfficeStateSchema,
@@ -31,13 +32,17 @@ import {
   MentorRelationshipSchema,
   NewsItemSchema,
   OwnerStateSchema,
+  PlayerOriginSchema,
   PlayerMoraleSchema,
+  PlayerStoryArcSchema,
+  ProspectBondSchema,
   RecordBookEntrySchema,
   RecordWatchEntrySchema,
   RivalrySchema,
   ScoutConflictSchema,
   SeasonArchiveEntrySchema,
   TeamChemistrySchema,
+  TickerEntrySchema,
   WinLossRecordSchema,
   SeasonHistoryEntrySchema,
   type NewsTag,
@@ -60,7 +65,9 @@ import {
 import {
   AffiliateBoxScoreSchema,
   AffiliateStateSchema,
+  DevelopmentSetbackSchema,
   MinorLeagueStateSchema,
+  MinorLeagueSeasonLineSchema,
   WaiverClaimSchema,
 } from "./minors.js";
 import { CoachSchema } from "./staff.js";
@@ -269,6 +276,7 @@ const PlayerMoraleEntrySchema = z.tuple([z.string(), PlayerMoraleSchema]);
 const TeamChemistryEntrySchema = z.tuple([z.string(), TeamChemistrySchema]);
 const OwnerStateEntrySchema = z.tuple([z.string(), OwnerStateSchema]);
 const RivalryEntrySchema = z.tuple([z.string(), RivalrySchema]);
+const PlayerOriginEntrySchema = z.tuple([z.string(), PlayerOriginSchema]);
 
 export const NarrativeSnapshotSchema = z.object({
   playerMorale: z.array(PlayerMoraleEntrySchema),
@@ -277,6 +285,11 @@ export const NarrativeSnapshotSchema = z.object({
   briefingQueue: z.array(BriefingItemSchema),
   storyFlags: z.array(StoryFlagEntrySchema),
   rivalries: z.array(RivalryEntrySchema),
+  tickerFeed: z.array(TickerEntrySchema).default([]),
+  playerStoryArcs: z.array(PlayerStoryArcSchema).default([]),
+  prospectBonds: z.array(ProspectBondSchema).default([]),
+  playerOrigins: z.array(PlayerOriginEntrySchema).default([]),
+  debutFlashbacks: z.array(DebutFlashbackSchema).default([]),
   awardHistory: z.array(AwardHistoryEntrySchema),
   hallOfFame: z.array(HallOfFameEntrySchema),
   hallOfFameBallot: z.array(HallOfFameBallotEntrySchema),
@@ -437,7 +450,7 @@ const MinorLeagueStateV7Schema = z.object({
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 13;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 14;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -483,6 +496,11 @@ export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
 });
 export type GameSnapshotV12 = z.infer<typeof GameSnapshotV12Schema>;
+
+export const GameSnapshotV13Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(13),
+});
+export type GameSnapshotV13 = z.infer<typeof GameSnapshotV13Schema>;
 
 export const GameSnapshotV11Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(11),
@@ -868,6 +886,11 @@ function createEmptyPhase9State(userTeamId: string, season: number, day: number)
 
 function createEmptyPhase11NarrativeState() {
   return {
+    tickerFeed: [],
+    playerStoryArcs: [],
+    prospectBonds: [],
+    playerOrigins: [],
+    debutFlashbacks: [],
     recordBook: [],
     recordWatch: [],
     seasonArchive: [],
@@ -1242,6 +1265,191 @@ function createEmptyLegacyState() {
   };
 }
 
+const DRAFT_ROUND_SIZE = 30;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeDraftRound(explicitRound: number | null, pickNumber: number | null): number | null {
+  if (explicitRound != null && explicitRound >= 1) {
+    return explicitRound;
+  }
+  if (pickNumber == null || pickNumber < 1) {
+    return null;
+  }
+  return Math.ceil(pickNumber / DRAFT_ROUND_SIZE);
+}
+
+function upsertPlayerOrigin(
+  map: Map<string, z.infer<typeof PlayerOriginSchema>>,
+  origin: z.infer<typeof PlayerOriginSchema>,
+) {
+  const current = map.get(origin.playerId);
+  if (!current) {
+    map.set(origin.playerId, origin);
+    return;
+  }
+
+  map.set(origin.playerId, {
+    ...current,
+    originTeamId: current.originTeamId || origin.originTeamId,
+    acquisitionType: current.acquisitionType ?? origin.acquisitionType,
+    acquiredSeason: Math.min(current.acquiredSeason, origin.acquiredSeason),
+    draftSeason: current.draftSeason ?? origin.draftSeason,
+    draftRound: current.draftRound ?? origin.draftRound,
+    draftPickNumber: current.draftPickNumber ?? origin.draftPickNumber,
+    originalGrade: current.originalGrade ?? origin.originalGrade,
+    bonusAmount: current.bonusAmount ?? origin.bonusAmount,
+  });
+}
+
+function buildPhase13PlayerOrigins(snapshot: GameSnapshotV13): Array<[string, z.infer<typeof PlayerOriginSchema>]> {
+  const origins = new Map<string, z.infer<typeof PlayerOriginSchema>>();
+
+  for (const [playerId, origin] of snapshot.narrative.playerOrigins ?? []) {
+    upsertPlayerOrigin(origins, {
+      ...origin,
+      playerId,
+    });
+  }
+
+  const offseasonState = isRecord(snapshot.offseasonState) ? snapshot.offseasonState : null;
+  const offseasonSeason = asNumber(offseasonState?.season) ?? snapshot.season;
+  const phaseResults = isRecord(offseasonState?.phaseResults) ? offseasonState.phaseResults : null;
+  const draftPicks = Array.isArray(phaseResults?.draftPicks) ? phaseResults.draftPicks : [];
+  const ifaSignings = Array.isArray(phaseResults?.ifaSignings) ? phaseResults.ifaSignings : [];
+
+  for (const entry of draftPicks) {
+    if (!isRecord(entry)) continue;
+    const playerId = asString(entry.playerId);
+    const teamId = asString(entry.teamId);
+    const pickNumber = asNumber(entry.pickNumber);
+    if (!playerId || !teamId) continue;
+    upsertPlayerOrigin(origins, {
+      playerId,
+      originTeamId: teamId,
+      acquisitionType: "draft",
+      acquiredSeason: offseasonSeason,
+      draftSeason: offseasonSeason,
+      draftRound: normalizeDraftRound(asNumber(entry.round), pickNumber),
+      draftPickNumber: pickNumber,
+      originalGrade: asNumber(entry.scoutingGrade),
+      bonusAmount: null,
+    });
+  }
+
+  for (const entry of ifaSignings) {
+    if (!isRecord(entry)) continue;
+    const playerId = asString(entry.playerId);
+    const teamId = asString(entry.teamId);
+    if (!playerId || !teamId) continue;
+    upsertPlayerOrigin(origins, {
+      playerId,
+      originTeamId: teamId,
+      acquisitionType: "ifa",
+      acquiredSeason: offseasonSeason,
+      draftSeason: null,
+      draftRound: null,
+      draftPickNumber: null,
+      originalGrade: null,
+      bonusAmount: asNumber(entry.bonusAmount),
+    });
+  }
+
+  for (const archiveEntry of snapshot.narrative.seasonArchive ?? []) {
+    for (const draftPick of archiveEntry.draftClass ?? []) {
+      const playerId = asString(draftPick.playerId);
+      const teamId = asString(draftPick.teamId);
+      const pickNumber = asNumber(draftPick.pickNumber);
+      if (!playerId || !teamId) continue;
+      upsertPlayerOrigin(origins, {
+        playerId,
+        originTeamId: teamId,
+        acquisitionType: "draft",
+        acquiredSeason: archiveEntry.season,
+        draftSeason: archiveEntry.season,
+        draftRound: normalizeDraftRound(null, pickNumber),
+        draftPickNumber: pickNumber,
+        originalGrade: null,
+        bonusAmount: null,
+      });
+    }
+  }
+
+  return Array.from(origins.entries()).sort((left, right) => left[0].localeCompare(right[0]));
+}
+
+function buildPhase13ProspectBonds(
+  snapshot: GameSnapshotV13,
+  playerOrigins: Array<[string, z.infer<typeof PlayerOriginSchema>]>,
+) {
+  const originLookup = new Map(playerOrigins);
+
+  return snapshot.players
+    .filter((player) => {
+      if (player.rosterStatus === "MLB") return false;
+      if (player.teamId === "" || player.teamId === "draft_pool") return false;
+      const origin = originLookup.get(player.id);
+      return Boolean(
+        origin
+        && origin.acquisitionType === "draft"
+        && origin.draftSeason != null
+        && origin.originTeamId === player.teamId,
+      );
+    })
+    .map((player) => {
+      const origin = originLookup.get(player.id)!;
+      const draftedSeason = origin.draftSeason ?? origin.acquiredSeason;
+      const seasonsInSystem = Math.max(1, snapshot.season - draftedSeason + 1);
+      const bondStrength = Math.min(75, seasonsInSystem * 15);
+
+      return {
+        prospectId: player.id,
+        draftedSeason,
+        debutSeason: null,
+        currentLevel: player.rosterStatus,
+        bondStrength,
+        milestones: [
+          origin.draftRound != null
+            ? `Drafted Round ${origin.draftRound}, ${draftedSeason}`
+            : `Drafted, ${draftedSeason}`,
+        ],
+        loyaltyModifier: Number((bondStrength / 100).toFixed(2)),
+      };
+    })
+    .sort((left, right) => left.prospectId.localeCompare(right.prospectId));
+}
+
+function createPhase13MigrationState(snapshot: GameSnapshotV13) {
+  const playerOrigins = buildPhase13PlayerOrigins(snapshot);
+  const prospectBonds = snapshot.narrative.prospectBonds.length > 0
+    ? snapshot.narrative.prospectBonds
+    : buildPhase13ProspectBonds(snapshot, playerOrigins);
+
+  return {
+    narrative: {
+      tickerFeed: snapshot.narrative.tickerFeed ?? [],
+      playerStoryArcs: snapshot.narrative.playerStoryArcs ?? [],
+      prospectBonds,
+      playerOrigins,
+      debutFlashbacks: snapshot.narrative.debutFlashbacks ?? [],
+    },
+    minorLeagueState: {
+      minorLeagueStatHistory: snapshot.minorLeagueState.minorLeagueStatHistory ?? [],
+      activeDevelopmentSetbacks: snapshot.minorLeagueState.activeDevelopmentSetbacks ?? [],
+    },
+  };
+}
+
 function createEmptyRule5State() {
   return {
     rule5Session: null,
@@ -1273,6 +1481,8 @@ function createEmptyPhase6State(season: number) {
       waiverClaims: [],
       affiliateStates: [],
       affiliateBoxScores: [],
+      minorLeagueStatHistory: [],
+      activeDevelopmentSetbacks: [],
       processedDevelopmentMonths: [],
       developmentLedger: [],
       developmentReports: [],
@@ -1421,6 +1631,8 @@ function upgradeMinorLeagueState(
 ): MinorLeagueState {
   return {
     ...state,
+    minorLeagueStatHistory: [],
+    activeDevelopmentSetbacks: [],
     processedDevelopmentMonths: [],
     developmentLedger: [],
     developmentReports: [],
@@ -1840,6 +2052,23 @@ function migrateGameSnapshotV12(snapshot: GameSnapshotV12): GameSnapshot {
   });
 }
 
+function migrateGameSnapshotV13(snapshot: GameSnapshotV13): GameSnapshot {
+  const phase13State = createPhase13MigrationState(snapshot);
+
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      ...phase13State.narrative,
+    },
+    minorLeagueState: {
+      ...snapshot.minorLeagueState,
+      ...phase13State.minorLeagueState,
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -1866,6 +2095,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 13
+  ) {
+    return migrateGameSnapshotV13(GameSnapshotV13Schema.parse(snapshotLike));
   }
 
   if (

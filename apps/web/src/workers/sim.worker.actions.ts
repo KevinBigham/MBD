@@ -182,6 +182,7 @@ import {
   type NewGameOptions,
 } from './sim.worker.setup.js';
 import { syncRecordTracking } from './sim.worker.records.js';
+import { refreshTickerFeed } from './sim.worker.ticker.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -711,6 +712,9 @@ function simWeekInternal(): SimResultDTO {
   }
 
   const previousDay = s.day;
+  const previousStandings = s.seasonState.standings.serialize();
+  const previousInjuryIds = new Set(s.injuries.keys());
+  const previousTradeCount = s.tradeState.tradeHistory.length;
   const { newState, result } = simulateWeek(
     s.rng,
     s.seasonState,
@@ -725,6 +729,13 @@ function simWeekInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  refreshTickerFeed(s, {
+    simDay: Math.max(previousDay, s.day - 1),
+    games: result.games,
+    previousStandings,
+    previousInjuryIds,
+    previousTradeCount,
+  });
   resolveConsequenceChains(s);
   syncRecordTracking(s);
   updateScenarioProgress(s);
@@ -807,6 +818,9 @@ function simMonthInternal(): SimResultDTO {
 
   const monthlyContext = captureMonthlyAdvanceContext(s);
   const previousDay = s.day;
+  const previousStandings = s.seasonState.standings.serialize();
+  const previousInjuryIds = new Set(s.injuries.keys());
+  const previousTradeCount = s.tradeState.tradeHistory.length;
   const { newState, result } = simulateMonth(
     s.rng,
     s.seasonState,
@@ -821,6 +835,13 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  refreshTickerFeed(s, {
+    simDay: Math.max(previousDay, s.day - 1),
+    games: result.games,
+    previousStandings,
+    previousInjuryIds,
+    previousTradeCount,
+  });
   resolveConsequenceChains(s);
   refreshFanSentiment(s);
   syncRecordTracking(s, { publishWatchStories: true, publishBrokenRecords: true });
@@ -929,6 +950,9 @@ function simDayInternal(): SimResultDTO {
 
   if (s.phase === 'regular') {
     const previousDay = s.day;
+    const previousStandings = s.seasonState.standings.serialize();
+    const previousInjuryIds = new Set(s.injuries.keys());
+    const previousTradeCount = s.tradeState.tradeHistory.length;
     const { newState, result } = simulateDay(
       s.rng,
       s.seasonState,
@@ -943,6 +967,13 @@ function simDayInternal(): SimResultDTO {
     processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
+    refreshTickerFeed(s, {
+      simDay: previousDay,
+      games: result.games,
+      previousStandings,
+      previousInjuryIds,
+      previousTradeCount,
+    });
     resolveConsequenceChains(s);
     syncRecordTracking(s);
     updateScenarioProgress(s);
