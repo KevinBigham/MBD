@@ -109,6 +109,27 @@ function combinedModifier(modifiers: Log5Modifiers | undefined): number {
   return squash(m);
 }
 
+function applyOutcomeModifier(key: OutcomeKey, probability: number, modifier: number): number {
+  if (modifier === 1) return probability;
+
+  switch (key) {
+    case 'bb':
+    case 'hbp':
+    case 'hr':
+    case 'single':
+    case 'double':
+    case 'triple':
+    case 'ld':
+      return probability * modifier;
+    case 'k':
+    case 'gb':
+    case 'fb':
+      return probability / modifier;
+    default:
+      return probability;
+  }
+}
+
 /**
  * Log5 formula for a single outcome:
  *
@@ -155,8 +176,8 @@ export function computeLog5Probabilities(
 
     let p = log5Single(batterRate, pitcherRate, leagueRate, batterWeight);
 
-    // Apply combined modifier multiplicatively.
-    p *= mod;
+    // Positive modifiers are batter-friendly and negative modifiers suppress offense.
+    p = applyOutcomeModifier(key, p, mod);
 
     // Floor at zero — probabilities cannot be negative.
     raw[key] = Math.max(0, p);

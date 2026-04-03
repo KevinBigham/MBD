@@ -768,6 +768,41 @@ describe('sim worker narrative APIs', () => {
     expect(Array.isArray(awardRaces.roy)).toBe(true);
   });
 
+  it('forms mentor relationships and publishes a clubhouse mentor story', () => {
+    startGame(458, 'nyy');
+    const state = requireState();
+    const veteran = state.players.find(
+      (player) =>
+        player.teamId === 'nyy'
+        && player.rosterStatus === 'MLB'
+        && player.position === 'SS',
+    )!;
+    const rookie = state.players.find(
+      (player) =>
+        player.teamId === 'nyy'
+        && player.rosterStatus === 'AAA'
+        && player.pitcherAttributes == null
+        && player.position === 'SS',
+    )!;
+
+    veteran.age = 34;
+    veteran.personality.leadership = 92;
+    veteran.personalityTraits = ['Leader', 'Mentor', 'Team First'];
+    rookie.age = 21;
+    rookie.rosterStatus = 'MLB';
+    rookie.minorLeagueLevel = null;
+    rookie.personalityTraits = ['Quiet Professional', 'Hard Worker'];
+
+    api.simDay();
+
+    expect(state.mentorRelationships.some((relationship) =>
+      relationship.veteranPlayerId === veteran.id && relationship.rookiePlayerId === rookie.id,
+    )).toBe(true);
+    expect(state.news.some((item) =>
+      /under wing|takes rookie/i.test(item.headline) || /under wing|takes rookie/i.test(item.body),
+    )).toBe(true);
+  });
+
   it('resolves history display names from live worker state', () => {
     startGame(457, 'nyy');
 

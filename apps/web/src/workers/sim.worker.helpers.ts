@@ -3819,6 +3819,11 @@ function simulateFreeAgencyDays(
 ): OffseasonProgressResult['aiSignings'] {
   ensureFreeAgencyMarket(s);
   const aiSignings: OffseasonProgressResult['aiSignings'] = [];
+  const teamAttractiveness = new Map(
+    TEAMS
+      .filter((team) => team.id !== s.userTeamId)
+      .map((team) => [team.id, s.teamChemistry.get(team.id)?.score ?? 50] as const),
+  );
 
   for (let day = 0; day < daysToSimulate; day++) {
     if (!s.freeAgencyMarket) break;
@@ -3836,6 +3841,7 @@ function simulateFreeAgencyDays(
       teamBudgets,
       teamPayrolls,
       teamNeeds,
+      teamAttractiveness,
     );
     aiSignings.push(...applyNewFreeAgencySignings(s, previousSignedIds));
   }

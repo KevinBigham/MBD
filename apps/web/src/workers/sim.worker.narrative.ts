@@ -12,6 +12,14 @@ import {
   calculateTeamPayroll,
   getTeamBudget,
 } from '../../../../packages/sim-core/src/finance/contracts';
+import {
+  countMatchingTraits,
+  deriveDeterministicPersonalityTraits,
+  evaluatePlayerTradeValue,
+  type Coach,
+  type GeneratedPlayer,
+  type PlayerGameStats,
+} from '@mbd/sim-core';
 import { finalizeAwardResults } from '../../../../packages/sim-core/src/league/awards';
 import { getTeamById, TEAMS } from '../../../../packages/sim-core/src/league/teams';
 import {
@@ -22,12 +30,11 @@ import {
   createOwnerState,
   evaluateOwnerState,
   getPersonalityArchetype,
+  type TeamChemistryContext,
 } from '../../../../packages/sim-core/src/league/narrativeState';
 import { deriveRivalriesFromStandings } from '../../../../packages/sim-core/src/league/rivalries';
 import { getUnreadNews } from '../../../../packages/sim-core/src/narrative/newsFeed';
 import { toDisplayRating } from '../../../../packages/sim-core/src/player/attributes';
-import { evaluatePlayerTradeValue } from '@mbd/sim-core';
-import type { GeneratedPlayer, PlayerGameStats } from '@mbd/sim-core';
 import { detectProspectBreakouts } from '../../../../packages/sim-core/src/player/breakouts';
 import type { FullGameState } from './sim.worker.helpers';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers';
@@ -110,6 +117,243 @@ function playerLabel(player: GeneratedPlayer): string {
 function uniqueStrings(values: string[], limit?: number): string[] {
   const deduped = values.filter((value, index) => value.length > 0 && values.indexOf(value) === index);
   return typeof limit === 'number' ? deduped.slice(0, limit) : deduped;
+}
+
+function pushNarrativeStory(
+  state: FullGameState,
+  item: Omit<FullGameState['news'][number], 'read'>,
+  briefing?: BriefingItem,
+) {
+  if (!state.news.some((existing) => existing.id === item.id)) {
+    state.news.unshift({
+      ...item,
+      read: false,
+    });
+  }
+
+  if (briefing && !state.briefingQueue.some((existing) => existing.id === briefing.id)) {
+    state.briefingQueue = dedupeBriefing([briefing, ...state.briefingQueue]);
+  }
+}
+
+function serviceYearsForPlayer(state: FullGameState, player: GeneratedPlayer): number {
+  return (state.serviceTime.get(player.id) ?? player.serviceTimeDays) / 172;
+}
+
+function ensurePlayerPersonalityTraits(state: FullGameState) {
+  for (const player of state.players) {
+    if ((player.personalityTraits?.length ?? 0) > 0) continue;
+    player.personalityTraits = deriveDeterministicPersonalityTraits({
+      id: player.id,
+      age: player.age,
+      position: player.position,
+      rosterStatus: player.rosterStatus,
+      personality: player.personality,
+    });
+  }
+}
+
+function calculateRosterContinuity(state: FullGameState, teamId: string): number {
+  const teamPlayers = state.players.filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB');
+  if (teamPlayers.length === 0) return 50;
+
+  const returningCore = teamPlayers.filter((player) => serviceYearsForPlayer(state, player) >= 2).length;
+  const averageServiceYears = teamPlayers.reduce((sum, player) => sum + serviceYearsForPlayer(state, player), 0) / teamPlayers.length;
+  return Math.max(20, Math.min(90, Math.round(35 + returningCore * 1.8 + averageServiceYears * 8)));
+}
+
+function leadershipCoachFitScore(coaches: Coach[]): number {
+  if (coaches.length === 0) return 50;
+
+  const leadershipVoices = coaches.filter((coach) => coach.specialty === 'leadership' || coach.specialty === 'mlb_prep');
+  if (leadershipVoices.length === 0) return 50;
+
+  const averageFit = leadershipVoices.reduce(
+    (sum, coach) => sum + ((coach.teachingAbility * 0.6) + (coach.personalityFit * 0.4)) * 100,
+    0,
+  ) / leadershipVoices.length;
+  return Math.max(30, Math.min(90, Math.round(averageFit)));
+}
+
+function buildChemistryContext(state: FullGameState, teamId: string): TeamChemistryContext {
+  return {
+    recentStreak: state.seasonState.standings.getRecord(teamId)?.streak ?? 0,
+    rosterContinuity: calculateRosterContinuity(state, teamId),
+    coachFit: leadershipCoachFitScore(state.coachingStaffs.get(teamId) ?? []),
+  };
+}
+
+function sameMentorTrack(veteran: GeneratedPlayer, rookie: GeneratedPlayer): boolean {
+  if (veteran.position === rookie.position) return true;
+
+  const veteranPitcher = veteran.pitcherAttributes != null;
+  const rookiePitcher = rookie.pitcherAttributes != null;
+  return veteranPitcher && rookiePitcher;
+}
+
+function mentorCandidateScore(state: FullGameState, player: GeneratedPlayer): number {
+  return player.personality.leadership
+    + player.personality.workEthic * 0.35
+    + serviceYearsForPlayer(state, player) * 12
+    + countMatchingTraits(player.personalityTraits, ['Leader', 'Mentor', 'Team First']) * 10;
+}
+
+function isMentorCandidate(state: FullGameState, player: GeneratedPlayer): boolean {
+  if (player.rosterStatus !== 'MLB') return false;
+  return player.age >= 29
+    || serviceYearsForPlayer(state, player) >= 4
+    || mentorCandidateScore(state, player) >= 110;
+}
+
+function isRookieCandidate(state: FullGameState, player: GeneratedPlayer): boolean {
+  if (player.rosterStatus !== 'MLB') return false;
+  return player.age <= 23 || serviceYearsForPlayer(state, player) < 1.1;
+}
+
+function mentorRelationshipKey(veteranPlayerId: string, rookiePlayerId: string): string {
+  return `${veteranPlayerId}:${rookiePlayerId}`;
+}
+
+function buildMentorSummary(veteran: GeneratedPlayer, rookie: GeneratedPlayer): string {
+  return `${playerLabel(veteran)} has taken ${playerLabel(rookie)} under wing while the ${rookie.position} learns the big-league room.`;
+}
+
+function syncMentorRelationships(state: FullGameState) {
+  const playersById = new Map(state.players.map((player) => [player.id, player]));
+  const retained = state.mentorRelationships.filter((relationship) => {
+    const veteran = playersById.get(relationship.veteranPlayerId);
+    const rookie = playersById.get(relationship.rookiePlayerId);
+    return veteran != null
+      && rookie != null
+      && veteran.teamId === relationship.teamId
+      && rookie.teamId === relationship.teamId
+      && veteran.rosterStatus === 'MLB'
+      && rookie.rosterStatus === 'MLB';
+  });
+  const existingKeys = new Set(retained.map((relationship) =>
+    mentorRelationshipKey(relationship.veteranPlayerId, relationship.rookiePlayerId),
+  ));
+  const created: typeof retained = [];
+
+  for (const team of TEAMS) {
+    const teamPlayers = state.players.filter((player) => player.teamId === team.id && player.rosterStatus === 'MLB');
+    const veterans = teamPlayers
+      .filter((player) => isMentorCandidate(state, player))
+      .sort((left, right) => mentorCandidateScore(state, right) - mentorCandidateScore(state, left));
+    const rookies = teamPlayers
+      .filter((player) => isRookieCandidate(state, player))
+      .sort((left, right) => left.age - right.age || serviceYearsForPlayer(state, left) - serviceYearsForPlayer(state, right));
+
+    for (const rookie of rookies) {
+      const veteran = veterans.find((candidate) =>
+        candidate.id !== rookie.id
+        && sameMentorTrack(candidate, rookie)
+        && !existingKeys.has(mentorRelationshipKey(candidate.id, rookie.id)),
+      );
+      if (!veteran) continue;
+
+      const relationship = {
+        veteranPlayerId: veteran.id,
+        rookiePlayerId: rookie.id,
+        teamId: team.id,
+        startedSeason: state.season,
+        summary: buildMentorSummary(veteran, rookie),
+      };
+      existingKeys.add(mentorRelationshipKey(veteran.id, rookie.id));
+      retained.push(relationship);
+      created.push(relationship);
+    }
+  }
+
+  state.mentorRelationships = retained;
+  return created;
+}
+
+function publishMentorRelationshipStories(
+  state: FullGameState,
+  relationships: FullGameState['mentorRelationships'],
+) {
+  for (const relationship of relationships) {
+    const veteran = state.players.find((player) => player.id === relationship.veteranPlayerId);
+    const rookie = state.players.find((player) => player.id === relationship.rookiePlayerId);
+    if (!veteran || !rookie) continue;
+
+    const headline = `${veteran.lastName} takes rookie ${rookie.position} under wing`;
+    pushNarrativeStory(
+      state,
+      {
+        id: `mentor-${relationship.teamId}-${relationship.veteranPlayerId}-${relationship.rookiePlayerId}`,
+        headline,
+        body: relationship.summary,
+        priority: 3,
+        category: 'development',
+        tag: 'ANALYSIS',
+        timestamp: `S${state.season}D${state.day}`,
+        relatedPlayerIds: [veteran.id, rookie.id],
+        relatedTeamIds: [relationship.teamId],
+      },
+      {
+        id: `brief-mentor-${relationship.veteranPlayerId}-${relationship.rookiePlayerId}`,
+        priority: 3,
+        category: 'development',
+        tag: 'ANALYSIS',
+        headline,
+        body: relationship.summary,
+        relatedTeamIds: [relationship.teamId],
+        relatedPlayerIds: [veteran.id, rookie.id],
+        timestamp: `S${state.season}D${state.day}`,
+        acknowledged: false,
+      },
+    );
+  }
+}
+
+function publishClubhouseChemistryStories(state: FullGameState) {
+  const chemistry = state.teamChemistry.get(state.userTeamId);
+  const record = state.seasonState.standings.getRecord(state.userTeamId);
+  if (!chemistry || !record) return;
+
+  const mlbPlayers = getTeamPlayers(state.userTeamId).filter((player) => player.rosterStatus === 'MLB');
+  const volatilePersonalities = mlbPlayers.reduce(
+    (sum, player) => sum + countMatchingTraits(player.personalityTraits, ['Diva', 'Hot Head', 'Moody', 'Party Animal']),
+    0,
+  );
+
+  if (chemistry.score >= 80 && record.streak >= 8 && !(state.storyFlags.get(state.userTeamId) ?? []).includes('chemistry_peak_story')) {
+    setStoryFlag(state, state.userTeamId, 'chemistry_peak_story');
+    pushNarrativeStory(
+      state,
+      {
+        id: `clubhouse-high-${state.season}`,
+        headline: `Team chemistry at all-time high after ${record.streak}-game win streak`,
+        body: 'Veteran leadership and a stable core have the room feeding off itself.',
+        priority: 3,
+        category: 'development',
+        tag: 'ANALYSIS',
+        timestamp: `S${state.season}D${state.day}`,
+        relatedPlayerIds: [],
+        relatedTeamIds: [state.userTeamId],
+      },
+    );
+  }
+
+  if (chemistry.score <= 35 && record.streak <= -5 && volatilePersonalities > 0 && !(state.storyFlags.get(state.userTeamId) ?? []).includes('clubhouse_drama_story')) {
+    setStoryFlag(state, state.userTeamId, 'clubhouse_drama_story');
+    pushNarrativeStory(
+      state,
+      {
+        id: `clubhouse-low-${state.season}`,
+        headline: 'Dugout argument after tough loss',
+        body: 'The losing streak has started to fray a volatile room, and teammates are feeling it.',
+        priority: 2,
+        category: 'development',
+        tag: 'BREAKING',
+        timestamp: `S${state.season}D${state.day}`,
+        relatedPlayerIds: [],
+        relatedTeamIds: [state.userTeamId],
+      },
+    );
+  }
 }
 
 function createLeaderEntry(
@@ -526,6 +770,7 @@ export function rebuildBriefing(state: FullGameState) {
 }
 
 export function ensureNarrativeState(state: FullGameState) {
+  ensurePlayerPersonalityTraits(state);
   const activePlayerIds = new Set(state.players.map((player) => player.id));
   for (const playerId of Array.from(state.playerMorale.keys())) {
     if (!activePlayerIds.has(playerId)) {
@@ -543,7 +788,7 @@ export function ensureNarrativeState(state: FullGameState) {
     if (!state.teamChemistry.has(team.id)) {
       state.teamChemistry.set(
         team.id,
-        calculateTeamChemistry(team.id, state.players, state.playerMorale),
+        calculateTeamChemistry(team.id, state.players, state.playerMorale, buildChemistryContext(state, team.id)),
       );
     }
 
@@ -552,6 +797,7 @@ export function ensureNarrativeState(state: FullGameState) {
     }
   }
 
+  syncMentorRelationships(state);
   rebuildBriefing(state);
 }
 
@@ -587,7 +833,7 @@ export function refreshNarrativeState(
   for (const team of TEAMS) {
     state.teamChemistry.set(
       team.id,
-      calculateTeamChemistry(team.id, state.players, state.playerMorale),
+      calculateTeamChemistry(team.id, state.players, state.playerMorale, buildChemistryContext(state, team.id)),
     );
 
     const record = state.seasonState.standings.getRecord(team.id);
@@ -611,6 +857,9 @@ export function refreshNarrativeState(
     state.rivalries,
     state.seasonState.standings.getFullStandings(),
   );
+  const newMentorRelationships = syncMentorRelationships(state);
+  publishMentorRelationshipStories(state, newMentorRelationships);
+  publishClubhouseChemistryStories(state);
 
   const userOwner = state.ownerState.get(state.userTeamId);
   const userChemistry = state.teamChemistry.get(state.userTeamId);

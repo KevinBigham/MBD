@@ -21,6 +21,7 @@ export {
   simulateGame,
 } from './gameSimulator.js';
 export type {
+  GameSimulationOptions,
   GameTeam,
   GameBoxScore,
   PlayerGameStats,
@@ -45,6 +46,7 @@ export {
   simulateMonth,
 } from './seasonSimulator.js';
 export type {
+  SeasonSimulationOptions,
   SeasonState,
   DaySimResult,
 } from './seasonSimulator.js';
@@ -64,6 +66,7 @@ export {
 } from './playoffSimulator.js';
 export type {
   LeagueId,
+  PlayoffSimulationOptions,
   PlayoffSeed,
   PlayoffKeyPerformer,
   PlayoffGameResult,

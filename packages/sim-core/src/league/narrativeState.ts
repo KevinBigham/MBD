@@ -6,6 +6,12 @@ import type {
   TeamChemistry,
 } from '@mbd/contracts';
 import type { GeneratedPlayer } from '../player/generation.js';
+import {
+  CLUBHOUSE_LEADER_TRAITS,
+  NEGATIVE_CHEMISTRY_TRAITS,
+  POSITIVE_CHEMISTRY_TRAITS,
+  countMatchingTraits,
+} from '../player/personalityTraits.js';
 
 export type PersonalityArchetype =
   | 'captain'
@@ -35,6 +41,12 @@ export interface BriefingContext {
   chemistry: TeamChemistry;
   unreadNewsCount: number;
   rivalries: Map<string, Rivalry>;
+}
+
+export interface TeamChemistryContext {
+  recentStreak?: number;
+  rosterContinuity?: number;
+  coachFit?: number;
 }
 
 function clampScore(value: number): number {
@@ -118,6 +130,7 @@ export function calculateTeamChemistry(
   teamId: string,
   players: GeneratedPlayer[],
   moraleByPlayer: Map<string, PlayerMorale>,
+  context: TeamChemistryContext = {},
 ): TeamChemistry {
   const teamPlayers = players.filter((player) => player.teamId === teamId);
   const moraleScores = teamPlayers.map((player) => moraleByPlayer.get(player.id)?.score ?? 50);
@@ -125,33 +138,71 @@ export function calculateTeamChemistry(
   const workEthicScores = teamPlayers.map((player) => player.personality.workEthic);
   const toughnessScores = teamPlayers.map((player) => player.personality.mentalToughness);
   const competitivenessScores = teamPlayers.map((player) => player.personality.competitiveness);
+  const recentStreak = Math.max(-10, Math.min(10, context.recentStreak ?? 0));
+  const rosterContinuity = Math.max(0, Math.min(100, context.rosterContinuity ?? 50));
+  const coachFit = Math.max(0, Math.min(100, context.coachFit ?? 50));
+  const rosterSize = Math.max(1, teamPlayers.length);
+  const positiveTraitCount = teamPlayers.reduce(
+    (sum, player) => sum + countMatchingTraits(player.personalityTraits, POSITIVE_CHEMISTRY_TRAITS),
+    0,
+  );
+  const negativeTraitCount = teamPlayers.reduce(
+    (sum, player) => sum + countMatchingTraits(player.personalityTraits, NEGATIVE_CHEMISTRY_TRAITS),
+    0,
+  );
+  const leadershipTraitCount = teamPlayers.reduce(
+    (sum, player) => sum + countMatchingTraits(player.personalityTraits, CLUBHOUSE_LEADER_TRAITS),
+    0,
+  );
 
   const competitivenessSpread = competitivenessScores.length > 0
     ? Math.max(...competitivenessScores) - Math.min(...competitivenessScores)
     : 0;
+  const traitImpact = ((positiveTraitCount * 2.7) - (negativeTraitCount * 3.2) + (leadershipTraitCount * 1.4)) / rosterSize;
 
   const score = clampScore(
-    average(moraleScores) * 0.45 +
-      average(leadershipScores) * 0.22 +
-      average(workEthicScores) * 0.18 +
-      average(toughnessScores) * 0.15 -
-      competitivenessSpread * 0.08
+    average(moraleScores) * 0.36 +
+      average(leadershipScores) * 0.17 +
+      average(workEthicScores) * 0.14 +
+      average(toughnessScores) * 0.11 -
+      competitivenessSpread * 0.06 +
+      traitImpact * 4.2 +
+      recentStreak * 1.2 +
+      (rosterContinuity - 50) * 0.12 +
+      (coachFit - 50) * 0.1
   );
 
   const reasons: string[] = [];
   if (average(leadershipScores) >= 70) reasons.push('Veteran leadership');
+  if (leadershipTraitCount >= Math.max(2, Math.ceil(rosterSize / 6))) reasons.push('Leadership core holds the clubhouse together');
   if (average(moraleScores) >= 60) reasons.push('Positive morale');
+  if (positiveTraitCount > negativeTraitCount && positiveTraitCount >= 3) reasons.push('Clubhouse glue personalities are showing');
+  if (negativeTraitCount >= 2) reasons.push('Diva tension and mercenary drama are bubbling up');
   if (competitivenessSpread >= 35) reasons.push('Competing personalities');
+  if (recentStreak >= 5) reasons.push('Winning streak boosted the room');
+  if (recentStreak <= -5) reasons.push('Losing streak put the room on edge');
+  if (rosterContinuity >= 65) reasons.push('Core has stayed together');
+  if (coachFit >= 65) reasons.push('Coaching voice matches the room');
   if (reasons.length === 0) reasons.push('Clubhouse still finding its identity');
 
   return {
     teamId,
     score,
     tier: chemistryTier(score),
-    trend: average(moraleScores) >= 60 ? 'rising' : average(moraleScores) <= 40 ? 'falling' : 'steady',
+    trend:
+      recentStreak >= 4 || average(moraleScores) >= 62
+        ? 'rising'
+        : recentStreak <= -4 || average(moraleScores) <= 38
+          ? 'falling'
+          : 'steady',
     summary: chemistrySummary(score),
     reasons,
   };
+}
+
+export function chemistryScoreToModifier(score: number): number {
+  const normalized = (Math.max(0, Math.min(100, score)) - 50) / 50;
+  return Number((1 + normalized * 0.03).toFixed(4));
 }
 
 function ownerArchetypeFromBudget(payrollTarget: number): OwnerState['archetype'] {

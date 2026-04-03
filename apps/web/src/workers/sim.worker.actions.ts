@@ -1,8 +1,10 @@
 import {
+  autoFillMLBRoster,
   GameRNG,
   TEAMS,
   assignGMPersonality,
   buildRosterState,
+  chemistryScoreToModifier,
   consumeOptionYear,
   createSeasonState,
   demotePlayer,
@@ -480,7 +482,13 @@ function simWeekInternal(): SimResultDTO {
   }
 
   const previousDay = s.day;
-  const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
+  const { newState, result } = simulateWeek(
+    s.rng,
+    s.seasonState,
+    s.schedule,
+    s.players,
+    { teamModifiers: buildTeamPerformanceModifiers(s) },
+  );
   s.seasonState = newState;
   s.day = newState.currentDay;
   applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
@@ -490,6 +498,15 @@ function simWeekInternal(): SimResultDTO {
   refreshNarrativeState(s, result.games);
   syncRecordTracking(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+}
+
+function buildTeamPerformanceModifiers(s: FullGameState): Map<string, number> {
+  return new Map(
+    TEAMS.map((team) => [
+      team.id,
+      chemistryScoreToModifier(s.teamChemistry.get(team.id)?.score ?? 50),
+    ] as const),
+  );
 }
 
 function normalizeLeagueActiveRosters(s: FullGameState) {
@@ -507,7 +524,10 @@ function normalizeLeagueActiveRosters(s: FullGameState) {
       overflow.minorLeagueLevel = 'AAA';
     }
 
-    s.rosterStates.set(team.id, buildRosterState(team.id, s.players));
+    const rosterState = buildRosterState(team.id, s.players);
+    const filledRoster = autoFillMLBRoster(team.id, s.players, rosterState);
+    s.players = filledRoster.players;
+    s.rosterStates.set(team.id, filledRoster.rosterState);
   }
 }
 
@@ -522,7 +542,13 @@ function simMonthInternal(): SimResultDTO {
 
   const monthlyContext = captureMonthlyAdvanceContext(s);
   const previousDay = s.day;
-  const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
+  const { newState, result } = simulateMonth(
+    s.rng,
+    s.seasonState,
+    s.schedule,
+    s.players,
+    { teamModifiers: buildTeamPerformanceModifiers(s) },
+  );
   s.seasonState = newState;
   s.day = newState.currentDay;
   applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
@@ -603,7 +629,10 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.schedule = generateSchedule(s.rng.fork());
   s.seasonState = createSeasonState(s.season, teamIds);
   for (const teamId of teamIds) {
-    s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+    const rosterState = buildRosterState(teamId, s.players);
+    const filledRoster = autoFillMLBRoster(teamId, s.players, rosterState);
+    s.players = filledRoster.players;
+    s.rosterStates.set(teamId, filledRoster.rosterState);
   }
   ensureNarrativeState(s);
   return {
@@ -625,7 +654,13 @@ function simDayInternal(): SimResultDTO {
 
   if (s.phase === 'regular') {
     const previousDay = s.day;
-    const { newState, result } = simulateDay(s.rng, s.seasonState, s.schedule, s.players);
+    const { newState, result } = simulateDay(
+      s.rng,
+      s.seasonState,
+      s.schedule,
+      s.players,
+      { teamModifiers: buildTeamPerformanceModifiers(s) },
+    );
     s.seasonState = newState;
     s.day = newState.currentDay;
     advanceMinorLeagueDay(s);
@@ -651,7 +686,9 @@ function simDayInternal(): SimResultDTO {
     const gamesBefore = countBracketGames(before);
     let working = before;
     while (!isPlayoffComplete(working)) {
-      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
+      working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+        teamModifiers: buildTeamPerformanceModifiers(s),
+      });
     }
     s.playoffBracket = working;
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
@@ -788,7 +825,9 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork());
+    s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -809,7 +848,9 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork());
+    s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -830,7 +871,9 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork());
+    s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -853,7 +896,9 @@ export const actionApi = {
     const gamesBefore = countBracketGames(before);
     let working = before;
     while (!isPlayoffComplete(working)) {
-      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
+      working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+        teamModifiers: buildTeamPerformanceModifiers(s),
+      });
     }
     s.playoffBracket = working;
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
@@ -1153,7 +1198,7 @@ export const actionApi = {
     const result = makeUserOffer(s.freeAgencyMarket, {
       ...offer,
       annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
-    });
+    }, s.teamChemistry.get(s.userTeamId)?.score ?? 50);
     if (!result.accepted || !freeAgent) {
       return result;
     }
@@ -1191,6 +1236,20 @@ export const actionApi = {
 
     s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
+    if (result.reason.toLowerCase().includes('clubhouse fit feels right')) {
+      s.news.unshift({
+        id: `clubhouse-signing-${s.season}-${playerId}`,
+        headline: 'FA cites great clubhouse as reason for signing discount',
+        body: `${player.firstName} ${player.lastName} accepted less than full market value because the room felt like the right fit.`,
+        priority: 3,
+        category: 'signing',
+        tag: 'ANALYSIS',
+        timestamp: `S${s.season}D${s.day}`,
+        relatedPlayerIds: [player.id],
+        relatedTeamIds: [s.userTeamId],
+        read: false,
+      });
+    }
     applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
     recordFreeAgentSigning(s, playerId, salary);

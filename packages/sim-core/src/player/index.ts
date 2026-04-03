@@ -42,6 +42,19 @@ export type {
 } from './generation.js';
 
 export {
+  PERSONALITY_TRAITS,
+  POSITIVE_CHEMISTRY_TRAITS,
+  NEGATIVE_CHEMISTRY_TRAITS,
+  CLUBHOUSE_LEADER_TRAITS,
+  PLAYOFF_COMPOSURE_TRAITS,
+  VOLATILE_PERFORMANCE_TRAITS,
+  assignPersonalityTraits,
+  deriveDeterministicPersonalityTraits,
+  calculatePlayoffComposureModifier,
+  countMatchingTraits,
+} from './personalityTraits.js';
+
+export {
   COACH_ROLES,
   COACH_SPECIALTIES,
   calculateCoachMarketValue,

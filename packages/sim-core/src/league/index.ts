@@ -33,6 +33,7 @@ export {
   createInitialPlayerMorale,
   applyMoraleEvent,
   calculateTeamChemistry,
+  chemistryScoreToModifier,
   createOwnerState,
   evaluateOwnerState,
   applyOwnerDecisionDelta,
@@ -43,6 +44,7 @@ export type {
   MoraleEvent,
   OwnerEvaluationContext,
   BriefingContext,
+  TeamChemistryContext,
 } from './narrativeState.js';
 
 export {

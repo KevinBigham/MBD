@@ -61,6 +61,18 @@ describe('generatePlayer', () => {
     expect(p1.overallRating).toBe(p2.overallRating);
   });
 
+  it('assigns 2-3 deterministic personality traits to generated players', () => {
+    const rng1 = new GameRNG(909);
+    const rng2 = new GameRNG(909);
+    const p1 = generatePlayer(rng1, 'SS', 'nyy', 'MLB');
+    const p2 = generatePlayer(rng2, 'SS', 'nyy', 'MLB');
+
+    expect(p1.personalityTraits).toEqual(p2.personalityTraits);
+    expect(p1.personalityTraits?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(p1.personalityTraits?.length ?? 0).toBeLessThanOrEqual(3);
+    expect(new Set(p1.personalityTraits ?? []).size).toBe(p1.personalityTraits?.length ?? 0);
+  });
+
   it('generates younger players for lower minor leagues', () => {
     const rng = new GameRNG(77);
     const mlb = generatePlayer(rng, 'SS', 'nyy', 'MLB');

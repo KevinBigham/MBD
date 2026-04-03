@@ -429,6 +429,13 @@ export default function PlayerProfilePage() {
                   {profile.morale.trend.toUpperCase()} | Updated {profile.morale.lastUpdated}
                 </div>
               </div>
+              {player.personalityTraits?.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {player.personalityTraits.map((trait) => (
+                    <Badge key={trait} variant="outline">{trait}</Badge>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         )}
