@@ -180,6 +180,10 @@ describe('AppLayout', () => {
     expect(worker.simDay).toHaveBeenCalledTimes(1);
     expect(worker.simWeek).toHaveBeenCalledTimes(1);
     expect(worker.simMonth).toHaveBeenCalledTimes(1);
+
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion?.textContent).toContain('Season 3');
+    expect(liveRegion?.textContent).toContain('Regular Season');
   });
 
   it('renders the season transition ceremony card and uses its CTA', async () => {

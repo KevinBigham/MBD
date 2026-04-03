@@ -8,6 +8,7 @@ import {
   AUDIO_PREFERENCES_DEFAULTS,
   useAudioPreferencesStore,
 } from '@/shared/hooks/useAudioPreferencesStore';
+import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { resetAudioEngineForTest } from '@/shared/lib/audio';
 import { listSaves, loadGameSafe, repairSave } from '@/shared/lib/saveSystem';
 
@@ -83,6 +84,7 @@ describe('SettingsPage', () => {
       volume: AUDIO_PREFERENCES_DEFAULTS.volume,
       muted: AUDIO_PREFERENCES_DEFAULTS.muted,
     });
+    usePreferencesStore.getState().reset();
 
     mockedUseWorker.mockReturnValue({
       isReady: false,
@@ -167,6 +169,10 @@ describe('SettingsPage', () => {
     const volumeSlider = container.querySelector('#audio-volume') as HTMLInputElement | null;
     expect(volumeSlider).not.toBeNull();
     expect(volumeSlider?.value).toBe(String(Math.round(AUDIO_PREFERENCES_DEFAULTS.volume * 100)));
+    expect(container.textContent).toContain('Simulation');
+    expect(container.textContent).toContain('Display');
+    expect(container.textContent).toContain('Accessibility');
+    expect(container.textContent).toContain('Data / Install');
   });
 
   it('updates the mute toggle and volume slider through the page controls', async () => {
@@ -247,5 +253,28 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('Try to repair');
     expect(container.textContent).toContain('Delete this save');
     expect(container.textContent).toContain('Start fresh');
+  });
+
+  it('updates reduced motion and high contrast preferences from the settings page', async () => {
+    await act(async () => {
+      root.render(<SettingsPage />);
+      await Promise.resolve();
+    });
+
+    const reducedMotionButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Reduced Motion'),
+    );
+    const highContrastButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('High Contrast'),
+    );
+
+    await act(async () => {
+      reducedMotionButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      highContrastButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(usePreferencesStore.getState().reducedMotion).toBe(true);
+    expect(usePreferencesStore.getState().highContrast).toBe(true);
   });
 });

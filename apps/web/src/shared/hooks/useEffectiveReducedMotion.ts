@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { usePreferencesStore } from './usePreferencesStore';
 
 function getInitialReducedMotionPreference(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -9,6 +10,7 @@ function getInitialReducedMotionPreference(): boolean {
 }
 
 export function useEffectiveReducedMotion(): boolean {
+  const explicitReducedMotion = usePreferencesStore((state) => state.reducedMotion);
   const [reducedMotion, setReducedMotion] = useState<boolean>(getInitialReducedMotionPreference);
 
   useEffect(() => {
@@ -31,5 +33,5 @@ export function useEffectiveReducedMotion(): boolean {
     };
   }, []);
 
-  return reducedMotion;
+  return reducedMotion || explicitReducedMotion;
 }

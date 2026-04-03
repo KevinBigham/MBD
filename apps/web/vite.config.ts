@@ -5,10 +5,11 @@ import {
   resolveAppManualChunk,
   resolveWorkerManualChunk,
 } from './src/build/bundleConfig';
+import { createMbdPwaPlugin } from './src/build/pwaConfig';
 
 export default defineConfig({
   base: '/MBD/',
-  plugins: [react()],
+  plugins: [react(), createMbdPwaPlugin()],
   build: {
     manifest: true,
     rollupOptions: {

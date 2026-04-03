@@ -45,6 +45,8 @@ describe('useAudioPreferencesStore', () => {
     window.localStorage.clear();
     useAudioPreferencesStore.setState({
       volume: AUDIO_PREFERENCES_DEFAULTS.volume,
+      effectVolume: AUDIO_PREFERENCES_DEFAULTS.effectVolume,
+      ambientVolume: AUDIO_PREFERENCES_DEFAULTS.ambientVolume,
       muted: AUDIO_PREFERENCES_DEFAULTS.muted,
     });
   });
@@ -54,14 +56,37 @@ describe('useAudioPreferencesStore', () => {
 
     expect(state.muted).toBe(true);
     expect(state.volume).toBe(AUDIO_PREFERENCES_DEFAULTS.volume);
+    expect(state.effectVolume).toBe(AUDIO_PREFERENCES_DEFAULTS.effectVolume);
+    expect(state.ambientVolume).toBe(AUDIO_PREFERENCES_DEFAULTS.ambientVolume);
   });
 
-  it('persists volume changes to local storage', () => {
+  it('persists master volume changes to local storage', () => {
     useAudioPreferencesStore.getState().setVolume(1.4);
 
     expect(useAudioPreferencesStore.getState().volume).toBe(1);
     expect(window.localStorage.getItem(AUDIO_PREFERENCES_STORAGE_KEY)).toBe(
-      JSON.stringify({ volume: 1, muted: true }),
+      JSON.stringify({
+        volume: 1,
+        effectVolume: AUDIO_PREFERENCES_DEFAULTS.effectVolume,
+        ambientVolume: AUDIO_PREFERENCES_DEFAULTS.ambientVolume,
+        muted: true,
+      }),
+    );
+  });
+
+  it('persists effect and ambient volume changes independently', () => {
+    useAudioPreferencesStore.getState().setEffectVolume(0.44);
+    useAudioPreferencesStore.getState().setAmbientVolume(0.21);
+
+    expect(useAudioPreferencesStore.getState().effectVolume).toBe(0.44);
+    expect(useAudioPreferencesStore.getState().ambientVolume).toBe(0.21);
+    expect(window.localStorage.getItem(AUDIO_PREFERENCES_STORAGE_KEY)).toBe(
+      JSON.stringify({
+        volume: AUDIO_PREFERENCES_DEFAULTS.volume,
+        effectVolume: 0.44,
+        ambientVolume: 0.21,
+        muted: true,
+      }),
     );
   });
 
@@ -71,19 +96,31 @@ describe('useAudioPreferencesStore', () => {
 
     expect(useAudioPreferencesStore.getState().muted).toBe(false);
     expect(window.localStorage.getItem(AUDIO_PREFERENCES_STORAGE_KEY)).toBe(
-      JSON.stringify({ volume: 0.42, muted: false }),
+      JSON.stringify({
+        volume: 0.42,
+        effectVolume: AUDIO_PREFERENCES_DEFAULTS.effectVolume,
+        ambientVolume: AUDIO_PREFERENCES_DEFAULTS.ambientVolume,
+        muted: false,
+      }),
     );
   });
 
   it('hydrates the store from an existing saved preference record', () => {
     window.localStorage.setItem(
       AUDIO_PREFERENCES_STORAGE_KEY,
-      JSON.stringify({ volume: 0.33, muted: false }),
+      JSON.stringify({
+        volume: 0.33,
+        effectVolume: 0.61,
+        ambientVolume: 0.27,
+        muted: false,
+      }),
     );
 
     useAudioPreferencesStore.getState().hydrate();
 
     expect(useAudioPreferencesStore.getState().volume).toBe(0.33);
+    expect(useAudioPreferencesStore.getState().effectVolume).toBe(0.61);
+    expect(useAudioPreferencesStore.getState().ambientVolume).toBe(0.27);
     expect(useAudioPreferencesStore.getState().muted).toBe(false);
   });
 });

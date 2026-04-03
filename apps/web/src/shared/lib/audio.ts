@@ -99,7 +99,15 @@ export class AudioEngine {
 
   private masterGain: GainNode | null = null;
 
+  private effectGain: GainNode | null = null;
+
+  private ambientGain: GainNode | null = null;
+
   private volume = 0.65;
+
+  private effectVolume = 0.85;
+
+  private ambientVolume = 0.55;
 
   private muted = true;
 
@@ -120,12 +128,12 @@ export class AudioEngine {
     }
 
     const context = this.ensureContext();
-    if (!context || !this.masterGain) {
+    if (!context || !this.effectGain) {
       return;
     }
 
     void context.resume?.();
-    this.buildEffect(name, context, this.masterGain);
+    this.buildEffect(name, context, this.effectGain);
   }
 
   setAmbient(mode: AmbientMode | null) {
@@ -142,6 +150,16 @@ export class AudioEngine {
   setVolume(level: number) {
     this.volume = clampVolume(level);
     this.syncMasterGain();
+  }
+
+  setEffectVolume(level: number) {
+    this.effectVolume = clampVolume(level);
+    this.syncEffectGain();
+  }
+
+  setAmbientVolume(level: number) {
+    this.ambientVolume = clampVolume(level);
+    this.syncAmbientGain();
   }
 
   setMuted(muted: boolean) {
@@ -166,6 +184,14 @@ export class AudioEngine {
     return this.volume;
   }
 
+  getEffectVolume() {
+    return this.effectVolume;
+  }
+
+  getAmbientVolume() {
+    return this.ambientVolume;
+  }
+
   getAmbientMode() {
     return this.ambientMode;
   }
@@ -182,10 +208,12 @@ export class AudioEngine {
     this.stopAmbientLayer();
     this.context = null;
     this.masterGain = null;
+    this.effectGain = null;
+    this.ambientGain = null;
   }
 
   private ensureContext(): AudioContext | null {
-    if (this.context && this.masterGain) {
+    if (this.context && this.masterGain && this.effectGain && this.ambientGain) {
       return this.context;
     }
 
@@ -202,8 +230,14 @@ export class AudioEngine {
 
     this.context = nextContext;
     this.masterGain = nextContext.createGain();
+    this.effectGain = nextContext.createGain();
+    this.ambientGain = nextContext.createGain();
+    this.effectGain.connect(this.masterGain);
+    this.ambientGain.connect(this.masterGain);
     this.masterGain.connect(nextContext.destination);
     this.syncMasterGain();
+    this.syncEffectGain();
+    this.syncAmbientGain();
     return nextContext;
   }
 
@@ -216,17 +250,33 @@ export class AudioEngine {
     this.masterGain.gain.setValueAtTime(target, this.context.currentTime);
   }
 
+  private syncEffectGain() {
+    if (!this.effectGain || !this.context) {
+      return;
+    }
+
+    this.effectGain.gain.setValueAtTime(this.effectVolume, this.context.currentTime);
+  }
+
+  private syncAmbientGain() {
+    if (!this.ambientGain || !this.context) {
+      return;
+    }
+
+    this.ambientGain.gain.setValueAtTime(this.ambientVolume, this.context.currentTime);
+  }
+
   private startAmbientLayer(mode: AmbientMode) {
     this.stopAmbientLayer();
 
     const context = this.ensureContext();
-    if (!context || !this.masterGain) {
+    if (!context || !this.ambientGain) {
       return;
     }
 
     void context.resume?.();
 
-    const quiet = this.masterGain;
+    const quiet = this.ambientGain;
     switch (mode) {
       case 'office':
         this.ambientHandle = compositeHandle([

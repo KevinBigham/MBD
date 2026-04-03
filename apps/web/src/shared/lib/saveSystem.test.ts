@@ -4,9 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameSnapshot } from '@mbd/contracts';
 import {
   buildSaveRecord,
+  clearAllSaves,
   createAutoSaveScheduler,
   db,
+  exportSnapshotToJson,
   flushAutoSaveQueueForTesting,
+  importSnapshotFromJson,
   inspectSave,
   loadGame,
   loadGameSafe,
@@ -180,6 +183,25 @@ describe('saveSystem helpers', () => {
       decisionQueue: [],
     });
     expect(record.legacyState).toBeNull();
+  });
+
+  it('round-trips exported snapshot json through the import parser', () => {
+    const snapshot = createSnapshot();
+
+    const serialized = exportSnapshotToJson('Dynasty Export', snapshot);
+    const imported = importSnapshotFromJson(serialized);
+
+    expect(imported.name).toBe('Dynasty Export');
+    expect(imported.snapshot.schemaVersion).toBe(11);
+    expect(imported.snapshot.franchise.gmName).toBe('General Manager');
+  });
+
+  it('clears every save slot in one call', async () => {
+    const clearSpy = vi.spyOn(db.saves, 'clear').mockResolvedValue(undefined as never);
+
+    await clearAllSaves();
+
+    expect(clearSpy).toHaveBeenCalledTimes(1);
   });
 
   it('normalizes legacy records into metadata-only entries without deleting them', () => {

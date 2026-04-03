@@ -47,6 +47,13 @@ interface Deferred {
   reject: (error: unknown) => void;
 }
 
+interface SnapshotExportPayload {
+  kind: 'mbd-save-export';
+  name: string;
+  exportedAt: string;
+  snapshot: GameSnapshot;
+}
+
 type IdleCancel = () => void;
 type IdleScheduler = (callback: () => void) => IdleCancel;
 
@@ -359,6 +366,45 @@ export async function loadMostRecentSnapshot(): Promise<SaveData | undefined> {
 export async function deleteSave(slot: number): Promise<void> {
   const id = `save-slot-${slot}`;
   await db.saves.delete(id);
+}
+
+export async function clearAllSaves(): Promise<void> {
+  await db.saves.clear();
+}
+
+export function exportSnapshotToJson(name: string, snapshot: GameSnapshot): string {
+  const payload: SnapshotExportPayload = {
+    kind: 'mbd-save-export',
+    name,
+    exportedAt: new Date().toISOString(),
+    snapshot: GameSnapshotSchema.parse(snapshot),
+  };
+
+  return JSON.stringify(payload, null, 2);
+}
+
+export function importSnapshotFromJson(text: string): { name: string; snapshot: GameSnapshot } {
+  const parsed = JSON.parse(text) as unknown;
+  if (
+    parsed
+    && typeof parsed === 'object'
+    && 'kind' in parsed
+    && (parsed as { kind?: unknown }).kind === 'mbd-save-export'
+    && 'snapshot' in parsed
+  ) {
+    const exportPayload = parsed as { name?: unknown; snapshot: unknown };
+    return {
+      name: typeof exportPayload.name === 'string'
+        ? exportPayload.name
+        : 'Imported Save',
+      snapshot: parseGameSnapshot(exportPayload.snapshot),
+    };
+  }
+
+  return {
+    name: 'Imported Save',
+    snapshot: parseGameSnapshot(parsed),
+  };
 }
 
 export async function repairSave(slot: number): Promise<SaveInspectionResult> {
