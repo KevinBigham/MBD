@@ -351,6 +351,21 @@ export interface PlayerDTO {
     seasonsPlayed: number;
     personalityTraits: string[];
   } | null;
+  activeStory?: {
+    arcType: string;
+    phase: PlayerStoryArc['phase'];
+    startSeason: number;
+    startDay: number;
+    latestMilestone: string | null;
+  } | null;
+  storyHistory?: Array<{
+    arcType: string;
+    phase: PlayerStoryArc['phase'];
+    startSeason: number;
+    startDay: number;
+    resolvedSeason: number | null;
+    milestones: string[];
+  }>;
 }
 
 export interface SimResultDTO {
@@ -3221,6 +3236,18 @@ export function toPlayerDTO(
   stats?: PlayerGameStats,
   advanced?: PlayerAdvancedStatsDTO | null,
 ): PlayerDTO {
+  const storyArcs = state
+    ? state.playerStoryArcs
+      .filter((arc) => arc.playerId === player.id)
+      .sort((left, right) =>
+        Number(right.resolvedSeason == null) - Number(left.resolvedSeason == null)
+        || (right.resolvedSeason ?? 0) - (left.resolvedSeason ?? 0)
+        || right.startSeason - left.startSeason
+        || right.startDay - left.startDay,
+      )
+    : [];
+  const activeStory = storyArcs.find((arc) => arc.resolvedSeason == null) ?? null;
+  const storyHistory = storyArcs.filter((arc) => arc.resolvedSeason != null);
   const seasonStats = stats ?? (state ? state.seasonState.playerSeasonStats.get(player.id) : undefined);
   let statBlock: PlayerDTO['stats'] = null;
   if (seasonStats && (seasonStats.pa > 0 || seasonStats.ip > 0)) {
@@ -3291,6 +3318,23 @@ export function toPlayerDTO(
     advanced: advanced ?? null,
     historical: false,
     historicalSummary: null,
+    activeStory: activeStory
+      ? {
+        arcType: activeStory.arcType,
+        phase: activeStory.phase,
+        startSeason: activeStory.startSeason,
+        startDay: activeStory.startDay,
+        latestMilestone: activeStory.milestones.at(-1) ?? null,
+      }
+      : null,
+    storyHistory: storyHistory.map((arc) => ({
+      arcType: arc.arcType,
+      phase: arc.phase,
+      startSeason: arc.startSeason,
+      startDay: arc.startDay,
+      resolvedSeason: arc.resolvedSeason,
+      milestones: [...arc.milestones],
+    })),
   };
 }
 

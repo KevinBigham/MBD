@@ -389,6 +389,78 @@ describe('sim worker narrative APIs', () => {
     });
   });
 
+  it('surfaces active storylines on the dashboard and player query', () => {
+    startGame(4321, 'nyy');
+    const state = requireState();
+    const userPlayer = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB');
+    const rivalPlayer = state.players.find((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB');
+    const prospect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB');
+    if (!userPlayer || !rivalPlayer || !prospect) {
+      throw new Error('Expected baseline players for story arc query test.');
+    }
+
+    state.playerStoryArcs = [
+      {
+        playerId: rivalPlayer.id,
+        arcType: 'trade_saga',
+        startSeason: state.season,
+        startDay: 80,
+        phase: 'setup',
+        milestones: ['Trade saga setup milestone.'],
+        resolvedSeason: null,
+      },
+      {
+        playerId: userPlayer.id,
+        arcType: 'dynasty_cornerstone',
+        startSeason: state.season,
+        startDay: 70,
+        phase: 'climax',
+        milestones: ['Dynasty cornerstone climax milestone.'],
+        resolvedSeason: null,
+      },
+      {
+        playerId: prospect.id,
+        arcType: 'prospect_rise',
+        startSeason: state.season,
+        startDay: 82,
+        phase: 'rising',
+        milestones: ['Prospect rise momentum milestone.'],
+        resolvedSeason: null,
+      },
+      {
+        playerId: userPlayer.id,
+        arcType: 'breakout_campaign',
+        startSeason: state.season - 1,
+        startDay: 40,
+        phase: 'resolution',
+        milestones: ['Breakout campaign resolved milestone.'],
+        resolvedSeason: state.season - 1,
+      },
+    ];
+
+    const summary = api.getDashboardSummary();
+    const player = api.getPlayer(userPlayer.id) as unknown as {
+      activeStory: { arcType: string; phase: string; latestMilestone: string | null } | null;
+      storyHistory: Array<{ arcType: string; resolvedSeason: number | null }>;
+    };
+
+    expect(summary?.storylinesToWatch).toHaveLength(3);
+    expect(summary?.storylinesToWatch[0]).toMatchObject({
+      playerId: userPlayer.id,
+      arcType: 'dynasty_cornerstone',
+      phase: 'climax',
+    });
+    expect(player.activeStory).toMatchObject({
+      arcType: 'dynasty_cornerstone',
+      phase: 'climax',
+      latestMilestone: 'Dynasty cornerstone climax milestone.',
+    });
+    expect(player.storyHistory[0]).toMatchObject({
+      arcType: 'breakout_campaign',
+      resolvedSeason: state.season - 1,
+    });
+  });
+
   it('accepts object-based new game options and persists franchise identity settings', () => {
     const result = startGameWithOptions({
       seed: 123,

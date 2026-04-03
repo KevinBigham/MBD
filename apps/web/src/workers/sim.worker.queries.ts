@@ -230,6 +230,49 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       currentSeasonRecord: `${getTeamById(rivalry.teamA)?.abbreviation ?? rivalry.teamA.toUpperCase()} ${rivalry.currentSeasonWinsA ?? 0}-${rivalry.currentSeasonWinsB ?? 0} ${getTeamById(rivalry.teamB)?.abbreviation ?? rivalry.teamB.toUpperCase()}`,
       historicalRecord: `${getTeamById(rivalry.teamA)?.abbreviation ?? rivalry.teamA.toUpperCase()} ${rivalry.historicalWinsA ?? 0}-${rivalry.historicalWinsB ?? 0} ${getTeamById(rivalry.teamB)?.abbreviation ?? rivalry.teamB.toUpperCase()}`,
     }));
+  const phasePriority: Record<'setup' | 'rising' | 'climax' | 'resolution', number> = {
+    setup: 0,
+    rising: 1,
+    climax: 2,
+    resolution: 3,
+  };
+  const storylinesToWatch = s.playerStoryArcs
+    .filter((arc) => arc.resolvedSeason == null)
+    .map((arc) => {
+      const player = s.players.find((candidate) => candidate.id === arc.playerId);
+      if (!player) {
+        return null;
+      }
+      return {
+        playerId: player.id,
+        playerName: `${player.firstName} ${player.lastName}`,
+        teamId: player.teamId,
+        teamName: teamNameFromId(player.teamId),
+        arcType: arc.arcType,
+        phase: arc.phase,
+        latestMilestone: arc.milestones.at(-1) ?? null,
+        sortUserTeam: player.teamId === s.userTeamId ? 1 : 0,
+        sortPhase: phasePriority[arc.phase],
+        startSeason: arc.startSeason,
+        startDay: arc.startDay,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+    .sort((left, right) =>
+      right.sortUserTeam - left.sortUserTeam
+      || right.sortPhase - left.sortPhase
+      || right.startSeason - left.startSeason
+      || right.startDay - left.startDay
+      || left.playerName.localeCompare(right.playerName),
+    )
+    .slice(0, 3)
+    .map(({
+      sortUserTeam: _sortUserTeam,
+      sortPhase: _sortPhase,
+      startSeason: _startSeason,
+      startDay: _startDay,
+      ...entry
+    }) => entry);
 
   return {
     franchise: {
@@ -287,6 +330,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
         : null,
       rivalries,
     },
+    storylinesToWatch,
     divisionStandings: divisionView,
     pressRoom: {
       feed: pressRoomFeed,
@@ -316,6 +360,15 @@ function buildHistoricalSummary(player: HistoricalPlayer) {
 }
 
 function buildHistoricalPlayerDTO(player: HistoricalPlayer): PlayerDTO {
+  const storyArcs = (state?.playerStoryArcs ?? [])
+    .filter((arc) => arc.playerId === player.playerId)
+    .sort((left, right) =>
+      Number(right.resolvedSeason == null) - Number(left.resolvedSeason == null)
+      || (right.resolvedSeason ?? 0) - (left.resolvedSeason ?? 0)
+      || right.startSeason - left.startSeason
+      || right.startDay - left.startDay,
+    );
+  const activeStory = storyArcs.find((arc) => arc.resolvedSeason == null) ?? null;
   const displayRating = player.peakOverall ?? 50;
   const overallRating = toInternalRating(displayRating);
 
@@ -357,6 +410,25 @@ function buildHistoricalPlayerDTO(player: HistoricalPlayer): PlayerDTO {
     advanced: null,
     historical: true,
     historicalSummary: buildHistoricalSummary(player),
+    activeStory: activeStory
+      ? {
+        arcType: activeStory.arcType,
+        phase: activeStory.phase,
+        startSeason: activeStory.startSeason,
+        startDay: activeStory.startDay,
+        latestMilestone: activeStory.milestones.at(-1) ?? null,
+      }
+      : null,
+    storyHistory: storyArcs
+      .filter((arc) => arc.resolvedSeason != null)
+      .map((arc) => ({
+        arcType: arc.arcType,
+        phase: arc.phase,
+        startSeason: arc.startSeason,
+        startDay: arc.startDay,
+        resolvedSeason: arc.resolvedSeason,
+        milestones: [...arc.milestones],
+      })),
   };
 }
 

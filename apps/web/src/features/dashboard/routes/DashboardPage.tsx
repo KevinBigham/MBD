@@ -107,6 +107,15 @@ interface DashboardSummary {
       historicalRecord: string;
     }>;
   };
+  storylinesToWatch: Array<{
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    teamName: string;
+    arcType: string;
+    phase: 'setup' | 'rising' | 'climax' | 'resolution';
+    latestMilestone: string | null;
+  }>;
   divisionStandings: Array<{
     teamId: string;
     teamName: string;
@@ -185,6 +194,23 @@ function fanTrendTone(trend: DashboardSummary['fanSentiment']['trend'] | undefin
       return 'text-accent-danger';
     default:
       return 'text-dynasty-text';
+  }
+}
+
+function labelize(value: string): string {
+  return value.replaceAll('_', ' ');
+}
+
+function storyPhaseTone(phase: DashboardSummary['storylinesToWatch'][number]['phase']): string {
+  switch (phase) {
+    case 'climax':
+      return 'border-accent-warning/50 text-accent-warning';
+    case 'rising':
+      return 'border-accent-info/50 text-accent-info';
+    case 'resolution':
+      return 'border-accent-success/50 text-accent-success';
+    default:
+      return 'border-dynasty-border text-dynasty-muted';
   }
 }
 
@@ -426,6 +452,53 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+            <Newspaper className="h-4 w-4 text-accent-warning" />
+            Storylines to Watch
+          </h2>
+          <Link to="/press-room" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+            Press Room <ChevronRight className="h-3 w-3" />
+          </Link>
+        </div>
+        {(summary?.storylinesToWatch ?? []).length > 0 ? (
+          <div className="grid gap-3 xl:grid-cols-3">
+            {(summary?.storylinesToWatch ?? []).map((storyline) => (
+              <Link
+                key={`${storyline.playerId}-${storyline.arcType}`}
+                to={`/players/${storyline.playerId}`}
+                className="rounded border border-dynasty-border bg-dynasty-elevated p-4 transition-colors hover:border-accent-primary/40 hover:bg-dynasty-surface"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-heading text-sm text-dynasty-text">{storyline.playerName}</div>
+                  <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                    {storyline.teamId.toUpperCase()}
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded border border-dynasty-border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
+                    {labelize(storyline.arcType)}
+                  </span>
+                  <span className={`rounded border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide ${storyPhaseTone(storyline.phase)}`}>
+                    {storyline.phase}
+                  </span>
+                </div>
+                <div className="mt-3 font-heading text-sm text-dynasty-muted">
+                  {storyline.latestMilestone ?? `${storyline.playerName} is developing a new narrative thread.`}
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <EmptyStatePanel
+            className="border-dynasty-border/60 bg-dynasty-elevated"
+            description="Advance into a few monthly checkpoints and the league storylines will start to stack up here."
+            title="No active story arcs yet"
+          />
+        )}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">

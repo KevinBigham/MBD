@@ -573,6 +573,8 @@ export {
   calculateFanSentiment,
   generateTickerEntries,
   pruneTickerFeed,
+  detectNewStoryArcs,
+  advanceStoryArcs,
 } from './narrative/index.js';
 export type {
   NewsPriority,
@@ -604,6 +606,7 @@ export type {
   TickerScoreContext,
   TickerStandingsChangeContext,
   TickerTradeContext,
+  StoryArcSnapshot,
 } from './narrative/index.js';
 
 // Sharing

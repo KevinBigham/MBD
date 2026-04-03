@@ -183,6 +183,10 @@ import {
 } from './sim.worker.setup.js';
 import { syncRecordTracking } from './sim.worker.records.js';
 import { refreshTickerFeed } from './sim.worker.ticker.js';
+import {
+  advanceMonthlyStoryArcs,
+  syncSeasonStartStoryArcs,
+} from './sim.worker.storyArcs.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -696,6 +700,7 @@ function applyMonthlyDevelopmentCheckpoints(
     );
     s.players = checkpoint.players;
     s.minorLeagueState = checkpoint.state;
+    advanceMonthlyStoryArcs(s, s.season, currentDay);
   }
 }
 
@@ -927,6 +932,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
     s.rosterStates.set(teamId, filledRoster.rosterState);
   }
   ensureNarrativeState(s);
+  syncSeasonStartStoryArcs(s);
   updateScenarioProgress(s);
   return {
     day: 1,
@@ -1062,6 +1068,7 @@ export const actionApi = {
     }
     setState(nextState);
     ensureNarrativeState(requireState());
+    syncSeasonStartStoryArcs(requireState());
 
     return {
       success: true as const,

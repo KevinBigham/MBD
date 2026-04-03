@@ -30,6 +30,10 @@ export {
   generateTickerEntries,
   pruneTickerFeed,
 } from './ticker.js';
+export {
+  detectNewStoryArcs,
+  advanceStoryArcs,
+} from './storyArcs.js';
 
 export type {
   // Types
@@ -67,3 +71,6 @@ export type {
   TickerStandingsChangeContext,
   TickerTradeContext,
 } from './ticker.js';
+export type {
+  StoryArcSnapshot,
+} from './storyArcs.js';

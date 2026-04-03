@@ -98,6 +98,23 @@ describe('PlayerProfilePage', () => {
           totalValue: 109.2,
           outcome: 'accepted',
         }],
+        activeStory: {
+          arcType: 'prospect_rise',
+          phase: 'rising',
+          startSeason: 5,
+          startDay: 62,
+          latestMilestone: 'Marco Ascension is climbing fast through the system.',
+        },
+        storyHistory: [
+          {
+            arcType: 'rookie_sensation',
+            phase: 'resolution',
+            startSeason: 4,
+            startDay: 33,
+            resolvedSeason: 4,
+            milestones: ['Marco Ascension finished a rookie_sensation with a defining turn.'],
+          },
+        ],
         stats: null,
       }),
       getAdvancedStats: vi.fn().mockResolvedValue({
@@ -167,6 +184,8 @@ describe('PlayerProfilePage', () => {
     });
 
     expect(container.textContent).toContain('Development Trajectory');
+    expect(container.textContent).toContain('Story Arc');
+    expect(container.textContent).toContain('prospect rise');
     expect(container.textContent).toContain('ahead_of_curve');
     expect(container.textContent).toContain('Checkpoint History');
     expect(container.textContent).toContain('Improved first-step reads');
