@@ -17,7 +17,8 @@ const DEFAULT_HR_PER_FB = 0.11;
 const DEFAULT_RUNS_PER_PA = 0.12;
 const DEFAULT_RUNS_PER_WIN = 10;
 const DEFAULT_FIP_CONSTANT = 3.2;
-const REPLACEMENT_RUNS_PER_PA = 0.03;
+const REPLACEMENT_RUNS_PER_PA = 0.018;
+const PITCHER_REPLACEMENT_FIP_DELTA = 0.35;
 const HITTER_PROJECTED_WAR_MAX = 8.5;
 const PITCHER_PROJECTED_WAR_MAX = 9.5;
 
@@ -327,7 +328,7 @@ export function calculateAdvancedStatLine(
     const fip = calculateFip(stats, context.fipConstant);
     const xfip = calculateXfip(stats, context.leagueHrPerFlyBall, context.fipConstant);
     const innings = safeInningsPitched(stats.ip);
-    const replacementFip = context.leagueFip + 1.4;
+  const replacementFip = context.leagueFip + PITCHER_REPLACEMENT_FIP_DELTA;
     const runsAboveReplacement = ((replacementFip - fip) / 9) * innings;
 
     return {

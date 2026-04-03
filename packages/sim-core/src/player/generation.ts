@@ -333,9 +333,14 @@ function generateContract(rng: GameRNG, rosterLevel: RosterLevel, overallRating:
     };
   }
 
-  const baseSalary = (overallRating / 550) * 25 + rng.nextGaussian(3, 5);
+  const starBonus = Math.max(0, overallRating - 380) / 40;
+  const baseSalary = (overallRating / 550) * 15 + starBonus + rng.nextGaussian(0.7, 2.4);
   const salary = Math.max(0.7, Math.round(baseSalary * 10) / 10);
-  const years = rng.nextInt(1, 6);
+  const years = overallRating >= 390
+    ? rng.nextInt(1, 4)
+    : overallRating >= 330
+      ? rng.nextInt(1, 3)
+      : rng.nextInt(1, 3);
   const noTradeClause = salary > 20 && rng.nextFloat() > 0.5;
   const noTradeClauseType: NoTradeClauseType = noTradeClause
     ? (salary > 28 ? 'full' : 'partial')

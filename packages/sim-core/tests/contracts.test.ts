@@ -274,7 +274,10 @@ describe('qualifying offers', () => {
 
   it('returns only MLB expiring players that clear the service-time and value bar', () => {
     const eligible = setHitterRatings(makePlayer(201), 390);
-    const tooCheap = setHitterRatings(makePlayer(202), 70);
+    const tooCheap = {
+      ...setHitterRatings(makePlayer(202), 40),
+      age: 38,
+    };
     const tooInexperienced = setHitterRatings(makePlayer(203), 390);
     const notExpiring = setHitterRatings(makePlayer(204), 390);
     notExpiring.contract.years = 3;
