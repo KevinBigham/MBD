@@ -44,6 +44,7 @@ export interface NewGameOptions {
   difficulty: Difficulty;
   saveSlot: number;
   playMode?: PlayMode;
+  scenarioId?: string;
 }
 
 export interface SetupPreview {

@@ -75,6 +75,7 @@ describe('SetupPage', () => {
     mockedUseGameStore.mockReturnValue(storeMock as ReturnType<typeof useGameStore>);
     workerMock = {
       isReady: true,
+      getScenarioCatalog: vi.fn().mockResolvedValue([]),
       getSetupPreview: vi.fn().mockResolvedValue({
         teamId: 'nyy',
         teamName: 'New York Yankees',
@@ -101,7 +102,7 @@ describe('SetupPage', () => {
         difficulty: 'hard',
       }),
       exportSnapshot: vi.fn().mockResolvedValue({
-        schemaVersion: 11,
+        schemaVersion: 13,
         season: 1,
         day: 1,
         phase: 'preseason',
@@ -128,6 +129,7 @@ describe('SetupPage', () => {
         day: 88,
         phase: 'regular',
         schemaVersion: 11,
+        playMode: 'standard',
         hasSnapshot: true,
         snapshot: {
           schemaVersion: 11,
@@ -138,6 +140,7 @@ describe('SetupPage', () => {
           franchise: {
             gmName: 'General Manager',
             difficulty: 'standard',
+            playMode: 'standard',
             createdAt: 'S1D1',
             teamId: 'nyy',
             teamName: 'New York Yankees',
@@ -178,6 +181,20 @@ describe('SetupPage', () => {
           season: 4,
           day: 88,
           phase: 'regular',
+          franchise: {
+            gmName: 'General Manager',
+            difficulty: 'standard',
+            playMode: 'standard',
+            createdAt: 'S1D1',
+            teamId: 'nyy',
+            teamName: 'New York Yankees',
+            teamAbbreviation: 'NYY',
+            teamDivision: 'AL_EAST',
+            onboarding: {
+              welcomeBriefingSeen: true,
+              firstMonthlyPulseSeen: true,
+            },
+          },
         },
         legacyState: null,
         createdAt: '2026-04-02T00:00:00.000Z',
@@ -200,6 +217,20 @@ describe('SetupPage', () => {
           season: 4,
           day: 88,
           phase: 'regular',
+          franchise: {
+            gmName: 'General Manager',
+            difficulty: 'standard',
+            playMode: 'standard',
+            createdAt: 'S1D1',
+            teamId: 'nyy',
+            teamName: 'New York Yankees',
+            teamAbbreviation: 'NYY',
+            teamDivision: 'AL_EAST',
+            onboarding: {
+              welcomeBriefingSeen: true,
+              firstMonthlyPulseSeen: true,
+            },
+          },
         },
         legacyState: null,
         createdAt: '2026-04-02T00:00:00.000Z',

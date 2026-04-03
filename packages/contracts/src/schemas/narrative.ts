@@ -560,6 +560,7 @@ export const ChallengeStateSchema = z.object({
   progress: z.number().min(0).max(1),
   completed: z.boolean(),
   completedSeason: z.number().int().min(1).nullable().default(null),
+  failed: z.boolean().default(false),
   summary: z.string().min(1),
 });
 export type ChallengeState = z.infer<typeof ChallengeStateSchema>;

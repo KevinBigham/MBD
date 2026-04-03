@@ -25,14 +25,18 @@ import {
   deduplicateNews,
   generateDraftClass,
   generateCoachFreeAgents,
+  generateChampionshipCard,
+  generateDynastyCard,
   generateCoachingStaff,
   generateNews,
   generateLeaguePlayers,
   generateSchedule,
+  generateSeasonRecapCard,
   generateScoutingStaff,
   getTeamBudget,
   getRegularSeasonMonthForDay,
   getTeamById,
+  getScenarioById,
   initializePlayerDevelopmentProfile,
   initializePlayoffBracket,
   isPlayoffComplete,
@@ -101,6 +105,7 @@ import {
   toggleUserRule5Protection,
   advanceOffseasonOnce,
   applyQualifyingOfferCompensationIfNeeded,
+  resolvePersistedScoutConflicts,
 } from './sim.worker.helpers.js';
 import type {
   FullGameState,
@@ -606,6 +611,11 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
   recordSeasonHistory(s, seasonMoments);
   recordSeasonArchive(s);
   upsertFranchiseTimelineEntry(s);
+  if (s.playoffBracket.champion === s.userTeamId) {
+    upsertDynastyCard(s, generateChampionshipCard(exportGameSnapshot(s), s.season));
+  }
+  syncCareerOverviewCard(s);
+  updateScenarioProgress(s);
   captureSeasonAchievementFacts(s);
   syncAchievementState(s);
   clearPendingTradeOffers(s);
@@ -717,6 +727,7 @@ function simWeekInternal(): SimResultDTO {
   refreshNarrativeState(s, result.games);
   resolveConsequenceChains(s);
   syncRecordTracking(s);
+  updateScenarioProgress(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
 }
 
@@ -816,6 +827,7 @@ function simMonthInternal(): SimResultDTO {
   s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
   recordMonthlyDivisionLead(s);
   syncAchievementState(s);
+  updateScenarioProgress(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
 }
 
@@ -865,6 +877,9 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   applyRetirementConsequences(s, retired);
   finalizeSeasonHistoryRetirements(s, retired);
   recordSeasonArchive(s, { includeOffseasonData: true });
+  upsertDynastyCard(s, generateSeasonRecapCard(exportGameSnapshot(s), s.season));
+  resolvePersistedScoutConflicts(s);
+  syncCareerOverviewCard(s);
   s.players = s.players.filter((player) => !retired.includes(player.id));
   s.season++;
   s.day = 1;
@@ -891,6 +906,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
     s.rosterStates.set(teamId, filledRoster.rosterState);
   }
   ensureNarrativeState(s);
+  updateScenarioProgress(s);
   return {
     day: 1,
     season: s.season,
@@ -929,6 +945,7 @@ function simDayInternal(): SimResultDTO {
     refreshNarrativeState(s, result.games);
     resolveConsequenceChains(s);
     syncRecordTracking(s);
+    updateScenarioProgress(s);
     return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
   }
 
@@ -995,7 +1012,24 @@ export const actionApi = {
   newGame(options: NewGameOptions) {
     resetTradeDeadlineState();
     const initialState = buildNewGameState(options);
-    setState(initialState);
+    let nextState = initialState;
+    if (options.scenarioId) {
+      const scenario = getScenarioById(options.scenarioId);
+      if (scenario) {
+        nextState = importGameSnapshot(
+          applyScenarioOverrides(
+            new GameRNG(options.seed + 50_001),
+            exportGameSnapshot(initialState),
+            scenario,
+          ),
+        );
+        nextState.franchise = {
+          ...nextState.franchise,
+          playMode: scenario.requiresCareerMode ? 'career' : (options.playMode ?? 'standard'),
+        };
+      }
+    }
+    setState(nextState);
     ensureNarrativeState(requireState());
 
     return {
@@ -1003,13 +1037,13 @@ export const actionApi = {
       season: 1,
       day: 1,
       phase: 'preseason' as const,
-      userTeamId: options.userTeamId,
-      teamName: initialState.franchise.teamName,
-      gmName: initialState.franchise.gmName,
-      difficulty: initialState.franchise.difficulty,
-      playerCount: initialState.players.length,
+      userTeamId: nextState.userTeamId,
+      teamName: nextState.franchise.teamName,
+      gmName: nextState.franchise.gmName,
+      difficulty: nextState.franchise.difficulty,
+      playerCount: nextState.players.length,
       teamCount: TEAMS.length,
-      gamesScheduled: initialState.schedule.length,
+      gamesScheduled: nextState.schedule.length,
       flowStateChanged: true as const,
     };
   },

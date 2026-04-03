@@ -268,6 +268,7 @@ export function useWorker() {
       difficulty: 'easy' | 'standard' | 'hard';
       saveSlot: number;
       playMode?: PlayMode;
+      scenarioId?: string;
     }) => runMutation(() => api.newGame(options)),
     [api, runMutation],
   );
