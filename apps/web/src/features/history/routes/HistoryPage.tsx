@@ -4,6 +4,7 @@ import { Skeleton } from '@mbd/ui';
 import { Link } from 'react-router-dom';
 import type {
   AwardHistoryEntry,
+  DynastyCard,
   RecordBookEntry,
   RecordWatchEntry,
   Rivalry,
@@ -18,6 +19,7 @@ import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { listLeaderboardEntries, type LeaderboardEntry } from '@/shared/lib/saveSystem';
 
 interface HistoryDisplayNames {
   players: Record<string, string>;
@@ -99,7 +101,7 @@ const EMPTY_DISPLAY_NAMES: HistoryDisplayNames = {
   teams: {},
 };
 
-const HISTORY_TABS = ['records', 'seasons', 'timeline', 'awards'] as const;
+const HISTORY_TABS = ['records', 'seasons', 'timeline', 'legacy', 'awards'] as const;
 type HistoryTab = (typeof HISTORY_TABS)[number];
 const SEASON_BROWSER_TABS = ['standings', 'playoffs', 'awards', 'leaders', 'transactions', 'draft', 'financials'] as const;
 type SeasonBrowserTab = (typeof SEASON_BROWSER_TABS)[number];
@@ -295,7 +297,7 @@ function timelineToneForSeason(archive: SeasonArchiveEntry | null): string {
 export default function HistoryPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { isInitialized, userTeamId, day, season, phase } = useGameStore();
+  const { isInitialized, userTeamId, day, season, phase, activeSaveSlot } = useGameStore();
   const [awardRaces, setAwardRaces] = useState<AwardRaces | null>(null);
   const [awardHistory, setAwardHistory] = useState<AwardHistoryEntry[]>([]);
   const [seasonHistory, setSeasonHistory] = useState<SeasonHistoryEntry[]>([]);
@@ -315,6 +317,8 @@ export default function HistoryPage() {
   const [selectedSeasonTeamId, setSelectedSeasonTeamId] = useState<string | null>(null);
   const [seasonComparison, setSeasonComparison] = useState<SeasonComparisonView | null>(null);
   const [displayNames, setDisplayNames] = useState<HistoryDisplayNames>(EMPTY_DISPLAY_NAMES);
+  const [dynastyCards, setDynastyCards] = useState<DynastyCard[]>([]);
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchHistory = useCallback(async () => {
@@ -327,7 +331,7 @@ export default function HistoryPage() {
       const recordWatchPromise = typeof worker.getRecordWatchList === 'function'
         ? worker.getRecordWatchList(userTeamId)
         : Promise.resolve([]);
-      const [races, awards, seasons, recordBookData, recordWatchData, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData] = await Promise.all([
+      const [races, awards, seasons, recordBookData, recordWatchData, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData, cardsData, liveLeaderboardData, storedLeaderboardData] = await Promise.all([
         worker.getAwardRaces(),
         worker.getAwardHistory(),
         worker.getSeasonHistory(),
@@ -338,6 +342,9 @@ export default function HistoryPage() {
         worker.getFranchiseTimeline(),
         worker.getDynastyScore(),
         worker.getAchievements(),
+        typeof worker.getDynastyCards === 'function' ? worker.getDynastyCards() : Promise.resolve([]),
+        typeof worker.getDynastyLeaderboard === 'function' ? worker.getDynastyLeaderboard() : Promise.resolve([]),
+        listLeaderboardEntries(),
       ]);
       const nextAwardRaces = races ?? null;
       const nextAwardHistory = awards ?? [];
@@ -389,8 +396,20 @@ export default function HistoryPage() {
       setRivalries(nextRivalries as Rivalry[]);
       setHallOfFame(nextHallOfFame as HallOfFameEntryView[]);
       setFranchiseTimeline(nextTimeline as FranchiseTimelineEntryView[]);
+      const liveEntries = (liveLeaderboardData ?? []) as LeaderboardEntry[];
+      const storedEntries = (storedLeaderboardData ?? []) as LeaderboardEntry[];
+      const mergedLeaderboard = [
+        ...liveEntries.filter((entry) => !storedEntries.some((stored) =>
+          (activeSaveSlot != null && stored.slotNumber === activeSaveSlot)
+          || (stored.teamId === entry.teamId && stored.season === entry.season && stored.gmName === entry.gmName),
+        )),
+        ...storedEntries,
+      ];
+
       setDynastyScore((dynastyData ?? null) as DynastyScoreSummary | null);
       setAchievements((achievementData ?? []) as AchievementView[]);
+      setDynastyCards((cardsData ?? []) as DynastyCard[]);
+      setLeaderboardEntries(mergedLeaderboard);
       setSelectedAchievementId((current) => current ?? (((achievementData ?? []) as AchievementView[])[0]?.id ?? null));
       setSelectedSeason((current) => current ?? initialSelectedSeason);
       setComparisonSeason((current) => current ?? initialComparisonSeason);
@@ -401,7 +420,7 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [isInitialized, workerReady, worker, userTeamId]);
+  }, [activeSaveSlot, isInitialized, workerReady, worker, userTeamId]);
 
   useEffect(() => {
     fetchHistory();
@@ -519,7 +538,7 @@ export default function HistoryPage() {
                 onClick={() => setSelectedHistoryTab(tab)}
                 type="button"
               >
-                {tab === 'awards' ? 'Awards / HOF' : tab}
+                {tab === 'awards' ? 'Awards / HOF' : tab === 'legacy' ? 'Legacy' : tab}
               </button>
             ))}
           </div>
@@ -993,6 +1012,92 @@ export default function HistoryPage() {
                   <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
                     The franchise timeline starts once the first season closes.
                   </div>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {selectedHistoryTab === 'legacy' && (
+          <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Flame className="h-4 w-4 text-accent-warning" />
+                  <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Dynasty Cards</h2>
+                </div>
+                {dynastyCards[0] ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(dynastyCards[0]!.textSummary);
+                    }}
+                    className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-[0.16em] text-dynasty-text hover:bg-dynasty-elevated"
+                  >
+                    Copy Latest Summary
+                  </button>
+                ) : null}
+              </div>
+              <div className="space-y-3">
+                {dynastyCards.length > 0 ? dynastyCards.map((card) => (
+                  <div key={card.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-heading text-sm text-dynasty-textBright">{card.title}</div>
+                        <div className="mt-1 font-data text-xs text-dynasty-muted">{card.subtitle}</div>
+                      </div>
+                      <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                        {card.generatedAt}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {card.stats.map((stat) => (
+                        <div key={`${card.id}-${stat.label}`} className="font-heading text-xs text-dynasty-muted">
+                          {stat.label}: <span className="text-dynasty-text">{stat.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {card.highlights.length > 0 ? (
+                      <div className="mt-3 font-heading text-xs text-dynasty-muted">
+                        {card.highlights.join(' | ')}
+                      </div>
+                    ) : null}
+                  </div>
+                )) : (
+                  <EmptyStatePanel
+                    title="No legacy cards yet"
+                    description="Season recaps, championships, and career-overview cards appear here once those moments are recorded."
+                  />
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-accent-success" />
+                <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Local Leaderboard</h2>
+              </div>
+              <div className="space-y-3">
+                {leaderboardEntries.length > 0 ? leaderboardEntries.map((entry, index) => (
+                  <div key={entry.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-heading text-sm text-dynasty-textBright">
+                          #{index + 1} · {entry.gmName}
+                        </div>
+                        <div className="mt-1 font-data text-xs text-dynasty-muted">
+                          {entry.teamName} · Season {entry.season} · {entry.record}
+                        </div>
+                      </div>
+                      <div className="font-brand text-2xl text-accent-primary">{entry.score}</div>
+                    </div>
+                    <div className="mt-2 font-heading text-xs text-dynasty-muted">{entry.summary}</div>
+                  </div>
+                )) : (
+                  <EmptyStatePanel
+                    title="No leaderboard entries yet"
+                    description="Save snapshots populate the cross-save leaderboard automatically."
+                  />
                 )}
               </div>
             </section>

@@ -3,6 +3,7 @@ import {
   type GameSnapshot,
   type SimPhase,
 } from '@mbd/contracts';
+import { calculateDynastyLeaderboardScore } from '@mbd/sim-core';
 import {
   GameSnapshotSchema,
   parseGameSnapshot,
@@ -28,6 +29,21 @@ export interface SaveData {
   createdAt: string;
   updatedAt: string;
   gameState?: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  slotNumber: number;
+  scenarioId: string | null;
+  gmName: string;
+  teamId: string;
+  teamName: string;
+  season: number;
+  score: number;
+  record: string;
+  championships: number;
+  summary: string;
+  updatedAt: string;
 }
 
 export type SaveInspectionResult =
@@ -65,6 +81,7 @@ interface AutoSaveScheduler {
 
 class MBDDatabase extends Dexie {
   saves!: Table<SaveData, string>;
+  leaderboard!: Table<LeaderboardEntry, string>;
 
   constructor() {
     super('mbd-saves');
@@ -91,10 +108,111 @@ class MBDDatabase extends Dexie {
               record.legacyState = null;
             }
           }));
+    this.version(3).stores({
+      saves: 'id, slotNumber, updatedAt, hasSnapshot',
+      leaderboard: 'id, slotNumber, scenarioId, score, updatedAt',
+    });
   }
 }
 
 export const db = new MBDDatabase();
+
+function hasIndexedDBSupport(): boolean {
+  return typeof indexedDB !== 'undefined';
+}
+
+function fallbackGMCareer(snapshot: GameSnapshot): NonNullable<GameSnapshot['narrative']['gmCareer']> {
+  return snapshot.narrative.gmCareer ?? {
+    careerHistory: [],
+    currentTeamId: snapshot.franchise.teamId,
+    reputation: 50,
+    overallRecord: { wins: 0, losses: 0 },
+    championships: 0,
+    hiredSeason: snapshot.season,
+    firedSeasons: [],
+    careerAchievements: [],
+    jobSearchActive: false,
+    lastFiredReason: null,
+  };
+}
+
+function snapshotRecord(snapshot: GameSnapshot): string {
+  const standings = snapshot.seasonState.standings as Array<{ teamId?: string; wins?: number; losses?: number }> | Array<[string, { wins: number; losses: number }]>;
+  for (const entry of standings) {
+    if (Array.isArray(entry)) {
+      if (entry[0] === snapshot.userTeamId) {
+        return `${entry[1].wins}-${entry[1].losses}`;
+      }
+      continue;
+    }
+
+    if (entry.teamId === snapshot.userTeamId) {
+      return `${entry.wins ?? 0}-${entry.losses ?? 0}`;
+    }
+  }
+
+  const record = fallbackGMCareer(snapshot).overallRecord;
+  return `${record.wins}-${record.losses}`;
+}
+
+export function buildLeaderboardEntry(
+  slot: number,
+  snapshot: GameSnapshot,
+  updatedAt: string = new Date().toISOString(),
+): LeaderboardEntry {
+  const scenarioId = snapshot.narrative.challengeState?.scenarioId ?? null;
+  const latestCard = snapshot.narrative.dynastyCards?.at(-1) ?? null;
+  const gmCareer = fallbackGMCareer(snapshot);
+
+  return {
+    id: scenarioId ? `leaderboard-scenario-${slot}-${scenarioId}` : `leaderboard-dynasty-${slot}`,
+    slotNumber: slot,
+    scenarioId,
+    gmName: snapshot.franchise.gmName,
+    teamId: snapshot.franchise.teamId,
+    teamName: snapshot.franchise.teamName,
+    season: snapshot.season,
+    score: calculateDynastyLeaderboardScore(snapshot),
+    record: snapshotRecord(snapshot),
+    championships: gmCareer.championships,
+    summary: latestCard?.textSummary ?? snapshot.narrative.challengeState?.summary ?? `${snapshot.franchise.gmName} · Season ${snapshot.season}`,
+    updatedAt,
+  };
+}
+
+export async function upsertLeaderboardEntry(
+  slot: number,
+  snapshot: GameSnapshot,
+): Promise<LeaderboardEntry> {
+  const entry = buildLeaderboardEntry(slot, snapshot);
+  if (hasIndexedDBSupport()) {
+    await db.leaderboard.put(entry);
+  }
+  return entry;
+}
+
+export async function listLeaderboardEntries(
+  options: { scenarioId?: string | null } = {},
+): Promise<LeaderboardEntry[]> {
+  if (!hasIndexedDBSupport()) {
+    return [];
+  }
+  const entries = await db.leaderboard.toArray();
+  return entries
+    .filter((entry) => (
+      options.scenarioId === undefined
+        ? true
+        : entry.scenarioId === options.scenarioId
+    ))
+    .sort((left, right) => right.score - left.score || right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export async function deleteLeaderboardEntriesForSlot(slot: number): Promise<void> {
+  if (!hasIndexedDBSupport()) {
+    return;
+  }
+  await db.leaderboard.where('slotNumber').equals(slot).delete();
+}
 
 function tryParseSnapshot(snapshotLike: unknown): GameSnapshot | null {
   try {
@@ -308,7 +426,9 @@ export async function saveGame(
     const existing = await db.saves.get(`save-slot-${slot}`);
     const snapshot = GameSnapshotSchema.safeParse(state);
     if (snapshot.success) {
-      await db.saves.put(buildSaveRecord(slot, name, snapshot.data, existing));
+      const record = buildSaveRecord(slot, name, snapshot.data, existing);
+      await db.saves.put(record);
+      await upsertLeaderboardEntry(slot, record.snapshot!);
       return;
     }
 
@@ -366,10 +486,16 @@ export async function loadMostRecentSnapshot(): Promise<SaveData | undefined> {
 export async function deleteSave(slot: number): Promise<void> {
   const id = `save-slot-${slot}`;
   await db.saves.delete(id);
+  await deleteLeaderboardEntriesForSlot(slot);
 }
 
 export async function clearAllSaves(): Promise<void> {
-  await db.saves.clear();
+  if (!hasIndexedDBSupport()) {
+    await db.saves.clear();
+    return;
+  }
+
+  await Promise.all([db.saves.clear(), db.leaderboard.clear()]);
 }
 
 export function exportSnapshotToJson(name: string, snapshot: GameSnapshot): string {

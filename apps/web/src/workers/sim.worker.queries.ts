@@ -1,6 +1,7 @@
 import {
   AFFILIATE_LEVELS,
   calculateAwardRaces,
+  calculateDynastyLeaderboardScore,
   calculateCoachingPayroll,
   calculateLuxuryTax,
   calculateQualifyingOfferSalary,
@@ -9,10 +10,12 @@ import {
   describeInjury,
   evaluatePlayerTradeValue,
   generateAITradeOffers,
+  getScenarioById,
   getActiveRosterLimit,
   getTeamById,
   getTopFreeAgents,
   getUnreadNews,
+  SCENARIO_LIBRARY,
   scoutPlayer,
   toInternalRating,
   toLetterGrade,
@@ -71,6 +74,7 @@ import {
   buildLeagueLeaderEntries,
   getAdvancedStatsForPlayer,
 } from './sim.worker.stats.js';
+import { exportGameSnapshot } from './snapshot.js';
 
 function pctFromRecord(wins: number, losses: number): number {
   const total = wins + losses;
@@ -246,6 +250,13 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       chemistry,
       frontOffice: s.frontOfficeState.get(s.userTeamId) ?? null,
     },
+    fanSentiment: s.fanSentiment,
+    challenge: s.challengeState
+      ? {
+          ...s.challengeState,
+          name: getScenarioById(s.challengeState.scenarioId)?.name ?? s.challengeState.scenarioId,
+        }
+      : null,
     momentum: {
       last10: `${last10Wins}-${last10Losses}`,
       streak: userStanding?.streak ?? 'W0',
@@ -1023,6 +1034,59 @@ export const queryApi = {
 
   getJobMarket() {
     return requireState().jobMarket;
+  },
+
+  getScoutConflicts(teamId?: string) {
+    const s = requireState();
+    return s.scoutConflicts
+      .filter((entry) => teamId == null || entry.teamId === teamId)
+      .sort((left, right) => right.createdSeason - left.createdSeason || right.divergence - left.divergence);
+  },
+
+  getScoutConflict(prospectId: string) {
+    return requireState().scoutConflicts.find((entry) => entry.prospectId === prospectId) ?? null;
+  },
+
+  getDynastyCards() {
+    return requireState().dynastyCards;
+  },
+
+  getDynastyLeaderboard() {
+    const s = requireState();
+    const record = s.seasonState.standings.getRecord(s.userTeamId);
+    return [{
+      id: 'current-save',
+      slotNumber: 0,
+      scenarioId: s.challengeState?.scenarioId ?? null,
+      gmName: s.franchise.gmName,
+      teamId: s.franchise.teamId,
+      teamName: s.franchise.teamName,
+      season: s.season,
+      score: calculateDynastyLeaderboardScore(exportGameSnapshot(s)),
+      record: record ? `${record.wins}-${record.losses}` : '0-0',
+      championships: s.gmCareer.championships,
+      summary: s.dynastyCards[0]?.textSummary ?? `${s.franchise.gmName} · Season ${s.season}`,
+      updatedAt: timestamp(),
+    }];
+  },
+
+  getScenarioCatalog() {
+    return SCENARIO_LIBRARY;
+  },
+
+  getScenarioProgress() {
+    const s = requireState();
+    if (!s.challengeState) {
+      return null;
+    }
+
+    const scenario = getScenarioById(s.challengeState.scenarioId);
+    return {
+      ...s.challengeState,
+      name: scenario?.name ?? s.challengeState.scenarioId,
+      description: scenario?.description ?? s.challengeState.summary,
+      requiresCareerMode: scenario?.requiresCareerMode ?? false,
+    };
   },
 
   getPersonalityProfile(playerId: string) {

@@ -594,3 +594,21 @@ export type {
   RushingRisk,
   FanSentimentContext,
 } from './narrative/index.js';
+
+// Sharing
+export {
+  generateDynastyCard,
+  generateSeasonRecapCard,
+  generateChampionshipCard,
+  calculateDynastyLeaderboardScore,
+} from './sharing/index.js';
+
+// Scenarios
+export {
+  SCENARIO_LIBRARY,
+  getScenarioById,
+  readScenarioRecord,
+  applyScenarioOverrides,
+  evaluateScenarioProgress,
+  completeScenario,
+} from './scenarios/index.js';
