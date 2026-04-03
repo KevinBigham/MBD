@@ -3,6 +3,11 @@ import * as Comlink from 'comlink';
 import type { TradeAsset } from '@mbd/contracts';
 import type { LeaderboardStatKey } from '@mbd/sim-core';
 import type { WorkerApi } from '@/workers/sim.worker';
+import {
+  SAVE_IO_BUDGET_MS,
+  SIM_MONTH_BENCHMARK_MS,
+  measureAsyncOperation,
+} from '@/shared/lib/performance';
 
 // ---------------------------------------------------------------------------
 // Singleton worker — shared across all components
@@ -112,7 +117,13 @@ export function useWorker() {
 
   const simDay = useCallback(async () => runMutation(() => api.simDay()), [api, runMutation]);
   const simWeek = useCallback(async () => runMutation(() => api.simWeek()), [api, runMutation]);
-  const simMonth = useCallback(async () => runMutation(() => api.simMonth()), [api, runMutation]);
+  const simMonth = useCallback(
+    async () => runMutation(() =>
+      measureAsyncOperation('worker.simMonth', () => api.simMonth(), {
+        budgetMs: SIM_MONTH_BENCHMARK_MS,
+      })),
+    [api, runMutation],
+  );
   const acknowledgeMonthlyReport = useCallback(
     async (reportId: string) => runMutation(() => api.acknowledgeMonthlyReport(reportId)),
     [api, runMutation],
@@ -135,9 +146,17 @@ export function useWorker() {
   const simPlayoffRound = useCallback(async () => runMutation(() => api.simPlayoffRound()), [api, runMutation]);
   const simRemainingPlayoffs = useCallback(async () => runMutation(() => api.simRemainingPlayoffs()), [api, runMutation]);
   const getState = useCallback(async () => api.getState(), [api]);
-  const exportSnapshot = useCallback(async () => api.exportSnapshot(), [api]);
+  const exportSnapshot = useCallback(
+    async () => measureAsyncOperation('worker.exportSnapshot', () => api.exportSnapshot(), {
+      budgetMs: SAVE_IO_BUDGET_MS,
+    }),
+    [api],
+  );
   const importSnapshot = useCallback(
-    async (snapshot: unknown) => runMutation(() => api.importSnapshot(snapshot)),
+    async (snapshot: unknown) => runMutation(() =>
+      measureAsyncOperation('worker.importSnapshot', () => api.importSnapshot(snapshot), {
+        budgetMs: SAVE_IO_BUDGET_MS,
+      })),
     [api, runMutation],
   );
 

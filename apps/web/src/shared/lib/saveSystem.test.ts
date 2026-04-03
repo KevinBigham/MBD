@@ -1,11 +1,21 @@
 // @vitest-environment node
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameSnapshot } from '@mbd/contracts';
 import {
   buildSaveRecord,
+  createAutoSaveScheduler,
+  db,
+  flushAutoSaveQueueForTesting,
+  loadGame,
   normalizeLoadedSaveRecord,
+  saveGame,
+  scheduleAutoSave,
 } from './saveSystem';
+import {
+  clearPerformanceMetrics,
+  getLatestPerformanceMetric,
+} from './performance';
 
 function createSnapshot(): GameSnapshot {
   return {
@@ -135,6 +145,11 @@ function createSnapshot(): GameSnapshot {
 }
 
 describe('saveSystem helpers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearPerformanceMetrics();
+  });
+
   it('builds a v11 save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
@@ -349,5 +364,84 @@ describe('saveSystem helpers', () => {
       pendingReport: null,
       decisionQueue: [],
     });
+  });
+
+  it('coalesces queued autosaves so only the latest pending snapshot is written', async () => {
+    let flushQueuedSave: (() => void) | null = null;
+    const writeSave = vi.fn().mockImplementation(async () => undefined);
+    const scheduler = createAutoSaveScheduler(
+      writeSave,
+      (callback) => {
+        flushQueuedSave = callback;
+        return () => {
+          flushQueuedSave = null;
+        };
+      },
+    );
+
+    const first = scheduler.schedule({
+      slot: 1,
+      name: 'Season 4',
+      state: { season: 4, day: 100 },
+    });
+    const second = scheduler.schedule({
+      slot: 1,
+      name: 'Season 4 Updated',
+      state: { season: 4, day: 101 },
+    });
+
+    expect(writeSave).not.toHaveBeenCalled();
+    expect(flushQueuedSave).toBeTypeOf('function');
+
+    const flushQueuedSaveFn = flushQueuedSave as (() => void) | null;
+    if (typeof flushQueuedSaveFn !== 'function') {
+      throw new Error('Expected idle flush callback to be scheduled.');
+    }
+
+    flushQueuedSaveFn();
+    await Promise.all([first, second]);
+
+    expect(writeSave).toHaveBeenCalledTimes(1);
+    expect(writeSave).toHaveBeenCalledWith({
+      slot: 1,
+      name: 'Season 4 Updated',
+      state: { season: 4, day: 101 },
+    });
+  });
+
+  it('records save and load timings against the runtime performance ledger', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+    vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-1' as never);
+    const nowSpy = vi.spyOn(globalThis.performance, 'now');
+    nowSpy
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(120)
+      .mockReturnValueOnce(200)
+      .mockReturnValueOnce(320);
+
+    await saveGame(1, 'Dynasty', createSnapshot());
+    await loadGame(1);
+
+    expect(getLatestPerformanceMetric('save.write')).toEqual({
+      durationMs: 120,
+      budgetMs: 500,
+      overBudget: false,
+    });
+    expect(getLatestPerformanceMetric('save.load')).toEqual({
+      durationMs: 120,
+      budgetMs: 500,
+      overBudget: false,
+    });
+  });
+
+  it('exposes the shared autosave queue for app-level callers', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-1' as never);
+
+    const scheduled = scheduleAutoSave(1, 'Dynasty', createSnapshot());
+    await flushAutoSaveQueueForTesting();
+    await scheduled;
+
+    expect(putSpy).toHaveBeenCalledTimes(1);
   });
 });

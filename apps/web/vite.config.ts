@@ -1,10 +1,24 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import {
+  resolveAppManualChunk,
+  resolveWorkerManualChunk,
+} from './src/build/bundleConfig';
 
 export default defineConfig({
   base: '/MBD/',
   plugins: [react()],
+  build: {
+    manifest: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          return resolveAppManualChunk(id);
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -20,5 +34,12 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          return resolveWorkerManualChunk(id);
+        },
+      },
+    },
   },
 });

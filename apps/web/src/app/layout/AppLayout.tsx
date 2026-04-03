@@ -12,7 +12,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
-import { saveGame } from '@/shared/lib/saveSystem';
+import { scheduleAutoSave } from '@/shared/lib/saveSystem';
 import type { CeremonyMoment, MonthlyPulseState } from '@mbd/contracts';
 
 interface MonthlyPulseView extends MonthlyPulseState {
@@ -105,7 +105,13 @@ export function AppLayout() {
     }
 
     const snapshot = await worker.exportSnapshot();
-    await saveGame(activeSaveSlot, `${gmName} • ${teamName} • Season ${targetSeason}`, snapshot);
+    void scheduleAutoSave(
+      activeSaveSlot,
+      `${gmName} • ${teamName} • Season ${targetSeason}`,
+      snapshot,
+    ).catch((error) => {
+      console.error('Failed to autosave snapshot:', error);
+    });
   }, [activeSaveSlot, gmName, teamName, worker]);
 
   const refreshSeasonFlow = useCallback(async () => {

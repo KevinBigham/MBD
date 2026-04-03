@@ -7,6 +7,10 @@ import {
   GameSnapshotSchema,
   parseGameSnapshot,
 } from '../../../../../packages/contracts/src/schemas/save';
+import {
+  SAVE_IO_BUDGET_MS,
+  measureAsyncOperation,
+} from './performance';
 
 export const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
 
@@ -24,6 +28,26 @@ export interface SaveData {
   createdAt: string;
   updatedAt: string;
   gameState?: string;
+}
+
+interface AutoSaveJob {
+  slot: number;
+  name: string;
+  state: object;
+}
+
+interface Deferred {
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
+type IdleCancel = () => void;
+type IdleScheduler = (callback: () => void) => IdleCancel;
+
+interface AutoSaveScheduler {
+  schedule(job: AutoSaveJob): Promise<void>;
+  flush(): Promise<void>;
+  hasPending(): boolean;
 }
 
 class MBDDatabase extends Dexie {
@@ -58,6 +82,100 @@ class MBDDatabase extends Dexie {
 }
 
 export const db = new MBDDatabase();
+
+function scheduleOnIdle(callback: () => void): IdleCancel {
+  const globalWindow = typeof window !== 'undefined' ? window : null;
+
+  if (globalWindow && typeof globalWindow.requestIdleCallback === 'function') {
+    const idleHandle = globalWindow.requestIdleCallback(() => {
+      globalWindow.clearTimeout(timeoutHandle);
+      callback();
+    }, { timeout: 250 });
+    const timeoutHandle = globalWindow.setTimeout(() => {
+      globalWindow.cancelIdleCallback?.(idleHandle);
+      callback();
+    }, 250);
+
+    return () => {
+      globalWindow.cancelIdleCallback?.(idleHandle);
+      globalWindow.clearTimeout(timeoutHandle);
+    };
+  }
+
+  const timeoutHandle = globalThis.setTimeout(() => {
+    callback();
+  }, 32);
+
+  return () => {
+    globalThis.clearTimeout(timeoutHandle);
+  };
+}
+
+export function createAutoSaveScheduler(
+  writeSave: (job: AutoSaveJob) => Promise<void>,
+  scheduleIdle: IdleScheduler = scheduleOnIdle,
+): AutoSaveScheduler {
+  let queued: { job: AutoSaveJob; deferreds: Deferred[] } | null = null;
+  let running = false;
+  let cancelScheduled: IdleCancel | null = null;
+
+  const requestFlush = () => {
+    if (cancelScheduled) {
+      return;
+    }
+
+    cancelScheduled = scheduleIdle(() => {
+      cancelScheduled = null;
+      void flush();
+    });
+  };
+
+  const flush = async () => {
+    if (running || !queued) {
+      return;
+    }
+
+    const current = queued;
+    queued = null;
+    cancelScheduled?.();
+    cancelScheduled = null;
+    running = true;
+
+    try {
+      await writeSave(current.job);
+      current.deferreds.forEach((deferred) => deferred.resolve());
+    } catch (error) {
+      current.deferreds.forEach((deferred) => deferred.reject(error));
+    } finally {
+      running = false;
+      if (queued) {
+        requestFlush();
+      }
+    }
+  };
+
+  return {
+    schedule(job: AutoSaveJob) {
+      return new Promise<void>((resolve, reject) => {
+        if (queued) {
+          queued.job = job;
+          queued.deferreds.push({ resolve, reject });
+        } else {
+          queued = {
+            job,
+            deferreds: [{ resolve, reject }],
+          };
+        }
+
+        requestFlush();
+      });
+    },
+    flush,
+    hasPending() {
+      return running || queued != null;
+    },
+  };
+}
 
 export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
   const snapshot = raw.snapshot ? parseGameSnapshot(raw.snapshot) : null;
@@ -108,36 +226,40 @@ export async function saveGame(
   name: string,
   state: object
 ): Promise<void> {
-  const existing = await db.saves.get(`save-slot-${slot}`);
-  const snapshot = GameSnapshotSchema.safeParse(state);
-  if (snapshot.success) {
-    await db.saves.put(buildSaveRecord(slot, name, snapshot.data, existing));
-    return;
-  }
+  await measureAsyncOperation('save.write', async () => {
+    const existing = await db.saves.get(`save-slot-${slot}`);
+    const snapshot = GameSnapshotSchema.safeParse(state);
+    if (snapshot.success) {
+      await db.saves.put(buildSaveRecord(slot, name, snapshot.data, existing));
+      return;
+    }
 
-  const now = new Date().toISOString();
-  await db.saves.put({
-    id: `save-slot-${slot}`,
-    slotNumber: slot,
-    name,
-    season: (state as { season?: number }).season ?? 1,
-    day: (state as { day?: number }).day ?? 1,
-    phase: ((state as { phase?: SimPhase }).phase ?? 'preseason'),
-    schemaVersion: 1,
-    hasSnapshot: false,
-    snapshot: null,
-    legacyState: JSON.stringify(state),
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  });
+    const now = new Date().toISOString();
+    await db.saves.put({
+      id: `save-slot-${slot}`,
+      slotNumber: slot,
+      name,
+      season: (state as { season?: number }).season ?? 1,
+      day: (state as { day?: number }).day ?? 1,
+      phase: ((state as { phase?: SimPhase }).phase ?? 'preseason'),
+      schemaVersion: 1,
+      hasSnapshot: false,
+      snapshot: null,
+      legacyState: JSON.stringify(state),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
 export async function loadGame(
   slot: number
 ): Promise<SaveData | undefined> {
-  const id = `save-slot-${slot}`;
-  const raw = await db.saves.get(id);
-  return raw ? normalizeLoadedSaveRecord(raw) : undefined;
+  return measureAsyncOperation('save.load', async () => {
+    const id = `save-slot-${slot}`;
+    const raw = await db.saves.get(id);
+    return raw ? normalizeLoadedSaveRecord(raw) : undefined;
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
 export async function listSaves(): Promise<SaveData[]> {
@@ -155,4 +277,20 @@ export async function loadMostRecentSnapshot(): Promise<SaveData | undefined> {
 export async function deleteSave(slot: number): Promise<void> {
   const id = `save-slot-${slot}`;
   await db.saves.delete(id);
+}
+
+const autoSaveScheduler = createAutoSaveScheduler((job) =>
+  saveGame(job.slot, job.name, job.state),
+);
+
+export function scheduleAutoSave(
+  slot: number,
+  name: string,
+  state: object,
+): Promise<void> {
+  return autoSaveScheduler.schedule({ slot, name, state });
+}
+
+export async function flushAutoSaveQueueForTesting(): Promise<void> {
+  await autoSaveScheduler.flush();
 }
