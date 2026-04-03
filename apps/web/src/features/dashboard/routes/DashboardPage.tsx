@@ -33,8 +33,19 @@ interface DashboardSummary {
     division: string;
     divisionRank: number;
     dynasty: { score: number; grade: string };
-    owner: { hotSeat: boolean; patience: number; confidence: number; summary: string } | null;
+    status: 'active' | 'fired';
+    endReason: string | null;
+    owner: {
+      hotSeat: boolean;
+      patience: number;
+      confidence: number;
+      summary: string;
+      satisfaction?: number;
+      annualBudget?: number;
+      payrollCap?: number;
+    } | null;
     chemistry: { score: number; tier: string; summary: string } | null;
+    frontOffice: { reputation: number; summary: string } | null;
   };
   momentum: {
     last10: string;
@@ -176,6 +187,7 @@ export default function DashboardPage() {
 
   const latestPressItem = summary?.pressRoom.latest ?? null;
   const headlineFeed = summary?.pressRoom.feed.slice(0, 4) ?? [];
+  const ownerMeterValue = summary?.franchise.owner?.satisfaction ?? summary?.franchise.owner?.patience ?? 0;
 
   return (
     <PageShell loading={loading && summary == null} skeleton={<DashboardSkeleton />}>
@@ -243,6 +255,15 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
+      {summary?.franchise.status === 'fired' ? (
+        <section className="rounded-lg border border-accent-danger/40 bg-accent-danger/10 p-4">
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-danger">Dynasty Ended</div>
+          <div className="mt-2 font-heading text-sm text-dynasty-textBright">
+            {summary.franchise.endReason ?? 'Ownership ended this front office run.'}
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -256,15 +277,18 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
-              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Owner Patience</div>
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Owner Satisfaction</div>
               <div className="mt-2 w-40">
                 <ProgressFill
-                  toneClassName={ownerTone(summary?.franchise.owner?.patience)}
-                  value={summary?.franchise.owner?.patience ?? 0}
+                  toneClassName={ownerTone(ownerMeterValue)}
+                  value={ownerMeterValue}
                 />
               </div>
               <div className="mt-2 font-heading text-sm text-dynasty-muted">
                 {summary?.franchise.owner?.summary ?? 'Owner state unavailable.'}
+              </div>
+              <div className="mt-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                GM Reputation {summary?.franchise.frontOffice?.reputation ?? 0}
               </div>
             </div>
           </div>
@@ -394,6 +418,12 @@ export default function DashboardPage() {
               label="Top Prospect"
               value={summary?.intel.topProspect?.position ?? '--'}
               body={summary?.intel.topProspect ? `${summary.intel.topProspect.name} at ${summary.intel.topProspect.level}` : 'System is light on near-ready talent.'}
+            />
+            <IntelCard
+              icon={<Briefcase className="h-4 w-4 text-accent-warning" />}
+              label="GM Reputation"
+              value={String(summary?.franchise.frontOffice?.reputation ?? 0)}
+              body={summary?.franchise.frontOffice?.summary ?? 'Front office reputation is still forming.'}
             />
           </div>
         </div>

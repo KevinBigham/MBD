@@ -158,6 +158,7 @@ import {
 import {
   buildNewGameState,
   getDifficultyAdjustedCompetitiveAav,
+  getTeamFreeAgencyAppealScore,
   type NewGameOptions,
 } from './sim.worker.setup.js';
 import { syncRecordTracking } from './sim.worker.records.js';
@@ -182,6 +183,24 @@ function applyAISigningProgress(
       signing.marketValue,
     );
   }
+}
+
+function franchiseLockMessage(s: FullGameState): string {
+  return s.franchise.endReason ?? 'Owner fired the GM. This dynasty is now read-only.';
+}
+
+function syncFranchiseTerminationFromOwner(s: FullGameState): boolean {
+  return s.franchise.status === 'fired';
+}
+
+function blockedSimResult(s: FullGameState): SimResultDTO {
+  return {
+    day: s.day,
+    season: s.season,
+    phase: s.phase,
+    gamesPlayed: 0,
+    seasonComplete: true,
+  };
 }
 
 function teamLabel(teamId: string): string {
@@ -474,6 +493,9 @@ function applyMonthlyDevelopmentCheckpoints(
 
 function simWeekInternal(): SimResultDTO {
   const s = requireState();
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
   if (s.phase === 'preseason') {
     s.phase = 'regular';
     s.day = 1;
@@ -533,6 +555,24 @@ function normalizeLeagueActiveRosters(s: FullGameState) {
 
 function simMonthInternal(): SimResultDTO {
   const s = requireState();
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
+  const owner = s.ownerState.get(s.userTeamId);
+  if (
+    owner?.hotSeat
+    && (
+      (owner.satisfaction ?? 100) < 45
+      || owner.patience < 35
+      || owner.confidence < 35
+    )
+  ) {
+    const existingFlags = s.storyFlags.get(s.userTeamId) ?? [];
+    const flag = `owner_meeting_${s.season}`;
+    if (!existingFlags.includes(flag)) {
+      s.storyFlags.set(s.userTeamId, [...existingFlags, flag]);
+    }
+  }
   if (s.phase === 'preseason') {
     s.phase = 'regular';
     s.day = 1;
@@ -647,6 +687,9 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 
 function simDayInternal(): SimResultDTO {
   const s = requireState();
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
   if (s.phase === 'preseason') {
     s.phase = 'regular';
     s.day = 1;
@@ -794,24 +837,39 @@ export const actionApi = {
 
   simToPlayoffs(): SimResultDTO {
     const s = requireState();
-    let result = simDayInternal();
-
-    while (s.phase === 'regular') {
-      const remainingDays = Math.max(0, 163 - s.day);
-      if (remainingDays >= 30) {
-        result = simMonthInternal();
-      } else if (remainingDays >= 7) {
-        result = simWeekInternal();
-      } else {
-        result = simDayInternal();
-      }
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
     }
+    const userFlags = s.storyFlags.get(s.userTeamId) ?? [];
+    if (!userFlags.includes('suppress_owner_firing')) {
+      s.storyFlags.set(s.userTeamId, [...userFlags, 'suppress_owner_firing']);
+    }
+    try {
+      let result = simDayInternal();
 
-    return result;
+      while (s.phase === 'regular') {
+        const remainingDays = Math.max(0, 163 - s.day);
+        if (remainingDays >= 30) {
+          result = simMonthInternal();
+        } else if (remainingDays >= 7) {
+          result = simWeekInternal();
+        } else {
+          result = simDayInternal();
+        }
+      }
+
+      return result;
+    } finally {
+      const nextFlags = (s.storyFlags.get(s.userTeamId) ?? []).filter((flag) => flag !== 'suppress_owner_firing');
+      s.storyFlags.set(s.userTeamId, nextFlags);
+    }
   },
 
   simPlayoffGame(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -835,6 +893,9 @@ export const actionApi = {
 
   simPlayoffSeries(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -858,6 +919,9 @@ export const actionApi = {
 
   simPlayoffRound(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -881,6 +945,9 @@ export const actionApi = {
 
   simRemainingPlayoffs(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -908,6 +975,9 @@ export const actionApi = {
 
   proceedToOffseason(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase === 'playoffs' && s.playoffBracket?.champion) {
       s.phase = 'offseason';
       s.day = 1;
@@ -925,6 +995,9 @@ export const actionApi = {
 
   startNextSeason(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase === 'offseason' && s.offseasonState?.completed) {
       return finalizeOffseasonRollover(s);
     }
@@ -965,6 +1038,9 @@ export const actionApi = {
 
   startDraft() {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     return {
       ...startDraftSession(s, generateDraftClass(s.rng.fork(), s.season)),
       flowStateChanged: true,
@@ -972,8 +1048,12 @@ export const actionApi = {
   },
 
   makeDraftPick(prospectId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     return {
-      ...makeUserDraftSelection(requireState(), prospectId),
+      ...makeUserDraftSelection(s, prospectId),
       flowStateChanged: true,
     };
   },
@@ -994,6 +1074,9 @@ export const actionApi = {
 
   signDraftPick(playerId: string, bonusAmount: number) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     const result = signUserDraftPick(s, playerId, bonusAmount);
     if (result.success && result.signed) {
       const player = s.players.find((candidate) => candidate.id === playerId);
@@ -1007,14 +1090,21 @@ export const actionApi = {
   },
 
   simulateRemainingDraft() {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     return {
-      ...simulateRemainingDraftSession(requireState()),
+      ...simulateRemainingDraftSession(s),
       flowStateChanged: true,
     };
   },
 
   proposeTrade(offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { decision: 'rejected' as const, reason: franchiseLockMessage(s) };
+    }
     const result = proposeTradePackage(
       s,
       offeringAssets,
@@ -1033,6 +1123,9 @@ export const actionApi = {
     counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
   ) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, decision: 'rejected' as const, message: franchiseLockMessage(s) };
+    }
     const result = respondToTradeOffer(s, offerId, action, counterPackage);
     if (result.success && result.decision === 'accepted') {
       syncAchievementState(s);
@@ -1042,6 +1135,9 @@ export const actionApi = {
 
   promotePlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -1086,6 +1182,9 @@ export const actionApi = {
 
   demotePlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -1128,6 +1227,9 @@ export const actionApi = {
 
   dfaPlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -1174,11 +1276,17 @@ export const actionApi = {
 
   claimOffWaivers(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return claimPlayerOffWaivers(s, playerId, s.userTeamId);
   },
 
   makeContractOffer(playerId: string, years: number, salary: number) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { accepted: false, reason: franchiseLockMessage(s) };
+    }
     if (!s.freeAgencyMarket) {
       s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
     }
@@ -1198,7 +1306,7 @@ export const actionApi = {
     const result = makeUserOffer(s.freeAgencyMarket, {
       ...offer,
       annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
-    }, s.teamChemistry.get(s.userTeamId)?.score ?? 50);
+    }, getTeamFreeAgencyAppealScore(s, s.userTeamId));
     if (!result.accepted || !freeAgent) {
       return result;
     }
@@ -1259,6 +1367,9 @@ export const actionApi = {
 
   negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { status: 'rejected' as const, rounds: [], reason: franchiseLockMessage(s) };
+    }
     const result = negotiatePlayerExtension(s, playerId, offer);
     if (result?.status === 'accepted') {
       recordExtensionCompleted(s);
@@ -1268,23 +1379,42 @@ export const actionApi = {
   },
 
   issueQualifyingOffer(playerId: string) {
-    return issueTeamQualifyingOffer(requireState(), playerId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return issueTeamQualifyingOffer(s, playerId);
   },
 
   resolveQualifyingOffers() {
-    return resolveOutstandingQualifyingOffers(requireState());
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { resolved: [], error: franchiseLockMessage(s) };
+    }
+    return resolveOutstandingQualifyingOffers(s);
   },
 
   hireCoach(coachId: string) {
-    return hireCoachForUserTeam(requireState(), coachId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return hireCoachForUserTeam(s, coachId);
   },
 
   fireCoach(coachId: string) {
-    return fireCoachForUserTeam(requireState(), coachId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return fireCoachForUserTeam(s, coachId);
   },
 
   advanceOffseason(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const progress = advanceOffseasonOnce(s);
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
@@ -1293,6 +1423,9 @@ export const actionApi = {
 
   skipOffseasonPhase(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const progress = skipOffseasonPhaseWithAI(s);
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
@@ -1300,11 +1433,18 @@ export const actionApi = {
   },
 
   scoutIFAPlayer(playerId: string) {
-    return scoutUserIFAPlayer(requireState(), playerId);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return scoutUserIFAPlayer(s, playerId);
   },
 
   signIFAPlayer(playerId: string, bonusAmount: number) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const result = signUserIFAPlayer(s, playerId, bonusAmount);
     if (result.success) {
       const player = s.players.find((candidate) => candidate.id === playerId);
@@ -1315,17 +1455,27 @@ export const actionApi = {
   },
 
   tradeIFAPoolSpace(toTeamId: string, amount: number) {
-    const result = tradeUserIFABonusPool(requireState(), toTeamId, amount);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    const result = tradeUserIFABonusPool(s, toTeamId, amount);
     return result.success ? { ...result, flowStateChanged: true as const } : result;
   },
 
   toggleRule5Protection(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return toggleUserRule5Protection(s, playerId);
   },
 
   lockRule5Protection(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const result = lockUserRule5Protection(s);
     if (!result.success) {
       return null;
@@ -1335,16 +1485,26 @@ export const actionApi = {
 
   makeRule5Pick(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return makeUserRule5Selection(s, playerId);
   },
 
   passRule5Pick() {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return passUserRule5Turn(s);
   },
 
   resolveRule5OfferBack(playerId: string, acceptReturn: boolean) {
-    return resolveRule5OfferBackDecision(requireState(), playerId, acceptReturn);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return resolveRule5OfferBackDecision(s, playerId, acceptReturn);
   },
 
   markNewsRead(newsId: string) {

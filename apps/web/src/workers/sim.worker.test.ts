@@ -166,6 +166,15 @@ interface MinorLeagueWorkerApi {
       route: string;
     }>;
   };
+  getFrontOfficeState: (teamId?: string) => {
+    teamId: string;
+    reputation: number;
+    draftScore: number;
+    tradeScore: number;
+    freeAgencyScore: number;
+    playoffScore: number;
+    summary: string;
+  } | null;
   acknowledgeMonthlyReport: (reportId: string) => { success: boolean };
   dismissDecisionSpotlight: (decisionId: string) => { success: boolean };
 }
@@ -295,12 +304,14 @@ describe('sim worker narrative APIs', () => {
 
     const chemistry = api.getTeamChemistry('nyy');
     const owner = api.getOwnerState('nyy');
+    const frontOffice = (api as typeof api & MinorLeagueWorkerApi).getFrontOfficeState('nyy');
     const briefing = api.getBriefing(10);
 
     expect(chemistry?.teamId).toBe('nyy');
     expect(chemistry?.score).toBeGreaterThanOrEqual(0);
     expect(owner?.teamId).toBe('nyy');
     expect(typeof owner?.summary).toBe('string');
+    expect(frontOffice?.teamId).toBe('nyy');
     expect(briefing.length).toBeGreaterThan(0);
   });
 
@@ -479,6 +490,68 @@ describe('sim worker narrative APIs', () => {
     expect(firstDecisionId).toBeTruthy();
     expect(monthlyApi.dismissDecisionSpotlight(firstDecisionId!)).toEqual({ success: true });
     expect(monthlyApi.getMonthlyPulse()?.decisionQueue.some((item) => item.id === firstDecisionId)).toBe(false);
+  });
+
+  it('adds an owner ultimatum to the monthly spotlight when satisfaction collapses', () => {
+    startGame(5151, 'nyy');
+    const state = requireState();
+    const monthlyApi = api as typeof api & MinorLeagueWorkerApi;
+    state.phase = 'regular';
+    state.day = 31;
+    const owner = state.ownerState.get('nyy');
+    if (!owner) {
+      throw new Error('Expected owner state');
+    }
+    state.ownerState.set('nyy', {
+      ...owner,
+      satisfaction: 24,
+      patience: 28,
+      confidence: 24,
+      hotSeat: true,
+      summary: 'Owner demands immediate progress.',
+    });
+
+    api.simMonth();
+
+    const ownerSpotlight = monthlyApi.getMonthlyPulse()?.decisionQueue.find((item) => item.id.includes('spotlight-owner'));
+    expect(ownerSpotlight).toBeTruthy();
+    expect(ownerSpotlight?.urgency).toBe('red');
+    expect(ownerSpotlight?.route).toBe('/dashboard');
+  });
+
+  it('fires the GM after an ultimatum remains unresolved and blocks gameplay actions', () => {
+    startGame(6161, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 120;
+    (state.seasonState as typeof state.seasonState & { currentDay: number }).currentDay = 120;
+    const standingsRecord = state.seasonState.standings.getRecord('nyy');
+    if (!standingsRecord) {
+      throw new Error('Expected user standings record');
+    }
+    standingsRecord.wins = 24;
+    standingsRecord.losses = 89;
+    standingsRecord.streak = -6;
+    standingsRecord.last10 = [2, 8];
+    state.storyFlags.set('nyy', [`owner_meeting_${state.season}`]);
+    const owner = state.ownerState.get('nyy');
+    if (!owner) {
+      throw new Error('Expected owner state');
+    }
+    state.ownerState.set('nyy', {
+      ...owner,
+      satisfaction: 8,
+      patience: 12,
+      confidence: 10,
+      hotSeat: true,
+      summary: 'Ownership is ready to make a change.',
+    });
+
+    const result = api.simWeek();
+
+    expect(requireState().franchise.status).toBe('fired');
+    expect(result.gamesPlayed).toBeGreaterThan(0);
+    expect(api.proposeTrade([], [], 'bos').decision).toBe('rejected');
   });
 
   it('publishes record watch stories after monthly sim when a user player is on pace', () => {
@@ -1795,8 +1868,10 @@ describe('sim worker narrative APIs', () => {
     if (!reportResult.success) {
       throw new Error(reportResult.error);
     }
-    expect(reportResult.report.looks).toBe(1);
-    expect(reportResult.report.overall).toBeGreaterThan(20);
+    const report = (reportResult as { report: { looks: number; overall: number } }).report;
+    expect(report).toBeDefined();
+    expect(report.looks).toBe(1);
+    expect(report.overall).toBeGreaterThan(20);
 
     const signResult = (api as typeof api & {
       signIFAPlayer: (playerId: string, bonusAmount: number) => { success: boolean; remainingBudget?: number };
@@ -1806,7 +1881,9 @@ describe('sim worker narrative APIs', () => {
     if (!signResult.success) {
       throw new Error(signResult.error);
     }
-    expect(signResult.remainingBudget).toBeLessThan(poolBefore.budget.remaining);
+    const remainingBudgetAfterSigning = (signResult as { remainingBudget: number }).remainingBudget;
+    expect(remainingBudgetAfterSigning).toBeDefined();
+    expect(remainingBudgetAfterSigning).toBeLessThan(poolBefore.budget.remaining);
     expect(state.players.some((player) => player.id === target.id && player.teamId === 'nyy' && player.rosterStatus === 'ROOKIE')).toBe(true);
 
     const tradeResult = (api as typeof api & {
@@ -1817,7 +1894,9 @@ describe('sim worker narrative APIs', () => {
     if (!tradeResult.success) {
       throw new Error(tradeResult.error);
     }
-    expect(tradeResult.remainingBudget).toBeLessThan(signResult.remainingBudget);
+    const remainingBudgetAfterTrade = (tradeResult as { remainingBudget: number }).remainingBudget;
+    expect(remainingBudgetAfterTrade).toBeDefined();
+    expect(remainingBudgetAfterTrade).toBeLessThan(remainingBudgetAfterSigning);
   });
 
   it('closes the trade market after the deadline day and clears pending offers', () => {

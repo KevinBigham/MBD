@@ -2,6 +2,7 @@ import type {
   AwardHistoryEntry,
   BriefingItem,
   BlockbusterTradeSummary,
+  OwnerState,
   Rivalry,
   SeasonArchiveEntry,
   SeasonStatLeader,
@@ -9,35 +10,34 @@ import type {
   TradeAsset,
 } from '@mbd/contracts';
 import {
-  calculateTeamPayroll,
-  getTeamBudget,
-} from '../../../../packages/sim-core/src/finance/contracts';
-import {
-  countMatchingTraits,
-  deriveDeterministicPersonalityTraits,
-  evaluatePlayerTradeValue,
-  type Coach,
-  type GeneratedPlayer,
-  type PlayerGameStats,
-} from '@mbd/sim-core';
-import { finalizeAwardResults } from '../../../../packages/sim-core/src/league/awards';
-import { getTeamById, TEAMS } from '../../../../packages/sim-core/src/league/teams';
-import {
   applyMoraleEvent,
   buildFrontOfficeBriefing,
   calculateTeamChemistry,
+  calculateTeamPayroll,
+  countMatchingTraits,
+  createFrontOfficeState,
   createInitialPlayerMorale,
   createOwnerState,
+  deriveDeterministicPersonalityTraits,
+  deriveRivalriesFromStandings,
+  detectProspectBreakouts,
   evaluateOwnerState,
+  evaluatePlayerTradeValue,
+  finalizeAwardResults,
   getPersonalityArchetype,
+  getTeamBudget,
+  getTeamById,
+  getUnreadNews,
+  TEAMS,
+  toDisplayRating,
+  type Coach,
+  type GeneratedPlayer,
+  type PlayerGameStats,
   type TeamChemistryContext,
-} from '../../../../packages/sim-core/src/league/narrativeState';
-import { deriveRivalriesFromStandings } from '../../../../packages/sim-core/src/league/rivalries';
-import { getUnreadNews } from '../../../../packages/sim-core/src/narrative/newsFeed';
-import { toDisplayRating } from '../../../../packages/sim-core/src/player/attributes';
-import { detectProspectBreakouts } from '../../../../packages/sim-core/src/player/breakouts';
+} from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers';
+import { getDifficultyAdjustedBudget } from './sim.worker.setup.js';
 
 export interface PersonalityProfileDTO {
   playerId: string;
@@ -133,6 +133,126 @@ function pushNarrativeStory(
 
   if (briefing && !state.briefingQueue.some((existing) => existing.id === briefing.id)) {
     state.briefingQueue = dedupeBriefing([briefing, ...state.briefingQueue]);
+  }
+}
+
+function ownerFlag(level: 'concern' | 'meeting' | 'fired', season: number): string {
+  return `owner_${level}_${season}`;
+}
+
+function syncUserOwnerEscalation(
+  state: FullGameState,
+  previousOwner: OwnerState | null,
+  nextOwner: OwnerState,
+) {
+  const satisfaction = nextOwner.satisfaction ?? 50;
+  const previousSatisfaction = previousOwner?.satisfaction ?? 50;
+  const teamFlags = state.storyFlags.get(state.userTeamId) ?? [];
+  const firingSuppressed = teamFlags.includes('suppress_owner_firing');
+  const meetingFlag = ownerFlag('meeting', state.season);
+  let ownerMeetingActive = teamFlags.includes(meetingFlag);
+
+  if (satisfaction < 50 && !teamFlags.includes(ownerFlag('concern', state.season))) {
+    setStoryFlag(state, state.userTeamId, ownerFlag('concern', state.season));
+    pushNarrativeStory(state, {
+      id: `owner-concern-${state.season}-${state.day}`,
+      headline: 'Owner expresses concern over the club direction',
+      body: nextOwner.summary,
+      priority: 2,
+      category: 'performance',
+      tag: 'BREAKING',
+      timestamp: `S${state.season}D${state.day}`,
+      relatedPlayerIds: [],
+      relatedTeamIds: [state.userTeamId],
+    });
+  }
+
+  if (satisfaction < 30 && !ownerMeetingActive) {
+    setStoryFlag(state, state.userTeamId, meetingFlag);
+    ownerMeetingActive = true;
+    pushNarrativeStory(
+      state,
+      {
+        id: `owner-meeting-${state.season}-${state.day}`,
+        headline: 'Owner demands a front office meeting',
+        body: 'Ownership wants immediate progress and is weighing a front office change.',
+        priority: 1,
+        category: 'performance',
+        tag: 'BREAKING',
+        timestamp: `S${state.season}D${state.day}`,
+        relatedPlayerIds: [],
+        relatedTeamIds: [state.userTeamId],
+      },
+      {
+        id: `brief-owner-meeting-${state.season}`,
+        priority: 1,
+        category: 'owner',
+        tag: 'BREAKING',
+        headline: 'Owner ultimatum is live.',
+        body: 'Budget discipline, wins, and clubhouse health all need to improve quickly.',
+        relatedTeamIds: [state.userTeamId],
+        relatedPlayerIds: [],
+        timestamp: `S${state.season}D${state.day}`,
+        acknowledged: false,
+      },
+    );
+  }
+
+  if (
+    !firingSuppressed &&
+    state.franchise.status !== 'fired' &&
+    ownerMeetingActive &&
+    satisfaction <= 15 &&
+    Math.min(nextOwner.patience, nextOwner.confidence) <= 15
+  ) {
+    const endReason = 'Owner fired the GM after satisfaction collapsed.';
+    setStoryFlag(state, state.userTeamId, ownerFlag('fired', state.season));
+    state.franchise = {
+      ...state.franchise,
+      status: 'fired',
+      endedAt: `S${state.season}D${state.day}`,
+      endReason,
+    };
+    pushNarrativeStory(
+      state,
+      {
+        id: `owner-fired-${state.season}-${state.day}`,
+        headline: 'Owner fires the GM',
+        body: endReason,
+        priority: 1,
+        category: 'performance',
+        tag: 'BREAKING',
+        timestamp: `S${state.season}D${state.day}`,
+        relatedPlayerIds: [],
+        relatedTeamIds: [state.userTeamId],
+      },
+      {
+        id: `brief-owner-fired-${state.season}`,
+        priority: 1,
+        category: 'owner',
+        tag: 'BREAKING',
+        headline: 'The front office has been dismissed.',
+        body: 'This dynasty is now locked in read-only mode. History remains available for review.',
+        relatedTeamIds: [state.userTeamId],
+        relatedPlayerIds: [],
+        timestamp: `S${state.season}D${state.day}`,
+        acknowledged: false,
+      },
+    );
+  }
+
+  if (satisfaction >= 80 && previousSatisfaction < 80 && (nextOwner.annualBudget ?? 0) > (previousOwner?.annualBudget ?? 0)) {
+    pushNarrativeStory(state, {
+      id: `owner-budget-bump-${state.season}-${state.day}`,
+      headline: 'Owner approves a future budget increase',
+      body: `Ownership approved a larger operating budget. Next payroll cap now projects at $${(nextOwner.payrollCap ?? 0).toFixed(1)}M.`,
+      priority: 3,
+      category: 'performance',
+      tag: 'ANALYSIS',
+      timestamp: `S${state.season}D${state.day}`,
+      relatedPlayerIds: [],
+      relatedTeamIds: [state.userTeamId],
+    });
   }
 }
 
@@ -654,7 +774,7 @@ function archiveFinancials(state: FullGameState): SeasonArchiveEntry['financials
     .map((team) => ({
       teamId: team.id,
       payroll: calculateTeamPayroll(team.id, getTeamPlayers(team.id)).totalPayroll,
-      budget: getTeamBudget(team.id),
+      budget: getDifficultyAdjustedBudget(state, team.id),
     }))
     .sort((left, right) => right.payroll - left.payroll);
 }
@@ -795,6 +915,10 @@ export function ensureNarrativeState(state: FullGameState) {
     if (!state.ownerState.has(team.id)) {
       state.ownerState.set(team.id, createOwnerState(team.id, getTeamBudget(team.id)));
     }
+
+    if (!state.frontOfficeState.has(team.id)) {
+      state.frontOfficeState.set(team.id, createFrontOfficeState(team.id));
+    }
   }
 
   syncMentorRelationships(state);
@@ -830,6 +954,7 @@ export function refreshNarrativeState(
     }
   }
 
+  const previousUserOwner = state.ownerState.get(state.userTeamId) ?? null;
   for (const team of TEAMS) {
     state.teamChemistry.set(
       team.id,
@@ -849,8 +974,13 @@ export function refreshNarrativeState(
         payroll,
         chemistryScore,
         recentDecisionScore: 0,
+        madePlayoffs: Boolean(state.playoffBracket?.seeds.some((seed) => seed.teamId === team.id)),
       }),
     );
+  }
+  const nextUserOwner = state.ownerState.get(state.userTeamId);
+  if (nextUserOwner) {
+    syncUserOwnerEscalation(state, previousUserOwner, nextUserOwner);
   }
 
   state.rivalries = deriveRivalriesFromStandings(

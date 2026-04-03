@@ -53,6 +53,7 @@ import {
   advanceOffseasonDay,
   skipCurrentPhase,
   autoResolveTenderNonTender,
+  applyMoraleEvent,
   buildRosterState,
   buildWaiverPriority,
   calculateTeamPayroll,
@@ -109,7 +110,6 @@ import {
   type Rule5Selection,
   type Rule5SessionState,
 } from '@mbd/sim-core';
-import { applyMoraleEvent } from '../../../../packages/sim-core/src/league/narrativeState';
 import type {
   GeneratedPlayer,
   PlayoffPreviewSeries as CorePlayoffPreviewSeries,
@@ -158,7 +158,7 @@ import type {
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
-import { getDifficultyAdjustedBudget } from './sim.worker.setup.js';
+import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool } from './sim.worker.setup.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -1342,6 +1342,14 @@ function ensureInternationalScoutingStateForSeason(s: FullGameState): Internatio
     TEAMS.map((team) => team.id),
     s.season,
   );
+  for (const team of TEAMS) {
+    nextState.budgets.set(team.id, {
+      baseAllocation: getTeamIFABonusPool(s, team.id),
+      tradedIn: 0,
+      tradedOut: 0,
+      committed: 0,
+    });
+  }
   s.internationalScoutingState = nextState;
   return nextState;
 }
@@ -3822,7 +3830,7 @@ function simulateFreeAgencyDays(
   const teamAttractiveness = new Map(
     TEAMS
       .filter((team) => team.id !== s.userTeamId)
-      .map((team) => [team.id, s.teamChemistry.get(team.id)?.score ?? 50] as const),
+      .map((team) => [team.id, getTeamFreeAgencyAppealScore(s, team.id)] as const),
   );
 
   for (let day = 0; day < daysToSimulate; day++) {
@@ -3831,7 +3839,7 @@ function simulateFreeAgencyDays(
     const teamBudgets = new Map(
       TEAMS
         .filter((team) => team.id !== s.userTeamId)
-        .map((team) => [team.id, getTeamBudget(team.id)] as const),
+        .map((team) => [team.id, getDifficultyAdjustedBudget(s, team.id)] as const),
     );
     const teamPayrolls = buildFreeAgencyPayrolls(s);
     const teamNeeds = buildFreeAgencyNeeds(s);

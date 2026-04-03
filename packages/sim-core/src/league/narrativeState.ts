@@ -5,6 +5,7 @@ import type {
   Rivalry,
   TeamChemistry,
 } from '@mbd/contracts';
+import { getTeamBudget } from '../finance/contracts.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import {
   CLUBHOUSE_LEADER_TRAITS,
@@ -33,6 +34,7 @@ export interface OwnerEvaluationContext {
   payroll: number;
   chemistryScore: number;
   recentDecisionScore: number;
+  madePlayoffs?: boolean;
 }
 
 export interface BriefingContext {
@@ -51,6 +53,18 @@ export interface TeamChemistryContext {
 
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampBudget(value: number): number {
+  return Math.round(Math.max(0, value) * 100) / 100;
+}
+
+function normalizeBudgetAmount(value: number): number {
+  return value > 1_000 ? value / 1_000_000 : value;
 }
 
 function average(values: number[]): number {
@@ -72,6 +86,61 @@ function chemistrySummary(score: number): string {
   if (score >= 45) return 'The room is stable but not especially tight.';
   if (score >= 30) return 'Clubhouse tension is starting to show.';
   return 'The clubhouse feels splintered and difficult to manage.';
+}
+
+function ownerSummary(owner: Pick<OwnerState, 'satisfaction' | 'hotSeat' | 'winNowPressure'>): string {
+  const satisfaction = owner.satisfaction ?? 50;
+  const winNowPressure = owner.winNowPressure ?? 50;
+  if (satisfaction >= 80) {
+    return 'Ownership is pleased enough to expand the operating runway.';
+  }
+  if (satisfaction >= 60) {
+    return winNowPressure >= 70
+      ? 'Ownership still expects October baseball and likes the current pace.'
+      : 'Ownership sees a healthy long-term direction and is staying patient.';
+  }
+  if (satisfaction >= 40) {
+    return 'Ownership is watching results closely and wants a sharper trendline.';
+  }
+  if (satisfaction >= 15) {
+    return 'Ownership is openly frustrated after a fading playoff pace and expects immediate course correction.';
+  }
+  return 'Ownership has lost faith in the current front-office plan after the playoff push collapsed.';
+}
+
+function stableOwnerBudgetBase(owner: Pick<OwnerState, 'teamId' | 'expectations'>): number {
+  return normalizeBudgetAmount(getTeamBudget(owner.teamId) || owner.expectations.payrollTarget);
+}
+
+function budgetOutputsFromOwner(
+  owner: Pick<OwnerState, 'spendingWillingness' | 'satisfaction'>,
+  baseBudget: number,
+  wins: number,
+  losses: number,
+  madePlayoffs: boolean,
+) {
+  const normalizedBaseBudget = normalizeBudgetAmount(baseBudget);
+  const spendingFactor =
+    owner.spendingWillingness === 'lavish'
+      ? 1.12
+      : owner.spendingWillingness === 'cheap'
+        ? 0.9
+        : 1;
+  const satisfactionFactor = ((owner.satisfaction ?? 50) - 50) / 240;
+  const attendanceFactor = clamp(((wins - losses) / 162) * 0.08, -0.08, 0.08);
+  const playoffFactor = madePlayoffs ? 0.035 : 0;
+  const annualBudget = clampBudget(
+    normalizedBaseBudget * (1 + satisfactionFactor + attendanceFactor + playoffFactor) * spendingFactor,
+  );
+  const payrollCap = clampBudget(annualBudget * 0.92);
+
+  return {
+    annualBudget,
+    payrollCap,
+    draftBonusPool: clampBudget(Math.max(4.5, annualBudget * 0.03)),
+    ifaBonusPool: clampBudget(Math.max(3.5, annualBudget * 0.0225)),
+    staffBudget: clampBudget(Math.max(7.5, annualBudget * 0.0525)),
+  };
 }
 
 export function getPersonalityArchetype(player: GeneratedPlayer): PersonalityArchetype {
@@ -206,17 +275,34 @@ export function chemistryScoreToModifier(score: number): number {
 }
 
 function ownerArchetypeFromBudget(payrollTarget: number): OwnerState['archetype'] {
-  if (payrollTarget >= 185_000_000) return 'win_now';
-  if (payrollTarget <= 120_000_000) return 'penny_pincher';
+  const normalizedPayrollTarget = normalizeBudgetAmount(payrollTarget);
+  if (normalizedPayrollTarget >= 185) return 'win_now';
+  if (normalizedPayrollTarget <= 120) return 'penny_pincher';
   return 'patient_builder';
 }
 
 export function createOwnerState(teamId: string, payrollTarget: number): OwnerState {
-  const archetype = ownerArchetypeFromBudget(payrollTarget);
+  const normalizedPayrollTarget = normalizeBudgetAmount(payrollTarget);
+  const archetype = ownerArchetypeFromBudget(normalizedPayrollTarget);
   const winsTarget =
     archetype === 'win_now' ? 90 :
     archetype === 'patient_builder' ? 84 :
     78;
+  const spendingWillingness =
+    archetype === 'win_now' ? 'lavish' : archetype === 'patient_builder' ? 'moderate' : 'cheap';
+  const winNowPressure =
+    archetype === 'win_now' ? 84 : archetype === 'patient_builder' ? 52 : 64;
+  const meddlingLevel =
+    archetype === 'win_now' ? 62 : archetype === 'patient_builder' ? 38 : 74;
+  const satisfaction =
+    archetype === 'win_now' ? 62 : archetype === 'patient_builder' ? 58 : 52;
+  const budgets = budgetOutputsFromOwner(
+    { spendingWillingness, satisfaction },
+    normalizedPayrollTarget,
+    winsTarget,
+    162 - winsTarget,
+    archetype === 'win_now',
+  );
 
   return {
     teamId,
@@ -224,16 +310,21 @@ export function createOwnerState(teamId: string, payrollTarget: number): OwnerSt
     patience: archetype === 'win_now' ? 55 : archetype === 'patient_builder' ? 72 : 60,
     confidence: archetype === 'win_now' ? 58 : archetype === 'patient_builder' ? 68 : 54,
     hotSeat: false,
-    summary: archetype === 'win_now'
-      ? 'Ownership expects a playoff push right away.'
-      : archetype === 'patient_builder'
-        ? 'Ownership is willing to build if the trendline is healthy.'
-        : 'Ownership wants respectable results without overspending.',
+    summary: ownerSummary({ satisfaction, hotSeat: false, winNowPressure }),
     expectations: {
       winsTarget,
       playoffTarget: archetype !== 'penny_pincher',
-      payrollTarget,
+      payrollTarget: budgets.payrollCap,
     },
+    spendingWillingness,
+    winNowPressure,
+    meddlingLevel,
+    satisfaction,
+    annualBudget: budgets.annualBudget,
+    payrollCap: budgets.payrollCap,
+    draftBonusPool: budgets.draftBonusPool,
+    ifaBonusPool: budgets.ifaBonusPool,
+    staffBudget: budgets.staffBudget,
   };
 }
 
@@ -241,38 +332,72 @@ export function evaluateOwnerState(
   owner: OwnerState,
   context: OwnerEvaluationContext,
 ): OwnerState {
-  const winGap = owner.expectations.winsTarget - context.wins;
-  const payrollOverage = Math.max(0, context.payroll - owner.expectations.payrollTarget);
+  const gamesPlayed = Math.max(1, context.wins + context.losses);
+  const expectedWinsAtPace = owner.expectations.winsTarget * (gamesPlayed / 162);
+  const winGap = expectedWinsAtPace - context.wins;
+  const normalizedPayroll = normalizeBudgetAmount(context.payroll);
+  const payrollTarget = owner.payrollCap ?? normalizeBudgetAmount(owner.expectations.payrollTarget);
+  const payrollOverage = Math.max(0, normalizedPayroll - payrollTarget);
+  const payrollSavings = Math.max(0, payrollTarget - normalizedPayroll);
   const chemistryPenalty = Math.max(0, 55 - context.chemistryScore);
-  const decisionPenalty = Math.max(0, -context.recentDecisionScore);
+  const chemistryBonus = Math.max(0, context.chemistryScore - 55);
+  const recentDecisionImpact = context.recentDecisionScore * 0.9;
+  const attendanceProxy = clamp((context.wins - context.losses) / 4, -18, 18);
+  const expectationBonus = context.madePlayoffs ? 10 : owner.expectations.playoffTarget ? 0 : 4;
+  const satisfaction = clampScore(
+    55
+      - (winGap * 1.4)
+      - (payrollOverage * 0.45)
+      + Math.min(6, payrollSavings * 0.18)
+      - (chemistryPenalty * 0.45)
+      + (chemistryBonus * 0.25)
+      + recentDecisionImpact
+      + attendanceProxy
+      + expectationBonus,
+  );
 
   const patience = clampScore(
-    owner.patience -
-      winGap * 0.9 -
-      payrollOverage / 7_500_000 -
-      chemistryPenalty * 0.4 -
-      decisionPenalty * 0.8
+    (owner.patience * 0.45)
+      + (satisfaction * 0.55)
+      - ((owner.winNowPressure ?? 50) * 0.12)
+      + ((owner.spendingWillingness === 'cheap' ? 5 : owner.spendingWillingness === 'lavish' ? -2 : 0)),
   );
 
   const confidence = clampScore(
-    owner.confidence -
-      winGap * 0.7 -
-      payrollOverage / 10_000_000 -
-      chemistryPenalty * 0.35 -
-      decisionPenalty * 0.7
+    (owner.confidence * 0.35)
+      + (satisfaction * 0.65)
+      + (context.recentDecisionScore * 0.3)
+      - (payrollOverage * 0.25),
   );
 
-  const hotSeat = patience < 45 || confidence < 45;
-  const summary = hotSeat
-    ? 'Ownership expected a playoff pace and the current trajectory is falling short.'
-    : 'Ownership still sees a credible path to its playoff expectations.';
+  const hotSeat = satisfaction < 50 || patience < 45 || confidence < 45;
+  const budgets = budgetOutputsFromOwner(
+    {
+      spendingWillingness: owner.spendingWillingness,
+      satisfaction,
+    },
+    stableOwnerBudgetBase(owner),
+    context.wins,
+    context.losses,
+    context.madePlayoffs ?? false,
+  );
 
   return {
     ...owner,
     patience,
     confidence,
     hotSeat,
-    summary,
+    summary: ownerSummary({ satisfaction, hotSeat, winNowPressure: owner.winNowPressure }),
+    satisfaction,
+    annualBudget: budgets.annualBudget,
+    payrollCap: budgets.payrollCap,
+    draftBonusPool: budgets.draftBonusPool,
+    ifaBonusPool: budgets.ifaBonusPool,
+    staffBudget: budgets.staffBudget,
+    expectations: {
+      ...owner.expectations,
+      payrollTarget: budgets.payrollCap,
+    },
   };
 }
 
@@ -283,14 +408,35 @@ export function applyOwnerDecisionDelta(
 ): OwnerState {
   const patience = clampScore(owner.patience + delta);
   const confidence = clampScore(owner.confidence + delta);
-  const hotSeat = patience < 45 || confidence < 45;
+  const satisfaction = clampScore((owner.satisfaction ?? average([owner.patience, owner.confidence])) + delta);
+  const hotSeat = satisfaction < 50 || patience < 45 || confidence < 45;
+  const budgets = budgetOutputsFromOwner(
+    {
+      spendingWillingness: owner.spendingWillingness,
+      satisfaction,
+    },
+    stableOwnerBudgetBase(owner),
+    owner.expectations.winsTarget,
+    162 - owner.expectations.winsTarget,
+    satisfaction >= 80,
+  );
 
   return {
     ...owner,
     patience,
     confidence,
     hotSeat,
+    satisfaction,
     summary,
+    annualBudget: budgets.annualBudget,
+    payrollCap: budgets.payrollCap,
+    draftBonusPool: budgets.draftBonusPool,
+    ifaBonusPool: budgets.ifaBonusPool,
+    staffBudget: budgets.staffBudget,
+    expectations: {
+      ...owner.expectations,
+      payrollTarget: budgets.payrollCap,
+    },
   };
 }
 

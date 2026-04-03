@@ -81,6 +81,23 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
   }
 
   if (
+    includesPath(normalized, '/apps/web/src/workers/sim.worker.helpers.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.setup.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.narrative.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.queries.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.pressRoom.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.monthlyPulse.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.legacy.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.consequences.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.achievements.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.ceremony.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.trade.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.stats.ts')
+  ) {
+    return 'game-engine-story';
+  }
+
+  if (
     includesPath(normalized, '/apps/web/src/workers/')
     || includesPath(normalized, '/packages/contracts/src/')
     || includesPath(normalized, '/packages/sim-worker/src/')

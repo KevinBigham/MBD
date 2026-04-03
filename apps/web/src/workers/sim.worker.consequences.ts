@@ -1,28 +1,34 @@
-import { comparePackages } from '@mbd/sim-core';
 import {
+  applyMoraleEvent,
+  applyOwnerDecisionDelta,
   buildPostseasonConsequenceBundle,
   buildRetirementConsequenceBundle,
   buildSigningConsequenceBundle,
   buildTradeConsequenceBundle,
-  type ConsequenceBundle,
-  type UserPostseasonOutcome,
-} from '../../../../packages/sim-core/src/narrative/consequences';
-import { getTeamById } from '../../../../packages/sim-core/src/league/teams';
-import {
-  applyMoraleEvent,
-  applyOwnerDecisionDelta,
   calculateTeamChemistry,
+  calculateTeamPayroll,
+  comparePackages,
+  createFrontOfficeState,
   createInitialPlayerMorale,
   createOwnerState,
-} from '../../../../packages/sim-core/src/league/narrativeState';
-import { deduplicateNews } from '../../../../packages/sim-core/src/narrative/newsFeed';
-import {
-  calculateTeamPayroll,
+  deduplicateNews,
+  evaluateFrontOfficeState,
   getTeamBudget,
-} from '../../../../packages/sim-core/src/finance/contracts';
+  getTeamById,
+  type ConsequenceBundle,
+  type UserPostseasonOutcome,
+} from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers';
 import { getTeamPlayers } from './sim.worker.helpers';
 import { rebuildBriefing } from './sim.worker.narrative';
+
+function updateFrontOffice(
+  state: FullGameState,
+  deltas: Parameters<typeof evaluateFrontOfficeState>[1],
+) {
+  const current = state.frontOfficeState.get(state.userTeamId) ?? createFrontOfficeState(state.userTeamId);
+  state.frontOfficeState.set(state.userTeamId, evaluateFrontOfficeState(current, deltas));
+}
 
 function addStoryFlag(state: FullGameState, flag: string) {
   const existing = state.storyFlags.get(state.userTeamId) ?? [];
@@ -118,6 +124,12 @@ export function applySeriesOutcomeConsequences(
     state.userTeamId,
     calculateTeamChemistry(state.userTeamId, state.players, state.playerMorale),
   );
+  updateFrontOffice(state, {
+    draftDelta: 0,
+    tradeDelta: 0,
+    freeAgencyDelta: 0,
+    playoffDelta: userAdvanced ? 4 : -3,
+  });
   rebuildBriefing(state);
 }
 
@@ -152,6 +164,12 @@ export function applyTradeConsequences(
   });
 
   applyConsequenceBundle(state, bundle);
+  updateFrontOffice(state, {
+    draftDelta: 0,
+    tradeDelta: Math.max(-10, Math.min(10, comparison.fairness / 7)),
+    freeAgencyDelta: 0,
+    playoffDelta: 0,
+  });
 }
 
 export function applySigningConsequences(
@@ -183,6 +201,13 @@ export function applySigningConsequences(
   });
 
   applyConsequenceBundle(state, bundle);
+  const surplus = marketValue - annualSalary;
+  updateFrontOffice(state, {
+    draftDelta: 0,
+    tradeDelta: 0,
+    freeAgencyDelta: Math.max(-8, Math.min(8, (surplus / Math.max(1, marketValue)) * 10)),
+    playoffDelta: 0,
+  });
 }
 
 export function applyAISigningConsequences(

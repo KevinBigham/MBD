@@ -392,9 +392,28 @@ function playersStillMatchProposal(state: FullGameState, proposal: TradeProposal
 }
 
 function fairValueForProposal(state: FullGameState, proposal: TradeProposal): number {
-  const offered = state.players.filter((player) => proposal.playersOffered.includes(player.id));
-  const requested = state.players.filter((player) => proposal.playersRequested.includes(player.id));
-  return comparePackages(offered, requested).fairness;
+  return compareAssetPackages(
+    state,
+    playerAssets(proposal.playersOffered),
+    playerAssets(proposal.playersRequested),
+    proposal.fromTeamId,
+    proposal.toTeamId,
+  ).fairness;
+}
+
+function applyUserFrontOfficeTradeOverride(
+  result: ReturnType<typeof evaluateTradeProposal>,
+  fairnessScore: number,
+) {
+  if (result.decision !== 'accepted' && fairnessScore >= -6) {
+    return {
+      decision: 'accepted' as const,
+      reason: 'The value is close enough for a front office we respect.',
+      counter: undefined,
+    };
+  }
+
+  return result;
 }
 
 function buildAssetSummary(state: FullGameState, assets: TradeAsset[]): string {
@@ -944,7 +963,9 @@ function buildMonthlyTradeCandidates(state: FullGameState) {
   }
 
   return {
-    userCandidates: state.rng.shuffle(userCandidates),
+    userCandidates: state.rng
+      .shuffle(userCandidates)
+      .sort((left, right) => fairValueForProposal(state, right) - fairValueForProposal(state, left)),
     aiCandidates: state.rng.shuffle(aiCandidates),
   };
 }
@@ -1305,7 +1326,7 @@ export function proposeTradePackage(
 
   const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets, state.userTeamId, toTeamId).fairness;
   const usesNonPlayerAssets = hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets);
-  const result = usesNonPlayerAssets
+  const evaluation = usesNonPlayerAssets
     ? {
       decision: (-fairnessScore >= -10 ? 'accepted' : 'rejected') as 'accepted' | 'rejected',
       reason: -fairnessScore >= -10 ? 'The value framework works for us.' : 'The value gap is too wide for us.',
@@ -1319,6 +1340,7 @@ export function proposeTradePackage(
       gm,
       false,
     );
+  const result = applyUserFrontOfficeTradeOverride(evaluation, fairnessScore);
 
   if (result.decision === 'accepted') {
     executeAcceptedTrade(state, {
@@ -1450,9 +1472,16 @@ export function respondToTradeOffer(
   }
 
   const usesNonPlayerAssets = hasNonPlayerAssets(counterPackage.offeringAssets) || hasNonPlayerAssets(counterPackage.requestingAssets);
-  const result = usesNonPlayerAssets
+  const counterFairness = compareAssetPackages(
+    state,
+    counterPackage.offeringAssets,
+    counterPackage.requestingAssets,
+    state.userTeamId,
+    offer.fromTeamId,
+  ).fairness;
+  const evaluation = usesNonPlayerAssets
     ? {
-      decision: (-compareAssetPackages(state, counterPackage.offeringAssets, counterPackage.requestingAssets, state.userTeamId, offer.fromTeamId).fairness >= -10
+      decision: (-counterFairness >= -10
         ? 'accepted'
         : 'rejected') as 'accepted' | 'rejected',
       reason: 'Counter framework evaluated.',
@@ -1466,6 +1495,7 @@ export function respondToTradeOffer(
       gm,
       isContender(state, offer.fromTeamId),
     );
+  const result = applyUserFrontOfficeTradeOverride(evaluation, counterFairness);
 
   removePendingOffer(state, offerId);
 

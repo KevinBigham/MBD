@@ -63,16 +63,23 @@ describe('DashboardPage', () => {
           division: 'AL_EAST',
           divisionRank: 1,
           dynasty: { score: 215, grade: 'B' },
+          status: 'active',
+          endReason: null,
           owner: {
             hotSeat: true,
             patience: 42,
             confidence: 45,
             summary: 'Ownership expected a stronger playoff pace.',
+            satisfaction: 38,
           },
           chemistry: {
             score: 62,
             tier: 'connected',
             summary: 'Leadership is pulling the room together.',
+          },
+          frontOffice: {
+            reputation: 64,
+            summary: 'The front office has built real credibility around the league.',
           },
         },
         momentum: {

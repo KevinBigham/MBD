@@ -48,6 +48,16 @@ export type {
 } from './narrativeState.js';
 
 export {
+  createFrontOfficeState,
+  evaluateFrontOfficeState,
+  frontOfficeTradeModifier,
+  frontOfficeFreeAgencyAppeal,
+} from './frontOffice.js';
+export type {
+  FrontOfficeEvaluationContext,
+} from './frontOffice.js';
+
+export {
   calculateAwardRaces,
   finalizeAwardResults,
 } from './awards.js';

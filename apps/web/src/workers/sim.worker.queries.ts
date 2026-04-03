@@ -1,16 +1,15 @@
 import {
   AFFILIATE_LEVELS,
+  calculateAwardRaces,
   calculateCoachingPayroll,
   calculateLuxuryTax,
   calculateQualifyingOfferSalary,
-  calculateStaffBudget,
   calculateTeamPayroll,
   createFreeAgencyMarket,
   describeInjury,
   evaluatePlayerTradeValue,
   generateAITradeOffers,
   getActiveRosterLimit,
-  getTeamBudget,
   getTeamById,
   getTopFreeAgents,
   getUnreadNews,
@@ -29,7 +28,6 @@ import type {
   RosterState,
   StandingsEntry,
 } from '@mbd/sim-core';
-import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
   buildIFAPoolView,
   buildSeasonFlowStateView,
@@ -52,7 +50,7 @@ import { buildAchievementView } from './sim.worker.achievements.js';
 import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
-import { buildSetupPreview, getDifficultyAdjustedBudget } from './sim.worker.setup.js';
+import { buildSetupPreview, getDifficultyAdjustedBudget, getTeamStaffBudget } from './sim.worker.setup.js';
 import {
   compareSeasons,
   getAwardHistory,
@@ -231,8 +229,11 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       divisionRank: userStanding?.divisionRank ?? 1,
       achievementCount: s.achievements.unlocked.length,
       dynasty,
+      status: s.franchise.status ?? 'active',
+      endReason: s.franchise.endReason ?? null,
       owner: ownerState,
       chemistry,
+      frontOffice: s.frontOfficeState.get(s.userTeamId) ?? null,
     },
     momentum: {
       last10: `${last10Wins}-${last10Losses}`,
@@ -886,7 +887,7 @@ export const queryApi = {
     const s = requireState();
     const resolvedTeamId = teamId ?? s.userTeamId;
     const payroll = calculateCoachingPayroll(s.coachingStaffs.get(resolvedTeamId) ?? []);
-    const budget = calculateStaffBudget(getDifficultyAdjustedBudget(requireState(), resolvedTeamId));
+    const budget = getTeamStaffBudget(s, resolvedTeamId);
     return {
       payroll,
       budget,
@@ -997,6 +998,11 @@ export const queryApi = {
   getOwnerState(teamId?: string) {
     const s = requireState();
     return s.ownerState.get(teamId ?? s.userTeamId) ?? null;
+  },
+
+  getFrontOfficeState(teamId?: string) {
+    const s = requireState();
+    return s.frontOfficeState.get(teamId ?? s.userTeamId) ?? null;
   },
 
   getPersonalityProfile(playerId: string) {
