@@ -217,6 +217,7 @@ function createState(): FullGameState {
     consequenceWatchers: [],
     fanSentiment: {
       score: 50,
+      trend: 'stable',
       summary: 'Fan sentiment is stable.',
       updatedAt: `S1D${dayOne.newState.currentDay}`,
     },

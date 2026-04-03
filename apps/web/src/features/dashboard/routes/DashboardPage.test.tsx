@@ -47,6 +47,7 @@ describe('DashboardPage', () => {
       setUserTeamId: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
+      activeSaveSlot: 1,
     });
 
     mockedUseWorker.mockReturnValue({
@@ -82,6 +83,12 @@ describe('DashboardPage', () => {
             summary: 'The front office has built real credibility around the league.',
           },
         },
+        fanSentiment: {
+          score: 63,
+          trend: 'rising',
+          summary: 'The city is buying into the push.',
+        },
+        challenge: null,
         momentum: {
           last10: '7-3',
           streak: 'W3',

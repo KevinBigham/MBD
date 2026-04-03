@@ -1,9 +1,11 @@
 import {
+  appendConsequenceWatchers,
   applyMoraleEvent,
   applyOwnerDecisionDelta,
   buildPostseasonConsequenceBundle,
   buildRetirementConsequenceBundle,
   buildSigningConsequenceBundle,
+  buildTradeAftermathChain,
   buildTradeConsequenceBundle,
   calculateTeamChemistry,
   calculateTeamPayroll,
@@ -35,6 +37,32 @@ function addStoryFlag(state: FullGameState, flag: string) {
   if (!existing.includes(flag)) {
     state.storyFlags.set(state.userTeamId, [...existing, flag]);
   }
+}
+
+function queueContractReactionWatcher(
+  state: FullGameState,
+  playerId: string,
+  playerName: string,
+  annualSalary: number,
+  years: number,
+  marketValue: number,
+) {
+  state.consequenceWatchers = appendConsequenceWatchers(state.consequenceWatchers, [{
+    id: `contract-reaction-${state.season}-${state.day}-${playerId}`,
+    type: 'contract_reaction',
+    createdSeason: state.season,
+    createdDay: state.day,
+    expiresSeason: state.season + 1,
+    expiresDay: 1,
+    resolved: false,
+    context: {
+      playerId,
+      playerName,
+      annualSalary,
+      years,
+      marketValue,
+    },
+  }]);
 }
 
 function teamLabel(teamId: string): string {
@@ -164,6 +192,22 @@ export function applyTradeConsequences(
   });
 
   applyConsequenceBundle(state, bundle);
+  state.consequenceWatchers = appendConsequenceWatchers(
+    state.consequenceWatchers,
+    buildTradeAftermathChain({
+      rng: state.rng.fork(),
+      season: state.season,
+      day: state.day,
+      userTeamId: state.userTeamId,
+      tradedAwayPlayers: preTradeUserPlayers.filter((player) => offeredIds.includes(player.id)),
+      replacementPlayers: state.players.filter((player) => requestedIds.includes(player.id)),
+      seasonsWithTeamByPlayerId: Object.fromEntries(
+        preTradeUserPlayers
+          .filter((player) => offeredIds.includes(player.id))
+          .map((player) => [player.id, Math.max(0, Math.floor((state.serviceTime.get(player.id) ?? player.serviceTimeDays ?? 0) / 172))]),
+      ),
+    }),
+  );
   updateFrontOffice(state, {
     draftDelta: 0,
     tradeDelta: Math.max(-10, Math.min(10, comparison.fairness / 7)),
@@ -201,6 +245,14 @@ export function applySigningConsequences(
   });
 
   applyConsequenceBundle(state, bundle);
+  queueContractReactionWatcher(
+    state,
+    player.id,
+    `${player.firstName} ${player.lastName}`,
+    annualSalary,
+    years,
+    marketValue,
+  );
   const surplus = marketValue - annualSalary;
   updateFrontOffice(state, {
     draftDelta: 0,

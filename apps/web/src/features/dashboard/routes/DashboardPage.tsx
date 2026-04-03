@@ -47,6 +47,19 @@ interface DashboardSummary {
     chemistry: { score: number; tier: string; summary: string } | null;
     frontOffice: { reputation: number; summary: string } | null;
   };
+  fanSentiment: {
+    score: number;
+    trend: 'rising' | 'stable' | 'falling';
+    summary: string;
+  };
+  challenge: {
+    scenarioId: string;
+    name: string;
+    progress: number;
+    completed: boolean;
+    failed: boolean;
+    summary: string;
+  } | null;
   momentum: {
     last10: string;
     streak: string;
@@ -158,6 +171,17 @@ function chemistryTone(tier: string | undefined): string {
     case 'tense':
       return 'text-accent-warning';
     case 'fractured':
+      return 'text-accent-danger';
+    default:
+      return 'text-dynasty-text';
+  }
+}
+
+function fanTrendTone(trend: DashboardSummary['fanSentiment']['trend'] | undefined): string {
+  switch (trend) {
+    case 'rising':
+      return 'text-accent-success';
+    case 'falling':
       return 'text-accent-danger';
     default:
       return 'text-dynasty-text';
@@ -372,6 +396,37 @@ export default function DashboardPage() {
           </div>
         </section>
       ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Fan Mood</div>
+          <div className={`mt-2 font-data text-3xl ${fanTrendTone(summary?.fanSentiment?.trend)}`}>
+            <AnimatedNumber value={summary?.fanSentiment?.score ?? 50} formatter={(value) => `${Math.round(value)}`} />
+          </div>
+          <div className="mt-2 font-heading text-sm text-dynasty-muted">
+            {summary?.fanSentiment?.summary ?? 'Fans are waiting for the next stretch to define the season.'}
+          </div>
+        </div>
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Challenge Status</div>
+          {summary?.challenge ? (
+            <>
+              <div className="mt-2 font-heading text-lg text-dynasty-textBright">{summary.challenge.name}</div>
+              <div className="mt-2">
+                <ProgressFill
+                  toneClassName={summary.challenge.completed ? 'bg-accent-success' : summary.challenge.failed ? 'bg-accent-danger' : 'bg-accent-warning'}
+                  value={(summary.challenge.progress ?? 0) * 100}
+                />
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">{summary.challenge.summary}</div>
+            </>
+          ) : (
+            <div className="mt-2 font-heading text-sm text-dynasty-muted">
+              No challenge scenario is active in this save.
+            </div>
+          )}
+        </div>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">

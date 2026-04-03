@@ -561,6 +561,11 @@ export {
   buildSigningConsequenceBundle,
   buildPostseasonConsequenceBundle,
   buildRetirementConsequenceBundle,
+  buildTradeAftermathChain,
+  appendConsequenceWatchers,
+  evaluateConsequenceWatchers,
+  calculateRushingRisk,
+  calculateFanSentiment,
 } from './narrative/index.js';
 export type {
   NewsPriority,
@@ -578,4 +583,9 @@ export type {
   PostseasonConsequenceContext,
   RetirementConsequenceContext,
   UserPostseasonOutcome,
+  TradeAftermathChainContext,
+  EvaluateConsequenceWatchersContext,
+  EvaluateConsequenceWatchersResult,
+  RushingRisk,
+  FanSentimentContext,
 } from './narrative/index.js';

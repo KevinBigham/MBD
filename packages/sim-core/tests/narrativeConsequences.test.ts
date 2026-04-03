@@ -277,4 +277,234 @@ describe('narrative consequences', () => {
     expect(bundle.ownerDecisionDelta?.delta).toBe(-2);
     expect(bundle.seasonHistoryMoments[0]).toContain(userRetiree.lastName);
   });
+
+  it('builds a veteran trade aftermath watcher chain and caps active watchers at twenty', () => {
+    const buildTradeAftermathChain = (
+      simCore as unknown as {
+        buildTradeAftermathChain?: (context: {
+          rng: InstanceType<typeof simCore.GameRNG>;
+          season: number;
+          day: number;
+          userTeamId: string;
+          tradedAwayPlayers: GeneratedPlayer[];
+          replacementPlayers: GeneratedPlayer[];
+          seasonsWithTeamByPlayerId: Record<string, number>;
+        }) => import('@mbd/contracts').ConsequenceWatcher[];
+      }
+    ).buildTradeAftermathChain;
+    const appendConsequenceWatchers = (
+      simCore as unknown as {
+        appendConsequenceWatchers?: (
+          existing: import('@mbd/contracts').ConsequenceWatcher[],
+          additions: import('@mbd/contracts').ConsequenceWatcher[],
+        ) => import('@mbd/contracts').ConsequenceWatcher[];
+      }
+    ).appendConsequenceWatchers;
+
+    expect(typeof buildTradeAftermathChain).toBe('function');
+    expect(typeof appendConsequenceWatchers).toBe('function');
+
+    const tradedAway = withOverrides(makePlayer(11, 'nyy', 'RF'), {
+      firstName: 'Diego',
+      lastName: 'Serrano',
+      teamId: 'bos',
+      serviceTimeDays: 172 * 6,
+    });
+    const replacement = withOverrides(makePlayer(12, 'nyy', 'LF'), {
+      firstName: 'Eli',
+      lastName: 'Young',
+      teamId: 'nyy',
+    });
+
+    const watchers = buildTradeAftermathChain!({
+      rng: new simCore.GameRNG(77),
+      season: 4,
+      day: 88,
+      userTeamId: 'nyy',
+      tradedAwayPlayers: [tradedAway],
+      replacementPlayers: [replacement],
+      seasonsWithTeamByPlayerId: {
+        [tradedAway.id]: 6,
+      },
+    });
+
+    expect(watchers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'trade_aftermath', expiresSeason: 4, expiresDay: 148, resolved: false }),
+        expect.objectContaining({ type: 'trade_aftermath', expiresSeason: 5, expiresDay: 1, resolved: false }),
+      ]),
+    );
+
+    const existing = Array.from({ length: 20 }, (_, index) => ({
+      id: `watcher-${index}`,
+      type: 'fan_reaction',
+      createdSeason: 4,
+      createdDay: index + 1,
+      expiresSeason: 4,
+      expiresDay: 120,
+      context: { index },
+      resolved: false,
+    })) as import('@mbd/contracts').ConsequenceWatcher[];
+    const merged = appendConsequenceWatchers!(existing, watchers);
+
+    expect(merged).toHaveLength(20);
+    expect(merged[0]?.resolved).toBe(true);
+    expect(merged.some((watcher) => watcher.id === watchers[0]?.id)).toBe(true);
+  });
+
+  it('evaluates watcher resolution, rushing risk, and fan sentiment deterministically', () => {
+    const evaluateConsequenceWatchers = (
+      simCore as unknown as {
+        evaluateConsequenceWatchers?: (context: {
+          rng: InstanceType<typeof simCore.GameRNG>;
+          season: number;
+          day: number;
+          userTeamId: string;
+          players: GeneratedPlayer[];
+          playerStats: Array<[string, PlayerGameStats]>;
+          watchers: import('@mbd/contracts').ConsequenceWatcher[];
+        }) => {
+          updatedWatchers: import('@mbd/contracts').ConsequenceWatcher[];
+          newsItems: Array<{ headline: string }>;
+          moraleDeltas: Array<{ playerId: string; event: { impact: number } }>;
+        };
+      }
+    ).evaluateConsequenceWatchers;
+    const calculateRushingRisk = (
+      simCore as unknown as {
+        calculateRushingRisk?: (
+          player: GeneratedPlayer,
+          currentLevel: string,
+          targetLevel: string,
+        ) => { injuryMultiplier: number; regressionChance: number; confidenceHit: number };
+      }
+    ).calculateRushingRisk;
+    const calculateFanSentiment = (
+      simCore as unknown as {
+        calculateFanSentiment?: (context: {
+          season: number;
+          day: number;
+          priorScore?: number;
+          wins: number;
+          losses: number;
+          tradePulse: number;
+          signingPulse: number;
+          prospectDebuts: number;
+          championshipSeasons: number[];
+        }) => import('@mbd/contracts').FanSentiment;
+      }
+    ).calculateFanSentiment;
+
+    expect(typeof evaluateConsequenceWatchers).toBe('function');
+    expect(typeof calculateRushingRisk).toBe('function');
+    expect(typeof calculateFanSentiment).toBe('function');
+
+    const player = withOverrides(makePlayer(13, 'nyy', 'CF'), {
+      firstName: 'Avery',
+      lastName: 'Mills',
+      teamId: 'nyy',
+    });
+    const replacement = withOverrides(makePlayer(14, 'nyy', 'LF'), {
+      firstName: 'Cole',
+      lastName: 'Parker',
+      teamId: 'nyy',
+    });
+    const playerStats = new Map<string, PlayerGameStats>([
+      [player.id, {
+        pa: 520,
+        ab: 470,
+        hits: 161,
+        doubles: 30,
+        triples: 4,
+        hr: 27,
+        rbi: 92,
+        bb: 48,
+        k: 101,
+        runs: 88,
+        hbp: 0,
+        sacFlies: 0,
+        ip: 0,
+        earnedRuns: 0,
+        strikeouts: 0,
+        walks: 0,
+        hitsAllowed: 0,
+        homeRunsAllowed: 0,
+        hitBatters: 0,
+        flyBallsAllowed: 0,
+        wins: 0,
+        losses: 0,
+      }],
+      [replacement.id, {
+        pa: 410,
+        ab: 382,
+        hits: 93,
+        doubles: 14,
+        triples: 1,
+        hr: 9,
+        rbi: 44,
+        bb: 25,
+        k: 118,
+        runs: 42,
+        hbp: 0,
+        sacFlies: 0,
+        ip: 0,
+        earnedRuns: 0,
+        strikeouts: 0,
+        walks: 0,
+        hitsAllowed: 0,
+        homeRunsAllowed: 0,
+        hitBatters: 0,
+        flyBallsAllowed: 0,
+        wins: 0,
+        losses: 0,
+      }],
+    ]);
+
+    const evaluated = evaluateConsequenceWatchers!({
+      rng: new simCore.GameRNG(17),
+      season: 5,
+      day: 1,
+      userTeamId: 'nyy',
+      players: [player, replacement],
+      playerStats: Array.from(playerStats.entries()),
+      watchers: [{
+        id: 'trade-long',
+        type: 'trade_aftermath',
+        createdSeason: 4,
+        createdDay: 88,
+        expiresSeason: 5,
+        expiresDay: 1,
+        resolved: false,
+        context: {
+          tradedPlayerId: player.id,
+          replacementPlayerId: replacement.id,
+          tradedPlayerName: `${player.firstName} ${player.lastName}`,
+          replacementPlayerName: `${replacement.firstName} ${replacement.lastName}`,
+        },
+      }],
+    });
+
+    expect(evaluated.updatedWatchers[0]?.resolved).toBe(true);
+    expect(evaluated.newsItems[0]?.headline.toLowerCase()).toMatch(/vindication|regret/);
+
+    const oneLevelRisk = calculateRushingRisk!(player, 'AA', 'AAA');
+    const twoLevelRisk = calculateRushingRisk!(player, 'A', 'MLB');
+    expect(oneLevelRisk).toEqual({ injuryMultiplier: 1.3, regressionChance: 0.1, confidenceHit: 5 });
+    expect(twoLevelRisk).toEqual({ injuryMultiplier: 1.6, regressionChance: 0.2, confidenceHit: 10 });
+
+    const sentiment = calculateFanSentiment!({
+      season: 5,
+      day: 30,
+      priorScore: 50,
+      wins: 21,
+      losses: 9,
+      tradePulse: 8,
+      signingPulse: 6,
+      prospectDebuts: 2,
+      championshipSeasons: [4],
+    });
+
+    expect(sentiment.score).toBeGreaterThan(60);
+    expect(sentiment.summary.toLowerCase()).toContain('fans');
+  });
 });

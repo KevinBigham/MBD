@@ -447,19 +447,36 @@ export const JobMarketSchema = z.object({
 });
 export type JobMarket = z.infer<typeof JobMarketSchema>;
 
+export const ConsequenceWatcherTypeEnum = z.enum([
+  "trade_aftermath",
+  "prospect_risk",
+  "contract_reaction",
+  "fan_reaction",
+]);
+export type ConsequenceWatcherType = z.infer<typeof ConsequenceWatcherTypeEnum>;
+
 export const ConsequenceWatcherSchema = z.object({
   id: z.string(),
-  type: z.string().min(1),
+  type: ConsequenceWatcherTypeEnum,
   createdSeason: z.number().int().min(1),
   createdDay: z.number().int().min(1),
+  expiresSeason: z.number().int().min(1).default(1),
   expiresDay: z.number().int().min(1),
   context: z.record(z.string(), z.unknown()).default({}),
   resolved: z.boolean().default(false),
 });
 export type ConsequenceWatcher = z.infer<typeof ConsequenceWatcherSchema>;
 
+export const FanSentimentTrendEnum = z.enum([
+  "rising",
+  "stable",
+  "falling",
+]);
+export type FanSentimentTrend = z.infer<typeof FanSentimentTrendEnum>;
+
 export const FanSentimentSchema = z.object({
   score: z.number().min(0).max(100),
+  trend: FanSentimentTrendEnum.default("stable"),
   summary: z.string(),
   updatedAt: z.string(),
 });

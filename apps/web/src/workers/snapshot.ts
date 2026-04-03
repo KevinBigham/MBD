@@ -195,6 +195,7 @@ function createEmptyJobMarket(): JobMarket {
 function createDefaultFanSentiment(season: number, day: number): FanSentiment {
   return {
     score: 50,
+    trend: 'stable',
     summary: 'Fan sentiment is stable.',
     updatedAt: `S${season}D${day}`,
   };

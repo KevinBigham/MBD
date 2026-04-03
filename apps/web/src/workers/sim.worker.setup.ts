@@ -171,12 +171,15 @@ export function getTeamTradeReputationModifier(
 }
 
 export function getTeamFreeAgencyAppealScore(
-  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState'>>,
+  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState' | 'fanSentiment' | 'userTeamId'>>,
   teamId: string,
 ): number {
   const chemistryScore = state.teamChemistry.get(teamId)?.score ?? 50;
   const reputationAppeal = frontOfficeFreeAgencyAppeal(state.frontOfficeState?.get(teamId)?.reputation ?? 50);
-  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3))));
+  const fanModifier = state.userTeamId === teamId && state.fanSentiment
+    ? Math.max(-3, Math.min(3, Math.round((state.fanSentiment.score - 50) / 16)))
+    : 0;
+  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3) + fanModifier)));
 }
 
 function payrollTierForBudget(budget: number): string {
@@ -261,6 +264,7 @@ function createEmptyJobMarket() {
 function createDefaultFanSentiment(season: number, day: number) {
   return {
     score: 50,
+    trend: 'stable' as const,
     summary: 'Fan sentiment is stable.',
     updatedAt: `S${season}D${day}`,
   };
