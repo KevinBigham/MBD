@@ -934,7 +934,7 @@ export const queryApi = {
       payroll,
       budget,
       luxuryTax,
-      capSpace: budget - payroll,
+      capSpace: Math.max(0, budget - payroll),
     };
   },
 };

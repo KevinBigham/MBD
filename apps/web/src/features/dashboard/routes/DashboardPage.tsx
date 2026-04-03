@@ -12,6 +12,11 @@ import {
   Trophy,
   Users,
 } from 'lucide-react';
+import { Skeleton } from '@mbd/ui';
+import { AnimatedNumber } from '@/shared/components/AnimatedNumber';
+import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { PageShell } from '@/shared/components/PageShell';
+import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
@@ -121,14 +126,36 @@ function chemistryTone(tier: string | undefined): string {
   }
 }
 
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" data-testid="dashboard-loading">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-3">
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <Skeleton className="h-16 w-52 rounded-lg" />
+      </div>
+      <Skeleton className="h-24 rounded-lg" />
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <Skeleton className="h-80 rounded-lg" />
+        <Skeleton className="h-80 rounded-lg" />
+      </div>
+      <Skeleton className="h-64 rounded-lg" />
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const worker = useWorker();
   const { isInitialized, userTeamId, season, day, phase } = useGameStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
+    setLoading(true);
     try {
       const [nextSummary, nextDeadlineState] = await Promise.all([
         worker.getDashboardSummary(),
@@ -138,6 +165,8 @@ export default function DashboardPage() {
       setDeadlineState((nextDeadlineState ?? null) as TradeDeadlineStateView | null);
     } catch (err) {
       console.error('Failed to fetch dashboard summary:', err);
+    } finally {
+      setLoading(false);
     }
   }, [isInitialized, worker]);
 
@@ -149,7 +178,8 @@ export default function DashboardPage() {
   const headlineFeed = summary?.pressRoom.feed.slice(0, 4) ?? [];
 
   return (
-    <div className="space-y-6">
+    <PageShell loading={loading && summary == null} skeleton={<DashboardSkeleton />}>
+      <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold text-dynasty-text">Front Office</h1>
@@ -160,7 +190,9 @@ export default function DashboardPage() {
         <div className="inline-flex items-center gap-3 rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3">
           <span className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Dynasty Score</span>
           <span className="font-brand text-3xl text-accent-primary">{summary?.franchise.dynasty.grade ?? 'F'}</span>
-          <span className="font-data text-sm text-dynasty-muted">{summary?.franchise.dynasty.score ?? 0} pts</span>
+          <span className="font-data text-sm text-dynasty-muted">
+            <AnimatedNumber value={summary?.franchise.dynasty.score ?? 0} formatter={(value) => `${Math.round(value)} pts`} />
+          </span>
         </div>
       </div>
 
@@ -225,10 +257,10 @@ export default function DashboardPage() {
             </div>
             <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
               <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Owner Patience</div>
-              <div className="mt-2 h-2.5 w-40 overflow-hidden rounded-full bg-dynasty-border">
-                <div
-                  className={`h-full transition-all duration-300 ${ownerTone(summary?.franchise.owner?.patience)}`}
-                  style={{ width: `${summary?.franchise.owner?.patience ?? 0}%` }}
+              <div className="mt-2 w-40">
+                <ProgressFill
+                  toneClassName={ownerTone(summary?.franchise.owner?.patience)}
+                  value={summary?.franchise.owner?.patience ?? 0}
                 />
               </div>
               <div className="mt-2 font-heading text-sm text-dynasty-muted">
@@ -240,7 +272,7 @@ export default function DashboardPage() {
             <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
               <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Clubhouse Chemistry</div>
               <div className={`mt-2 font-data text-3xl ${chemistryTone(summary?.franchise.chemistry?.tier)}`}>
-                {summary?.franchise.chemistry?.score ?? 0}
+                <AnimatedNumber value={summary?.franchise.chemistry?.score ?? 0} formatter={(value) => `${Math.round(value)}`} />
               </div>
               <div className="mt-2 font-heading text-sm text-dynasty-muted">
                 {summary?.franchise.chemistry?.summary ?? 'Chemistry has not formed yet.'}
@@ -249,7 +281,7 @@ export default function DashboardPage() {
             <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
               <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Playoff Odds</div>
               <div className="mt-2 font-data text-3xl text-accent-primary">
-                {summary?.momentum.playoffProbability ?? 0}%
+                <AnimatedNumber value={summary?.momentum.playoffProbability ?? 0} formatter={(value) => `${Math.round(value)}%`} />
               </div>
               <div className="mt-2 font-heading text-sm text-dynasty-muted">
                 Pace-based estimate against the current league cutoff.
@@ -385,9 +417,10 @@ export default function DashboardPage() {
                 <div className="mt-2 font-heading text-sm text-dynasty-text">{item.summary}</div>
               </div>
             )) : (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
-                No completed trades on the wire yet.
-              </div>
+              <EmptyStatePanel
+                description="When rivals start moving pieces, the league wire will light up here."
+                title="No completed trades on the wire yet"
+              />
             )}
           </div>
         </div>
@@ -490,9 +523,11 @@ export default function DashboardPage() {
                     <div className="mt-1 font-heading text-sm text-dynasty-text">{entry.headline}</div>
                   </Link>
                 )) : (
-                  <div className="font-heading text-xs text-dynasty-muted">
-                    No headlines yet. Advance the sim to generate the next cycle.
-                  </div>
+                  <EmptyStatePanel
+                    className="border-dynasty-border/60 bg-dynasty-surface"
+                    description="Advance the sim to generate the next cycle of headlines and briefing notes."
+                    title="No headlines yet"
+                  />
                 )}
               </div>
             </div>
@@ -513,7 +548,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
-    </div>
+      </div>
+    </PageShell>
   );
 }
 

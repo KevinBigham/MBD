@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from '@/app/layout/AppLayout';
+import { RouteErrorBoundary } from '@/app/providers/RouteErrorBoundary';
 
 // Lazy-loaded route components
 const DashboardPage = lazy(
@@ -71,34 +72,42 @@ function LoadingFallback() {
   );
 }
 
+function withRouteBoundary(routeLabel: string, element: JSX.Element) {
+  return (
+    <RouteErrorBoundary routeLabel={routeLabel}>
+      {element}
+    </RouteErrorBoundary>
+  );
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
-        <Route path="/" element={<SetupPage />} />
+        <Route path="/" element={withRouteBoundary('Save Hub', <SetupPage />)} />
         <Route element={<AppLayout />}>
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="roster" element={<RosterPage />} />
-          <Route path="minors" element={<MinorsPage />} />
-          <Route path="players" element={<PlayersPage />} />
-          <Route path="players/:playerId" element={<PlayerProfilePage />} />
-          <Route path="scouting" element={<ScoutingPage />} />
-          <Route path="staff" element={<StaffPage />} />
-          <Route path="draft" element={<DraftPage />} />
-          <Route path="trade" element={<TradePage />} />
-          <Route path="standings" element={<StandingsPage />} />
-          <Route path="leaders" element={<LeadersPage />} />
+          <Route path="dashboard" element={withRouteBoundary('Dashboard', <DashboardPage />)} />
+          <Route path="roster" element={withRouteBoundary('Roster', <RosterPage />)} />
+          <Route path="minors" element={withRouteBoundary('Minors', <MinorsPage />)} />
+          <Route path="players" element={withRouteBoundary('Players', <PlayersPage />)} />
+          <Route path="players/:playerId" element={withRouteBoundary('Player Profile', <PlayerProfilePage />)} />
+          <Route path="scouting" element={withRouteBoundary('Scouting', <ScoutingPage />)} />
+          <Route path="staff" element={withRouteBoundary('Staff', <StaffPage />)} />
+          <Route path="draft" element={withRouteBoundary('Draft', <DraftPage />)} />
+          <Route path="trade" element={withRouteBoundary('Trade', <TradePage />)} />
+          <Route path="standings" element={withRouteBoundary('Standings', <StandingsPage />)} />
+          <Route path="leaders" element={withRouteBoundary('Leaders', <LeadersPage />)} />
           <Route path="league">
-            <Route path="standings" element={<StandingsPage />} />
-            <Route path="leaders" element={<LeadersPage />} />
+            <Route path="standings" element={withRouteBoundary('Standings', <StandingsPage />)} />
+            <Route path="leaders" element={withRouteBoundary('Leaders', <LeadersPage />)} />
             <Route index element={<Navigate to="standings" replace />} />
           </Route>
-          <Route path="press-room" element={<PressRoomPage />} />
-          <Route path="playoffs" element={<PlayoffsPage />} />
-          <Route path="free-agency" element={<FreeAgencyPage />} />
-          <Route path="offseason" element={<OffseasonPage />} />
-          <Route path="history" element={<HistoryPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route path="press-room" element={withRouteBoundary('Press Room', <PressRoomPage />)} />
+          <Route path="playoffs" element={withRouteBoundary('Playoffs', <PlayoffsPage />)} />
+          <Route path="free-agency" element={withRouteBoundary('Free Agency', <FreeAgencyPage />)} />
+          <Route path="offseason" element={withRouteBoundary('Offseason', <OffseasonPage />)} />
+          <Route path="history" element={withRouteBoundary('History', <HistoryPage />)} />
+          <Route path="settings" element={withRouteBoundary('Settings', <SettingsPage />)} />
           {/* Catch-all redirect */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>

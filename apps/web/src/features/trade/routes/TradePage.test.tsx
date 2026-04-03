@@ -340,10 +340,51 @@ describe('TradePage', () => {
     await renderPage();
 
     expect(container.textContent).toContain('Trade market closed — reopens in offseason');
-    expect(container.textContent).toContain('No active trade offers.');
+    expect(container.textContent).toContain('No trade offers right now');
     expect(container.textContent).toContain('No trades completed yet this season.');
     expect(container.textContent).toContain('Deadline winners and losers');
     expect(container.textContent).toContain('offer for Anthony Volpe expired');
+  });
+
+  it('renders quiet-market empty states once the deadline has passed', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 124,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      playerCount: 780,
+      gamesPlayed: 124,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    worker.getTradeOffers.mockResolvedValue([]);
+    worker.getTradeHistory.mockResolvedValue([]);
+    worker.getTradeDeadlineState.mockResolvedValue({
+      deadlineDay: 122,
+      daysUntilDeadline: null,
+      deadlineMode: false,
+      hotOffers: [],
+      ticker: [],
+      recap: null,
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Deadline has passed');
+    expect(container.textContent).toContain('No trade offers right now');
+    expect(container.textContent).toContain('No ticker moves are active right now');
   });
 
   it('includes draft picks and IFA pool space when proposing an asset-based trade', async () => {

@@ -12,7 +12,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
-import { saveGame } from '@/shared/lib/saveSystem';
+import { scheduleAutoSave } from '@/shared/lib/saveSystem';
 import type { CeremonyMoment, MonthlyPulseState } from '@mbd/contracts';
 
 interface MonthlyPulseView extends MonthlyPulseState {
@@ -87,6 +87,7 @@ export function AppLayout() {
   const {
     phase,
     season,
+    day,
     teamName,
     gmName,
     activeSaveSlot,
@@ -97,6 +98,8 @@ export function AppLayout() {
   } = useGameStore();
   const audioMuted = useAudioPreferencesStore((state) => state.muted);
   const audioVolume = useAudioPreferencesStore((state) => state.volume);
+  const effectVolume = useAudioPreferencesStore((state) => state.effectVolume);
+  const ambientVolume = useAudioPreferencesStore((state) => state.ambientVolume);
   const commandPaletteOpenRef = useRef<boolean | null>(null);
 
   const persistActiveSlot = useCallback(async (targetSeason: number) => {
@@ -105,7 +108,13 @@ export function AppLayout() {
     }
 
     const snapshot = await worker.exportSnapshot();
-    await saveGame(activeSaveSlot, `${gmName} • ${teamName} • Season ${targetSeason}`, snapshot);
+    void scheduleAutoSave(
+      activeSaveSlot,
+      `${gmName} • ${teamName} • Season ${targetSeason}`,
+      snapshot,
+    ).catch((error) => {
+      console.error('Failed to autosave snapshot:', error);
+    });
   }, [activeSaveSlot, gmName, teamName, worker]);
 
   const refreshSeasonFlow = useCallback(async () => {
@@ -175,6 +184,14 @@ export function AppLayout() {
   useEffect(() => {
     getAudioEngine().setVolume(audioVolume);
   }, [audioVolume]);
+
+  useEffect(() => {
+    getAudioEngine().setEffectVolume(effectVolume);
+  }, [effectVolume]);
+
+  useEffect(() => {
+    getAudioEngine().setAmbientVolume(ambientVolume);
+  }, [ambientVolume]);
 
   useEffect(() => {
     getAudioEngine().setMuted(audioMuted);
@@ -325,6 +342,11 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen flex-col bg-dynasty-base">
+      <div className="sr-only" aria-live="polite">
+        {seasonFlow?.phaseLabel ?? `Season ${season}, Day ${day}`}
+        {' '}
+        {seasonFlow?.detailLabel ?? phase}
+      </div>
       {/* Top bar */}
       <TopBar onOpenCommandPalette={() => setCommandPaletteOpen(true)} flow={seasonFlow} />
 

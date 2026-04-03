@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { ArrowRight, Sparkles, Trophy, X } from 'lucide-react';
 import type { CeremonyMoment } from '@mbd/contracts';
+import { useEffectiveReducedMotion } from '@/shared/hooks/useEffectiveReducedMotion';
 import { getAudioEngine } from '@/shared/lib/audio';
 
 interface MomentCardOverlayProps {
@@ -23,6 +24,7 @@ function toneForTheme(theme: CeremonyMoment['theme'] | undefined): string {
 
 export function MomentCardOverlay({ moment, busy, onDismiss }: MomentCardOverlayProps) {
   const dismissRef = useRef(onDismiss);
+  const reducedMotion = useEffectiveReducedMotion();
   dismissRef.current = onDismiss;
 
   useEffect(() => {
@@ -96,7 +98,10 @@ export function MomentCardOverlay({ moment, busy, onDismiss }: MomentCardOverlay
         type="button"
       />
 
-      <section className={`relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-dynasty-border bg-[linear-gradient(180deg,rgba(14,18,22,0.98),rgba(10,13,16,0.98))] shadow-2xl animate-ceremony-fade-in`}>
+      <section
+        className={`relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-dynasty-border bg-[linear-gradient(180deg,rgba(14,18,22,0.98),rgba(10,13,16,0.98))] shadow-2xl ${reducedMotion ? '' : 'animate-ceremony-scale-up'}`}
+        data-motion={reducedMotion ? 'reduced' : 'animated'}
+      >
         <div className={`absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_38%)]`} aria-hidden="true" />
         <div className={`absolute inset-0 bg-gradient-to-br ${toneForTheme(moment.theme)}`} aria-hidden="true" />
 

@@ -477,8 +477,28 @@ function simWeekInternal(): SimResultDTO {
   applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
+  normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+}
+
+function normalizeLeagueActiveRosters(s: FullGameState) {
+  for (const team of TEAMS) {
+    const mlbPlayers = s.players
+      .filter((player) => player.teamId === team.id && player.rosterStatus === 'MLB')
+      .sort((left, right) => left.overallRating - right.overallRating || left.id.localeCompare(right.id));
+
+    while (mlbPlayers.length > 30) {
+      const overflow = mlbPlayers.shift();
+      if (!overflow) {
+        break;
+      }
+      overflow.rosterStatus = 'AAA';
+      overflow.minorLeagueLevel = 'AAA';
+    }
+
+    s.rosterStates.set(team.id, buildRosterState(team.id, s.players));
+  }
 }
 
 function simMonthInternal(): SimResultDTO {
@@ -498,6 +518,7 @@ function simMonthInternal(): SimResultDTO {
   applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
+  normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
   s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
   recordMonthlyDivisionLead(s);

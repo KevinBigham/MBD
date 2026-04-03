@@ -388,11 +388,11 @@ function shouldPursueExtensionCandidate(
   const overall = getPlayerOverall(player);
   const franchiseTarget = isFranchiseExtensionTarget(player, teamPlayers);
 
-  if (overall < 285 && !franchiseTarget) {
+  if (overall < 270 && !franchiseTarget) {
     return false;
   }
 
-  if (player.age >= 33 && overall < 340) {
+  if (player.age >= 34 && overall < 330) {
     return false;
   }
 
@@ -403,7 +403,7 @@ function shouldPursueExtensionCandidate(
     return false;
   }
 
-  if (controlYears >= 5 && !franchiseTarget) {
+  if (controlYears >= 2 && !franchiseTarget) {
     return false;
   }
 
@@ -424,7 +424,7 @@ function extensionCandidateScore(
     + (player.age <= 27 ? 25 : player.age <= 29 ? 12 : 0)
     + (player.position === 'SP' ? 18 : 0)
     - Math.max(0, player.age - 32) * 28
-    - (overall < 300 ? 60 : 0);
+    - (overall < 295 ? 35 : 0);
 }
 
 export function serviceDaysToYears(serviceTimeDays: number): number {
@@ -970,7 +970,7 @@ export function processTeamExtensions(
   players: GeneratedPlayer[],
   rng: GameRNG,
 ): TeamExtensionProcessResult {
-  if (context.currentPayroll > context.teamBudget * 1.03) {
+  if (context.currentPayroll > context.teamBudget * 1.08) {
     return {
       players,
       results: [],
@@ -987,7 +987,7 @@ export function processTeamExtensions(
     .filter((player) =>
       player.teamId === context.teamId
       && player.rosterStatus === 'MLB'
-      && getPlayerOverall(player) >= 260
+      && getPlayerOverall(player) >= 245
       && shouldPursueExtensionCandidate(player, context, teamPlayers)
       && !(player.contract.noTradeClause && player.contract.noTradeClauseType === 'full' && player.contract.years >= 2)
       && !player.extensionHistory?.some((entry) => entry.season === context.season && entry.outcome === 'accepted'),
@@ -999,7 +999,7 @@ export function processTeamExtensions(
       }
       return left.id.localeCompare(right.id);
     })
-    .slice(0, 3);
+    .slice(0, 2);
 
   for (const player of candidates) {
     const controlYears = controlYearsForPlayer(player, context);
@@ -1009,7 +1009,7 @@ export function processTeamExtensions(
       currentPayroll: workingPayroll,
     }, desiredYears, rng.fork());
 
-    if (workingPayroll + openingOffer.annualSalary > context.teamBudget * 1.08) {
+    if (workingPayroll + openingOffer.annualSalary > context.teamBudget * 1.06) {
       continue;
     }
 

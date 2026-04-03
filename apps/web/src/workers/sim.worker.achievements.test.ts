@@ -109,6 +109,73 @@ describe('worker achievement state', () => {
   it('captures season achievement facts for bargain free agents and franchise records', () => {
     const state = requireState();
     const hitter = state.players.find((player) => player.teamId === 'nyy' && player.pitcherAttributes == null && player.rosterStatus === 'MLB')!;
+    hitter.age = 27;
+    hitter.position = 'SS';
+    hitter.overallRating = 430;
+    hitter.hitterAttributes = {
+      contact: 410,
+      power: 435,
+      eye: 390,
+      speed: 285,
+      defense: 340,
+      durability: 355,
+    };
+
+    for (const player of state.players.filter((candidate) => candidate.id !== hitter.id).slice(0, 24)) {
+      state.seasonState.playerSeasonStats.set(player.id, player.pitcherAttributes == null
+        ? {
+          playerId: player.id,
+          teamId: player.teamId,
+          pa: 620,
+          ab: 560,
+          hits: 145,
+          doubles: 28,
+          triples: 3,
+          hr: 18,
+          rbi: 76,
+          bb: 52,
+          k: 128,
+          runs: 74,
+          hbp: 2,
+          sacFlies: 5,
+          ip: 0,
+          earnedRuns: 0,
+          strikeouts: 0,
+          walks: 0,
+          hitsAllowed: 0,
+          homeRunsAllowed: 0,
+          hitBatters: 0,
+          flyBallsAllowed: 0,
+          wins: 0,
+          losses: 0,
+        }
+        : {
+          playerId: player.id,
+          teamId: player.teamId,
+          pa: 0,
+          ab: 0,
+          hits: 0,
+          doubles: 0,
+          triples: 0,
+          hr: 0,
+          rbi: 0,
+          bb: 0,
+          k: 0,
+          runs: 0,
+          hbp: 0,
+          sacFlies: 0,
+          ip: 540,
+          earnedRuns: 82,
+          strikeouts: 172,
+          walks: 56,
+          hitsAllowed: 156,
+          homeRunsAllowed: 21,
+          hitBatters: 4,
+          flyBallsAllowed: 182,
+          wins: 11,
+          losses: 10,
+        });
+    }
 
     state.seasonState.playerSeasonStats.set(hitter.id, {
       playerId: hitter.id,

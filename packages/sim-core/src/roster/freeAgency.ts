@@ -19,7 +19,7 @@ import { serviceDaysToYears } from '../finance/contracts.js';
 // ---------------------------------------------------------------------------
 
 /** Maximum AAV a player can earn (in millions). */
-const MAX_AAV_MILLIONS = 35;
+const MAX_AAV_MILLIONS = 42;
 
 /** Total days the free agency market runs. */
 const MARKET_DURATION_DAYS = 60;
@@ -63,11 +63,11 @@ const POSITION_MULTIPLIERS: Partial<Record<Position, number>> = {
 const DEFAULT_POSITION_MULTIPLIER = 1.0;
 
 /** Need bonus when a team badly needs a position. */
-const NEED_BONUS_FACTOR = 0.3;
+const NEED_BONUS_FACTOR = 0.38;
 
 /** Price inflation range when multiple teams compete. */
-const COMPETITION_INFLATION_MIN = 0.10;
-const COMPETITION_INFLATION_MAX = 0.20;
+const COMPETITION_INFLATION_MIN = 0.15;
+const COMPETITION_INFLATION_MAX = 0.28;
 
 /** Rating thresholds for contract-year projection. */
 const ELITE_RATING_THRESHOLD = 400;
@@ -101,7 +101,10 @@ const SMALL_MARKET_BUDGET_THRESHOLD = 145;
 const MID_MARKET_BUDGET_THRESHOLD = 175;
 const LOW_NEED_THRESHOLD = 35;
 const MODERATE_NEED_THRESHOLD = 55;
-const ELITE_FA_MARKET_VALUE = 22;
+const ELITE_FA_MARKET_VALUE = 20;
+const MINOR_LEAGUE_FA_OVERALL_THRESHOLD = 340;
+const MINOR_LEAGUE_FA_VETERAN_THRESHOLD = 290;
+const MINOR_LEAGUE_FA_VETERAN_AGE = 29;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,6 +177,20 @@ function isExpiring(player: GeneratedPlayer): boolean {
   return player.contract.years <= 0;
 }
 
+function shouldEnterFreeAgency(player: GeneratedPlayer): boolean {
+  if (!isExpiring(player)) {
+    return false;
+  }
+
+  if (player.rosterStatus === 'MLB') {
+    return true;
+  }
+
+  const overall = getOverall(player);
+  return overall >= MINOR_LEAGUE_FA_OVERALL_THRESHOLD
+    || (player.age >= MINOR_LEAGUE_FA_VETERAN_AGE && overall >= MINOR_LEAGUE_FA_VETERAN_THRESHOLD);
+}
+
 function roundCurrency(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -188,22 +205,22 @@ function playerDurability(player: GeneratedPlayer): number {
 
 function spendingComfortFactor(teamBudget: number): number {
   if (teamBudget <= SMALL_MARKET_BUDGET_THRESHOLD) {
-    return 0.8;
+    return 0.84;
   }
   if (teamBudget <= MID_MARKET_BUDGET_THRESHOLD) {
-    return 0.85;
+    return 0.9;
   }
-  return 0.91;
+  return 0.96;
 }
 
 function marketAggressionFactor(teamBudget: number): number {
   if (teamBudget <= SMALL_MARKET_BUDGET_THRESHOLD) {
-    return 0.84;
+    return 0.92;
   }
   if (teamBudget <= MID_MARKET_BUDGET_THRESHOLD) {
-    return 0.95;
+    return 1.03;
   }
-  return 1.06;
+  return 1.12;
 }
 
 function requiresStrongRosterFit(player: GeneratedPlayer, marketValue: number): boolean {
@@ -274,7 +291,7 @@ export function createFreeAgencyMarket(
   allPlayers: GeneratedPlayer[],
 ): FreeAgencyMarket {
   const freeAgents: FreeAgent[] = allPlayers
-    .filter(isExpiring)
+    .filter(shouldEnterFreeAgency)
     .map((player) => {
       const marketValue = calculateMarketValue(player);
       return {
@@ -458,7 +475,7 @@ export function generateAIOffer(
   const baseValue = calculateMarketValue(player);
   const availableBudget = teamBudget * spendingComfortFactor(teamBudget) - currentPayroll;
 
-  if (availableBudget < baseValue * 0.55) return null;
+  if (availableBudget < baseValue * 0.45) return null;
 
   if (requiresStrongRosterFit(player, baseValue) && teamNeed < MODERATE_NEED_THRESHOLD) {
     return null;
@@ -468,7 +485,7 @@ export function generateAIOffer(
     return null;
   }
 
-  if (teamNeed < LOW_NEED_THRESHOLD && baseValue < ELITE_FA_MARKET_VALUE) {
+  if (teamNeed < 25 && baseValue < ELITE_FA_MARKET_VALUE) {
     return null;
   }
 

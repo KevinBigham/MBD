@@ -7,6 +7,10 @@ import {
   GameSnapshotSchema,
   parseGameSnapshot,
 } from '../../../../../packages/contracts/src/schemas/save';
+import {
+  SAVE_IO_BUDGET_MS,
+  measureAsyncOperation,
+} from './performance';
 
 export const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
 
@@ -24,6 +28,39 @@ export interface SaveData {
   createdAt: string;
   updatedAt: string;
   gameState?: string;
+}
+
+export type SaveInspectionResult =
+  | { status: 'ok'; slot: number; save: SaveData }
+  | { status: 'empty'; slot: number }
+  | { status: 'legacy'; slot: number; save: SaveData; message: string }
+  | { status: 'corrupt'; slot: number; message: string; raw?: Partial<SaveData> | null };
+
+interface AutoSaveJob {
+  slot: number;
+  name: string;
+  state: object;
+}
+
+interface Deferred {
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
+interface SnapshotExportPayload {
+  kind: 'mbd-save-export';
+  name: string;
+  exportedAt: string;
+  snapshot: GameSnapshot;
+}
+
+type IdleCancel = () => void;
+type IdleScheduler = (callback: () => void) => IdleCancel;
+
+interface AutoSaveScheduler {
+  schedule(job: AutoSaveJob): Promise<void>;
+  flush(): Promise<void>;
+  hasPending(): boolean;
 }
 
 class MBDDatabase extends Dexie {
@@ -59,8 +96,123 @@ class MBDDatabase extends Dexie {
 
 export const db = new MBDDatabase();
 
+function tryParseSnapshot(snapshotLike: unknown): GameSnapshot | null {
+  try {
+    return snapshotLike ? parseGameSnapshot(snapshotLike) : null;
+  } catch {
+    return null;
+  }
+}
+
+function tryParseLegacySnapshot(legacyState: string | null | undefined): GameSnapshot | null {
+  if (!legacyState) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(legacyState) as unknown;
+    return parseGameSnapshot(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function scheduleOnIdle(callback: () => void): IdleCancel {
+  const globalWindow = typeof window !== 'undefined' ? window : null;
+
+  if (globalWindow && typeof globalWindow.requestIdleCallback === 'function') {
+    const idleHandle = globalWindow.requestIdleCallback(() => {
+      globalWindow.clearTimeout(timeoutHandle);
+      callback();
+    }, { timeout: 250 });
+    const timeoutHandle = globalWindow.setTimeout(() => {
+      globalWindow.cancelIdleCallback?.(idleHandle);
+      callback();
+    }, 250);
+
+    return () => {
+      globalWindow.cancelIdleCallback?.(idleHandle);
+      globalWindow.clearTimeout(timeoutHandle);
+    };
+  }
+
+  const timeoutHandle = globalThis.setTimeout(() => {
+    callback();
+  }, 32);
+
+  return () => {
+    globalThis.clearTimeout(timeoutHandle);
+  };
+}
+
+export function createAutoSaveScheduler(
+  writeSave: (job: AutoSaveJob) => Promise<void>,
+  scheduleIdle: IdleScheduler = scheduleOnIdle,
+): AutoSaveScheduler {
+  let queued: { job: AutoSaveJob; deferreds: Deferred[] } | null = null;
+  let running = false;
+  let cancelScheduled: IdleCancel | null = null;
+
+  const requestFlush = () => {
+    if (cancelScheduled) {
+      return;
+    }
+
+    cancelScheduled = scheduleIdle(() => {
+      cancelScheduled = null;
+      void flush();
+    });
+  };
+
+  const flush = async () => {
+    if (running || !queued) {
+      return;
+    }
+
+    const current = queued;
+    queued = null;
+    cancelScheduled?.();
+    cancelScheduled = null;
+    running = true;
+
+    try {
+      await writeSave(current.job);
+      current.deferreds.forEach((deferred) => deferred.resolve());
+    } catch (error) {
+      current.deferreds.forEach((deferred) => deferred.reject(error));
+    } finally {
+      running = false;
+      if (queued) {
+        requestFlush();
+      }
+    }
+  };
+
+  return {
+    schedule(job: AutoSaveJob) {
+      return new Promise<void>((resolve, reject) => {
+        if (queued) {
+          queued.job = job;
+          queued.deferreds.push({ resolve, reject });
+        } else {
+          queued = {
+            job,
+            deferreds: [{ resolve, reject }],
+          };
+        }
+
+        requestFlush();
+      });
+    },
+    flush,
+    hasPending() {
+      return running || queued != null;
+    },
+  };
+}
+
 export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
-  const snapshot = raw.snapshot ? parseGameSnapshot(raw.snapshot) : null;
+  const snapshot = tryParseSnapshot(raw.snapshot);
 
   return {
     id: raw.id ?? `save-slot-${raw.slotNumber ?? 1}`,
@@ -75,6 +227,50 @@ export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
     legacyState: raw.legacyState ?? raw.gameState ?? null,
     createdAt: raw.createdAt ?? new Date(0).toISOString(),
     updatedAt: raw.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+function inspectRawSaveRecord(slot: number, raw: Partial<SaveData> | undefined): SaveInspectionResult {
+  if (!raw) {
+    return { status: 'empty', slot };
+  }
+
+  const snapshot = tryParseSnapshot(raw.snapshot);
+  if (snapshot) {
+    return {
+      status: 'ok',
+      slot,
+      save: normalizeLoadedSaveRecord({
+        ...raw,
+        snapshot,
+      }),
+    };
+  }
+
+  const normalized = normalizeLoadedSaveRecord(raw);
+  if (normalized.legacyState) {
+    return {
+      status: 'legacy',
+      slot,
+      save: normalized,
+      message: 'This save needs repair before it can be loaded.',
+    };
+  }
+
+  if (raw.snapshot != null || raw.hasSnapshot) {
+    return {
+      status: 'corrupt',
+      slot,
+      message: 'This save could not be parsed.',
+      raw,
+    };
+  }
+
+  return {
+    status: 'legacy',
+    slot,
+    save: normalized,
+    message: 'This save only has legacy metadata and needs repair before it can be loaded.',
   };
 }
 
@@ -108,36 +304,51 @@ export async function saveGame(
   name: string,
   state: object
 ): Promise<void> {
-  const existing = await db.saves.get(`save-slot-${slot}`);
-  const snapshot = GameSnapshotSchema.safeParse(state);
-  if (snapshot.success) {
-    await db.saves.put(buildSaveRecord(slot, name, snapshot.data, existing));
-    return;
-  }
+  await measureAsyncOperation('save.write', async () => {
+    const existing = await db.saves.get(`save-slot-${slot}`);
+    const snapshot = GameSnapshotSchema.safeParse(state);
+    if (snapshot.success) {
+      await db.saves.put(buildSaveRecord(slot, name, snapshot.data, existing));
+      return;
+    }
 
-  const now = new Date().toISOString();
-  await db.saves.put({
-    id: `save-slot-${slot}`,
-    slotNumber: slot,
-    name,
-    season: (state as { season?: number }).season ?? 1,
-    day: (state as { day?: number }).day ?? 1,
-    phase: ((state as { phase?: SimPhase }).phase ?? 'preseason'),
-    schemaVersion: 1,
-    hasSnapshot: false,
-    snapshot: null,
-    legacyState: JSON.stringify(state),
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  });
+    const now = new Date().toISOString();
+    await db.saves.put({
+      id: `save-slot-${slot}`,
+      slotNumber: slot,
+      name,
+      season: (state as { season?: number }).season ?? 1,
+      day: (state as { day?: number }).day ?? 1,
+      phase: ((state as { phase?: SimPhase }).phase ?? 'preseason'),
+      schemaVersion: 1,
+      hasSnapshot: false,
+      snapshot: null,
+      legacyState: JSON.stringify(state),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
 export async function loadGame(
   slot: number
 ): Promise<SaveData | undefined> {
-  const id = `save-slot-${slot}`;
-  const raw = await db.saves.get(id);
-  return raw ? normalizeLoadedSaveRecord(raw) : undefined;
+  return measureAsyncOperation('save.load', async () => {
+    const id = `save-slot-${slot}`;
+    const raw = await db.saves.get(id);
+    return raw ? normalizeLoadedSaveRecord(raw) : undefined;
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
+}
+
+export async function inspectSave(slot: number): Promise<SaveInspectionResult> {
+  return measureAsyncOperation('save.inspect', async () => {
+    const raw = await db.saves.get(`save-slot-${slot}`);
+    return inspectRawSaveRecord(slot, raw);
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
+}
+
+export async function loadGameSafe(slot: number): Promise<SaveInspectionResult> {
+  return inspectSave(slot);
 }
 
 export async function listSaves(): Promise<SaveData[]> {
@@ -155,4 +366,87 @@ export async function loadMostRecentSnapshot(): Promise<SaveData | undefined> {
 export async function deleteSave(slot: number): Promise<void> {
   const id = `save-slot-${slot}`;
   await db.saves.delete(id);
+}
+
+export async function clearAllSaves(): Promise<void> {
+  await db.saves.clear();
+}
+
+export function exportSnapshotToJson(name: string, snapshot: GameSnapshot): string {
+  const payload: SnapshotExportPayload = {
+    kind: 'mbd-save-export',
+    name,
+    exportedAt: new Date().toISOString(),
+    snapshot: GameSnapshotSchema.parse(snapshot),
+  };
+
+  return JSON.stringify(payload, null, 2);
+}
+
+export function importSnapshotFromJson(text: string): { name: string; snapshot: GameSnapshot } {
+  const parsed = JSON.parse(text) as unknown;
+  if (
+    parsed
+    && typeof parsed === 'object'
+    && 'kind' in parsed
+    && (parsed as { kind?: unknown }).kind === 'mbd-save-export'
+    && 'snapshot' in parsed
+  ) {
+    const exportPayload = parsed as { name?: unknown; snapshot: unknown };
+    return {
+      name: typeof exportPayload.name === 'string'
+        ? exportPayload.name
+        : 'Imported Save',
+      snapshot: parseGameSnapshot(exportPayload.snapshot),
+    };
+  }
+
+  return {
+    name: 'Imported Save',
+    snapshot: parseGameSnapshot(parsed),
+  };
+}
+
+export async function repairSave(slot: number): Promise<SaveInspectionResult> {
+  const id = `save-slot-${slot}`;
+  return measureAsyncOperation('save.repair', async () => {
+    const raw = await db.saves.get(id);
+    if (!raw) {
+      return { status: 'empty', slot } as SaveInspectionResult;
+    }
+
+    const repairedSnapshot = tryParseSnapshot(raw.snapshot) ?? tryParseLegacySnapshot(raw.legacyState ?? raw.gameState);
+    if (!repairedSnapshot) {
+      return {
+        status: 'corrupt',
+        slot,
+        message: 'Unable to repair this save.',
+        raw,
+      } satisfies SaveInspectionResult;
+    }
+
+    const repairedRecord = buildSaveRecord(slot, raw.name ?? `Slot ${slot}`, repairedSnapshot, raw as SaveData);
+    await db.saves.put(repairedRecord);
+    return {
+      status: 'ok',
+      slot,
+      save: repairedRecord,
+    } satisfies SaveInspectionResult;
+  }, { budgetMs: SAVE_IO_BUDGET_MS });
+}
+
+const autoSaveScheduler = createAutoSaveScheduler((job) =>
+  saveGame(job.slot, job.name, job.state),
+);
+
+export function scheduleAutoSave(
+  slot: number,
+  name: string,
+  state: object,
+): Promise<void> {
+  return autoSaveScheduler.schedule({ slot, name, state });
+}
+
+export async function flushAutoSaveQueueForTesting(): Promise<void> {
+  await autoSaveScheduler.flush();
 }

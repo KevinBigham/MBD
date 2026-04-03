@@ -13,6 +13,7 @@ import {
   Handshake,
 } from 'lucide-react';
 import { TEAMS, estimateProjectedWarRange, getTeamById } from '@mbd/sim-core';
+import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 
@@ -334,7 +335,8 @@ export default function ScoutingPage() {
   const tradeTargets = TEAMS.filter((team) => team.id !== userTeamId);
 
   return (
-    <div className="space-y-6">
+    <PageShell>
+      <div className="space-y-6">
       <div>
         <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Scouting</h1>
         <p className="mt-1 font-heading text-sm text-dynasty-muted">
@@ -892,6 +894,7 @@ export default function ScoutingPage() {
           </section>
         </>
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }

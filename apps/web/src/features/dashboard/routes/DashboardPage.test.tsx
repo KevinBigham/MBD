@@ -226,4 +226,23 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Deadline buzz is building.');
     expect(container.textContent).toContain('Read more');
   });
+
+  it('renders a loading skeleton before the dashboard summary resolves', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getDashboardSummary: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+      getTradeDeadlineState: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+      dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>,
+      );
+    });
+
+    expect(container.querySelector('[data-testid="dashboard-loading"]')).toBeTruthy();
+  });
 });

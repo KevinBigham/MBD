@@ -275,4 +275,64 @@ describe('HistoryPage', () => {
     expect(container.textContent).not.toContain('player-mvp');
     expect(container.textContent).not.toContain('nyy vs bos');
   });
+
+  it('renders a trophy room empty state before any achievements are unlocked', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getAwardRaces: vi.fn().mockResolvedValue(null),
+      getAwardHistory: vi.fn().mockResolvedValue([]),
+      getSeasonHistory: vi.fn().mockResolvedValue([]),
+      getRivalries: vi.fn().mockResolvedValue([]),
+      getHallOfFame: vi.fn().mockResolvedValue([]),
+      getFranchiseTimeline: vi.fn().mockResolvedValue([]),
+      getDynastyScore: vi.fn().mockResolvedValue({
+        score: 0,
+        grade: 'F',
+        breakdown: {
+          championships: 0,
+          worldSeriesAppearances: 0,
+          playoffAppearances: 0,
+          ninetyWinSeasons: 0,
+          divisionTitles: 0,
+          losingSeasons: 0,
+          awardWinners: 0,
+        },
+      }),
+      getAchievements: vi.fn().mockResolvedValue([
+        {
+          id: 'decade',
+          category: 'longevity',
+          name: 'Decade',
+          description: 'Stay with one club for 10 seasons.',
+          unlocked: false,
+          unlockedAt: null,
+          unlockSummary: null,
+          progress: {
+            current: 0,
+            target: 10,
+            summary: 'Seasons managed',
+          },
+        },
+      ]),
+      resolveHistoryDisplayNames: vi.fn().mockResolvedValue({
+        players: {},
+        teams: {},
+      }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <HistoryPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('No achievements unlocked yet');
+    expect(container.textContent).toContain('Keep pushing seasons, titles, and milestones to fill the trophy room.');
+  });
 });

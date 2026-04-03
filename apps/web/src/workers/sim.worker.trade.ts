@@ -33,7 +33,7 @@ import { rebuildBriefing } from './sim.worker.narrative.js';
 import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
 
 export const TRADE_DEADLINE_DAY = getTradeDeadlineDay();
-const DEADLINE_ACTIVITY_CHECKPOINTS = [92, 106, 114, 120] as const;
+const DEADLINE_ACTIVITY_CHECKPOINTS = [92, 97, 102, 107, 112, 117, 120, 122] as const;
 
 export interface TradeAssetView {
   key: string;
@@ -1106,8 +1106,8 @@ function generateMonthlyTradeActivity(
   } = {},
 ) {
   const { userCandidates, aiCandidates } = buildMonthlyTradeCandidates(state);
-  const [userOfferMin, userOfferMax] = options.userOfferRange ?? [1, 3];
-  const [aiTradeMin, aiTradeMax] = options.aiTradeRange ?? [0, 1];
+  const [userOfferMin, userOfferMax] = options.userOfferRange ?? [2, 4];
+  const [aiTradeMin, aiTradeMax] = options.aiTradeRange ?? [1, 2];
   const rumorRepeats = options.rumorRepeats ?? 1;
   const userOfferTarget = state.rng.nextInt(userOfferMin, Math.max(userOfferMin, userOfferMax));
 
@@ -1154,17 +1154,24 @@ function generateDeadlineTradeBurst(state: FullGameState) {
   const pendingOffersBefore = state.tradeState.pendingOffers.length;
   const tradeHistoryBefore = state.tradeState.tradeHistory.length;
   generateMonthlyTradeActivity(state, {
-    userOfferRange: [2, 4],
-    aiTradeRange: [1, 2],
-    rumorRepeats: 3,
+    userOfferRange: [3, 5],
+    aiTradeRange: [3, 5],
+    rumorRepeats: 4,
   });
 
   if (state.tradeState.pendingOffers.length === pendingOffersBefore) {
     createFallbackUserDeadlineOffer(state);
   }
 
-  if (state.tradeState.tradeHistory.length === tradeHistoryBefore) {
-    createFallbackLeagueDeadlineTrade(state);
+  let fallbackTradesCreated = 0;
+  while (
+    state.tradeState.tradeHistory.length < tradeHistoryBefore + 3
+    && fallbackTradesCreated < 3
+  ) {
+    if (!createFallbackLeagueDeadlineTrade(state)) {
+      break;
+    }
+    fallbackTradesCreated += 1;
   }
 }
 

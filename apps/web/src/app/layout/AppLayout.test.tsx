@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './AppLayout';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-import { saveGame } from '@/shared/lib/saveSystem';
+import { scheduleAutoSave } from '@/shared/lib/saveSystem';
 
 vi.mock('./Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
@@ -24,12 +24,12 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 }));
 
 vi.mock('@/shared/lib/saveSystem', () => ({
-  saveGame: vi.fn(),
+  scheduleAutoSave: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
-const mockedSaveGame = vi.mocked(saveGame);
+const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -180,6 +180,10 @@ describe('AppLayout', () => {
     expect(worker.simDay).toHaveBeenCalledTimes(1);
     expect(worker.simWeek).toHaveBeenCalledTimes(1);
     expect(worker.simMonth).toHaveBeenCalledTimes(1);
+
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion?.textContent).toContain('Season 3');
+    expect(liveRegion?.textContent).toContain('Regular Season');
   });
 
   it('renders the season transition ceremony card and uses its CTA', async () => {
@@ -728,6 +732,6 @@ describe('AppLayout', () => {
     });
 
     expect(worker.exportSnapshot).toHaveBeenCalled();
-    expect(mockedSaveGame).toHaveBeenCalledWith(3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(3, expect.stringContaining('Alex Rivera'), expect.any(Object));
   });
 });
