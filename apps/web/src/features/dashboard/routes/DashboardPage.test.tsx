@@ -138,6 +138,39 @@ describe('DashboardPage', () => {
             },
           ],
         },
+        tradeIntel: {
+          daysUntilDeadline: 34,
+          deadlineMode: false,
+          activeTradeOffers: 3,
+          recentSummary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+          recentTrades: [
+            {
+              id: 'ticker-1',
+              summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+              timestamp: 'S4D88',
+            },
+          ],
+        },
+        farmIntel: {
+          topProspects: [
+            {
+              playerId: 'p3',
+              name: 'Spencer Jones',
+              position: 'CF',
+              level: 'AAA',
+              readiness: 410,
+              trend: 'up',
+              latestLineSummary: '.311 AVG · 14 HR · 51 RBI',
+            },
+          ],
+          recentMoves: [
+            {
+              id: 'farm-1',
+              headline: 'Spencer Jones is pushing for a promotion.',
+              timestamp: 'S4D88',
+            },
+          ],
+        },
         storylinesToWatch: [
           {
             playerId: 'p1',
@@ -204,21 +237,13 @@ describe('DashboardPage', () => {
           ],
           briefingCount: 4,
           newsCount: 8,
+          unreadCount: 2,
         },
-      }),
-      getTradeDeadlineState: vi.fn().mockResolvedValue({
-        deadlineDay: 122,
-        daysUntilDeadline: 34,
-        deadlineMode: false,
-        hotOffers: [],
-        ticker: [
-          {
-            id: 'ticker-1',
-            summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
-            timestamp: 'S4D88',
-          },
-        ],
-        recap: null,
+        thisDayInHistory: {
+          season: 2,
+          headline: 'Won the World Series',
+          summary: '97-65 · Title season',
+        },
       }),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockResolvedValue({
@@ -254,40 +279,42 @@ describe('DashboardPage', () => {
     });
     await act(async () => {
       await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(container.textContent).toContain('Dynasty Score');
+    expect(container.textContent).toContain('Franchise Identity');
     expect(container.textContent).toContain('Welcome, GM Alex Rivera');
-    expect(container.textContent).toContain('B');
-    expect(container.textContent).toContain('Season Momentum');
-    expect(container.textContent).toContain('Storylines to Watch');
-    expect(container.textContent).toContain('Roster Snapshot');
-    expect(container.textContent).toContain('Front Office Intel');
-    expect(container.textContent).toContain('Trade Inbox');
-    expect(container.textContent).toContain('Top Rivalry');
-    expect(container.textContent).toContain('Rivalry Board');
-    expect(container.textContent).toContain('NYY vs BOS');
+    expect(container.textContent).toContain('Sim Day');
+    expect(container.textContent).toContain('Sim Week');
+    expect(container.textContent).toContain('Sim Month');
+    expect(container.textContent).toContain('Standings');
+    expect(container.textContent).toContain('Roster Health');
+    expect(container.textContent).toContain('Trade Intel');
+    expect(container.textContent).toContain('Farm Report');
+    expect(container.textContent).toContain('Financials');
+    expect(container.textContent).toContain('Press Digest');
+    expect(container.textContent).toContain('Active Storylines');
+    expect(container.textContent).toContain('Rivalry Watch');
+    expect(container.textContent).toContain('This Day in History');
     expect(container.textContent).toContain('NYY 8-5 BOS');
     expect(container.textContent).toContain('NYY 144-132 BOS');
-    expect(container.textContent).toContain('34 days until trade deadline');
-    expect(container.textContent).toContain('League Trade Ticker');
     expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
     expect(container.textContent).toContain('Spencer Jones');
     expect(container.textContent).toContain('Aaron Judge');
     expect(container.textContent).toContain('dynasty cornerstone');
     expect(container.textContent).toContain('climax');
     expect(container.textContent).toContain('Press Room');
-    expect(container.textContent).toContain("Today's Headlines");
     expect(container.textContent).toContain('BREAKING');
     expect(container.textContent).toContain('Deadline buzz is building.');
-    expect(container.textContent).toContain('Read more');
+    expect(container.textContent).toContain('Season 2');
   });
 
   it('renders a loading skeleton before the dashboard summary resolves', async () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       getDashboardSummary: vi.fn().mockImplementation(() => new Promise(() => undefined)),
-      getTradeDeadlineState: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       getJobMarket: vi.fn().mockImplementation(() => new Promise(() => undefined)),
@@ -352,6 +379,12 @@ describe('DashboardPage', () => {
             summary: 'The front office has built real credibility around the league.',
           },
         },
+        fanSentiment: {
+          score: 52,
+          trend: 'stable',
+          summary: 'The market is waiting to see the next move.',
+        },
+        challenge: null,
         momentum: {
           last10: '7-3',
           streak: 'W3',
@@ -374,15 +407,28 @@ describe('DashboardPage', () => {
           topProspect: null,
           rivalries: [],
         },
+        tradeIntel: {
+          daysUntilDeadline: null,
+          deadlineMode: false,
+          activeTradeOffers: 0,
+          recentSummary: null,
+          recentTrades: [],
+        },
+        farmIntel: {
+          topProspects: [],
+          recentMoves: [],
+        },
+        storylinesToWatch: [],
         divisionStandings: [],
         pressRoom: {
           latest: null,
           feed: [],
           briefingCount: 0,
           newsCount: 0,
+          unreadCount: 0,
         },
+        thisDayInHistory: null,
       }),
-      getTradeDeadlineState: vi.fn().mockResolvedValue(null),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockResolvedValue({
         currentTeamId: 'nyy',

@@ -111,6 +111,93 @@ function calculateEra(stats: PlayerGameStats): number {
   return (stats.earnedRuns / (stats.ip / 3)) * 9;
 }
 
+function buildFatigueWarnings(
+  s: NonNullable<typeof state>,
+  mlbPlayers: GeneratedPlayer[],
+) {
+  return mlbPlayers
+    .filter((player) => player.position === 'SP')
+    .map((player) => {
+      if (player.pitcherAttributes == null) {
+        return null;
+      }
+      const stats = s.seasonState.playerSeasonStats.get(player.id);
+      if (!stats || stats.ip <= 0) {
+        return null;
+      }
+
+      const inningsPitched = stats.ip / 3;
+      const fatigueScore = Number((inningsPitched / Math.max(12, player.pitcherAttributes.stamina / 10)).toFixed(1));
+      return {
+        playerId: player.id,
+        name: `${player.firstName} ${player.lastName}`,
+        position: player.position,
+        fatigueScore,
+        summary: `${inningsPitched.toFixed(1)} IP against ${player.pitcherAttributes.stamina} stamina.`,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+    .sort((left, right) => right.fatigueScore - left.fatigueScore || left.name.localeCompare(right.name))
+    .slice(0, 3);
+}
+
+function mapProspectTrend(
+  trajectory: 'ahead_of_curve' | 'on_track' | 'below_expectations' | 'bust_risk' | undefined,
+): 'up' | 'steady' | 'down' {
+  switch (trajectory) {
+    case 'ahead_of_curve':
+      return 'up';
+    case 'below_expectations':
+    case 'bust_risk':
+      return 'down';
+    default:
+      return 'steady';
+  }
+}
+
+function buildRecentFarmMoves(
+  s: NonNullable<typeof state>,
+  pressRoomFeed: ReturnType<typeof buildPressRoomFeed>,
+) {
+  return pressRoomFeed
+    .filter((entry) =>
+      entry.relatedTeamIds.includes(s.userTeamId)
+      && (entry.category === 'development' || entry.category === 'roster_move')
+    )
+    .slice(0, 3)
+    .map((entry) => ({
+      id: entry.id,
+      headline: entry.headline,
+      timestamp: entry.timestamp,
+    }));
+}
+
+function buildThisDayInHistory(s: NonNullable<typeof state>) {
+  const archives = [...s.seasonArchive, ...s.archivedSeasons]
+    .sort((left, right) => right.season - left.season);
+  if (archives.length === 0) {
+    return null;
+  }
+
+  const archive = archives[(Math.max(1, s.day) - 1) % archives.length]!;
+  if ('userSummary' in archive) {
+    return {
+      season: archive.season,
+      headline: archive.userSummary?.playoffResult ?? `Season ${archive.season} checkpoint`,
+      summary: archive.userSummary?.storylines?.[0]
+        ?? `${archive.userSummary?.record ?? 'Unknown record'} · ${archive.userSummary?.playoffResult ?? 'Archived season'}`,
+    };
+  }
+
+  return {
+    season: archive.season,
+    headline: archive.championshipWon ? 'Won the World Series' : (archive.playoffResult ?? `Season ${archive.season} archive`),
+    summary: archive.userRecord
+      ? `${archive.userRecord.wins}-${archive.userRecord.losses}${archive.championshipWon ? ' · Title season' : ''}`
+      : 'Archived season summary.',
+  };
+}
+
 function buildDashboardSummary(s: NonNullable<typeof state>) {
   const fullStandings = s.seasonState.standings.getFullStandings();
   const userDivision = getTeamById(s.userTeamId)?.division ?? 'AL_EAST';
@@ -213,6 +300,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
     payroll: calculateTeamPayroll(s.userTeamId, getTeamPlayers(s.userTeamId)).totalPayroll,
     budget: getDifficultyAdjustedBudget(s, s.userTeamId),
   };
+  const fatigueWarnings = buildFatigueWarnings(s, mlbPlayers);
+  const tradeDeadlineState = buildTradeDeadlineStateView(s);
+  const farmReport = buildFarmReport(s.userTeamId);
 
   const expiringContracts = mlbPlayers
     .filter((player) => player.contract.years <= 1)
@@ -225,12 +315,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       salary: player.contract.annualSalary,
     }));
 
-  const topProspect = s.players
-    .filter((player) => player.teamId === s.userTeamId && player.rosterStatus !== 'MLB')
-    .sort((left, right) => right.overallRating - left.overallRating)[0];
-
   const pressRoomFeed = buildPressRoomFeed(s, 12);
   const briefingCount = pressRoomFeed.filter((entry) => entry.source === 'briefing').length;
+  const recentFarmMoves = buildRecentFarmMoves(s, pressRoomFeed);
   const rivalries = Array.from(getRivalriesForTeam(s, s.userTeamId).values())
     .sort((left, right) => right.intensity - left.intensity)
     .slice(0, 3)
@@ -324,6 +411,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       topPerformers: [...hitters, ...pitchers],
       injuredCount: injuredPlayers.length,
       nextReturnDays: injuredPlayers[0]?.daysRemaining ?? null,
+      fatigueWarnings,
       payroll: finances.payroll,
       budget: finances.budget,
       luxuryTax: calculateLuxuryTax(finances.payroll),
@@ -331,16 +419,41 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
     intel: {
       tradeInboxCount: s.tradeState.pendingOffers.length,
       expiringContracts,
-      topProspect: topProspect
+      topProspect: farmReport.topProspects[0]
         ? {
-          playerId: topProspect.id,
-          name: `${topProspect.firstName} ${topProspect.lastName}`,
-          position: topProspect.position,
-          readiness: topProspect.overallRating,
-          level: topProspect.rosterStatus,
+          playerId: farmReport.topProspects[0].playerId,
+          name: farmReport.topProspects[0].playerName,
+          position: farmReport.topProspects[0].position,
+          readiness: farmReport.topProspects[0].overallRating,
+          level: farmReport.topProspects[0].level,
         }
         : null,
       rivalries,
+    },
+    tradeIntel: {
+      daysUntilDeadline: tradeDeadlineState.daysUntilDeadline,
+      deadlineMode: tradeDeadlineState.deadlineMode,
+      activeTradeOffers: s.tradeState.pendingOffers.length,
+      recentSummary: tradeDeadlineState.recap?.analysisHeadline ?? tradeDeadlineState.ticker[0]?.summary ?? null,
+      recentTrades: tradeDeadlineState.ticker.slice(0, 3),
+    },
+    farmIntel: {
+      topProspects: farmReport.topProspects.slice(0, 3).map((prospect) => {
+        const latestReport = s.minorLeagueState.developmentReports
+          .filter((entry) => entry.playerId === prospect.playerId)
+          .sort((left, right) => right.season - left.season || right.month - left.month)[0];
+
+        return {
+          playerId: prospect.playerId,
+          name: prospect.playerName,
+          position: prospect.position,
+          level: prospect.levelLabel,
+          readiness: prospect.overallRating,
+          trend: mapProspectTrend(latestReport?.trajectory),
+          latestLineSummary: prospect.latestLineSummary,
+        };
+      }),
+      recentMoves: recentFarmMoves,
     },
     storylinesToWatch,
     divisionStandings: divisionView,
@@ -349,7 +462,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       latest: pressRoomFeed[0] ?? null,
       briefingCount,
       newsCount: pressRoomFeed.length - briefingCount,
+      unreadCount: pressRoomFeed.length,
     },
+    thisDayInHistory: buildThisDayInHistory(s),
   };
 }
 

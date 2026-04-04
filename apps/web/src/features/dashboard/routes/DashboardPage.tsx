@@ -1,25 +1,26 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Activity,
-  ArrowLeftRight,
-  Briefcase,
   ChevronRight,
-  DollarSign,
-  HeartPulse,
+  Flame,
+  History,
   Newspaper,
-  Radar,
-  Trophy,
-  Users,
+  Play,
 } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
-import { AnimatedNumber } from '@/shared/components/AnimatedNumber';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
+
+const StandingsCard = lazy(() => import('../components/StandingsCard'));
+const RosterHealthCard = lazy(() => import('../components/RosterHealthCard'));
+const TradeIntelCard = lazy(() => import('../components/TradeIntelCard'));
+const FarmReportCard = lazy(() => import('../components/FarmReportCard'));
+const FinancialCard = lazy(() => import('../components/FinancialCard'));
+const PressDigestCard = lazy(() => import('../components/PressDigestCard'));
 
 interface DashboardSummary {
   franchise: {
@@ -79,6 +80,13 @@ interface DashboardSummary {
     }>;
     injuredCount: number;
     nextReturnDays: number | null;
+    fatigueWarnings: Array<{
+      playerId: string;
+      name: string;
+      position: string;
+      fatigueScore: number;
+      summary: string;
+    }>;
     payroll: number;
     budget: number;
     luxuryTax: number;
@@ -107,6 +115,33 @@ interface DashboardSummary {
       historicalRecord: string;
     }>;
   };
+  tradeIntel: {
+    daysUntilDeadline: number | null;
+    deadlineMode: boolean;
+    activeTradeOffers: number;
+    recentSummary: string | null;
+    recentTrades: Array<{
+      id: string;
+      summary: string;
+      timestamp: string;
+    }>;
+  };
+  farmIntel: {
+    topProspects: Array<{
+      playerId: string;
+      name: string;
+      position: string;
+      level: string;
+      readiness: number;
+      trend: 'up' | 'steady' | 'down';
+      latestLineSummary: string | null;
+    }>;
+    recentMoves: Array<{
+      id: string;
+      headline: string;
+      timestamp: string;
+    }>;
+  };
   storylinesToWatch: Array<{
     playerId: string;
     playerName: string;
@@ -133,16 +168,13 @@ interface DashboardSummary {
     latest: PressRoomEntry | null;
     briefingCount: number;
     newsCount: number;
+    unreadCount: number;
   };
-}
-
-interface TradeDeadlineStateView {
-  daysUntilDeadline: number | null;
-  ticker: Array<{
-    id: string;
+  thisDayInHistory: {
+    season: number;
+    headline: string;
     summary: string;
-    timestamp: string;
-  }>;
+  } | null;
 }
 
 interface GMCareerView {
@@ -164,26 +196,13 @@ interface JobMarketView {
   }>;
 }
 
-function ownerTone(patience: number | undefined): string {
-  if (patience == null) return 'bg-dynasty-border';
-  if (patience >= 65) return 'bg-accent-success';
-  if (patience >= 40) return 'bg-accent-warning';
-  return 'bg-accent-danger';
-}
+type SimAction = 'day' | 'week' | 'month' | null;
 
-function chemistryTone(tier: string | undefined): string {
-  switch (tier) {
-    case 'electric':
-      return 'text-accent-success';
-    case 'connected':
-      return 'text-accent-info';
-    case 'tense':
-      return 'text-accent-warning';
-    case 'fractured':
-      return 'text-accent-danger';
-    default:
-      return 'text-dynasty-text';
-  }
+function ownerTone(value: number | undefined): string {
+  if (value == null) return 'bg-dynasty-border';
+  if (value >= 65) return 'bg-accent-success';
+  if (value >= 40) return 'bg-accent-warning';
+  return 'bg-accent-danger';
 }
 
 function fanTrendTone(trend: DashboardSummary['fanSentiment']['trend'] | undefined): string {
@@ -193,7 +212,7 @@ function fanTrendTone(trend: DashboardSummary['fanSentiment']['trend'] | undefin
     case 'falling':
       return 'text-accent-danger';
     default:
-      return 'text-dynasty-text';
+      return 'text-dynasty-textBright';
   }
 }
 
@@ -214,23 +233,61 @@ function storyPhaseTone(phase: DashboardSummary['storylinesToWatch'][number]['ph
   }
 }
 
+function storyPhaseProgress(phase: DashboardSummary['storylinesToWatch'][number]['phase']): number {
+  switch (phase) {
+    case 'setup':
+      return 25;
+    case 'rising':
+      return 50;
+    case 'climax':
+      return 80;
+    case 'resolution':
+      return 100;
+  }
+}
+
+function quickActionLabel(action: Exclude<SimAction, null>): string {
+  switch (action) {
+    case 'day':
+      return 'Sim Day';
+    case 'week':
+      return 'Sim Week';
+    case 'month':
+      return 'Sim Month';
+  }
+}
+
 function DashboardSkeleton() {
   return (
     <div className="space-y-6" data-testid="dashboard-loading">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-3">
-          <Skeleton className="h-9 w-48" />
-          <Skeleton className="h-4 w-56" />
+      <Skeleton className="h-32 rounded-xl" />
+      <Skeleton className="h-20 rounded-xl" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({ length: 6 }, (_, index) => (
+          <Skeleton key={index} className="h-72 rounded-xl" />
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <Skeleton className="h-72 rounded-xl" />
+        <div className="space-y-4">
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
         </div>
-        <Skeleton className="h-16 w-52 rounded-lg" />
       </div>
-      <Skeleton className="h-24 rounded-lg" />
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Skeleton className="h-80 rounded-lg" />
-        <Skeleton className="h-80 rounded-lg" />
-      </div>
-      <Skeleton className="h-64 rounded-lg" />
     </div>
+  );
+}
+
+function CardFallback({ title }: { title: string }) {
+  return (
+    <section className="rounded-xl border border-dynasty-border bg-dynasty-elevated p-4">
+      <div className="font-heading text-sm text-dynasty-textBright">{title}</div>
+      <div className="mt-4 space-y-3">
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-20 rounded-lg" />
+        <Skeleton className="h-20 rounded-lg" />
+      </div>
+    </section>
   );
 }
 
@@ -246,30 +303,29 @@ export default function DashboardPage() {
     activeSaveId,
     activeSaveSlot,
     initializeGame,
+    updateFromSim,
   } = useGameStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
   const [career, setCareer] = useState<GMCareerView | null>(null);
   const [jobMarket, setJobMarket] = useState<JobMarketView | null>(null);
   const [loading, setLoading] = useState(true);
   const [applyingTeamId, setApplyingTeamId] = useState<string | null>(null);
+  const [simAction, setSimAction] = useState<SimAction>(null);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
     setLoading(true);
     try {
-      const [nextSummary, nextDeadlineState, nextCareer, nextJobMarket] = await Promise.all([
+      const [nextSummary, nextCareer, nextJobMarket] = await Promise.all([
         worker.getDashboardSummary(),
-        worker.getTradeDeadlineState(),
         worker.getGMCareer(),
         worker.getJobMarket(),
       ]);
       setSummary((nextSummary ?? null) as DashboardSummary | null);
-      setDeadlineState((nextDeadlineState ?? null) as TradeDeadlineStateView | null);
       setCareer((nextCareer ?? null) as GMCareerView | null);
       setJobMarket((nextJobMarket ?? null) as JobMarketView | null);
-    } catch (err) {
-      console.error('Failed to fetch dashboard summary:', err);
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
     } finally {
       setLoading(false);
     }
@@ -278,11 +334,6 @@ export default function DashboardPage() {
   useEffect(() => {
     void fetchData();
   }, [fetchData, day, season, phase]);
-
-  const latestPressItem = summary?.pressRoom.latest ?? null;
-  const headlineFeed = summary?.pressRoom.feed.slice(0, 4) ?? [];
-  const ownerMeterValue = summary?.franchise.owner?.satisfaction ?? summary?.franchise.owner?.patience ?? 0;
-  const topRivalry = summary?.intel.rivalries?.[0] ?? null;
 
   const handleApplyForJob = useCallback(async (teamId: string) => {
     setApplyingTeamId(teamId);
@@ -310,587 +361,346 @@ export default function DashboardPage() {
     }
   }, [activeSaveId, activeSaveSlot, day, fetchData, initializeGame, phase, playerCount, season, summary, worker]);
 
+  const handleSim = useCallback(async (
+    action: Exclude<SimAction, null>,
+    run: () => Promise<{ season: number; day: number; phase: string; gamesPlayed?: number }>,
+  ) => {
+    setSimAction(action);
+    try {
+      const result = await run();
+      updateFromSim(result);
+      await fetchData();
+    } catch (error) {
+      console.error(`Failed to ${quickActionLabel(action).toLowerCase()}:`, error);
+    } finally {
+      setSimAction(null);
+    }
+  }, [fetchData, updateFromSim]);
+
+  const ownerMeterValue = summary?.franchise.owner?.satisfaction ?? summary?.franchise.owner?.patience ?? 0;
+  const topRivalry = summary?.intel.rivalries?.[0] ?? null;
+
   return (
     <PageShell loading={loading && summary == null} skeleton={<DashboardSkeleton />}>
       <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-dynasty-text">Front Office</h1>
-          <p className="font-data text-sm text-dynasty-muted">
-            Season {season} | Day {day} | {phase.toUpperCase()}
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-3 rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3">
-          <span className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Dynasty Score</span>
-          <span className="font-brand text-3xl text-accent-primary">{summary?.franchise.dynasty.grade ?? 'F'}</span>
-          <span className="font-data text-sm text-dynasty-muted">
-            <AnimatedNumber value={summary?.franchise.dynasty.score ?? 0} formatter={(value) => `${Math.round(value)} pts`} />
-          </span>
-        </div>
-      </div>
-
-      {phase === 'regular' && deadlineState?.daysUntilDeadline != null ? (
-        <section className="rounded-lg border border-accent-warning/30 bg-accent-warning/10 p-4">
-          <div className="font-heading text-sm text-accent-warning">
-            {deadlineState.daysUntilDeadline} days until trade deadline
-          </div>
-          <div className="mt-1 font-heading text-xs text-dynasty-muted">
-            The market is tightening. Monitor hot offers and the league wire from Trade Center.
-          </div>
-        </section>
-      ) : null}
-
-      {summary?.franchise.welcomeBriefingPending ? (
-        <section className="rounded-lg border border-accent-info/30 bg-accent-info/10 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">First Day Briefing</div>
-              <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">
-                Welcome, GM {summary.franchise.gmName}
-              </h2>
-              <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
-                Your roster hub is the fastest way to check the 26-man group, standings tracks the division race, and the draft room becomes live when June arrives. Difficulty is set to {summary.franchise.difficulty}.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link to="/roster" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
-                  Go to Roster
-                </Link>
-                <Link to="/league/standings" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
-                  Check Standings
-                </Link>
-                <Link to="/draft" className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated">
-                  Open Draft Room
-                </Link>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                void worker.dismissWelcomeBriefing().then(() => fetchData());
-              }}
-              className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
-            >
-              Dismiss
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {career?.jobSearchActive && (jobMarket?.availableJobs.length ?? 0) > 0 ? (
-        <section className="rounded-lg border border-accent-warning/40 bg-accent-warning/10 p-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Career Crossroads</div>
-              <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">Ownership made a change</h2>
-              <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
-                {career.lastFiredReason ?? 'Your last club moved on.'} Career mode keeps the save alive, but you need a new franchise before baseball operations can continue.
-              </p>
-              <div className="mt-3 font-data text-xs uppercase tracking-[0.18em] text-dynasty-muted">
-                Career record {career.overallRecord.wins}-{career.overallRecord.losses} · Reputation {career.reputation}
-              </div>
-            </div>
-            <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 font-heading text-sm text-dynasty-muted">
-              Select one opening to take over immediately.
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 xl:grid-cols-2">
-            {jobMarket?.availableJobs.map((job) => (
-              <div key={job.teamId} className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-heading text-base text-dynasty-textBright">{job.teamId.toUpperCase()}</div>
-                    <div className="mt-1 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
-                      {job.budget} · {job.expectations}
-                    </div>
-                  </div>
-                  <div className="font-data text-lg text-accent-primary">{job.attractiveness}</div>
-                </div>
-                <div className="mt-3 font-heading text-sm text-dynasty-muted">
-                  {job.difficulty}
-                </div>
-                <button
-                  type="button"
-                  disabled={applyingTeamId != null}
-                  onClick={() => {
-                    void handleApplyForJob(job.teamId);
-                  }}
-                  className="mt-4 rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
-                >
-                  {applyingTeamId === job.teamId ? 'Applying...' : `Take Over ${job.teamId.toUpperCase()}`}
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {summary?.franchise.status === 'fired' ? (
-        <section className="rounded-lg border border-accent-danger/40 bg-accent-danger/10 p-4">
-          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-danger">Dynasty Ended</div>
-          <div className="mt-2 font-heading text-sm text-dynasty-textBright">
-            {summary.franchise.endReason ?? 'Ownership ended this front office run.'}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Fan Mood</div>
-          <div className={`mt-2 font-data text-3xl ${fanTrendTone(summary?.fanSentiment?.trend)}`}>
-            <AnimatedNumber value={summary?.fanSentiment?.score ?? 50} formatter={(value) => `${Math.round(value)}`} />
-          </div>
-          <div className="mt-2 font-heading text-sm text-dynasty-muted">
-            {summary?.fanSentiment?.summary ?? 'Fans are waiting for the next stretch to define the season.'}
-          </div>
-        </div>
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Challenge Status</div>
-          {summary?.challenge ? (
-            <>
-              <div className="mt-2 font-heading text-lg text-dynasty-textBright">{summary.challenge.name}</div>
-              <div className="mt-2">
-                <ProgressFill
-                  toneClassName={summary.challenge.completed ? 'bg-accent-success' : summary.challenge.failed ? 'bg-accent-danger' : 'bg-accent-warning'}
-                  value={(summary.challenge.progress ?? 0) * 100}
-                />
-              </div>
-              <div className="mt-2 font-heading text-sm text-dynasty-muted">{summary.challenge.summary}</div>
-            </>
-          ) : (
-            <div className="mt-2 font-heading text-sm text-dynasty-muted">
-              No challenge scenario is active in this save.
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
-            <Newspaper className="h-4 w-4 text-accent-warning" />
-            Storylines to Watch
-          </h2>
-          <Link to="/press-room" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-            Press Room <ChevronRight className="h-3 w-3" />
-          </Link>
-        </div>
-        {(summary?.storylinesToWatch ?? []).length > 0 ? (
-          <div className="grid gap-3 xl:grid-cols-3">
-            {(summary?.storylinesToWatch ?? []).map((storyline) => (
-              <Link
-                key={`${storyline.playerId}-${storyline.arcType}`}
-                to={`/players/${storyline.playerId}`}
-                className="rounded border border-dynasty-border bg-dynasty-elevated p-4 transition-colors hover:border-accent-primary/40 hover:bg-dynasty-surface"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-heading text-sm text-dynasty-text">{storyline.playerName}</div>
-                  <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                    {storyline.teamId.toUpperCase()}
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded border border-dynasty-border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
-                    {labelize(storyline.arcType)}
-                  </span>
-                  <span className={`rounded border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide ${storyPhaseTone(storyline.phase)}`}>
-                    {storyline.phase}
-                  </span>
-                </div>
-                <div className="mt-3 font-heading text-sm text-dynasty-muted">
-                  {storyline.latestMilestone ?? `${storyline.playerName} is developing a new narrative thread.`}
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <EmptyStatePanel
-            className="border-dynasty-border/60 bg-dynasty-elevated"
-            description="Advance into a few monthly checkpoints and the league storylines will start to stack up here."
-            title="No active story arcs yet"
-          />
-        )}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Franchise Header</div>
-              <h2 className="mt-2 font-brand text-4xl text-dynasty-textBright">{summary?.franchise.teamName ?? 'Franchise'}</h2>
-              <div className="mt-2 flex flex-wrap items-center gap-3 font-data text-sm text-dynasty-muted">
+              <div className="font-data text-[11px] uppercase tracking-[0.2em] text-accent-info">Franchise Identity</div>
+              <h1 className="mt-3 font-brand text-4xl text-dynasty-textBright">{summary?.franchise.teamName ?? 'Front Office'}</h1>
+              <div className="mt-3 flex flex-wrap gap-3 font-heading text-sm text-dynasty-muted">
+                <span>GM {summary?.franchise.gmName ?? 'General Manager'}</span>
+                <span>Season {season}</span>
                 <span>{summary?.franchise.record ?? '0-0'}</span>
-                <span>{summary ? `${summary.franchise.divisionRank}${summary.franchise.divisionRank === 1 ? 'st' : 'th'} place` : 'Division race'}</span>
-                <span>{summary?.franchise.division ?? 'Division'}</span>
+                <span>{summary?.franchise.division ?? 'Division'} · {summary?.franchise.divisionRank ?? 1} place</span>
               </div>
             </div>
-            <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
-              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Owner Satisfaction</div>
-              <div className="mt-2 w-40">
-                <ProgressFill
-                  toneClassName={ownerTone(ownerMeterValue)}
-                  value={ownerMeterValue}
-                />
-              </div>
-              <div className="mt-2 font-heading text-sm text-dynasty-muted">
-                {summary?.franchise.owner?.summary ?? 'Owner state unavailable.'}
-              </div>
-              <div className="mt-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                GM Reputation {summary?.franchise.frontOffice?.reputation ?? 0}
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Clubhouse Chemistry</div>
-              <div className={`mt-2 font-data text-3xl ${chemistryTone(summary?.franchise.chemistry?.tier)}`}>
-                <AnimatedNumber value={summary?.franchise.chemistry?.score ?? 0} formatter={(value) => `${Math.round(value)}`} />
-              </div>
-              <div className="mt-2 font-heading text-sm text-dynasty-muted">
-                {summary?.franchise.chemistry?.summary ?? 'Chemistry has not formed yet.'}
-              </div>
-            </div>
-            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Playoff Odds</div>
-              <div className="mt-2 font-data text-3xl text-accent-primary">
-                <AnimatedNumber value={summary?.momentum.playoffProbability ?? 0} formatter={(value) => `${Math.round(value)}%`} />
-              </div>
-              <div className="mt-2 font-heading text-sm text-dynasty-muted">
-                Pace-based estimate against the current league cutoff.
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
-          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Season Momentum</div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <MomentumStat icon={<Activity className="h-4 w-4" />} label="Last 10" value={summary?.momentum.last10 ?? '0-0'} />
-            <MomentumStat icon={<Radar className="h-4 w-4" />} label="Streak" value={summary?.momentum.streak ?? 'W0'} />
-            <MomentumStat icon={<Trophy className="h-4 w-4" />} label="Run Diff" value={`${(summary?.momentum.runDifferential ?? 0) >= 0 ? '+' : ''}${summary?.momentum.runDifferential ?? 0}`} />
-            <MomentumStat icon={<Users className="h-4 w-4" />} label="Trend" value={`${summary?.momentum.last30RunDiffPerGame ?? 0}/g`} />
-          </div>
-          <div className="mt-4 rounded border border-dynasty-border bg-dynasty-elevated p-4">
-            <div className="font-heading text-sm text-dynasty-text">
-              Last 30 estimate: {summary?.momentum.last30RunDiffPerGame ?? 0}/g vs season {summary?.momentum.seasonRunDiffPerGame ?? 0}/g
-            </div>
-            <div className="mt-1 font-heading text-xs text-dynasty-muted">
-              Positive delta usually means the club is playing over its baseline.
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MetricPill label="Dynasty" value={summary?.franchise.dynasty.grade ?? 'F'} detail={`${summary?.franchise.dynasty.score ?? 0} pts`} />
+              <MetricPill label="Fan Mood" value={`${Math.round(summary?.fanSentiment.score ?? 50)}`} detail={summary?.fanSentiment.summary ?? 'Stable'} toneClassName={fanTrendTone(summary?.fanSentiment.trend)} />
+              <MetricPill label="Owner Heat" value={`${Math.round(ownerMeterValue)}`} detail={summary?.franchise.owner?.summary ?? 'Owner state unavailable'} progressToneClassName={ownerTone(ownerMeterValue)} progressValue={ownerMeterValue} />
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
-              <Users className="h-4 w-4 text-accent-success" />
-              Roster Snapshot
-            </h2>
-            <Link to="/roster" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-              Full roster <ChevronRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="grid gap-3">
-            {(summary?.roster.topPerformers ?? []).map((performer) => (
-              <div key={performer.playerId} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-heading text-sm text-dynasty-text">{performer.name}</div>
-                    <div className="font-data text-xs text-dynasty-muted">{performer.position} · {performer.label}</div>
-                  </div>
-                  <div className="flex h-8 items-end gap-1">
-                    {performer.sparklineValues.map((value, index) => (
-                      <span
-                        key={`${performer.playerId}-${index}`}
-                        className="w-3 rounded-sm bg-accent-primary/70"
-                        style={{ height: `${Math.max(8, Math.min(32, value * 20))}px` }}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-2 font-heading text-xs text-dynasty-muted">{performer.statLine}</div>
-              </div>
-            ))}
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                  <HeartPulse className="h-4 w-4 text-accent-danger" />
-                  Injuries
-                </div>
-                <div className="mt-2 font-data text-3xl text-dynasty-textBright">{summary?.roster.injuredCount ?? 0}</div>
-                <div className="mt-1 font-heading text-xs text-dynasty-muted">
-                  {summary?.roster.nextReturnDays != null ? `${summary.roster.nextReturnDays} days until next return` : 'No active injuries'}
-                </div>
-              </div>
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                  <DollarSign className="h-4 w-4 text-accent-warning" />
-                  Payroll
-                </div>
-                <div className="mt-2 font-data text-3xl text-dynasty-textBright">${summary?.roster.payroll.toFixed(1) ?? '0.0'}M</div>
-                <div className="mt-1 font-heading text-xs text-dynasty-muted">
-                  Budget ${summary?.roster.budget.toFixed(1) ?? '0.0'}M · Luxury tax ${summary?.roster.luxuryTax.toFixed(1) ?? '0.0'}M
-                </div>
-              </div>
+        <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <QuickActionButton
+                busy={simAction === 'day'}
+                label="Sim Day"
+                onClick={() => void handleSim('day', () => worker.simDay())}
+              />
+              <QuickActionButton
+                busy={simAction === 'week'}
+                label="Sim Week"
+                onClick={() => void handleSim('week', () => worker.simWeek())}
+              />
+              <QuickActionButton
+                busy={simAction === 'month'}
+                label="Sim Month"
+                onClick={() => void handleSim('month', () => worker.simMonth())}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-dynasty-border px-3 py-1 font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
+                {summary?.storylinesToWatch.length ?? 0} active story arcs
+              </span>
+              {summary?.challenge ? (
+                <span className="rounded-full border border-accent-warning/40 bg-accent-warning/10 px-3 py-1 font-data text-[11px] uppercase tracking-[0.16em] text-accent-warning">
+                  {summary.challenge.name}
+                </span>
+              ) : null}
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
-              <Briefcase className="h-4 w-4 text-accent-info" />
-              Front Office Intel
-            </h2>
-            <Link to="/trade" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-              Trade Center <ChevronRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="grid gap-3">
-            <IntelCard
-              icon={<ArrowLeftRight className="h-4 w-4 text-accent-info" />}
-              label="Trade Inbox"
-              value={String(summary?.intel.tradeInboxCount ?? 0)}
-              body={`${summary?.intel.tradeInboxCount ?? 0} pending offers waiting for a decision.`}
-            />
-            <IntelCard
-              icon={<DollarSign className="h-4 w-4 text-accent-warning" />}
-              label="Expiring Deals"
-              value={String(summary?.intel.expiringContracts.length ?? 0)}
-              body={(summary?.intel.expiringContracts ?? []).map((player) => `${player.name} (${player.position})`).join(', ') || 'No major expirations.'}
-            />
-            <IntelCard
-              icon={<Users className="h-4 w-4 text-accent-success" />}
-              label="Top Prospect"
-              value={summary?.intel.topProspect?.position ?? '--'}
-              body={summary?.intel.topProspect ? `${summary.intel.topProspect.name} at ${summary.intel.topProspect.level}` : 'System is light on near-ready talent.'}
-            />
-            <IntelCard
-              icon={<Briefcase className="h-4 w-4 text-accent-warning" />}
-              label="GM Reputation"
-              value={String(summary?.franchise.frontOffice?.reputation ?? 0)}
-              body={summary?.franchise.frontOffice?.summary ?? 'Front office reputation is still forming.'}
-            />
-            <IntelCard
-              icon={<Newspaper className="h-4 w-4 text-accent-danger" />}
-              label="Top Rivalry"
-              value={topRivalry ? `${topRivalry.intensity}` : '--'}
-              body={topRivalry
-                ? `${topRivalry.summary} ${topRivalry.currentSeasonRecord}`
-                : 'No rivalry has turned into a front-burner story yet.'}
-            />
-            {(summary?.intel.rivalries ?? []).length > 0 ? (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Rivalry Board</div>
-                <div className="mt-3 space-y-3">
-                  {(summary?.intel.rivalries ?? []).map((rivalry) => (
-                    <div key={rivalry.id} className="rounded border border-dynasty-border/70 px-3 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-heading text-sm text-dynasty-text">
-                          {summary?.franchise.abbreviation} vs {rivalry.opponentTeamId.toUpperCase()}
-                        </div>
-                        <div className="w-24">
-                          <ProgressFill toneClassName="bg-accent-warning" value={rivalry.intensity} />
-                        </div>
+        {summary?.franchise.welcomeBriefingPending ? (
+          <section className="rounded-xl border border-accent-info/30 bg-accent-info/10 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">First Day Briefing</div>
+                <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">Welcome, GM {summary.franchise.gmName}</h2>
+                <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
+                  The dashboard is now your live intelligence grid: standings, health, trade market, farm pulse, finance, and press coverage in one pass.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void worker.dismissWelcomeBriefing().then(() => fetchData());
+                }}
+                className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+              >
+                Dismiss
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {career?.jobSearchActive && (jobMarket?.availableJobs.length ?? 0) > 0 ? (
+          <section className="rounded-xl border border-accent-warning/40 bg-accent-warning/10 p-5">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Career Crossroads</div>
+                <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">Ownership made a change</h2>
+                <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
+                  {career.lastFiredReason ?? 'Your last club moved on.'} Career mode keeps the dynasty alive, but you need a new front office to continue.
+                </p>
+              </div>
+              <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 font-heading text-sm text-dynasty-muted">
+                Choose one opening to take over immediately.
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 xl:grid-cols-2">
+              {jobMarket?.availableJobs.map((job) => (
+                <div key={job.teamId} className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-heading text-base text-dynasty-textBright">{job.teamId.toUpperCase()}</div>
+                      <div className="mt-1 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+                        {job.budget} · {job.expectations}
                       </div>
-                      <div className="mt-2 font-heading text-xs text-dynasty-muted">{rivalry.currentSeasonRecord}</div>
-                      <div className="mt-1 font-heading text-xs text-dynasty-muted">{rivalry.historicalRecord}</div>
                     </div>
-                  ))}
+                    <div className="font-data text-lg text-accent-primary">{job.attractiveness}</div>
+                  </div>
+                  <div className="mt-3 font-heading text-sm text-dynasty-muted">{job.difficulty}</div>
+                  <button
+                    type="button"
+                    disabled={applyingTeamId != null}
+                    onClick={() => {
+                      void handleApplyForJob(job.teamId);
+                    }}
+                    className="mt-4 rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
+                  >
+                    {applyingTeamId === job.teamId ? 'Applying...' : `Take Over ${job.teamId.toUpperCase()}`}
+                  </button>
                 </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </section>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
-              <ArrowLeftRight className="h-4 w-4 text-accent-warning" />
-              League Trade Ticker
-            </h2>
-            <Link to="/trade" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-              Trade Center <ChevronRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="space-y-3 p-4">
-            {(deadlineState?.ticker ?? []).length > 0 ? deadlineState?.ticker.map((item) => (
-              <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
-                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">{item.timestamp}</div>
-                <div className="mt-2 font-heading text-sm text-dynasty-text">{item.summary}</div>
+        {summary?.franchise.status === 'fired' ? (
+          <section className="rounded-xl border border-accent-danger/40 bg-accent-danger/10 p-4">
+            <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-danger">Dynasty Ended</div>
+            <div className="mt-2 font-heading text-sm text-dynasty-textBright">
+              {summary.franchise.endReason ?? 'Ownership ended this front office run.'}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <Suspense fallback={<CardFallback title="Standings" />}>
+            <StandingsCard standings={summary?.divisionStandings ?? []} userTeamId={userTeamId} />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Roster Health" />}>
+            <RosterHealthCard
+              injuredCount={summary?.roster.injuredCount ?? 0}
+              nextReturnDays={summary?.roster.nextReturnDays ?? null}
+              fatigueWarnings={summary?.roster.fatigueWarnings ?? []}
+            />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Trade Intel" />}>
+            <TradeIntelCard
+              daysUntilDeadline={summary?.tradeIntel.daysUntilDeadline ?? null}
+              activeTradeOffers={summary?.tradeIntel.activeTradeOffers ?? 0}
+              recentSummary={summary?.tradeIntel.recentSummary ?? null}
+              recentTrades={summary?.tradeIntel.recentTrades ?? []}
+            />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Farm Report" />}>
+            <FarmReportCard
+              prospects={summary?.farmIntel.topProspects ?? []}
+              recentMoves={summary?.farmIntel.recentMoves ?? []}
+            />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Financials" />}>
+            <FinancialCard
+              payroll={summary?.roster.payroll ?? 0}
+              budget={summary?.roster.budget ?? 0}
+              luxuryTax={summary?.roster.luxuryTax ?? 0}
+              annualBudget={summary?.franchise.owner?.annualBudget}
+              payrollCap={summary?.franchise.owner?.payrollCap}
+            />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Press Digest" />}>
+            <PressDigestCard
+              feed={summary?.pressRoom.feed ?? []}
+              unreadCount={summary?.pressRoom.unreadCount ?? 0}
+            />
+          </Suspense>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Newspaper className="h-4 w-4 text-accent-warning" />
+                <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Active Storylines</h2>
               </div>
-            )) : (
+              <Link to="/press-room" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+                Press Room <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            {(summary?.storylinesToWatch ?? []).length > 0 ? (
+              <div className="space-y-3">
+                {(summary?.storylinesToWatch ?? []).map((storyline) => (
+                  <Link
+                    key={`${storyline.playerId}-${storyline.arcType}`}
+                    to={`/players/${storyline.playerId}`}
+                    className="block rounded-lg border border-dynasty-border/70 bg-dynasty-elevated p-4 transition-colors hover:border-accent-primary/40 hover:bg-dynasty-surface"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-heading text-sm text-dynasty-textBright">{storyline.playerName}</div>
+                      <span className={`rounded border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide ${storyPhaseTone(storyline.phase)}`}>
+                        {storyline.phase}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
+                      <span>{labelize(storyline.arcType)}</span>
+                      <span>{storyline.teamId.toUpperCase()}</span>
+                    </div>
+                    <div className="mt-3">
+                      <ProgressFill toneClassName="bg-accent-primary" value={storyPhaseProgress(storyline.phase)} />
+                    </div>
+                    <div className="mt-3 font-heading text-sm text-dynasty-muted">
+                      {storyline.latestMilestone ?? `${storyline.playerName} is building a new arc.`}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
               <EmptyStatePanel
-                description="When rivals start moving pieces, the league wire will light up here."
-                title="No completed trades on the wire yet"
+                className="border-dynasty-border/60 bg-dynasty-elevated"
+                description="Advance a few checkpoints and the dynasty will start generating real narrative momentum."
+                title="No active story arcs yet"
               />
             )}
-          </div>
-        </div>
+          </section>
 
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-            <h2 className="font-heading text-sm font-semibold text-dynasty-text">Division Standings</h2>
-            <Link to="/standings" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-              Full standings <ChevronRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                <th className="px-4 py-2 text-left font-heading">Team</th>
-                <th className="px-2 py-2 text-right font-data">W</th>
-                <th className="px-2 py-2 text-right font-data">L</th>
-                <th className="px-2 py-2 text-right font-data">PCT</th>
-                <th className="px-2 py-2 text-right font-data">GB</th>
-                <th className="px-2 py-2 text-right font-data">STRK</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(summary?.divisionStandings ?? []).map((team) => (
-                <tr key={team.teamId} className={`border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated ${team.teamId === userTeamId ? 'bg-accent-primary/10' : ''}`}>
-                  <td className="px-4 py-2 font-heading font-medium text-dynasty-text">{team.abbreviation}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.wins}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.losses}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{team.pct}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{team.gamesBack === 0 ? '-' : team.gamesBack.toFixed(1)}</td>
-                  <td className={`px-2 py-2 text-right font-data ${team.streak.startsWith('W') ? 'text-accent-success' : 'text-accent-danger'}`}>{team.streak}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
-              <Newspaper className="h-4 w-4 text-accent-warning" />
-              Press Room
-            </h2>
-            <Link to="/press-room" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-              Open archive <ChevronRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="space-y-4 p-4">
-            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${
-                  latestPressItem?.tag === 'BREAKING'
-                    ? 'border-accent-danger/50 bg-accent-danger/10 text-accent-danger'
-                    : latestPressItem?.tag === 'RUMOR'
-                      ? 'border-accent-warning/50 bg-accent-warning/10 text-accent-warning'
-                      : 'border-accent-info/40 bg-accent-info/10 text-accent-info'
-                }`}>
-                  {latestPressItem?.tag ?? 'RECAP'}
-                </span>
-                {latestPressItem && (
-                  <span className="font-data text-[11px] uppercase text-dynasty-muted">
-                    {latestPressItem.category.replace('_', ' ')}
-                  </span>
-                )}
+          <div className="space-y-4">
+            <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
+              <div className="flex items-center gap-2">
+                <Flame className="h-4 w-4 text-accent-danger" />
+                <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Rivalry Watch</h2>
               </div>
-              <div className="mt-3 font-heading text-lg text-dynasty-textBright">{latestPressItem?.headline ?? 'No archived items yet'}</div>
-              <div className="mt-2 font-heading text-sm text-dynasty-muted">{latestPressItem?.body ?? 'The Press Room will populate as the season creates storylines.'}</div>
-              {latestPressItem && (
-                <div className="mt-3 font-data text-[11px] uppercase text-dynasty-muted">
-                  {latestPressItem.source} · {latestPressItem.category.replace('_', ' ')} · {latestPressItem.timestamp}
+
+              {topRivalry ? (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <div className="font-heading text-base text-dynasty-textBright">
+                      {summary?.franchise.abbreviation} vs {topRivalry.opponentTeamId.toUpperCase()}
+                    </div>
+                    <div className="mt-1 font-heading text-sm text-dynasty-muted">{topRivalry.summary}</div>
+                  </div>
+                  <ProgressFill toneClassName="bg-accent-warning" value={topRivalry.intensity} />
+                  <div className="font-heading text-xs text-dynasty-muted">{topRivalry.currentSeasonRecord}</div>
+                  <div className="font-heading text-xs text-dynasty-muted">{topRivalry.historicalRecord}</div>
+                </div>
+              ) : (
+                <div className="mt-4 font-heading text-sm text-dynasty-muted">
+                  No rivalry has reached the front-burner tier yet.
                 </div>
               )}
-            </div>
-            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="font-heading text-sm text-dynasty-text">Today&apos;s Headlines</div>
-                <Link to="/press-room" className="font-heading text-xs text-accent-info hover:text-accent-primary">
-                  Read more
-                </Link>
+            </section>
+
+            <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-accent-info" />
+                <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">This Day in History</h2>
               </div>
-              <div className="mt-3 space-y-3">
-                {headlineFeed.length > 0 ? headlineFeed.map((entry) => (
-                  <Link
-                    key={entry.id}
-                    to="/press-room"
-                    className="block rounded border border-dynasty-border/60 px-3 py-2 transition-colors hover:border-accent-primary/40 hover:bg-dynasty-surface"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`rounded border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide ${
-                        entry.tag === 'BREAKING'
-                          ? 'border-accent-danger/50 text-accent-danger'
-                          : entry.tag === 'RUMOR'
-                            ? 'border-accent-warning/50 text-accent-warning'
-                            : 'border-dynasty-border text-dynasty-muted'
-                      }`}>
-                        {entry.tag}
-                      </span>
-                      <span className="font-data text-[11px] uppercase text-dynasty-muted">{entry.timestamp}</span>
-                    </div>
-                    <div className="mt-1 font-heading text-sm text-dynasty-text">{entry.headline}</div>
-                  </Link>
-                )) : (
-                  <EmptyStatePanel
-                    className="border-dynasty-border/60 bg-dynasty-surface"
-                    description="Advance the sim to generate the next cycle of headlines and briefing notes."
-                    title="No headlines yet"
-                  />
-                )}
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <IntelCard
-                icon={<Briefcase className="h-4 w-4 text-accent-info" />}
-                label="Briefing Desk"
-                value={String(summary?.pressRoom.briefingCount ?? 0)}
-                body="Front-office items in the archive."
-              />
-              <IntelCard
-                icon={<Newspaper className="h-4 w-4 text-accent-warning" />}
-                label="News Wire"
-                value={String(summary?.pressRoom.newsCount ?? 0)}
-                body="League headlines available right now."
-              />
-            </div>
+
+              {summary?.thisDayInHistory ? (
+                <div className="mt-4">
+                  <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">Season {summary.thisDayInHistory.season}</div>
+                  <div className="mt-2 font-heading text-base text-dynasty-textBright">{summary.thisDayInHistory.headline}</div>
+                  <div className="mt-2 font-heading text-sm text-dynasty-muted">{summary.thisDayInHistory.summary}</div>
+                </div>
+              ) : (
+                <div className="mt-4 font-heading text-sm text-dynasty-muted">
+                  Archived season history will appear here once the dynasty has real mileage.
+                </div>
+              )}
+            </section>
           </div>
-        </div>
-      </section>
+        </section>
       </div>
     </PageShell>
   );
 }
 
-function MomentumStat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function MetricPill({
+  label,
+  value,
+  detail,
+  toneClassName = 'text-dynasty-textBright',
+  progressToneClassName,
+  progressValue,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  toneClassName?: string;
+  progressToneClassName?: string;
+  progressValue?: number;
+}) {
   return (
-    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-      <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-2 font-data text-3xl text-dynasty-textBright">{value}</div>
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+      <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">{label}</div>
+      <div className={`mt-2 font-data text-2xl ${toneClassName}`}>{value}</div>
+      {progressToneClassName && progressValue != null ? (
+        <div className="mt-2">
+          <ProgressFill toneClassName={progressToneClassName} value={progressValue} />
+        </div>
+      ) : null}
+      <div className="mt-2 font-heading text-xs text-dynasty-muted">{detail}</div>
     </div>
   );
 }
 
-function IntelCard({
-  icon,
+function QuickActionButton({
+  busy,
   label,
-  value,
-  body,
+  onClick,
 }: {
-  icon: ReactNode;
+  busy: boolean;
   label: string;
-  value: string;
-  body: string;
+  onClick: () => void;
 }) {
   return (
-    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-      <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-2 font-data text-3xl text-dynasty-textBright">{value}</div>
-      <div className="mt-2 font-heading text-xs text-dynasty-muted">{body}</div>
-    </div>
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <Play className="h-3.5 w-3.5" />
+      {busy ? `${label}...` : label}
+    </button>
   );
 }
