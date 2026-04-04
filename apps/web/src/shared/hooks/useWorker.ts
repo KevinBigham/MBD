@@ -391,6 +391,8 @@ export function useWorker() {
   const getDashboardSummary = useCallback(async () => api.getDashboardSummary(), [api]);
   const getGamePlayByPlay = useCallback(async (gameIndex: number) => api.getGamePlayByPlay(gameIndex), [api]);
   const getRecentGameRecaps = useCallback(async (count?: number) => api.getRecentGameRecaps(count), [api]);
+  const getSeasonRecap = useCallback(async (season?: number) => api.getSeasonRecap(season), [api]);
+  const getOffseasonHeadline = useCallback(async (season?: number) => api.getOffseasonHeadline(season), [api]);
   const getMonthlyPulse = useCallback(async () => api.getMonthlyPulse(), [api]);
   const getCeremonyState = useCallback(async () => api.getCeremonyState(), [api]);
   const getTickerFeed = useCallback(async (limit?: number) => api.getTickerFeed(limit), [api]);
@@ -493,6 +495,10 @@ export function useWorker() {
   );
   const getPromotionCandidates = useCallback(
     async (teamId?: string) => api.getPromotionCandidates(teamId),
+    [api],
+  );
+  const getProspectPipeline = useCallback(
+    async (teamId?: string) => api.getProspectPipeline(teamId),
     [api],
   );
   const getExtensionCandidates = useCallback(
@@ -680,12 +686,12 @@ export function useWorker() {
     getState,
     exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,
     getStandings, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getAdvancedStats,
-    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
+    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getSeasonRecap, getOffseasonHeadline, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
-    getPromotionCandidates, getExtensionCandidates, getExtensionOffer, negotiateExtension,
+    getPromotionCandidates, getProspectPipeline, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,
     getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
     getCoachingStaff, getCoachFreeAgents, getCoachMarket, hireCoach, fireCoach,

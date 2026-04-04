@@ -55,6 +55,10 @@ export {
   generateDebutFlashback,
   generatePressConference,
 } from './farmNarratives.js';
+export {
+  generateOffseasonHeadline,
+  generateSeasonRecapNarrative,
+} from './offseasonRecap.js';
 
 export type {
   // Types

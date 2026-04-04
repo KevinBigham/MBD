@@ -80,6 +80,13 @@ import {
   buildTradeOffersView,
 } from './sim.worker.trade.js';
 import {
+  buildSeasonRecapView,
+  buildOffseasonHeadlineView,
+} from './sim.worker.seasonNarrative.js';
+import {
+  buildProspectPipelineView,
+} from './sim.worker.pipeline.js';
+import {
   buildDraftCommentaryView,
   buildDraftPostDraftGradesView,
   buildDraftProspectReactionView,
@@ -1193,6 +1200,11 @@ export const queryApi = {
     return buildAffiliateOverview(teamId ?? s.userTeamId);
   },
 
+  getProspectPipeline(teamId?: string) {
+    const s = requireState();
+    return buildProspectPipelineView(s, teamId ?? s.userTeamId);
+  },
+
   getAffiliateBoxScore(boxScoreId: string) {
     return getAffiliateBoxScoreView(boxScoreId);
   },
@@ -1532,6 +1544,14 @@ export const queryApi = {
 
   getOffseasonState() {
     return buildOffseasonStateView(requireState());
+  },
+
+  getSeasonRecap(season?: number) {
+    return buildSeasonRecapView(requireState(), season);
+  },
+
+  getOffseasonHeadline(season?: number) {
+    return buildOffseasonHeadlineView(requireState(), season);
   },
 
   getNews(limit: number = 50) {

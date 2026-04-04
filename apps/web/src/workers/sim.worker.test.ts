@@ -132,6 +132,23 @@ interface AffiliateBoxScoreView {
   summary: string;
 }
 
+interface ProspectPipelineView {
+  health: {
+    score: number;
+    label: string;
+    readyNow: number;
+    nextWave: number;
+    longTerm: number;
+    summary: string;
+  };
+  prospects: Array<{
+    playerId: string;
+    playerName: string;
+    eta: string;
+    trend: string;
+  }>;
+}
+
 interface RecentGameRecapView {
   gameIndex: number;
   recap: string;
@@ -169,6 +186,17 @@ interface GamePlayByPlayView {
     awayTeamId: string;
     innings: number;
   };
+}
+
+interface SeasonRecapView {
+  season: number;
+  recap: string;
+  storylines: string[];
+}
+
+interface OffseasonHeadlineView {
+  season: number;
+  headline: string;
 }
 
 interface DraftCommentaryView {
@@ -3230,6 +3258,126 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
     expect(detailFirst?.highlights.length).toBeGreaterThan(0);
     expect(detailFirst?.boxScore.innings).toBeGreaterThanOrEqual(9);
+  });
+
+  it('builds prospect pipeline ETA buckets plus offseason narrative reads without advancing rng state', () => {
+    startGame(3558, 'nyy');
+    const state = requireState();
+    const workerApi = api as typeof api & {
+      getProspectPipeline: (teamId?: string) => ProspectPipelineView;
+      getSeasonRecap: (season?: number) => SeasonRecapView | null;
+      getOffseasonHeadline: (season?: number) => OffseasonHeadlineView | null;
+    };
+
+    const readyProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AAA')!;
+    const nextWaveProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+    const longViewProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'A')!;
+
+    readyProspect.overallRating = 62;
+    readyProspect.ceiling = 70;
+    nextWaveProspect.overallRating = 55;
+    nextWaveProspect.ceiling = 67;
+    longViewProspect.age = 20;
+    longViewProspect.overallRating = 47;
+    longViewProspect.ceiling = 72;
+
+    state.prospectBonds.push({
+      prospectId: readyProspect.id,
+      draftedSeason: state.season - 1,
+      debutSeason: null,
+      currentLevel: 'AAA',
+      bondStrength: 41,
+      milestones: ['Drafted Round 1, 4'],
+      loyaltyModifier: 0.41,
+    });
+    state.minorLeagueState.minorLeagueStatHistory = [[readyProspect.id, [{
+      season: state.season,
+      level: 'AAA',
+      gamesPlayed: 70,
+      pa: 282,
+      hits: 88,
+      hr: 18,
+      rbi: 54,
+      avg: 0.314,
+      ip: 0,
+      era: 0,
+      k: 0,
+      bb: 31,
+    }]]];
+    state.seasonHistory.push({
+      season: state.season,
+      championTeamId: 'nyy',
+      runnerUpTeamId: 'lad',
+      worldSeriesRecord: '4-2',
+      summary: 'The Yankees finished the job and closed the season on top.',
+      awards: [],
+      keyMoments: ['Deadline blockbuster reshaped the bullpen'],
+      statLeaders: {
+        hr: [],
+        rbi: [],
+        avg: [],
+        era: [],
+        k: [],
+        w: [],
+      },
+      notableRetirements: [],
+      blockbusterTrades: [],
+      userSeason: {
+        teamId: 'nyy',
+        record: '97-65',
+        playoffResult: 'Won the World Series',
+        storylines: ['Judge delivered in the postseason'],
+      },
+    });
+    state.seasonArchive.push({
+      season: state.season,
+      standings: [],
+      playoffSeries: [],
+      awards: [],
+      statLeaders: {
+        hr: [],
+        rbi: [],
+        avg: [],
+        era: [],
+        k: [],
+        w: [],
+      },
+      transactions: [{
+        headline: 'Deadline blockbuster reshaped the bullpen',
+        summary: 'New York added Jordan Reliever and stabilized the late innings.',
+        playerIds: ['Jordan Reliever'],
+        teamIds: ['nyy', 'sea'],
+        impactScore: 88,
+      }],
+      draftClass: [],
+      financials: [],
+      userSummary: {
+        teamId: 'nyy',
+        record: '97-65',
+        playoffResult: 'Won the World Series',
+        storylines: ['Judge delivered in the postseason'],
+      },
+      timelineEvents: ['Judge delivered in the postseason'],
+    });
+
+    const rngCallsBefore = requireState().rng.getState().callCount;
+    const firstPipeline = workerApi.getProspectPipeline('nyy');
+    const secondPipeline = workerApi.getProspectPipeline('nyy');
+    const firstRecap = workerApi.getSeasonRecap(state.season);
+    const secondRecap = workerApi.getSeasonRecap(state.season);
+    const firstHeadline = workerApi.getOffseasonHeadline(state.season);
+    const secondHeadline = workerApi.getOffseasonHeadline(state.season);
+
+    expect(secondPipeline).toEqual(firstPipeline);
+    expect(secondRecap).toEqual(firstRecap);
+    expect(secondHeadline).toEqual(firstHeadline);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(firstPipeline.health.label.length).toBeGreaterThan(0);
+    expect(firstPipeline.prospects.find((prospect) => prospect.playerId === readyProspect.id)?.eta).toBe('Ready now');
+    expect(firstPipeline.prospects.find((prospect) => prospect.playerId === nextWaveProspect.id)?.eta).toBe('Next season');
+    expect(firstPipeline.prospects.find((prospect) => prospect.playerId === longViewProspect.id)?.eta).toBe('2 seasons');
+    expect(firstRecap?.recap).toContain('97-65');
+    expect(firstHeadline?.headline).toContain('World Series');
   });
 
   it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {

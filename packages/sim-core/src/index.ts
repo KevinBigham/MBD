@@ -605,6 +605,8 @@ export {
   detectBreakoutCountdowns,
   generateDebutFlashback,
   generatePressConference,
+  generateOffseasonHeadline,
+  generateSeasonRecapNarrative,
 } from './narrative/index.js';
 export type {
   NewsPriority,

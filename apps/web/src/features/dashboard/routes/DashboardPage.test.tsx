@@ -367,6 +367,8 @@ describe('DashboardPage', () => {
       }),
       getRecentGameRecaps: vi.fn().mockResolvedValue(recentRecaps),
       getGamePlayByPlay: vi.fn().mockImplementation(async (gameIndex: number) => playByPlayByGameIndex.get(gameIndex) ?? null),
+      getSeasonRecap: vi.fn().mockResolvedValue(null),
+      getOffseasonHeadline: vi.fn().mockResolvedValue(null),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockResolvedValue({
         currentTeamId: 'nyy',
@@ -454,6 +456,8 @@ describe('DashboardPage', () => {
       getDashboardSummary: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       getRecentGameRecaps: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       getGamePlayByPlay: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+      getSeasonRecap: vi.fn().mockImplementation(() => new Promise(() => undefined)),
+      getOffseasonHeadline: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockImplementation(() => new Promise(() => undefined)),
       getJobMarket: vi.fn().mockImplementation(() => new Promise(() => undefined)),
@@ -570,6 +574,8 @@ describe('DashboardPage', () => {
       }),
       getRecentGameRecaps: vi.fn().mockResolvedValue([]),
       getGamePlayByPlay: vi.fn().mockResolvedValue(null),
+      getSeasonRecap: vi.fn().mockResolvedValue(null),
+      getOffseasonHeadline: vi.fn().mockResolvedValue(null),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockResolvedValue({
         currentTeamId: 'nyy',
@@ -621,5 +627,149 @@ describe('DashboardPage', () => {
       userTeamId: 'bos',
       teamName: 'Boston Red Sox',
     }));
+  });
+
+  it('renders an offseason recap panel from dedicated narrative queries', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 165,
+      phase: 'offseason',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      playerCount: 780,
+      gamesPlayed: 162,
+      isSimulating: false,
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getDashboardSummary: vi.fn().mockResolvedValue({
+        franchise: {
+          teamName: 'New York Yankees',
+          abbreviation: 'NYY',
+          gmName: 'Alex Rivera',
+          difficulty: 'hard',
+          welcomeBriefingPending: false,
+          season: 4,
+          record: '94-68',
+          division: 'AL_EAST',
+          divisionRank: 1,
+          dynasty: { score: 228, grade: 'A-' },
+          status: 'active',
+          endReason: null,
+          owner: null,
+          chemistry: null,
+          frontOffice: {
+            reputation: 68,
+            summary: 'The front office is coming off a strong October.',
+          },
+        },
+        fanSentiment: {
+          score: 70,
+          trend: 'rising',
+          summary: 'The city is waiting on the next move.',
+        },
+        challenge: null,
+        momentum: {
+          last10: '7-3',
+          streak: 'W2',
+          runDifferential: 0,
+          seasonRunDiffPerGame: 0.55,
+          last30RunDiffPerGame: 0.63,
+          playoffProbability: 0,
+        },
+        roster: {
+          topPerformers: [],
+          injuredCount: 0,
+          nextReturnDays: null,
+          fatigueWarnings: [],
+          payroll: 212.4,
+          budget: 235,
+          luxuryTax: 16.2,
+        },
+        intel: {
+          tradeInboxCount: 0,
+          expiringContracts: [],
+          topProspect: null,
+          rivalries: [],
+        },
+        tradeIntel: {
+          daysUntilDeadline: null,
+          deadlineMode: false,
+          activeTradeOffers: 0,
+          recentSummary: null,
+          recentTrades: [],
+        },
+        farmIntel: {
+          topProspects: [],
+          recentMoves: [],
+        },
+        storylinesToWatch: [],
+        divisionStandings: [],
+        pressRoom: {
+          latest: null,
+          feed: [],
+          briefingCount: 0,
+          newsCount: 0,
+          unreadCount: 0,
+        },
+        thisDayInHistory: null,
+      }),
+      getRecentGameRecaps: vi.fn().mockResolvedValue([]),
+      getGamePlayByPlay: vi.fn().mockResolvedValue(null),
+      getSeasonRecap: vi.fn().mockResolvedValue({
+        season: 4,
+        recap: 'A 94-68 season and a deep October run kept the Yankees in the center of the story.',
+        storylines: [
+          'Juan Soto anchored the lineup',
+          'Deadline pitching depth changed the staff mix',
+        ],
+      }),
+      getOffseasonHeadline: vi.fn().mockResolvedValue({
+        season: 4,
+        headline: 'October left New York with a live title window',
+      }),
+      dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
+      getGMCareer: vi.fn().mockResolvedValue({
+        currentTeamId: 'nyy',
+        reputation: 68,
+        overallRecord: { wins: 312, losses: 254 },
+        careerHistory: [{ teamId: 'nyy', firedSeason: null }],
+        jobSearchActive: false,
+        lastFiredReason: null,
+      }),
+      getJobMarket: vi.fn().mockResolvedValue({
+        availableJobs: [],
+      }),
+      applyForJob: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain('Offseason Outlook');
+    expect(container.textContent).toContain('October left New York with a live title window');
+    expect(container.textContent).toContain('A 94-68 season and a deep October run kept the Yankees in the center of the story.');
   });
 });

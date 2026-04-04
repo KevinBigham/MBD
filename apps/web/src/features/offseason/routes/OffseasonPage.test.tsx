@@ -71,6 +71,18 @@ function buildWorkerMock(overrides: Record<string, unknown> = {}) {
   return {
     isReady: true,
     getOffseasonState: vi.fn().mockResolvedValue(buildOffseasonState()),
+    getSeasonRecap: vi.fn().mockResolvedValue({
+      season: 4,
+      recap: 'A 94-68 run and a deep October push kept the contention window open.',
+      storylines: [
+        'Juan Soto anchored the lineup',
+        'Deadline pitching depth changed the staff mix',
+      ],
+    }),
+    getOffseasonHeadline: vi.fn().mockResolvedValue({
+      season: 4,
+      headline: 'October left New York with a live title window',
+    }),
     advanceOffseason: vi.fn(),
     skipOffseasonPhase: vi.fn(),
     toggleRule5Protection: vi.fn().mockResolvedValue({ success: true }),
@@ -156,6 +168,8 @@ describe('OffseasonPage', () => {
     expect(container.textContent).toContain('Free Agency');
     expect(container.textContent).toContain('Juan Soto signed for $12.4M/yr (1 year)');
     expect(container.textContent).toContain('Corbin Burnes signed with Boston Red Sox for $28.5M/yr (5 years)');
+    expect(container.textContent).toContain('October left New York with a live title window');
+    expect(container.textContent).toContain('A 94-68 run and a deep October push kept the contention window open.');
     expect(container.innerHTML).toContain('accent-success');
     expect(container.innerHTML).toContain('accent-warning');
   });

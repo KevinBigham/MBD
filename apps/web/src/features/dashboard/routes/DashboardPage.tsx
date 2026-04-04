@@ -11,6 +11,7 @@ import { Skeleton } from '@mbd/ui';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
+import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
@@ -199,6 +200,17 @@ interface JobMarketView {
   }>;
 }
 
+interface SeasonRecapView {
+  season: number;
+  recap: string;
+  storylines: string[];
+}
+
+interface OffseasonHeadlineView {
+  season: number;
+  headline: string;
+}
+
 type SimAction = 'day' | 'week' | 'month' | null;
 
 function ownerTone(value: number | undefined): string {
@@ -311,6 +323,8 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [career, setCareer] = useState<GMCareerView | null>(null);
   const [jobMarket, setJobMarket] = useState<JobMarketView | null>(null);
+  const [seasonRecap, setSeasonRecap] = useState<SeasonRecapView | null>(null);
+  const [offseasonHeadline, setOffseasonHeadline] = useState<OffseasonHeadlineView | null>(null);
   const [recentRecaps, setRecentRecaps] = useState<GameRecapView[]>([]);
   const [selectedGameIndex, setSelectedGameIndex] = useState<number | null>(null);
   const [selectedGameDetail, setSelectedGameDetail] = useState<GamePlayByPlayView | null>(null);
@@ -323,15 +337,19 @@ export default function DashboardPage() {
     if (!isInitialized || !worker.isReady) return;
     setLoading(true);
     try {
-      const [nextSummary, nextCareer, nextJobMarket, nextRecaps] = await Promise.all([
+      const [nextSummary, nextCareer, nextJobMarket, nextRecaps, nextSeasonRecap, nextOffseasonHeadline] = await Promise.all([
         worker.getDashboardSummary(),
         worker.getGMCareer(),
         worker.getJobMarket(),
         worker.getRecentGameRecaps(3),
+        phase === 'offseason' ? worker.getSeasonRecap(season) : Promise.resolve(null),
+        phase === 'offseason' ? worker.getOffseasonHeadline(season) : Promise.resolve(null),
       ]);
       setSummary((nextSummary ?? null) as DashboardSummary | null);
       setCareer((nextCareer ?? null) as GMCareerView | null);
       setJobMarket((nextJobMarket ?? null) as JobMarketView | null);
+      setSeasonRecap((nextSeasonRecap ?? null) as SeasonRecapView | null);
+      setOffseasonHeadline((nextOffseasonHeadline ?? null) as OffseasonHeadlineView | null);
       const recapViews = (nextRecaps ?? []) as GameRecapView[];
       setRecentRecaps(recapViews);
       setSelectedGameIndex((currentValue) => {
@@ -348,7 +366,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [isInitialized, worker]);
+  }, [isInitialized, phase, season, worker]);
 
   useEffect(() => {
     void fetchData();
@@ -564,6 +582,16 @@ export default function DashboardPage() {
               {summary.franchise.endReason ?? 'Ownership ended this front office run.'}
             </div>
           </section>
+        ) : null}
+
+        {phase === 'offseason' && seasonRecap && offseasonHeadline ? (
+          <SeasonNarrativePanel
+            season={seasonRecap.season}
+            title="Offseason Outlook"
+            headline={offseasonHeadline.headline}
+            recap={seasonRecap.recap}
+            storylines={seasonRecap.storylines}
+          />
         ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">

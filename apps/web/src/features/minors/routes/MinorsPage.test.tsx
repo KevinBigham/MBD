@@ -141,6 +141,34 @@ describe('MinorsPage', () => {
           },
         ],
       }),
+      getProspectPipeline: vi.fn().mockResolvedValue({
+        health: {
+          score: 78,
+          label: 'surging',
+          readyNow: 1,
+          nextWave: 2,
+          longTerm: 1,
+          summary: 'One prospect is knocking on the MLB door and two more sit in the next wave.',
+        },
+        prospects: [
+          {
+            playerId: 'prospect-1',
+            playerName: 'Marco Ascension',
+            position: 'SS',
+            level: 'AAA',
+            levelLabel: 'AAA',
+            age: 22,
+            overallRating: 61,
+            ceiling: 74,
+            bondStrength: 42,
+            eta: 'Ready now',
+            trend: 'surging',
+            latestLineSummary: '.322 AVG · 82 H · 14 HR · 48 RBI',
+            activeSetback: null,
+            milestones: ['Drafted Round 1, 3'],
+          },
+        ],
+      }),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -151,6 +179,9 @@ describe('MinorsPage', () => {
 
     expect(container.textContent).toContain('Minor League Hub');
     expect(container.textContent).toContain('Farm report');
+    expect(container.textContent).toContain('Pipeline Health');
+    expect(container.textContent).toContain('surging');
+    expect(container.textContent).toContain('Ready now');
     expect(container.textContent).toContain('bonded prospects');
     expect(container.textContent).toContain('Breakout candidates');
     expect(container.textContent).toContain('could be next in line for a callup');
