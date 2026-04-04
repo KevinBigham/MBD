@@ -744,6 +744,47 @@ export const WhatIfBranchMetaSchema = z.object({
 });
 export type WhatIfBranchMeta = z.infer<typeof WhatIfBranchMetaSchema>;
 
+const TimelineRecordSummarySchema = z.object({
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+  pct: z.number().min(0).max(1),
+});
+
+const TimelineStandingsSummarySchema = z.object({
+  divisionRank: z.number().int().min(1),
+  gamesBack: z.number().min(0),
+});
+
+const TimelineCountDeltaSchema = z.object({
+  parent: z.number().int().min(0),
+  branch: z.number().int().min(0),
+  delta: z.number().int(),
+});
+
+export const TimelineComparisonSchema = z.object({
+  branchMeta: WhatIfBranchMetaSchema,
+  recordDelta: z.object({
+    parent: TimelineRecordSummarySchema,
+    branch: TimelineRecordSummarySchema,
+    delta: z.number().int(),
+  }),
+  standingsDelta: z.object({
+    parent: TimelineStandingsSummarySchema,
+    branch: TimelineStandingsSummarySchema,
+    delta: z.number().int(),
+  }),
+  rosterDelta: z.object({
+    parent: z.array(z.string()),
+    branch: z.array(z.string()),
+    added: z.array(z.string()),
+    lost: z.array(z.string()),
+    delta: z.number().int(),
+  }),
+  championshipsDelta: TimelineCountDeltaSchema,
+  tradesDelta: TimelineCountDeltaSchema,
+});
+export type TimelineComparison = z.infer<typeof TimelineComparisonSchema>;
+
 export const SeasonHistoryEntrySchema = z.object({
   season: z.number().int().min(1),
   championTeamId: z.string().nullable(),

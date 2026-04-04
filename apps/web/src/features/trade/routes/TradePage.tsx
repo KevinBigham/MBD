@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
+import { useSearchParams } from 'react-router-dom';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
@@ -440,6 +441,7 @@ function HistoryCard({ trade }: { trade: TradeHistoryView }) {
 
 export default function TradePage() {
   const worker = useWorker();
+  const [searchParams] = useSearchParams();
   const {
     getTeamRoster,
     getTradeHistory,
@@ -470,6 +472,7 @@ export default function TradePage() {
   const [loading, setLoading] = useState(true);
 
   const workerReady = worker.isReady;
+  const preselectedPlayerId = searchParams.get('playerId');
   const otherTeams = ALL_TEAMS.filter((team) => team.id !== userTeamId);
   const tradeMarketOpen = phase === 'regular' && (
     (deadlineState?.deadlineMode ?? false) || ((deadlineState?.daysUntilDeadline ?? -1) > 0)
@@ -540,6 +543,18 @@ export default function TradePage() {
   useEffect(() => {
     void loadTradeActivity();
   }, [loadTradeActivity, day, season, phase]);
+
+  useEffect(() => {
+    if (!preselectedPlayerId) {
+      return;
+    }
+    if (!yourRoster.some((player) => player.id === preselectedPlayerId)) {
+      return;
+    }
+    setOffering((current) => (
+      current.includes(preselectedPlayerId) ? current : [preselectedPlayerId, ...current]
+    ));
+  }, [preselectedPlayerId, yourRoster]);
 
   const toggleOffer = (id: string) => {
     setTradeResult(null);

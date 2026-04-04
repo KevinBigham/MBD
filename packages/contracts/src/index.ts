@@ -224,6 +224,7 @@ export {
   BlockbusterTradeSummarySchema,
   UserSeasonSummarySchema,
   WhatIfBranchMetaSchema,
+  TimelineComparisonSchema,
   SeasonHistoryEntrySchema,
 } from "./schemas/narrative.js";
 export type {
@@ -292,6 +293,7 @@ export type {
   BlockbusterTradeSummary,
   UserSeasonSummary,
   WhatIfBranchMeta,
+  TimelineComparison,
   SeasonHistoryEntry,
 } from "./schemas/narrative.js";
 

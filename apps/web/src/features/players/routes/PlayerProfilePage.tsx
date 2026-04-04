@@ -1,856 +1,461 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { estimateProjectedWarRange, toDisplayRating } from '@mbd/sim-core';
-import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
-import { ArrowLeft, BrainCircuit, FileSignature, TrendingUp } from 'lucide-react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton, StatLine, Tabs, TabsContent, TabsList, TabsTrigger } from '@mbd/ui';
+import {
+  ArrowDownCircle,
+  ArrowLeft,
+  ArrowLeftRight,
+  ArrowUpCircle,
+  BrainCircuit,
+  ClipboardX,
+  FileSignature,
+  History,
+  LineChart,
+  ShieldAlert,
+} from 'lucide-react';
+import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import {
+  moneyLabel,
+  normalizePlayerProfileTab,
+  type PlayerProfileTab,
+  type PlayerProfileView,
+} from '../components/playerProfileShared';
 
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  displayRating: number;
-  letterGrade: string;
-  rosterStatus: string;
-  teamId: string;
-  ceiling: number | null;
-  floor: number | null;
-  developmentProgram: string | null;
-  developmentTrajectory: string;
-  personalityTraits?: string[];
-  contract: {
-    years: number;
-    annualSalary: number;
-    totalValue: number;
-    noTradeClause: boolean;
-    noTradeClauseType: string;
-    playerOption: boolean;
-    teamOption: boolean;
-    optOutYears: number[];
-    signingBonus: number;
-    buyoutAmount: number;
-    deferredMoney: Array<{ yearOffset: number; amount: number }>;
-  };
-  extensionHistory: Array<{
-    season: number;
-    teamId: string;
-    years: number;
-    annualSalary: number;
-    totalValue: number;
-    outcome: string;
-  }>;
-  stats: {
-    pa: number;
-    ab: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    bb: number;
-    k: number;
-    avg: string;
-    ip: number;
-    earnedRuns: number;
-    strikeouts: number;
-    walks: number;
-    hitsAllowed: number;
-    era: string;
-  } | null;
-  historical?: boolean;
-  historicalSummary?: {
-    playerId: string;
-    fullName: string;
-    position: string;
-    lastKnownTeamId: string;
-    active: boolean;
-    retiredSeason: number | null;
-    seasonsPlayed: number;
-    personalityTraits: string[];
-  } | null;
-  activeStory?: {
-    arcType: string;
-    phase: 'setup' | 'rising' | 'climax' | 'resolution';
-    startSeason: number;
-    startDay: number;
-    latestMilestone: string | null;
-  } | null;
-  storyHistory?: Array<{
-    arcType: string;
-    phase: 'setup' | 'rising' | 'climax' | 'resolution';
-    startSeason: number;
-    startDay: number;
-    resolvedSeason: number | null;
-    milestones: string[];
+const ProfileHeader = lazy(() => import('../components/ProfileHeader'));
+const StatsTab = lazy(() => import('../components/StatsTab'));
+const DevelopmentTab = lazy(() => import('../components/DevelopmentTab'));
+const ScoutingTab = lazy(() => import('../components/ScoutingTab'));
+const HistoryTab = lazy(() => import('../components/HistoryTab'));
+const PersonalityTab = lazy(() => import('../components/PersonalityTab'));
+
+interface ExtensionOfferView {
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+  noTradeClause: boolean;
+  noTradeClauseType: 'none' | 'partial' | 'full';
+  playerOption: boolean;
+  teamOption: boolean;
+  optOutYears: number[];
+  signingBonus: number;
+  buyoutAmount: number;
+  deferredMoney: Array<{ yearOffset: number; amount: number }>;
+}
+
+interface ExtensionResponseView {
+  status: 'accepted' | 'rejected' | 'countered';
+  counterOffer?: ExtensionOfferView;
+  rounds: Array<{
+    playerDemand?: ExtensionOfferView;
   }>;
 }
 
-interface AdvancedStatsView {
-  war: number;
-  woba: number | null;
-  wrcPlus: number | null;
-  opsPlus: number | null;
-  iso: number | null;
-  fip: number | null;
-  xfip: number | null;
-  whip: number | null;
-  kPer9: number | null;
-  bbPer9: number | null;
-  kBb: number | null;
+interface RosterActionView {
+  success: boolean;
+  error?: string;
 }
 
-interface PersonalityProfile {
-  playerId: string;
-  archetype: string;
-  morale: {
-    score: number;
-    trend: string;
-    summary: string;
-    lastUpdated: string;
-  };
-  personality: {
-    workEthic: number;
-    mentalToughness: number;
-    leadership: number;
-    competitiveness: number;
-  };
-  summary: string;
+interface ActionState {
+  tone: 'success' | 'error' | 'info';
+  message: string;
 }
 
-interface DevelopmentReportsView {
-  playerId: string;
-  history: Array<{
-    season: number;
-    month: number;
-    trajectory: string;
-    summary: string;
-    overallRating: number;
-  }>;
-  recommendations: Array<{
-    playerId: string;
-    teamId: string;
-    fromPosition: string;
-    toPosition: string;
-      confidence: number;
-      reason: string;
-  }>;
-  minorLeagueProgression: Array<{
-    season: number;
-    level: string;
-    gamesPlayed: number;
-    pa: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    avg: number;
-    ip: number;
-    era: number;
-    k: number;
-    bb: number;
-  }>;
-  prospectBond: {
-    prospectId: string;
-    draftedSeason: number;
-    debutSeason: number | null;
-    currentLevel: string;
-    bondStrength: number;
-    milestones: string[];
-    loyaltyModifier: number;
-  } | null;
-  activeSetback: {
-    type: 'mental_block' | 'nagging_injury' | 'off_field_distraction' | 'hot_streak';
-    overallModifier: number;
-    startSeason: number;
-    startMonth: number;
-    endSeason: number;
-    endMonth: number;
-    summary: string;
-    active: boolean;
-  } | null;
-  debutFlashback: {
-    playerId: string;
-    playerName: string;
-    draftSeason: number;
-    draftRound: number;
-    originalGrade: number;
-    debutSeason: number;
-    debutOverall: number;
-    journeyHighlights: string[];
-  } | null;
+const TAB_LABELS: Record<PlayerProfileTab, string> = {
+  stats: 'Stats',
+  development: 'Development',
+  scouting: 'Scouting',
+  history: 'History',
+  personality: 'Personality',
+};
+
+const TAB_ICONS: Record<PlayerProfileTab, JSX.Element> = {
+  stats: <LineChart className="h-4 w-4" />,
+  development: <ArrowUpCircle className="h-4 w-4" />,
+  scouting: <ShieldAlert className="h-4 w-4" />,
+  history: <History className="h-4 w-4" />,
+  personality: <BrainCircuit className="h-4 w-4" />,
+};
+
+const TAB_COMPONENTS = {
+  stats: StatsTab,
+  development: DevelopmentTab,
+  scouting: ScoutingTab,
+  history: HistoryTab,
+  personality: PersonalityTab,
+} satisfies Record<PlayerProfileTab, typeof StatsTab>;
+
+function PlayerProfileSkeleton() {
+  return (
+    <div className="space-y-6" data-testid="player-profile-loading">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="h-48 rounded-2xl" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Skeleton className="h-[34rem] rounded-2xl" />
+        <div className="space-y-4">
+          <Skeleton className="h-52 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default: return 'bg-dynasty-border text-dynasty-muted';
-  }
+function TabFallback({
+  title,
+}: {
+  title: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="font-heading text-dynasty-text">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+      </CardContent>
+    </Card>
+  );
 }
 
-function moraleTone(score: number): string {
-  if (score >= 70) return 'text-accent-success';
-  if (score >= 55) return 'text-accent-info';
-  if (score >= 40) return 'text-accent-warning';
-  return 'text-accent-danger';
-}
-
-function moneyLabel(value: number): string {
-  return `$${value.toFixed(1)}M`;
-}
-
-function labelize(value: string): string {
-  return value.replaceAll('_', ' ');
-}
-
-function displayBand(value: number | null): number {
-  if (value == null) return 0;
-  return value > 100 ? toDisplayRating(value) : value;
-}
-
-function badgeVariantForTrajectory(trajectory: string): 'success' | 'info' | 'warning' | 'outline' {
-  switch (trajectory) {
-    case 'ahead_of_curve':
-    case 'improving':
-      return 'success';
-    case 'stalling':
-    case 'on_track':
-      return 'info';
-    case 'declining':
-      return 'warning';
+function actionToneClasses(tone: ActionState['tone']): string {
+  switch (tone) {
+    case 'success':
+      return 'border-accent-success/30 bg-accent-success/10 text-accent-success';
+    case 'info':
+      return 'border-accent-info/30 bg-accent-info/10 text-accent-info';
     default:
-      return 'outline';
+      return 'border-accent-danger/30 bg-accent-danger/10 text-accent-danger';
   }
 }
-
-function badgeVariantForStoryPhase(phase: NonNullable<PlayerDTO['activeStory']>['phase']): 'success' | 'info' | 'warning' | 'outline' {
-  switch (phase) {
-    case 'climax':
-      return 'warning';
-    case 'rising':
-      return 'info';
-    case 'resolution':
-      return 'success';
-    default:
-      return 'outline';
-  }
-}
-
-function formatMonth(month: number): string {
-  const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return labels[Math.max(0, Math.min(labels.length - 1, month - 1))] ?? `M${month}`;
-}
-
-function formatDecimal(value: number | null | undefined, digits: number): string {
-  if (value == null) return '--';
-  return value.toFixed(digits);
-}
-
-function formatMinorLevel(level: string): string {
-  return level === 'A_PLUS' ? 'A+' : labelize(level);
-}
-
-function formatInnings(outs: number): string {
-  const innings = Math.floor(outs / 3);
-  const remainder = outs % 3;
-  return `${innings}.${remainder}`;
-}
-
-function badgeVariantForSetback(type: NonNullable<DevelopmentReportsView['activeSetback']>['type']): 'success' | 'warning' | 'outline' {
-  return type === 'hot_streak' ? 'success' : 'warning';
-}
-
-const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 
 export default function PlayerProfilePage() {
   const { playerId } = useParams<{ playerId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { isInitialized, day, season } = useGameStore();
-  const [player, setPlayer] = useState<PlayerDTO | null>(null);
-  const [profile, setProfile] = useState<PersonalityProfile | null>(null);
-  const [developmentReports, setDevelopmentReports] = useState<DevelopmentReportsView | null>(null);
-  const [advancedStats, setAdvancedStats] = useState<AdvancedStatsView | null>(null);
+  const { isInitialized, day, season, userTeamId } = useGameStore();
+  const [view, setView] = useState<PlayerProfileView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionState, setActionState] = useState<ActionState | null>(null);
+  const [busyAction, setBusyAction] = useState<'extend' | 'promote' | 'demote' | 'dfa' | null>(null);
 
-  const fetchPlayer = useCallback(async () => {
-    if (!isInitialized || !workerReady || !playerId) return;
+  const activeTab = normalizePlayerProfileTab(searchParams.get('tab'));
+  const ActiveTabComponent = useMemo(() => TAB_COMPONENTS[activeTab], [activeTab]);
 
-    const [playerData, profileData, reportData, advancedData] = await Promise.all([
-      worker.getPlayer(playerId),
-      worker.getPersonalityProfile(playerId),
-      worker.getDevelopmentReports(playerId),
-      worker.getAdvancedStats(playerId),
-    ]);
+  const fetchProfile = useCallback(async () => {
+    if (!isInitialized || !workerReady || !playerId) {
+      return;
+    }
 
-    setPlayer(playerData as PlayerDTO | null);
-    setProfile(profileData as PersonalityProfile | null);
-    setDevelopmentReports(reportData as DevelopmentReportsView | null);
-    setAdvancedStats(advancedData as AdvancedStatsView | null);
+    setLoading(true);
+    try {
+      const data = await worker.getPlayerProfileView(playerId);
+      setView((data as PlayerProfileView | null) ?? null);
+    } finally {
+      setLoading(false);
+    }
   }, [isInitialized, playerId, worker, workerReady]);
 
   useEffect(() => {
-    void fetchPlayer();
-  }, [fetchPlayer, day, season]);
+    void fetchProfile();
+  }, [fetchProfile, day, season]);
 
-  if (!player) {
+  const updateTab = useCallback((nextValue: string) => {
+    const nextTab = normalizePlayerProfileTab(nextValue);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === 'stats') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const player = view?.player ?? null;
+  const isUserTeamPlayer = Boolean(player && !player.historical && player.teamId === userTeamId);
+  const canPromote = Boolean(isUserTeamPlayer && player && player.rosterStatus !== 'MLB');
+  const canDemote = Boolean(isUserTeamPlayer && player?.rosterStatus === 'MLB');
+  const canDfa = Boolean(isUserTeamPlayer && player);
+
+  const handleRosterAction = useCallback(async (
+    action: 'promote' | 'demote' | 'dfa',
+  ) => {
+    if (!player) {
+      return;
+    }
+
+    setBusyAction(action);
+    setActionState(null);
+    try {
+      const result = (action === 'promote'
+        ? await worker.promotePlayer(player.id)
+        : action === 'demote'
+          ? await worker.demotePlayer(player.id)
+          : await worker.designateForAssignment(player.id)) as RosterActionView;
+
+      if (!result.success) {
+        setActionState({
+          tone: 'error',
+          message: result.error ?? 'The roster move could not be completed.',
+        });
+        return;
+      }
+
+      setActionState({
+        tone: 'success',
+        message: action === 'promote'
+          ? 'Player promoted and profile refreshed.'
+          : action === 'demote'
+            ? 'Player optioned and profile refreshed.'
+            : 'Player designated for assignment and profile refreshed.',
+      });
+      await fetchProfile();
+    } finally {
+      setBusyAction(null);
+    }
+  }, [fetchProfile, player, worker]);
+
+  const handleExtend = useCallback(async () => {
+    if (!player) {
+      return;
+    }
+
+    setBusyAction('extend');
+    setActionState(null);
+    try {
+      const offer = await worker.getExtensionOffer(player.id, 5) as ExtensionOfferView | null;
+      if (!offer) {
+        setActionState({
+          tone: 'error',
+          message: 'No five-year extension framework is available for this player.',
+        });
+        return;
+      }
+
+      const result = await worker.negotiateExtension(player.id, offer) as ExtensionResponseView | null;
+      if (!result) {
+        setActionState({
+          tone: 'error',
+          message: 'The extension negotiation could not be started.',
+        });
+        return;
+      }
+
+      if (result.status === 'accepted') {
+        setActionState({
+          tone: 'success',
+          message: `Extension accepted at ${moneyLabel(offer.annualSalary)} AAV for ${offer.years} years.`,
+        });
+      } else if (result.status === 'countered') {
+        const counter = result.counterOffer ?? result.rounds.at(-1)?.playerDemand;
+        setActionState({
+          tone: 'info',
+          message: counter
+            ? `Counteroffer received: ${moneyLabel(counter.annualSalary)} AAV over ${counter.years} years.`
+            : 'Counteroffer received from the player camp.',
+        });
+      } else {
+        setActionState({
+          tone: 'error',
+          message: 'The player rejected the initial five-year extension offer.',
+        });
+      }
+
+      await fetchProfile();
+    } finally {
+      setBusyAction(null);
+    }
+  }, [fetchProfile, player, worker]);
+
+  if (!loading && !player) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="font-heading text-dynasty-muted">Loading player...</div>
-      </div>
-    );
-  }
-
-  const isPitcher = PITCHER_POSITIONS.has(player.position);
-  const trajectoryVariant = badgeVariantForTrajectory(player.developmentTrajectory);
-  const currentContract = player.contract;
-  const projectedWar = estimateProjectedWarRange({
-    overall: player.displayRating,
-    floor: displayBand(player.floor),
-    ceiling: displayBand(player.ceiling),
-    isPitcher,
-  });
-
-  return (
-    <div className="space-y-6">
-      <Link
-        to="/players"
-        className="inline-flex items-center gap-1.5 font-heading text-sm text-dynasty-muted hover:text-accent-primary"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Players
-      </Link>
-
-      <Card>
-        <CardContent className="flex flex-col gap-6 p-6 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="font-heading text-3xl font-bold text-dynasty-text">
-              {player.firstName} {player.lastName}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <Badge variant="outline">{player.position}</Badge>
-              <span className="font-data text-sm text-dynasty-muted">Age {player.age}</span>
-              <span className="font-data text-sm text-dynasty-muted">{player.teamId.toUpperCase()}</span>
-              <Badge variant="info">{player.rosterStatus}</Badge>
-              <Badge variant={trajectoryVariant}>{player.developmentTrajectory}</Badge>
-              {player.activeStory ? (
-                <Badge variant={badgeVariantForStoryPhase(player.activeStory.phase)}>
-                  {labelize(player.activeStory.arcType)}
-                </Badge>
-              ) : null}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="font-data text-4xl font-bold text-dynasty-text">
-              {player.displayRating}
-            </div>
-            <span className={`mt-1 inline-block rounded px-3 py-0.5 font-data text-lg font-bold ${gradeColor(player.letterGrade)}`}>
-              {player.letterGrade}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {player.historical && player.historicalSummary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Historical Profile</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-              <div className="font-heading text-sm text-dynasty-text">
-                {player.historicalSummary.fullName} is preserved as a retired franchise figure.
-              </div>
-              <div className="mt-2 font-heading text-xs text-dynasty-muted">
-                {player.historicalSummary.retiredSeason != null
-                  ? `Retired after Season ${player.historicalSummary.retiredSeason}`
-                  : 'Retirement season unavailable'}
-                {' · '}
-                {player.historicalSummary.seasonsPlayed} seasons
-              </div>
-              <div className="mt-2 font-heading text-xs text-dynasty-muted">
-                Last club: {player.historicalSummary.lastKnownTeamId.toUpperCase()}
-              </div>
-            </div>
-            {player.historicalSummary.personalityTraits.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {player.historicalSummary.personalityTraits.map((trait) => (
-                  <Badge key={trait} variant="outline">{trait}</Badge>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {(player.activeStory || (player.storyHistory?.length ?? 0) > 0) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Story Arc</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {player.activeStory ? (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={badgeVariantForStoryPhase(player.activeStory.phase)}>{player.activeStory.phase}</Badge>
-                  <span className="font-heading text-sm text-dynasty-text">{labelize(player.activeStory.arcType)}</span>
-                </div>
-                <div className="mt-3 font-heading text-sm text-dynasty-muted">
-                  {player.activeStory.latestMilestone ?? `${player.firstName} ${player.lastName} is building momentum.`}
-                </div>
-                <div className="mt-2 font-data text-xs text-dynasty-muted">
-                  Began S{player.activeStory.startSeason} · Day {player.activeStory.startDay}
-                </div>
-              </div>
-            ) : null}
-            {(player.storyHistory?.length ?? 0) > 0 ? (
-              <div className="space-y-3">
-                {(player.storyHistory ?? []).map((arc) => (
-                  <div key={`${arc.arcType}-${arc.startSeason}-${arc.startDay}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-heading text-sm text-dynasty-text">{labelize(arc.arcType)}</div>
-                      <Badge variant={badgeVariantForStoryPhase(arc.phase)}>{arc.phase}</Badge>
-                    </div>
-                    <div className="mt-2 font-data text-xs text-dynasty-muted">
-                      Started S{arc.startSeason} · Day {arc.startDay}
-                      {arc.resolvedSeason != null ? ` · Resolved S${arc.resolvedSeason}` : ''}
-                    </div>
-                    {arc.milestones.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        {arc.milestones.slice(-2).map((milestone) => (
-                          <div key={milestone} className="font-heading text-sm text-dynasty-muted">
-                            {milestone}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
-              <TrendingUp className="h-4 w-4 text-accent-success" />
-              Development Trajectory
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                  Current Program
-                </div>
-                <div className="mt-1 font-heading text-sm text-dynasty-text">
-                  {player.developmentProgram ? labelize(player.developmentProgram) : 'No assignment'}
-                </div>
-              </div>
-              <Badge variant={trajectoryVariant}>{player.developmentTrajectory}</Badge>
-            </div>
-            <div className="space-y-3">
-              <GradeBar label="Floor" grade={displayBand(player.floor)} />
-              <GradeBar label="Current" grade={player.displayRating} />
-              <GradeBar label="Ceiling" grade={displayBand(player.ceiling)} />
-            </div>
-            <StatLine
-              stats={[
-                { label: 'Floor', value: displayBand(player.floor) || '--' },
-                { label: 'Current', value: player.displayRating },
-                { label: 'Ceiling', value: displayBand(player.ceiling) || '--' },
-              ]}
-            />
-            <StatLine
-              stats={[
-                { label: 'WAR Floor', value: projectedWar.floorWar?.toFixed(1) ?? '--' },
-                { label: 'WAR Now', value: projectedWar.currentWar.toFixed(1) },
-                { label: 'WAR Ceiling', value: projectedWar.ceilingWar?.toFixed(1) ?? '--' },
-              ]}
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
-              <FileSignature className="h-4 w-4 text-accent-warning" />
-              Contract Snapshot
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <StatLine
-              stats={[
-                { label: 'Years', value: currentContract.years },
-                { label: 'AAV', value: moneyLabel(currentContract.annualSalary) },
-                { label: 'Total', value: moneyLabel(currentContract.totalValue) },
-              ]}
-            />
-            <StatLine
-              stats={[
-                { label: 'Bonus', value: moneyLabel(currentContract.signingBonus) },
-                { label: 'Opt-Outs', value: currentContract.optOutYears.length || '--' },
-                { label: 'NTC', value: currentContract.noTradeClause ? currentContract.noTradeClauseType : 'none' },
-              ]}
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      {advancedStats && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Advanced Stats</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isPitcher ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-                <StatBlock label="WAR" value={formatDecimal(advancedStats.war, 1)} highlight />
-                <StatBlock label="FIP" value={formatDecimal(advancedStats.fip, 2)} />
-                <StatBlock label="xFIP" value={formatDecimal(advancedStats.xfip, 2)} />
-                <StatBlock label="WHIP" value={formatDecimal(advancedStats.whip, 2)} />
-                <StatBlock label="K/9" value={formatDecimal(advancedStats.kPer9, 1)} />
-                <StatBlock label="K/BB" value={formatDecimal(advancedStats.kBb, 2)} />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-                <StatBlock label="WAR" value={formatDecimal(advancedStats.war, 1)} highlight />
-                <StatBlock label="wOBA" value={formatDecimal(advancedStats.woba, 3)} />
-                <StatBlock label="wRC+" value={formatDecimal(advancedStats.wrcPlus, 0)} />
-                <StatBlock label="OPS+" value={formatDecimal(advancedStats.opsPlus, 0)} />
-                <StatBlock label="ISO" value={formatDecimal(advancedStats.iso, 3)} />
-                <StatBlock label="Proj WAR" value={projectedWar.ceilingWar?.toFixed(1) ?? '--'} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        {profile && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
-                <BrainCircuit className="h-4 w-4 text-accent-info" />
-                Personality Profile
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <Badge variant="info">{labelize(profile.archetype)}</Badge>
-                <div className={`font-data text-lg font-bold ${moraleTone(profile.morale.score)}`}>
-                  Morale {profile.morale.score}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <PersonalityStat label="Work Ethic" value={profile.personality.workEthic} />
-                <PersonalityStat label="Toughness" value={profile.personality.mentalToughness} />
-                <PersonalityStat label="Leadership" value={profile.personality.leadership} />
-                <PersonalityStat label="Compete" value={profile.personality.competitiveness} />
-              </div>
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="font-heading text-xs uppercase text-dynasty-muted">Read</div>
-                <div className="mt-1 font-heading text-sm text-dynasty-text">
-                  {profile.summary}
-                </div>
-                <div className="mt-3 font-data text-xs text-dynasty-muted">
-                  {profile.morale.trend.toUpperCase()} | Updated {profile.morale.lastUpdated}
-                </div>
-              </div>
-              {player.personalityTraits?.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {player.personalityTraits.map((trait) => (
-                    <Badge key={trait} variant="outline">{trait}</Badge>
-                  ))}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Checkpoint History</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {developmentReports?.history.length ? developmentReports.history.map((entry) => (
-              <div key={`${entry.season}-${entry.month}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-heading text-sm text-dynasty-text">
-                    {formatMonth(entry.month)} S{entry.season}
-                  </div>
-                  <Badge variant={badgeVariantForTrajectory(entry.trajectory)}>{entry.trajectory}</Badge>
-                </div>
-                <div className="mt-2 text-sm text-dynasty-muted">{entry.summary}</div>
-                <div className="mt-2 font-data text-xs text-dynasty-muted">
-                  Overall {displayBand(entry.overallRating)}
-                </div>
-              </div>
-            )) : (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
-                No monthly checkpoints recorded yet.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Conversion Recommendations</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {developmentReports?.recommendations.length ? developmentReports.recommendations.map((entry) => (
-              <div key={`${entry.playerId}-${entry.fromPosition}-${entry.toPosition}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-heading text-sm text-dynasty-text">
-                    {entry.fromPosition} to {entry.toPosition}
-                  </div>
-                  <Badge variant={entry.confidence >= 0.65 ? 'success' : 'info'}>
-                    {Math.round(entry.confidence * 100)}%
-                  </Badge>
-                </div>
-                <div className="mt-2 text-sm text-dynasty-muted">{entry.reason}</div>
-              </div>
-            )) : (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
-                No position-change recommendations on file.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Extension History</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {player.extensionHistory.length ? player.extensionHistory.map((entry) => (
-              <div key={`${entry.season}-${entry.teamId}-${entry.years}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-heading text-sm text-dynasty-text">
-                    Season {entry.season}
-                  </div>
-                  <Badge variant={entry.outcome === 'accepted' ? 'success' : entry.outcome === 'rejected' ? 'warning' : 'outline'}>
-                    {entry.outcome}
-                  </Badge>
-                </div>
-                <StatLine
-                  className="mt-2"
-                  stats={[
-                    { label: 'Team', value: entry.teamId.toUpperCase() },
-                    { label: 'Years', value: entry.years },
-                    { label: 'AAV', value: moneyLabel(entry.annualSalary) },
-                    { label: 'Total', value: moneyLabel(entry.totalValue) },
-                  ]}
-                />
-              </div>
-            )) : (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
-                No extension negotiations recorded.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {(developmentReports?.minorLeagueProgression.length || developmentReports?.prospectBond || developmentReports?.activeSetback) ? (
-        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-heading text-dynasty-text">Development Path</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {developmentReports?.minorLeagueProgression.length ? developmentReports.minorLeagueProgression.map((line) => (
-                <div key={`${line.season}-${line.level}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-heading text-sm text-dynasty-text">
-                      S{line.season} · {formatMinorLevel(line.level)}
-                    </div>
-                    <div className="font-data text-xs text-dynasty-muted">
-                      {line.gamesPlayed} G
-                    </div>
-                  </div>
-                  <div className="mt-2 text-sm text-dynasty-muted">
-                    {isPitcher
-                      ? `${line.ip.toFixed(1)} IP · ${line.era.toFixed(2)} ERA · ${line.k} K · ${line.bb} BB`
-                      : `${line.avg.toFixed(3).replace(/^0/, '')} AVG · ${line.hits} H · ${line.hr} HR · ${line.rbi} RBI · ${line.pa} PA`}
-                  </div>
-                </div>
-              )) : (
-                <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
-                  No minor league progression recorded yet.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      <PageShell>
+        <div className="space-y-6">
+          <Link
+            to="/players"
+            className="inline-flex items-center gap-1.5 font-heading text-sm text-dynasty-muted hover:text-accent-primary"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Players
+          </Link>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="font-heading text-dynasty-text">Prospect Bond</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {developmentReports?.prospectBond ? (
-                <>
-                  <StatLine
-                    stats={[
-                      { label: 'Drafted', value: `S${developmentReports.prospectBond.draftedSeason}` },
-                      { label: 'Bond', value: developmentReports.prospectBond.bondStrength },
-                      { label: 'Loyalty', value: `${Math.round(developmentReports.prospectBond.loyaltyModifier * 100)}%` },
-                    ]}
-                  />
-                  <StatLine
-                    stats={[
-                      { label: 'Level', value: formatMinorLevel(developmentReports.prospectBond.currentLevel) },
-                      { label: 'Debut', value: developmentReports.prospectBond.debutSeason != null ? `S${developmentReports.prospectBond.debutSeason}` : '--' },
-                      { label: 'Milestones', value: developmentReports.prospectBond.milestones.length },
-                    ]}
-                  />
-                  {developmentReports.activeSetback ? (
-                    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-heading text-sm text-dynasty-text">Current Development Signal</div>
-                        <Badge variant={badgeVariantForSetback(developmentReports.activeSetback.type)}>
-                          {labelize(developmentReports.activeSetback.type)}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 text-sm text-dynasty-muted">{developmentReports.activeSetback.summary}</div>
-                      <div className="mt-2 font-data text-xs text-dynasty-muted">
-                        Modifier {developmentReports.activeSetback.overallModifier > 0 ? '+' : ''}
-                        {developmentReports.activeSetback.overallModifier}
-                        {' · '}
-                        Through {formatMonth(developmentReports.activeSetback.endMonth)} S{developmentReports.activeSetback.endSeason}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="space-y-2">
-                    {developmentReports.prospectBond.milestones.length ? developmentReports.prospectBond.milestones.map((milestone) => (
-                      <div key={milestone} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-3 text-sm text-dynasty-muted">
-                        {milestone}
-                      </div>
-                    )) : (
-                      <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
-                        No bond milestones recorded yet.
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : null}
-              {!developmentReports?.prospectBond && developmentReports?.activeSetback ? (
-                <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-heading text-sm text-dynasty-text">Current Development Signal</div>
-                    <Badge variant={badgeVariantForSetback(developmentReports.activeSetback.type)}>
-                      {labelize(developmentReports.activeSetback.type)}
-                    </Badge>
-                  </div>
-                  <div className="mt-2 text-sm text-dynasty-muted">{developmentReports.activeSetback.summary}</div>
-                  <div className="mt-2 font-data text-xs text-dynasty-muted">
-                    Modifier {developmentReports.activeSetback.overallModifier > 0 ? '+' : ''}
-                    {developmentReports.activeSetback.overallModifier}
-                    {' · '}
-                    Through {formatMonth(developmentReports.activeSetback.endMonth)} S{developmentReports.activeSetback.endSeason}
-                  </div>
-                </div>
-              ) : null}
-              {!developmentReports?.prospectBond && !developmentReports?.activeSetback ? (
-                <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
-                  No homegrown bond data recorded for this player.
-                </div>
-              ) : null}
+            <CardContent className="p-10 text-center">
+              <div className="font-brand text-3xl tracking-wide text-dynasty-textBright">Player Not Found</div>
+              <p className="mt-3 font-heading text-sm text-dynasty-muted">
+                The requested player profile is unavailable in the current save.
+              </p>
             </CardContent>
           </Card>
         </div>
-      ) : null}
+      </PageShell>
+    );
+  }
 
-      {developmentReports?.debutFlashback ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Debut Flashback</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-              <div className="font-heading text-sm text-dynasty-text">
-                Season {developmentReports.debutFlashback.draftSeason} · Round {developmentReports.debutFlashback.draftRound}
-              </div>
-              <div className="mt-2 text-sm text-dynasty-muted">
-                Original grade {developmentReports.debutFlashback.originalGrade} to debut overall {developmentReports.debutFlashback.debutOverall}.
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {developmentReports.debutFlashback.journeyHighlights.map((highlight) => (
-                <div key={highlight} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-3 text-sm text-dynasty-muted">
-                  {highlight}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {player.stats ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Season Stats</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isPitcher ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
-                <StatBlock label="ERA" value={player.stats.era} />
-                <StatBlock label="K" value={String(player.stats.strikeouts)} />
-                <StatBlock label="BB" value={String(player.stats.walks)} />
-                <StatBlock label="H" value={String(player.stats.hitsAllowed)} />
-                <StatBlock label="ER" value={String(player.stats.earnedRuns)} />
-                <StatBlock label="IP" value={formatInnings(player.stats.ip)} />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
-                <StatBlock label="AVG" value={player.stats.avg} />
-                <StatBlock label="HR" value={String(player.stats.hr)} highlight />
-                <StatBlock label="RBI" value={String(player.stats.rbi)} />
-                <StatBlock label="H" value={String(player.stats.hits)} />
-                <StatBlock label="BB" value={String(player.stats.bb)} />
-                <StatBlock label="K" value={String(player.stats.k)} />
-                <StatBlock label="PA" value={String(player.stats.pa)} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p className="font-heading text-sm text-dynasty-muted">
-              No stats yet. Sim games to see this player&apos;s performance.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-function PersonalityStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3 text-center">
-      <div className="font-heading text-[10px] uppercase text-dynasty-muted">{label}</div>
-      <div className="mt-1 font-data text-2xl font-bold text-dynasty-text">{value}</div>
-    </div>
-  );
-}
+    <PageShell loading={loading && view == null} skeleton={<PlayerProfileSkeleton />}>
+      {player ? (
+        <div className="space-y-6">
+          <Link
+            to="/players"
+            className="inline-flex items-center gap-1.5 font-heading text-sm text-dynasty-muted hover:text-accent-primary"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Players
+          </Link>
 
-function StatBlock({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="text-center">
-      <div className="font-heading text-xs uppercase text-dynasty-muted">{label}</div>
-      <div className={`mt-1 font-data text-2xl font-bold ${highlight ? 'text-accent-primary' : 'text-dynasty-text'}`}>
-        {value}
-      </div>
-    </div>
+          <Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
+            <ProfileHeader player={player} />
+          </Suspense>
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="space-y-6">
+              <Card>
+                <CardContent className="p-4">
+                  <Tabs value={activeTab} onValueChange={updateTab}>
+                    <TabsList className="flex w-full flex-wrap gap-2 border-none">
+                      {Object.entries(TAB_LABELS).map(([tab, label]) => (
+                        <TabsTrigger
+                          key={tab}
+                          value={tab}
+                          className="rounded-lg border border-dynasty-border bg-dynasty-elevated data-[state=active]:border-accent-primary data-[state=active]:bg-accent-primary/10"
+                        >
+                          {TAB_ICONS[tab as PlayerProfileTab]}
+                          {label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+
+                    <TabsContent value={activeTab} forceMount className="mt-5">
+                      <Suspense fallback={<TabFallback title={TAB_LABELS[activeTab]} />}>
+                        <ActiveTabComponent view={view!} />
+                      </Suspense>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </div>
+
+            <aside className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="font-heading text-dynasty-text">Quick Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {isUserTeamPlayer ? (
+                    <>
+                      <Button asChild variant="outline" className="w-full justify-start">
+                        <Link to={`/trade?playerId=${player.id}`}>
+                          <ArrowLeftRight className="h-4 w-4" />
+                          Trade Player
+                        </Link>
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        className="w-full justify-start"
+                        loading={busyAction === 'extend'}
+                        onClick={() => void handleExtend()}
+                      >
+                        <FileSignature className="h-4 w-4" />
+                        Extend Contract
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        className="w-full justify-start"
+                        loading={busyAction === 'promote'}
+                        disabled={!canPromote}
+                        onClick={() => void handleRosterAction('promote')}
+                      >
+                        <ArrowUpCircle className="h-4 w-4" />
+                        Promote to MLB
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        className="w-full justify-start"
+                        loading={busyAction === 'demote'}
+                        disabled={!canDemote}
+                        onClick={() => void handleRosterAction('demote')}
+                      >
+                        <ArrowDownCircle className="h-4 w-4" />
+                        Option to Minors
+                      </Button>
+
+                      <Button
+                        variant="destructive"
+                        className="w-full justify-start"
+                        loading={busyAction === 'dfa'}
+                        disabled={!canDfa}
+                        onClick={() => void handleRosterAction('dfa')}
+                      >
+                        <ClipboardX className="h-4 w-4" />
+                        Designate for Assignment
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
+                      Quick actions are only available for live players on your active club.
+                    </div>
+                  )}
+
+                  {actionState ? (
+                    <div className={`rounded-lg border px-4 py-3 font-heading text-sm ${actionToneClasses(actionState.tone)}`}>
+                      {actionState.message}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="font-heading text-dynasty-text">Contract Snapshot</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <StatLine
+                    stats={[
+                      { label: 'Years', value: player.contract.years },
+                      { label: 'AAV', value: moneyLabel(player.contract.annualSalary) },
+                      { label: 'Total', value: moneyLabel(player.contract.totalValue) },
+                    ]}
+                  />
+                  <StatLine
+                    stats={[
+                      { label: 'Bonus', value: moneyLabel(player.contract.signingBonus) },
+                      { label: 'Opt-Outs', value: player.contract.optOutYears.length || '--' },
+                      { label: 'NTC', value: player.contract.noTradeClause ? player.contract.noTradeClauseType : 'none' },
+                    ]}
+                  />
+                  <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+                    <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                      Roster Context
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge variant="outline">{player.rosterStatus}</Badge>
+                      {player.minorLeagueLevel ? (
+                        <Badge variant="outline">{player.minorLeagueLevel}</Badge>
+                      ) : null}
+                      {player.isOutOfOptions ? (
+                        <Badge variant="warning">Out of Options</Badge>
+                      ) : (
+                        <Badge variant="info">Options Used {player.optionYearsUsed}</Badge>
+                      )}
+                    </div>
+                    <div className="mt-3 font-heading text-sm text-dynasty-muted">
+                      Service time: {Math.floor(player.serviceTimeDays / 172)} years · {player.serviceTimeDays % 172} days
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </aside>
+          </div>
+        </div>
+      ) : null}
+    </PageShell>
   );
 }

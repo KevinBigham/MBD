@@ -7,6 +7,8 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import {
   deleteSave,
+  inspectSaveById,
+  listSaveTree,
   listSaves,
   loadGameSafe,
   repairSave,
@@ -34,6 +36,8 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),
+  inspectSaveById: vi.fn(),
+  listSaveTree: vi.fn(),
   listSaves: vi.fn(),
   loadGame: vi.fn(),
   loadGameSafe: vi.fn(),
@@ -44,10 +48,12 @@ vi.mock('@/shared/lib/saveSystem', () => ({
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedListSaves = vi.mocked(listSaves);
+const mockedListSaveTree = vi.mocked(listSaveTree);
 const mockedLoadGameSafe = vi.mocked(loadGameSafe);
 const mockedRepairSave = vi.mocked(repairSave);
 const mockedSaveGame = vi.mocked(saveGame);
 const mockedDeleteSave = vi.mocked(deleteSave);
+const mockedInspectSaveById = vi.mocked(inspectSaveById);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -165,6 +171,112 @@ describe('SetupPage', () => {
         updatedAt: '2026-04-02T12:00:00.000Z',
       },
     ] as never);
+    mockedListSaveTree.mockResolvedValue([
+      {
+        save: {
+          id: 'save-slot-1',
+          slotNumber: 1,
+          name: 'Yankees Year 4',
+          season: 4,
+          day: 88,
+          phase: 'regular',
+          schemaVersion: 15,
+          hasSnapshot: true,
+          snapshot: {
+            schemaVersion: 15,
+            season: 4,
+            day: 88,
+            phase: 'regular',
+            userTeamId: 'nyy',
+            franchise: {
+              gmName: 'General Manager',
+              difficulty: 'standard',
+              playMode: 'standard',
+              createdAt: 'S1D1',
+              teamId: 'nyy',
+              teamName: 'New York Yankees',
+              teamAbbreviation: 'NYY',
+              teamDivision: 'AL_EAST',
+              onboarding: {
+                welcomeBriefingSeen: true,
+                firstMonthlyPulseSeen: true,
+              },
+            },
+            achievements: {
+              unlocked: [
+                { id: 'champion', unlockedAt: 'S3D180', season: 3, teamId: 'nyy', summary: 'Won the World Series.' },
+              ],
+              progress: [],
+              counters: [],
+              ledgers: [],
+            },
+            narrative: {
+              whatIfBranches: [
+                {
+                  id: 'branch-1',
+                  saveId: 'branch-1',
+                  branchedAtSeason: 4,
+                  branchedAtDay: 62,
+                  description: 'Aggressive deadline push',
+                  createdAt: '2026-04-02T12:00:00.000Z',
+                },
+              ],
+            },
+          },
+          legacyState: null,
+          createdAt: '2026-04-02T00:00:00.000Z',
+          updatedAt: '2026-04-02T12:00:00.000Z',
+          parentSaveId: null,
+          isRootSave: true,
+          branchMeta: null,
+        },
+        branches: [
+          {
+            id: 'branch-1',
+            slotNumber: null,
+            name: 'Aggressive deadline push',
+            season: 4,
+            day: 88,
+            phase: 'regular',
+            schemaVersion: 15,
+            hasSnapshot: true,
+            snapshot: {
+              schemaVersion: 15,
+              season: 4,
+              day: 88,
+              phase: 'regular',
+              franchise: {
+                gmName: 'General Manager',
+                difficulty: 'standard',
+                playMode: 'standard',
+                createdAt: 'S1D1',
+                teamId: 'nyy',
+                teamName: 'New York Yankees',
+                teamAbbreviation: 'NYY',
+                teamDivision: 'AL_EAST',
+                onboarding: {
+                  welcomeBriefingSeen: true,
+                  firstMonthlyPulseSeen: true,
+                },
+              },
+            },
+            legacyState: null,
+            createdAt: '2026-04-02T12:00:00.000Z',
+            updatedAt: '2026-04-02T12:30:00.000Z',
+            parentSaveId: 'save-slot-1',
+            isRootSave: false,
+            branchMeta: {
+              id: 'branch-1',
+              saveId: 'branch-1',
+              branchedAtSeason: 4,
+              branchedAtDay: 62,
+              description: 'Aggressive deadline push',
+              createdAt: '2026-04-02T12:00:00.000Z',
+            },
+          },
+        ],
+      },
+    ] as never);
     mockedLoadGameSafe.mockResolvedValue({
       status: 'ok',
       save: {
@@ -235,6 +347,53 @@ describe('SetupPage', () => {
         legacyState: null,
         createdAt: '2026-04-02T00:00:00.000Z',
         updatedAt: '2026-04-02T12:00:00.000Z',
+      },
+    } as never);
+    mockedInspectSaveById.mockResolvedValue({
+      status: 'ok',
+      slot: null,
+      save: {
+        id: 'branch-1',
+        slotNumber: null,
+        name: 'Aggressive deadline push',
+        season: 4,
+        day: 88,
+        phase: 'regular',
+        schemaVersion: 15,
+        hasSnapshot: true,
+        snapshot: {
+          schemaVersion: 15,
+          season: 4,
+          day: 88,
+          phase: 'regular',
+          franchise: {
+            gmName: 'General Manager',
+            difficulty: 'standard',
+            playMode: 'standard',
+            createdAt: 'S1D1',
+            teamId: 'nyy',
+            teamName: 'New York Yankees',
+            teamAbbreviation: 'NYY',
+            teamDivision: 'AL_EAST',
+            onboarding: {
+              welcomeBriefingSeen: true,
+              firstMonthlyPulseSeen: true,
+            },
+          },
+        },
+        legacyState: null,
+        createdAt: '2026-04-02T12:00:00.000Z',
+        updatedAt: '2026-04-02T12:30:00.000Z',
+        parentSaveId: 'save-slot-1',
+        isRootSave: false,
+        branchMeta: {
+          id: 'branch-1',
+          saveId: 'branch-1',
+          branchedAtSeason: 4,
+          branchedAtDay: 62,
+          description: 'Aggressive deadline push',
+          createdAt: '2026-04-02T12:00:00.000Z',
+        },
       },
     } as never);
   });
@@ -434,5 +593,20 @@ describe('SetupPage', () => {
     expect(mockedRepairSave).toHaveBeenCalledWith(1);
     expect(vi.mocked(workerMock.importSnapshot)).toHaveBeenCalled();
     expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('renders branch list under the parent save and shows the branch cap indicator', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <SetupPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Aggressive deadline push');
+    expect(container.textContent).toContain('1/3 branches');
   });
 });

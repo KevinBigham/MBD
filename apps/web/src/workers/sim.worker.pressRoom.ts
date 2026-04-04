@@ -23,12 +23,15 @@ function compareSource(left: PressRoomSource, right: PressRoomSource): number {
 function deriveTag(entry: {
   category: string;
   priority: number;
-  tag?: string;
+  headline: string;
+  body: string;
 }): PressRoomEntry['tag'] {
-  if (entry.tag === 'BREAKING' || entry.tag === 'ANALYSIS' || entry.tag === 'RECAP' || entry.tag === 'RUMOR') {
-    return entry.tag;
-  }
-  if (entry.category === 'rumor') return 'RUMOR';
+  const text = `${entry.headline} ${entry.body}`.toLowerCase();
+
+  if (entry.category === 'rumor' || /\brumou?r\b/.test(text)) return 'RUMOR';
+  if (entry.category === 'press_conference' || /\bdebate\b|\bcontrovers/i.test(text)) return 'DEBATE';
+  if (/\banalysis\b|\bwinners?\b|\blosers?\b|\boutlook\b|\bintel\b/.test(text)) return 'ANALYSIS';
+  if (entry.category === 'rivalry' || /\bwatch\b/.test(text)) return 'WATCH';
   if (entry.priority <= 1) return 'BREAKING';
   if (['extension', 'qualifying_offer', 'coaching', 'development', 'rivalry', 'owner', 'chemistry'].includes(entry.category)) {
     return 'ANALYSIS';
@@ -44,14 +47,21 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
   const deadlineDays = state.day <= getTradeDeadlineDay() ? getDaysUntilTradeDeadline(state.day) : 0;
 
   if (isTradeDeadlineModeDay(state.day) && state.tradeState.pendingOffers.length > 0) {
+    const headline = `Deadline buzz: ${userTeamName} drawing calls with ${deadlineDays} days left`;
+    const body = `${state.tradeState.pendingOffers.length} active trade thread${state.tradeState.pendingOffers.length === 1 ? '' : 's'} keep ${userTeamName} in the rumor mill as the market tightens.`;
     entries.push({
       id: `synthetic-rumor-${state.season}-${state.day}`,
       source: 'news',
       category: 'rumor',
-      tag: 'RUMOR',
+      tag: deriveTag({
+        category: 'rumor',
+        priority: 2,
+        headline,
+        body,
+      }),
       priority: 2,
-      headline: `Deadline buzz: ${userTeamName} drawing calls with ${deadlineDays} days left`,
-      body: `${state.tradeState.pendingOffers.length} active trade thread${state.tradeState.pendingOffers.length === 1 ? '' : 's'} keep ${userTeamName} in the rumor mill as the market tightens.`,
+      headline,
+      body,
       timestamp,
       relatedTeamIds: [state.userTeamId],
       relatedPlayerIds: [],
@@ -71,14 +81,21 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
       .slice(0, 3)
       .map((teamId) => getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase())
       .join(', ');
+    const headline = `Hot stove: ${playerName} drawing interest from ${clubLabels}`;
+    const body = `${playerName} still has ${hotStoveCandidate.interestedTeams.length} clubs circling as free agency moves through the top tier.`;
     entries.push({
       id: `synthetic-fa-rumor-${hotStoveCandidate.player.id}-${state.season}-${state.day}`,
       source: 'league_wire',
       category: 'rumor',
-      tag: 'RUMOR',
+      tag: deriveTag({
+        category: 'rumor',
+        priority: 2,
+        headline,
+        body,
+      }),
       priority: 2,
-      headline: `Hot stove: ${playerName} drawing interest from ${clubLabels}`,
-      body: `${playerName} still has ${hotStoveCandidate.interestedTeams.length} clubs circling as free agency moves through the top tier.`,
+      headline,
+      body,
       timestamp,
       relatedTeamIds: hotStoveCandidate.interestedTeams.slice(0, 3),
       relatedPlayerIds: [hotStoveCandidate.player.id],
@@ -92,14 +109,21 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
     const developmentPlayerName = developmentPlayer
       ? `${developmentPlayer.firstName} ${developmentPlayer.lastName}`
       : 'Prospect';
+    const headline = `${developmentPlayerName} is building real momentum in player development`;
+    const body = latestDevelopment.summary;
     entries.push({
       id: `synthetic-development-${latestDevelopment.playerId}-${latestDevelopment.season}-${latestDevelopment.month}`,
       source: 'briefing',
       category: 'development',
-      tag: 'ANALYSIS',
+      tag: deriveTag({
+        category: 'development',
+        priority: 3,
+        headline,
+        body,
+      }),
       priority: 3,
-      headline: `${developmentPlayerName} is building real momentum in player development`,
-      body: latestDevelopment.summary,
+      headline,
+      body,
       timestamp,
       relatedTeamIds: [latestDevelopment.teamId],
       relatedPlayerIds: [latestDevelopment.playerId],
@@ -112,14 +136,21 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
   if (topRivalry && topRivalry.intensity >= 55) {
     const teamA = getTeamById(topRivalry.teamA);
     const teamB = getTeamById(topRivalry.teamB);
+    const headline = `Rivalry watch: ${(teamA?.abbreviation ?? topRivalry.teamA.toUpperCase())} vs ${(teamB?.abbreviation ?? topRivalry.teamB.toUpperCase())}`;
+    const body = topRivalry.summary;
     entries.push({
       id: `synthetic-rivalry-${topRivalry.id}-${state.season}-${state.day}`,
       source: 'league_wire',
       category: 'rivalry',
-      tag: 'ANALYSIS',
+      tag: deriveTag({
+        category: 'rivalry',
+        priority: 3,
+        headline,
+        body,
+      }),
       priority: 3,
-      headline: `Rivalry watch: ${(teamA?.abbreviation ?? topRivalry.teamA.toUpperCase())} vs ${(teamB?.abbreviation ?? topRivalry.teamB.toUpperCase())}`,
-      body: topRivalry.summary,
+      headline,
+      body,
       timestamp,
       relatedTeamIds: [topRivalry.teamA, topRivalry.teamB],
       relatedPlayerIds: [],
@@ -141,7 +172,12 @@ export function buildPressRoomFeed(
       id: item.id,
       source: 'briefing',
       category: item.category,
-      tag: deriveTag(item),
+      tag: deriveTag({
+        category: item.category,
+        priority: item.priority,
+        headline: item.headline,
+        body: item.body,
+      }),
       priority: item.priority,
       headline: item.headline,
       body: item.body,
@@ -154,7 +190,12 @@ export function buildPressRoomFeed(
     id: item.id,
     source: item.category === 'press_conference' ? 'press_conference' : 'league_wire',
     category: item.category,
-    tag: deriveTag(item),
+    tag: deriveTag({
+      category: item.category,
+      priority: item.priority,
+      headline: item.headline,
+      body: item.body,
+    }),
     priority: item.priority,
     headline: item.headline,
     body: item.body,

@@ -95,6 +95,8 @@ describe('SettingsPage', () => {
       day: 87,
       phase: 'regular',
       userTeamId: 'nyy',
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
       initializeGame: vi.fn(),
     } as unknown as ReturnType<typeof useGameStore>);
 
@@ -276,5 +278,170 @@ describe('SettingsPage', () => {
 
     expect(usePreferencesStore.getState().reducedMotion).toBe(true);
     expect(usePreferencesStore.getState().highContrast).toBe(true);
+  });
+
+  it('shows what-if branch management for the active root save', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getBranches: vi.fn().mockResolvedValue([
+        {
+          id: 'branch-1',
+          slotNumber: null,
+          name: 'Aggressive deadline push',
+          season: 3,
+          day: 87,
+          phase: 'regular',
+          schemaVersion: 15,
+          hasSnapshot: true,
+          snapshot: null,
+          legacyState: null,
+          createdAt: '2026-04-04T00:00:00.000Z',
+          updatedAt: '2026-04-04T00:00:00.000Z',
+          parentSaveId: 'save-slot-1',
+          isRootSave: false,
+          branchMeta: {
+            id: 'branch-1',
+            saveId: 'branch-1',
+            branchedAtSeason: 3,
+            branchedAtDay: 87,
+            description: 'Aggressive deadline push',
+            createdAt: '2026-04-04T00:00:00.000Z',
+          },
+        },
+      ]),
+      createWhatIfBranch: vi.fn().mockResolvedValue({ id: 'branch-2' }),
+      deleteWhatIfBranch: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(<SettingsPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('What-If Branching');
+    expect(container.textContent).toContain('1/3 branches');
+    expect(container.textContent).toContain('Aggressive deadline push');
+    expect(container.textContent).toContain('Create Branch');
+    expect(container.textContent).toContain('Delete Branch');
+  });
+
+  it('loads diagnostics and runs archive and prune actions against the active save', async () => {
+    const getPerformanceDiagnostics = vi.fn().mockResolvedValue({
+      totals: {
+        totalSeasons: 12,
+        snapshotSizeBytes: 524288,
+        liveArchiveSeasons: 10,
+        archivedSeasons: 2,
+      },
+      queues: {
+        newsItems: 14,
+        briefingItems: 4,
+        tickerEntries: 9,
+        staleTickerEntries: 2,
+        activeWatchers: 3,
+        resolvedWatchers: 1,
+        scoutConflicts: 2,
+      },
+      runtime: {
+        lastSimDayMs: 18.4,
+        lastSaveMs: 11.2,
+        lastLoadMs: 6.8,
+      },
+    });
+    const archiveOldSeasons = vi.fn().mockResolvedValue({
+      success: true,
+      archivedCount: 2,
+      diagnostics: {
+        totals: {
+          totalSeasons: 12,
+          snapshotSizeBytes: 500000,
+          liveArchiveSeasons: 8,
+          archivedSeasons: 4,
+        },
+        queues: {
+          newsItems: 14,
+          briefingItems: 4,
+          tickerEntries: 9,
+          staleTickerEntries: 2,
+          activeWatchers: 3,
+          resolvedWatchers: 1,
+          scoutConflicts: 2,
+        },
+        runtime: {
+          lastSimDayMs: 18.4,
+          lastSaveMs: 12.1,
+          lastLoadMs: 6.8,
+        },
+      },
+    });
+    const pruneStaleData = vi.fn().mockResolvedValue({
+      success: true,
+      prunedCount: 3,
+      diagnostics: {
+        totals: {
+          totalSeasons: 12,
+          snapshotSizeBytes: 480000,
+          liveArchiveSeasons: 8,
+          archivedSeasons: 4,
+        },
+        queues: {
+          newsItems: 14,
+          briefingItems: 4,
+          tickerEntries: 7,
+          staleTickerEntries: 0,
+          activeWatchers: 2,
+          resolvedWatchers: 0,
+          scoutConflicts: 2,
+        },
+        runtime: {
+          lastSimDayMs: 18.4,
+          lastSaveMs: 10.6,
+          lastLoadMs: 6.8,
+        },
+      },
+    });
+
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getBranches: vi.fn().mockResolvedValue([]),
+      getPerformanceDiagnostics,
+      archiveOldSeasons,
+      pruneStaleData,
+      importSnapshot: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(<SettingsPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Diagnostics');
+    expect(container.textContent).toContain('Runtime');
+    expect(container.textContent).toContain('524.3 KB');
+
+    const archiveButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Archive Older Seasons'),
+    );
+    const pruneButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Prune Stale Data'),
+    );
+
+    await act(async () => {
+      archiveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(archiveOldSeasons).toHaveBeenCalledWith('save-slot-1');
+    expect(container.textContent).toContain('Archived 2 older seasons');
+
+    await act(async () => {
+      pruneButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(pruneStaleData).toHaveBeenCalledWith('save-slot-1');
+    expect(container.textContent).toContain('Pruned 3 stale entries');
   });
 });

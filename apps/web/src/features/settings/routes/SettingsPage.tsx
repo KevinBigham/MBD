@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Download, Monitor, Save, Trash2, Upload, Volume2, VolumeX } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, Download, Monitor, Save, Trash2, Upload, Volume2, VolumeX } from 'lucide-react';
 import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
@@ -21,15 +21,105 @@ import {
   type SaveInspectionResult,
 } from '@/shared/lib/saveSystem';
 
+const WHAT_IF_BRANCH_LIMIT = 3;
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+type SettingsSectionKey = 'audio' | 'simulation' | 'display' | 'accessibility' | 'data' | 'diagnostics' | 'about';
+
+interface PerformanceDiagnosticsView {
+  totals: {
+    totalSeasons: number;
+    snapshotSizeBytes: number;
+    liveArchiveSeasons: number;
+    archivedSeasons: number;
+  };
+  queues: {
+    newsItems: number;
+    briefingItems: number;
+    tickerEntries: number;
+    staleTickerEntries: number;
+    activeWatchers: number;
+    resolvedWatchers: number;
+    scoutConflicts: number;
+  };
+  runtime: {
+    lastSimDayMs: number | null;
+    lastSaveMs: number | null;
+    lastLoadMs: number | null;
+  };
+}
+
+const DEFAULT_OPEN_SECTIONS: Record<SettingsSectionKey, boolean> = {
+  audio: true,
+  simulation: true,
+  display: true,
+  accessibility: true,
+  data: true,
+  diagnostics: true,
+  about: true,
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000) {
+    return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  }
+  if (bytes >= 1000) {
+    return `${(bytes / 1000).toFixed(1)} KB`;
+  }
+  return `${bytes} B`;
+}
+
+function formatRuntime(value: number | null): string {
+  return value == null ? 'Not measured yet' : `${value.toFixed(1)} ms`;
+}
+
+function SettingsSection(props: {
+  title: string;
+  description: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`rounded-lg border border-dynasty-border bg-dynasty-surface ${props.className ?? ''}`}>
+      <button
+        type="button"
+        onClick={props.onToggle}
+        aria-expanded={props.open}
+        className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
+      >
+        <div>
+          <h2 className="font-heading text-lg font-semibold text-dynasty-textBright">
+            {props.title}
+          </h2>
+          <p className="mt-2 font-heading text-sm text-dynasty-muted">
+            {props.description}
+          </p>
+        </div>
+        {props.open ? (
+          <ChevronDown className="mt-1 h-4 w-4 text-dynasty-muted" />
+        ) : (
+          <ChevronRight className="mt-1 h-4 w-4 text-dynasty-muted" />
+        )}
+      </button>
+      {props.open ? (
+        <div className="border-t border-dynasty-border px-6 py-5">
+          {props.children}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { season, day, phase, userTeamId, initializeGame } = useGameStore();
+  const { season, day, phase, userTeamId, initializeGame, activeSaveId, activeSaveSlot } = useGameStore();
   const muted = useAudioPreferencesStore((state) => state.muted);
   const volume = useAudioPreferencesStore((state) => state.volume);
   const effectVolume = useAudioPreferencesStore((state) => state.effectVolume);
@@ -53,21 +143,49 @@ export default function SettingsPage() {
   const [saves, setSaves] = useState<SaveData[]>([]);
   const [status, setStatus] = useState<string>('');
   const [busySlot, setBusySlot] = useState<number | null>(null);
+  const [branchBusy, setBranchBusy] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
+  const [branchDescription, setBranchDescription] = useState('');
+  const [branches, setBranches] = useState<SaveData[]>([]);
+  const [diagnostics, setDiagnostics] = useState<PerformanceDiagnosticsView | null>(null);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState<'archive' | 'prune' | null>(null);
+  const [openSections, setOpenSections] = useState<Record<SettingsSectionKey, boolean>>(DEFAULT_OPEN_SECTIONS);
   const [recoveryState, setRecoveryState] = useState<{
     slot: number;
     message: string;
   } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const activeRootSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : null;
+  const activeManagedSaveId = activeSaveId ?? activeRootSaveId;
 
   async function refreshSaves() {
     setSaves(await listSaves());
   }
 
+  async function refreshBranches() {
+    if (!workerReady || !activeRootSaveId || typeof worker.getBranches !== 'function') {
+      setBranches([]);
+      return;
+    }
+
+    setBranches(await worker.getBranches(activeRootSaveId) as SaveData[]);
+  }
+
+  async function refreshDiagnostics() {
+    if (!workerReady || typeof worker.getPerformanceDiagnostics !== 'function') {
+      setDiagnostics(null);
+      return;
+    }
+
+    setDiagnostics(await worker.getPerformanceDiagnostics() as PerformanceDiagnosticsView | null);
+  }
+
   useEffect(() => {
     void refreshSaves();
-  }, []);
+    void refreshBranches();
+    void refreshDiagnostics();
+  }, [activeRootSaveId, activeManagedSaveId, workerReady]);
 
   useEffect(() => {
     const standalone = window.matchMedia?.('(display-mode: standalone)').matches
@@ -306,7 +424,103 @@ export default function SettingsPage() {
     setStatus('Cleared every local save slot.');
   }
 
+  async function handleCreateBranch() {
+    if (!workerReady || !activeRootSaveId || typeof worker.createWhatIfBranch !== 'function') {
+      return;
+    }
+    const description = branchDescription.trim();
+    if (!description) {
+      setStatus('Name the what-if branch before creating it.');
+      return;
+    }
+
+    setBranchBusy(true);
+    setStatus('');
+    try {
+      await worker.createWhatIfBranch(activeRootSaveId, description);
+      await refreshBranches();
+      setBranchDescription('');
+      setStatus('Created a new what-if branch from the active root save.');
+    } catch (error) {
+      console.error('Failed to create branch:', error);
+      setStatus('Failed to create a what-if branch.');
+    } finally {
+      setBranchBusy(false);
+    }
+  }
+
+  async function handleDeleteBranch(branchSaveId: string) {
+    if (typeof worker.deleteWhatIfBranch !== 'function') {
+      return;
+    }
+
+    setBranchBusy(true);
+    setStatus('');
+    try {
+      await worker.deleteWhatIfBranch(branchSaveId);
+      await refreshBranches();
+      setStatus('Deleted the selected what-if branch.');
+    } catch (error) {
+      console.error('Failed to delete branch:', error);
+      setStatus('Failed to delete the selected what-if branch.');
+    } finally {
+      setBranchBusy(false);
+    }
+  }
+
+  async function handleArchiveOldSeasons() {
+    if (!activeManagedSaveId || typeof worker.archiveOldSeasons !== 'function') {
+      return;
+    }
+
+    setDiagnosticsBusy('archive');
+    setStatus('');
+    try {
+      const result = await worker.archiveOldSeasons(activeManagedSaveId) as {
+        archivedCount: number;
+        diagnostics: PerformanceDiagnosticsView;
+      };
+      setDiagnostics(result.diagnostics);
+      setStatus(`Archived ${result.archivedCount} older seasons into the long-term archive.`);
+    } catch (error) {
+      console.error('Failed to archive older seasons:', error);
+      setStatus('Failed to archive older seasons.');
+    } finally {
+      setDiagnosticsBusy(null);
+    }
+  }
+
+  async function handlePruneStaleData() {
+    if (!activeManagedSaveId || typeof worker.pruneStaleData !== 'function') {
+      return;
+    }
+
+    setDiagnosticsBusy('prune');
+    setStatus('');
+    try {
+      const result = await worker.pruneStaleData(activeManagedSaveId) as {
+        prunedCount: number;
+        diagnostics: PerformanceDiagnosticsView;
+      };
+      setDiagnostics(result.diagnostics);
+      setStatus(`Pruned ${result.prunedCount} stale entries from the active save.`);
+    } catch (error) {
+      console.error('Failed to prune stale data:', error);
+      setStatus('Failed to prune stale data.');
+    } finally {
+      setDiagnosticsBusy(null);
+    }
+  }
+
+  function toggleSection(section: SettingsSectionKey) {
+    setOpenSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  }
+
   const saveMap = new Map(saves.map((save) => [save.slotNumber, save]));
+  const branchLimitReached = branches.length >= WHAT_IF_BRANCH_LIMIT;
   const volumePercent = Math.round(volume * 100);
   const effectVolumePercent = Math.round(effectVolume * 100);
   const ambientVolumePercent = Math.round(ambientVolume * 100);
@@ -314,225 +528,214 @@ export default function SettingsPage() {
   return (
     <PageShell>
       <div className="space-y-6">
-      <div>
-        <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">
-          Settings
-        </h1>
-        <p className="mt-1 font-heading text-sm text-dynasty-muted">
-          Configure game preferences, simulation speed, display options, and
-          manage save data.
-        </p>
-      </div>
-
-      {status && (
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 font-heading text-sm text-accent-info">
-          {status}
+        <div>
+          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">
+            Settings
+          </h1>
+          <p className="mt-1 font-heading text-sm text-dynasty-muted">
+            Configure game preferences, simulation speed, display options, and manage save data.
+          </p>
         </div>
-      )}
 
-      {recoveryState ? (
-        <SaveRecoveryDialog
-          slot={recoveryState.slot}
-          message={recoveryState.message}
-          busy={busySlot === recoveryState.slot}
-          onRepair={() => void handleRepair(recoveryState.slot)}
-          onStartFresh={() => void handleStartFresh(recoveryState.slot)}
-          onDelete={() => void handleDelete(recoveryState.slot)}
-          onClose={() => setRecoveryState(null)}
-        />
-      ) : null}
+        {status && (
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 font-heading text-sm text-accent-info">
+            {status}
+          </div>
+        )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="mb-3 font-heading text-lg font-semibold text-dynasty-textBright">
-                Audio
-              </h2>
-              <p className="font-heading text-sm text-dynasty-muted">
-                Procedural effects and ambient beds. Audio starts muted until you opt in.
+        {recoveryState ? (
+          <SaveRecoveryDialog
+            slot={recoveryState.slot}
+            message={recoveryState.message}
+            busy={busySlot === recoveryState.slot}
+            onRepair={() => void handleRepair(recoveryState.slot)}
+            onStartFresh={() => void handleStartFresh(recoveryState.slot)}
+            onDelete={() => void handleDelete(recoveryState.slot)}
+            onClose={() => setRecoveryState(null)}
+          />
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <SettingsSection
+            title="Audio"
+            description="Procedural effects and ambient beds. Audio starts muted until you opt in."
+            open={openSections.audio}
+            onToggle={() => toggleSection('audio')}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div />
+              <button
+                type="button"
+                onClick={handleMuteToggle}
+                aria-label={muted ? 'Enable sound effects and ambience' : 'Mute all audio'}
+                className={`inline-flex items-center gap-2 rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide transition-colors ${
+                  muted
+                    ? 'border-dynasty-border text-dynasty-text hover:bg-dynasty-elevated'
+                    : 'border-accent-success/40 text-accent-success hover:bg-accent-success/10'
+                }`}
+              >
+                {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                {muted ? 'Muted' : 'Sound On'}
+              </button>
+            </div>
+
+            <div className="mt-6">
+              <div className="flex items-center justify-between">
+                <label htmlFor="audio-volume" className="font-heading text-sm text-dynasty-textBright">
+                  Master Volume
+                </label>
+                <span className="font-data text-xs text-dynasty-muted">{volumePercent}%</span>
+              </div>
+              <input
+                id="audio-volume"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={volumePercent}
+                onChange={(event) => handleVolumeChange(Number(event.target.value) / 100)}
+                className="mt-3 w-full accent-accent-primary"
+              />
+              <p className="mt-3 font-heading text-xs text-dynasty-muted">
+                Ambient beds stay disabled when the browser requests reduced motion.
               </p>
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="audio-effect-volume" className="font-heading text-sm text-dynasty-textBright">
+                    Effects Volume
+                  </label>
+                  <span className="font-data text-xs text-dynasty-muted">{effectVolumePercent}%</span>
+                </div>
+                <input
+                  id="audio-effect-volume"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={effectVolumePercent}
+                  onChange={(event) => handleEffectVolumeChange(Number(event.target.value) / 100)}
+                  className="mt-3 w-full accent-accent-primary"
+                />
+              </div>
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="audio-ambient-volume" className="font-heading text-sm text-dynasty-textBright">
+                    Ambient Volume
+                  </label>
+                  <span className="font-data text-xs text-dynasty-muted">{ambientVolumePercent}%</span>
+                </div>
+                <input
+                  id="audio-ambient-volume"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={ambientVolumePercent}
+                  onChange={(event) => handleAmbientVolumeChange(Number(event.target.value) / 100)}
+                  className="mt-3 w-full accent-accent-primary"
+                />
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={handleMuteToggle}
-              aria-label={muted ? 'Enable sound effects and ambience' : 'Mute all audio'}
-              className={`inline-flex items-center gap-2 rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide transition-colors ${
-                muted
-                  ? 'border-dynasty-border text-dynasty-text hover:bg-dynasty-elevated'
-                  : 'border-accent-success/40 text-accent-success hover:bg-accent-success/10'
-              }`}
-            >
-              {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-              {muted ? 'Muted' : 'Sound On'}
-            </button>
-          </div>
+          </SettingsSection>
 
-          <div className="mt-6">
-            <div className="flex items-center justify-between">
-              <label htmlFor="audio-volume" className="font-heading text-sm text-dynasty-textBright">
-                Master Volume
+          <SettingsSection
+            title="Simulation"
+            description="Pace the calendar flow and decide how much intervention the sim takes between checkpoints."
+            open={openSections.simulation}
+            onToggle={() => toggleSection('simulation')}
+          >
+            <div className="space-y-4">
+              <label className="block">
+                <span className="font-heading text-sm text-dynasty-textBright">Sim Speed</span>
+                <select
+                  aria-label="Sim Speed"
+                  className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
+                  value={simSpeed}
+                  onChange={(event) => setSimSpeed(event.target.value as typeof simSpeed)}
+                >
+                  <option value="fast">Fast</option>
+                  <option value="normal">Normal</option>
+                  <option value="detailed">Detailed</option>
+                </select>
               </label>
-              <span className="font-data text-xs text-dynasty-muted">{volumePercent}%</span>
-            </div>
-            <input
-              id="audio-volume"
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={volumePercent}
-              onChange={(event) => handleVolumeChange(Number(event.target.value) / 100)}
-              className="mt-3 w-full accent-accent-primary"
-            />
-            <p className="mt-3 font-heading text-xs text-dynasty-muted">
-              Ambient beds stay disabled when the browser requests reduced motion.
-            </p>
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <label htmlFor="audio-effect-volume" className="font-heading text-sm text-dynasty-textBright">
-                  Effects Volume
-                </label>
-                <span className="font-data text-xs text-dynasty-muted">{effectVolumePercent}%</span>
-              </div>
-              <input
-                id="audio-effect-volume"
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={effectVolumePercent}
-                onChange={(event) => handleEffectVolumeChange(Number(event.target.value) / 100)}
-                className="mt-3 w-full accent-accent-primary"
-              />
-            </div>
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <label htmlFor="audio-ambient-volume" className="font-heading text-sm text-dynasty-textBright">
-                  Ambient Volume
-                </label>
-                <span className="font-data text-xs text-dynasty-muted">{ambientVolumePercent}%</span>
-              </div>
-              <input
-                id="audio-ambient-volume"
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={ambientVolumePercent}
-                onChange={(event) => handleAmbientVolumeChange(Number(event.target.value) / 100)}
-                className="mt-3 w-full accent-accent-primary"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-          <h2 className="mb-3 font-heading text-lg font-semibold text-dynasty-textBright">
-            Simulation
-          </h2>
-          <p className="font-heading text-sm text-dynasty-muted">
-            Pace the calendar flow and decide how much intervention the sim takes between checkpoints.
-          </p>
-          <div className="mt-6 space-y-4">
-            <label className="block">
-              <span className="font-heading text-sm text-dynasty-textBright">Sim Speed</span>
-              <select
-                aria-label="Sim Speed"
-                className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
-                value={simSpeed}
-                onChange={(event) => setSimSpeed(event.target.value as typeof simSpeed)}
+              <button
+                type="button"
+                onClick={() => setAutoAdvance(!autoAdvance)}
+                aria-pressed={autoAdvance}
+                className={`rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide ${autoAdvance ? 'border-accent-success/40 text-accent-success' : 'border-dynasty-border text-dynasty-text'}`}
               >
-                <option value="fast">Fast</option>
-                <option value="normal">Normal</option>
-                <option value="detailed">Detailed</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => setAutoAdvance(!autoAdvance)}
-              aria-pressed={autoAdvance}
-              className={`rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide ${autoAdvance ? 'border-accent-success/40 text-accent-success' : 'border-dynasty-border text-dynasty-text'}`}
-            >
-              Auto Advance {autoAdvance ? 'On' : 'Off'}
-            </button>
-          </div>
-        </div>
+                Auto Advance {autoAdvance ? 'On' : 'Off'}
+              </button>
+            </div>
+          </SettingsSection>
 
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-          <h2 className="mb-3 font-heading text-lg font-semibold text-dynasty-textBright">
-            Display
-          </h2>
-          <p className="font-heading text-sm text-dynasty-muted">
-            Information density, stat display preferences, and notification
-            settings.
-          </p>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="font-heading text-sm text-dynasty-textBright">Default Stat View</span>
-              <select
-                aria-label="Default Stat View"
-                className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
-                value={defaultStatView}
-                onChange={(event) => setDefaultStatView(event.target.value as typeof defaultStatView)}
+          <SettingsSection
+            title="Display"
+            description="Information density, stat display preferences, and table defaults."
+            open={openSections.display}
+            onToggle={() => toggleSection('display')}
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="font-heading text-sm text-dynasty-textBright">Default Stat View</span>
+                <select
+                  aria-label="Default Stat View"
+                  className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
+                  value={defaultStatView}
+                  onChange={(event) => setDefaultStatView(event.target.value as typeof defaultStatView)}
+                >
+                  <option value="sabermetric">Sabermetric</option>
+                  <option value="traditional">Traditional</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="font-heading text-sm text-dynasty-textBright">Table Density</span>
+                <select
+                  aria-label="Table Density"
+                  className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
+                  value={tableDensity}
+                  onChange={(event) => setTableDensity(event.target.value as typeof tableDensity)}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="compact">Compact</option>
+                </select>
+              </label>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="Accessibility"
+            description="Reduce motion, raise contrast, and keep the app readable in longer sessions."
+            open={openSections.accessibility}
+            onToggle={() => toggleSection('accessibility')}
+          >
+            <div className="flex flex-wrap gap-3">
+              <button
+                aria-pressed={reducedMotion}
+                type="button"
+                onClick={() => setReducedMotion(!reducedMotion)}
+                className={`rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide ${reducedMotion ? 'border-accent-info/40 text-accent-info' : 'border-dynasty-border text-dynasty-text'}`}
               >
-                <option value="sabermetric">Sabermetric</option>
-                <option value="traditional">Traditional</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="font-heading text-sm text-dynasty-textBright">Table Density</span>
-              <select
-                aria-label="Table Density"
-                className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
-                value={tableDensity}
-                onChange={(event) => setTableDensity(event.target.value as typeof tableDensity)}
+                Reduced Motion {reducedMotion ? 'On' : 'Off'}
+              </button>
+              <button
+                aria-pressed={highContrast}
+                type="button"
+                onClick={() => setHighContrast(!highContrast)}
+                className={`rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide ${highContrast ? 'border-accent-warning/40 text-accent-warning' : 'border-dynasty-border text-dynasty-text'}`}
               >
-                <option value="standard">Standard</option>
-                <option value="compact">Compact</option>
-              </select>
-            </label>
-          </div>
+                High Contrast {highContrast ? 'On' : 'Off'}
+              </button>
+            </div>
+          </SettingsSection>
         </div>
 
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-          <h2 className="mb-3 font-heading text-lg font-semibold text-dynasty-textBright">
-            Accessibility
-          </h2>
-          <p className="font-heading text-sm text-dynasty-muted">
-            Reduce motion, raise contrast, and keep the app readable in longer sessions.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              aria-pressed={reducedMotion}
-              type="button"
-              onClick={() => setReducedMotion(!reducedMotion)}
-              className={`rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide ${reducedMotion ? 'border-accent-info/40 text-accent-info' : 'border-dynasty-border text-dynasty-text'}`}
-            >
-              Reduced Motion {reducedMotion ? 'On' : 'Off'}
-            </button>
-            <button
-              aria-pressed={highContrast}
-              type="button"
-              onClick={() => setHighContrast(!highContrast)}
-              className={`rounded border px-3 py-2 font-heading text-xs uppercase tracking-wide ${highContrast ? 'border-accent-warning/40 text-accent-warning' : 'border-dynasty-border text-dynasty-text'}`}
-            >
-              High Contrast {highContrast ? 'On' : 'Off'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="font-heading text-lg font-semibold text-dynasty-textBright">
-              Data / Install
-            </h2>
-            <p className="mt-1 font-heading text-sm text-dynasty-muted">
-              Current session: Season {season}, Day {day}, {phase.toUpperCase()} as {userTeamId.toUpperCase()}.
-            </p>
-          </div>
+        <SettingsSection
+          title="Data / Install"
+          description={`Current session: Season ${season}, Day ${day}, ${phase.toUpperCase()} as ${userTeamId.toUpperCase()}.`}
+          open={openSections.data}
+          onToggle={() => toggleSection('data')}
+        >
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -579,100 +782,263 @@ export default function SettingsPage() {
               {installed ? 'Installed' : 'Install App'}
             </button>
           </div>
-        </div>
-        <input
-          ref={importInputRef}
-          className="sr-only"
-          onChange={(event) => void handleImportFile(event.target.files?.[0] ?? null)}
-          type="file"
-          accept="application/json"
-        />
+          <input
+            ref={importInputRef}
+            className="sr-only"
+            onChange={(event) => void handleImportFile(event.target.files?.[0] ?? null)}
+            type="file"
+            accept="application/json"
+          />
 
-        <div className="mt-6 space-y-3">
-          {SAVE_SLOTS.map((slot) => {
-            const save = saveMap.get(slot);
-            const disabled = busySlot === slot;
-            return (
-              <div
-                key={slot}
-                className="flex flex-col gap-3 rounded-lg border border-dynasty-border/70 bg-dynasty-base/30 p-4 lg:flex-row lg:items-center lg:justify-between"
-              >
-                <div>
-                  <div className="font-heading text-sm font-semibold text-dynasty-textBright">
-                    Slot {slot}
+          <div className="mt-6 rounded-lg border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="font-heading text-sm font-semibold text-dynasty-textBright">
+                  What-If Branching
+                </h3>
+                <p className="mt-1 font-heading text-xs text-dynasty-muted">
+                  Branch the active root save before aggressive deadline moves or long sim experiments.
+                </p>
+              </div>
+              <div className="font-data text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+                {branches.length}/{WHAT_IF_BRANCH_LIMIT} branches
+              </div>
+            </div>
+
+            {activeRootSaveId && activeSaveId === activeRootSaveId ? (
+              <>
+                <div className="mt-4 flex flex-col gap-3 lg:flex-row">
+                  <input
+                    value={branchDescription}
+                    onChange={(event) => setBranchDescription(event.target.value)}
+                    placeholder="Aggressive deadline push"
+                    className="w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
+                  />
+                  <button
+                    type="button"
+                    disabled={branchBusy || branchLimitReached || branchDescription.trim().length === 0}
+                    onClick={() => void handleCreateBranch()}
+                    className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Create Branch
+                  </button>
+                </div>
+                {branchLimitReached ? (
+                  <div className="mt-3 font-heading text-xs text-accent-warning">
+                    This root save is already at the 3-branch limit.
                   </div>
-                  {save ? (
-                    <div className="mt-1 space-y-1">
-                      <div className="font-heading text-sm text-dynasty-text">
-                        {save.name}
-                      </div>
-                      <div className="font-data text-xs text-dynasty-muted">
-                        S{save.season} D{save.day} | {save.phase.toUpperCase()} | Updated {new Date(save.updatedAt).toLocaleString()}
-                      </div>
-                      {!save.hasSnapshot && (
-                        <div className="font-heading text-xs text-accent-warning">
-                          Legacy metadata only. Resume unavailable until resaved as a snapshot.
+                ) : null}
+
+                <div className="mt-4 space-y-2">
+                  {branches.length > 0 ? branches.map((branch) => (
+                    <div
+                      key={branch.id}
+                      className="flex flex-col gap-3 rounded border border-dynasty-border/70 bg-dynasty-surface/70 p-3 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div>
+                        <div className="font-heading text-sm text-dynasty-textBright">
+                          {branch.branchMeta?.description ?? branch.name}
                         </div>
-                      )}
+                        <div className="mt-1 font-data text-xs text-dynasty-muted">
+                          S{branch.season} D{branch.day} | {branch.phase.toUpperCase()} | Updated {new Date(branch.updatedAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={branchBusy}
+                        onClick={() => void handleDeleteBranch(branch.id)}
+                        className="inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete Branch
+                      </button>
                     </div>
-                  ) : (
-                    <div className="mt-1 font-heading text-sm text-dynasty-muted">
-                      Empty slot
+                  )) : (
+                    <div className="font-heading text-xs text-dynasty-muted">
+                      No what-if branches exist for the active root save.
                     </div>
                   )}
                 </div>
+              </>
+            ) : (
+              <div className="mt-4 font-heading text-xs text-dynasty-muted">
+                Load a root dynasty save to create or manage what-if branches. Branch saves can be reviewed in History, but new branches only fork from the root timeline.
+              </div>
+            )}
+          </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={disabled || !workerReady}
-                    aria-label={`Save current dynasty to slot ${slot}`}
-                    onClick={() => void handleSave(slot)}
-                    className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    disabled={disabled || !save || !workerReady}
-                    aria-label={`Load save slot ${slot}`}
-                    onClick={() => void handleLoad(slot)}
-                    className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    Load
-                  </button>
-                  <button
-                    type="button"
-                    disabled={disabled || !save}
-                    aria-label={`Delete save slot ${slot}`}
-                    onClick={() => void handleDelete(slot)}
-                    className="inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </button>
+          <div className="mt-6 space-y-3">
+            {SAVE_SLOTS.map((slot) => {
+              const save = saveMap.get(slot);
+              const disabled = busySlot === slot;
+              return (
+                <div
+                  key={slot}
+                  className="flex flex-col gap-3 rounded-lg border border-dynasty-border/70 bg-dynasty-base/30 p-4 lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div>
+                    <div className="font-heading text-sm font-semibold text-dynasty-textBright">
+                      Slot {slot}
+                    </div>
+                    {save ? (
+                      <div className="mt-1 space-y-1">
+                        <div className="font-heading text-sm text-dynasty-text">
+                          {save.name}
+                        </div>
+                        <div className="font-data text-xs text-dynasty-muted">
+                          S{save.season} D{save.day} | {save.phase.toUpperCase()} | Updated {new Date(save.updatedAt).toLocaleString()}
+                        </div>
+                        {!save.hasSnapshot && (
+                          <div className="font-heading text-xs text-accent-warning">
+                            Legacy metadata only. Resume unavailable until resaved as a snapshot.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-1 font-heading text-sm text-dynasty-muted">
+                        Empty slot
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={disabled || !workerReady}
+                      aria-label={`Save current dynasty to slot ${slot}`}
+                      onClick={() => void handleSave(slot)}
+                      className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      disabled={disabled || !save || !workerReady}
+                      aria-label={`Load save slot ${slot}`}
+                      onClick={() => void handleLoad(slot)}
+                      className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Load
+                    </button>
+                    <button
+                      type="button"
+                      disabled={disabled || !save}
+                      aria-label={`Delete save slot ${slot}`}
+                      onClick={() => void handleDelete(slot)}
+                      className="inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Diagnostics"
+          description="Runtime and save-footprint diagnostics for the active dynasty snapshot."
+          open={openSections.diagnostics}
+          onToggle={() => toggleSection('diagnostics')}
+        >
+          {diagnostics ? (
+            <div className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+                  <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Runtime</div>
+                  <div className="mt-3 space-y-2 font-heading text-sm text-dynasty-text">
+                    <div>Last Sim Day: {formatRuntime(diagnostics.runtime.lastSimDayMs)}</div>
+                    <div>Last Save: {formatRuntime(diagnostics.runtime.lastSaveMs)}</div>
+                    <div>Last Load: {formatRuntime(diagnostics.runtime.lastLoadMs)}</div>
+                  </div>
+                </div>
+                <div className="rounded border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+                  <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Storage</div>
+                  <div className="mt-3 space-y-2 font-heading text-sm text-dynasty-text">
+                    <div>{formatBytes(diagnostics.totals.snapshotSizeBytes)}</div>
+                    <div>{diagnostics.totals.totalSeasons} total seasons tracked</div>
+                  </div>
+                </div>
+                <div className="rounded border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+                  <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Archive</div>
+                  <div className="mt-3 space-y-2 font-heading text-sm text-dynasty-text">
+                    <div>{diagnostics.totals.liveArchiveSeasons} live season archives</div>
+                    <div>{diagnostics.totals.archivedSeasons} archived seasons</div>
+                  </div>
+                </div>
+                <div className="rounded border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+                  <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Queues</div>
+                  <div className="mt-3 space-y-2 font-heading text-sm text-dynasty-text">
+                    <div>{diagnostics.queues.tickerEntries} ticker entries</div>
+                    <div>{diagnostics.queues.activeWatchers} active watchers</div>
+                    <div>{diagnostics.queues.resolvedWatchers} resolved watchers</div>
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
 
-      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-        <h2 className="mb-3 font-heading text-lg font-semibold text-dynasty-textBright">
-          About
-        </h2>
-        <div className="space-y-1">
-          <p className="font-heading text-sm text-dynasty-muted">
-            Mr. Baseball Dynasty v0.0.1
-          </p>
-          <p className="font-data text-xs text-dynasty-muted">
-            Built with TypeScript, React, Vite, Web Workers, and deterministic pure-rand simulation.
-          </p>
-        </div>
-      </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+                  <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Narrative Footprint</div>
+                  <div className="mt-3 space-y-2 font-heading text-sm text-dynasty-text">
+                    <div>{diagnostics.queues.newsItems} news items</div>
+                    <div>{diagnostics.queues.briefingItems} briefing items</div>
+                    <div>{diagnostics.queues.scoutConflicts} scout conflicts</div>
+                    <div>{diagnostics.queues.staleTickerEntries} stale ticker entries</div>
+                  </div>
+                </div>
+
+                <div className="rounded border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+                  <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Maintenance</div>
+                  <p className="mt-3 font-heading text-xs text-dynasty-muted">
+                    Archive older season recap detail and prune stale runtime queues without changing save schema compatibility.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!activeManagedSaveId || diagnosticsBusy != null}
+                      onClick={() => void handleArchiveOldSeasons()}
+                      className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Archive Older Seasons
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!activeManagedSaveId || diagnosticsBusy != null}
+                      onClick={() => void handlePruneStaleData()}
+                      className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Prune Stale Data
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="font-heading text-sm text-dynasty-muted">
+              Diagnostics are unavailable until the simulation worker finishes booting.
+            </div>
+          )}
+        </SettingsSection>
+
+        <SettingsSection
+          title="About"
+          description="Build and engine context for the current local client."
+          open={openSections.about}
+          onToggle={() => toggleSection('about')}
+        >
+          <div className="space-y-1">
+            <p className="font-heading text-sm text-dynasty-muted">
+              Mr. Baseball Dynasty v0.0.1
+            </p>
+            <p className="font-data text-xs text-dynasty-muted">
+              Built with TypeScript, React, Vite, Web Workers, and deterministic pure-rand simulation.
+            </p>
+          </div>
+        </SettingsSection>
       </div>
     </PageShell>
   );

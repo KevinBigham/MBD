@@ -8,6 +8,7 @@ export const PREFERENCES_DEFAULTS = {
   tableDensity: 'standard',
   reducedMotion: false,
   highContrast: false,
+  lastVisitedPressRoomAt: null,
 } as const;
 
 interface PreferencesRecord {
@@ -17,6 +18,7 @@ interface PreferencesRecord {
   tableDensity: 'compact' | 'standard';
   reducedMotion: boolean;
   highContrast: boolean;
+  lastVisitedPressRoomAt: string | null;
 }
 
 interface PreferencesState extends PreferencesRecord {
@@ -26,6 +28,8 @@ interface PreferencesState extends PreferencesRecord {
   setTableDensity: (value: PreferencesRecord['tableDensity']) => void;
   setReducedMotion: (value: boolean) => void;
   setHighContrast: (value: boolean) => void;
+  setLastVisitedPressRoomAt: (value: string | null) => void;
+  resetLastVisitedPressRoomAt: () => void;
   hydrate: () => void;
   reset: () => void;
 }
@@ -49,6 +53,9 @@ function readPersistedPreferences(): PreferencesRecord {
       tableDensity: parsed.tableDensity === 'compact' ? parsed.tableDensity : PREFERENCES_DEFAULTS.tableDensity,
       reducedMotion: typeof parsed.reducedMotion === 'boolean' ? parsed.reducedMotion : PREFERENCES_DEFAULTS.reducedMotion,
       highContrast: typeof parsed.highContrast === 'boolean' ? parsed.highContrast : PREFERENCES_DEFAULTS.highContrast,
+      lastVisitedPressRoomAt: typeof parsed.lastVisitedPressRoomAt === 'string' || parsed.lastVisitedPressRoomAt === null
+        ? parsed.lastVisitedPressRoomAt
+        : PREFERENCES_DEFAULTS.lastVisitedPressRoomAt,
     };
   } catch {
     return { ...PREFERENCES_DEFAULTS };
@@ -71,6 +78,7 @@ function buildPersistedState(nextState: PreferencesState): PreferencesRecord {
     tableDensity: nextState.tableDensity,
     reducedMotion: nextState.reducedMotion,
     highContrast: nextState.highContrast,
+    lastVisitedPressRoomAt: nextState.lastVisitedPressRoomAt,
   };
 }
 
@@ -98,6 +106,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setHighContrast: (value) => {
     set({ highContrast: value });
+    persistPreferences(buildPersistedState(get()));
+  },
+  setLastVisitedPressRoomAt: (value) => {
+    set({ lastVisitedPressRoomAt: value });
+    persistPreferences(buildPersistedState(get()));
+  },
+  resetLastVisitedPressRoomAt: () => {
+    set({ lastVisitedPressRoomAt: null });
     persistPreferences(buildPersistedState(get()));
   },
   hydrate: () => {

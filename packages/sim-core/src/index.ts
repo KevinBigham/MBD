@@ -14,6 +14,7 @@ export {
   estimateSnapshotSize,
   pruneStaleData,
 } from './performance/index.js';
+export { compareTimelines } from './timeline/index.js';
 export {
   buildLeagueAdvancedContext,
   calculateAdvancedStatLine,

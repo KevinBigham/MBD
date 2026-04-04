@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import PressRoomPage from './PressRoomPage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -20,11 +21,47 @@ const mockedUseGameStore = vi.mocked(useGameStore);
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+function createStorageMock(): Storage {
+  const storage = new Map<string, string>();
+
+  return {
+    get length() {
+      return storage.size;
+    },
+    clear() {
+      storage.clear();
+    },
+    getItem(key: string) {
+      return storage.get(key) ?? null;
+    },
+    key(index: number) {
+      return Array.from(storage.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      storage.delete(key);
+    },
+    setItem(key: string, value: string) {
+      storage.set(key, value);
+    },
+  };
+}
+
 describe('PressRoomPage', () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
+    const storage = createStorageMock();
+    Object.defineProperty(window, 'localStorage', {
+      value: storage,
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: storage,
+      configurable: true,
+    });
+    usePreferencesStore.getState().reset();
+    usePreferencesStore.getState().setLastVisitedPressRoomAt('S3D43');
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -65,8 +102,20 @@ describe('PressRoomPage', () => {
           relatedPlayerIds: [],
         },
         {
+          id: 'brief-scouting-1',
+          source: 'briefing',
+          category: 'development',
+          tag: 'WATCH',
+          priority: 2,
+          headline: 'Scouting report: Double-A slugger is forcing the issue',
+          body: 'Internal evaluators want the next promotion discussion on the table.',
+          timestamp: 'S3D44',
+          relatedTeamIds: ['nyy'],
+          relatedPlayerIds: ['prospect-1'],
+        },
+        {
           id: 'news-trade-1',
-          source: 'news',
+          source: 'league_wire',
           category: 'trade',
           tag: 'RUMOR',
           priority: 2,
@@ -92,7 +141,7 @@ describe('PressRoomPage', () => {
           id: 'press-conference-1',
           source: 'press_conference',
           category: 'press_conference',
-          tag: 'ANALYSIS',
+          tag: 'DEBATE',
           priority: 3,
           headline: 'Press Conference: New York Yankees',
           body: 'A calmer room framed the question this way: Your prospect pipeline is drawing real attention.',
@@ -105,14 +154,16 @@ describe('PressRoomPage', () => {
   });
 
   afterEach(async () => {
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
+    if (root) {
+      await act(async () => {
+        root.unmount();
+      });
+    }
+    container?.remove();
     vi.clearAllMocks();
   });
 
-  it('renders a grouped press room feed with tags and filters', async () => {
+  it('renders collapsible source sections, scouting grouping, and unread state', async () => {
     await act(async () => {
       root.render(
         <MemoryRouter>
@@ -131,25 +182,33 @@ describe('PressRoomPage', () => {
     expect(container.textContent).toContain('Team Briefings');
     expect(container.textContent).toContain('Press Conferences');
     expect(container.textContent).toContain('League Wire');
-    expect(container.textContent).toContain('briefing');
-    expect(container.textContent).toContain('press_conference');
-    expect(container.textContent).toContain('owner');
-    expect(container.textContent).toContain('trade');
+    expect(container.textContent).toContain('Scouting Reports');
     expect(container.textContent).toContain('BREAKING');
     expect(container.textContent).toContain('RUMOR');
-    expect(container.textContent).toContain('Season 3 • Day 44');
-    expect(container.textContent).toContain('Transaction Log');
-    expect(container.textContent).toContain('Free-agent ace lands in Boston');
+    expect(container.textContent).toContain('WATCH');
+    expect(container.textContent).toContain('DEBATE');
+    expect(container.textContent).toContain('Unread');
+    expect(usePreferencesStore.getState().lastVisitedPressRoomAt).toBe('S3D44');
 
     const selects = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[];
     const tagFilter = selects[2]!;
 
     await act(async () => {
-      tagFilter.value = 'BREAKING';
+      tagFilter.value = 'WATCH';
       tagFilter.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
-    expect(container.textContent).toContain('Owner pressure is rising.');
+    expect(container.textContent).toContain('Scouting report: Double-A slugger is forcing the issue');
     expect(container.textContent).not.toContain('Breaking trade headline');
+
+    const sectionToggle = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Team Briefings'),
+    );
+
+    await act(async () => {
+      sectionToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(container.textContent).not.toContain('Owner pressure is rising.');
   });
 });

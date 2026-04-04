@@ -199,6 +199,21 @@ import {
   applyOffseasonNarrativeHooks,
   applyMonthlyPressConference,
 } from './sim.worker.narrativeFarm.js';
+import {
+  archiveOldSeasonsInState,
+  buildPerformanceDiagnosticsView,
+  estimateSnapshotSizeBytes,
+  measureRuntimeAsync,
+  measureRuntimeSync,
+  normalizePerformanceDiagnostics,
+  pruneStaleWorkerData,
+} from './sim.worker.diagnostics.js';
+import {
+  createBranchSave,
+  deleteSaveById,
+  loadGameById,
+  saveGameById,
+} from '../shared/lib/saveSystem.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -247,6 +262,45 @@ function syncCareerOverviewCard(s: FullGameState) {
     s,
     generateDynastyCard(exportGameSnapshot(s), 'career_overview'),
   );
+}
+
+function exportSnapshotWithDiagnostics(s: FullGameState) {
+  normalizePerformanceDiagnostics(s);
+  let snapshot = exportGameSnapshot(s);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const snapshotSizeBytes = estimateSnapshotSizeBytes(snapshot);
+    if (s.performanceDiagnostics.snapshotSizeBytes === snapshotSizeBytes) {
+      return snapshot;
+    }
+
+    s.performanceDiagnostics = {
+      ...s.performanceDiagnostics,
+      snapshotSizeBytes,
+    };
+    snapshot = exportGameSnapshot(s);
+  }
+
+  return snapshot;
+}
+
+async function persistCurrentStateToSave(saveId: string) {
+  const save = await loadGameById(saveId);
+  if (!save) {
+    throw new Error(`Save ${saveId} was not found.`);
+  }
+
+  const snapshot = exportSnapshotWithDiagnostics(requireState());
+  await measureRuntimeAsync('lastSaveMs', async () => {
+    await saveGameById(saveId, save.name, snapshot, {
+      slotNumber: save.slotNumber,
+      parentSaveId: save.parentSaveId,
+      isRootSave: save.isRootSave,
+      branchMeta: save.branchMeta,
+    });
+  });
+
+  return buildPerformanceDiagnosticsView(requireState());
 }
 
 function queueContractReactionWatcher(
@@ -965,74 +1019,89 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 }
 
 function simDayInternal(): SimResultDTO {
-  const s = requireState();
-  if (syncFranchiseTerminationFromOwner(s)) {
-    return blockedSimResult(s);
-  }
-  if (s.phase === 'preseason') {
-    s.phase = 'regular';
-    s.day = 1;
-  }
-
-  if (s.phase === 'regular') {
-    const previousDay = s.day;
-    const previousStandings = s.seasonState.standings.serialize();
-    const previousInjuryIds = new Set(s.injuries.keys());
-    const previousTradeCount = s.tradeState.tradeHistory.length;
-    const { newState, result } = simulateDay(
-      s.rng,
-      s.seasonState,
-      s.schedule,
-      s.players,
-      { teamModifiers: buildTeamPerformanceModifiers(s) },
-    );
-    s.seasonState = newState;
-    s.day = newState.currentDay;
-    advanceMinorLeagueDay(s);
-    applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
-    processTradeMarketActivity(s, previousDay, s.day);
-    processDayInjuriesAndNews(s);
-    refreshNarrativeState(s, result.games);
-    refreshTickerFeed(s, {
-      simDay: previousDay,
-      games: result.games,
-      previousStandings,
-      previousInjuryIds,
-      previousTradeCount,
-    });
-    applyDebutFlashbacks(s, recordProspectBondDebuts(s));
-    resolveConsequenceChains(s);
-    syncRecordTracking(s);
-    updateScenarioProgress(s);
-    return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
-  }
-
-  if (s.phase === 'playoffs') {
-    if (ensurePlayoffBracket(s)) {
-      return playoffResult(s, 0);
+  return measureRuntimeSync('lastSimDayMs', () => {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
+    if (s.phase === 'preseason') {
+      s.phase = 'regular';
+      s.day = 1;
     }
 
-    if (s.playoffBracket?.champion) {
-      finalizePlayoffRunIfNeeded(s);
-      return playoffResult(s, 0);
-    }
-
-    const before = s.playoffBracket!;
-    const gamesBefore = countBracketGames(before);
-    let working = before;
-    while (!isPlayoffComplete(working)) {
-      working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
-        teamModifiers: buildTeamPerformanceModifiers(s),
+    if (s.phase === 'regular') {
+      const previousDay = s.day;
+      const previousStandings = s.seasonState.standings.serialize();
+      const previousInjuryIds = new Set(s.injuries.keys());
+      const previousTradeCount = s.tradeState.tradeHistory.length;
+      const { newState, result } = simulateDay(
+        s.rng,
+        s.seasonState,
+        s.schedule,
+        s.players,
+        { teamModifiers: buildTeamPerformanceModifiers(s) },
+      );
+      s.seasonState = newState;
+      s.day = newState.currentDay;
+      advanceMinorLeagueDay(s);
+      applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
+      processTradeMarketActivity(s, previousDay, s.day);
+      processDayInjuriesAndNews(s);
+      refreshNarrativeState(s, result.games);
+      refreshTickerFeed(s, {
+        simDay: previousDay,
+        games: result.games,
+        previousStandings,
+        previousInjuryIds,
+        previousTradeCount,
       });
+      applyDebutFlashbacks(s, recordProspectBondDebuts(s));
+      resolveConsequenceChains(s);
+      syncRecordTracking(s);
+      updateScenarioProgress(s);
+      return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
     }
-    s.playoffBracket = working;
-    recordPlayoffProgressCoverage(s, before, s.playoffBracket);
-    finalizePlayoffRunIfNeeded(s);
-    return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
-  }
 
-  if (s.phase === 'offseason') {
-    if (s.offseasonState?.completed) {
+    if (s.phase === 'playoffs') {
+      if (ensurePlayoffBracket(s)) {
+        return playoffResult(s, 0);
+      }
+
+      if (s.playoffBracket?.champion) {
+        finalizePlayoffRunIfNeeded(s);
+        return playoffResult(s, 0);
+      }
+
+      const before = s.playoffBracket!;
+      const gamesBefore = countBracketGames(before);
+      let working = before;
+      while (!isPlayoffComplete(working)) {
+        working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+          teamModifiers: buildTeamPerformanceModifiers(s),
+        });
+      }
+      s.playoffBracket = working;
+      recordPlayoffProgressCoverage(s, before, s.playoffBracket);
+      finalizePlayoffRunIfNeeded(s);
+      return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
+    }
+
+    if (s.phase === 'offseason') {
+      if (s.offseasonState?.completed) {
+        return {
+          day: s.day,
+          season: s.season,
+          phase: 'offseason',
+          gamesPlayed: 0,
+          seasonComplete: true,
+        };
+      }
+
+      const offseasonProgress = advanceOffseasonOnce(s);
+      applyAISigningProgress(s, offseasonProgress.aiSignings);
+      resolveConsequenceChains(s);
+      updateScenarioProgress(s);
+
       return {
         day: s.day,
         season: s.season,
@@ -1042,28 +1111,15 @@ function simDayInternal(): SimResultDTO {
       };
     }
 
-    const offseasonProgress = advanceOffseasonOnce(s);
-    applyAISigningProgress(s, offseasonProgress.aiSignings);
-    resolveConsequenceChains(s);
-    updateScenarioProgress(s);
-
     return {
       day: s.day,
       season: s.season,
-      phase: 'offseason',
+      phase: s.phase,
       gamesPlayed: 0,
-      seasonComplete: true,
+      seasonComplete: false,
+      flowStateChanged: true,
     };
-  }
-
-  return {
-    day: s.day,
-    season: s.season,
-    phase: s.phase,
-    gamesPlayed: 0,
-    seasonComplete: false,
-    flowStateChanged: true,
-  };
+  });
 }
 
 export const actionApi = {
@@ -1362,22 +1418,59 @@ export const actionApi = {
   },
 
   importSnapshot(snapshot: unknown) {
-    resetTradeDeadlineState();
-    setState(importGameSnapshot(snapshot));
+    return measureRuntimeSync('lastLoadMs', () => {
+      resetTradeDeadlineState();
+      setState(importGameSnapshot(snapshot));
+      const s = requireState();
+      ensureNarrativeState(s);
+      syncAchievementState(s, { publish: false });
+      return {
+        success: true as const,
+        season: s.season,
+        day: s.day,
+        phase: s.phase,
+        playerCount: s.players.length,
+        userTeamId: s.userTeamId,
+        teamName: s.franchise.teamName,
+        gmName: s.franchise.gmName,
+        difficulty: s.franchise.difficulty,
+        flowStateChanged: true as const,
+      };
+    });
+  },
+
+  async createWhatIfBranch(parentSaveId: string, description: string) {
+    return measureRuntimeAsync('lastSaveMs', async () => createBranchSave(
+      parentSaveId,
+      exportSnapshotWithDiagnostics(requireState()),
+      description.trim() || 'What If Branch',
+    ));
+  },
+
+  async deleteWhatIfBranch(branchSaveId: string) {
+    await deleteSaveById(branchSaveId);
+    return { success: true as const };
+  },
+
+  async archiveOldSeasons(saveId: string) {
     const s = requireState();
-    ensureNarrativeState(s);
-    syncAchievementState(s, { publish: false });
+    const archivedCount = archiveOldSeasonsInState(s);
+    const diagnostics = await persistCurrentStateToSave(saveId);
     return {
       success: true as const,
-      season: s.season,
-      day: s.day,
-      phase: s.phase,
-      playerCount: s.players.length,
-      userTeamId: s.userTeamId,
-      teamName: s.franchise.teamName,
-      gmName: s.franchise.gmName,
-      difficulty: s.franchise.difficulty,
-      flowStateChanged: true as const,
+      archivedCount,
+      diagnostics,
+    };
+  },
+
+  async pruneStaleData(saveId: string) {
+    const s = requireState();
+    const prunedCount = pruneStaleWorkerData(s);
+    const diagnostics = await persistCurrentStateToSave(saveId);
+    return {
+      success: true as const,
+      prunedCount,
+      diagnostics,
     };
   },
 

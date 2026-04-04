@@ -6,6 +6,7 @@ import {
   calculateLuxuryTax,
   calculateQualifyingOfferSalary,
   calculateTeamPayroll,
+  compareTimelines,
   createFreeAgencyMarket,
   describeInjury,
   evaluatePlayerTradeValue,
@@ -20,7 +21,7 @@ import {
   toInternalRating,
   toLetterGrade,
 } from '@mbd/sim-core';
-import type { HistoricalPlayer } from '@mbd/contracts';
+import type { CareerStatsLedger, HistoricalPlayer, ScoutConflict } from '@mbd/contracts';
 import type {
   FreeAgent,
   GeneratedPlayer,
@@ -42,6 +43,7 @@ import {
   getQualifyingOfferEligibleForTeam,
   getRosterComplianceIssuesForTeam,
   getTeamPlayers,
+  createStableWorkerRng,
   requireState,
   state,
   timestamp,
@@ -49,6 +51,7 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { buildPerformanceDiagnosticsView, estimateSnapshotSizeBytes } from './sim.worker.diagnostics.js';
 import { buildAchievementView } from './sim.worker.achievements.js';
 import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
@@ -82,6 +85,10 @@ import {
   getProspectBondView,
 } from './sim.worker.farm.js';
 import { exportGameSnapshot } from './snapshot.js';
+import {
+  listBranches,
+  loadGameById,
+} from '../shared/lib/saveSystem.js';
 
 function pctFromRecord(wins: number, losses: number): number {
   const total = wins + losses;
@@ -104,6 +111,186 @@ function calculateEra(stats: PlayerGameStats): number {
     return 99;
   }
   return (stats.earnedRuns / (stats.ip / 3)) * 9;
+}
+
+function buildDevelopmentReportsView(
+  s: NonNullable<typeof state>,
+  playerId: string,
+) {
+  const recommendations = s.minorLeagueState.conversionRecommendations
+    .filter((entry) => entry.playerId === playerId);
+  const reports = s.minorLeagueState.developmentReports
+    .filter((entry) => entry.playerId === playerId)
+    .sort((left, right) => left.season - right.season || left.month - right.month);
+  const minorLeagueProgression = getMinorLeagueProgressionView(s, playerId);
+  const prospectBond = getProspectBondView(s, playerId);
+  const activeSetback = getActiveDevelopmentSetbackView(s, playerId);
+  const debutFlashback = s.debutFlashbacks.find((entry) => entry.playerId === playerId) ?? null;
+
+  if (
+    reports.length === 0
+    && recommendations.length === 0
+    && minorLeagueProgression.length === 0
+    && !prospectBond
+    && !activeSetback
+    && !debutFlashback
+  ) {
+    return null;
+  }
+
+  return {
+    playerId,
+    history: reports.map((entry) => ({
+      season: entry.season,
+      month: entry.month,
+      trajectory: entry.trajectory,
+      summary: entry.summary,
+      overallRating: entry.overallRating,
+    })),
+    recommendations,
+    minorLeagueProgression,
+    prospectBond,
+    activeSetback,
+    debutFlashback,
+  };
+}
+
+function buildStableScoutReportView(
+  s: NonNullable<typeof state>,
+  player: GeneratedPlayer,
+  scope: string,
+) {
+  const staff = s.scoutingStaffs.get(s.userTeamId);
+  if (!staff || staff.length === 0) {
+    return null;
+  }
+
+  const report = scoutPlayer(
+    createStableWorkerRng(s, scope),
+    staff[0]!,
+    player,
+    timestamp(),
+  );
+  const team = getTeamById(player.teamId);
+
+  return {
+    playerId: report.playerId,
+    playerName: `${player.firstName} ${player.lastName}`,
+    position: player.position,
+    age: player.age,
+    teamName: team?.abbreviation ?? player.teamId.toUpperCase(),
+    isPitcher: player.pitcherAttributes != null,
+    grades: report.observedRatings,
+    confidence: report.confidence,
+    overall: report.overallGrade,
+    ceiling: report.ceiling,
+    floor: report.floor,
+    notes: report.notes,
+    scoutName: staff[0]!.name,
+    date: report.reportDate,
+    reliability: Math.max(1, Math.min(5, Math.round(report.reliability * 5))),
+  };
+}
+
+function getCareerStatsForPlayer(
+  s: NonNullable<typeof state>,
+  playerId: string,
+): CareerStatsLedger | null {
+  return s.careerStats.find((entry) => entry.playerId === playerId) ?? null;
+}
+
+function getScoutConflictForPlayer(
+  s: NonNullable<typeof state>,
+  playerId: string,
+): ScoutConflict | null {
+  return s.scoutConflicts.find((entry) => entry.prospectId === playerId) ?? null;
+}
+
+function buildFatigueWarnings(
+  s: NonNullable<typeof state>,
+  mlbPlayers: GeneratedPlayer[],
+) {
+  return mlbPlayers
+    .filter((player) => player.position === 'SP')
+    .map((player) => {
+      if (player.pitcherAttributes == null) {
+        return null;
+      }
+      const stats = s.seasonState.playerSeasonStats.get(player.id);
+      if (!stats || stats.ip <= 0) {
+        return null;
+      }
+
+      const inningsPitched = stats.ip / 3;
+      const fatigueScore = Number((inningsPitched / Math.max(12, player.pitcherAttributes.stamina / 10)).toFixed(1));
+      return {
+        playerId: player.id,
+        name: `${player.firstName} ${player.lastName}`,
+        position: player.position,
+        fatigueScore,
+        summary: `${inningsPitched.toFixed(1)} IP against ${player.pitcherAttributes.stamina} stamina.`,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+    .sort((left, right) => right.fatigueScore - left.fatigueScore || left.name.localeCompare(right.name))
+    .slice(0, 3);
+}
+
+function mapProspectTrend(
+  trajectory: 'ahead_of_curve' | 'on_track' | 'below_expectations' | 'bust_risk' | undefined,
+): 'up' | 'steady' | 'down' {
+  switch (trajectory) {
+    case 'ahead_of_curve':
+      return 'up';
+    case 'below_expectations':
+    case 'bust_risk':
+      return 'down';
+    default:
+      return 'steady';
+  }
+}
+
+function buildRecentFarmMoves(
+  s: NonNullable<typeof state>,
+  pressRoomFeed: ReturnType<typeof buildPressRoomFeed>,
+) {
+  return pressRoomFeed
+    .filter((entry) =>
+      entry.relatedTeamIds.includes(s.userTeamId)
+      && (entry.category === 'development' || entry.category === 'roster_move')
+    )
+    .slice(0, 3)
+    .map((entry) => ({
+      id: entry.id,
+      headline: entry.headline,
+      timestamp: entry.timestamp,
+    }));
+}
+
+function buildThisDayInHistory(s: NonNullable<typeof state>) {
+  const archives = [...s.seasonArchive, ...s.archivedSeasons]
+    .sort((left, right) => right.season - left.season);
+  if (archives.length === 0) {
+    return null;
+  }
+
+  const archive = archives[(Math.max(1, s.day) - 1) % archives.length]!;
+  if ('userSummary' in archive) {
+    return {
+      season: archive.season,
+      headline: archive.userSummary?.playoffResult ?? `Season ${archive.season} checkpoint`,
+      summary: archive.userSummary?.storylines?.[0]
+        ?? `${archive.userSummary?.record ?? 'Unknown record'} · ${archive.userSummary?.playoffResult ?? 'Archived season'}`,
+    };
+  }
+
+  return {
+    season: archive.season,
+    headline: archive.championshipWon ? 'Won the World Series' : (archive.playoffResult ?? `Season ${archive.season} archive`),
+    summary: archive.userRecord
+      ? `${archive.userRecord.wins}-${archive.userRecord.losses}${archive.championshipWon ? ' · Title season' : ''}`
+      : 'Archived season summary.',
+  };
 }
 
 function buildDashboardSummary(s: NonNullable<typeof state>) {
@@ -208,6 +395,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
     payroll: calculateTeamPayroll(s.userTeamId, getTeamPlayers(s.userTeamId)).totalPayroll,
     budget: getDifficultyAdjustedBudget(s, s.userTeamId),
   };
+  const fatigueWarnings = buildFatigueWarnings(s, mlbPlayers);
+  const tradeDeadlineState = buildTradeDeadlineStateView(s);
+  const farmReport = buildFarmReport(s.userTeamId);
 
   const expiringContracts = mlbPlayers
     .filter((player) => player.contract.years <= 1)
@@ -220,12 +410,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       salary: player.contract.annualSalary,
     }));
 
-  const topProspect = s.players
-    .filter((player) => player.teamId === s.userTeamId && player.rosterStatus !== 'MLB')
-    .sort((left, right) => right.overallRating - left.overallRating)[0];
-
   const pressRoomFeed = buildPressRoomFeed(s, 12);
   const briefingCount = pressRoomFeed.filter((entry) => entry.source === 'briefing').length;
+  const recentFarmMoves = buildRecentFarmMoves(s, pressRoomFeed);
   const rivalries = Array.from(getRivalriesForTeam(s, s.userTeamId).values())
     .sort((left, right) => right.intensity - left.intensity)
     .slice(0, 3)
@@ -319,6 +506,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       topPerformers: [...hitters, ...pitchers],
       injuredCount: injuredPlayers.length,
       nextReturnDays: injuredPlayers[0]?.daysRemaining ?? null,
+      fatigueWarnings,
       payroll: finances.payroll,
       budget: finances.budget,
       luxuryTax: calculateLuxuryTax(finances.payroll),
@@ -326,16 +514,41 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
     intel: {
       tradeInboxCount: s.tradeState.pendingOffers.length,
       expiringContracts,
-      topProspect: topProspect
+      topProspect: farmReport.topProspects[0]
         ? {
-          playerId: topProspect.id,
-          name: `${topProspect.firstName} ${topProspect.lastName}`,
-          position: topProspect.position,
-          readiness: topProspect.overallRating,
-          level: topProspect.rosterStatus,
+          playerId: farmReport.topProspects[0].playerId,
+          name: farmReport.topProspects[0].playerName,
+          position: farmReport.topProspects[0].position,
+          readiness: farmReport.topProspects[0].overallRating,
+          level: farmReport.topProspects[0].level,
         }
         : null,
       rivalries,
+    },
+    tradeIntel: {
+      daysUntilDeadline: tradeDeadlineState.daysUntilDeadline,
+      deadlineMode: tradeDeadlineState.deadlineMode,
+      activeTradeOffers: s.tradeState.pendingOffers.length,
+      recentSummary: tradeDeadlineState.recap?.analysisHeadline ?? tradeDeadlineState.ticker[0]?.summary ?? null,
+      recentTrades: tradeDeadlineState.ticker.slice(0, 3),
+    },
+    farmIntel: {
+      topProspects: farmReport.topProspects.slice(0, 3).map((prospect) => {
+        const latestReport = s.minorLeagueState.developmentReports
+          .filter((entry) => entry.playerId === prospect.playerId)
+          .sort((left, right) => right.season - left.season || right.month - left.month)[0];
+
+        return {
+          playerId: prospect.playerId,
+          name: prospect.playerName,
+          position: prospect.position,
+          level: prospect.levelLabel,
+          readiness: prospect.overallRating,
+          trend: mapProspectTrend(latestReport?.trajectory),
+          latestLineSummary: prospect.latestLineSummary,
+        };
+      }),
+      recentMoves: recentFarmMoves,
     },
     storylinesToWatch,
     divisionStandings: divisionView,
@@ -344,7 +557,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       latest: pressRoomFeed[0] ?? null,
       briefingCount,
       newsCount: pressRoomFeed.length - briefingCount,
+      unreadCount: pressRoomFeed.length,
     },
+    thisDayInHistory: buildThisDayInHistory(s),
   };
 }
 
@@ -814,6 +1029,35 @@ export const queryApi = {
     return historicalPlayer ? buildHistoricalPlayerDTO(historicalPlayer) : null;
   },
 
+  getPlayerProfileView(playerId: string) {
+    const s = requireState();
+    const player = s.players.find((candidate) => candidate.id === playerId) ?? null;
+    const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
+    const advanced = player ? getAdvancedStatsForPlayer(s, player.id) : null;
+    const playerView = player
+      ? decorateHistoricalPlayer(toPlayerDTO(player, undefined, advanced), historicalPlayer)
+      : historicalPlayer
+        ? buildHistoricalPlayerDTO(historicalPlayer)
+        : null;
+    if (!playerView) {
+      return null;
+    }
+
+    const scoutConflict = getScoutConflictForPlayer(s, playerId);
+
+    return {
+      player: playerView,
+      personalityProfile: playerView.historical ? null : getPersonalityProfileForPlayer(s, playerId),
+      developmentReports: playerView.historical ? null : buildDevelopmentReportsView(s, playerId),
+      careerStats: getCareerStatsForPlayer(s, playerId),
+      scoutConflict,
+      scoutingReport: player && !playerView.historical && !scoutConflict
+        ? buildStableScoutReportView(s, player, `player-profile:${player.id}`)
+        : null,
+      scoutingHistoryNote: 'Scouting report history is not tracked in v15.',
+    };
+  },
+
   getAdvancedStats(playerId: string) {
     if (!state) {
       return null;
@@ -895,8 +1139,49 @@ export const queryApi = {
     return state ? getDynastyScoreSummary(state) : null;
   },
 
+  async getBranches(parentSaveId: string) {
+    return listBranches(parentSaveId);
+  },
+
+  async compareWithBranch(parentSaveId: string, branchSaveId: string) {
+    const [parentSave, branchSave] = await Promise.all([
+      loadGameById(parentSaveId),
+      loadGameById(branchSaveId),
+    ]);
+    if (
+      !parentSave?.snapshot
+      || !branchSave?.snapshot
+      || branchSave.isRootSave
+      || branchSave.parentSaveId !== parentSaveId
+      || !branchSave.branchMeta
+    ) {
+      return null;
+    }
+
+    return compareTimelines(parentSave.snapshot, branchSave.snapshot, branchSave.branchMeta);
+  },
+
   getAchievements() {
     return state ? buildAchievementView(state) : [];
+  },
+
+  getPerformanceDiagnostics() {
+    if (!state) {
+      return null;
+    }
+
+    const diagnostics = buildPerformanceDiagnosticsView(state);
+    if (diagnostics.totals.snapshotSizeBytes > 0) {
+      return diagnostics;
+    }
+
+    return {
+      ...diagnostics,
+      totals: {
+        ...diagnostics.totals,
+        snapshotSizeBytes: estimateSnapshotSizeBytes(exportGameSnapshot(state)),
+      },
+    };
   },
 
   getDashboardSummary() {
@@ -971,30 +1256,7 @@ export const queryApi = {
       return null;
     }
 
-    const staff = s.scoutingStaffs.get(s.userTeamId);
-    if (!staff || staff.length === 0) {
-      return null;
-    }
-
-    const report = scoutPlayer(s.rng.fork(), staff[0]!, player, timestamp());
-    const team = getTeamById(player.teamId);
-    return {
-      playerId: report.playerId,
-      playerName: `${player.firstName} ${player.lastName}`,
-      position: player.position,
-      age: player.age,
-      teamName: team?.abbreviation ?? player.teamId.toUpperCase(),
-      isPitcher: player.pitcherAttributes != null,
-      grades: report.observedRatings,
-      confidence: report.confidence,
-      overall: report.overallGrade,
-      ceiling: report.ceiling,
-      floor: report.floor,
-      notes: report.notes,
-      scoutName: staff[0]!.name,
-      date: report.reportDate,
-      reliability: Math.max(1, Math.min(5, Math.round(report.reliability * 5))),
-    };
+    return buildStableScoutReportView(s, player, `scouting-page:${player.id}`);
   },
 
   getScoutingStaff() {
@@ -1039,42 +1301,7 @@ export const queryApi = {
   },
 
   getDevelopmentReports(playerId: string) {
-    const s = requireState();
-    const recommendations = s.minorLeagueState.conversionRecommendations
-      .filter((entry) => entry.playerId === playerId);
-    const reports = s.minorLeagueState.developmentReports
-      .filter((entry) => entry.playerId === playerId)
-      .sort((left, right) => left.season - right.season || left.month - right.month);
-    const minorLeagueProgression = getMinorLeagueProgressionView(s, playerId);
-    const prospectBond = getProspectBondView(s, playerId);
-    const activeSetback = getActiveDevelopmentSetbackView(s, playerId);
-    const debutFlashback = s.debutFlashbacks.find((entry) => entry.playerId === playerId) ?? null;
-    if (
-      reports.length === 0
-      && recommendations.length === 0
-      && minorLeagueProgression.length === 0
-      && !prospectBond
-      && !activeSetback
-      && !debutFlashback
-    ) {
-      return null;
-    }
-
-    return {
-      playerId,
-      history: reports.map((entry) => ({
-        season: entry.season,
-        month: entry.month,
-        trajectory: entry.trajectory,
-        summary: entry.summary,
-        overallRating: entry.overallRating,
-      })),
-      recommendations,
-      minorLeagueProgression,
-      prospectBond,
-      activeSetback,
-      debutFlashback,
-    };
+    return buildDevelopmentReportsView(requireState(), playerId);
   },
 
   getCoachingImpact(teamId?: string) {

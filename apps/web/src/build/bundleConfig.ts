@@ -1,7 +1,7 @@
 export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 250 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
-export const WORKER_CHUNK_BUDGET_BYTES = 280 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
+export const WORKER_CHUNK_BUDGET_BYTES = 360 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 110 * 1024;
 
 function normalizePath(id: string): string {
   return id.replaceAll('\\', '/');
@@ -100,6 +100,8 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
     || includesPath(normalized, '/apps/web/src/workers/sim.worker.ticker.ts')
     || includesPath(normalized, '/apps/web/src/workers/snapshot.ts')
     || includesPath(normalized, '/apps/web/src/workers/sim.worker.state.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.actions.ts')
+    || includesPath(normalized, '/apps/web/src/workers/sim.worker.diagnostics.ts')
   ) {
     return 'game-engine-story';
   }
