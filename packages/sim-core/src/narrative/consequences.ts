@@ -699,9 +699,12 @@ function buildTradeResolutionNews(
   const headline = vindication
     ? `Trade vindication: ${replacementPlayerName} softened the loss of ${tradedPlayerName}`
     : `Trade regret: ${tradedPlayerName} left a larger void than expected`;
+  const homegrownCoda = typeof watcher.context.homegrownDraftSeason === 'number'
+    ? ` Fans remember drafting ${tradedPlayerName} in ${watcher.context.homegrownDraftSeason}.`
+    : '';
   const body = vindication
-    ? `${replacementPlayerName} delivered ${replacementWar.toFixed(1)} WAR versus ${tradedPlayerName}'s ${tradedWar.toFixed(1)}, giving the deal a defensible shape.`
-    : `${tradedPlayerName} outpaced ${replacementPlayerName} ${tradedWar.toFixed(1)} WAR to ${replacementWar.toFixed(1)}, and the move still stings.`;
+    ? `${replacementPlayerName} delivered ${replacementWar.toFixed(1)} WAR versus ${tradedPlayerName}'s ${tradedWar.toFixed(1)}, giving the deal a defensible shape.${homegrownCoda}`
+    : `${tradedPlayerName} outpaced ${replacementPlayerName} ${tradedWar.toFixed(1)} WAR to ${replacementWar.toFixed(1)}, and the move still stings.${homegrownCoda}`;
 
   return {
     id: `news-trade-review-${watcher.id}`,

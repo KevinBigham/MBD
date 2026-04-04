@@ -94,6 +94,13 @@ export {
   getPositionConversionTargets,
   hireCoach,
   initializePlayerDevelopmentProfile,
+  createProspectBond,
+  getProspectLoyaltyModifier,
+  updateProspectBonds,
+  applyDevelopmentSetback,
+  checkDevelopmentSetback,
+  recoverDevelopmentSetback,
+  isDevelopmentSetbackExpired,
   reconcileDevelopmentPipeline,
   runMonthlyDevelopmentCheckpoint,
 } from './player/index.js';
@@ -102,6 +109,7 @@ export type {
   CoachRole,
   CoachSpecialty,
   Coach,
+  ProspectBondSnapshot,
 } from './player/index.js';
 
 // League
@@ -501,6 +509,7 @@ export type {
   FreeAgent,
   ContractOffer,
   FreeAgencyMarket,
+  FreeAgencyAttractiveness,
   QualifyingOfferResolution,
 } from './roster/index.js';
 export {
@@ -519,6 +528,8 @@ export {
   getActiveRosterLimit,
   getRosterComplianceIssues,
   getPromotionCandidates,
+  getMinorLeagueProgression,
+  recordMinorLeagueStats,
   simulateAffiliateDay,
 } from './roster/index.js';
 export type {
@@ -571,6 +582,13 @@ export {
   evaluateConsequenceWatchers,
   calculateRushingRisk,
   calculateFanSentiment,
+  generateTickerEntries,
+  pruneTickerFeed,
+  detectNewStoryArcs,
+  advanceStoryArcs,
+  detectBreakoutCountdowns,
+  generateDebutFlashback,
+  generatePressConference,
 } from './narrative/index.js';
 export type {
   NewsPriority,
@@ -593,6 +611,19 @@ export type {
   EvaluateConsequenceWatchersResult,
   RushingRisk,
   FanSentimentContext,
+  TickerGenerationContext,
+  TickerInjuryContext,
+  TickerMilestoneContext,
+  TickerProspectCallupContext,
+  TickerRecordWatchContext,
+  TickerRumorCandidate,
+  TickerScoreContext,
+  TickerStandingsChangeContext,
+  TickerTradeContext,
+  StoryArcSnapshot,
+  BreakoutCountdown,
+  BreakoutCountdownSnapshot,
+  PressConferenceContext,
 } from './narrative/index.js';
 
 // Sharing

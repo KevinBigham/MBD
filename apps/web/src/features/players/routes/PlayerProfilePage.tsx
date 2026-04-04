@@ -70,6 +70,21 @@ interface PlayerDTO {
     seasonsPlayed: number;
     personalityTraits: string[];
   } | null;
+  activeStory?: {
+    arcType: string;
+    phase: 'setup' | 'rising' | 'climax' | 'resolution';
+    startSeason: number;
+    startDay: number;
+    latestMilestone: string | null;
+  } | null;
+  storyHistory?: Array<{
+    arcType: string;
+    phase: 'setup' | 'rising' | 'climax' | 'resolution';
+    startSeason: number;
+    startDay: number;
+    resolvedSeason: number | null;
+    milestones: string[];
+  }>;
 }
 
 interface AdvancedStatsView {
@@ -118,9 +133,52 @@ interface DevelopmentReportsView {
     teamId: string;
     fromPosition: string;
     toPosition: string;
-    confidence: number;
-    reason: string;
+      confidence: number;
+      reason: string;
   }>;
+  minorLeagueProgression: Array<{
+    season: number;
+    level: string;
+    gamesPlayed: number;
+    pa: number;
+    hits: number;
+    hr: number;
+    rbi: number;
+    avg: number;
+    ip: number;
+    era: number;
+    k: number;
+    bb: number;
+  }>;
+  prospectBond: {
+    prospectId: string;
+    draftedSeason: number;
+    debutSeason: number | null;
+    currentLevel: string;
+    bondStrength: number;
+    milestones: string[];
+    loyaltyModifier: number;
+  } | null;
+  activeSetback: {
+    type: 'mental_block' | 'nagging_injury' | 'off_field_distraction' | 'hot_streak';
+    overallModifier: number;
+    startSeason: number;
+    startMonth: number;
+    endSeason: number;
+    endMonth: number;
+    summary: string;
+    active: boolean;
+  } | null;
+  debutFlashback: {
+    playerId: string;
+    playerName: string;
+    draftSeason: number;
+    draftRound: number;
+    originalGrade: number;
+    debutSeason: number;
+    debutOverall: number;
+    journeyHighlights: string[];
+  } | null;
 }
 
 function gradeColor(grade: string): string {
@@ -168,6 +226,19 @@ function badgeVariantForTrajectory(trajectory: string): 'success' | 'info' | 'wa
   }
 }
 
+function badgeVariantForStoryPhase(phase: NonNullable<PlayerDTO['activeStory']>['phase']): 'success' | 'info' | 'warning' | 'outline' {
+  switch (phase) {
+    case 'climax':
+      return 'warning';
+    case 'rising':
+      return 'info';
+    case 'resolution':
+      return 'success';
+    default:
+      return 'outline';
+  }
+}
+
 function formatMonth(month: number): string {
   const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return labels[Math.max(0, Math.min(labels.length - 1, month - 1))] ?? `M${month}`;
@@ -178,10 +249,18 @@ function formatDecimal(value: number | null | undefined, digits: number): string
   return value.toFixed(digits);
 }
 
+function formatMinorLevel(level: string): string {
+  return level === 'A_PLUS' ? 'A+' : labelize(level);
+}
+
 function formatInnings(outs: number): string {
   const innings = Math.floor(outs / 3);
   const remainder = outs % 3;
   return `${innings}.${remainder}`;
+}
+
+function badgeVariantForSetback(type: NonNullable<DevelopmentReportsView['activeSetback']>['type']): 'success' | 'warning' | 'outline' {
+  return type === 'hot_streak' ? 'success' : 'warning';
 }
 
 const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
@@ -256,6 +335,11 @@ export default function PlayerProfilePage() {
               <span className="font-data text-sm text-dynasty-muted">{player.teamId.toUpperCase()}</span>
               <Badge variant="info">{player.rosterStatus}</Badge>
               <Badge variant={trajectoryVariant}>{player.developmentTrajectory}</Badge>
+              {player.activeStory ? (
+                <Badge variant={badgeVariantForStoryPhase(player.activeStory.phase)}>
+                  {labelize(player.activeStory.arcType)}
+                </Badge>
+              ) : null}
             </div>
           </div>
           <div className="text-right">
@@ -297,6 +381,55 @@ export default function PlayerProfilePage() {
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {(player.activeStory || (player.storyHistory?.length ?? 0) > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Story Arc</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {player.activeStory ? (
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={badgeVariantForStoryPhase(player.activeStory.phase)}>{player.activeStory.phase}</Badge>
+                  <span className="font-heading text-sm text-dynasty-text">{labelize(player.activeStory.arcType)}</span>
+                </div>
+                <div className="mt-3 font-heading text-sm text-dynasty-muted">
+                  {player.activeStory.latestMilestone ?? `${player.firstName} ${player.lastName} is building momentum.`}
+                </div>
+                <div className="mt-2 font-data text-xs text-dynasty-muted">
+                  Began S{player.activeStory.startSeason} · Day {player.activeStory.startDay}
+                </div>
+              </div>
+            ) : null}
+            {(player.storyHistory?.length ?? 0) > 0 ? (
+              <div className="space-y-3">
+                {(player.storyHistory ?? []).map((arc) => (
+                  <div key={`${arc.arcType}-${arc.startSeason}-${arc.startDay}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-heading text-sm text-dynasty-text">{labelize(arc.arcType)}</div>
+                      <Badge variant={badgeVariantForStoryPhase(arc.phase)}>{arc.phase}</Badge>
+                    </div>
+                    <div className="mt-2 font-data text-xs text-dynasty-muted">
+                      Started S{arc.startSeason} · Day {arc.startDay}
+                      {arc.resolvedSeason != null ? ` · Resolved S${arc.resolvedSeason}` : ''}
+                    </div>
+                    {arc.milestones.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        {arc.milestones.slice(-2).map((milestone) => (
+                          <div key={milestone} className="font-heading text-sm text-dynasty-muted">
+                            {milestone}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}
@@ -526,6 +659,140 @@ export default function PlayerProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      {(developmentReports?.minorLeagueProgression.length || developmentReports?.prospectBond || developmentReports?.activeSetback) ? (
+        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-heading text-dynasty-text">Development Path</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {developmentReports?.minorLeagueProgression.length ? developmentReports.minorLeagueProgression.map((line) => (
+                <div key={`${line.season}-${line.level}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-heading text-sm text-dynasty-text">
+                      S{line.season} · {formatMinorLevel(line.level)}
+                    </div>
+                    <div className="font-data text-xs text-dynasty-muted">
+                      {line.gamesPlayed} G
+                    </div>
+                  </div>
+                  <div className="mt-2 text-sm text-dynasty-muted">
+                    {isPitcher
+                      ? `${line.ip.toFixed(1)} IP · ${line.era.toFixed(2)} ERA · ${line.k} K · ${line.bb} BB`
+                      : `${line.avg.toFixed(3).replace(/^0/, '')} AVG · ${line.hits} H · ${line.hr} HR · ${line.rbi} RBI · ${line.pa} PA`}
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
+                  No minor league progression recorded yet.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-heading text-dynasty-text">Prospect Bond</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {developmentReports?.prospectBond ? (
+                <>
+                  <StatLine
+                    stats={[
+                      { label: 'Drafted', value: `S${developmentReports.prospectBond.draftedSeason}` },
+                      { label: 'Bond', value: developmentReports.prospectBond.bondStrength },
+                      { label: 'Loyalty', value: `${Math.round(developmentReports.prospectBond.loyaltyModifier * 100)}%` },
+                    ]}
+                  />
+                  <StatLine
+                    stats={[
+                      { label: 'Level', value: formatMinorLevel(developmentReports.prospectBond.currentLevel) },
+                      { label: 'Debut', value: developmentReports.prospectBond.debutSeason != null ? `S${developmentReports.prospectBond.debutSeason}` : '--' },
+                      { label: 'Milestones', value: developmentReports.prospectBond.milestones.length },
+                    ]}
+                  />
+                  {developmentReports.activeSetback ? (
+                    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-heading text-sm text-dynasty-text">Current Development Signal</div>
+                        <Badge variant={badgeVariantForSetback(developmentReports.activeSetback.type)}>
+                          {labelize(developmentReports.activeSetback.type)}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 text-sm text-dynasty-muted">{developmentReports.activeSetback.summary}</div>
+                      <div className="mt-2 font-data text-xs text-dynasty-muted">
+                        Modifier {developmentReports.activeSetback.overallModifier > 0 ? '+' : ''}
+                        {developmentReports.activeSetback.overallModifier}
+                        {' · '}
+                        Through {formatMonth(developmentReports.activeSetback.endMonth)} S{developmentReports.activeSetback.endSeason}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="space-y-2">
+                    {developmentReports.prospectBond.milestones.length ? developmentReports.prospectBond.milestones.map((milestone) => (
+                      <div key={milestone} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-3 text-sm text-dynasty-muted">
+                        {milestone}
+                      </div>
+                    )) : (
+                      <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
+                        No bond milestones recorded yet.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+              {!developmentReports?.prospectBond && developmentReports?.activeSetback ? (
+                <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-heading text-sm text-dynasty-text">Current Development Signal</div>
+                    <Badge variant={badgeVariantForSetback(developmentReports.activeSetback.type)}>
+                      {labelize(developmentReports.activeSetback.type)}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 text-sm text-dynasty-muted">{developmentReports.activeSetback.summary}</div>
+                  <div className="mt-2 font-data text-xs text-dynasty-muted">
+                    Modifier {developmentReports.activeSetback.overallModifier > 0 ? '+' : ''}
+                    {developmentReports.activeSetback.overallModifier}
+                    {' · '}
+                    Through {formatMonth(developmentReports.activeSetback.endMonth)} S{developmentReports.activeSetback.endSeason}
+                  </div>
+                </div>
+              ) : null}
+              {!developmentReports?.prospectBond && !developmentReports?.activeSetback ? (
+                <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-sm text-dynasty-muted">
+                  No homegrown bond data recorded for this player.
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {developmentReports?.debutFlashback ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Debut Flashback</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-sm text-dynasty-text">
+                Season {developmentReports.debutFlashback.draftSeason} · Round {developmentReports.debutFlashback.draftRound}
+              </div>
+              <div className="mt-2 text-sm text-dynasty-muted">
+                Original grade {developmentReports.debutFlashback.originalGrade} to debut overall {developmentReports.debutFlashback.debutOverall}.
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {developmentReports.debutFlashback.journeyHighlights.map((highlight) => (
+                <div key={highlight} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-3 text-sm text-dynasty-muted">
+                  {highlight}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {player.stats ? (
         <Card>

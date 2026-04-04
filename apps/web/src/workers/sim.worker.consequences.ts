@@ -70,6 +70,89 @@ function teamLabel(teamId: string): string {
   return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
 }
 
+function homegrownDraftSeason(
+  state: FullGameState,
+  playerId: string,
+): number | null {
+  const bond = state.prospectBonds.find((entry) => entry.prospectId === playerId);
+  const origin = state.playerOrigins.get(playerId);
+  if (!bond || !origin || origin.originTeamId !== state.userTeamId) {
+    return null;
+  }
+
+  return origin.draftSeason ?? origin.acquiredSeason ?? bond.draftedSeason;
+}
+
+function decorateTradeAftermathWatchers(
+  state: FullGameState,
+  watchers: FullGameState['consequenceWatchers'],
+  tradedPlayerIds: string[],
+) {
+  const decorated = watchers.map((watcher) => {
+    if (watcher.type !== 'trade_aftermath') {
+      return watcher;
+    }
+
+    const tradedPlayerId = typeof watcher.context.tradedPlayerId === 'string'
+      ? watcher.context.tradedPlayerId
+      : null;
+    if (!tradedPlayerId) {
+      return watcher;
+    }
+
+    const draftSeason = homegrownDraftSeason(state, tradedPlayerId);
+    if (draftSeason == null) {
+      return watcher;
+    }
+
+    return {
+      ...watcher,
+      context: {
+        ...watcher.context,
+        homegrownDraftSeason: draftSeason,
+      },
+    };
+  });
+
+  const coveredPlayers = new Set(
+    decorated
+      .filter((watcher) => watcher.type === 'trade_aftermath')
+      .map((watcher) => String(watcher.context.tradedPlayerId ?? ''))
+      .filter(Boolean),
+  );
+
+  const additions = state.players
+    .filter((player) => tradedPlayerIds.includes(player.id) && player.teamId !== state.userTeamId && !coveredPlayers.has(player.id))
+    .map((player) => {
+      const draftSeason = homegrownDraftSeason(state, player.id);
+      if (draftSeason == null) {
+        return null;
+      }
+
+      return {
+        id: `trade-homegrown-review-${state.season}-${state.day}-${player.id}`,
+        type: 'trade_aftermath' as const,
+        createdSeason: state.season,
+        createdDay: state.day,
+        expiresSeason: state.season + 1,
+        expiresDay: 1,
+        resolved: false,
+        context: {
+          kind: 'season_review',
+          teamId: state.userTeamId,
+          tradedPlayerId: player.id,
+          tradedPlayerName: `${player.firstName} ${player.lastName}`,
+          replacementPlayerId: null,
+          replacementPlayerName: 'the replacement plan',
+          homegrownDraftSeason: draftSeason,
+        },
+      };
+    })
+    .filter((watcher): watcher is NonNullable<typeof watcher> => watcher != null);
+
+  return [...decorated, ...additions];
+}
+
 function applyConsequenceBundle(state: FullGameState, bundle: ConsequenceBundle) {
   if (bundle.newsItems.length > 0) {
     state.news = deduplicateNews([...bundle.newsItems, ...state.news]);
@@ -194,7 +277,7 @@ export function applyTradeConsequences(
   applyConsequenceBundle(state, bundle);
   state.consequenceWatchers = appendConsequenceWatchers(
     state.consequenceWatchers,
-    buildTradeAftermathChain({
+    decorateTradeAftermathWatchers(state, buildTradeAftermathChain({
       rng: state.rng.fork(),
       season: state.season,
       day: state.day,
@@ -206,7 +289,7 @@ export function applyTradeConsequences(
           .filter((player) => offeredIds.includes(player.id))
           .map((player) => [player.id, Math.max(0, Math.floor((state.serviceTime.get(player.id) ?? player.serviceTimeDays ?? 0) / 172))]),
       ),
-    }),
+    }), offeredIds),
   );
   updateFrontOffice(state, {
     draftDelta: 0,

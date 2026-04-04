@@ -3,6 +3,7 @@ import type {
   AwardHistoryEntry,
   CeremonyMoment,
   CeremonyState,
+  DebutFlashback,
   FranchiseState,
   HallOfFameEntry,
   RecordBookEntry,
@@ -310,21 +311,30 @@ export function queueProspectDebutMoment(
   state: FullGameState,
   playerId: string,
   previousLevel: string,
+  flashback: DebutFlashback | null = null,
 ) {
   const player = state.players.find((candidate) => candidate.id === playerId);
   if (!player || player.teamId !== state.userTeamId || player.rosterStatus !== 'MLB') {
     return;
   }
 
+  const detailLines = flashback
+    ? [
+      `Remember when ${player.firstName} ${player.lastName} was a Round ${flashback.draftRound} pick in Season ${flashback.draftSeason}?`,
+      `Original grade ${flashback.originalGrade} · Debut overall ${flashback.debutOverall}.`,
+      ...flashback.journeyHighlights.slice(-3),
+    ]
+    : [
+      `${previousLevel} to MLB.`,
+      `${player.position} · ${toDisplayRating(player.overallRating)} OVR`,
+    ];
+
   queueCeremonyMoment(state, {
     id: `prospect-debut-${state.season}-${playerId}`,
     type: 'prospect_debut',
     title: 'THE FUTURE IS NOW',
     subtitle: `${player.firstName} ${player.lastName}`,
-    detailLines: [
-      `${previousLevel} to MLB.`,
-      `${player.position} · ${toDisplayRating(player.overallRating)} OVR`,
-    ],
+    detailLines,
     soundEffect: 'prospect_callup',
     autoDismissMs: 5000,
     createdAt: currentTimestamp(state),

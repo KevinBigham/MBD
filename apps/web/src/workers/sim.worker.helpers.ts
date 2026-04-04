@@ -138,6 +138,7 @@ import type {
   CeremonyState,
   ChallengeState,
   ConsequenceWatcher,
+  DebutFlashback,
   DynastyCard,
   FanSentiment,
   FrontOfficeState,
@@ -156,7 +157,10 @@ import type {
   MinorLeagueState,
   MonthlyPulseState,
   OwnerState,
+  PlayerOrigin,
   PlayerMorale,
+  PlayerStoryArc,
+  ProspectBond,
   RecordBookEntry,
   RecordWatchEntry,
   Rivalry,
@@ -164,11 +168,18 @@ import type {
   SeasonArchiveEntry,
   SeasonHistoryEntry,
   TeamChemistry,
+  TickerEntry,
   TradeState,
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
 import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool, getTeamPayrollCap } from './sim.worker.setup.js';
+import {
+  getLoyaltyAdjustedAppeal,
+  registerDraftedProspectAcquisition,
+  registerInternationalProspectAcquisition,
+  syncMinorLeagueStatHistory,
+} from './sim.worker.farm.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -210,6 +221,11 @@ export interface FullGameState {
   briefingQueue: BriefingItem[];
   storyFlags: Map<string, string[]>;
   rivalries: Map<string, Rivalry>;
+  tickerFeed: TickerEntry[];
+  playerStoryArcs: PlayerStoryArc[];
+  prospectBonds: ProspectBond[];
+  playerOrigins: Map<string, PlayerOrigin>;
+  debutFlashbacks: DebutFlashback[];
   awardHistory: AwardHistoryEntry[];
   hallOfFame: HallOfFameEntry[];
   hallOfFameBallot: HallOfFameBallotEntry[];
@@ -341,6 +357,21 @@ export interface PlayerDTO {
     seasonsPlayed: number;
     personalityTraits: string[];
   } | null;
+  activeStory?: {
+    arcType: string;
+    phase: PlayerStoryArc['phase'];
+    startSeason: number;
+    startDay: number;
+    latestMilestone: string | null;
+  } | null;
+  storyHistory?: Array<{
+    arcType: string;
+    phase: PlayerStoryArc['phase'];
+    startSeason: number;
+    startDay: number;
+    resolvedSeason: number | null;
+    milestones: string[];
+  }>;
 }
 
 export interface SimResultDTO {
@@ -855,6 +886,7 @@ export function advanceMinorLeagueDay(s: FullGameState) {
     s.season,
     TEAMS.map((team) => team.id),
   );
+  syncMinorLeagueStatHistory(s);
 }
 
 export function getPromotionCandidatesForTeam(
@@ -1408,6 +1440,7 @@ function applyIFASigningToLeague(
   s.internationalScoutingState = signingResult.state;
   s.players.push(signingResult.signedPlayer);
   s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+  registerInternationalProspectAcquisition(s, prospect.id, teamId, bonusAmount);
 
   if (s.offseasonState) {
     s.offseasonState = recordIFASigning(s.offseasonState, {
@@ -2384,6 +2417,16 @@ export function signUserDraftPick(
     return { success: true, signed: false, message: 'Player declined and will head to school.' };
   }
 
+  registerDraftedProspectAcquisition(
+    s,
+    playerId,
+    s.userTeamId,
+    pick.round,
+    pick.pickNumber,
+    prospect.scoutingGrade,
+    outcome.offeredBonus,
+  );
+
   return { success: true, signed: true, message: 'Player signed and joined the organization.' };
 }
 
@@ -2414,7 +2457,18 @@ function autoResolveAIDraftSignings(s: FullGameState) {
 
     if (!outcome.signed) {
       applyUnsignedDraftOutcome(s, pick.playerId, pick.teamId);
+      continue;
     }
+
+    registerDraftedProspectAcquisition(
+      s,
+      pick.playerId,
+      pick.teamId,
+      pick.round,
+      pick.pickNumber,
+      prospect.scoutingGrade,
+      outcome.offeredBonus,
+    );
   }
 }
 
@@ -3211,6 +3265,18 @@ export function toPlayerDTO(
   stats?: PlayerGameStats,
   advanced?: PlayerAdvancedStatsDTO | null,
 ): PlayerDTO {
+  const storyArcs = state
+    ? state.playerStoryArcs
+      .filter((arc) => arc.playerId === player.id)
+      .sort((left, right) =>
+        Number(right.resolvedSeason == null) - Number(left.resolvedSeason == null)
+        || (right.resolvedSeason ?? 0) - (left.resolvedSeason ?? 0)
+        || right.startSeason - left.startSeason
+        || right.startDay - left.startDay,
+      )
+    : [];
+  const activeStory = storyArcs.find((arc) => arc.resolvedSeason == null) ?? null;
+  const storyHistory = storyArcs.filter((arc) => arc.resolvedSeason != null);
   const seasonStats = stats ?? (state ? state.seasonState.playerSeasonStats.get(player.id) : undefined);
   let statBlock: PlayerDTO['stats'] = null;
   if (seasonStats && (seasonStats.pa > 0 || seasonStats.ip > 0)) {
@@ -3281,6 +3347,23 @@ export function toPlayerDTO(
     advanced: advanced ?? null,
     historical: false,
     historicalSummary: null,
+    activeStory: activeStory
+      ? {
+        arcType: activeStory.arcType,
+        phase: activeStory.phase,
+        startSeason: activeStory.startSeason,
+        startDay: activeStory.startDay,
+        latestMilestone: activeStory.milestones.at(-1) ?? null,
+      }
+      : null,
+    storyHistory: storyHistory.map((arc) => ({
+      arcType: arc.arcType,
+      phase: arc.phase,
+      startSeason: arc.startSeason,
+      startDay: arc.startDay,
+      resolvedSeason: arc.resolvedSeason,
+      milestones: [...arc.milestones],
+    })),
   };
 }
 
@@ -3956,11 +4039,13 @@ function simulateFreeAgencyDays(
 ): OffseasonProgressResult['aiSignings'] {
   ensureFreeAgencyMarket(s);
   const aiSignings: OffseasonProgressResult['aiSignings'] = [];
-  const teamAttractiveness = new Map(
-    TEAMS
-      .filter((team) => team.id !== s.userTeamId)
-      .map((team) => [team.id, getTeamFreeAgencyAppealScore(s, team.id)] as const),
-  );
+  const teamAttractiveness = (teamId: string, playerId: string) =>
+    getLoyaltyAdjustedAppeal(
+      s,
+      teamId,
+      playerId,
+      getTeamFreeAgencyAppealScore(s, teamId),
+    );
 
   for (let day = 0; day < daysToSimulate; day++) {
     if (!s.freeAgencyMarket) break;

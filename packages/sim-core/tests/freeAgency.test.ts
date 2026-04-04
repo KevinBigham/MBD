@@ -9,6 +9,7 @@ import {
   generateAIOffer,
   makeUserOffer,
   projectContractYears,
+  simulateFADay,
   getTopFreeAgents,
   simulateFullFreeAgency,
 } from '../src/index.js';
@@ -198,6 +199,28 @@ describe('makeUserOffer', () => {
 
     expect(result.accepted).toBe(true);
     expect(result.reason).toMatch(/clubhouse fit/i);
+  });
+});
+
+describe('simulateFADay', () => {
+  it('lets a favored club win a comparable market through per-player attractiveness', () => {
+    const player = { ...makeExpiringPlayer(260), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const next = simulateFADay(
+      new GameRNG(260),
+      market,
+      new Map([['oak', 200], ['bos', 200]]),
+      new Map([['oak', 90], ['bos', 90]]),
+      new Map([
+        ['oak', new Map([[player.position, 80]])],
+        ['bos', new Map([[player.position, 80]])],
+      ]),
+      (teamId, playerId) => (teamId === 'oak' && playerId === player.id ? 78 : 55),
+    );
+
+    expect(next.signedPlayers[0]?.signedWith).toBe('oak');
   });
 });
 

@@ -137,6 +137,17 @@ describe('DashboardPage', () => {
             },
           ],
         },
+        storylinesToWatch: [
+          {
+            playerId: 'p1',
+            playerName: 'Aaron Judge',
+            teamId: 'nyy',
+            teamName: 'New York Yankees',
+            arcType: 'dynasty_cornerstone',
+            phase: 'climax',
+            latestMilestone: 'All eyes on Aaron Judge as the dynasty cornerstone reaches a crescendo.',
+          },
+        ],
         divisionStandings: [
           {
             teamId: 'nyy',
@@ -248,6 +259,7 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Welcome, GM Alex Rivera');
     expect(container.textContent).toContain('B');
     expect(container.textContent).toContain('Season Momentum');
+    expect(container.textContent).toContain('Storylines to Watch');
     expect(container.textContent).toContain('Roster Snapshot');
     expect(container.textContent).toContain('Front Office Intel');
     expect(container.textContent).toContain('Trade Inbox');
@@ -261,6 +273,8 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
     expect(container.textContent).toContain('Spencer Jones');
     expect(container.textContent).toContain('Aaron Judge');
+    expect(container.textContent).toContain('dynasty cornerstone');
+    expect(container.textContent).toContain('climax');
     expect(container.textContent).toContain('Press Room');
     expect(container.textContent).toContain("Today's Headlines");
     expect(container.textContent).toContain('BREAKING');

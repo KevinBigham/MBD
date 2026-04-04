@@ -111,6 +111,7 @@ export type {
   FreeAgent,
   ContractOffer,
   FreeAgencyMarket,
+  FreeAgencyAttractiveness,
   QualifyingOfferResolution,
 } from './freeAgency.js';
 
@@ -133,6 +134,10 @@ export {
   getPromotionCandidates,
   simulateAffiliateDay,
 } from './minorLeagues.js';
+export {
+  getMinorLeagueProgression,
+  recordMinorLeagueStats,
+} from './minorLeagueStats.js';
 export type {
   AffiliateLevel,
   AffiliatePlayerStats,

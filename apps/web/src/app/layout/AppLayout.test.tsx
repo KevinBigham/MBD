@@ -38,6 +38,7 @@ function createWorkerMock(flow: Record<string, unknown>) {
   return {
     isReady: true,
     getSeasonFlowState: vi.fn().mockResolvedValue(flow),
+    getTickerFeed: vi.fn().mockResolvedValue([]),
     getCeremonyState: vi.fn().mockResolvedValue({
       activeMoment: null,
       queueLength: 0,
@@ -184,6 +185,82 @@ describe('AppLayout', () => {
     const liveRegion = container.querySelector('[aria-live="polite"]');
     expect(liveRegion?.textContent).toContain('Season 3');
     expect(liveRegion?.textContent).toContain('Regular Season');
+  });
+
+  it('renders the narrative ticker above the sim controls using worker feed entries', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 87,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveSlot: null,
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const flow = {
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 — Day 87/162',
+      detailLabel: 'Regular Season',
+      progress: 87 / 162,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 33,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    };
+    const worker = createWorkerMock(flow);
+    worker.getTickerFeed.mockResolvedValue([
+      {
+        id: 'ticker-1',
+        timestamp: 'S3D87',
+        category: 'milestone',
+        text: 'Victor Veteran records career hit #2000.',
+        priority: 5,
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: ['player-1'],
+        expiresDay: 90,
+      },
+    ]);
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.getTickerFeed).toHaveBeenCalledWith(20);
+    expect(container.textContent).toContain('Victor Veteran records career hit #2000.');
   });
 
   it('renders the season transition ceremony card and uses its CTA', async () => {

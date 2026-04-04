@@ -256,3 +256,18 @@ export function syncRecordTracking(
     publishBrokenRecordStories(state, state.recordBook, brokenRecords);
   }
 }
+
+export function previewRecordWatchList(state: FullGameState) {
+  initializeRecordTracking(state);
+
+  const teamGamesPlayed = new Map(
+    buildCurrentStandings(state, false)
+      .map((entry) => [entry.teamId, entry.wins + entry.losses] as const),
+  );
+
+  return buildRecordWatchList(state.recordBook, {
+    currentSeason: state.season,
+    teamGamesPlayed,
+    playerSeasons: buildPlayerSeasons(state),
+  });
+}

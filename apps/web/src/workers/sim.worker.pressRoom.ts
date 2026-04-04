@@ -11,7 +11,13 @@ function parseTimestamp(timestamp: string): number {
 
 function compareSource(left: PressRoomSource, right: PressRoomSource): number {
   if (left === right) return 0;
-  return left === 'briefing' ? -1 : 1;
+  const priority: Record<PressRoomSource, number> = {
+    briefing: 0,
+    press_conference: 1,
+    news: 2,
+    league_wire: 3,
+  };
+  return priority[left] - priority[right];
 }
 
 function deriveTag(entry: {
@@ -67,7 +73,7 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
       .join(', ');
     entries.push({
       id: `synthetic-fa-rumor-${hotStoveCandidate.player.id}-${state.season}-${state.day}`,
-      source: 'news',
+      source: 'league_wire',
       category: 'rumor',
       tag: 'RUMOR',
       priority: 2,
@@ -108,7 +114,7 @@ function buildSyntheticEntries(state: FullGameState): PressRoomEntry[] {
     const teamB = getTeamById(topRivalry.teamB);
     entries.push({
       id: `synthetic-rivalry-${topRivalry.id}-${state.season}-${state.day}`,
-      source: 'news',
+      source: 'league_wire',
       category: 'rivalry',
       tag: 'ANALYSIS',
       priority: 3,
@@ -146,7 +152,7 @@ export function buildPressRoomFeed(
 
   const newsEntries: PressRoomEntry[] = state.news.map((item) => ({
     id: item.id,
-    source: 'news',
+    source: item.category === 'press_conference' ? 'press_conference' : 'league_wire',
     category: item.category,
     tag: deriveTag(item),
     priority: item.priority,

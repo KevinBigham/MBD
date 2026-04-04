@@ -132,7 +132,6 @@ import {
   queueAwardMoments,
   queueHallOfFameMoments,
   queuePlayoffSeriesMoment,
-  queueProspectDebutMoment,
 } from './sim.worker.ceremony.js';
 import {
   clearPendingTradeOffers,
@@ -182,6 +181,24 @@ import {
   type NewGameOptions,
 } from './sim.worker.setup.js';
 import { syncRecordTracking } from './sim.worker.records.js';
+import { refreshTickerFeed } from './sim.worker.ticker.js';
+import {
+  advanceMonthlyStoryArcs,
+  syncSeasonStartStoryArcs,
+} from './sim.worker.storyArcs.js';
+import {
+  applyDevelopmentSetbackCheckpoint,
+  applySeasonEndProspectBondUpdates,
+  getLoyaltyAdjustedAppeal,
+  recordProspectBondDebuts,
+} from './sim.worker.farm.js';
+import {
+  applyBreakoutCountdowns,
+  applyDebutFlashbacks,
+  applyMonthlyNarrativeHooks,
+  applyOffseasonNarrativeHooks,
+  applyMonthlyPressConference,
+} from './sim.worker.narrativeFarm.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -695,6 +712,11 @@ function applyMonthlyDevelopmentCheckpoints(
     );
     s.players = checkpoint.players;
     s.minorLeagueState = checkpoint.state;
+    applyDevelopmentSetbackCheckpoint(s, month);
+    advanceMonthlyStoryArcs(s, s.season, currentDay);
+    applyBreakoutCountdowns(s);
+    applyMonthlyPressConference(s);
+    applyMonthlyNarrativeHooks(s, month);
   }
 }
 
@@ -711,6 +733,9 @@ function simWeekInternal(): SimResultDTO {
   }
 
   const previousDay = s.day;
+  const previousStandings = s.seasonState.standings.serialize();
+  const previousInjuryIds = new Set(s.injuries.keys());
+  const previousTradeCount = s.tradeState.tradeHistory.length;
   const { newState, result } = simulateWeek(
     s.rng,
     s.seasonState,
@@ -725,6 +750,14 @@ function simWeekInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  refreshTickerFeed(s, {
+    simDay: Math.max(previousDay, s.day - 1),
+    games: result.games,
+    previousStandings,
+    previousInjuryIds,
+    previousTradeCount,
+  });
+  applyDebutFlashbacks(s, recordProspectBondDebuts(s));
   resolveConsequenceChains(s);
   syncRecordTracking(s);
   updateScenarioProgress(s);
@@ -807,6 +840,9 @@ function simMonthInternal(): SimResultDTO {
 
   const monthlyContext = captureMonthlyAdvanceContext(s);
   const previousDay = s.day;
+  const previousStandings = s.seasonState.standings.serialize();
+  const previousInjuryIds = new Set(s.injuries.keys());
+  const previousTradeCount = s.tradeState.tradeHistory.length;
   const { newState, result } = simulateMonth(
     s.rng,
     s.seasonState,
@@ -821,6 +857,14 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   refreshNarrativeState(s, result.games);
+  refreshTickerFeed(s, {
+    simDay: Math.max(previousDay, s.day - 1),
+    games: result.games,
+    previousStandings,
+    previousInjuryIds,
+    previousTradeCount,
+  });
+  applyDebutFlashbacks(s, recordProspectBondDebuts(s));
   resolveConsequenceChains(s);
   refreshFanSentiment(s);
   syncRecordTracking(s, { publishWatchStories: true, publishBrokenRecords: true });
@@ -838,6 +882,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
     clearWatches: true,
     publishBrokenRecords: true,
   });
+  applyOffseasonNarrativeHooks(s);
 
   const beforePlayers = s.players;
   const kernelPlayers = s.players.map((player) => developPlayer(s.rng.fork(), player));
@@ -849,6 +894,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   );
   recordBreakoutNarratives(s, beforePlayers, developedPlayers);
   s.players = developedPlayers;
+  applySeasonEndProspectBondUpdates(s);
 
   const retired = determineRetirements(s.rng.fork(), s.players);
   syncHistoricalPlayersForRetirements(s, retired);
@@ -906,6 +952,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
     s.rosterStates.set(teamId, filledRoster.rosterState);
   }
   ensureNarrativeState(s);
+  syncSeasonStartStoryArcs(s);
   updateScenarioProgress(s);
   return {
     day: 1,
@@ -929,6 +976,9 @@ function simDayInternal(): SimResultDTO {
 
   if (s.phase === 'regular') {
     const previousDay = s.day;
+    const previousStandings = s.seasonState.standings.serialize();
+    const previousInjuryIds = new Set(s.injuries.keys());
+    const previousTradeCount = s.tradeState.tradeHistory.length;
     const { newState, result } = simulateDay(
       s.rng,
       s.seasonState,
@@ -943,6 +993,14 @@ function simDayInternal(): SimResultDTO {
     processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
+    refreshTickerFeed(s, {
+      simDay: previousDay,
+      games: result.games,
+      previousStandings,
+      previousInjuryIds,
+      previousTradeCount,
+    });
+    applyDebutFlashbacks(s, recordProspectBondDebuts(s));
     resolveConsequenceChains(s);
     syncRecordTracking(s);
     updateScenarioProgress(s);
@@ -1031,6 +1089,7 @@ export const actionApi = {
     }
     setState(nextState);
     ensureNarrativeState(requireState());
+    syncSeasonStartStoryArcs(requireState());
 
     return {
       success: true as const,
@@ -1466,7 +1525,6 @@ export const actionApi = {
           streak: 'call-up watch',
         },
       }, s.players, s.season, s.day));
-      queueProspectDebutMoment(s, promotedPlayer.id, player.rosterStatus);
       recordProspectCallup(s, promotedPlayer.id);
       syncAchievementState(s);
     }
@@ -1599,7 +1657,12 @@ export const actionApi = {
     const result = makeUserOffer(s.freeAgencyMarket, {
       ...offer,
       annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
-    }, getTeamFreeAgencyAppealScore(s, s.userTeamId));
+    }, getLoyaltyAdjustedAppeal(
+      s,
+      s.userTeamId,
+      playerId,
+      getTeamFreeAgencyAppealScore(s, s.userTeamId),
+    ));
     if (!result.accepted || !freeAgent) {
       return result;
     }

@@ -6,6 +6,7 @@ import {
   type CeremonyState,
   type ChallengeState,
   type ConsequenceWatcher,
+  type DebutFlashback,
   type DynastyCard,
   type FanSentiment,
   type FrontOfficeState,
@@ -19,7 +20,10 @@ import {
   type JobMarket,
   type MentorRelationship,
   type OwnerState,
+  type PlayerOrigin,
   type PlayerMorale,
+  type PlayerStoryArc,
+  type ProspectBond,
   type RecordBookEntry,
   type RecordWatchEntry,
   type Rivalry,
@@ -27,6 +31,7 @@ import {
   type SeasonArchiveEntry,
   type SeasonHistoryEntry,
   type TeamChemistry,
+  type TickerEntry,
 } from '@mbd/contracts';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
@@ -285,6 +290,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 10 &&
     snapshot.schemaVersion !== 11 &&
     snapshot.schemaVersion !== 12 &&
+    snapshot.schemaVersion !== 13 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -333,6 +339,11 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       briefingQueue: state.briefingQueue,
       storyFlags: toEntries(state.storyFlags),
       rivalries: toEntries(state.rivalries),
+      tickerFeed: state.tickerFeed,
+      playerStoryArcs: state.playerStoryArcs,
+      prospectBonds: state.prospectBonds,
+      playerOrigins: toEntries(state.playerOrigins),
+      debutFlashbacks: state.debutFlashbacks,
       awardHistory: state.awardHistory,
       hallOfFame: state.hallOfFame,
       hallOfFameBallot: state.hallOfFameBallot,
@@ -418,6 +429,11 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     briefingQueue: snapshot.narrative.briefingQueue as BriefingItem[],
     storyFlags: fromEntries(snapshot.narrative.storyFlags),
     rivalries: fromEntries(snapshot.narrative.rivalries as [string, Rivalry][]),
+    tickerFeed: (snapshot.narrative.tickerFeed as TickerEntry[] | undefined) ?? [],
+    playerStoryArcs: (snapshot.narrative.playerStoryArcs as PlayerStoryArc[] | undefined) ?? [],
+    prospectBonds: (snapshot.narrative.prospectBonds as ProspectBond[] | undefined) ?? [],
+    playerOrigins: fromEntries((snapshot.narrative.playerOrigins as [string, PlayerOrigin][] | undefined) ?? []),
+    debutFlashbacks: (snapshot.narrative.debutFlashbacks as DebutFlashback[] | undefined) ?? [],
     awardHistory: snapshot.narrative.awardHistory as AwardHistoryEntry[],
     hallOfFame: snapshot.narrative.hallOfFame as HallOfFameEntry[],
     hallOfFameBallot: snapshot.narrative.hallOfFameBallot as HallOfFameBallotEntry[],

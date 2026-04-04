@@ -37,6 +37,7 @@ export const NewsCategoryEnum = z.enum([
   "award",
   "record",
   "playoff",
+  "press_conference",
 ]);
 export type NewsCategory = z.infer<typeof NewsCategoryEnum>;
 
@@ -176,6 +177,88 @@ export const BriefingItemSchema = z.object({
   acknowledged: z.boolean(),
 });
 export type BriefingItem = z.infer<typeof BriefingItemSchema>;
+
+export const TickerCategoryEnum = z.enum([
+  "score",
+  "trade",
+  "injury",
+  "milestone",
+  "standings",
+  "prospect",
+  "rumor",
+  "record",
+]);
+export type TickerCategory = z.infer<typeof TickerCategoryEnum>;
+
+export const TickerEntrySchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  category: TickerCategoryEnum,
+  text: z.string().min(1),
+  priority: NewsPriorityEnum,
+  relatedTeamIds: z.array(z.string()),
+  relatedPlayerIds: z.array(z.string()),
+  expiresDay: z.number().int().min(1),
+});
+export type TickerEntry = z.infer<typeof TickerEntrySchema>;
+
+export const StoryArcPhaseEnum = z.enum([
+  "setup",
+  "rising",
+  "climax",
+  "resolution",
+]);
+export type StoryArcPhase = z.infer<typeof StoryArcPhaseEnum>;
+
+export const PlayerStoryArcSchema = z.object({
+  playerId: z.string(),
+  arcType: z.string().min(1),
+  startSeason: z.number().int().min(1),
+  startDay: z.number().int().min(1),
+  phase: StoryArcPhaseEnum,
+  milestones: z.array(z.string()).default([]),
+  resolvedSeason: z.number().int().min(1).nullable(),
+});
+export type PlayerStoryArc = z.infer<typeof PlayerStoryArcSchema>;
+
+export const ProspectBondSchema = z.object({
+  prospectId: z.string(),
+  draftedSeason: z.number().int().min(1),
+  debutSeason: z.number().int().min(1).nullable(),
+  currentLevel: z.string().min(1),
+  bondStrength: z.number().min(0).max(100),
+  milestones: z.array(z.string()).default([]),
+  loyaltyModifier: z.number().min(0).max(1),
+});
+export type ProspectBond = z.infer<typeof ProspectBondSchema>;
+
+export const PlayerOriginAcquisitionTypeEnum = z.enum(["draft", "ifa"]);
+export type PlayerOriginAcquisitionType = z.infer<typeof PlayerOriginAcquisitionTypeEnum>;
+
+export const PlayerOriginSchema = z.object({
+  playerId: z.string(),
+  originTeamId: z.string(),
+  acquisitionType: PlayerOriginAcquisitionTypeEnum,
+  acquiredSeason: z.number().int().min(1),
+  draftSeason: z.number().int().min(1).nullable(),
+  draftRound: z.number().int().min(1).nullable(),
+  draftPickNumber: z.number().int().min(1).nullable(),
+  originalGrade: z.number().int().min(20).max(80).nullable(),
+  bonusAmount: z.number().min(0).nullable(),
+});
+export type PlayerOrigin = z.infer<typeof PlayerOriginSchema>;
+
+export const DebutFlashbackSchema = z.object({
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  draftSeason: z.number().int().min(1),
+  draftRound: z.number().int().min(1),
+  originalGrade: z.number().int().min(20).max(80),
+  debutSeason: z.number().int().min(1),
+  debutOverall: z.number().int().min(0).max(100),
+  journeyHighlights: z.array(z.string()).default([]),
+});
+export type DebutFlashback = z.infer<typeof DebutFlashbackSchema>;
 
 export const RivalrySchema = z.object({
   id: z.string(),

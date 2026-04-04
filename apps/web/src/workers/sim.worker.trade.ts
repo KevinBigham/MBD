@@ -33,6 +33,7 @@ import { getTeamPlayers, timestamp } from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
 import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
+import { advanceTradeSagaClimax } from './sim.worker.storyArcs.js';
 
 export const TRADE_DEADLINE_DAY = getTradeDeadlineDay();
 const DEADLINE_ACTIVITY_CHECKPOINTS = [92, 97, 102, 107, 112, 117, 120, 122] as const;
@@ -1132,6 +1133,10 @@ function createFallbackLeagueDeadlineTrade(state: FullGameState): boolean {
         offeringAssets: fallback.offeringAssets,
         requestingAssets: fallback.requestingAssets,
       }, fallback.fairnessScore);
+      advanceTradeSagaClimax(
+        state,
+        [...assetPlayerIds(fallback.offeringAssets), ...assetPlayerIds(fallback.requestingAssets)],
+      );
       recordLeagueTradeNews(state, {
         id: `deadline-fallback-trade-${state.season}-${state.day}-${fromTeamId}-${toTeamId}`,
         fromTeamId,
@@ -1197,6 +1202,10 @@ function generateMonthlyTradeActivity(
       offeringAssets: playerAssets(proposal.playersOffered),
       requestingAssets: playerAssets(proposal.playersRequested),
     }, fairnessScore);
+    advanceTradeSagaClimax(
+      state,
+      [...proposal.playersOffered, ...proposal.playersRequested],
+    );
     recordLeagueTradeNews(state, proposal);
   }
 }
@@ -1380,6 +1389,10 @@ export function proposeTradePackage(
       offeringAssets,
       requestingAssets,
     }, fairnessScore);
+    advanceTradeSagaClimax(
+      state,
+      [...assetPlayerIds(offeringAssets), ...assetPlayerIds(requestingAssets)],
+    );
     applyTradeConsequences(
       state,
       assetPlayerIds(offeringAssets),
@@ -1463,6 +1476,10 @@ export function respondToTradeOffer(
       requestingAssets: offer.requestingAssets,
     }, offer.fairnessScore);
     removePendingOffer(state, offerId);
+    advanceTradeSagaClimax(
+      state,
+      [...requestedPlayerIds, ...offerPlayerIds],
+    );
     applyTradeConsequences(
       state,
       requestedPlayerIds,
@@ -1546,6 +1563,10 @@ export function respondToTradeOffer(
       offeringAssets: counterPackage.offeringAssets,
       requestingAssets: counterPackage.requestingAssets,
     }, fairnessScore);
+    advanceTradeSagaClimax(
+      state,
+      [...counterProposal.playersOffered, ...counterProposal.playersRequested],
+    );
     applyTradeConsequences(
       state,
       counterProposal.playersOffered,

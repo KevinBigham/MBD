@@ -98,6 +98,23 @@ describe('PlayerProfilePage', () => {
           totalValue: 109.2,
           outcome: 'accepted',
         }],
+        activeStory: {
+          arcType: 'prospect_rise',
+          phase: 'rising',
+          startSeason: 5,
+          startDay: 62,
+          latestMilestone: 'Marco Ascension is climbing fast through the system.',
+        },
+        storyHistory: [
+          {
+            arcType: 'rookie_sensation',
+            phase: 'resolution',
+            startSeason: 4,
+            startDay: 33,
+            resolvedSeason: 4,
+            milestones: ['Marco Ascension finished a rookie_sensation with a defining turn.'],
+          },
+        ],
         stats: null,
       }),
       getAdvancedStats: vi.fn().mockResolvedValue({
@@ -151,6 +168,51 @@ describe('PlayerProfilePage', () => {
             reason: 'Double-play turns project as a plus fit.',
           },
         ],
+        minorLeagueProgression: [
+          {
+            season: 4,
+            level: 'AA',
+            gamesPlayed: 61,
+            pa: 255,
+            hits: 82,
+            hr: 14,
+            rbi: 48,
+            avg: 0.322,
+            ip: 0,
+            era: 0,
+            k: 0,
+            bb: 31,
+          },
+        ],
+        prospectBond: {
+          prospectId: 'player-1',
+          draftedSeason: 3,
+          debutSeason: null,
+          currentLevel: 'AA',
+          bondStrength: 34,
+          milestones: ['Drafted Round 1, 3', 'Promoted to AA, 5'],
+          loyaltyModifier: 0.34,
+        },
+        activeSetback: {
+          type: 'hot_streak',
+          overallModifier: 6,
+          startSeason: 5,
+          startMonth: 4,
+          endSeason: 5,
+          endMonth: 5,
+          summary: 'Marco Ascension is tearing through upper-level pitching.',
+          active: true,
+        },
+        debutFlashback: {
+          playerId: 'player-1',
+          playerName: 'Marco Ascension',
+          draftSeason: 3,
+          draftRound: 1,
+          originalGrade: 64,
+          debutSeason: 5,
+          debutOverall: 58,
+          journeyHighlights: ['Drafted Round 1, 3', 'Promoted to AAA, 5'],
+        },
       }),
     } as unknown as ReturnType<typeof useWorker>);
 
@@ -167,9 +229,17 @@ describe('PlayerProfilePage', () => {
     });
 
     expect(container.textContent).toContain('Development Trajectory');
+    expect(container.textContent).toContain('Story Arc');
+    expect(container.textContent).toContain('prospect rise');
     expect(container.textContent).toContain('ahead_of_curve');
     expect(container.textContent).toContain('Checkpoint History');
     expect(container.textContent).toContain('Improved first-step reads');
+    expect(container.textContent).toContain('Development Path');
+    expect(container.textContent).toContain('Prospect Bond');
+    expect(container.textContent).toContain('Debut Flashback');
+    expect(container.textContent).toContain('Original grade 64 to debut overall 58.');
+    expect(container.textContent).toContain('Bond');
+    expect(container.textContent).toContain('Marco Ascension is tearing through upper-level pitching.');
     expect(container.textContent).toContain('Extension History');
     expect(container.textContent).toContain('$18.2M');
     expect(container.textContent).toContain('2B');
@@ -235,6 +305,10 @@ describe('PlayerProfilePage', () => {
         playerId: 'player-2',
         history: [],
         recommendations: [],
+        minorLeagueProgression: [],
+        prospectBond: null,
+        activeSetback: null,
+        debutFlashback: null,
       }),
     } as unknown as ReturnType<typeof useWorker>);
 
