@@ -1,8 +1,11 @@
 import type { TradeAsset } from '@mbd/contracts';
 import {
   checkMilestones,
+  deduplicateNews,
   describeInjury,
   GameRNG,
+  generateGameHighlights,
+  generateGameRecap,
   generateTickerEntries,
   getDaysUntilTradeDeadline,
   getRivalry,
@@ -64,12 +67,48 @@ function resolveTradeAssetPlayer(
   };
 }
 
+function parseTimestampRank(value: string): number {
+  const match = /^S(\d+)D(\d+)$/.exec(value);
+  if (!match) {
+    return 0;
+  }
+  return absoluteDay(Number(match[1]), Number(match[2]));
+}
+
+function buildPlayerNameMap(state: FullGameState) {
+  return new Map(
+    state.players.map((player) => [player.id, `${player.firstName} ${player.lastName}`] as const),
+  );
+}
+
+function buildTeamNameMap(game: GameBoxScore) {
+  return new Map<string, string>([
+    [game.awayTeamId, getTeamById(game.awayTeamId)?.name ?? game.awayTeamId.toUpperCase()],
+    [game.homeTeamId, getTeamById(game.homeTeamId)?.name ?? game.homeTeamId.toUpperCase()],
+  ]);
+}
+
+function buildHighlightTickerText(
+  winningTeamName: string,
+  losingTeamName: string,
+  winningScore: number,
+  losingScore: number,
+  highlightText: string,
+): string {
+  return `${winningTeamName} defeats ${losingTeamName} ${winningScore}-${losingScore}. ${highlightText}`;
+}
+
 function buildScoreContexts(state: FullGameState, games: GameBoxScore[]) {
+  const playerNames = buildPlayerNameMap(state);
+
   return games.map((game) => {
     const winnerId = game.homeScore > game.awayScore ? game.homeTeamId : game.awayTeamId;
     const loserId = winnerId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
     const winnerScore = winnerId === game.homeTeamId ? game.homeScore : game.awayScore;
     const loserScore = winnerId === game.homeTeamId ? game.awayScore : game.homeScore;
+    const teamNames = buildTeamNameMap(game);
+    const highlights = generateGameHighlights(game, playerNames, teamNames);
+    const topHighlight = highlights[0] ?? null;
 
     const batterLines = new Map<string, { hits: number; atBats: number; hr: number }>();
     for (const result of game.paResults) {
@@ -110,6 +149,15 @@ function buildScoreContexts(state: FullGameState, games: GameBoxScore[]) {
       && loserSeriesWins != null
       ? `The rivalry intensifies as ${winner?.name ?? winnerId.toUpperCase()} takes a ${winnerSeriesWins}-${loserSeriesWins} season edge over ${loser?.name ?? loserId.toUpperCase()}.${star ? ` ${star.playerName} goes ${star.hits}-for-${star.atBats} with ${star.hr} HR.` : ''}`
       : undefined;
+    const highlightText = topHighlight == null
+      ? undefined
+      : buildHighlightTickerText(
+        winner?.name ?? winnerId.toUpperCase(),
+        loser?.name ?? loserId.toUpperCase(),
+        winnerScore,
+        loserScore,
+        topHighlight.text,
+      );
 
     return {
       winningTeamId: winnerId,
@@ -118,12 +166,12 @@ function buildScoreContexts(state: FullGameState, games: GameBoxScore[]) {
       losingTeamName: loser?.name ?? loserId.toUpperCase(),
       winningScore: winnerScore,
       losingScore: loserScore,
-      starPlayerId: star?.playerId,
+      starPlayerId: topHighlight?.playerId ?? star?.playerId,
       starPlayerName: star?.playerName,
       hits: star?.hits,
       atBats: star?.atBats,
       hr: star?.hr,
-      storyText: rivalryText,
+      storyText: highlightText ?? rivalryText,
     };
   });
 }
@@ -268,6 +316,79 @@ function buildRumorCandidates(state: FullGameState) {
     });
 }
 
+function buildHighlightHeadline(
+  game: GameBoxScore,
+  highlight: ReturnType<typeof generateGameHighlights>[number],
+): string {
+  const winnerId = game.homeScore > game.awayScore ? game.homeTeamId : game.awayTeamId;
+  const loserId = winnerId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
+  const winnerName = getTeamById(winnerId)?.name ?? winnerId.toUpperCase();
+  const loserName = getTeamById(loserId)?.name ?? loserId.toUpperCase();
+
+  switch (highlight.type) {
+    case 'walkoff':
+      return `Walk-off finish: ${winnerName} stun ${loserName}`;
+    case 'comeback':
+      return `Comeback turn: ${winnerName} flip ${loserName}`;
+    case 'extras':
+      return `Extra-innings swing: ${winnerName} outlast ${loserName}`;
+    case 'clutch_k':
+      return `Late jam escape: ${winnerName} hold off ${loserName}`;
+    case 'homer':
+    default:
+      return `Highlight reel: ${winnerName} power past ${loserName}`;
+  }
+}
+
+function buildGameHighlightNews(
+  state: FullGameState,
+  games: GameBoxScore[],
+) {
+  const playerNames = buildPlayerNameMap(state);
+
+  return games
+    .map((game) => {
+      const teamNames = buildTeamNameMap(game);
+      const highlights = generateGameHighlights(game, playerNames, teamNames);
+      const topHighlight = highlights[0] ?? null;
+      if (!topHighlight) {
+        return null;
+      }
+
+      const userTeamInvolved = game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId;
+      if (!userTeamInvolved && topHighlight.type !== 'walkoff' && topHighlight.dramaScore < 90) {
+        return null;
+      }
+
+      const priority: 1 | 2 | 3 = topHighlight.type === 'walkoff' ? 1 : userTeamInvolved ? 2 : 3;
+      const tag: 'BREAKING' | 'RECAP' = topHighlight.type === 'walkoff' ? 'BREAKING' : 'RECAP';
+
+      return {
+        userTeamInvolved,
+        dramaScore: topHighlight.dramaScore,
+        item: {
+          id: `game-highlight-${game.date}-${game.awayTeamId}-${game.homeTeamId}-${topHighlight.type}`,
+          headline: buildHighlightHeadline(game, topHighlight),
+          body: `${topHighlight.text} ${generateGameRecap(game, highlights, playerNames, teamNames)}`,
+          priority,
+          category: 'performance' as const,
+          tag,
+          timestamp: game.date,
+          relatedPlayerIds: [topHighlight.playerId],
+          relatedTeamIds: [game.awayTeamId, game.homeTeamId],
+          read: false,
+        },
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+    .sort((left, right) =>
+      Number(right.userTeamInvolved) - Number(left.userTeamInvolved)
+      || right.dramaScore - left.dramaScore
+      || parseTimestampRank(right.item.timestamp) - parseTimestampRank(left.item.timestamp))
+    .slice(0, 3)
+    .map((entry) => entry.item);
+}
+
 export function refreshTickerFeed(
   state: FullGameState,
   args: {
@@ -298,4 +419,9 @@ export function refreshTickerFeed(
     200,
     absoluteDay(state.season, args.simDay),
   );
+
+  const highlightNews = buildGameHighlightNews(state, args.games);
+  if (highlightNews.length > 0) {
+    state.news = deduplicateNews([...highlightNews, ...state.news]);
+  }
 }

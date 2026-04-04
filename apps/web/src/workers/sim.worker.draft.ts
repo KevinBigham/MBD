@@ -1,4 +1,5 @@
 import {
+  deduplicateNews,
   generateDraftBuzz,
   generateDraftCommentary,
   generateDraftGrades,
@@ -17,6 +18,7 @@ import {
   createStableWorkerRng,
   type FullGameState,
 } from './sim.worker.helpers.js';
+import { rebuildBriefing } from './sim.worker.narrative.js';
 
 export interface DraftCommentaryView {
   heartbeat: string | null;
@@ -117,6 +119,11 @@ function clampVisiblePickCount(total: number, requested?: number): number {
   return Math.max(0, Math.min(total, requested));
 }
 
+function teamLabel(teamId: string): string {
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
 function buildHeartbeat(
   visiblePickCount: number,
   availableProspectsCount: number,
@@ -213,4 +220,66 @@ export function buildDraftPostDraftGradesView(
     userTeamId: s.userTeamId,
     userTeamGrade: grades.find((entry) => entry.teamId === s.userTeamId) ?? null,
   };
+}
+
+export function publishDraftGradesNarrative(s: FullGameState) {
+  const gradesView = buildDraftPostDraftGradesView(s);
+  const draft = buildDraftRoomView(s);
+  if (!gradesView || !draft) {
+    return;
+  }
+
+  const storyId = `draft-grades-${s.season}`;
+  if (s.news.some((item) => item.id === storyId)) {
+    return;
+  }
+
+  const userGrade = gradesView.userTeamGrade ?? gradesView.grades.find((entry) => entry.teamId === s.userTeamId) ?? null;
+  const topGrade = gradesView.grades[0] ?? userGrade;
+  if (!userGrade || !topGrade) {
+    return;
+  }
+
+  const userPicks = draft.completedPicks.filter((pick) => pick.teamId === s.userTeamId).slice(0, 3);
+  const pickHeadline = userPicks.slice(0, 2).map((pick) => pick.playerName).join(', ');
+  const relatedTeamIds = Array.from(new Set([s.userTeamId, topGrade.teamId]));
+  const relatedPlayerIds = userPicks.map((pick) => pick.playerId);
+  const headline = `${teamLabel(s.userTeamId)} draft grades: ${userGrade.grade}`;
+  const body = [
+    `${teamLabel(s.userTeamId)} exit the draft with a ${userGrade.grade} grade.`,
+    pickHeadline ? `The class is headlined by ${pickHeadline}.` : null,
+    topGrade.teamId === s.userTeamId
+      ? 'The war room stacked up with the best haul on the board.'
+      : `League pace-setter: ${teamLabel(topGrade.teamId)} drew the top report card at ${topGrade.grade}.`,
+  ]
+    .filter((part): part is string => part != null)
+    .join(' ');
+  const timestamp = `S${s.season}D${s.day}`;
+  const newsItem = {
+    id: storyId,
+    headline,
+    body,
+    priority: 2 as const,
+    category: 'draft' as const,
+    tag: 'ANALYSIS' as const,
+    timestamp,
+    relatedPlayerIds,
+    relatedTeamIds,
+    read: false,
+  };
+
+  s.news = deduplicateNews([newsItem, ...s.news]);
+  s.briefingQueue = [{
+    id: `brief-${storyId}`,
+    priority: 2 as const,
+    category: 'news' as const,
+    tag: 'ANALYSIS' as const,
+    headline,
+    body,
+    relatedTeamIds,
+    relatedPlayerIds,
+    timestamp,
+    acknowledged: false,
+  }, ...s.briefingQueue];
+  rebuildBriefing(s);
 }

@@ -2399,6 +2399,34 @@ describe('sim worker narrative APIs', () => {
     expect(firstGrades?.userTeamGrade?.grade).toMatch(/^[A-F]/);
   });
 
+  it('publishes post-draft grades into news and the press room when the draft completes', () => {
+    startGame(3412, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    api.startDraft();
+    const result = api.simulateRemainingDraft() as { success: boolean };
+    const news = api.getNews(25);
+    const pressRoom = (api as typeof api & {
+      getPressRoomFeed: (limit?: number) => Array<{ headline: string; category: string }>;
+    }).getPressRoomFeed(25);
+    const draftStory = news.find((item) => item.category === 'draft');
+
+    expect(result.success).toBe(true);
+    expect(draftStory).toBeDefined();
+    expect(draftStory?.headline.toLowerCase()).toContain('draft');
+    expect(draftStory?.body.toLowerCase()).toContain('grade');
+    expect(pressRoom.some((entry) =>
+      entry.category === 'draft' && entry.headline === draftStory?.headline,
+    )).toBe(true);
+  });
+
   it('creates a rule 5 protection audit after the amateur draft and lets the user protect an exposed prospect', () => {
     startGame(340, 'nyy');
     const state = requireState();
@@ -2812,6 +2840,51 @@ describe('sim worker narrative APIs', () => {
     expect(api.getBriefing(25).some((item) => item.category === 'news' && item.relatedPlayerIds.includes(offered.id))).toBe(true);
     expect(requireState().playerMorale.get(offered.id)?.score).toBeGreaterThan(baselineIncomingMorale);
     expect(requireState().playerMorale.get(requested.id)?.score).toBeLessThan(baselineOutgoingMorale);
+  });
+
+  it('carries accepted trade dialogue into consequence stories and the press room', () => {
+    startGame(3421, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+
+    const { offer, requested, offered } = buildIncomingOffer('accept-dialogue-offer');
+    state.tradeState.pendingOffers = [offer];
+
+    const workerApi = api as typeof api & {
+      getTradeDialogue: (
+        teamId: string,
+        offerValue: number,
+        requestValue: number,
+        negotiationType?: 'proposal' | 'counter' | 'offer',
+      ) => {
+        headline: string;
+        lines: string[];
+      };
+      getPressRoomFeed: (limit?: number) => Array<{ headline: string; category: string; body: string }>;
+    };
+    const expectedDialogue = workerApi.getTradeDialogue(
+      'bos',
+      evaluatePlayerTradeValue(offered).overall,
+      evaluatePlayerTradeValue(requested).overall,
+      'offer',
+    );
+
+    const result = api.respondToTradeOffer(offer.id, 'accept');
+    const news = api.getNews(25);
+    const pressRoom = workerApi.getPressRoomFeed(25);
+
+    expect(result.success).toBe(true);
+    expect(news.some((item) =>
+      item.category === 'trade'
+      && (
+        item.headline === expectedDialogue.headline
+        || item.body.includes(expectedDialogue.lines.at(-1) ?? expectedDialogue.headline)
+      ),
+    )).toBe(true);
+    expect(pressRoom.some((entry) =>
+      entry.category === 'trade' && entry.headline === expectedDialogue.headline,
+    )).toBe(true);
   });
 
   it('advances trade sagas and annotates homegrown aftermath when a bonded player is moved', () => {
@@ -3917,6 +3990,59 @@ describe('sim worker narrative APIs', () => {
 
     expect(state.tickerFeed[0]?.text).toContain('The rivalry intensifies as');
     expect(state.tickerFeed[0]?.text).toContain('3-1');
+  });
+
+  it('feeds dramatic game highlights into the ticker and league news', () => {
+    startGame(7802, 'nyy');
+    const state = requireState();
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const pitcher = state.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+
+    refreshTickerFeed(state, {
+      simDay: state.day,
+      games: [{
+        homeTeamId: 'nyy',
+        awayTeamId: 'bos',
+        homeScore: 6,
+        awayScore: 5,
+        innings: 9,
+        homeHits: 9,
+        awayHits: 8,
+        paResults: [{
+          outcome: 'HR',
+          batterId: hitter.id,
+          pitcherId: pitcher.id,
+          inning: 9,
+          halfInning: 'bottom',
+          outs: 1,
+          runnersOn: 1,
+          scoreBefore: [5, 4],
+          scoreAfter: [5, 6],
+          rbiOnPlay: 2,
+          isWalkOff: true,
+        }],
+        date: 'S1D1',
+        isPlayoff: false,
+      }],
+      previousStandings: state.seasonState.standings.serialize(),
+      previousInjuryIds: new Set(),
+      previousTradeCount: state.tradeState.tradeHistory.length,
+    });
+
+    const highlightNews = state.news.find((item) =>
+      item.category === 'performance'
+      && item.relatedTeamIds.includes('nyy')
+      && item.relatedTeamIds.includes('bos'),
+    );
+
+    expect(state.tickerFeed[0]?.text).toContain('WALK-OFF HOME RUN');
+    expect(state.tickerFeed[0]?.relatedPlayerIds).toContain(hitter.id);
+    expect(highlightNews?.headline.toLowerCase()).toContain('walk-off');
+    expect(highlightNews?.body).toContain('WALK-OFF HOME RUN');
   });
 
   it('returns advanced stat lines and advanced leaderboard results', () => {

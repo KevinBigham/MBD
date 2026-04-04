@@ -2,6 +2,7 @@ import type { GameBoxScore } from '../sim/gameSimulator.js';
 import type { PAResult } from '../sim/plateAppearance.js';
 
 export interface GameHighlight {
+  readonly playerId: string;
   readonly inning: number;
   readonly halfInning: 'top' | 'bottom';
   readonly text: string;
@@ -236,6 +237,7 @@ export function generateGameHighlights(
 
     if (pa.isWalkOff) {
       highlights.push({
+        playerId: pa.batterId,
         inning: pa.inning,
         halfInning: pa.halfInning,
         text,
@@ -247,6 +249,7 @@ export function generateGameHighlights(
 
     if (pa.outcome === 'HR') {
       highlights.push({
+        playerId: pa.batterId,
         inning: pa.inning,
         halfInning: pa.halfInning,
         text,
@@ -258,6 +261,7 @@ export function generateGameHighlights(
 
     if (pa.inning > 9 && pa.rbiOnPlay > 0) {
       highlights.push({
+        playerId: pa.batterId,
         inning: pa.inning,
         halfInning: pa.halfInning,
         text,
@@ -269,6 +273,7 @@ export function generateGameHighlights(
 
     if (pa.outcome === 'K' && pa.outs === 2 && pa.runnersOn > 0) {
       highlights.push({
+        playerId: pa.batterId,
         inning: pa.inning,
         halfInning: pa.halfInning,
         text,
@@ -282,6 +287,7 @@ export function generateGameHighlights(
       const battingAfter = pa.halfInning === 'top' ? pa.scoreAfter[0] : pa.scoreAfter[1];
       const fieldingAfter = pa.halfInning === 'top' ? pa.scoreAfter[1] : pa.scoreAfter[0];
       highlights.push({
+        playerId: pa.batterId,
         inning: pa.inning,
         halfInning: pa.halfInning,
         text,

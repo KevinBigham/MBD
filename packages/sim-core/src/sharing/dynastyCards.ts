@@ -1,5 +1,6 @@
 import type { DynastyCard, DynastyCardType, GameSnapshot } from '@mbd/contracts';
 import { getTeamById } from '../league/teams.js';
+import { generateOffseasonHeadline } from '../narrative/offseasonRecap.js';
 
 function fallbackGMCareer(snapshot: GameSnapshot): NonNullable<GameSnapshot['narrative']['gmCareer']> {
   return snapshot.narrative.gmCareer ?? {
@@ -45,12 +46,28 @@ function currentRecord(snapshot: GameSnapshot): string {
   return '0-0';
 }
 
-function buildTextSummary(card: Omit<DynastyCard, 'textSummary'>): string {
+function seasonRecapHeadline(snapshot: GameSnapshot, season: number): string | null {
+  const seasonHistory = snapshot.narrative.seasonHistory.find((entry) => entry.season === season);
+  if (!seasonHistory) {
+    return null;
+  }
+
+  const seasonArchive = snapshot.narrative.seasonArchive.find((entry) => entry.season === season) ?? null;
+  return generateOffseasonHeadline(seasonHistory, seasonArchive);
+}
+
+function buildTextSummary(
+  card: Omit<DynastyCard, 'textSummary'>,
+  summaryLead?: string | null,
+): string {
   return [
+    summaryLead,
     `${card.title} — ${card.subtitle}`,
     ...card.stats.map((entry) => `${entry.label}: ${entry.value}`),
     ...card.highlights.map((highlight) => `- ${highlight}`),
-  ].join('\n');
+  ]
+    .filter((entry): entry is string => Boolean(entry))
+    .join('\n');
 }
 
 function buildCard(
@@ -62,6 +79,7 @@ function buildCard(
   highlights: string[],
   teamId: string | null = snapshot.userTeamId,
   season: number | null = snapshot.season,
+  summaryLead?: string | null,
 ): DynastyCard {
   const base = {
     id: `${type}-${snapshot.franchise.teamId}-${snapshot.season}`,
@@ -77,7 +95,7 @@ function buildCard(
 
   return {
     ...base,
-    textSummary: buildTextSummary(base),
+    textSummary: buildTextSummary(base, summaryLead),
   };
 }
 
@@ -96,6 +114,9 @@ export function generateSeasonRecapCard(snapshot: GameSnapshot, season: number =
       snapshot.narrative.fanSentiment.summary,
       `Dynasty pulse: ${snapshot.narrative.franchiseTimeline.at(-1)?.dynastyScore ?? 0}`,
     ],
+    snapshot.userTeamId,
+    season,
+    seasonRecapHeadline(snapshot, season),
   );
 }
 

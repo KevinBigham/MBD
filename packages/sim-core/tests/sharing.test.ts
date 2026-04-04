@@ -194,4 +194,71 @@ describe('dynasty sharing', () => {
     expect(score).toBe(calculateDynastyLeaderboardScore!(snapshot));
     expect(score).toBeGreaterThan(0);
   });
+
+  it('adds the offseason headline to season recap card text summaries when history is available', () => {
+    const generateSeasonRecapCard = (
+      simCore as unknown as {
+        generateSeasonRecapCard?: (
+          snapshot: GameSnapshot,
+          season?: number,
+        ) => import('@mbd/contracts').DynastyCard;
+      }
+    ).generateSeasonRecapCard;
+    const generateOffseasonHeadline = (
+      simCore as unknown as {
+        generateOffseasonHeadline?: (
+          seasonHistory: Record<string, unknown>,
+          seasonArchive?: Record<string, unknown> | null,
+        ) => string;
+      }
+    ).generateOffseasonHeadline;
+
+    expect(typeof generateSeasonRecapCard).toBe('function');
+    expect(typeof generateOffseasonHeadline).toBe('function');
+
+    const snapshot = createSnapshot() as GameSnapshot & {
+      narrative: GameSnapshot['narrative'] & {
+        seasonHistory: Record<string, unknown>[];
+        seasonArchive: Record<string, unknown>[];
+      };
+    };
+    snapshot.narrative.seasonHistory = [{
+      season: 6,
+      championTeamId: 'lad',
+      runnerUpTeamId: 'nyy',
+      worldSeriesRecord: '4-2',
+      summary: 'Los Angeles finished the climb and New York was left chasing the last step.',
+      awards: [],
+      keyMoments: ['October exposed the last roster gap.'],
+      statLeaders: { hr: [], avg: [], era: [], w: [], war: [] },
+      notableRetirements: [],
+      blockbusterTrades: [],
+      userSeason: {
+        teamId: 'nyy',
+        record: '92-70',
+        playoffResult: 'Division Series loss',
+        storylines: ['October exposed the last roster gap.'],
+      },
+    }];
+    snapshot.narrative.seasonArchive = [{
+      season: 6,
+      timelineEvents: ['October exposed the last roster gap.'],
+      transactions: [],
+      userSummary: {
+        teamId: 'nyy',
+        record: '92-70',
+        playoffResult: 'Division Series loss',
+        storylines: ['October exposed the last roster gap.'],
+      },
+    }];
+
+    const expectedHeadline = generateOffseasonHeadline!(
+      snapshot.narrative.seasonHistory[0]!,
+      snapshot.narrative.seasonArchive[0]!,
+    );
+    const card = generateSeasonRecapCard!(snapshot, 6);
+
+    expect(card.type).toBe('season_recap');
+    expect(card.textSummary).toContain(expectedHeadline);
+  });
 });
