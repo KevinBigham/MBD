@@ -1,5 +1,6 @@
 import {
   type AchievementState,
+  type ArchivedSeason,
   type AwardHistoryEntry,
   type BriefingItem,
   type CareerStatsLedger,
@@ -20,6 +21,7 @@ import {
   type JobMarket,
   type MentorRelationship,
   type OwnerState,
+  type PerformanceDiagnostics,
   type PlayerOrigin,
   type PlayerMorale,
   type PlayerStoryArc,
@@ -32,6 +34,7 @@ import {
   type SeasonHistoryEntry,
   type TeamChemistry,
   type TickerEntry,
+  type WhatIfBranchMeta,
 } from '@mbd/contracts';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
@@ -74,7 +77,7 @@ import {
   createEmptyAchievementState,
   createEmptyCeremonyState,
 } from './sim.worker.ceremony.js';
-import { createEmptyMonthlyPulseState } from './sim.worker.monthlyPulse.js';
+import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
 
 function serializeSeasonState(seasonState: SeasonState): GameSnapshot['seasonState'] {
   return {
@@ -291,6 +294,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 11 &&
     snapshot.schemaVersion !== 12 &&
     snapshot.schemaVersion !== 13 &&
+    snapshot.schemaVersion !== 14 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -352,9 +356,11 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       recordBook: state.recordBook,
       recordWatch: state.recordWatch,
       seasonArchive: state.seasonArchive,
+      archivedSeasons: state.archivedSeasons,
       historicalPlayers: state.historicalPlayers,
       mentorRelationships: state.mentorRelationships,
       frontOfficeState: toEntries(state.frontOfficeState),
+      whatIfBranches: state.whatIfBranches,
       gmCareer: state.gmCareer,
       jobMarket: state.jobMarket,
       consequenceWatchers: state.consequenceWatchers,
@@ -369,6 +375,7 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
     franchise: state.franchise,
     ceremony: state.ceremony,
     achievements: state.achievements,
+    performanceDiagnostics: state.performanceDiagnostics,
   });
 }
 
@@ -442,9 +449,11 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     recordBook: snapshot.narrative.recordBook as RecordBookEntry[],
     recordWatch: snapshot.narrative.recordWatch as RecordWatchEntry[],
     seasonArchive: snapshot.narrative.seasonArchive as SeasonArchiveEntry[],
+    archivedSeasons: (snapshot.narrative.archivedSeasons as ArchivedSeason[] | undefined) ?? [],
     historicalPlayers: snapshot.narrative.historicalPlayers as HistoricalPlayer[],
     mentorRelationships: snapshot.narrative.mentorRelationships as MentorRelationship[],
     frontOfficeState: fromEntries(snapshot.narrative.frontOfficeState as [string, FrontOfficeState][]),
+    whatIfBranches: (snapshot.narrative.whatIfBranches as WhatIfBranchMeta[] | undefined) ?? [],
     seasonHistory: snapshot.narrative.seasonHistory as SeasonHistoryEntry[],
     gmCareer,
     jobMarket: (snapshot.narrative.jobMarket as JobMarket | undefined) ?? createEmptyJobMarket(),
@@ -458,5 +467,9 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     franchise,
     ceremony: (snapshot.ceremony as CeremonyState | undefined) ?? createEmptyCeremonyState(),
     achievements: (snapshot.achievements as AchievementState | undefined) ?? createEmptyAchievementState(),
+    performanceDiagnostics: (snapshot.performanceDiagnostics as PerformanceDiagnostics | undefined) ?? {
+      totalSeasons: Math.max(1, snapshot.season),
+      snapshotSizeBytes: 0,
+    },
   };
 }

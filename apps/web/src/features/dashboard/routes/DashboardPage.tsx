@@ -236,7 +236,17 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const worker = useWorker();
-  const { isInitialized, userTeamId, season, day, phase, playerCount, activeSaveSlot, initializeGame } = useGameStore();
+  const {
+    isInitialized,
+    userTeamId,
+    season,
+    day,
+    phase,
+    playerCount,
+    activeSaveId,
+    activeSaveSlot,
+    initializeGame,
+  } = useGameStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
   const [career, setCareer] = useState<GMCareerView | null>(null);
@@ -288,6 +298,7 @@ export default function DashboardPage() {
           teamName: result.teamName ?? summary?.franchise.teamName ?? 'Franchise',
           gmName: summary?.franchise.gmName ?? 'General Manager',
           difficulty: summary?.franchise.difficulty ?? 'standard',
+          activeSaveId,
           activeSaveSlot,
         });
         await fetchData();
@@ -297,7 +308,7 @@ export default function DashboardPage() {
     } finally {
       setApplyingTeamId(null);
     }
-  }, [activeSaveSlot, day, fetchData, initializeGame, phase, playerCount, season, summary, worker]);
+  }, [activeSaveId, activeSaveSlot, day, fetchData, initializeGame, phase, playerCount, season, summary, worker]);
 
   return (
     <PageShell loading={loading && summary == null} skeleton={<DashboardSkeleton />}>

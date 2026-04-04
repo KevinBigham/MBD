@@ -11,6 +11,7 @@ interface GameState {
   teamName: string;
   gmName: string;
   difficulty: Difficulty;
+  activeSaveId: string | null;
   activeSaveSlot: number | null;
   playerCount: number;
   gamesPlayed: number;
@@ -20,6 +21,7 @@ interface GameState {
   setSimulating: (simulating: boolean) => void;
   setInitialized: (initialized: boolean) => void;
   setUserTeamId: (teamId: string) => void;
+  setActiveSave: (id: string | null, slot: number | null) => void;
   setActiveSaveSlot: (slot: number | null) => void;
   updateFromSim: (data: {
     season: number;
@@ -36,6 +38,7 @@ interface GameState {
     teamName?: string;
     gmName?: string;
     difficulty?: Difficulty;
+    activeSaveId?: string | null;
     activeSaveSlot?: number | null;
   }) => void;
 }
@@ -50,6 +53,7 @@ export const useGameStore = create<GameState>((set) => ({
   teamName: 'Yankees',
   gmName: 'General Manager',
   difficulty: 'standard',
+  activeSaveId: null,
   activeSaveSlot: null,
   playerCount: 0,
   gamesPlayed: 0,
@@ -59,7 +63,11 @@ export const useGameStore = create<GameState>((set) => ({
   setSimulating: (simulating) => set({ isSimulating: simulating }),
   setInitialized: (initialized) => set({ isInitialized: initialized }),
   setUserTeamId: (teamId) => set({ userTeamId: teamId }),
-  setActiveSaveSlot: (slot) => set({ activeSaveSlot: slot }),
+  setActiveSave: (id, slot) => set({ activeSaveId: id, activeSaveSlot: slot }),
+  setActiveSaveSlot: (slot) => set({
+    activeSaveId: slot != null ? `save-slot-${slot}` : null,
+    activeSaveSlot: slot,
+  }),
   updateFromSim: (data) =>
     set({
       season: data.season,
@@ -77,6 +85,7 @@ export const useGameStore = create<GameState>((set) => ({
       teamName: data.teamName ?? 'Franchise',
       gmName: data.gmName ?? 'General Manager',
       difficulty: data.difficulty ?? 'standard',
+      activeSaveId: data.activeSaveId ?? (data.activeSaveSlot != null ? `save-slot-${data.activeSaveSlot}` : null),
       activeSaveSlot: data.activeSaveSlot ?? null,
       isInitialized: true,
     }),

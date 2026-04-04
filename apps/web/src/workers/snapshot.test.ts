@@ -15,6 +15,7 @@ import {
   simulateDay,
 } from '@mbd/sim-core';
 import type {
+  ArchivedSeason,
   BriefingItem,
   DebutFlashback,
   GameSnapshot,
@@ -27,6 +28,7 @@ import type {
   RecordWatchEntry,
   Rivalry,
   TickerEntry,
+  WhatIfBranchMeta,
   TeamChemistry,
 } from '@mbd/contracts';
 import type { FullGameState } from './sim.worker.helpers';
@@ -115,10 +117,12 @@ function createNarrativeSample(userTeamId: string) {
     recordBook: [] as RecordBookEntry[],
     recordWatch: [] as RecordWatchEntry[],
     seasonArchive: [],
+    archivedSeasons: [] as ArchivedSeason[],
     historicalPlayers: [],
     mentorRelationships: [],
     frontOfficeState: new Map(),
     seasonHistory: [],
+    whatIfBranches: [] as WhatIfBranchMeta[],
   };
 }
 
@@ -240,6 +244,10 @@ function createState(): FullGameState {
     challengeState: null,
     ceremony: createEmptyCeremonyState(),
     achievements: createEmptyAchievementState(),
+    performanceDiagnostics: {
+      totalSeasons: 1,
+      snapshotSizeBytes: 0,
+    },
   };
 }
 
@@ -352,7 +360,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(14);
+    expect(snapshot.schemaVersion).toBe(15);
     expect((snapshot as GameSnapshot & {
       monthlyPulse?: { pendingReport: null; decisionQueue: unknown[] };
     }).monthlyPulse).toEqual({
@@ -409,6 +417,79 @@ describe('snapshot helpers', () => {
     expect(restored.debutFlashbacks[0]?.playerId).toBe(candidate.id);
     expect(restored.minorLeagueState.minorLeagueStatHistory[0]?.[0]).toBe(candidate.id);
     expect(restored.minorLeagueState.activeDevelopmentSetbacks[0]?.playerId).toBe(candidate.id);
+  });
+
+  it('migrates v14 snapshots into the v15 archive and diagnostics shape', () => {
+    const snapshot = exportGameSnapshot(createState()) as unknown as {
+      schemaVersion: number;
+      season: number;
+      narrative: {
+        seasonArchive: GameSnapshot['narrative']['seasonArchive'];
+      };
+    };
+    snapshot.schemaVersion = 14;
+    snapshot.season = 25;
+    snapshot.narrative.seasonArchive = Array.from({ length: 14 }, (_, index) => ({
+      season: index + 1,
+      standings: [
+        {
+          teamId: 'nyy',
+          wins: 90,
+          losses: 72,
+          divisionRank: 1,
+          gamesBack: 0,
+        },
+      ],
+      playoffSeries: [
+        {
+          round: 'World Series',
+          winnerTeamId: 'nyy',
+          loserTeamId: 'lad',
+          result: '4-2',
+        },
+      ],
+      awards: [
+        {
+          season: index + 1,
+          award: 'MVP',
+          league: 'MLB',
+          playerId: `mvp-${index + 1}`,
+          teamId: 'nyy',
+          summary: 'Won MVP',
+        },
+      ],
+      statLeaders: {
+        hr: [{ playerId: 'slugger', teamId: 'nyy', value: '42', summary: 'Slugger hit 42 HR.' }],
+        rbi: [],
+        avg: [],
+        era: [],
+        k: [],
+        w: [],
+      },
+      transactions: [],
+      draftClass: [],
+      financials: [],
+      userSummary: {
+        teamId: 'nyy',
+        record: '90-72',
+        playoffResult: 'Won World Series',
+        storylines: ['Title run'],
+      },
+      timelineEvents: ['Won the title'],
+    }));
+
+    const restored = importGameSnapshot(snapshot);
+
+    expect(restored.archivedSeasons.length).toBeGreaterThan(0);
+    expect(restored.whatIfBranches).toEqual([]);
+    expect(restored.performanceDiagnostics.totalSeasons).toBe(25);
+    expect(restored.performanceDiagnostics.snapshotSizeBytes).toBeGreaterThan(0);
+    expect(restored.seasonArchive).toEqual([]);
+    expect(restored.archivedSeasons[0]).toMatchObject({
+      season: 1,
+      championshipWon: true,
+      championTeamId: 'nyy',
+    });
   });
 
   it('migrates v9 snapshots into the v10 monthly pulse shape', () => {

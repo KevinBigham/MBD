@@ -22,7 +22,7 @@ import {
   seedHistoricalRivalries,
   toDisplayRating,
 } from '@mbd/sim-core';
-import { createEmptyMonthlyPulseState } from './sim.worker.monthlyPulse.js';
+import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
 import {
   createEmptyDraftState,
   createEmptyInternationalScoutingState,
@@ -365,9 +365,11 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     recordBook,
     recordWatch: [],
     seasonArchive: [],
+    archivedSeasons: [],
     historicalPlayers: [],
     mentorRelationships: [],
     frontOfficeState,
+    whatIfBranches: [],
     seasonHistory: [],
     gmCareer,
     jobMarket: createEmptyJobMarket(),
@@ -388,6 +390,10 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     }),
     ceremony: createEmptyCeremonyState(),
     achievements: createEmptyAchievementState(),
+    performanceDiagnostics: {
+      totalSeasons: 1,
+      snapshotSizeBytes: 0,
+    },
   };
 }
 

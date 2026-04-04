@@ -10,6 +10,11 @@ export type {
   OutcomeRates,
 } from './math/index.js';
 export {
+  archiveOldSeasons,
+  estimateSnapshotSize,
+  pruneStaleData,
+} from './performance/index.js';
+export {
   buildLeagueAdvancedContext,
   calculateAdvancedStatLine,
   calculateBattingAverage,

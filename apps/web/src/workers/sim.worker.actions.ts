@@ -170,10 +170,10 @@ import {
 import {
   acknowledgeMonthlyReport,
   captureMonthlyAdvanceContext,
-  createEmptyMonthlyPulseState,
   dismissDecisionSpotlight,
   generateMonthlyPulse,
 } from './sim.worker.monthlyPulse.js';
+import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
 import {
   buildNewGameState,
   getDifficultyAdjustedCompetitiveAav,

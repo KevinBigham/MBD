@@ -3,6 +3,7 @@ import { History, Award, Flame, Trophy } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
 import { Link } from 'react-router-dom';
 import type {
+  ArchivedSeason,
   AwardHistoryEntry,
   DynastyCard,
   RecordBookEntry,
@@ -72,14 +73,16 @@ interface RecordBookView {
 
 interface SeasonComparisonView {
   userTeamId: string;
-  left: SeasonArchiveEntry | null;
-  right: SeasonArchiveEntry | null;
+  left: HistorySeasonView | null;
+  right: HistorySeasonView | null;
   deltas: {
     wins: number | null;
     payroll: number | null;
     budget: number | null;
   };
 }
+
+type HistorySeasonView = SeasonArchiveEntry | ArchivedSeason;
 
 interface AchievementView {
   id: string;
@@ -131,6 +134,7 @@ function collectHistoryIds(
   awardHistory: AwardHistoryEntry[],
   seasonHistory: SeasonHistoryEntry[],
   seasonArchives: SeasonArchiveEntry[],
+  archivedSeasons: ArchivedSeason[],
   recordBook: RecordBookView,
   recordWatch: RecordWatchEntry[],
   rivalries: Rivalry[],
@@ -166,6 +170,14 @@ function collectHistoryIds(
       ...entry.statLeaders.w.map((leader) => leader.playerId),
       ...entry.transactions.flatMap((transaction) => transaction.playerIds),
       ...entry.draftClass.map((pick) => pick.playerId),
+    ]),
+    ...archivedSeasons.flatMap((entry) => [
+      ...entry.statLeaders.hr.map((leader) => leader.playerId),
+      ...entry.statLeaders.rbi.map((leader) => leader.playerId),
+      ...entry.statLeaders.avg.map((leader) => leader.playerId),
+      ...entry.statLeaders.era.map((leader) => leader.playerId),
+      ...entry.statLeaders.k.map((leader) => leader.playerId),
+      ...entry.statLeaders.w.map((leader) => leader.playerId),
     ]),
   ];
   const teamIds = [
@@ -206,6 +218,16 @@ function collectHistoryIds(
       ...entry.financials.map((financial) => financial.teamId),
       entry.userSummary?.teamId ?? '',
     ]),
+    ...archivedSeasons.flatMap((entry) => [
+      ...entry.standings.map((standing) => standing.teamId),
+      entry.championTeamId ?? '',
+      ...entry.statLeaders.hr.map((leader) => leader.teamId),
+      ...entry.statLeaders.rbi.map((leader) => leader.teamId),
+      ...entry.statLeaders.avg.map((leader) => leader.teamId),
+      ...entry.statLeaders.era.map((leader) => leader.teamId),
+      ...entry.statLeaders.k.map((leader) => leader.teamId),
+      ...entry.statLeaders.w.map((leader) => leader.teamId),
+    ]),
     ...rivalries.flatMap((rivalry) => [rivalry.teamA, rivalry.teamB]),
   ];
 
@@ -217,6 +239,38 @@ function collectHistoryIds(
 
 function sortSeasonsDescending(values: number[]): number[] {
   return [...values].sort((left, right) => right - left);
+}
+
+function isArchivedSeasonView(view: HistorySeasonView | null): view is ArchivedSeason {
+  return view != null && !('playoffSeries' in view);
+}
+
+function isFullSeasonArchive(view: HistorySeasonView | null): view is SeasonArchiveEntry {
+  return view != null && 'playoffSeries' in view;
+}
+
+function formatSeasonViewRecord(view: HistorySeasonView | null): string {
+  if (!view) {
+    return 'No user summary';
+  }
+  if (isArchivedSeasonView(view)) {
+    return view.userRecord ? `${view.userRecord.wins}-${view.userRecord.losses}` : 'No user summary';
+  }
+  return view.userSummary?.record ?? 'No user summary';
+}
+
+function formatSeasonViewPlayoffResult(view: HistorySeasonView | null): string {
+  if (!view) {
+    return 'No playoff result recorded';
+  }
+  if (isArchivedSeasonView(view)) {
+    return view.playoffResult ?? (view.championshipWon ? 'Won World Series' : 'No playoff result recorded');
+  }
+  return view.userSummary?.playoffResult ?? 'No playoff result recorded';
+}
+
+function getSeasonViewTimelineEvents(view: HistorySeasonView | null): string[] {
+  return isFullSeasonArchive(view) ? view.timelineEvents : [];
 }
 
 function formatMoney(value: number | null | undefined): string {
@@ -251,7 +305,7 @@ function divisionLabelForTeam(teamId: string): string {
   return getTeamById(teamId)?.division.replace('_', ' ') ?? 'League';
 }
 
-function groupArchiveStandings(archive: SeasonArchiveEntry | null) {
+function groupArchiveStandings(archive: HistorySeasonView | null) {
   if (!archive) return [];
 
   const groups = new Map<string, typeof archive.standings>();
@@ -272,14 +326,14 @@ function groupArchiveStandings(archive: SeasonArchiveEntry | null) {
     }));
 }
 
-function timelineToneForSeason(archive: SeasonArchiveEntry | null): string {
+function timelineToneForSeason(archive: HistorySeasonView | null): string {
   if (!archive) {
     return 'border-dynasty-border bg-dynasty-elevated';
   }
 
-  const userRecord = archive.userSummary?.record ?? '0-0';
+  const userRecord = formatSeasonViewRecord(archive);
   const [wins, losses] = userRecord.split('-').map((value) => Number(value));
-  const playoffResult = archive.userSummary?.playoffResult ?? '';
+  const playoffResult = formatSeasonViewPlayoffResult(archive);
 
   if (playoffResult === 'Champion') {
     return 'border-accent-success/50 bg-accent-success/10';
@@ -296,12 +350,15 @@ function timelineToneForSeason(archive: SeasonArchiveEntry | null): string {
 
 export default function HistoryPage() {
   const worker = useWorker();
+  const historyWorker = worker as typeof worker & {
+    getHistoryOverview?: () => Promise<{ seasonViews?: HistorySeasonView[] } | null>;
+  };
   const workerReady = worker.isReady;
-  const { isInitialized, userTeamId, day, season, phase, activeSaveSlot } = useGameStore();
+  const { isInitialized, userTeamId, day, season, phase, activeSaveId, activeSaveSlot } = useGameStore();
   const [awardRaces, setAwardRaces] = useState<AwardRaces | null>(null);
   const [awardHistory, setAwardHistory] = useState<AwardHistoryEntry[]>([]);
   const [seasonHistory, setSeasonHistory] = useState<SeasonHistoryEntry[]>([]);
-  const [seasonArchives, setSeasonArchives] = useState<Record<number, SeasonArchiveEntry>>({});
+  const [seasonViews, setSeasonViews] = useState<Record<number, HistorySeasonView>>({});
   const [recordBook, setRecordBook] = useState<RecordBookView>({ franchise: [], league: [] });
   const [recordWatch, setRecordWatch] = useState<RecordWatchEntry[]>([]);
   const [rivalries, setRivalries] = useState<Rivalry[]>([]);
@@ -331,10 +388,11 @@ export default function HistoryPage() {
       const recordWatchPromise = typeof worker.getRecordWatchList === 'function'
         ? worker.getRecordWatchList(userTeamId)
         : Promise.resolve([]);
-      const [races, awards, seasons, recordBookData, recordWatchData, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData, cardsData, liveLeaderboardData, storedLeaderboardData] = await Promise.all([
+      const [races, awards, seasons, historyOverviewData, recordBookData, recordWatchData, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData, cardsData, liveLeaderboardData, storedLeaderboardData] = await Promise.all([
         worker.getAwardRaces(),
         worker.getAwardHistory(),
         worker.getSeasonHistory(),
+        typeof historyWorker.getHistoryOverview === 'function' ? historyWorker.getHistoryOverview() : Promise.resolve(null),
         recordBookPromise,
         recordWatchPromise,
         worker.getRivalries(userTeamId),
@@ -354,15 +412,24 @@ export default function HistoryPage() {
       const nextRivalries = rivalriesData ?? [];
       const nextHallOfFame = hallOfFameData ?? [];
       const nextTimeline = timelineData ?? [];
-      const seasonsInHistory = sortSeasonsDescending((nextSeasonHistory as SeasonHistoryEntry[]).map((entry) => entry.season));
-      const archiveEntries = typeof worker.getSeasonArchive === 'function' && seasonsInHistory.length > 0
-        ? await Promise.all(seasonsInHistory.map(async (archiveSeason) => [archiveSeason, await worker.getSeasonArchive(archiveSeason)] as const))
-        : [];
-      const nextSeasonArchives = Object.fromEntries(
-        archiveEntries
-          .filter((entry): entry is readonly [number, SeasonArchiveEntry] => entry[1] != null)
-          .map(([archiveSeason, archive]) => [archiveSeason, archive]),
-      );
+      const overviewSeasonViews = ((historyOverviewData as { seasonViews?: HistorySeasonView[] } | null)?.seasonViews ?? []);
+      const nextSeasonViews = overviewSeasonViews.length > 0
+        ? Object.fromEntries(overviewSeasonViews.map((entry) => [entry.season, entry]))
+        : Object.fromEntries(
+          (typeof worker.getSeasonArchive === 'function'
+            ? await Promise.all(
+              sortSeasonsDescending((nextSeasonHistory as SeasonHistoryEntry[]).map((entry) => entry.season))
+                .map(async (archiveSeason) => [archiveSeason, await worker.getSeasonArchive(archiveSeason)] as const),
+            )
+            : []
+          )
+            .filter((entry): entry is readonly [number, SeasonArchiveEntry] => entry[1] != null)
+            .map(([archiveSeason, archive]) => [archiveSeason, archive]),
+        );
+      const seasonsInHistory = sortSeasonsDescending(uniqueStrings([
+        ...(nextSeasonHistory as SeasonHistoryEntry[]).map((entry) => String(entry.season)),
+        ...Object.keys(nextSeasonViews),
+      ]).map((value) => Number(value)));
       const initialSelectedSeason = seasonsInHistory[0] ?? null;
       const initialComparisonSeason = seasonsInHistory[1] ?? seasonsInHistory[0] ?? null;
       const comparisonData = (
@@ -377,7 +444,8 @@ export default function HistoryPage() {
         nextAwardRaces as AwardRaces | null,
         nextAwardHistory as AwardHistoryEntry[],
         nextSeasonHistory as SeasonHistoryEntry[],
-        Object.values(nextSeasonArchives),
+        Object.values(nextSeasonViews).filter((entry): entry is SeasonArchiveEntry => isFullSeasonArchive(entry)),
+        Object.values(nextSeasonViews).filter((entry): entry is ArchivedSeason => isArchivedSeasonView(entry)),
         nextRecordBook,
         nextRecordWatch,
         nextRivalries as Rivalry[],
@@ -390,7 +458,7 @@ export default function HistoryPage() {
       setAwardRaces(nextAwardRaces as AwardRaces | null);
       setAwardHistory(nextAwardHistory as AwardHistoryEntry[]);
       setSeasonHistory(nextSeasonHistory as SeasonHistoryEntry[]);
-      setSeasonArchives(nextSeasonArchives);
+      setSeasonViews(nextSeasonViews);
       setRecordBook(nextRecordBook);
       setRecordWatch(nextRecordWatch);
       setRivalries(nextRivalries as Rivalry[]);
@@ -400,7 +468,8 @@ export default function HistoryPage() {
       const storedEntries = (storedLeaderboardData ?? []) as LeaderboardEntry[];
       const mergedLeaderboard = [
         ...liveEntries.filter((entry) => !storedEntries.some((stored) =>
-          (activeSaveSlot != null && stored.slotNumber === activeSaveSlot)
+          (activeSaveId != null && stored.id === activeSaveId)
+          || (activeSaveSlot != null && stored.slotNumber === activeSaveSlot)
           || (stored.teamId === entry.teamId && stored.season === entry.season && stored.gmName === entry.gmName),
         )),
         ...storedEntries,
@@ -420,7 +489,7 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeSaveSlot, isInitialized, workerReady, worker, userTeamId]);
+  }, [activeSaveId, activeSaveSlot, historyWorker, isInitialized, workerReady, worker, userTeamId]);
 
   useEffect(() => {
     fetchHistory();
@@ -452,9 +521,9 @@ export default function HistoryPage() {
 
   const availableSeasons = sortSeasonsDescending(uniqueStrings([
     ...seasonHistory.map((entry) => String(entry.season)),
-    ...Object.keys(seasonArchives),
+    ...Object.keys(seasonViews),
   ]).map((value) => Number(value)));
-  const selectedArchive = selectedSeason != null ? seasonArchives[selectedSeason] ?? null : null;
+  const selectedArchive = selectedSeason != null ? seasonViews[selectedSeason] ?? null : null;
 
   useEffect(() => {
     if (!selectedArchive) {
@@ -466,7 +535,9 @@ export default function HistoryPage() {
       if (current && selectedArchive.standings.some((entry) => entry.teamId === current)) {
         return current;
       }
-      return selectedArchive.userSummary?.teamId ?? selectedArchive.standings[0]?.teamId ?? null;
+      return isFullSeasonArchive(selectedArchive)
+        ? (selectedArchive.userSummary?.teamId ?? selectedArchive.standings[0]?.teamId ?? null)
+        : (selectedArchive.standings[0]?.teamId ?? null);
     });
   }, [selectedArchive]);
 
@@ -480,13 +551,23 @@ export default function HistoryPage() {
   const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked).length;
   const groupedStandings = groupArchiveStandings(selectedArchive);
   const selectedTeamStanding = selectedArchive?.standings.find((entry) => entry.teamId === selectedSeasonTeamId) ?? null;
-  const selectedTeamFinancial = selectedArchive?.financials.find((entry) => entry.teamId === selectedSeasonTeamId) ?? null;
-  const selectedTeamSeries = selectedArchive?.playoffSeries.filter((series) =>
-    series.winnerTeamId === selectedSeasonTeamId || series.loserTeamId === selectedSeasonTeamId,
-  ) ?? [];
-  const selectedTeamAwards = selectedArchive?.awards.filter((entry) => entry.teamId === selectedSeasonTeamId) ?? [];
-  const selectedTeamTransactions = selectedArchive?.transactions.filter((entry) => entry.teamIds.includes(selectedSeasonTeamId ?? '')) ?? [];
-  const selectedTeamDraftPicks = selectedArchive?.draftClass.filter((entry) => entry.teamId === selectedSeasonTeamId) ?? [];
+  const selectedTeamFinancial = isFullSeasonArchive(selectedArchive)
+    ? selectedArchive.financials.find((entry) => entry.teamId === selectedSeasonTeamId) ?? null
+    : null;
+  const selectedTeamSeries = isFullSeasonArchive(selectedArchive)
+    ? selectedArchive.playoffSeries.filter((series) =>
+      series.winnerTeamId === selectedSeasonTeamId || series.loserTeamId === selectedSeasonTeamId,
+    )
+    : [];
+  const selectedTeamAwards = isFullSeasonArchive(selectedArchive)
+    ? selectedArchive.awards.filter((entry) => entry.teamId === selectedSeasonTeamId)
+    : [];
+  const selectedTeamTransactions = isFullSeasonArchive(selectedArchive)
+    ? selectedArchive.transactions.filter((entry) => entry.teamIds.includes(selectedSeasonTeamId ?? ''))
+    : [];
+  const selectedTeamDraftPicks = isFullSeasonArchive(selectedArchive)
+    ? selectedArchive.draftClass.filter((entry) => entry.teamId === selectedSeasonTeamId)
+    : [];
 
   return (
     <PageShell loading={loading && dynastyScore == null} skeleton={<HistorySkeleton />}>
@@ -688,16 +769,21 @@ export default function HistoryPage() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="font-heading text-base text-dynasty-textBright">Season {selectedArchive.season} Archive</div>
                         <div className="font-data text-xs text-dynasty-muted">
-                          {selectedArchive.userSummary?.record ?? 'No user summary'}
+                          {formatSeasonViewRecord(selectedArchive)}
                         </div>
                       </div>
                       <div className="mt-2 font-heading text-sm text-dynasty-text">
-                        {selectedArchive.userSummary?.playoffResult ?? 'No playoff result recorded'}
+                        {formatSeasonViewPlayoffResult(selectedArchive)}
                       </div>
                       <div className="mt-3 space-y-2">
-                        {selectedArchive.timelineEvents.map((event) => (
+                        {getSeasonViewTimelineEvents(selectedArchive).map((event) => (
                           <div key={event} className="font-heading text-xs text-dynasty-muted">{event}</div>
                         ))}
+                        {isArchivedSeasonView(selectedArchive) ? (
+                          <div className="font-heading text-xs text-dynasty-muted">
+                            Detailed transaction, draft, and payroll logs were archived to keep long dynasties fast.
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -715,12 +801,24 @@ export default function HistoryPage() {
                             </div>
                             <div className="rounded border border-dynasty-border/70 px-3 py-2">
                               <div className="font-heading text-[11px] uppercase text-dynasty-muted">Payroll</div>
-                              <div className="mt-1 font-data text-sm text-dynasty-textBright">{formatMoney(seasonComparison.right.financials.find((entry) => entry.teamId === seasonComparison.userTeamId)?.payroll)}</div>
+                              <div className="mt-1 font-data text-sm text-dynasty-textBright">
+                                {formatMoney(
+                                  isFullSeasonArchive(seasonComparison.right)
+                                    ? seasonComparison.right.financials.find((entry) => entry.teamId === seasonComparison.userTeamId)?.payroll
+                                    : null,
+                                )}
+                              </div>
                               <div className="mt-1 font-heading text-[11px] text-dynasty-muted">{formatMoney(seasonComparison.deltas.payroll)}</div>
                             </div>
                             <div className="rounded border border-dynasty-border/70 px-3 py-2">
                               <div className="font-heading text-[11px] uppercase text-dynasty-muted">Budget</div>
-                              <div className="mt-1 font-data text-sm text-dynasty-textBright">{formatMoney(seasonComparison.right.financials.find((entry) => entry.teamId === seasonComparison.userTeamId)?.budget)}</div>
+                              <div className="mt-1 font-data text-sm text-dynasty-textBright">
+                                {formatMoney(
+                                  isFullSeasonArchive(seasonComparison.right)
+                                    ? seasonComparison.right.financials.find((entry) => entry.teamId === seasonComparison.userTeamId)?.budget
+                                    : null,
+                                )}
+                              </div>
                               <div className="mt-1 font-heading text-[11px] text-dynasty-muted">{formatMoney(seasonComparison.deltas.budget)}</div>
                             </div>
                           </div>
@@ -737,11 +835,12 @@ export default function HistoryPage() {
                     {SEASON_BROWSER_TABS.map((tab) => (
                       <button
                         key={tab}
+                        disabled={isArchivedSeasonView(selectedArchive) && (tab === 'transactions' || tab === 'draft' || tab === 'financials')}
                         className={`rounded border px-3 py-2 font-heading text-[11px] uppercase tracking-[0.16em] ${
                           selectedSeasonTab === tab
                             ? 'border-accent-primary bg-accent-primary/10 text-dynasty-textBright'
                             : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted'
-                        }`}
+                        } ${(isArchivedSeasonView(selectedArchive) && (tab === 'transactions' || tab === 'draft' || tab === 'financials')) ? 'cursor-not-allowed opacity-50' : ''}`}
                         onClick={() => setSelectedSeasonTab(tab)}
                         type="button"
                       >
@@ -771,7 +870,8 @@ export default function HistoryPage() {
                                   <div>
                                     <div className="font-heading text-sm text-dynasty-text">{teamName(entry.teamId)}</div>
                                     <div className="mt-1 font-heading text-[11px] text-dynasty-muted">
-                                      Rank {entry.divisionRank} · GB {entry.gamesBack}
+                                      Rank {entry.divisionRank}
+                                      {'gamesBack' in entry ? ` · GB ${entry.gamesBack}` : ''}
                                     </div>
                                   </div>
                                   <div className="font-data text-sm text-dynasty-textBright">{entry.wins}-{entry.losses}</div>
@@ -795,11 +895,11 @@ export default function HistoryPage() {
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="rounded border border-dynasty-border/70 px-3 py-2">
                                 <div className="font-heading text-[11px] uppercase text-dynasty-muted">Payroll</div>
-                                <div className="mt-1 font-data text-sm text-dynasty-textBright">{formatMoney(selectedTeamFinancial?.payroll)}</div>
+                                <div className="mt-1 font-data text-sm text-dynasty-textBright">{formatMoney(selectedTeamFinancial?.payroll ?? null)}</div>
                               </div>
                               <div className="rounded border border-dynasty-border/70 px-3 py-2">
                                 <div className="font-heading text-[11px] uppercase text-dynasty-muted">Budget</div>
-                                <div className="mt-1 font-data text-sm text-dynasty-textBright">{formatMoney(selectedTeamFinancial?.budget)}</div>
+                                <div className="mt-1 font-data text-sm text-dynasty-textBright">{formatMoney(selectedTeamFinancial?.budget ?? null)}</div>
                               </div>
                             </div>
                             {selectedTeamSeries.length > 0 && (
@@ -851,7 +951,7 @@ export default function HistoryPage() {
 
                   {selectedSeasonTab === 'playoffs' && (
                     <div className="grid gap-3">
-                      {selectedArchive.playoffSeries.map((series, index) => (
+                      {isFullSeasonArchive(selectedArchive) ? selectedArchive.playoffSeries.map((series, index) => (
                         <div key={`${series.round}-${index}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-heading text-sm text-dynasty-text">{series.round}</div>
@@ -861,13 +961,22 @@ export default function HistoryPage() {
                             {teamName(series.winnerTeamId)} def. {teamName(series.loserTeamId)}
                           </div>
                         </div>
-                      ))}
+                      )) : (
+                        <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                          <div className="font-heading text-sm text-dynasty-text">
+                            {formatSeasonViewPlayoffResult(selectedArchive)}
+                          </div>
+                          <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                            Champion: {teamName(selectedArchive.championTeamId)}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {selectedSeasonTab === 'awards' && (
                     <div className="space-y-3">
-                      {selectedArchive.awards.map((entry) => (
+                      {isFullSeasonArchive(selectedArchive) ? selectedArchive.awards.map((entry) => (
                         <div key={`${entry.award}-${entry.playerId}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-heading text-sm text-dynasty-text">Season {entry.season} {entry.league} {formatAwardLabel(entry.award)}</div>
@@ -876,7 +985,18 @@ export default function HistoryPage() {
                           <div className="mt-2 font-heading text-sm text-dynasty-text">{playerName(entry.playerId)}</div>
                           <div className="mt-1 font-heading text-xs text-dynasty-muted">{entry.summary}</div>
                         </div>
-                      ))}
+                      )) : (
+                        <>
+                          <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                            <div className="font-heading text-sm text-dynasty-text">MVP</div>
+                            <div className="mt-2 font-heading text-xs text-dynasty-muted">{selectedArchive.mvpName ?? 'No archived MVP summary'}</div>
+                          </div>
+                          <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                            <div className="font-heading text-sm text-dynasty-text">Cy Young</div>
+                            <div className="mt-2 font-heading text-xs text-dynasty-muted">{selectedArchive.cyYoungName ?? 'No archived Cy Young summary'}</div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -893,7 +1013,7 @@ export default function HistoryPage() {
 
                   {selectedSeasonTab === 'transactions' && (
                     <div className="space-y-3">
-                      {selectedArchive.transactions.map((entry) => (
+                      {isFullSeasonArchive(selectedArchive) ? selectedArchive.transactions.map((entry) => (
                         <div key={entry.headline} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-heading text-sm text-dynasty-text">{entry.headline}</div>
@@ -901,13 +1021,17 @@ export default function HistoryPage() {
                           </div>
                           <div className="mt-2 font-heading text-xs text-dynasty-muted">{entry.summary}</div>
                         </div>
-                      ))}
+                      )) : (
+                        <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
+                          Detailed transaction logs were archived for this season.
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {selectedSeasonTab === 'draft' && (
                     <div className="space-y-3">
-                      {selectedArchive.draftClass.length > 0 ? selectedArchive.draftClass.map((pick) => (
+                      {isFullSeasonArchive(selectedArchive) && selectedArchive.draftClass.length > 0 ? selectedArchive.draftClass.map((pick) => (
                         <div key={pick.playerId} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-heading text-sm text-dynasty-text">Pick {pick.pickNumber} · {pick.playerName}</div>
@@ -917,7 +1041,9 @@ export default function HistoryPage() {
                         </div>
                       )) : (
                         <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
-                          No draft class has been archived for this season yet.
+                          {isFullSeasonArchive(selectedArchive)
+                            ? 'No draft class has been archived for this season yet.'
+                            : 'Detailed draft logs were archived for this season.'}
                         </div>
                       )}
                     </div>
@@ -925,7 +1051,7 @@ export default function HistoryPage() {
 
                   {selectedSeasonTab === 'financials' && (
                     <div className="space-y-3">
-                      {selectedArchive.financials.map((entry) => (
+                      {isFullSeasonArchive(selectedArchive) ? selectedArchive.financials.map((entry) => (
                         <div key={entry.teamId} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-heading text-sm text-dynasty-text">{teamName(entry.teamId)}</div>
@@ -933,7 +1059,11 @@ export default function HistoryPage() {
                           </div>
                           <div className="mt-1 font-heading text-xs text-dynasty-muted">Budget {formatMoney(entry.budget)}</div>
                         </div>
-                      ))}
+                      )) : (
+                        <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
+                          Detailed payroll archives were compressed for this season.
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -956,7 +1086,7 @@ export default function HistoryPage() {
               </div>
               <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
                 {availableSeasons.length > 0 ? availableSeasons.map((timelineSeason) => {
-                  const archive = seasonArchives[timelineSeason] ?? null;
+                  const archive = seasonViews[timelineSeason] ?? null;
                   return (
                     <button
                       key={timelineSeason}
@@ -968,9 +1098,9 @@ export default function HistoryPage() {
                       type="button"
                     >
                       <div className="font-heading text-sm text-dynasty-textBright">Season {timelineSeason}</div>
-                      <div className="mt-1 font-data text-xs text-dynasty-muted">{archive?.userSummary?.record ?? 'No record'}</div>
+                      <div className="mt-1 font-data text-xs text-dynasty-muted">{formatSeasonViewRecord(archive)}</div>
                       <div className="mt-2 font-heading text-xs text-dynasty-muted">
-                        {archive?.userSummary?.playoffResult ?? 'No playoff note'}
+                        {formatSeasonViewPlayoffResult(archive)}
                       </div>
                     </button>
                   );

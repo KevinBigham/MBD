@@ -13,7 +13,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
-import { scheduleAutoSave } from '@/shared/lib/saveSystem';
+import { loadGameById, saveGameById, scheduleAutoSave } from '@/shared/lib/saveSystem';
 import type { CeremonyMoment, MonthlyPulseState, TickerEntry } from '@mbd/contracts';
 
 interface MonthlyPulseView extends MonthlyPulseState {
@@ -92,6 +92,7 @@ export function AppLayout() {
     day,
     teamName,
     gmName,
+    activeSaveId,
     activeSaveSlot,
     setSimulating,
     updateFromSim,
@@ -104,20 +105,31 @@ export function AppLayout() {
   const ambientVolume = useAudioPreferencesStore((state) => state.ambientVolume);
   const commandPaletteOpenRef = useRef<boolean | null>(null);
 
-  const persistActiveSlot = useCallback(async (targetSeason: number) => {
-    if (activeSaveSlot == null) {
+  const persistActiveSave = useCallback(async (targetSeason: number) => {
+    if (activeSaveId == null) {
       return;
     }
 
     const snapshot = await worker.exportSnapshot();
-    void scheduleAutoSave(
-      activeSaveSlot,
-      `${gmName} • ${teamName} • Season ${targetSeason}`,
-      snapshot,
-    ).catch((error) => {
+    const saveName = `${gmName} • ${teamName} • Season ${targetSeason}`;
+
+    if (activeSaveSlot != null) {
+      void scheduleAutoSave(activeSaveSlot, saveName, snapshot).catch((error) => {
+        console.error('Failed to autosave snapshot:', error);
+      });
+      return;
+    }
+
+    const existing = await loadGameById(activeSaveId);
+    void saveGameById(activeSaveId, saveName, snapshot, {
+      slotNumber: existing?.slotNumber ?? null,
+      parentSaveId: existing?.parentSaveId ?? null,
+      isRootSave: existing?.isRootSave ?? false,
+      branchMeta: existing?.branchMeta ?? null,
+    }).catch((error) => {
       console.error('Failed to autosave snapshot:', error);
     });
-  }, [activeSaveSlot, gmName, teamName, worker]);
+  }, [activeSaveId, activeSaveSlot, gmName, teamName, worker]);
 
   const refreshSeasonFlow = useCallback(async () => {
     if (!workerReady) return;
@@ -170,7 +182,7 @@ export function AppLayout() {
         updateFromSim(result);
         await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse(), refreshTickerFeed()]);
         if (options.autoSave || result.phase !== phase || result.season !== season) {
-          await persistActiveSlot(result.season);
+          await persistActiveSave(result.season);
         }
       } catch (err) {
         console.error('Simulation error:', err);
@@ -178,7 +190,7 @@ export function AppLayout() {
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, persistActiveSlot, phase, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, season, setSimulating, updateFromSim]
+    [workerReady, isInitialized, persistActiveSave, phase, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, season, setSimulating, updateFromSim]
   );
 
   const activeReport = activeMoment ? null : (monthlyPulse?.pendingReport ?? null);

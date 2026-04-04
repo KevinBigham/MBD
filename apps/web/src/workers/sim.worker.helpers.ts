@@ -132,6 +132,7 @@ import type {
 } from '@mbd/sim-core';
 import type {
   AchievementState,
+  ArchivedSeason,
   AwardHistoryEntry,
   BriefingItem,
   CareerStatsLedger,
@@ -157,6 +158,7 @@ import type {
   MinorLeagueState,
   MonthlyPulseState,
   OwnerState,
+  PerformanceDiagnostics,
   PlayerOrigin,
   PlayerMorale,
   PlayerStoryArc,
@@ -170,6 +172,7 @@ import type {
   TeamChemistry,
   TickerEntry,
   TradeState,
+  WhatIfBranchMeta,
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
@@ -234,9 +237,11 @@ export interface FullGameState {
   recordBook: RecordBookEntry[];
   recordWatch: RecordWatchEntry[];
   seasonArchive: SeasonArchiveEntry[];
+  archivedSeasons: ArchivedSeason[];
   historicalPlayers: HistoricalPlayer[];
   mentorRelationships: MentorRelationship[];
   frontOfficeState: Map<string, FrontOfficeState>;
+  whatIfBranches: WhatIfBranchMeta[];
   seasonHistory: SeasonHistoryEntry[];
   gmCareer: GMCareer;
   jobMarket: JobMarket;
@@ -249,6 +254,7 @@ export interface FullGameState {
   franchise: FranchiseState;
   ceremony: CeremonyState;
   achievements: AchievementState;
+  performanceDiagnostics: PerformanceDiagnostics;
 }
 
 export let state: FullGameState | null = null;

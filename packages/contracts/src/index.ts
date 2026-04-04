@@ -208,11 +208,13 @@ export {
   DynastyCardSchema,
   ChallengeStateSchema,
   SeasonArchiveStandingSchema,
+  ArchivedSeasonStandingSchema,
   SeasonArchivePlayoffSeriesSchema,
   SeasonArchiveTransactionSchema,
   SeasonArchiveDraftPickSchema,
   SeasonArchiveFinancialSchema,
   SeasonArchiveEntrySchema,
+  ArchivedSeasonSchema,
   HallOfFameEntrySchema,
   HallOfFameBallotEntrySchema,
   FranchiseTimelineEntrySchema,
@@ -221,6 +223,7 @@ export {
   RetirementSummarySchema,
   BlockbusterTradeSummarySchema,
   UserSeasonSummarySchema,
+  WhatIfBranchMetaSchema,
   SeasonHistoryEntrySchema,
 } from "./schemas/narrative.js";
 export type {
@@ -273,11 +276,13 @@ export type {
   DynastyCard,
   ChallengeState,
   SeasonArchiveStanding,
+  ArchivedSeasonStanding,
   SeasonArchivePlayoffSeries,
   SeasonArchiveTransaction,
   SeasonArchiveDraftPick,
   SeasonArchiveFinancial,
   SeasonArchiveEntry,
+  ArchivedSeason,
   HallOfFameEntry,
   HallOfFameBallotEntry,
   FranchiseTimelineEntry,
@@ -286,6 +291,7 @@ export type {
   RetirementSummary,
   BlockbusterTradeSummary,
   UserSeasonSummary,
+  WhatIfBranchMeta,
   SeasonHistoryEntry,
 } from "./schemas/narrative.js";
 
@@ -362,7 +368,9 @@ export {
   GameSnapshotV5Schema,
   GameSnapshotV6Schema,
   GameSnapshotV7Schema,
+  GameSnapshotV14Schema,
   GameSnapshotSchema,
+  PerformanceDiagnosticsSchema,
   migrateGameSnapshot,
   parseGameSnapshot,
 } from "./schemas/save.js";
@@ -392,7 +400,9 @@ export type {
   GameSnapshotV5,
   GameSnapshotV6,
   GameSnapshotV7,
+  GameSnapshotV14,
   GameSnapshot,
+  PerformanceDiagnostics,
 } from "./schemas/save.js";
 
 export {
