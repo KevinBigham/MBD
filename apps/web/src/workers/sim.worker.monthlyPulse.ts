@@ -246,13 +246,6 @@ function buildDecisionQueue(
     .slice(0, 3);
 }
 
-export function createEmptyMonthlyPulseState(): MonthlyPulseState {
-  return {
-    pendingReport: null,
-    decisionQueue: [],
-  };
-}
-
 export function captureMonthlyAdvanceContext(s: FullGameState): MonthlyAdvanceContext {
   return {
     month: getRegularSeasonMonthForDay(s.day),

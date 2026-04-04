@@ -657,6 +657,14 @@ export const SeasonArchiveStandingSchema = z.object({
 });
 export type SeasonArchiveStanding = z.infer<typeof SeasonArchiveStandingSchema>;
 
+export const ArchivedSeasonStandingSchema = z.object({
+  teamId: z.string(),
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+  divisionRank: z.number().int().min(1),
+});
+export type ArchivedSeasonStanding = z.infer<typeof ArchivedSeasonStandingSchema>;
+
 export const SeasonArchivePlayoffSeriesSchema = z.object({
   round: z.string().min(1),
   winnerTeamId: z.string().nullable(),
@@ -711,6 +719,30 @@ export const UserSeasonSummarySchema = z.object({
   storylines: z.array(z.string()),
 });
 export type UserSeasonSummary = z.infer<typeof UserSeasonSummarySchema>;
+
+export const ArchivedSeasonSchema = z.object({
+  season: z.number().int().min(1),
+  standings: z.array(ArchivedSeasonStandingSchema).default([]),
+  userRecord: WinLossRecordSchema.nullable().default(null),
+  playoffResult: z.string().nullable().default(null),
+  championshipWon: z.boolean().default(false),
+  championTeamId: z.string().nullable().default(null),
+  mvpName: z.string().nullable().default(null),
+  cyYoungName: z.string().nullable().default(null),
+  statLeaders: SeasonStatLeadersSchema,
+  dynastyScore: z.number().nullable().default(null),
+});
+export type ArchivedSeason = z.infer<typeof ArchivedSeasonSchema>;
+
+export const WhatIfBranchMetaSchema = z.object({
+  id: z.string().min(1),
+  saveId: z.string().min(1),
+  branchedAtSeason: z.number().int().min(1),
+  branchedAtDay: z.number().int().min(1),
+  description: z.string().min(1),
+  createdAt: z.string(),
+});
+export type WhatIfBranchMeta = z.infer<typeof WhatIfBranchMetaSchema>;
 
 export const SeasonHistoryEntrySchema = z.object({
   season: z.number().int().min(1),

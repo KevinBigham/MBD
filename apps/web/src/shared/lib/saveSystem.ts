@@ -2,6 +2,7 @@ import Dexie, { type Table } from 'dexie';
 import {
   type GameSnapshot,
   type SimPhase,
+  type WhatIfBranchMeta,
 } from '@mbd/contracts';
 import { calculateDynastyLeaderboardScore } from '@mbd/sim-core';
 import {
@@ -17,7 +18,7 @@ export const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
 
 export interface SaveData {
   id: string;
-  slotNumber: number;
+  slotNumber: number | null;
   name: string;
   season: number;
   day: number;
@@ -29,6 +30,9 @@ export interface SaveData {
   createdAt: string;
   updatedAt: string;
   gameState?: string;
+  parentSaveId: string | null;
+  isRootSave: boolean;
+  branchMeta: WhatIfBranchMeta | null;
 }
 
 export interface LeaderboardEntry {
@@ -47,10 +51,15 @@ export interface LeaderboardEntry {
 }
 
 export type SaveInspectionResult =
-  | { status: 'ok'; slot: number; save: SaveData }
-  | { status: 'empty'; slot: number }
-  | { status: 'legacy'; slot: number; save: SaveData; message: string }
-  | { status: 'corrupt'; slot: number; message: string; raw?: Partial<SaveData> | null };
+  | { status: 'ok'; slot: number | null; save: SaveData }
+  | { status: 'empty'; slot: number | null }
+  | { status: 'legacy'; slot: number | null; save: SaveData; message: string }
+  | { status: 'corrupt'; slot: number | null; message: string; raw?: Partial<SaveData> | null };
+
+export interface SaveTreeEntry {
+  save: SaveData;
+  branches: SaveData[];
+}
 
 interface AutoSaveJob {
   slot: number;
@@ -112,13 +121,39 @@ class MBDDatabase extends Dexie {
       saves: 'id, slotNumber, updatedAt, hasSnapshot',
       leaderboard: 'id, slotNumber, scenarioId, score, updatedAt',
     });
+    this.version(4).stores({
+      saves: 'id, slotNumber, parentSaveId, updatedAt, hasSnapshot',
+      leaderboard: 'id, slotNumber, scenarioId, score, updatedAt',
+    });
   }
 }
 
 export const db = new MBDDatabase();
+const MAX_BRANCHES_PER_SAVE = 3;
+let branchIdCounter = 0;
 
 function hasIndexedDBSupport(): boolean {
   return typeof indexedDB !== 'undefined';
+}
+
+function rootSaveId(slot: number): string {
+  return `save-slot-${slot}`;
+}
+
+function parseSlotNumberFromId(id: string | undefined): number | null {
+  if (!id) {
+    return null;
+  }
+  const match = /^save-slot-(\d+)$/.exec(id);
+  return match ? Number(match[1]) : null;
+}
+
+function createBranchId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `branch-${crypto.randomUUID()}`;
+  }
+  branchIdCounter += 1;
+  return `branch-${Date.now().toString(36)}-${branchIdCounter.toString(36)}`;
 }
 
 function fallbackGMCareer(snapshot: GameSnapshot): NonNullable<GameSnapshot['narrative']['gmCareer']> {
@@ -331,10 +366,12 @@ export function createAutoSaveScheduler(
 
 export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
   const snapshot = tryParseSnapshot(raw.snapshot);
+  const slotNumber = raw.slotNumber ?? parseSlotNumberFromId(raw.id);
+  const isRootSave = raw.isRootSave ?? (slotNumber != null);
 
   return {
-    id: raw.id ?? `save-slot-${raw.slotNumber ?? 1}`,
-    slotNumber: raw.slotNumber ?? 1,
+    id: raw.id ?? rootSaveId(slotNumber ?? 1),
+    slotNumber: slotNumber ?? null,
     name: raw.name ?? 'Unnamed Save',
     season: raw.season ?? snapshot?.season ?? 1,
     day: raw.day ?? snapshot?.day ?? 1,
@@ -345,10 +382,13 @@ export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
     legacyState: raw.legacyState ?? raw.gameState ?? null,
     createdAt: raw.createdAt ?? new Date(0).toISOString(),
     updatedAt: raw.updatedAt ?? new Date(0).toISOString(),
+    parentSaveId: raw.parentSaveId ?? null,
+    isRootSave,
+    branchMeta: raw.branchMeta ?? null,
   };
 }
 
-function inspectRawSaveRecord(slot: number, raw: Partial<SaveData> | undefined): SaveInspectionResult {
+function inspectRawSaveRecord(slot: number | null, raw: Partial<SaveData> | undefined): SaveInspectionResult {
   if (!raw) {
     return { status: 'empty', slot };
   }
@@ -398,12 +438,33 @@ export function buildSaveRecord(
   snapshot: GameSnapshot,
   existing?: SaveData
 ): SaveData {
+  return buildSaveRecordById(rootSaveId(slot), name, snapshot, {
+    existing,
+    slotNumber: slot,
+    parentSaveId: null,
+    isRootSave: true,
+    branchMeta: null,
+  });
+}
+
+function buildSaveRecordById(
+  id: string,
+  name: string,
+  snapshot: GameSnapshot,
+  options: {
+    existing?: Partial<SaveData>;
+    slotNumber: number | null;
+    parentSaveId: string | null;
+    isRootSave: boolean;
+    branchMeta: WhatIfBranchMeta | null;
+  },
+): SaveData {
   const now = new Date().toISOString();
   const parsedSnapshot = GameSnapshotSchema.parse(snapshot);
 
   return {
-    id: `save-slot-${slot}`,
-    slotNumber: slot,
+    id,
+    slotNumber: options.slotNumber,
     name,
     season: parsedSnapshot.season,
     day: parsedSnapshot.day,
@@ -412,30 +473,44 @@ export function buildSaveRecord(
     hasSnapshot: true,
     snapshot: parsedSnapshot,
     legacyState: null,
-    createdAt: existing?.createdAt ?? now,
+    createdAt: options.existing?.createdAt ?? now,
     updatedAt: now,
+    parentSaveId: options.parentSaveId,
+    isRootSave: options.isRootSave,
+    branchMeta: options.branchMeta,
   };
 }
 
-export async function saveGame(
-  slot: number,
+export async function saveGameById(
+  id: string,
   name: string,
-  state: object
-): Promise<void> {
-  await measureAsyncOperation('save.write', async () => {
-    const existing = await db.saves.get(`save-slot-${slot}`);
+  state: object,
+  metadata: {
+    slotNumber: number | null;
+    parentSaveId: string | null;
+    isRootSave: boolean;
+    branchMeta: WhatIfBranchMeta | null;
+  },
+): Promise<SaveData> {
+  return measureAsyncOperation('save.write', async () => {
+    const existing = await db.saves.get(id);
     const snapshot = GameSnapshotSchema.safeParse(state);
     if (snapshot.success) {
-      const record = buildSaveRecord(slot, name, snapshot.data, existing);
+      const record = buildSaveRecordById(id, name, snapshot.data, {
+        existing,
+        ...metadata,
+      });
       await db.saves.put(record);
-      await upsertLeaderboardEntry(slot, record.snapshot!);
-      return;
+      if (record.isRootSave && record.slotNumber != null) {
+        await upsertLeaderboardEntry(record.slotNumber, record.snapshot!);
+      }
+      return record;
     }
 
     const now = new Date().toISOString();
-    await db.saves.put({
-      id: `save-slot-${slot}`,
-      slotNumber: slot,
+    const record: SaveData = {
+      id,
+      slotNumber: metadata.slotNumber,
       name,
       season: (state as { season?: number }).season ?? 1,
       day: (state as { day?: number }).day ?? 1,
@@ -446,47 +521,181 @@ export async function saveGame(
       legacyState: JSON.stringify(state),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
-    });
+      parentSaveId: metadata.parentSaveId,
+      isRootSave: metadata.isRootSave,
+      branchMeta: metadata.branchMeta,
+    };
+    await db.saves.put(record);
+    return record;
   }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
-export async function loadGame(
-  slot: number
-): Promise<SaveData | undefined> {
+export async function saveGame(
+  slot: number,
+  name: string,
+  state: object,
+): Promise<void> {
+  await saveGameById(rootSaveId(slot), name, state, {
+    slotNumber: slot,
+    parentSaveId: null,
+    isRootSave: true,
+    branchMeta: null,
+  });
+}
+
+export async function loadGameById(id: string): Promise<SaveData | undefined> {
   return measureAsyncOperation('save.load', async () => {
-    const id = `save-slot-${slot}`;
     const raw = await db.saves.get(id);
     return raw ? normalizeLoadedSaveRecord(raw) : undefined;
   }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
-export async function inspectSave(slot: number): Promise<SaveInspectionResult> {
+export async function loadGame(
+  slot: number,
+): Promise<SaveData | undefined> {
+  return loadGameById(rootSaveId(slot));
+}
+
+export async function inspectSaveById(id: string): Promise<SaveInspectionResult> {
   return measureAsyncOperation('save.inspect', async () => {
-    const raw = await db.saves.get(`save-slot-${slot}`);
-    return inspectRawSaveRecord(slot, raw);
+    const raw = await db.saves.get(id);
+    return inspectRawSaveRecord(raw?.slotNumber ?? parseSlotNumberFromId(id), raw);
   }, { budgetMs: SAVE_IO_BUDGET_MS });
+}
+
+export async function inspectSave(slot: number): Promise<SaveInspectionResult> {
+  return inspectSaveById(rootSaveId(slot));
 }
 
 export async function loadGameSafe(slot: number): Promise<SaveInspectionResult> {
   return inspectSave(slot);
 }
 
-export async function listSaves(): Promise<SaveData[]> {
-  const saves = await db.saves.orderBy('slotNumber').toArray();
+async function listAllSaveRecords(): Promise<SaveData[]> {
+  const saves = await db.saves.toArray();
   return saves.map(normalizeLoadedSaveRecord);
 }
 
+export async function listRootSaves(): Promise<SaveData[]> {
+  const saves = await listAllSaveRecords();
+  return saves
+    .filter((save) => save.isRootSave)
+    .sort((left, right) => (left.slotNumber ?? 99) - (right.slotNumber ?? 99));
+}
+
+export async function listSaves(): Promise<SaveData[]> {
+  return listRootSaves();
+}
+
+export async function listBranches(parentSaveId: string): Promise<SaveData[]> {
+  const saves = await listAllSaveRecords();
+  return saves
+    .filter((save) => !save.isRootSave && save.parentSaveId === parentSaveId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export async function listSaveTree(): Promise<SaveTreeEntry[]> {
+  const [roots, saves] = await Promise.all([listRootSaves(), listAllSaveRecords()]);
+  return roots.map((save) => ({
+    save,
+    branches: saves
+      .filter((candidate) => !candidate.isRootSave && candidate.parentSaveId === save.id)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+  }));
+}
+
 export async function loadMostRecentSnapshot(): Promise<SaveData | undefined> {
-  const saves = await listSaves();
+  const saves = await listAllSaveRecords();
   return saves
     .filter((save) => save.hasSnapshot && save.snapshot)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 }
 
-export async function deleteSave(slot: number): Promise<void> {
-  const id = `save-slot-${slot}`;
+async function updateParentBranchMetadata(
+  parentSaveId: string,
+  update: (branches: WhatIfBranchMeta[]) => WhatIfBranchMeta[],
+): Promise<void> {
+  const parent = await loadGameById(parentSaveId);
+  if (!parent?.snapshot) {
+    return;
+  }
+
+  const updatedParentSnapshot = GameSnapshotSchema.parse({
+    ...parent.snapshot,
+    narrative: {
+      ...parent.snapshot.narrative,
+      whatIfBranches: update(parent.snapshot.narrative.whatIfBranches ?? []),
+    },
+  });
+  const updatedParentRecord = buildSaveRecordById(parent.id, parent.name, updatedParentSnapshot, {
+    existing: parent,
+    slotNumber: parent.slotNumber,
+    parentSaveId: null,
+    isRootSave: true,
+    branchMeta: null,
+  });
+  await db.saves.put(updatedParentRecord);
+}
+
+export async function createBranchSave(
+  parentSaveId: string,
+  snapshot: GameSnapshot,
+  description: string,
+): Promise<SaveData> {
+  const parent = await loadGameById(parentSaveId);
+  if (!parent?.snapshot || !parent.isRootSave) {
+    throw new Error('Cannot branch a missing or non-root save.');
+  }
+
+  const existingBranches = await listBranches(parentSaveId);
+  if (existingBranches.length >= MAX_BRANCHES_PER_SAVE) {
+    throw new Error(`A save can only keep ${MAX_BRANCHES_PER_SAVE} what-if branches.`);
+  }
+
+  const branchId = createBranchId();
+  const createdAt = new Date().toISOString();
+  const branchMeta: WhatIfBranchMeta = {
+    id: branchId,
+    saveId: branchId,
+    branchedAtSeason: snapshot.season,
+    branchedAtDay: snapshot.day,
+    description,
+    createdAt,
+  };
+  const branchSnapshot = parseGameSnapshot(JSON.parse(JSON.stringify(snapshot)));
+
+  const branchRecord = await saveGameById(branchId, description, branchSnapshot, {
+    slotNumber: null,
+    parentSaveId,
+    isRootSave: false,
+    branchMeta,
+  });
+  await updateParentBranchMetadata(parentSaveId, (branches) => [...branches, branchMeta]);
+  return branchRecord;
+}
+
+export async function deleteSaveById(id: string): Promise<void> {
+  const record = await loadGameById(id);
+  if (!record) {
+    return;
+  }
+
+  if (record.isRootSave) {
+    const branches = await listBranches(record.id);
+    await Promise.all(branches.map((branch) => db.saves.delete(branch.id)));
+    if (record.slotNumber != null) {
+      await deleteLeaderboardEntriesForSlot(record.slotNumber);
+    }
+  } else if (record.parentSaveId) {
+    await updateParentBranchMetadata(record.parentSaveId, (branches) =>
+      branches.filter((branch) => branch.saveId !== record.id && branch.id !== record.id));
+  }
+
   await db.saves.delete(id);
-  await deleteLeaderboardEntriesForSlot(slot);
+}
+
+export async function deleteSave(slot: number): Promise<void> {
+  await deleteSaveById(rootSaveId(slot));
 }
 
 export async function clearAllSaves(): Promise<void> {

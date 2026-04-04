@@ -1898,7 +1898,9 @@ describe('sim worker narrative APIs', () => {
     expect(comparison?.deltas.wins).toBe(9);
     expect(comparison?.deltas.payroll).toBe(25);
     expect(comparison?.deltas.budget).toBe(20);
-    expect(comparison?.right?.userSummary?.playoffResult).toBe('Champion');
+    if (comparison?.right && 'userSummary' in comparison.right) {
+      expect(comparison.right.userSummary?.playoffResult).toBe('Champion');
+    }
   });
 
   it('records draft picks with structured detail and auto-advances to the next user turn', () => {

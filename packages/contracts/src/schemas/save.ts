@@ -15,6 +15,7 @@ import {
 } from "./player.js";
 import {
   AwardHistoryEntrySchema,
+  ArchivedSeasonSchema,
   BriefingItemSchema,
   CareerStatsLedgerSchema,
   ChallengeStateSchema,
@@ -43,6 +44,7 @@ import {
   SeasonArchiveEntrySchema,
   TeamChemistrySchema,
   TickerEntrySchema,
+  WhatIfBranchMetaSchema,
   WinLossRecordSchema,
   SeasonHistoryEntrySchema,
   type NewsTag,
@@ -298,9 +300,11 @@ export const NarrativeSnapshotSchema = z.object({
   recordBook: z.array(RecordBookEntrySchema).default([]),
   recordWatch: z.array(RecordWatchEntrySchema).default([]),
   seasonArchive: z.array(SeasonArchiveEntrySchema).default([]),
+  archivedSeasons: z.array(ArchivedSeasonSchema).default([]),
   historicalPlayers: z.array(HistoricalPlayerSchema).default([]),
   mentorRelationships: z.array(MentorRelationshipSchema).default([]),
   frontOfficeState: z.array(z.tuple([z.string(), FrontOfficeStateSchema])).default([]),
+  whatIfBranches: z.array(WhatIfBranchMetaSchema).default([]),
   gmCareer: GMCareerSchema.optional(),
   jobMarket: JobMarketSchema.default({
     availableJobs: [],
@@ -450,7 +454,13 @@ const MinorLeagueStateV7Schema = z.object({
   affiliateBoxScores: z.array(AffiliateBoxScoreSchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 14;
+export const PerformanceDiagnosticsSchema = z.object({
+  totalSeasons: z.number().int().min(1),
+  snapshotSizeBytes: z.number().int().min(0),
+});
+export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
+
+export const CURRENT_GAME_SNAPSHOT_VERSION = 15;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -483,6 +493,10 @@ export const GameSnapshotSchema = z.object({
   franchise: FranchiseStateSchema,
   ceremony: CeremonyStateSchema,
   achievements: AchievementStateSchema,
+  performanceDiagnostics: PerformanceDiagnosticsSchema.default({
+    totalSeasons: 1,
+    snapshotSizeBytes: 0,
+  }),
   internationalScoutingState: InternationalScoutingStateSchema,
   draftState: DraftStateSchema,
   minorLeagueState: MinorLeagueStateSchema,
@@ -501,6 +515,11 @@ export const GameSnapshotV13Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(13),
 });
 export type GameSnapshotV13 = z.infer<typeof GameSnapshotV13Schema>;
+
+export const GameSnapshotV14Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(14),
+});
+export type GameSnapshotV14 = z.infer<typeof GameSnapshotV14Schema>;
 
 export const GameSnapshotV11Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(11),
@@ -2069,6 +2088,110 @@ function migrateGameSnapshotV13(snapshot: GameSnapshotV13): GameSnapshot {
   });
 }
 
+function parseArchivedWinLossRecord(record: string | null | undefined): z.infer<typeof WinLossRecordSchema> | null {
+  if (!record) {
+    return null;
+  }
+
+  const match = /^(\d+)-(\d+)$/.exec(record.trim());
+  if (!match) {
+    return null;
+  }
+
+  return {
+    wins: Number(match[1]),
+    losses: Number(match[2]),
+  };
+}
+
+function summarizeAwardWinner(
+  awards: z.infer<typeof AwardHistoryEntrySchema>[],
+  awardLabel: string,
+): string | null {
+  const winner = awards.find((award) => award.award === awardLabel);
+  return winner?.summary ?? winner?.playerId ?? null;
+}
+
+function sliceTopLeader(
+  leaders: z.infer<typeof SeasonArchiveEntrySchema>['statLeaders'],
+): z.infer<typeof SeasonArchiveEntrySchema>['statLeaders'] {
+  return {
+    hr: leaders.hr.slice(0, 1),
+    rbi: leaders.rbi.slice(0, 1),
+    avg: leaders.avg.slice(0, 1),
+    era: leaders.era.slice(0, 1),
+    k: leaders.k.slice(0, 1),
+    w: leaders.w.slice(0, 1),
+  };
+}
+
+function archiveSeasonEntry(
+  entry: z.infer<typeof SeasonArchiveEntrySchema>,
+  userTeamId: string,
+): z.infer<typeof ArchivedSeasonSchema> {
+  const championTeamId = entry.playoffSeries.find((series) => series.round === 'World Series')?.winnerTeamId ?? null;
+  return ArchivedSeasonSchema.parse({
+    season: entry.season,
+    standings: entry.standings.map((standing) => ({
+      teamId: standing.teamId,
+      wins: standing.wins,
+      losses: standing.losses,
+      divisionRank: standing.divisionRank,
+    })),
+    userRecord: parseArchivedWinLossRecord(entry.userSummary?.record),
+    playoffResult: entry.userSummary?.playoffResult ?? null,
+    championshipWon: championTeamId === userTeamId,
+    championTeamId,
+    mvpName: summarizeAwardWinner(entry.awards, 'MVP'),
+    cyYoungName: summarizeAwardWinner(entry.awards, 'CY_YOUNG'),
+    statLeaders: sliceTopLeader(entry.statLeaders),
+    dynastyScore: null,
+  });
+}
+
+function estimateSnapshotSizeBytes(snapshot: unknown): number {
+  const serialized = JSON.stringify(snapshot);
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(serialized).byteLength;
+  }
+  return serialized.length;
+}
+
+function migrateGameSnapshotV14(snapshot: GameSnapshotV14): GameSnapshot {
+  const keepThresholdSeason = Math.max(1, snapshot.season - 10);
+  const archivedFromSeasonArchive = snapshot.narrative.seasonArchive
+    .filter((entry) => entry.season < keepThresholdSeason)
+    .map((entry) => archiveSeasonEntry(entry, snapshot.userTeamId));
+  const recentSeasonArchive = snapshot.narrative.seasonArchive
+    .filter((entry) => entry.season >= keepThresholdSeason);
+
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      seasonArchive: recentSeasonArchive,
+      archivedSeasons: [
+        ...(snapshot.narrative.archivedSeasons ?? []),
+        ...archivedFromSeasonArchive,
+      ].sort((left, right) => left.season - right.season),
+      whatIfBranches: snapshot.narrative.whatIfBranches ?? [],
+    },
+    performanceDiagnostics: {
+      totalSeasons: Math.max(1, snapshot.season),
+      snapshotSizeBytes: 0,
+    },
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -2095,6 +2218,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 14
+  ) {
+    return migrateGameSnapshotV14(GameSnapshotV14Schema.parse(snapshotLike));
   }
 
   if (

@@ -237,7 +237,8 @@ export default function SetupPage() {
       teamName: imported.teamName,
       gmName: imported.gmName,
       difficulty: imported.difficulty,
-      activeSaveSlot: result.slot,
+      activeSaveId: result.save.id,
+      activeSaveSlot: result.save.slotNumber,
     });
     navigate('/dashboard');
   }
@@ -313,6 +314,7 @@ export default function SetupPage() {
         teamName: result.teamName,
         gmName: result.gmName,
         difficulty: result.difficulty,
+        activeSaveId: `save-slot-${selectedSlot}`,
         activeSaveSlot: selectedSlot,
       });
       navigate('/dashboard');

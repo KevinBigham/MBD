@@ -57,9 +57,11 @@ import { buildSetupPreview, getDifficultyAdjustedBudget, getTeamStaffBudget } fr
 import {
   compareSeasons,
   getAwardHistory,
+  getHistoryOverview,
   getPersonalityProfileForPlayer,
   getRivalriesForTeam,
   getSeasonArchive,
+  getSeasonHistoryView,
   getSeasonHistory,
   resolveHistoryDisplayNames as resolveNarrativeHistoryDisplayNames,
 } from './sim.worker.narrative.js';
@@ -1293,6 +1295,14 @@ export const queryApi = {
 
   getSeasonHistory() {
     return getSeasonHistory(requireState());
+  },
+
+  getHistoryOverview() {
+    return getHistoryOverview(requireState());
+  },
+
+  getSeasonHistoryView(season?: number) {
+    return getSeasonHistoryView(requireState(), season);
   },
 
   getSeasonArchive(season?: number) {

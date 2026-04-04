@@ -1,4 +1,5 @@
 import type {
+  ArchivedSeason,
   AwardHistoryEntry,
   BriefingItem,
   BlockbusterTradeSummary,
@@ -63,10 +64,16 @@ export interface HistoryDisplayNamesDTO {
   teams: Record<string, string>;
 }
 
+export type HistorySeasonView = SeasonArchiveEntry | ArchivedSeason;
+
+export interface HistoryOverviewDTO {
+  seasonViews: HistorySeasonView[];
+}
+
 export interface SeasonComparisonDTO {
   userTeamId: string;
-  left: SeasonArchiveEntry | null;
-  right: SeasonArchiveEntry | null;
+  left: HistorySeasonView | null;
+  right: HistorySeasonView | null;
   deltas: {
     wins: number | null;
     payroll: number | null;
@@ -694,6 +701,25 @@ function getArchiveForSeason(state: FullGameState, season: number): SeasonArchiv
   return state.seasonArchive.find((entry) => entry.season === season) ?? null;
 }
 
+function getArchivedSeasonForSeason(state: FullGameState, season: number): ArchivedSeason | null {
+  return state.archivedSeasons.find((entry) => entry.season === season) ?? null;
+}
+
+function isFullSeasonArchive(view: HistorySeasonView): view is SeasonArchiveEntry {
+  return 'playoffSeries' in view;
+}
+
+function getSeasonViewForSeason(state: FullGameState, season: number): HistorySeasonView | null {
+  return getArchiveForSeason(state, season) ?? getArchivedSeasonForSeason(state, season);
+}
+
+function getUserStandingWins(view: HistorySeasonView, userTeamId: string): number | null {
+  if (isFullSeasonArchive(view)) {
+    return view.standings.find((entry) => entry.teamId === userTeamId)?.wins ?? null;
+  }
+  return view.userRecord?.wins ?? view.standings.find((entry) => entry.teamId === userTeamId)?.wins ?? null;
+}
+
 function archiveStandings(state: FullGameState): SeasonArchiveEntry['standings'] {
   return Object.values(state.seasonState.standings.getFullStandings())
     .flatMap((entries) =>
@@ -1288,13 +1314,29 @@ export function getSeasonHistory(state: FullGameState): SeasonHistoryEntry[] {
   return [...state.seasonHistory].sort((a, b) => b.season - a.season);
 }
 
-export function getSeasonArchive(state: FullGameState, season?: number): SeasonArchiveEntry | null {
-  const targetSeason = season ?? Math.max(0, ...state.seasonArchive.map((entry) => entry.season));
+export function getHistoryOverview(state: FullGameState): HistoryOverviewDTO {
+  return {
+    seasonViews: [...state.seasonArchive, ...state.archivedSeasons]
+      .sort((left, right) => right.season - left.season),
+  };
+}
+
+export function getSeasonHistoryView(state: FullGameState, season?: number): HistorySeasonView | null {
+  const targetSeason = season ?? Math.max(
+    0,
+    ...state.seasonArchive.map((entry) => entry.season),
+    ...state.archivedSeasons.map((entry) => entry.season),
+  );
   if (targetSeason === 0) {
     return null;
   }
 
-  return getArchiveForSeason(state, targetSeason);
+  return getSeasonViewForSeason(state, targetSeason);
+}
+
+export function getSeasonArchive(state: FullGameState, season?: number): SeasonArchiveEntry | null {
+  const view = getSeasonHistoryView(state, season);
+  return view && isFullSeasonArchive(view) ? view : null;
 }
 
 export function compareSeasons(
@@ -1302,23 +1344,27 @@ export function compareSeasons(
   leftSeason: number,
   rightSeason: number,
 ): SeasonComparisonDTO | null {
-  const left = getArchiveForSeason(state, leftSeason);
-  const right = getArchiveForSeason(state, rightSeason);
+  const left = getSeasonViewForSeason(state, leftSeason);
+  const right = getSeasonViewForSeason(state, rightSeason);
   if (!left || !right) {
     return null;
   }
 
-  const leftStanding = left.standings.find((entry) => entry.teamId === state.userTeamId) ?? null;
-  const rightStanding = right.standings.find((entry) => entry.teamId === state.userTeamId) ?? null;
-  const leftFinancial = left.financials.find((entry) => entry.teamId === state.userTeamId) ?? null;
-  const rightFinancial = right.financials.find((entry) => entry.teamId === state.userTeamId) ?? null;
+  const leftWins = getUserStandingWins(left, state.userTeamId);
+  const rightWins = getUserStandingWins(right, state.userTeamId);
+  const leftFinancial = isFullSeasonArchive(left)
+    ? left.financials.find((entry) => entry.teamId === state.userTeamId) ?? null
+    : null;
+  const rightFinancial = isFullSeasonArchive(right)
+    ? right.financials.find((entry) => entry.teamId === state.userTeamId) ?? null
+    : null;
 
   return {
     userTeamId: state.userTeamId,
     left,
     right,
     deltas: {
-      wins: leftStanding && rightStanding ? rightStanding.wins - leftStanding.wins : null,
+      wins: leftWins != null && rightWins != null ? rightWins - leftWins : null,
       payroll: leftFinancial && rightFinancial ? Number((rightFinancial.payroll - leftFinancial.payroll).toFixed(1)) : null,
       budget: leftFinancial && rightFinancial ? Number((rightFinancial.budget - leftFinancial.budget).toFixed(1)) : null,
     },

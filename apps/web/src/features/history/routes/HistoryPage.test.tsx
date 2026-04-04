@@ -39,6 +39,7 @@ describe('HistoryPage', () => {
       playerCount: 780,
       gamesPlayed: 162,
       isSimulating: false,
+      activeSaveId: 'save-slot-1',
       setSeason: vi.fn(),
       setDay: vi.fn(),
       setPhase: vi.fn(),

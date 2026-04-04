@@ -163,7 +163,8 @@ export default function SettingsPage() {
       teamName: imported.teamName,
       gmName: imported.gmName,
       difficulty: imported.difficulty,
-      activeSaveSlot: result.slot,
+      activeSaveId: result.save.id,
+      activeSaveSlot: result.save.slotNumber,
     });
   }
 
