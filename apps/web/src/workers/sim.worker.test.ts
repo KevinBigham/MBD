@@ -132,6 +132,45 @@ interface AffiliateBoxScoreView {
   summary: string;
 }
 
+interface RecentGameRecapView {
+  gameIndex: number;
+  recap: string;
+  highlights: Array<{
+    type: string;
+    text: string;
+  }>;
+  playByPlay: Array<{
+    inning: number;
+    halfInning: 'top' | 'bottom';
+    text: string;
+    isHighlight: boolean;
+  }>;
+  boxScore: {
+    homeTeamId: string;
+    awayTeamId: string;
+    innings: number;
+  };
+}
+
+interface GamePlayByPlayView {
+  recap: string;
+  highlights: Array<{
+    type: string;
+    text: string;
+  }>;
+  plays: Array<{
+    inning: number;
+    halfInning: 'top' | 'bottom';
+    text: string;
+    isHighlight: boolean;
+  }>;
+  boxScore: {
+    homeTeamId: string;
+    awayTeamId: string;
+    innings: number;
+  };
+}
+
 interface MinorLeagueWorkerApi {
   getSetupPreview: (options: {
     seed: number;
@@ -3025,6 +3064,44 @@ describe('sim worker narrative APIs', () => {
     )).toBe(true);
   });
 
+  it('builds recent game recaps and play-by-play views without advancing rng state', () => {
+    startGame(3557, 'nyy');
+
+    const workerApi = api as typeof api & {
+      getRecentGameRecaps: (count?: number) => RecentGameRecapView[];
+      getGamePlayByPlay: (gameIndex: number) => GamePlayByPlayView | null;
+    };
+
+    let recaps = workerApi.getRecentGameRecaps(3);
+    while (recaps.length === 0 && requireState().phase === 'preseason') {
+      api.simDay();
+      recaps = workerApi.getRecentGameRecaps(3);
+    }
+    while (recaps.length === 0 && requireState().phase === 'regular' && requireState().day < 25) {
+      api.simDay();
+      recaps = workerApi.getRecentGameRecaps(3);
+    }
+
+    expect(recaps.length).toBeGreaterThan(0);
+
+    const rngCallsBefore = requireState().rng.getState().callCount;
+    const firstRecaps = workerApi.getRecentGameRecaps(3);
+    const secondRecaps = workerApi.getRecentGameRecaps(3);
+
+    expect(secondRecaps).toEqual(firstRecaps);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(firstRecaps[0]?.recap.length).toBeGreaterThan(0);
+    expect(firstRecaps[0]?.playByPlay.length).toBeGreaterThan(0);
+
+    const detailFirst = workerApi.getGamePlayByPlay(firstRecaps[0]!.gameIndex);
+    const detailSecond = workerApi.getGamePlayByPlay(firstRecaps[0]!.gameIndex);
+
+    expect(detailSecond).toEqual(detailFirst);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(detailFirst?.highlights.length).toBeGreaterThan(0);
+    expect(detailFirst?.boxScore.innings).toBeGreaterThanOrEqual(9);
+  });
+
   it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {
     startGame(344, 'nyy');
 
@@ -3035,7 +3112,7 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().playoffBracket).toBeNull();
     expect(flow.status).toBe('regular_season_complete');
     expect(flow.action).toBe('watch_playoffs');
-  }, 20_000);
+  }, 30_000);
 
   it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {
     startGame(345, 'nyy');

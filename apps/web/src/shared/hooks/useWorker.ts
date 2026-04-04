@@ -389,6 +389,8 @@ export function useWorker() {
   const getAchievements = useCallback(async () => api.getAchievements(), [api]);
   const getPerformanceDiagnostics = useCallback(async () => api.getPerformanceDiagnostics(), [api]);
   const getDashboardSummary = useCallback(async () => api.getDashboardSummary(), [api]);
+  const getGamePlayByPlay = useCallback(async (gameIndex: number) => api.getGamePlayByPlay(gameIndex), [api]);
+  const getRecentGameRecaps = useCallback(async (count?: number) => api.getRecentGameRecaps(count), [api]);
   const getMonthlyPulse = useCallback(async () => api.getMonthlyPulse(), [api]);
   const getCeremonyState = useCallback(async () => api.getCeremonyState(), [api]);
   const getTickerFeed = useCallback(async (limit?: number) => api.getTickerFeed(limit), [api]);
@@ -666,7 +668,7 @@ export function useWorker() {
     getState,
     exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,
     getStandings, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getAdvancedStats,
-    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
+    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeAssetInventory, proposeTrade, respondToTradeOffer,

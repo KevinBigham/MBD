@@ -31,6 +31,11 @@ export {
   pruneTickerFeed,
 } from './ticker.js';
 export {
+  generatePlayByPlay,
+  generateGameHighlights,
+  generateGameRecap,
+} from './playByPlay.js';
+export {
   detectNewStoryArcs,
   advanceStoryArcs,
 } from './storyArcs.js';
@@ -65,6 +70,9 @@ export type {
   RushingRisk,
   FanSentimentContext,
 } from './consequences.js';
+export type {
+  GameHighlight,
+} from './playByPlay.js';
 export type {
   TickerGenerationContext,
   TickerInjuryContext,
