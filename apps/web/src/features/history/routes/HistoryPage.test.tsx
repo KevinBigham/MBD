@@ -420,6 +420,54 @@ describe('HistoryPage', () => {
           },
         },
       ]),
+      getBranches: vi.fn().mockResolvedValue([
+        {
+          id: 'branch-1',
+          slotNumber: null,
+          season: 5,
+          day: 88,
+          phase: 'regular',
+          parentSaveId: 'save-slot-1',
+          isRootSave: false,
+          branchMeta: {
+            id: 'branch-1',
+            saveId: 'branch-1',
+            branchedAtSeason: 4,
+            branchedAtDay: 62,
+            description: 'Aggressive deadline push',
+            createdAt: '2026-04-04T00:00:00.000Z',
+          },
+        },
+      ]),
+      compareWithBranch: vi.fn().mockResolvedValue({
+        branchMeta: {
+          id: 'branch-1',
+          saveId: 'branch-1',
+          branchedAtSeason: 4,
+          branchedAtDay: 62,
+          description: 'Aggressive deadline push',
+          createdAt: '2026-04-04T00:00:00.000Z',
+        },
+        recordDelta: {
+          parent: { wins: 85, losses: 77, pct: 0.525 },
+          branch: { wins: 91, losses: 71, pct: 0.562 },
+          delta: 6,
+        },
+        standingsDelta: {
+          parent: { divisionRank: 2, gamesBack: 4 },
+          branch: { divisionRank: 1, gamesBack: 0 },
+          delta: 1,
+        },
+        rosterDelta: {
+          parent: ['Aaron Judge'],
+          branch: ['Aaron Judge', 'Spencer Jones'],
+          added: ['Spencer Jones'],
+          lost: [],
+          delta: 1,
+        },
+        championshipsDelta: { parent: 0, branch: 1, delta: 1 },
+        tradesDelta: { parent: 1, branch: 3, delta: 2 },
+      }),
       resolveHistoryDisplayNames: vi.fn().mockResolvedValue({
         players: {
           'player-mvp': 'Mike Trout',
@@ -497,8 +545,9 @@ describe('HistoryPage', () => {
     expect(container.textContent).toContain('NYY 144-132 BOS');
 
     await clickButton('timeline');
-    expect(container.textContent).toContain('Dynasty Timeline');
-    expect(container.textContent).toContain('Franchise Timeline');
+    expect(container.textContent).toContain('Aggressive deadline push');
+    expect(container.textContent).toContain('91-71');
+    expect(container.textContent).toContain('Spencer Jones');
 
     await clickButton('Awards / HOF');
     expect(container.textContent).toContain('Hall of Fame');
@@ -549,6 +598,8 @@ describe('HistoryPage', () => {
           },
         },
       ]),
+      getBranches: vi.fn().mockResolvedValue([]),
+      compareWithBranch: vi.fn().mockResolvedValue(null),
       resolveHistoryDisplayNames: vi.fn().mockResolvedValue({
         players: {},
         teams: {},
@@ -570,5 +621,44 @@ describe('HistoryPage', () => {
     await clickButton('Awards / HOF');
     expect(container.textContent).toContain('No achievements unlocked yet');
     expect(container.textContent).toContain('Keep pushing seasons, titles, and milestones to fill the trophy room.');
+  });
+
+  it('hides the timeline tab when no what-if branches exist', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getAwardRaces: vi.fn().mockResolvedValue(null),
+      getAwardHistory: vi.fn().mockResolvedValue([]),
+      getSeasonHistory: vi.fn().mockResolvedValue([]),
+      getHistoryOverview: vi.fn().mockResolvedValue({ seasonViews: [] }),
+      getSeasonArchive: vi.fn().mockResolvedValue(null),
+      compareSeasons: vi.fn().mockResolvedValue(null),
+      getRecordBook: vi.fn().mockResolvedValue({ franchise: [], league: [] }),
+      getRecordWatchList: vi.fn().mockResolvedValue([]),
+      getRivalries: vi.fn().mockResolvedValue([]),
+      getHallOfFame: vi.fn().mockResolvedValue([]),
+      getFranchiseTimeline: vi.fn().mockResolvedValue([]),
+      getDynastyScore: vi.fn().mockResolvedValue(null),
+      getAchievements: vi.fn().mockResolvedValue([]),
+      getDynastyCards: vi.fn().mockResolvedValue([]),
+      getDynastyLeaderboard: vi.fn().mockResolvedValue([]),
+      getBranches: vi.fn().mockResolvedValue([]),
+      compareWithBranch: vi.fn().mockResolvedValue(null),
+      resolveHistoryDisplayNames: vi.fn().mockResolvedValue({ players: {}, teams: {} }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <HistoryPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const timelineButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.trim().toLowerCase() === 'timeline');
+
+    expect(timelineButton).toBeUndefined();
   });
 });

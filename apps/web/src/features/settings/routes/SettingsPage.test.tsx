@@ -95,6 +95,8 @@ describe('SettingsPage', () => {
       day: 87,
       phase: 'regular',
       userTeamId: 'nyy',
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
       initializeGame: vi.fn(),
     } as unknown as ReturnType<typeof useGameStore>);
 
@@ -276,5 +278,51 @@ describe('SettingsPage', () => {
 
     expect(usePreferencesStore.getState().reducedMotion).toBe(true);
     expect(usePreferencesStore.getState().highContrast).toBe(true);
+  });
+
+  it('shows what-if branch management for the active root save', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getBranches: vi.fn().mockResolvedValue([
+        {
+          id: 'branch-1',
+          slotNumber: null,
+          name: 'Aggressive deadline push',
+          season: 3,
+          day: 87,
+          phase: 'regular',
+          schemaVersion: 15,
+          hasSnapshot: true,
+          snapshot: null,
+          legacyState: null,
+          createdAt: '2026-04-04T00:00:00.000Z',
+          updatedAt: '2026-04-04T00:00:00.000Z',
+          parentSaveId: 'save-slot-1',
+          isRootSave: false,
+          branchMeta: {
+            id: 'branch-1',
+            saveId: 'branch-1',
+            branchedAtSeason: 3,
+            branchedAtDay: 87,
+            description: 'Aggressive deadline push',
+            createdAt: '2026-04-04T00:00:00.000Z',
+          },
+        },
+      ]),
+      createWhatIfBranch: vi.fn().mockResolvedValue({ id: 'branch-2' }),
+      deleteWhatIfBranch: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(<SettingsPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('What-If Branching');
+    expect(container.textContent).toContain('1/3 branches');
+    expect(container.textContent).toContain('Aggressive deadline push');
+    expect(container.textContent).toContain('Create Branch');
+    expect(container.textContent).toContain('Delete Branch');
   });
 });

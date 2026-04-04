@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AwardHistoryEntry } from '@mbd/contracts';
 import {
   buildRosterState,
@@ -14,11 +14,29 @@ vi.mock('comlink', () => ({
   expose: () => {},
 }));
 
+vi.mock('../shared/lib/saveSystem.js', () => ({
+  createBranchSave: vi.fn(),
+  deleteSaveById: vi.fn(),
+  listBranches: vi.fn(),
+  loadGameById: vi.fn(),
+}));
+
 import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
 import { refreshTickerFeed } from './sim.worker.ticker';
 import { applyOffseasonNarrativeHooks } from './sim.worker.narrativeFarm';
+import {
+  createBranchSave,
+  deleteSaveById,
+  listBranches,
+  loadGameById,
+} from '../shared/lib/saveSystem.js';
+
+const mockedCreateBranchSave = vi.mocked(createBranchSave);
+const mockedDeleteSaveById = vi.mocked(deleteSaveById);
+const mockedListBranches = vi.mocked(listBranches);
+const mockedLoadGameById = vi.mocked(loadGameById);
 
 function startGame(seed: number, userTeamId: string = 'nyy') {
   return api.newGame({
@@ -225,6 +243,52 @@ interface MinorLeagueWorkerApi {
   applyForJob: (teamId: string) => { success: boolean; teamId?: string; error?: string };
   acknowledgeMonthlyReport: (reportId: string) => { success: boolean };
   dismissDecisionSpotlight: (decisionId: string) => { success: boolean };
+  getBranches: (parentSaveId: string) => Promise<Array<{
+    id: string;
+    parentSaveId: string | null;
+    isRootSave: boolean;
+    branchMeta: {
+      description: string;
+    } | null;
+  }>>;
+  createWhatIfBranch: (parentSaveId: string, description: string) => Promise<{
+    id: string;
+    parentSaveId: string | null;
+    isRootSave: boolean;
+    branchMeta: {
+      description: string;
+    } | null;
+  }>;
+  deleteWhatIfBranch: (branchSaveId: string) => Promise<{ success: boolean }>;
+  compareWithBranch: (parentSaveId: string, branchSaveId: string) => Promise<{
+    branchMeta: {
+      id: string;
+      saveId: string;
+      branchedAtSeason: number;
+      branchedAtDay: number;
+      description: string;
+      createdAt: string;
+    };
+    recordDelta: {
+      parent: { wins: number; losses: number; pct: number };
+      branch: { wins: number; losses: number; pct: number };
+      delta: number;
+    };
+    standingsDelta: {
+      parent: { divisionRank: number; gamesBack: number };
+      branch: { divisionRank: number; gamesBack: number };
+      delta: number;
+    };
+    rosterDelta: {
+      parent: string[];
+      branch: string[];
+      added: string[];
+      lost: string[];
+      delta: number;
+    };
+    championshipsDelta: { parent: number; branch: number; delta: number };
+    tradesDelta: { parent: number; branch: number; delta: number };
+  } | null>;
 }
 
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
@@ -343,6 +407,13 @@ function configureMonthlyTradeScenario() {
 }
 
 describe('sim worker narrative APIs', () => {
+  beforeEach(() => {
+    mockedCreateBranchSave.mockReset();
+    mockedDeleteSaveById.mockReset();
+    mockedListBranches.mockReset();
+    mockedLoadGameById.mockReset();
+  });
+
   afterEach(() => {
     setState(null);
   });
@@ -3361,5 +3432,201 @@ describe('sim worker narrative APIs', () => {
     expect(wobaLeader?.advanced?.woba).toBeCloseTo(hitterAdvanced?.woba ?? 0, 3);
     expect(fipLeader?.id).toBe(pitcher.id);
     expect(fipLeader?.advanced?.fip).toBeCloseTo(pitcherAdvanced?.fip ?? 0, 3);
+  });
+
+  it('creates a what-if branch and loads it by id', async () => {
+    startGame(123, 'nyy');
+    mockedCreateBranchSave.mockResolvedValue({
+      id: 'branch-1',
+      slotNumber: null,
+      name: 'Aggressive deadline push',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 15,
+      hasSnapshot: true,
+      snapshot: null,
+      legacyState: null,
+      createdAt: '2026-04-04T00:00:00.000Z',
+      updatedAt: '2026-04-04T00:00:00.000Z',
+      parentSaveId: 'save-slot-1',
+      isRootSave: false,
+      branchMeta: {
+        id: 'branch-1',
+        saveId: 'branch-1',
+        description: 'Aggressive deadline push',
+        branchedAtSeason: 1,
+        branchedAtDay: 1,
+        createdAt: '2026-04-04T00:00:00.000Z',
+      },
+    });
+    mockedListBranches.mockResolvedValue([{
+      id: 'branch-1',
+      slotNumber: null,
+      name: 'Aggressive deadline push',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 15,
+      hasSnapshot: true,
+      snapshot: null,
+      legacyState: null,
+      createdAt: '2026-04-04T00:00:00.000Z',
+      updatedAt: '2026-04-04T00:00:00.000Z',
+      parentSaveId: 'save-slot-1',
+      isRootSave: false,
+      branchMeta: {
+        id: 'branch-1',
+        saveId: 'branch-1',
+        description: 'Aggressive deadline push',
+        branchedAtSeason: 1,
+        branchedAtDay: 1,
+        createdAt: '2026-04-04T00:00:00.000Z',
+      },
+    }]);
+
+    const branchApi = api as typeof api & MinorLeagueWorkerApi;
+    const branch = await branchApi.createWhatIfBranch('save-slot-1', 'Aggressive deadline push');
+    const branches = await branchApi.getBranches('save-slot-1');
+
+    expect(branch.parentSaveId).toBe('save-slot-1');
+    expect(branch.isRootSave).toBe(false);
+    expect(branch.branchMeta?.description).toBe('Aggressive deadline push');
+    expect(branches).toHaveLength(1);
+    expect(branches[0]?.id).toBe(branch.id);
+    expect(mockedCreateBranchSave).toHaveBeenCalledWith(
+      'save-slot-1',
+      expect.objectContaining({
+        season: 1,
+        day: 1,
+        userTeamId: 'nyy',
+      }),
+      'Aggressive deadline push',
+    );
+    expect(mockedListBranches).toHaveBeenCalledWith('save-slot-1');
+  });
+
+  it('enforces the 3-branch cap per parent save', async () => {
+    startGame(321, 'nyy');
+    mockedCreateBranchSave
+      .mockResolvedValueOnce({
+        id: 'branch-1',
+        slotNumber: null,
+        name: 'Branch one',
+        season: 1,
+        day: 1,
+        phase: 'preseason',
+        schemaVersion: 15,
+        hasSnapshot: true,
+        snapshot: null,
+        legacyState: null,
+        createdAt: '2026-04-04T00:00:00.000Z',
+        updatedAt: '2026-04-04T00:00:00.000Z',
+        parentSaveId: 'save-slot-1',
+        isRootSave: false,
+        branchMeta: {
+          id: 'branch-1',
+          saveId: 'branch-1',
+          description: 'Branch one',
+          branchedAtSeason: 1,
+          branchedAtDay: 1,
+          createdAt: '2026-04-04T00:00:00.000Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'branch-2',
+        slotNumber: null,
+        name: 'Branch two',
+        season: 1,
+        day: 1,
+        phase: 'preseason',
+        schemaVersion: 15,
+        hasSnapshot: true,
+        snapshot: null,
+        legacyState: null,
+        createdAt: '2026-04-04T00:00:00.000Z',
+        updatedAt: '2026-04-04T00:00:00.000Z',
+        parentSaveId: 'save-slot-1',
+        isRootSave: false,
+        branchMeta: {
+          id: 'branch-2',
+          saveId: 'branch-2',
+          description: 'Branch two',
+          branchedAtSeason: 1,
+          branchedAtDay: 1,
+          createdAt: '2026-04-04T00:00:00.000Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'branch-3',
+        slotNumber: null,
+        name: 'Branch three',
+        season: 1,
+        day: 1,
+        phase: 'preseason',
+        schemaVersion: 15,
+        hasSnapshot: true,
+        snapshot: null,
+        legacyState: null,
+        createdAt: '2026-04-04T00:00:00.000Z',
+        updatedAt: '2026-04-04T00:00:00.000Z',
+        parentSaveId: 'save-slot-1',
+        isRootSave: false,
+        branchMeta: {
+          id: 'branch-3',
+          saveId: 'branch-3',
+          description: 'Branch three',
+          branchedAtSeason: 1,
+          branchedAtDay: 1,
+          createdAt: '2026-04-04T00:00:00.000Z',
+        },
+      })
+      .mockRejectedValueOnce(new Error('A save can only keep 3 what-if branches.'));
+    const branchApi = api as typeof api & MinorLeagueWorkerApi;
+    await branchApi.createWhatIfBranch('save-slot-1', 'Branch one');
+    await branchApi.createWhatIfBranch('save-slot-1', 'Branch two');
+    await branchApi.createWhatIfBranch('save-slot-1', 'Branch three');
+
+    await expect(branchApi.createWhatIfBranch('save-slot-1', 'Branch four')).rejects.toThrow('3');
+    expect(mockedCreateBranchSave).toHaveBeenCalledTimes(4);
+  });
+
+  it('deletes a branch and removes it from parent metadata', async () => {
+    startGame(456, 'nyy');
+    mockedCreateBranchSave.mockResolvedValue({
+      id: 'branch-rollback',
+      slotNumber: null,
+      name: 'Rollback candidate',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 15,
+      hasSnapshot: true,
+      snapshot: null,
+      legacyState: null,
+      createdAt: '2026-04-04T00:00:00.000Z',
+      updatedAt: '2026-04-04T00:00:00.000Z',
+      parentSaveId: 'save-slot-1',
+      isRootSave: false,
+      branchMeta: {
+        id: 'branch-rollback',
+        saveId: 'branch-rollback',
+        description: 'Rollback candidate',
+        branchedAtSeason: 1,
+        branchedAtDay: 1,
+        createdAt: '2026-04-04T00:00:00.000Z',
+      },
+    });
+    mockedListBranches.mockResolvedValue([]);
+
+    const branchApi = api as typeof api & MinorLeagueWorkerApi;
+    const branch = await branchApi.createWhatIfBranch('save-slot-1', 'Rollback candidate');
+
+    await expect(branchApi.deleteWhatIfBranch(branch.id)).resolves.toEqual({ success: true });
+
+    const branches = await branchApi.getBranches('save-slot-1');
+
+    expect(branches).toEqual([]);
+    expect(mockedDeleteSaveById).toHaveBeenCalledWith('branch-rollback');
   });
 });

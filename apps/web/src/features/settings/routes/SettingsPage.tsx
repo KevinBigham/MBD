@@ -21,6 +21,8 @@ import {
   type SaveInspectionResult,
 } from '@/shared/lib/saveSystem';
 
+const WHAT_IF_BRANCH_LIMIT = 3;
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -29,7 +31,7 @@ interface BeforeInstallPromptEvent extends Event {
 export default function SettingsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { season, day, phase, userTeamId, initializeGame } = useGameStore();
+  const { season, day, phase, userTeamId, initializeGame, activeSaveId, activeSaveSlot } = useGameStore();
   const muted = useAudioPreferencesStore((state) => state.muted);
   const volume = useAudioPreferencesStore((state) => state.volume);
   const effectVolume = useAudioPreferencesStore((state) => state.effectVolume);
@@ -53,21 +55,35 @@ export default function SettingsPage() {
   const [saves, setSaves] = useState<SaveData[]>([]);
   const [status, setStatus] = useState<string>('');
   const [busySlot, setBusySlot] = useState<number | null>(null);
+  const [branchBusy, setBranchBusy] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
+  const [branchDescription, setBranchDescription] = useState('');
+  const [branches, setBranches] = useState<SaveData[]>([]);
   const [recoveryState, setRecoveryState] = useState<{
     slot: number;
     message: string;
   } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const activeRootSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : null;
 
   async function refreshSaves() {
     setSaves(await listSaves());
   }
 
+  async function refreshBranches() {
+    if (!workerReady || !activeRootSaveId || typeof worker.getBranches !== 'function') {
+      setBranches([]);
+      return;
+    }
+
+    setBranches(await worker.getBranches(activeRootSaveId) as SaveData[]);
+  }
+
   useEffect(() => {
     void refreshSaves();
-  }, []);
+    void refreshBranches();
+  }, [activeRootSaveId, workerReady]);
 
   useEffect(() => {
     const standalone = window.matchMedia?.('(display-mode: standalone)').matches
@@ -306,7 +322,52 @@ export default function SettingsPage() {
     setStatus('Cleared every local save slot.');
   }
 
+  async function handleCreateBranch() {
+    if (!workerReady || !activeRootSaveId || typeof worker.createWhatIfBranch !== 'function') {
+      return;
+    }
+    const description = branchDescription.trim();
+    if (!description) {
+      setStatus('Name the what-if branch before creating it.');
+      return;
+    }
+
+    setBranchBusy(true);
+    setStatus('');
+    try {
+      await worker.createWhatIfBranch(activeRootSaveId, description);
+      await refreshBranches();
+      setBranchDescription('');
+      setStatus('Created a new what-if branch from the active root save.');
+    } catch (error) {
+      console.error('Failed to create branch:', error);
+      setStatus('Failed to create a what-if branch.');
+    } finally {
+      setBranchBusy(false);
+    }
+  }
+
+  async function handleDeleteBranch(branchSaveId: string) {
+    if (typeof worker.deleteWhatIfBranch !== 'function') {
+      return;
+    }
+
+    setBranchBusy(true);
+    setStatus('');
+    try {
+      await worker.deleteWhatIfBranch(branchSaveId);
+      await refreshBranches();
+      setStatus('Deleted the selected what-if branch.');
+    } catch (error) {
+      console.error('Failed to delete branch:', error);
+      setStatus('Failed to delete the selected what-if branch.');
+    } finally {
+      setBranchBusy(false);
+    }
+  }
+
   const saveMap = new Map(saves.map((save) => [save.slotNumber, save]));
+  const branchLimitReached = branches.length >= WHAT_IF_BRANCH_LIMIT;
   const volumePercent = Math.round(volume * 100);
   const effectVolumePercent = Math.round(effectVolume * 100);
   const ambientVolumePercent = Math.round(ambientVolume * 100);
@@ -587,6 +648,83 @@ export default function SettingsPage() {
           type="file"
           accept="application/json"
         />
+
+        <div className="mt-6 rounded-lg border border-dynasty-border/70 bg-dynasty-base/30 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 className="font-heading text-sm font-semibold text-dynasty-textBright">
+                What-If Branching
+              </h3>
+              <p className="mt-1 font-heading text-xs text-dynasty-muted">
+                Branch the active root save before aggressive deadline moves or long sim experiments.
+              </p>
+            </div>
+            <div className="font-data text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+              {branches.length}/{WHAT_IF_BRANCH_LIMIT} branches
+            </div>
+          </div>
+
+          {activeRootSaveId && activeSaveId === activeRootSaveId ? (
+            <>
+              <div className="mt-4 flex flex-col gap-3 lg:flex-row">
+                <input
+                  value={branchDescription}
+                  onChange={(event) => setBranchDescription(event.target.value)}
+                  placeholder="Aggressive deadline push"
+                  className="w-full rounded border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
+                />
+                <button
+                  type="button"
+                  disabled={branchBusy || branchLimitReached || branchDescription.trim().length === 0}
+                  onClick={() => void handleCreateBranch()}
+                  className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Create Branch
+                </button>
+              </div>
+              {branchLimitReached ? (
+                <div className="mt-3 font-heading text-xs text-accent-warning">
+                  This root save is already at the 3-branch limit.
+                </div>
+              ) : null}
+
+              <div className="mt-4 space-y-2">
+                {branches.length > 0 ? branches.map((branch) => (
+                  <div
+                    key={branch.id}
+                    className="flex flex-col gap-3 rounded border border-dynasty-border/70 bg-dynasty-surface/70 p-3 lg:flex-row lg:items-center lg:justify-between"
+                  >
+                    <div>
+                      <div className="font-heading text-sm text-dynasty-textBright">
+                        {branch.branchMeta?.description ?? branch.name}
+                      </div>
+                      <div className="mt-1 font-data text-xs text-dynasty-muted">
+                        S{branch.season} D{branch.day} | {branch.phase.toUpperCase()} | Updated {new Date(branch.updatedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={branchBusy}
+                      onClick={() => void handleDeleteBranch(branch.id)}
+                      className="inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete Branch
+                    </button>
+                  </div>
+                )) : (
+                  <div className="font-heading text-xs text-dynasty-muted">
+                    No what-if branches exist for the active root save.
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 font-heading text-xs text-dynasty-muted">
+              Load a root dynasty save to create or manage what-if branches. Branch saves can be reviewed in History, but new branches only fork from the root timeline.
+            </div>
+          )}
+        </div>
 
         <div className="mt-6 space-y-3">
           {SAVE_SLOTS.map((slot) => {

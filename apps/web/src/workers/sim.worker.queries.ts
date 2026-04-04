@@ -6,6 +6,7 @@ import {
   calculateLuxuryTax,
   calculateQualifyingOfferSalary,
   calculateTeamPayroll,
+  compareTimelines,
   createFreeAgencyMarket,
   describeInjury,
   evaluatePlayerTradeValue,
@@ -82,6 +83,10 @@ import {
   getProspectBondView,
 } from './sim.worker.farm.js';
 import { exportGameSnapshot } from './snapshot.js';
+import {
+  listBranches,
+  loadGameById,
+} from '../shared/lib/saveSystem.js';
 
 function pctFromRecord(wins: number, losses: number): number {
   const total = wins + losses;
@@ -893,6 +898,28 @@ export const queryApi = {
 
   getDynastyScore() {
     return state ? getDynastyScoreSummary(state) : null;
+  },
+
+  async getBranches(parentSaveId: string) {
+    return listBranches(parentSaveId);
+  },
+
+  async compareWithBranch(parentSaveId: string, branchSaveId: string) {
+    const [parentSave, branchSave] = await Promise.all([
+      loadGameById(parentSaveId),
+      loadGameById(branchSaveId),
+    ]);
+    if (
+      !parentSave?.snapshot
+      || !branchSave?.snapshot
+      || branchSave.isRootSave
+      || branchSave.parentSaveId !== parentSaveId
+      || !branchSave.branchMeta
+    ) {
+      return null;
+    }
+
+    return compareTimelines(parentSave.snapshot, branchSave.snapshot, branchSave.branchMeta);
   },
 
   getAchievements() {

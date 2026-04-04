@@ -8,12 +8,14 @@ import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
 import {
   SAVE_SLOTS,
   deleteSave,
-  listSaves,
+  inspectSaveById,
+  listSaveTree,
   loadGameSafe,
   repairSave,
   saveGame,
   type SaveData,
   type SaveInspectionResult,
+  type SaveTreeEntry,
 } from '@/shared/lib/saveSystem';
 
 type SetupDifficulty = 'easy' | 'standard' | 'hard';
@@ -87,6 +89,7 @@ const TEAM_OPTIONS = [
 
 const GM_FIRST_NAMES = ['Alex', 'Jordan', 'Jamie', 'Taylor', 'Morgan', 'Casey'] as const;
 const GM_LAST_NAMES = ['Rivera', 'Porter', 'Sullivan', 'Hughes', 'Bennett', 'Foster'] as const;
+const WHAT_IF_BRANCH_LIMIT = 3;
 
 function generateDefaultGMName(seed: number): string {
   const first = GM_FIRST_NAMES[Math.abs(seed) % GM_FIRST_NAMES.length] ?? 'Alex';
@@ -113,7 +116,7 @@ export default function SetupPage() {
   const navigate = useNavigate();
   const worker = useWorker();
   const { isInitialized, initializeGame } = useGameStore();
-  const [saves, setSaves] = useState<SaveData[]>([]);
+  const [saveTree, setSaveTree] = useState<SaveTreeEntry[]>([]);
   const [status, setStatus] = useState('');
   const [busySlot, setBusySlot] = useState<number | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -134,9 +137,9 @@ export default function SetupPage() {
   const selectedScenario = scenarioCatalog.find((entry) => entry.id === selectedScenarioId) ?? null;
 
   const refreshSaves = useCallback(async () => {
-    const nextSaves = await listSaves();
-    setSaves(nextSaves);
-    const taken = new Set(nextSaves.map((save) => save.slotNumber));
+    const nextSaveTree = await listSaveTree();
+    setSaveTree(nextSaveTree);
+    const taken = new Set(nextSaveTree.map((entry) => entry.save.slotNumber));
     const firstEmpty = SAVE_SLOTS.find((slot) => !taken.has(slot)) ?? SAVE_SLOTS[0];
     setSelectedSlot(firstEmpty);
   }, []);
@@ -182,30 +185,39 @@ export default function SetupPage() {
     });
   }, [selectedScenarioId, worker, wizardOpen]);
 
-  const saveMap = useMemo(() => new Map(saves.map((save) => [save.slotNumber, save])), [saves]);
+  const saveMap = useMemo(
+    () => new Map(saveTree.map((entry) => [entry.save.slotNumber, entry])),
+    [saveTree],
+  );
 
-  async function handleContinue(slot: number) {
+  async function handleContinueSave(save: SaveData) {
     if (!worker.isReady) {
       return;
     }
-    setBusySlot(slot);
+    setBusySlot(save.slotNumber);
     setStatus('');
     try {
-      const result = await loadGameSafe(slot);
+      const result = save.isRootSave && save.slotNumber != null
+        ? await loadGameSafe(save.slotNumber)
+        : await inspectSaveById(save.id);
       if (result.status !== 'ok') {
-        setRecoveryState({
-          slot,
-          message: result.status === 'empty'
-            ? `Slot ${slot} is empty.`
-            : result.message,
-        });
+        if (save.slotNumber != null) {
+          setRecoveryState({
+            slot: save.slotNumber,
+            message: result.status === 'empty'
+              ? `Slot ${save.slotNumber} is empty.`
+              : result.message,
+          });
+        } else {
+          setStatus(`Unable to load branch "${save.name}".`);
+        }
         return;
       }
 
       await continueFromInspection(result);
     } catch (error) {
       console.error('Failed to continue save:', error);
-      setStatus(`Failed to load slot ${slot}.`);
+      setStatus(save.slotNumber != null ? `Failed to load slot ${save.slotNumber}.` : `Failed to load branch "${save.name}".`);
     } finally {
       setBusySlot(null);
     }
@@ -397,7 +409,8 @@ export default function SetupPage() {
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             {SAVE_SLOTS.map((slot) => {
-              const save = saveMap.get(slot) ?? null;
+              const entry = saveMap.get(slot) ?? null;
+              const save = entry?.save ?? null;
               const selected = slot === selectedSlot;
               return (
                 <div
@@ -438,7 +451,7 @@ export default function SetupPage() {
                         <button
                           type="button"
                           disabled={busySlot === slot}
-                          onClick={() => void handleContinue(slot)}
+                          onClick={() => void handleContinueSave(save)}
                           className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:opacity-50"
                         >
                           <Play className="h-3.5 w-3.5" />
@@ -467,6 +480,51 @@ export default function SetupPage() {
                       {save ? 'Replace' : 'Use This Slot'}
                     </button>
                   </div>
+
+                  {entry ? (
+                    <div className="mt-4 rounded-lg border border-dynasty-border/70 bg-dynasty-surface/70 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">What-If Branches</div>
+                        <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                          {entry.branches.length}/{WHAT_IF_BRANCH_LIMIT} branches
+                        </div>
+                      </div>
+
+                      {entry.branches.length > 0 ? (
+                        <div className="mt-3 space-y-2">
+                          {entry.branches.map((branch) => (
+                            <div
+                              key={branch.id}
+                              className="rounded border border-dynasty-border/70 bg-dynasty-base/40 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-heading text-sm text-dynasty-textBright">
+                                    {branch.branchMeta?.description ?? branch.name}
+                                  </div>
+                                  <div className="mt-1 font-heading text-[11px] text-dynasty-muted">
+                                    Season {branch.season} · {branch.phase.toUpperCase()} · Updated {new Date(branch.updatedAt).toLocaleString()}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleContinueSave(branch)}
+                                  className="inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-[11px] uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+                                >
+                                  <Play className="h-3 w-3" />
+                                  Open Branch
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-3 font-heading text-xs text-dynasty-muted">
+                          No active what-if branches for this dynasty slot.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

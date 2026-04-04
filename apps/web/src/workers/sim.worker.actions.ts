@@ -199,6 +199,10 @@ import {
   applyOffseasonNarrativeHooks,
   applyMonthlyPressConference,
 } from './sim.worker.narrativeFarm.js';
+import {
+  createBranchSave,
+  deleteSaveById,
+} from '../shared/lib/saveSystem.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -1379,6 +1383,19 @@ export const actionApi = {
       difficulty: s.franchise.difficulty,
       flowStateChanged: true as const,
     };
+  },
+
+  async createWhatIfBranch(parentSaveId: string, description: string) {
+    return createBranchSave(
+      parentSaveId,
+      exportGameSnapshot(requireState()),
+      description.trim() || 'What If Branch',
+    );
+  },
+
+  async deleteWhatIfBranch(branchSaveId: string) {
+    await deleteSaveById(branchSaveId);
+    return { success: true as const };
   },
 
   startDraft() {
