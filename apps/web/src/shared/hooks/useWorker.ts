@@ -48,6 +48,8 @@ const mutationMethods = new Set<WorkerMethodName>([
   'importSnapshot',
   'createWhatIfBranch',
   'deleteWhatIfBranch',
+  'archiveOldSeasons',
+  'pruneStaleData',
   'scoutPlayerReport',
   'scoutIFAPlayer',
   'signIFAPlayer',
@@ -336,6 +338,14 @@ export function useWorker() {
     async (branchSaveId: string) => runMutation(() => api.deleteWhatIfBranch(branchSaveId)),
     [api, runMutation],
   );
+  const archiveOldSeasons = useCallback(
+    async (saveId: string) => runMutation(() => api.archiveOldSeasons(saveId)),
+    [api, runMutation],
+  );
+  const pruneStaleData = useCallback(
+    async (saveId: string) => runMutation(() => api.pruneStaleData(saveId)),
+    [api, runMutation],
+  );
 
   const getStandings = useCallback(async () => api.getStandings(), [api]);
 
@@ -377,6 +387,7 @@ export function useWorker() {
     [api],
   );
   const getAchievements = useCallback(async () => api.getAchievements(), [api]);
+  const getPerformanceDiagnostics = useCallback(async () => api.getPerformanceDiagnostics(), [api]);
   const getDashboardSummary = useCallback(async () => api.getDashboardSummary(), [api]);
   const getMonthlyPulse = useCallback(async () => api.getMonthlyPulse(), [api]);
   const getCeremonyState = useCallback(async () => api.getCeremonyState(), [api]);
@@ -653,9 +664,9 @@ export function useWorker() {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
-    exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch,
+    exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,
     getStandings, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getAdvancedStats,
-    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getDashboardSummary, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
+    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeAssetInventory, proposeTrade, respondToTradeOffer,

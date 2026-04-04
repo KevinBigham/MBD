@@ -63,4 +63,19 @@ describe('usePreferencesStore', () => {
       reducedMotion: true,
     });
   });
+
+  it('persists and clears the press room visit marker', () => {
+    usePreferencesStore.getState().setLastVisitedPressRoomAt('S3D44');
+
+    expect(JSON.parse(window.localStorage.getItem(PREFERENCES_STORAGE_KEY) ?? '{}')).toMatchObject({
+      lastVisitedPressRoomAt: 'S3D44',
+    });
+
+    usePreferencesStore.getState().resetLastVisitedPressRoomAt();
+
+    expect(usePreferencesStore.getState().lastVisitedPressRoomAt).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(PREFERENCES_STORAGE_KEY) ?? '{}')).toMatchObject({
+      lastVisitedPressRoomAt: null,
+    });
+  });
 });

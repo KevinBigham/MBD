@@ -1,15 +1,87 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Newspaper, Radio, ShieldAlert } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Mic,
+  Newspaper,
+  Radio,
+  Search,
+  ShieldAlert,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { getTeamById } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 
+type SectionKey = 'briefings' | 'league_wire' | 'press_conferences' | 'scouting';
+
+interface FeedSection {
+  key: SectionKey;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  groups: Array<{ label: string; items: PressRoomEntry[] }>;
+  unreadCount: number;
+}
+
+const SECTION_DEFINITIONS: Array<{
+  key: SectionKey;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  matches: (entry: PressRoomEntry) => boolean;
+}> = [
+  {
+    key: 'briefings',
+    label: 'Team Briefings',
+    description: 'Internal pulses from ownership, chemistry, and the front office desk.',
+    icon: ShieldAlert,
+    matches: (entry) => entry.source === 'briefing' && entry.category !== 'development',
+  },
+  {
+    key: 'league_wire',
+    label: 'League Wire',
+    description: 'League movement, rumor circulation, and broader narrative spillover.',
+    icon: Radio,
+    matches: (entry) => entry.source === 'league_wire' || entry.source === 'news',
+  },
+  {
+    key: 'press_conferences',
+    label: 'Press Conferences',
+    description: 'Media-room framing, sharper questions, and public-facing tension points.',
+    icon: Mic,
+    matches: (entry) => entry.source === 'press_conference',
+  },
+  {
+    key: 'scouting',
+    label: 'Scouting Reports',
+    description: 'Prospect momentum, development notes, and promotion pressure from the farm.',
+    icon: Search,
+    matches: (entry) => entry.category === 'development',
+  },
+];
+
+const DEFAULT_OPEN_SECTIONS: Record<SectionKey, boolean> = {
+  briefings: true,
+  league_wire: true,
+  press_conferences: true,
+  scouting: true,
+};
+
+function parseTimestamp(timestamp: string): number {
+  if (timestamp === 'NOW') return Number.MAX_SAFE_INTEGER;
+  const match = /^S(\d+)D(\d+)$/.exec(timestamp);
+  if (!match) return 0;
+  return Number(match[1]) * 1000 + Number(match[2]);
+}
+
 function priorityTone(priority: number): string {
-  if (priority <= 1) return 'border-accent-danger/50 text-accent-danger';
-  if (priority === 2) return 'border-accent-warning/50 text-accent-warning';
-  if (priority === 3) return 'border-accent-info/50 text-accent-info';
-  return 'border-dynasty-border text-dynasty-muted';
+  if (priority <= 1) return 'border-accent-danger/40 bg-accent-danger/5';
+  if (priority === 2) return 'border-accent-warning/40 bg-accent-warning/5';
+  if (priority === 3) return 'border-accent-info/40 bg-accent-info/5';
+  return 'border-dynasty-border bg-dynasty-elevated/70';
 }
 
 function sourceTone(source: PressRoomEntry['source']): string {
@@ -19,6 +91,7 @@ function sourceTone(source: PressRoomEntry['source']): string {
     case 'press_conference':
       return 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary';
     case 'league_wire':
+    case 'news':
       return 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
     default:
       return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
@@ -31,6 +104,10 @@ function tagTone(tag: PressRoomEntry['tag']): string {
       return 'border-accent-danger/50 bg-accent-danger/10 text-accent-danger';
     case 'RUMOR':
       return 'border-accent-warning/50 bg-accent-warning/10 text-accent-warning';
+    case 'WATCH':
+      return 'border-accent-success/40 bg-accent-success/10 text-accent-success';
+    case 'DEBATE':
+      return 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary';
     case 'ANALYSIS':
       return 'border-accent-info/40 bg-accent-info/10 text-accent-info';
     default:
@@ -63,44 +140,6 @@ function groupFeedByTimestamp(feed: PressRoomEntry[]): Array<{ label: string; it
   }));
 }
 
-function sourceLabel(source: PressRoomEntry['source']): string {
-  switch (source) {
-    case 'briefing':
-      return 'Team Briefings';
-    case 'press_conference':
-      return 'Press Conferences';
-    case 'league_wire':
-      return 'League Wire';
-    default:
-      return 'News Wire';
-  }
-}
-
-function sourceDescription(source: PressRoomEntry['source']): string {
-  switch (source) {
-    case 'briefing':
-      return 'Internal pulses from ownership, the clubhouse, and the front office.';
-    case 'press_conference':
-      return 'Monthly media sessions and analysis framed by current team context.';
-    case 'league_wire':
-      return 'League-wide movement, rumors, and narrative spillover from around baseball.';
-    default:
-      return 'Additional headlines carried into the archive.';
-  }
-}
-
-function groupFeedBySource(feed: PressRoomEntry[]) {
-  const sourceOrder: PressRoomEntry['source'][] = ['briefing', 'press_conference', 'league_wire', 'news'];
-  return sourceOrder
-    .map((source) => ({
-      source,
-      label: sourceLabel(source),
-      description: sourceDescription(source),
-      groups: groupFeedByTimestamp(feed.filter((entry) => entry.source === source)),
-    }))
-    .filter((section) => section.groups.length > 0);
-}
-
 function isTransactionEntry(entry: PressRoomEntry): boolean {
   return ['trade', 'signing', 'extension', 'qualifying_offer', 'coaching', 'roster_move'].includes(entry.category);
 }
@@ -109,10 +148,14 @@ export default function PressRoomPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
   const { isInitialized, day, season, phase } = useGameStore();
+  const lastVisitedPressRoomAt = usePreferencesStore((state) => state.lastVisitedPressRoomAt);
+  const setLastVisitedPressRoomAt = usePreferencesStore((state) => state.setLastVisitedPressRoomAt);
+  const visitBaselineRef = useRef(lastVisitedPressRoomAt);
   const [feed, setFeed] = useState<PressRoomEntry[]>([]);
   const [selectedTeam, setSelectedTeam] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedTag, setSelectedTag] = useState<'all' | PressRoomEntry['tag']>('all');
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>(DEFAULT_OPEN_SECTIONS);
 
   const fetchFeed = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -128,15 +171,36 @@ export default function PressRoomPage() {
     void fetchFeed();
   }, [fetchFeed, day, season, phase]);
 
-  const briefingCount = feed.filter((entry) => entry.source === 'briefing').length;
-  const newsCount = feed.length - briefingCount;
+  useEffect(() => {
+    if (feed.length === 0) {
+      return;
+    }
+
+    const latestTimestamp = feed.reduce(
+      (latest, entry) => (parseTimestamp(entry.timestamp) > parseTimestamp(latest) ? entry.timestamp : latest),
+      feed[0]!.timestamp,
+    );
+    if (latestTimestamp !== lastVisitedPressRoomAt) {
+      setLastVisitedPressRoomAt(latestTimestamp);
+    }
+  }, [feed, lastVisitedPressRoomAt, setLastVisitedPressRoomAt]);
+
+  const isUnread = useCallback((entry: PressRoomEntry) => {
+    const visitBaseline = visitBaselineRef.current;
+    if (!visitBaseline) {
+      return true;
+    }
+    return parseTimestamp(entry.timestamp) > parseTimestamp(visitBaseline);
+  }, []);
+
+  const briefingCount = feed.filter((entry) => entry.source === 'briefing' && entry.category !== 'development').length;
+  const scoutingCount = feed.filter((entry) => entry.category === 'development').length;
+  const unreadCount = feed.filter(isUnread).length;
   const teamOptions = useMemo(() => {
     const ids = new Set(feed.flatMap((entry) => entry.relatedTeamIds));
     return Array.from(ids).sort();
   }, [feed]);
-  const categoryOptions = useMemo(() => {
-    return Array.from(new Set(feed.map((entry) => entry.category))).sort();
-  }, [feed]);
+  const categoryOptions = useMemo(() => Array.from(new Set(feed.map((entry) => entry.category))).sort(), [feed]);
 
   const filteredFeed = feed.filter((entry) => {
     const teamMatch = selectedTeam === 'all' || entry.relatedTeamIds.includes(selectedTeam);
@@ -144,8 +208,29 @@ export default function PressRoomPage() {
     const tagMatch = selectedTag === 'all' || entry.tag === selectedTag;
     return teamMatch && categoryMatch && tagMatch;
   });
-  const groupedFeed = groupFeedBySource(filteredFeed);
+
+  const groupedFeed = useMemo<FeedSection[]>(() => SECTION_DEFINITIONS
+    .map((section) => {
+      const entries = filteredFeed.filter(section.matches);
+      return {
+        key: section.key,
+        label: section.label,
+        description: section.description,
+        icon: section.icon,
+        groups: groupFeedByTimestamp(entries),
+        unreadCount: entries.filter(isUnread).length,
+      };
+    })
+    .filter((section) => section.groups.length > 0), [filteredFeed, isUnread]);
+
   const transactionFeed = filteredFeed.filter(isTransactionEntry).slice(0, 12);
+
+  function toggleSection(section: SectionKey) {
+    setOpenSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  }
 
   return (
     <div className="space-y-6">
@@ -172,21 +257,21 @@ export default function PressRoomPage() {
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
           <div className="flex items-center gap-2 font-heading text-xs uppercase text-dynasty-muted">
             <ShieldAlert className="h-4 w-4" />
-            Briefing Desk
+            Unread Queue
           </div>
-          <div className="mt-2 font-data text-3xl text-accent-info">{briefingCount}</div>
+          <div className="mt-2 font-data text-3xl text-accent-info">{unreadCount}</div>
           <div className="mt-1 font-heading text-xs text-dynasty-muted">
-            front-office items
+            items newer than your last visit
           </div>
         </div>
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
           <div className="flex items-center gap-2 font-heading text-xs uppercase text-dynasty-muted">
-            <Radio className="h-4 w-4" />
-            News Wire
+            <Search className="h-4 w-4" />
+            Scouting Desk
           </div>
-          <div className="mt-2 font-data text-3xl text-accent-warning">{newsCount}</div>
+          <div className="mt-2 font-data text-3xl text-accent-success">{scoutingCount}</div>
           <div className="mt-1 font-heading text-xs text-dynasty-muted">
-            archived headlines
+            player development items
           </div>
         </div>
       </div>
@@ -198,7 +283,7 @@ export default function PressRoomPage() {
               Source Board
             </h2>
             <p className="mt-1 font-heading text-xs text-dynasty-muted">
-              Grouped by source desk, then sim date, with filters for club, story type, and urgency.
+              Collapsible source desks with unread highlights, urgency framing, and archive filters.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -242,6 +327,8 @@ export default function PressRoomPage() {
                 <option value="all">All tags</option>
                 <option value="BREAKING">BREAKING</option>
                 <option value="ANALYSIS">ANALYSIS</option>
+                <option value="WATCH">WATCH</option>
+                <option value="DEBATE">DEBATE</option>
                 <option value="RECAP">RECAP</option>
                 <option value="RUMOR">RUMOR</option>
               </select>
@@ -249,64 +336,103 @@ export default function PressRoomPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
-          {groupedFeed.length > 0 ? groupedFeed.map((section) => (
-            <section key={section.source} className="space-y-4">
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(section.source)}`}>
-                    {section.source}
-                  </span>
-                  <h3 className="font-heading text-sm text-dynasty-textBright">{section.label}</h3>
-                </div>
-                <p className="mt-2 font-heading text-xs text-dynasty-muted">
-                  {section.description}
-                </p>
-              </div>
-
-              {section.groups.map((group) => (
-                <section key={`${section.source}-${group.label}`} className="space-y-3">
-                  <div className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
-                    {group.label}
-                  </div>
-                  {group.items.map((entry) => (
-                    <article
-                      key={`${entry.source}-${entry.id}`}
-                      className={`rounded-lg border p-4 ${
-                        entry.tag === 'BREAKING'
-                          ? 'border-accent-danger/40 bg-[radial-gradient(circle_at_top,rgba(196,62,62,0.12),transparent_45%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))]'
-                          : 'border-dynasty-border bg-[radial-gradient(circle_at_top,rgba(181,166,114,0.08),transparent_48%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))]'
-                      }`}
-                    >
+        <div className="space-y-4">
+          {groupedFeed.length > 0 ? groupedFeed.map((section) => {
+            const Icon = section.icon;
+            const isOpen = openSections[section.key];
+            return (
+              <section key={section.key} className="rounded-lg border border-dynasty-border/70 bg-dynasty-base/20">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(section.key)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-start justify-between gap-4 px-4 py-4 text-left"
+                >
+                  <div className="flex items-start gap-3">
+                    {isOpen ? (
+                      <ChevronDown className="mt-0.5 h-4 w-4 text-dynasty-muted" />
+                    ) : (
+                      <ChevronRight className="mt-0.5 h-4 w-4 text-dynasty-muted" />
+                    )}
+                    <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${tagTone(entry.tag)}`}>
-                          {entry.tag}
+                        <span className="inline-flex items-center gap-2 font-heading text-sm text-dynasty-textBright">
+                          <Icon className="h-4 w-4" />
+                          {section.label}
                         </span>
-                        <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(entry.source)}`}>
-                          {entry.source}
+                        <span className="rounded border border-dynasty-border px-2 py-1 font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                          {section.groups.reduce((total, group) => total + group.items.length, 0)} stories
                         </span>
-                        <span className="rounded border border-dynasty-border px-2 py-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
-                          {formatCategory(entry.category)}
-                        </span>
-                        <span className={`rounded border px-2 py-1 font-data text-[10px] uppercase tracking-wide ${priorityTone(entry.priority)}`}>
-                          Priority {entry.priority}
-                        </span>
-                        <span className="ml-auto font-data text-[11px] uppercase text-dynasty-muted">
-                          {entry.timestamp}
-                        </span>
+                        {section.unreadCount > 0 ? (
+                          <span className="rounded border border-accent-info/40 bg-accent-info/10 px-2 py-1 font-heading text-[10px] uppercase tracking-[0.18em] text-accent-info">
+                            Unread
+                          </span>
+                        ) : null}
                       </div>
-                      <h3 className="mt-3 font-heading text-lg text-dynasty-textBright">
-                        {entry.headline}
-                      </h3>
-                      <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
-                        {entry.body}
+                      <p className="mt-2 font-heading text-xs text-dynasty-muted">
+                        {section.description}
                       </p>
-                    </article>
-                  ))}
-                </section>
-              ))}
-            </section>
-          )) : (
+                    </div>
+                  </div>
+                  <span className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                    {section.unreadCount} new
+                  </span>
+                </button>
+
+                {isOpen ? (
+                  <div className="space-y-4 border-t border-dynasty-border/70 px-4 py-4">
+                    {section.groups.map((group) => (
+                      <section key={`${section.key}-${group.label}`} className="space-y-3">
+                        <div className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+                          {group.label}
+                        </div>
+                        {group.items.map((entry) => {
+                          const unread = isUnread(entry);
+                          return (
+                            <article
+                              key={`${entry.source}-${entry.id}`}
+                              className={`rounded-lg border-l-4 border p-4 ${priorityTone(entry.priority)} ${
+                                unread ? 'ring-1 ring-accent-info/30' : ''
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${tagTone(entry.tag)}`}>
+                                  {entry.tag}
+                                </span>
+                                <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(entry.source)}`}>
+                                  {entry.source}
+                                </span>
+                                <span className="rounded border border-dynasty-border px-2 py-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
+                                  {formatCategory(entry.category)}
+                                </span>
+                                <span className="rounded border border-dynasty-border px-2 py-1 font-data text-[10px] uppercase tracking-wide text-dynasty-muted">
+                                  Priority {entry.priority}
+                                </span>
+                                {unread ? (
+                                  <span className="rounded border border-accent-info/40 bg-accent-info/10 px-2 py-1 font-heading text-[10px] uppercase tracking-[0.18em] text-accent-info">
+                                    Unread
+                                  </span>
+                                ) : null}
+                                <span className="ml-auto font-data text-[11px] uppercase text-dynasty-muted">
+                                  {entry.timestamp}
+                                </span>
+                              </div>
+                              <h3 className="mt-3 font-heading text-lg text-dynasty-textBright">
+                                {entry.headline}
+                              </h3>
+                              <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
+                                {entry.body}
+                              </p>
+                            </article>
+                          );
+                        })}
+                      </section>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            );
+          }) : (
             <div className="rounded border border-dynasty-border bg-dynasty-elevated p-8 text-center">
               <div className="font-heading text-lg text-dynasty-text">The room is quiet.</div>
               <p className="mt-2 font-heading text-sm text-dynasty-muted">
@@ -361,6 +487,15 @@ export default function PressRoomPage() {
           )}
         </div>
       </section>
+
+      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+        <div className="font-heading text-sm text-dynasty-textBright">
+          Briefings on file
+        </div>
+        <div className="mt-2 font-data text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+          {briefingCount} team briefings tracked for this visit window
+        </div>
+      </div>
     </div>
   );
 }

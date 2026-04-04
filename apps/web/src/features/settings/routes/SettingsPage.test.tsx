@@ -325,4 +325,123 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('Create Branch');
     expect(container.textContent).toContain('Delete Branch');
   });
+
+  it('loads diagnostics and runs archive and prune actions against the active save', async () => {
+    const getPerformanceDiagnostics = vi.fn().mockResolvedValue({
+      totals: {
+        totalSeasons: 12,
+        snapshotSizeBytes: 524288,
+        liveArchiveSeasons: 10,
+        archivedSeasons: 2,
+      },
+      queues: {
+        newsItems: 14,
+        briefingItems: 4,
+        tickerEntries: 9,
+        staleTickerEntries: 2,
+        activeWatchers: 3,
+        resolvedWatchers: 1,
+        scoutConflicts: 2,
+      },
+      runtime: {
+        lastSimDayMs: 18.4,
+        lastSaveMs: 11.2,
+        lastLoadMs: 6.8,
+      },
+    });
+    const archiveOldSeasons = vi.fn().mockResolvedValue({
+      success: true,
+      archivedCount: 2,
+      diagnostics: {
+        totals: {
+          totalSeasons: 12,
+          snapshotSizeBytes: 500000,
+          liveArchiveSeasons: 8,
+          archivedSeasons: 4,
+        },
+        queues: {
+          newsItems: 14,
+          briefingItems: 4,
+          tickerEntries: 9,
+          staleTickerEntries: 2,
+          activeWatchers: 3,
+          resolvedWatchers: 1,
+          scoutConflicts: 2,
+        },
+        runtime: {
+          lastSimDayMs: 18.4,
+          lastSaveMs: 12.1,
+          lastLoadMs: 6.8,
+        },
+      },
+    });
+    const pruneStaleData = vi.fn().mockResolvedValue({
+      success: true,
+      prunedCount: 3,
+      diagnostics: {
+        totals: {
+          totalSeasons: 12,
+          snapshotSizeBytes: 480000,
+          liveArchiveSeasons: 8,
+          archivedSeasons: 4,
+        },
+        queues: {
+          newsItems: 14,
+          briefingItems: 4,
+          tickerEntries: 7,
+          staleTickerEntries: 0,
+          activeWatchers: 2,
+          resolvedWatchers: 0,
+          scoutConflicts: 2,
+        },
+        runtime: {
+          lastSimDayMs: 18.4,
+          lastSaveMs: 10.6,
+          lastLoadMs: 6.8,
+        },
+      },
+    });
+
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getBranches: vi.fn().mockResolvedValue([]),
+      getPerformanceDiagnostics,
+      archiveOldSeasons,
+      pruneStaleData,
+      importSnapshot: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(<SettingsPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Diagnostics');
+    expect(container.textContent).toContain('Runtime');
+    expect(container.textContent).toContain('524.3 KB');
+
+    const archiveButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Archive Older Seasons'),
+    );
+    const pruneButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Prune Stale Data'),
+    );
+
+    await act(async () => {
+      archiveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(archiveOldSeasons).toHaveBeenCalledWith('save-slot-1');
+    expect(container.textContent).toContain('Archived 2 older seasons');
+
+    await act(async () => {
+      pruneButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(pruneStaleData).toHaveBeenCalledWith('save-slot-1');
+    expect(container.textContent).toContain('Pruned 3 stale entries');
+  });
 });

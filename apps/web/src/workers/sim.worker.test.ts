@@ -19,6 +19,7 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
   deleteSaveById: vi.fn(),
   listBranches: vi.fn(),
   loadGameById: vi.fn(),
+  saveGameById: vi.fn(),
 }));
 
 import { api } from './sim.worker';
@@ -31,12 +32,14 @@ import {
   deleteSaveById,
   listBranches,
   loadGameById,
+  saveGameById,
 } from '../shared/lib/saveSystem.js';
 
 const mockedCreateBranchSave = vi.mocked(createBranchSave);
 const mockedDeleteSaveById = vi.mocked(deleteSaveById);
 const mockedListBranches = vi.mocked(listBranches);
 const mockedLoadGameById = vi.mocked(loadGameById);
+const mockedSaveGameById = vi.mocked(saveGameById);
 
 function startGame(seed: number, userTeamId: string = 'nyy') {
   return api.newGame({
@@ -252,6 +255,38 @@ interface MinorLeagueWorkerApi {
   applyForJob: (teamId: string) => { success: boolean; teamId?: string; error?: string };
   acknowledgeMonthlyReport: (reportId: string) => { success: boolean };
   dismissDecisionSpotlight: (decisionId: string) => { success: boolean };
+  getPerformanceDiagnostics: () => {
+    totals: {
+      totalSeasons: number;
+      snapshotSizeBytes: number;
+      liveArchiveSeasons: number;
+      archivedSeasons: number;
+    };
+    queues: {
+      newsItems: number;
+      briefingItems: number;
+      tickerEntries: number;
+      staleTickerEntries: number;
+      activeWatchers: number;
+      resolvedWatchers: number;
+      scoutConflicts: number;
+    };
+    runtime: {
+      lastSimDayMs: number | null;
+      lastSaveMs: number | null;
+      lastLoadMs: number | null;
+    };
+  };
+  archiveOldSeasons: (saveId: string) => Promise<{
+    success: boolean;
+    archivedCount: number;
+    diagnostics: ReturnType<MinorLeagueWorkerApi['getPerformanceDiagnostics']>;
+  }>;
+  pruneStaleData: (saveId: string) => Promise<{
+    success: boolean;
+    prunedCount: number;
+    diagnostics: ReturnType<MinorLeagueWorkerApi['getPerformanceDiagnostics']>;
+  }>;
   getBranches: (parentSaveId: string) => Promise<Array<{
     id: string;
     parentSaveId: string | null;
@@ -3438,11 +3473,48 @@ describe('sim worker narrative APIs', () => {
 
     expect(rivalry).toMatchObject({
       category: 'rivalry',
-      tag: 'ANALYSIS',
+      tag: 'WATCH',
       relatedTeamIds: ['nyy', 'bos'],
     });
     expect(rivalry?.headline).toContain('NYY');
     expect(rivalry?.headline).toContain('BOS');
+  });
+
+  it('derives debate and watch tags from category and keywords instead of passthrough tags', () => {
+    startGame(7800, 'nyy');
+    const state = requireState();
+    state.news = [
+      {
+        id: 'press-1',
+        headline: 'Press Conference: New York Yankees',
+        body: 'The room turned into a live debate over the deadline posture.',
+        priority: 3,
+        category: 'press_conference',
+        tag: 'BREAKING',
+        timestamp: 'S1D12',
+        relatedPlayerIds: [],
+        relatedTeamIds: ['nyy'],
+        read: false,
+      },
+    ];
+    state.briefingQueue = [
+      {
+        id: 'brief-watch-1',
+        priority: 3,
+        category: 'development',
+        headline: 'Prospect watch: the next promotion call is getting louder',
+        body: 'Scouts want another look after a strong week.',
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: [],
+        timestamp: 'S1D12',
+        acknowledged: false,
+      },
+    ];
+
+    const feed = api.getPressRoomFeed();
+
+    expect(feed.find((entry) => entry.id === 'press-1')?.tag).toBe('DEBATE');
+    expect(feed.find((entry) => entry.id === 'brief-watch-1')?.tag).toBe('WATCH');
   });
 
   it('adds rivalry-flavored ticker text for heated score lines', () => {
@@ -3742,5 +3814,179 @@ describe('sim worker narrative APIs', () => {
 
     expect(branches).toEqual([]);
     expect(mockedDeleteSaveById).toHaveBeenCalledWith('branch-rollback');
+  });
+
+  it('reports runtime diagnostics and persists archive and prune maintenance to an explicit save id', async () => {
+    startGame(654, 'nyy');
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const snapshot = workerApi.exportSnapshot();
+
+    workerApi.importSnapshot(snapshot);
+    workerApi.simDay();
+
+    const state = requireState();
+    state.season = 13;
+    state.performanceDiagnostics = {
+      totalSeasons: 13,
+      snapshotSizeBytes: 0,
+    };
+    state.seasonArchive = Array.from({ length: 12 }, (_, index) => ({
+      season: index + 1,
+      standings: [{
+        teamId: 'nyy',
+        wins: 80 + index,
+        losses: 82 - Math.min(index, 10),
+        divisionRank: 1,
+        gamesBack: 0,
+      }],
+      playoffSeries: [],
+      awards: [],
+      statLeaders: {
+        hr: [],
+        rbi: [],
+        avg: [],
+        era: [],
+        k: [],
+        w: [],
+      },
+      transactions: [],
+      draftClass: [],
+      financials: [],
+      userSummary: {
+        teamId: 'nyy',
+        record: `${80 + index}-${82 - Math.min(index, 10)}`,
+        playoffResult: 'Missed playoffs',
+        storylines: [`Season ${index + 1}`],
+      },
+      timelineEvents: [],
+    }));
+    state.archivedSeasons = [];
+    state.tickerFeed = [
+      {
+        id: 'ticker-old',
+        timestamp: 'S13D1',
+        category: 'rumor',
+        text: 'Old ticker',
+        priority: 4,
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: [],
+        expiresDay: 3,
+      },
+      {
+        id: 'ticker-live',
+        timestamp: 'S13D10',
+        category: 'score',
+        text: 'Fresh ticker',
+        priority: 2,
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: [],
+        expiresDay: 30,
+      },
+    ];
+    state.consequenceWatchers = [
+      {
+        id: 'watcher-expired',
+        type: 'fan_reaction',
+        createdSeason: 12,
+        createdDay: 20,
+        expiresSeason: 13,
+        expiresDay: 5,
+        context: {},
+        resolved: false,
+      },
+      {
+        id: 'watcher-resolved',
+        type: 'contract_reaction',
+        createdSeason: 13,
+        createdDay: 8,
+        expiresSeason: 13,
+        expiresDay: 12,
+        context: {},
+        resolved: true,
+      },
+      {
+        id: 'watcher-active',
+        type: 'trade_aftermath',
+        createdSeason: 13,
+        createdDay: 9,
+        expiresSeason: 13,
+        expiresDay: 20,
+        context: {},
+        resolved: false,
+      },
+    ];
+    state.day = 10;
+
+    mockedLoadGameById.mockResolvedValue({
+      id: 'save-slot-1',
+      slotNumber: 1,
+      name: 'Dynasty Save',
+      season: 13,
+      day: 10,
+      phase: 'regular',
+      schemaVersion: 15,
+      hasSnapshot: true,
+      snapshot,
+      legacyState: null,
+      createdAt: '2026-04-04T00:00:00.000Z',
+      updatedAt: '2026-04-04T00:00:00.000Z',
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+    });
+    mockedSaveGameById.mockResolvedValue({
+      id: 'save-slot-1',
+      slotNumber: 1,
+      name: 'Dynasty Save',
+      season: 13,
+      day: 10,
+      phase: 'regular',
+      schemaVersion: 15,
+      hasSnapshot: true,
+      snapshot,
+      legacyState: null,
+      createdAt: '2026-04-04T00:00:00.000Z',
+      updatedAt: '2026-04-04T00:00:00.000Z',
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+    });
+
+    const diagnosticsBefore = workerApi.getPerformanceDiagnostics();
+    expect(diagnosticsBefore).not.toBeNull();
+    if (!diagnosticsBefore) {
+      throw new Error('Expected diagnostics after the worker was initialized.');
+    }
+    expect(diagnosticsBefore.runtime.lastLoadMs).not.toBeNull();
+    expect(diagnosticsBefore.runtime.lastSimDayMs).not.toBeNull();
+    expect(diagnosticsBefore.queues.staleTickerEntries).toBe(1);
+    expect(diagnosticsBefore.queues.resolvedWatchers).toBe(1);
+
+    const archived = await workerApi.archiveOldSeasons('save-slot-1');
+    expect(archived.success).toBe(true);
+    expect(archived.archivedCount).toBe(2);
+    expect(archived.diagnostics.totals.liveArchiveSeasons).toBe(10);
+    expect(archived.diagnostics.totals.archivedSeasons).toBe(2);
+
+    const pruned = await workerApi.pruneStaleData('save-slot-1');
+    expect(pruned.success).toBe(true);
+    expect(pruned.prunedCount).toBe(3);
+    expect(pruned.diagnostics.queues.tickerEntries).toBe(1);
+    expect(pruned.diagnostics.queues.activeWatchers).toBe(1);
+    expect(pruned.diagnostics.runtime.lastSaveMs).not.toBeNull();
+
+    expect(mockedSaveGameById).toHaveBeenCalledTimes(2);
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      'save-slot-1',
+      'Dynasty Save',
+      expect.objectContaining({
+        season: 13,
+        day: 10,
+      }),
+      expect.objectContaining({
+        slotNumber: 1,
+        isRootSave: true,
+      }),
+    );
   });
 });

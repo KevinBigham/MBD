@@ -51,6 +51,7 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { buildPerformanceDiagnosticsView, estimateSnapshotSizeBytes } from './sim.worker.diagnostics.js';
 import { buildAchievementView } from './sim.worker.achievements.js';
 import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
@@ -1162,6 +1163,25 @@ export const queryApi = {
 
   getAchievements() {
     return state ? buildAchievementView(state) : [];
+  },
+
+  getPerformanceDiagnostics() {
+    if (!state) {
+      return null;
+    }
+
+    const diagnostics = buildPerformanceDiagnosticsView(state);
+    if (diagnostics.totals.snapshotSizeBytes > 0) {
+      return diagnostics;
+    }
+
+    return {
+      ...diagnostics,
+      totals: {
+        ...diagnostics.totals,
+        snapshotSizeBytes: estimateSnapshotSizeBytes(exportGameSnapshot(state)),
+      },
+    };
   },
 
   getDashboardSummary() {
