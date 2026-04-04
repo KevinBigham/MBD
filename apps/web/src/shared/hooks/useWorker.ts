@@ -353,6 +353,10 @@ export function useWorker() {
     async (playerId: string) => api.getPlayer(playerId),
     [api],
   );
+  const getPlayerProfileView = useCallback(
+    async (playerId: string) => api.getPlayerProfileView(playerId),
+    [api],
+  );
   const getAdvancedStats = useCallback(
     async (playerId: string) => api.getAdvancedStats(playerId),
     [api],
@@ -650,7 +654,7 @@ export function useWorker() {
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch,
-    getStandings, getTeamRoster, getFullRoster, getPlayer, getAdvancedStats,
+    getStandings, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getAdvancedStats,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getDashboardSummary, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,

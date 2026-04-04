@@ -240,10 +240,10 @@ describe('TradePage', () => {
     vi.clearAllMocks();
   });
 
-  async function renderPage() {
+  async function renderPage(initialEntry: string = '/trade') {
     await act(async () => {
       root.render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[initialEntry]}>
           <TradePage />
         </MemoryRouter>,
       );
@@ -489,5 +489,49 @@ describe('TradePage', () => {
       ],
       'bos',
     );
+  });
+
+  it('preselects a player from the query string into the outgoing package', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage('/trade?playerId=nyy-1');
+
+    const teamSelect = container.querySelector('select');
+    expect(teamSelect).toBeTruthy();
+
+    await act(async () => {
+      if (teamSelect instanceof HTMLSelectElement) {
+        teamSelect.value = 'bos';
+        teamSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const playerRows = Array.from(container.querySelectorAll('tbody tr'));
+    expect(playerRows.some((row) => row.textContent?.includes('Roman Anthony'))).toBe(true);
+    expect(container.textContent).toContain('Anthony Volpe · SS');
+    expect(worker.proposeTrade).not.toHaveBeenCalled();
   });
 });

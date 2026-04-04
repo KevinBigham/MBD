@@ -173,6 +173,15 @@ interface MinorLeagueWorkerApi {
     prospectBond: { bondStrength: number; currentLevel: string } | null;
     activeSetback: { type: string; summary: string } | null;
   } | null;
+  getPlayerProfileView: (playerId: string) => {
+    player: { id: string; teamId: string; historical?: boolean } | null;
+    personalityProfile: { playerId: string } | null;
+    developmentReports: { playerId: string } | null;
+    careerStats: { playerId: string } | null;
+    scoutConflict: { prospectId: string } | null;
+    scoutingReport: { overall: number; scoutName: string } | null;
+    scoutingHistoryNote: string;
+  } | null;
   getExtensionCandidates: (teamId?: string) => Array<{
     playerId: string;
     willingness: number;
@@ -698,6 +707,111 @@ describe('sim worker narrative APIs', () => {
     expect(overview.farmReport?.bondedProspects).toBeGreaterThan(0);
     expect(overview.farmReport?.activeSetbackCount).toBeGreaterThan(0);
     expect((overview.farmReport?.topProspects.length ?? 0)).toBeGreaterThan(0);
+  });
+
+  it('builds a unified player profile view with career, development, and scout conflict data', () => {
+    startGame(1261, 'nyy');
+    const state = requireState();
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const prospect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+
+    state.careerStats.push({
+      playerId: prospect.id,
+      playerName: `${prospect.firstName} ${prospect.lastName}`,
+      position: prospect.position,
+      seasonsPlayed: 2,
+      teamIds: ['nyy'],
+      peakOverall: 61,
+      championshipRings: 0,
+      allStarSelections: 0,
+      gamesPlayed: 102,
+      saves: 0,
+      war: 3.4,
+      batting: prospect.pitcherAttributes ? null : {
+        hits: 111,
+        hr: 16,
+        rbi: 58,
+      },
+      pitching: prospect.pitcherAttributes ? {
+        wins: 8,
+        strikeouts: 118,
+        inningsPitched: 132.1,
+        earnedRuns: 41,
+      } : null,
+    });
+    state.scoutConflicts.push({
+      prospectId: prospect.id,
+      teamId: 'nyy',
+      prospectType: 'draft',
+      createdSeason: state.season,
+      resolutionSeason: state.season + 2,
+      resolved: false,
+      headline: `${prospect.firstName} ${prospect.lastName} split the room.`,
+      opinions: [
+        {
+          source: 'scout_director',
+          overallGrade: 62,
+          ceiling: 70,
+          floor: 54,
+          summary: 'Director trusts the bat path.',
+          confidence: 13,
+        },
+        {
+          source: 'analytics_head',
+          overallGrade: 56,
+          ceiling: 64,
+          floor: 50,
+          summary: 'Models want more proof of contact quality.',
+          confidence: 11,
+        },
+        {
+          source: 'manager',
+          overallGrade: 59,
+          ceiling: 67,
+          floor: 53,
+          summary: 'Manager likes the makeup but wants more polish.',
+          confidence: 12,
+        },
+      ],
+      divergence: 6,
+      debateGenerated: true,
+      resolution: null,
+      winningSource: null,
+      outcomeSummary: null,
+    });
+    state.minorLeagueState.developmentReports.push({
+      playerId: prospect.id,
+      teamId: 'nyy',
+      season: state.season,
+      month: 4,
+      trajectory: 'ahead_of_curve',
+      summary: `${prospect.firstName} ${prospect.lastName} tightened the approach this month.`,
+      overallRating: prospect.overallRating,
+    });
+
+    const profile = workerApi.getPlayerProfileView(prospect.id);
+
+    expect(profile?.player?.id).toBe(prospect.id);
+    expect(profile?.personalityProfile?.playerId).toBe(prospect.id);
+    expect(profile?.developmentReports?.playerId).toBe(prospect.id);
+    expect(profile?.careerStats?.playerId).toBe(prospect.id);
+    expect(profile?.scoutConflict?.prospectId).toBe(prospect.id);
+    expect(profile?.scoutingReport).toBeNull();
+    expect(profile?.scoutingHistoryNote).toContain('v15');
+  });
+
+  it('returns a deterministic scouting fallback in the player profile view when no conflict exists', () => {
+    startGame(1262, 'nyy');
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const player = requireState().players.find((candidate) => candidate.teamId === 'nyy' && candidate.rosterStatus === 'MLB')!;
+
+    const first = workerApi.getPlayerProfileView(player.id);
+    const second = workerApi.getPlayerProfileView(player.id);
+
+    expect(first?.scoutConflict).toBeNull();
+    expect(first?.scoutingReport).toEqual(second?.scoutingReport);
+    expect(first?.scoutingReport?.overall).toBeGreaterThan(0);
+    expect(typeof first?.scoutingReport?.scoutName).toBe('string');
   });
 
   it('advances to calendar month boundaries and creates a pending monthly pulse report', () => {

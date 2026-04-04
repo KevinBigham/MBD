@@ -765,7 +765,7 @@ function hashString(value: string): number {
   return hash;
 }
 
-function createStableWorkerRng(
+export function createStableWorkerRng(
   s: FullGameState,
   scope: string,
 ): GameRNG {
