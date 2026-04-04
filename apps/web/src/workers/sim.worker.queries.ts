@@ -75,6 +75,7 @@ import {
 import {
   buildTradeAssetInventoryView,
   buildTradeDeadlineStateView,
+  buildTradeDialogueView,
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
@@ -1502,6 +1503,15 @@ export const queryApi = {
 
   getTradeDeadlineState() {
     return buildTradeDeadlineStateView(requireState());
+  },
+
+  getTradeDialogue(
+    teamId: string,
+    offerValue: number,
+    requestValue: number,
+    negotiationType: 'proposal' | 'counter' | 'offer' = 'proposal',
+  ) {
+    return buildTradeDialogueView(requireState(), teamId, offerValue, requestValue, negotiationType);
   },
 
   getTradeAssetInventory(teamId: string) {

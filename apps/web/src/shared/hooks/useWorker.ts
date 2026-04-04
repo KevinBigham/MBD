@@ -450,6 +450,15 @@ export function useWorker() {
   const getTradeOffers = useCallback(async () => api.getTradeOffers(), [api]);
   const getTradeHistory = useCallback(async () => api.getTradeHistory(), [api]);
   const getTradeDeadlineState = useCallback(async () => api.getTradeDeadlineState(), [api]);
+  const getTradeDialogue = useCallback(
+    async (
+      teamId: string,
+      offerValue: number,
+      requestValue: number,
+      negotiationType?: 'proposal' | 'counter' | 'offer',
+    ) => api.getTradeDialogue(teamId, offerValue, requestValue, negotiationType),
+    [api],
+  );
   const getTradeAssetInventory = useCallback(async (teamId: string) => api.getTradeAssetInventory(teamId), [api]);
   const proposeTrade = useCallback(
     async (offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) =>
@@ -674,7 +683,7 @@ export function useWorker() {
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
-    getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
+    getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
     getPromotionCandidates, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,

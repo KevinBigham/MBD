@@ -12,9 +12,12 @@ import {
   createDefaultDraftPickOwnership,
   createInitialPlayerMorale,
   deduplicateNews,
+  deriveTradeDeadlineMode,
   evaluateTradeProposal,
   executeTrade,
   generateAITradeOffers,
+  generateTradeChatter,
+  generateTradeDialogue,
   generateNews,
   generateNewsId,
   getDaysUntilTradeDeadline,
@@ -27,9 +30,15 @@ import {
   tradeDraftPickOwnership as tradeDraftPickOwnershipCore,
   tradeIFABonusPool as tradeIFABonusPoolCore,
 } from '@mbd/sim-core';
-import type { TradeProposal } from '@mbd/sim-core';
+import type {
+  TradeChatterItem,
+  TradeDeadlineMode,
+  TradeDialogue,
+  TradeNegotiationType,
+  TradeProposal,
+} from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
-import { getTeamPlayers, timestamp } from './sim.worker.helpers.js';
+import { createStableWorkerRng, getTeamPlayers, timestamp } from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
 import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
@@ -81,6 +90,7 @@ export interface HotTradeOfferView extends TradeOfferView {
   urgencyTag: 'ACTIVE' | 'EXPIRING SOON' | 'FINAL OFFER';
   bidderCount: number;
   biddingSummary: string | null;
+  dialogue: TradeDialogue;
 }
 
 export interface TradeTickerItem {
@@ -111,8 +121,12 @@ export interface TradeDeadlineStateView {
   deadlineDay: number;
   daysUntilDeadline: number | null;
   deadlineMode: boolean;
+  teamMode: TradeDeadlineMode;
+  modeSummary: string;
+  countdownLabel: string;
   hotOffers: HotTradeOfferView[];
   ticker: TradeTickerItem[];
+  chatter: TradeChatterItem[];
   recap: TradeDeadlineRecapView | null;
 }
 
@@ -793,12 +807,85 @@ export function buildTradeHistoryView(state: FullGameState): TradeHistoryView[] 
 
 function buildHotTradeOfferView(state: FullGameState, offer: PersistentTradeOffer): HotTradeOfferView {
   const bidderCount = offerBidderCount(state, offer);
+  const offerValue = offer.offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
+  const requestValue = offer.requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
   return {
     ...(buildTradeViews(state, [offer])[0] as TradeOfferView),
     urgencyTag: tradeUrgencyTag(state, offer),
     bidderCount,
     biddingSummary: offerBiddingSummary(state, offer, bidderCount),
+    dialogue: buildTradeDialogueView(state, offer.fromTeamId, offerValue, requestValue, 'offer'),
   };
+}
+
+function buildTradeModeContext(state: FullGameState, teamId: string) {
+  const team = getTeamById(teamId);
+  const record = state.seasonState.standings.getRecord(teamId);
+  const divisionStandings = team ? state.seasonState.standings.getDivisionStandings(team.division) : [];
+  const standingEntry = divisionStandings.find((entry) => entry.teamId === teamId);
+  const totalGames = (record?.wins ?? 0) + (record?.losses ?? 0);
+  const winPct = totalGames > 0 ? (record?.wins ?? 0) / totalGames : 0.5;
+  const daysUntilDeadline = state.phase === 'regular' && state.day <= TRADE_DEADLINE_DAY
+    ? getDaysUntilTradeDeadline(state.day)
+    : null;
+  const gmPersonality = state.gmPersonalities.get(teamId) ?? 'analytical';
+  const mode = deriveTradeDeadlineMode({
+    winPct,
+    gamesBack: standingEntry?.gamesBack ?? 0,
+    daysUntilDeadline,
+    gmPersonality,
+  });
+
+  return {
+    teamName: teamName(teamId),
+    gmPersonality,
+    daysUntilDeadline,
+    mode,
+  };
+}
+
+function countdownLabel(daysUntilDeadline: number | null): string {
+  if (daysUntilDeadline == null) {
+    return 'Market Closed';
+  }
+  if (daysUntilDeadline <= 0) {
+    return 'Deadline Day';
+  }
+  return `${daysUntilDeadline} day${daysUntilDeadline === 1 ? '' : 's'} to deadline`;
+}
+
+function modeSummary(mode: TradeDeadlineMode): string {
+  switch (mode) {
+    case 'buyer':
+      return 'The room expects you to push for MLB impact before the deadline shuts.';
+    case 'seller':
+      return 'Rival clubs think present value can be pried loose for future pieces.';
+    default:
+      return 'The market reads you as flexible, but not urgent enough to blink first.';
+  }
+}
+
+export function buildTradeDialogueView(
+  state: FullGameState,
+  teamId: string,
+  offerValue: number,
+  requestValue: number,
+  negotiationType: TradeNegotiationType = 'proposal',
+): TradeDialogue {
+  const context = buildTradeModeContext(state, teamId);
+
+  return generateTradeDialogue(
+    createStableWorkerRng(state, `trade-dialogue:${teamId}:${negotiationType}:${Math.round(offerValue)}:${Math.round(requestValue)}`),
+    {
+      teamName: context.teamName,
+      gmPersonality: context.gmPersonality,
+      mode: context.mode,
+      daysUntilDeadline: context.daysUntilDeadline,
+      offerValue,
+      requestValue,
+      negotiationType,
+    },
+  );
 }
 
 function deriveTradeDeadlineRecap(state: FullGameState): TradeDeadlineRecapView | null {
@@ -814,6 +901,10 @@ function deriveTradeDeadlineRecap(state: FullGameState): TradeDeadlineRecapView 
 }
 
 export function buildTradeDeadlineStateView(state: FullGameState): TradeDeadlineStateView {
+  const userModeContext = buildTradeModeContext(state, state.userTeamId);
+  const hotOffers = state.tradeState.pendingOffers.map((offer) => buildHotTradeOfferView(state, offer));
+  const ticker = buildTickerItems(state.tradeState.tradeHistory);
+
   return {
     deadlineDay: TRADE_DEADLINE_DAY,
     daysUntilDeadline:
@@ -821,8 +912,25 @@ export function buildTradeDeadlineStateView(state: FullGameState): TradeDeadline
         ? getDaysUntilTradeDeadline(state.day)
         : null,
     deadlineMode: state.phase === 'regular' && isTradeDeadlineModeDay(state.day),
-    hotOffers: state.tradeState.pendingOffers.map((offer) => buildHotTradeOfferView(state, offer)),
-    ticker: buildTickerItems(state.tradeState.tradeHistory),
+    teamMode: userModeContext.mode,
+    modeSummary: modeSummary(userModeContext.mode),
+    countdownLabel: countdownLabel(userModeContext.daysUntilDeadline),
+    hotOffers,
+    ticker,
+    chatter: generateTradeChatter(
+      createStableWorkerRng(state, `trade-chatter:${state.day}:${hotOffers.length}:${ticker.length}`),
+      {
+        userTeamName: teamName(state.userTeamId),
+        userMode: userModeContext.mode,
+        daysUntilDeadline: userModeContext.daysUntilDeadline,
+        activeTeams: hotOffers.map((offer) => ({
+          teamId: offer.fromTeamId,
+          teamName: offer.fromTeamName,
+          mode: buildTradeModeContext(state, offer.fromTeamId).mode,
+        })),
+        recentTradeSummaries: ticker.map((item) => item.summary),
+      },
+    ),
     recap: deriveTradeDeadlineRecap(state),
   };
 }

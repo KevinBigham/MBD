@@ -42,6 +42,11 @@ export {
   generateDraftGrades,
 } from './draft.js';
 export {
+  deriveTradeDeadlineMode,
+  generateTradeDialogue,
+  generateTradeChatter,
+} from './tradeTheatre.js';
+export {
   detectNewStoryArcs,
   advanceStoryArcs,
 } from './storyArcs.js';
@@ -89,6 +94,12 @@ export type {
   DraftPickPreview,
   DraftTeamGrade,
 } from './draft.js';
+export type {
+  TradeDeadlineMode,
+  TradeNegotiationType,
+  TradeDialogue,
+  TradeChatterItem,
+} from './tradeTheatre.js';
 export type {
   TickerGenerationContext,
   TickerInjuryContext,

@@ -2597,17 +2597,56 @@ describe('sim worker narrative APIs', () => {
     const deadlineState = (api as typeof api & {
       getTradeDeadlineState: () => {
         deadlineMode: boolean;
-        hotOffers: Array<{ urgencyTag: string; bidderCount: number; biddingSummary: string | null }>;
+        teamMode: string;
+        modeSummary: string;
+        countdownLabel: string;
+        chatter: Array<{ headline: string }>;
+        hotOffers: Array<{ urgencyTag: string; bidderCount: number; biddingSummary: string | null; dialogue: { headline: string; lines: string[] } }>;
         ticker: Array<{ summary: string }>;
       };
     }).getTradeDeadlineState();
 
     expect(deadlineState.deadlineMode).toBe(true);
+    expect(deadlineState.teamMode).toBe('buyer');
+    expect(deadlineState.modeSummary.length).toBeGreaterThan(0);
+    expect(deadlineState.countdownLabel).toContain('days');
+    expect(deadlineState.chatter.length).toBeGreaterThan(0);
     expect(deadlineState.hotOffers).toHaveLength(2);
     expect(deadlineState.hotOffers[0]?.urgencyTag).toBe('EXPIRING SOON');
     expect(deadlineState.hotOffers.some((offer) => offer.bidderCount > 1)).toBe(true);
     expect(deadlineState.hotOffers.some((offer) => offer.biddingSummary?.includes('clubs'))).toBe(true);
+    expect(deadlineState.hotOffers[0]?.dialogue.lines.length).toBe(3);
     expect(deadlineState.ticker[0]?.summary).toContain('Seattle Mariners');
+  });
+
+  it('builds deterministic trade dialogue without advancing rng state', () => {
+    startGame(34015, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 118;
+
+    const workerApi = api as typeof api & {
+      getTradeDialogue: (
+        teamId: string,
+        offerValue: number,
+        requestValue: number,
+        negotiationType?: 'proposal' | 'counter' | 'offer',
+      ) => {
+        headline: string;
+        lines: string[];
+        mode: string;
+      };
+    };
+
+    const rngCallsBefore = requireState().rng.getState().callCount;
+    const first = workerApi.getTradeDialogue('bos', 48, 61, 'proposal');
+    const second = workerApi.getTradeDialogue('bos', 48, 61, 'proposal');
+
+    expect(second).toEqual(first);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(first.headline).toContain('Boston Red Sox');
+    expect(first.lines.length).toBe(3);
+    expect(first.mode).toMatch(/^(buyer|seller|standing_pat)$/);
   });
 
   it('creates a deadline recap and analysis when the market closes', () => {

@@ -76,6 +76,7 @@ interface HotTradeOfferView extends TradeOfferView {
   urgencyTag: 'ACTIVE' | 'EXPIRING SOON' | 'FINAL OFFER';
   bidderCount: number;
   biddingSummary: string | null;
+  dialogue: TradeDialogueView;
 }
 
 interface TradeTickerItem {
@@ -98,12 +99,31 @@ interface TradeDeadlineRecapView {
   losers: string[];
 }
 
+interface TradeDialogueView {
+  mode: 'buyer' | 'seller' | 'standing_pat';
+  urgency: 'low' | 'medium' | 'high';
+  headline: string;
+  lines: string[];
+}
+
+interface TradeChatterItem {
+  id: string;
+  headline: string;
+  detail: string;
+  mode: 'buyer' | 'seller' | 'standing_pat';
+  teamId: string | null;
+}
+
 interface TradeDeadlineStateView {
   deadlineDay: number;
   daysUntilDeadline: number | null;
   deadlineMode: boolean;
+  teamMode: 'buyer' | 'seller' | 'standing_pat';
+  modeSummary: string;
+  countdownLabel: string;
   hotOffers: HotTradeOfferView[];
   ticker: TradeTickerItem[];
+  chatter: TradeChatterItem[];
   recap: TradeDeadlineRecapView | null;
 }
 
@@ -182,6 +202,39 @@ function fairnessLabel(ratio: number): { text: string; color: string } {
 function fairnessText(score: number, fromTeam: string, toTeam: string): string {
   if (Math.abs(score) <= 10) return 'Balanced';
   return score > 0 ? `Favored ${fromTeam}` : `Favored ${toTeam}`;
+}
+
+function modeBadgeClass(mode: TradeDialogueView['mode'] | TradeChatterItem['mode']): string {
+  switch (mode) {
+    case 'buyer':
+      return 'border-accent-success/30 bg-accent-success/10 text-accent-success';
+    case 'seller':
+      return 'border-accent-warning/30 bg-accent-warning/10 text-accent-warning';
+    default:
+      return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
+  }
+}
+
+function modeLabel(mode: TradeDialogueView['mode'] | TradeChatterItem['mode']): string {
+  switch (mode) {
+    case 'buyer':
+      return 'Buyer';
+    case 'seller':
+      return 'Seller';
+    default:
+      return 'Standing Pat';
+  }
+}
+
+function dialogueUrgencyClass(urgency: TradeDialogueView['urgency']): string {
+  switch (urgency) {
+    case 'high':
+      return 'border-accent-danger/30 bg-accent-danger/10';
+    case 'medium':
+      return 'border-accent-warning/30 bg-accent-warning/10';
+    default:
+      return 'border-dynasty-border bg-dynasty-elevated';
+  }
 }
 
 function playerAsset(playerId: string): TradeAsset {
@@ -344,6 +397,9 @@ function OfferCard({
           <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${urgencyTone}`}>
             {offer.urgencyTag}
           </span>
+          <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${modeBadgeClass(offer.dialogue.mode)}`}>
+            {modeLabel(offer.dialogue.mode)}
+          </span>
           <span className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
             {offer.fromTeamAbbreviation}
           </span>
@@ -356,6 +412,22 @@ function OfferCard({
           {offer.biddingSummary}
         </p>
       ) : null}
+      <div className={`mt-3 rounded border px-3 py-3 ${dialogueUrgencyClass(offer.dialogue.urgency)}`}>
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">GM Dialogue</p>
+          <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${modeBadgeClass(offer.dialogue.mode)}`}>
+            {offer.dialogue.urgency}
+          </span>
+        </div>
+        <p className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">{offer.dialogue.headline}</p>
+        <div className="mt-2 space-y-2">
+          {offer.dialogue.lines.map((line) => (
+            <p key={`${offer.id}-${line}`} className="rounded border border-dynasty-border bg-dynasty-surface/70 px-3 py-2 font-heading text-xs text-dynasty-text">
+              {line}
+            </p>
+          ))}
+        </div>
+      </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
@@ -404,6 +476,51 @@ function OfferCard({
   );
 }
 
+function DeadlineTheatreCard({ deadlineState }: { deadlineState: TradeDeadlineStateView | null }) {
+  if (!deadlineState) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+              {deadlineState.countdownLabel}
+            </span>
+            <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${modeBadgeClass(deadlineState.teamMode)}`}>
+              {modeLabel(deadlineState.teamMode)}
+            </span>
+          </div>
+          <h2 className="mt-3 font-heading text-lg font-semibold text-dynasty-textBright">Trade Deadline Theatre</h2>
+          <p className="mt-2 max-w-2xl font-heading text-sm text-dynasty-muted">{deadlineState.modeSummary}</p>
+        </div>
+        <div className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+          <p className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Market State</p>
+          <p className="mt-1 font-heading text-sm text-dynasty-text">
+            {deadlineState.deadlineMode ? 'Phones are hot and the market is in deadline mode.' : 'The market is operating outside the final frenzy window.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        {deadlineState.chatter.map((item) => (
+          <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-heading text-sm font-semibold text-dynasty-textBright">{item.headline}</p>
+              <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${modeBadgeClass(item.mode)}`}>
+                {modeLabel(item.mode)}
+              </span>
+            </div>
+            <p className="mt-2 font-heading text-xs text-dynasty-muted">{item.detail}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function TradeSkeleton() {
   return (
     <div className="space-y-4" data-testid="trade-loading">
@@ -446,6 +563,7 @@ export default function TradePage() {
     getTeamRoster,
     getTradeHistory,
     getTradeDeadlineState,
+    getTradeDialogue,
     getTradeAssetInventory,
     proposeTrade,
     respondToTradeOffer,
@@ -466,6 +584,7 @@ export default function TradePage() {
   const [incomingOffers, setIncomingOffers] = useState<HotTradeOfferView[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryView[]>([]);
   const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
+  const [gmDialogue, setGmDialogue] = useState<TradeDialogueView | null>(null);
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
   const [proposing, setProposing] = useState(false);
   const [activeCounterOfferId, setActiveCounterOfferId] = useState<string | null>(null);
@@ -640,6 +759,45 @@ export default function TradePage() {
   );
   const packageFairness = fairnessLabel(fairnessRatio(offerTotal, requestTotal));
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selectedTeam || !isInitialized || !workerReady || !tradeMarketOpen) {
+      setGmDialogue(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadDialogue = async () => {
+      const dialogue = await getTradeDialogue(
+        selectedTeam,
+        offerTotal,
+        requestTotal,
+        activeCounterOfferId ? 'counter' : 'proposal',
+      );
+
+      if (!cancelled) {
+        setGmDialogue((dialogue as TradeDialogueView) ?? null);
+      }
+    };
+
+    void loadDialogue();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeCounterOfferId,
+    getTradeDialogue,
+    isInitialized,
+    offerTotal,
+    requestTotal,
+    selectedTeam,
+    tradeMarketOpen,
+    workerReady,
+  ]);
+
   const submitTrade = async () => {
     if (!selectedTeam || offeringAssets.length === 0 || requestingAssets.length === 0 || !tradeMarketOpen) return;
     const offeredPoolAmount = parsePoolAmount(offeringIFAAmount);
@@ -787,6 +945,8 @@ export default function TradePage() {
           {marketMessage}
         </p>
       </div>
+
+      <DeadlineTheatreCard deadlineState={deadlineState} />
 
       {deadlineState?.recap ? (
         <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
@@ -943,6 +1103,25 @@ export default function TradePage() {
                 ))}
               </select>
             </div>
+
+            {gmDialogue ? (
+              <div className={`mb-4 rounded-lg border px-4 py-3 ${dialogueUrgencyClass(gmDialogue.urgency)}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">Negotiation Flow</span>
+                  <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${modeBadgeClass(gmDialogue.mode)}`}>
+                    {modeLabel(gmDialogue.mode)}
+                  </span>
+                </div>
+                <p className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">{gmDialogue.headline}</p>
+                <div className="mt-3 space-y-2">
+                  {gmDialogue.lines.map((line) => (
+                    <p key={line} className="rounded border border-dynasty-border bg-dynasty-surface/70 px-3 py-2 font-heading text-xs text-dynasty-text">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated">
