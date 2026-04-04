@@ -11,9 +11,11 @@ import { Skeleton } from '@mbd/ui';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
+import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
+import type { GamePlayByPlayView, GameRecapView } from '../components/gameDayBroadcast';
 
 const StandingsCard = lazy(() => import('../components/StandingsCard'));
 const RosterHealthCard = lazy(() => import('../components/RosterHealthCard'));
@@ -21,6 +23,8 @@ const TradeIntelCard = lazy(() => import('../components/TradeIntelCard'));
 const FarmReportCard = lazy(() => import('../components/FarmReportCard'));
 const FinancialCard = lazy(() => import('../components/FinancialCard'));
 const PressDigestCard = lazy(() => import('../components/PressDigestCard'));
+const GameRecapCard = lazy(() => import('../components/GameRecapCard'));
+const PlayByPlayPanel = lazy(() => import('../components/PlayByPlayPanel'));
 
 interface DashboardSummary {
   franchise: {
@@ -196,6 +200,17 @@ interface JobMarketView {
   }>;
 }
 
+interface SeasonRecapView {
+  season: number;
+  recap: string;
+  storylines: string[];
+}
+
+interface OffseasonHeadlineView {
+  season: number;
+  headline: string;
+}
+
 type SimAction = 'day' | 'week' | 'month' | null;
 
 function ownerTone(value: number | undefined): string {
@@ -308,6 +323,12 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [career, setCareer] = useState<GMCareerView | null>(null);
   const [jobMarket, setJobMarket] = useState<JobMarketView | null>(null);
+  const [seasonRecap, setSeasonRecap] = useState<SeasonRecapView | null>(null);
+  const [offseasonHeadline, setOffseasonHeadline] = useState<OffseasonHeadlineView | null>(null);
+  const [recentRecaps, setRecentRecaps] = useState<GameRecapView[]>([]);
+  const [selectedGameIndex, setSelectedGameIndex] = useState<number | null>(null);
+  const [selectedGameDetail, setSelectedGameDetail] = useState<GamePlayByPlayView | null>(null);
+  const [playByPlayLoading, setPlayByPlayLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [applyingTeamId, setApplyingTeamId] = useState<string | null>(null);
   const [simAction, setSimAction] = useState<SimAction>(null);
@@ -316,24 +337,74 @@ export default function DashboardPage() {
     if (!isInitialized || !worker.isReady) return;
     setLoading(true);
     try {
-      const [nextSummary, nextCareer, nextJobMarket] = await Promise.all([
+      const [nextSummary, nextCareer, nextJobMarket, nextRecaps, nextSeasonRecap, nextOffseasonHeadline] = await Promise.all([
         worker.getDashboardSummary(),
         worker.getGMCareer(),
         worker.getJobMarket(),
+        worker.getRecentGameRecaps(3),
+        phase === 'offseason' ? worker.getSeasonRecap(season) : Promise.resolve(null),
+        phase === 'offseason' ? worker.getOffseasonHeadline(season) : Promise.resolve(null),
       ]);
       setSummary((nextSummary ?? null) as DashboardSummary | null);
       setCareer((nextCareer ?? null) as GMCareerView | null);
       setJobMarket((nextJobMarket ?? null) as JobMarketView | null);
+      setSeasonRecap((nextSeasonRecap ?? null) as SeasonRecapView | null);
+      setOffseasonHeadline((nextOffseasonHeadline ?? null) as OffseasonHeadlineView | null);
+      const recapViews = (nextRecaps ?? []) as GameRecapView[];
+      setRecentRecaps(recapViews);
+      setSelectedGameIndex((currentValue) => {
+        if (recapViews.length === 0) {
+          return null;
+        }
+        if (currentValue != null && recapViews.some((recap) => recap.gameIndex === currentValue)) {
+          return currentValue;
+        }
+        return recapViews[0]?.gameIndex ?? null;
+      });
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
       setLoading(false);
     }
-  }, [isInitialized, worker]);
+  }, [isInitialized, phase, season, worker]);
 
   useEffect(() => {
     void fetchData();
   }, [fetchData, day, season, phase]);
+
+  useEffect(() => {
+    if (!isInitialized || !worker.isReady || selectedGameIndex == null) {
+      setSelectedGameDetail(null);
+      setPlayByPlayLoading(false);
+      return;
+    }
+
+    let active = true;
+    setPlayByPlayLoading(true);
+    void worker.getGamePlayByPlay(selectedGameIndex)
+      .then((detail) => {
+        if (!active) {
+          return;
+        }
+        setSelectedGameDetail((detail ?? null) as GamePlayByPlayView | null);
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        console.error('Failed to fetch game play-by-play:', error);
+        setSelectedGameDetail(null);
+      })
+      .finally(() => {
+        if (active) {
+          setPlayByPlayLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isInitialized, selectedGameIndex, worker]);
 
   const handleApplyForJob = useCallback(async (teamId: string) => {
     setApplyingTeamId(teamId);
@@ -512,6 +583,54 @@ export default function DashboardPage() {
             </div>
           </section>
         ) : null}
+
+        {phase === 'offseason' && seasonRecap && offseasonHeadline ? (
+          <SeasonNarrativePanel
+            season={seasonRecap.season}
+            title="Offseason Outlook"
+            headline={offseasonHeadline.headline}
+            recap={seasonRecap.recap}
+            storylines={seasonRecap.storylines}
+          />
+        ) : null}
+
+        <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Game Day</div>
+                <h2 className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">Recent Broadcast Recaps</h2>
+              </div>
+              <span className="rounded-full border border-dynasty-border px-3 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+                Last {recentRecaps.length}
+              </span>
+            </div>
+
+            {recentRecaps.length > 0 ? (
+              <div className="grid gap-3">
+                {recentRecaps.map((recap) => (
+                  <Suspense key={recap.gameIndex} fallback={<CardFallback title="Game Recap" />}>
+                    <GameRecapCard
+                      recap={recap}
+                      selected={recap.gameIndex === selectedGameIndex}
+                      onSelect={setSelectedGameIndex}
+                    />
+                  </Suspense>
+                ))}
+              </div>
+            ) : (
+              <EmptyStatePanel
+                className="border-dynasty-border/60 bg-dynasty-elevated"
+                title="No recent user-team games"
+                description="Sim a few regular-season days and the broadcast booth will start collecting fresh recaps and highlight reels."
+              />
+            )}
+          </section>
+
+          <Suspense fallback={<CardFallback title="Broadcast Booth" />}>
+            <PlayByPlayPanel detail={selectedGameDetail} loading={playByPlayLoading} />
+          </Suspense>
+        </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
           <Suspense fallback={<CardFallback title="Standings" />}>

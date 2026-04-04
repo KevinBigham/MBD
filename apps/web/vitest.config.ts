@@ -19,5 +19,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
+    fileParallelism: false,
+    maxWorkers: 1,
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
   },
 });

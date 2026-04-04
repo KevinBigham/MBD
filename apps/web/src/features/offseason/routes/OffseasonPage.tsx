@@ -21,6 +21,7 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, Stat
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 
 const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; description: string }> = {
   season_review: {
@@ -196,6 +197,17 @@ interface OffseasonData {
   rule5?: Rule5View;
 }
 
+interface SeasonRecapView {
+  season: number;
+  recap: string;
+  storylines: string[];
+}
+
+interface OffseasonHeadlineView {
+  season: number;
+  headline: string;
+}
+
 function isOffseasonData(value: unknown): value is OffseasonData {
   return typeof value === 'object' && value !== null && 'currentPhase' in value && 'phaseResults' in value;
 }
@@ -229,6 +241,8 @@ export default function OffseasonPage() {
   const worker = useWorker();
   const { phase, season, isInitialized, userTeamId } = useGameStore();
   const [offseason, setOffseason] = useState<OffseasonData | null>(null);
+  const [seasonRecap, setSeasonRecap] = useState<SeasonRecapView | null>(null);
+  const [offseasonHeadline, setOffseasonHeadline] = useState<OffseasonHeadlineView | null>(null);
   const [extensionCandidates, setExtensionCandidates] = useState<ExtensionCandidateView[]>([]);
   const [qualifyingOfferEligible, setQualifyingOfferEligible] = useState<QualifyingOfferEligibleView[]>([]);
   const [qualifyingOfferSalary, setQualifyingOfferSalary] = useState<number | null>(null);
@@ -265,23 +279,27 @@ export default function OffseasonPage() {
 
   const fetchOffseason = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return null;
-    const [data, extensionData, qualifyingOfferData, qualifyingOfferAmount] = await Promise.all([
+    const [data, extensionData, qualifyingOfferData, qualifyingOfferAmount, recapView, headlineView] = await Promise.all([
       worker.getOffseasonState(),
       worker.getExtensionCandidates(userTeamId),
       worker.getQualifyingOfferEligible(userTeamId),
       worker.getQualifyingOfferSalary(),
+      worker.getSeasonRecap(season),
+      worker.getOffseasonHeadline(season),
     ]);
 
     setExtensionCandidates((extensionData ?? []) as ExtensionCandidateView[]);
     setQualifyingOfferEligible((qualifyingOfferData ?? []) as QualifyingOfferEligibleView[]);
     setQualifyingOfferSalary(typeof qualifyingOfferAmount === 'number' ? qualifyingOfferAmount : null);
+    setSeasonRecap((recapView ?? null) as SeasonRecapView | null);
+    setOffseasonHeadline((headlineView ?? null) as OffseasonHeadlineView | null);
 
     if (data) {
       applyOffseasonData(data as OffseasonData);
       return data as OffseasonData;
     }
     return null;
-  }, [applyOffseasonData, isInitialized, userTeamId, worker]);
+  }, [applyOffseasonData, isInitialized, season, userTeamId, worker]);
 
   useEffect(() => {
     void fetchOffseason();
@@ -545,6 +563,16 @@ export default function OffseasonPage() {
           </div>
         </div>
       </div>
+
+      {seasonRecap && offseasonHeadline ? (
+        <SeasonNarrativePanel
+          season={seasonRecap.season}
+          title="Offseason Narrative"
+          headline={offseasonHeadline.headline}
+          recap={seasonRecap.recap}
+          storylines={seasonRecap.storylines}
+        />
+      ) : null}
 
       {offseason && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-9">

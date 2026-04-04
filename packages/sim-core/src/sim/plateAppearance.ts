@@ -29,6 +29,14 @@ export interface PAResult {
   readonly outcome: PAOutcome;
   readonly batterId: string;
   readonly pitcherId: string;
+  readonly inning: number;
+  readonly halfInning: 'top' | 'bottom';
+  readonly outs: number;
+  readonly runnersOn: number;
+  readonly scoreBefore: readonly [number, number];
+  readonly scoreAfter: readonly [number, number];
+  readonly rbiOnPlay: number;
+  readonly isWalkOff: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,10 +163,34 @@ export function resolvePlateAppearance(
         outcome = 'DOUBLE_PLAY';
       }
 
-      return { outcome, batterId, pitcherId };
+      return {
+        outcome,
+        batterId,
+        pitcherId,
+        inning: 0,
+        halfInning: 'top',
+        outs: 0,
+        runnersOn: 0,
+        scoreBefore: [0, 0],
+        scoreAfter: [0, 0],
+        rbiOnPlay: 0,
+        isWalkOff: false,
+      };
     }
   }
 
   // Fallback (floating point guard)
-  return { outcome: 'FB_OUT', batterId, pitcherId };
+  return {
+    outcome: 'FB_OUT',
+    batterId,
+    pitcherId,
+    inning: 0,
+    halfInning: 'top',
+    outs: 0,
+    runnersOn: 0,
+    scoreBefore: [0, 0],
+    scoreAfter: [0, 0],
+    rbiOnPlay: 0,
+    isWalkOff: false,
+  };
 }

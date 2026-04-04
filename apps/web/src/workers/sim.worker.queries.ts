@@ -10,6 +10,9 @@ import {
   createFreeAgencyMarket,
   describeInjury,
   evaluatePlayerTradeValue,
+  generateGameHighlights,
+  generateGameRecap,
+  generatePlayByPlay,
   generateAITradeOffers,
   getScenarioById,
   getActiveRosterLimit,
@@ -24,6 +27,7 @@ import {
 import type { CareerStatsLedger, HistoricalPlayer, ScoutConflict } from '@mbd/contracts';
 import type {
   FreeAgent,
+  GameBoxScore,
   GeneratedPlayer,
   LeaderboardStatKey,
   PlayerGameStats,
@@ -71,9 +75,22 @@ import {
 import {
   buildTradeAssetInventoryView,
   buildTradeDeadlineStateView,
+  buildTradeDialogueView,
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
+import {
+  buildSeasonRecapView,
+  buildOffseasonHeadlineView,
+} from './sim.worker.seasonNarrative.js';
+import {
+  buildProspectPipelineView,
+} from './sim.worker.pipeline.js';
+import {
+  buildDraftCommentaryView,
+  buildDraftPostDraftGradesView,
+  buildDraftProspectReactionView,
+} from './sim.worker.draft.js';
 import {
   buildAdvancedStatsIndex,
   buildLeagueLeaderEntries,
@@ -291,6 +308,88 @@ function buildThisDayInHistory(s: NonNullable<typeof state>) {
       ? `${archive.userRecord.wins}-${archive.userRecord.losses}${archive.championshipWon ? ' · Title season' : ''}`
       : 'Archived season summary.',
   };
+}
+
+function buildPlayerNameMap(s: NonNullable<typeof state>) {
+  const names = new Map<string, string>();
+  for (const player of s.players) {
+    names.set(player.id, `${player.firstName} ${player.lastName}`);
+  }
+  return names;
+}
+
+function buildTeamNameMap(boxScore: GameBoxScore) {
+  return new Map<string, string>([
+    [boxScore.awayTeamId, teamNameFromId(boxScore.awayTeamId)],
+    [boxScore.homeTeamId, teamNameFromId(boxScore.homeTeamId)],
+  ]);
+}
+
+function buildGamePlayByPlayView(
+  s: NonNullable<typeof state>,
+  gameIndex: number,
+) {
+  const boxScore = s.seasonState.gameLog[gameIndex];
+  if (!boxScore) {
+    return null;
+  }
+
+  const playerNames = buildPlayerNameMap(s);
+  const teamNames = buildTeamNameMap(boxScore);
+  const highlights = generateGameHighlights(boxScore, playerNames, teamNames);
+  const highlightKeys = new Set(
+    highlights.map((highlight) => `${highlight.inning}:${highlight.halfInning}:${highlight.text}`),
+  );
+  const plays = boxScore.paResults.map((pa) => {
+    const text = generatePlayByPlay(
+      pa,
+      playerNames.get(pa.batterId) ?? pa.batterId,
+      playerNames.get(pa.pitcherId) ?? pa.pitcherId,
+      teamNames.get(boxScore.awayTeamId) ?? boxScore.awayTeamId.toUpperCase(),
+      teamNames.get(boxScore.homeTeamId) ?? boxScore.homeTeamId.toUpperCase(),
+    );
+
+    return {
+      inning: pa.inning,
+      halfInning: pa.halfInning,
+      text,
+      isHighlight: highlightKeys.has(`${pa.inning}:${pa.halfInning}:${text}`),
+    };
+  });
+
+  return {
+    gameIndex,
+    recap: generateGameRecap(boxScore, highlights, playerNames, teamNames),
+    highlights,
+    plays,
+    boxScore,
+  };
+}
+
+function buildRecentGameRecapViews(
+  s: NonNullable<typeof state>,
+  count: number,
+) {
+  return s.seasonState.gameLog
+    .map((boxScore, gameIndex) => ({ boxScore, gameIndex }))
+    .filter(({ boxScore }) => boxScore.homeTeamId === s.userTeamId || boxScore.awayTeamId === s.userTeamId)
+    .reverse()
+    .slice(0, Math.max(1, count))
+    .map(({ gameIndex }) => {
+      const detail = buildGamePlayByPlayView(s, gameIndex);
+      if (!detail) {
+        return null;
+      }
+
+      return {
+        gameIndex,
+        recap: detail.recap,
+        highlights: detail.highlights,
+        playByPlay: detail.plays,
+        boxScore: detail.boxScore,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry != null);
 }
 
 function buildDashboardSummary(s: NonNullable<typeof state>) {
@@ -1101,6 +1200,11 @@ export const queryApi = {
     return buildAffiliateOverview(teamId ?? s.userTeamId);
   },
 
+  getProspectPipeline(teamId?: string) {
+    const s = requireState();
+    return buildProspectPipelineView(s, teamId ?? s.userTeamId);
+  },
+
   getAffiliateBoxScore(boxScoreId: string) {
     return getAffiliateBoxScoreView(boxScoreId);
   },
@@ -1186,6 +1290,14 @@ export const queryApi = {
 
   getDashboardSummary() {
     return state ? buildDashboardSummary(state) : null;
+  },
+
+  getGamePlayByPlay(gameIndex: number) {
+    return state ? buildGamePlayByPlayView(state, gameIndex) : null;
+  },
+
+  getRecentGameRecaps(count: number = 3) {
+    return state ? buildRecentGameRecapViews(state, count) : [];
   },
 
   getMonthlyPulse() {
@@ -1376,6 +1488,18 @@ export const queryApi = {
     return buildDraftRoomView(requireState());
   },
 
+  getDraftCommentary(visiblePickCount?: number) {
+    return buildDraftCommentaryView(requireState(), visiblePickCount);
+  },
+
+  getDraftProspectReaction(prospectId: string) {
+    return buildDraftProspectReactionView(requireState(), prospectId);
+  },
+
+  getDraftPostDraftGrades() {
+    return buildDraftPostDraftGradesView(requireState());
+  },
+
   getPlayerTradeValue(playerId: string): PlayerTradeValue | null {
     const player = requireState().players.find((candidate) => candidate.id === playerId);
     return player ? evaluatePlayerTradeValue(player) : null;
@@ -1391,6 +1515,15 @@ export const queryApi = {
 
   getTradeDeadlineState() {
     return buildTradeDeadlineStateView(requireState());
+  },
+
+  getTradeDialogue(
+    teamId: string,
+    offerValue: number,
+    requestValue: number,
+    negotiationType: 'proposal' | 'counter' | 'offer' = 'proposal',
+  ) {
+    return buildTradeDialogueView(requireState(), teamId, offerValue, requestValue, negotiationType);
   },
 
   getTradeAssetInventory(teamId: string) {
@@ -1411,6 +1544,14 @@ export const queryApi = {
 
   getOffseasonState() {
     return buildOffseasonStateView(requireState());
+  },
+
+  getSeasonRecap(season?: number) {
+    return buildSeasonRecapView(requireState(), season);
+  },
+
+  getOffseasonHeadline(season?: number) {
+    return buildOffseasonHeadlineView(requireState(), season);
   },
 
   getNews(limit: number = 50) {

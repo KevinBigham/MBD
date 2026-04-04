@@ -14,14 +14,18 @@ import {
   createInitialPlayerMorale,
   createOwnerState,
   deduplicateNews,
+  deriveTradeDeadlineMode,
   evaluateFrontOfficeState,
+  generateTradeDialogue,
+  getDaysUntilTradeDeadline,
   getTeamBudget,
   getTeamById,
+  getTradeDeadlineDay,
   type ConsequenceBundle,
   type UserPostseasonOutcome,
 } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers';
-import { getTeamPlayers } from './sim.worker.helpers';
+import { createStableWorkerRng, getTeamPlayers } from './sim.worker.helpers';
 import { rebuildBriefing } from './sim.worker.narrative';
 
 function updateFrontOffice(
@@ -68,6 +72,94 @@ function queueContractReactionWatcher(
 function teamLabel(teamId: string): string {
   const team = getTeamById(teamId);
   return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
+function buildTradeDialoguePayload(
+  state: FullGameState,
+  partnerTeamId: string,
+  offerValue: number,
+  requestValue: number,
+) {
+  const team = getTeamById(partnerTeamId);
+  const record = state.seasonState.standings.getRecord(partnerTeamId);
+  const divisionStandings = team ? state.seasonState.standings.getDivisionStandings(team.division) : [];
+  const standingEntry = divisionStandings.find((entry) => entry.teamId === partnerTeamId);
+  const totalGames = (record?.wins ?? 0) + (record?.losses ?? 0);
+  const daysUntilDeadline = state.phase === 'regular' && state.day <= getTradeDeadlineDay()
+    ? getDaysUntilTradeDeadline(state.day)
+    : null;
+  const mode = deriveTradeDeadlineMode({
+    winPct: totalGames > 0 ? (record?.wins ?? 0) / totalGames : 0.5,
+    gamesBack: standingEntry?.gamesBack ?? 0,
+    daysUntilDeadline,
+    gmPersonality: state.gmPersonalities.get(partnerTeamId) ?? 'analytical',
+  });
+
+  return generateTradeDialogue(
+    createStableWorkerRng(state, `trade-dialogue:${partnerTeamId}:offer:${Math.round(offerValue)}:${Math.round(requestValue)}`),
+    {
+      teamName: teamLabel(partnerTeamId),
+      gmPersonality: state.gmPersonalities.get(partnerTeamId) ?? 'analytical',
+      mode,
+      daysUntilDeadline,
+      offerValue,
+      requestValue,
+      negotiationType: 'offer',
+    },
+  );
+}
+
+function injectTradeDialogueStory(
+  state: FullGameState,
+  bundle: ConsequenceBundle,
+  partnerTeamId: string,
+  offerValue: number,
+  requestValue: number,
+  relatedPlayerIds: string[],
+) {
+  const dialogue = buildTradeDialoguePayload(state, partnerTeamId, offerValue, requestValue);
+  const timestamp = `S${state.season}D${state.day}`;
+  const dialogueLine = dialogue.lines.at(-1) ?? dialogue.headline;
+
+  if (bundle.newsItems[0]) {
+    bundle.newsItems[0] = {
+      ...bundle.newsItems[0],
+      body: `${bundle.newsItems[0].body} ${dialogueLine}`.trim(),
+    };
+  }
+
+  if (bundle.briefingItems[0]) {
+    bundle.briefingItems[0] = {
+      ...bundle.briefingItems[0],
+      body: `${bundle.briefingItems[0].body} ${dialogueLine}`.trim(),
+    };
+  }
+
+  bundle.newsItems = [{
+    id: `trade-dialogue-${state.season}-${state.day}-${partnerTeamId}-${Math.round(offerValue)}-${Math.round(requestValue)}`,
+    headline: dialogue.headline,
+    body: dialogue.lines.join(' '),
+    priority: 2,
+    category: 'trade',
+    tag: 'ANALYSIS',
+    timestamp,
+    relatedPlayerIds: [],
+    relatedTeamIds: [state.userTeamId, partnerTeamId],
+    read: false,
+  }, ...bundle.newsItems];
+
+  bundle.briefingItems = [{
+    id: `brief-trade-dialogue-${state.season}-${state.day}-${partnerTeamId}`,
+    priority: 2,
+    category: 'news',
+    tag: 'ANALYSIS',
+    headline: dialogue.headline,
+    body: dialogue.lines.join(' '),
+    relatedTeamIds: [state.userTeamId, partnerTeamId],
+    relatedPlayerIds,
+    timestamp,
+    acknowledged: false,
+  }, ...bundle.briefingItems];
 }
 
 function homegrownDraftSeason(
@@ -273,6 +365,14 @@ export function applyTradeConsequences(
     payrollAfterTrade: calculateTeamPayroll(state.userTeamId, getTeamPlayers(state.userTeamId)).totalPayroll,
     payrollTarget: ownerState.expectations.payrollTarget,
   });
+  injectTradeDialogueStory(
+    state,
+    bundle,
+    partnerTeamId,
+    comparison.requestValue,
+    comparison.offerValue,
+    [...requestedIds, ...offeredIds],
+  );
 
   applyConsequenceBundle(state, bundle);
   state.consequenceWatchers = appendConsequenceWatchers(

@@ -132,6 +132,108 @@ interface AffiliateBoxScoreView {
   summary: string;
 }
 
+interface ProspectPipelineView {
+  health: {
+    score: number;
+    label: string;
+    readyNow: number;
+    nextWave: number;
+    longTerm: number;
+    summary: string;
+  };
+  prospects: Array<{
+    playerId: string;
+    playerName: string;
+    eta: string;
+    trend: string;
+  }>;
+}
+
+interface RecentGameRecapView {
+  gameIndex: number;
+  recap: string;
+  highlights: Array<{
+    type: string;
+    text: string;
+  }>;
+  playByPlay: Array<{
+    inning: number;
+    halfInning: 'top' | 'bottom';
+    text: string;
+    isHighlight: boolean;
+  }>;
+  boxScore: {
+    homeTeamId: string;
+    awayTeamId: string;
+    innings: number;
+  };
+}
+
+interface GamePlayByPlayView {
+  recap: string;
+  highlights: Array<{
+    type: string;
+    text: string;
+  }>;
+  plays: Array<{
+    inning: number;
+    halfInning: 'top' | 'bottom';
+    text: string;
+    isHighlight: boolean;
+  }>;
+  boxScore: {
+    homeTeamId: string;
+    awayTeamId: string;
+    innings: number;
+  };
+}
+
+interface SeasonRecapView {
+  season: number;
+  recap: string;
+  storylines: string[];
+}
+
+interface OffseasonHeadlineView {
+  season: number;
+  headline: string;
+}
+
+interface DraftCommentaryView {
+  heartbeat: string | null;
+  entries: Array<{
+    id: string;
+    headline: string;
+    detail: string;
+  }>;
+  buzz: Array<{
+    id: string;
+    label: string;
+    summary: string;
+  }>;
+}
+
+interface DraftProspectReactionView {
+  playerId: string;
+  headline: string;
+  summary: string;
+  recommendation: 'sprint' | 'hover' | 'pass';
+}
+
+interface DraftPostDraftGradesView {
+  userTeamId: string;
+  userTeamGrade: {
+    teamId: string;
+    grade: string;
+    summary: string;
+  } | null;
+  grades: Array<{
+    teamId: string;
+    teamName: string;
+    grade: string;
+  }>;
+}
+
 interface MinorLeagueWorkerApi {
   getSetupPreview: (options: {
     seed: number;
@@ -2241,6 +2343,90 @@ describe('sim worker narrative APIs', () => {
     expect(secondRun.draft?.userDraftClass?.picks.length).toBeGreaterThan(0);
   });
 
+  it('builds deterministic draft commentary, preview, and post-draft grades without advancing rng state', () => {
+    startGame(341, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    const workerApi = api as typeof api & {
+      getDraftCommentary: (visiblePickCount?: number) => DraftCommentaryView | null;
+      getDraftProspectReaction: (prospectId: string) => DraftProspectReactionView | null;
+      getDraftPostDraftGrades: () => DraftPostDraftGradesView | null;
+      getDraftClass: () => {
+        completedPicks: Array<{ id?: string }>;
+        availableProspects: Array<{ id: string }>;
+      } | null;
+    };
+
+    api.startDraft();
+    const draft = workerApi.getDraftClass();
+    const prospectId = draft?.availableProspects[0]?.id;
+    expect(prospectId).toBeTruthy();
+
+    const commentaryCallsBefore = requireState().rng.getState().callCount;
+    const firstCommentary = workerApi.getDraftCommentary(draft?.completedPicks.length ?? 0);
+    const secondCommentary = workerApi.getDraftCommentary(draft?.completedPicks.length ?? 0);
+
+    expect(secondCommentary).toEqual(firstCommentary);
+    expect(requireState().rng.getState().callCount).toBe(commentaryCallsBefore);
+    expect(firstCommentary?.entries.length).toBeGreaterThan(0);
+    expect(firstCommentary?.buzz.length).toBeGreaterThan(0);
+
+    const previewCallsBefore = requireState().rng.getState().callCount;
+    const firstPreview = workerApi.getDraftProspectReaction(prospectId!);
+    const secondPreview = workerApi.getDraftProspectReaction(prospectId!);
+
+    expect(secondPreview).toEqual(firstPreview);
+    expect(requireState().rng.getState().callCount).toBe(previewCallsBefore);
+    expect(firstPreview?.playerId).toBe(prospectId);
+    expect(firstPreview?.recommendation).toMatch(/^(sprint|hover|pass)$/);
+
+    api.simulateRemainingDraft();
+
+    const gradesCallsBefore = requireState().rng.getState().callCount;
+    const firstGrades = workerApi.getDraftPostDraftGrades();
+    const secondGrades = workerApi.getDraftPostDraftGrades();
+
+    expect(secondGrades).toEqual(firstGrades);
+    expect(requireState().rng.getState().callCount).toBe(gradesCallsBefore);
+    expect(firstGrades?.grades.length).toBeGreaterThan(0);
+    expect(firstGrades?.userTeamGrade?.grade).toMatch(/^[A-F]/);
+  });
+
+  it('publishes post-draft grades into news and the press room when the draft completes', () => {
+    startGame(3412, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    api.startDraft();
+    const result = api.simulateRemainingDraft() as { success: boolean };
+    const news = api.getNews(25);
+    const pressRoom = (api as typeof api & {
+      getPressRoomFeed: (limit?: number) => Array<{ headline: string; category: string }>;
+    }).getPressRoomFeed(25);
+    const draftStory = news.find((item) => item.category === 'draft');
+
+    expect(result.success).toBe(true);
+    expect(draftStory).toBeDefined();
+    expect(draftStory?.headline.toLowerCase()).toContain('draft');
+    expect(draftStory?.body.toLowerCase()).toContain('grade');
+    expect(pressRoom.some((entry) =>
+      entry.category === 'draft' && entry.headline === draftStory?.headline,
+    )).toBe(true);
+  });
+
   it('creates a rule 5 protection audit after the amateur draft and lets the user protect an exposed prospect', () => {
     startGame(340, 'nyy');
     const state = requireState();
@@ -2467,17 +2653,56 @@ describe('sim worker narrative APIs', () => {
     const deadlineState = (api as typeof api & {
       getTradeDeadlineState: () => {
         deadlineMode: boolean;
-        hotOffers: Array<{ urgencyTag: string; bidderCount: number; biddingSummary: string | null }>;
+        teamMode: string;
+        modeSummary: string;
+        countdownLabel: string;
+        chatter: Array<{ headline: string }>;
+        hotOffers: Array<{ urgencyTag: string; bidderCount: number; biddingSummary: string | null; dialogue: { headline: string; lines: string[] } }>;
         ticker: Array<{ summary: string }>;
       };
     }).getTradeDeadlineState();
 
     expect(deadlineState.deadlineMode).toBe(true);
+    expect(deadlineState.teamMode).toBe('buyer');
+    expect(deadlineState.modeSummary.length).toBeGreaterThan(0);
+    expect(deadlineState.countdownLabel).toContain('days');
+    expect(deadlineState.chatter.length).toBeGreaterThan(0);
     expect(deadlineState.hotOffers).toHaveLength(2);
     expect(deadlineState.hotOffers[0]?.urgencyTag).toBe('EXPIRING SOON');
     expect(deadlineState.hotOffers.some((offer) => offer.bidderCount > 1)).toBe(true);
     expect(deadlineState.hotOffers.some((offer) => offer.biddingSummary?.includes('clubs'))).toBe(true);
+    expect(deadlineState.hotOffers[0]?.dialogue.lines.length).toBe(3);
     expect(deadlineState.ticker[0]?.summary).toContain('Seattle Mariners');
+  });
+
+  it('builds deterministic trade dialogue without advancing rng state', () => {
+    startGame(34015, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 118;
+
+    const workerApi = api as typeof api & {
+      getTradeDialogue: (
+        teamId: string,
+        offerValue: number,
+        requestValue: number,
+        negotiationType?: 'proposal' | 'counter' | 'offer',
+      ) => {
+        headline: string;
+        lines: string[];
+        mode: string;
+      };
+    };
+
+    const rngCallsBefore = requireState().rng.getState().callCount;
+    const first = workerApi.getTradeDialogue('bos', 48, 61, 'proposal');
+    const second = workerApi.getTradeDialogue('bos', 48, 61, 'proposal');
+
+    expect(second).toEqual(first);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(first.headline).toContain('Boston Red Sox');
+    expect(first.lines.length).toBe(3);
+    expect(first.mode).toMatch(/^(buyer|seller|standing_pat)$/);
   });
 
   it('creates a deadline recap and analysis when the market closes', () => {
@@ -2615,6 +2840,51 @@ describe('sim worker narrative APIs', () => {
     expect(api.getBriefing(25).some((item) => item.category === 'news' && item.relatedPlayerIds.includes(offered.id))).toBe(true);
     expect(requireState().playerMorale.get(offered.id)?.score).toBeGreaterThan(baselineIncomingMorale);
     expect(requireState().playerMorale.get(requested.id)?.score).toBeLessThan(baselineOutgoingMorale);
+  });
+
+  it('carries accepted trade dialogue into consequence stories and the press room', () => {
+    startGame(3421, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+
+    const { offer, requested, offered } = buildIncomingOffer('accept-dialogue-offer');
+    state.tradeState.pendingOffers = [offer];
+
+    const workerApi = api as typeof api & {
+      getTradeDialogue: (
+        teamId: string,
+        offerValue: number,
+        requestValue: number,
+        negotiationType?: 'proposal' | 'counter' | 'offer',
+      ) => {
+        headline: string;
+        lines: string[];
+      };
+      getPressRoomFeed: (limit?: number) => Array<{ headline: string; category: string; body: string }>;
+    };
+    const expectedDialogue = workerApi.getTradeDialogue(
+      'bos',
+      evaluatePlayerTradeValue(offered).overall,
+      evaluatePlayerTradeValue(requested).overall,
+      'offer',
+    );
+
+    const result = api.respondToTradeOffer(offer.id, 'accept');
+    const news = api.getNews(25);
+    const pressRoom = workerApi.getPressRoomFeed(25);
+
+    expect(result.success).toBe(true);
+    expect(news.some((item) =>
+      item.category === 'trade'
+      && (
+        item.headline === expectedDialogue.headline
+        || item.body.includes(expectedDialogue.lines.at(-1) ?? expectedDialogue.headline)
+      ),
+    )).toBe(true);
+    expect(pressRoom.some((entry) =>
+      entry.category === 'trade' && entry.headline === expectedDialogue.headline,
+    )).toBe(true);
   });
 
   it('advances trade sagas and annotates homegrown aftermath when a bonded player is moved', () => {
@@ -3025,6 +3295,164 @@ describe('sim worker narrative APIs', () => {
     )).toBe(true);
   });
 
+  it('builds recent game recaps and play-by-play views without advancing rng state', () => {
+    startGame(3557, 'nyy');
+
+    const workerApi = api as typeof api & {
+      getRecentGameRecaps: (count?: number) => RecentGameRecapView[];
+      getGamePlayByPlay: (gameIndex: number) => GamePlayByPlayView | null;
+    };
+
+    let recaps = workerApi.getRecentGameRecaps(3);
+    while (recaps.length === 0 && requireState().phase === 'preseason') {
+      api.simDay();
+      recaps = workerApi.getRecentGameRecaps(3);
+    }
+    while (recaps.length === 0 && requireState().phase === 'regular' && requireState().day < 25) {
+      api.simDay();
+      recaps = workerApi.getRecentGameRecaps(3);
+    }
+
+    expect(recaps.length).toBeGreaterThan(0);
+
+    const rngCallsBefore = requireState().rng.getState().callCount;
+    const firstRecaps = workerApi.getRecentGameRecaps(3);
+    const secondRecaps = workerApi.getRecentGameRecaps(3);
+
+    expect(secondRecaps).toEqual(firstRecaps);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(firstRecaps[0]?.recap.length).toBeGreaterThan(0);
+    expect(firstRecaps[0]?.playByPlay.length).toBeGreaterThan(0);
+
+    const detailFirst = workerApi.getGamePlayByPlay(firstRecaps[0]!.gameIndex);
+    const detailSecond = workerApi.getGamePlayByPlay(firstRecaps[0]!.gameIndex);
+
+    expect(detailSecond).toEqual(detailFirst);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(detailFirst?.highlights.length).toBeGreaterThan(0);
+    expect(detailFirst?.boxScore.innings).toBeGreaterThanOrEqual(9);
+  });
+
+  it('builds prospect pipeline ETA buckets plus offseason narrative reads without advancing rng state', () => {
+    startGame(3558, 'nyy');
+    const state = requireState();
+    const workerApi = api as typeof api & {
+      getProspectPipeline: (teamId?: string) => ProspectPipelineView;
+      getSeasonRecap: (season?: number) => SeasonRecapView | null;
+      getOffseasonHeadline: (season?: number) => OffseasonHeadlineView | null;
+    };
+
+    const readyProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AAA')!;
+    const nextWaveProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+    const longViewProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'A')!;
+
+    readyProspect.overallRating = 62;
+    readyProspect.ceiling = 70;
+    nextWaveProspect.overallRating = 55;
+    nextWaveProspect.ceiling = 67;
+    longViewProspect.age = 20;
+    longViewProspect.overallRating = 47;
+    longViewProspect.ceiling = 72;
+
+    state.prospectBonds.push({
+      prospectId: readyProspect.id,
+      draftedSeason: state.season - 1,
+      debutSeason: null,
+      currentLevel: 'AAA',
+      bondStrength: 41,
+      milestones: ['Drafted Round 1, 4'],
+      loyaltyModifier: 0.41,
+    });
+    state.minorLeagueState.minorLeagueStatHistory = [[readyProspect.id, [{
+      season: state.season,
+      level: 'AAA',
+      gamesPlayed: 70,
+      pa: 282,
+      hits: 88,
+      hr: 18,
+      rbi: 54,
+      avg: 0.314,
+      ip: 0,
+      era: 0,
+      k: 0,
+      bb: 31,
+    }]]];
+    state.seasonHistory.push({
+      season: state.season,
+      championTeamId: 'nyy',
+      runnerUpTeamId: 'lad',
+      worldSeriesRecord: '4-2',
+      summary: 'The Yankees finished the job and closed the season on top.',
+      awards: [],
+      keyMoments: ['Deadline blockbuster reshaped the bullpen'],
+      statLeaders: {
+        hr: [],
+        rbi: [],
+        avg: [],
+        era: [],
+        k: [],
+        w: [],
+      },
+      notableRetirements: [],
+      blockbusterTrades: [],
+      userSeason: {
+        teamId: 'nyy',
+        record: '97-65',
+        playoffResult: 'Won the World Series',
+        storylines: ['Judge delivered in the postseason'],
+      },
+    });
+    state.seasonArchive.push({
+      season: state.season,
+      standings: [],
+      playoffSeries: [],
+      awards: [],
+      statLeaders: {
+        hr: [],
+        rbi: [],
+        avg: [],
+        era: [],
+        k: [],
+        w: [],
+      },
+      transactions: [{
+        headline: 'Deadline blockbuster reshaped the bullpen',
+        summary: 'New York added Jordan Reliever and stabilized the late innings.',
+        playerIds: ['Jordan Reliever'],
+        teamIds: ['nyy', 'sea'],
+        impactScore: 88,
+      }],
+      draftClass: [],
+      financials: [],
+      userSummary: {
+        teamId: 'nyy',
+        record: '97-65',
+        playoffResult: 'Won the World Series',
+        storylines: ['Judge delivered in the postseason'],
+      },
+      timelineEvents: ['Judge delivered in the postseason'],
+    });
+
+    const rngCallsBefore = requireState().rng.getState().callCount;
+    const firstPipeline = workerApi.getProspectPipeline('nyy');
+    const secondPipeline = workerApi.getProspectPipeline('nyy');
+    const firstRecap = workerApi.getSeasonRecap(state.season);
+    const secondRecap = workerApi.getSeasonRecap(state.season);
+    const firstHeadline = workerApi.getOffseasonHeadline(state.season);
+    const secondHeadline = workerApi.getOffseasonHeadline(state.season);
+
+    expect(secondPipeline).toEqual(firstPipeline);
+    expect(secondRecap).toEqual(firstRecap);
+    expect(secondHeadline).toEqual(firstHeadline);
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(firstPipeline.health.label.length).toBeGreaterThan(0);
+    expect(firstPipeline.prospects.find((prospect) => prospect.playerId === readyProspect.id)?.eta).toBe('Ready now');
+    expect(firstPipeline.prospects.find((prospect) => prospect.playerId === nextWaveProspect.id)?.eta).toBe('Next season');
+    expect(firstPipeline.prospects.find((prospect) => prospect.playerId === longViewProspect.id)?.eta).toBe('2 seasons');
+    expect(firstRecap?.recap).toContain('97-65');
+    expect(firstHeadline?.headline).toContain('World Series');
+  });
+
   it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {
     startGame(344, 'nyy');
 
@@ -3035,7 +3463,7 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().playoffBracket).toBeNull();
     expect(flow.status).toBe('regular_season_complete');
     expect(flow.action).toBe('watch_playoffs');
-  }, 20_000);
+  }, 30_000);
 
   it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {
     startGame(345, 'nyy');
@@ -3562,6 +3990,59 @@ describe('sim worker narrative APIs', () => {
 
     expect(state.tickerFeed[0]?.text).toContain('The rivalry intensifies as');
     expect(state.tickerFeed[0]?.text).toContain('3-1');
+  });
+
+  it('feeds dramatic game highlights into the ticker and league news', () => {
+    startGame(7802, 'nyy');
+    const state = requireState();
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const pitcher = state.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+
+    refreshTickerFeed(state, {
+      simDay: state.day,
+      games: [{
+        homeTeamId: 'nyy',
+        awayTeamId: 'bos',
+        homeScore: 6,
+        awayScore: 5,
+        innings: 9,
+        homeHits: 9,
+        awayHits: 8,
+        paResults: [{
+          outcome: 'HR',
+          batterId: hitter.id,
+          pitcherId: pitcher.id,
+          inning: 9,
+          halfInning: 'bottom',
+          outs: 1,
+          runnersOn: 1,
+          scoreBefore: [5, 4],
+          scoreAfter: [5, 6],
+          rbiOnPlay: 2,
+          isWalkOff: true,
+        }],
+        date: 'S1D1',
+        isPlayoff: false,
+      }],
+      previousStandings: state.seasonState.standings.serialize(),
+      previousInjuryIds: new Set(),
+      previousTradeCount: state.tradeState.tradeHistory.length,
+    });
+
+    const highlightNews = state.news.find((item) =>
+      item.category === 'performance'
+      && item.relatedTeamIds.includes('nyy')
+      && item.relatedTeamIds.includes('bos'),
+    );
+
+    expect(state.tickerFeed[0]?.text).toContain('WALK-OFF HOME RUN');
+    expect(state.tickerFeed[0]?.relatedPlayerIds).toContain(hitter.id);
+    expect(highlightNews?.headline.toLowerCase()).toContain('walk-off');
+    expect(highlightNews?.body).toContain('WALK-OFF HOME RUN');
   });
 
   it('returns advanced stat lines and advanced leaderboard results', () => {

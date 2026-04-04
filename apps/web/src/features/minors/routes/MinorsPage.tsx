@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import PipelineView, { type ProspectPipelineView } from '../components/PipelineView';
 
 interface AffiliateOverviewView {
   affiliates: Array<{
@@ -87,14 +88,19 @@ export default function MinorsPage() {
   const workerReady = worker.isReady;
   const { day, season, phase, userTeamId, isInitialized } = useGameStore();
   const [overview, setOverview] = useState<AffiliateOverviewView | null>(null);
+  const [pipeline, setPipeline] = useState<ProspectPipelineView | null>(null);
   const [selectedBoxScoreId, setSelectedBoxScoreId] = useState<string | null>(null);
   const [selectedBoxScore, setSelectedBoxScore] = useState<AffiliateBoxScoreView | null>(null);
 
   const fetchOverview = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
-    const nextOverview = await worker.getAffiliateOverview(userTeamId);
+    const [nextOverview, nextPipeline] = await Promise.all([
+      worker.getAffiliateOverview(userTeamId),
+      worker.getProspectPipeline(userTeamId),
+    ]);
     const typedOverview = (nextOverview ?? null) as AffiliateOverviewView | null;
     setOverview(typedOverview);
+    setPipeline((nextPipeline ?? null) as ProspectPipelineView | null);
 
     const defaultBoxScoreId = typedOverview?.recentBoxScores[0]?.id ?? null;
     setSelectedBoxScoreId((current) => current ?? defaultBoxScoreId);
@@ -124,7 +130,7 @@ export default function MinorsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-4">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4 xl:col-span-2">
           <div className="font-heading text-xs uppercase text-dynasty-muted">Affiliate standings</div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -171,6 +177,31 @@ export default function MinorsPage() {
                 No recent waiver movement.
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="font-heading text-xs uppercase text-dynasty-muted">Pipeline Health</div>
+          <div className="mt-3 font-data text-3xl text-dynasty-text">
+            {pipeline?.health.score ?? 0}
+          </div>
+          <div className="mt-2 font-heading text-sm capitalize text-dynasty-text">{pipeline?.health.label ?? 'building'}</div>
+          <div className="mt-3 text-sm text-dynasty-muted">
+            {pipeline?.health.summary ?? 'Prospect depth will populate as the system develops.'}
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-2">
+              <div className="font-data text-lg text-dynasty-text">{pipeline?.health.readyNow ?? 0}</div>
+              <div className="font-heading text-[11px] uppercase text-dynasty-muted">Ready</div>
+            </div>
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-2">
+              <div className="font-data text-lg text-dynasty-text">{pipeline?.health.nextWave ?? 0}</div>
+              <div className="font-heading text-[11px] uppercase text-dynasty-muted">Next</div>
+            </div>
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-2">
+              <div className="font-data text-lg text-dynasty-text">{pipeline?.health.longTerm ?? 0}</div>
+              <div className="font-heading text-[11px] uppercase text-dynasty-muted">Long</div>
+            </div>
           </div>
         </div>
       </div>
@@ -233,6 +264,8 @@ export default function MinorsPage() {
           )}
         </div>
       </div>
+
+      <PipelineView pipeline={pipeline} />
 
       <div className="grid gap-4 xl:grid-cols-[22rem,minmax(0,1fr)]">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">

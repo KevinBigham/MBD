@@ -30,6 +30,9 @@ export interface GameBoxScore {
   readonly homeHits: number;
   readonly awayHits: number;
   readonly paResults: PAResult[];
+  readonly winningPitcherId?: string;
+  readonly losingPitcherId?: string;
+  readonly savePitcherId?: string | null;
   readonly date: string;
   readonly isPlayoff: boolean;
 }
@@ -77,6 +80,10 @@ const HIT_OUTCOMES: Set<PAOutcome> = new Set(['SINGLE', 'DOUBLE', 'TRIPLE', 'HR'
 const AT_BAT_OUTCOMES: Set<PAOutcome> = new Set([
   'SINGLE', 'DOUBLE', 'TRIPLE', 'HR', 'K', 'GB_OUT', 'FB_OUT', 'LD_OUT', 'DOUBLE_PLAY',
 ]);
+
+function countRunnersOnBase(bases: number): number {
+  return (bases & 1) + ((bases >> 1) & 1) + ((bases >> 2) & 1);
+}
 
 // ---------------------------------------------------------------------------
 // Game simulation
@@ -153,6 +160,7 @@ export function simulateGame(
       away.lineup, awayBatterIdx, homePitcher,
       away.teamId, home.teamId,
       getStats, paResults, awayOffenseModifier,
+      inning, 'top', awayScore, homeScore,
     );
     awayScore += topResult.runs;
     awayHits += topResult.hits;
@@ -179,6 +187,7 @@ export function simulateGame(
       home.lineup, homeBatterIdx, awayPitcher,
       home.teamId, away.teamId,
       getStats, paResults, homeOffenseModifier,
+      inning, 'bottom', awayScore, homeScore,
     );
     homeScore += botResult.runs;
     homeHits += botResult.hits;
@@ -229,6 +238,9 @@ export function simulateGame(
       homeHits,
       awayHits,
       paResults,
+      winningPitcherId: winningPitcher.id,
+      losingPitcherId: losingPitcher.id,
+      savePitcherId: savingPitcher?.id ?? null,
       date,
       isPlayoff,
     },
@@ -257,17 +269,23 @@ function simulateHalfInning(
   getStats: (p: GeneratedPlayer, teamId: string) => PlayerGameStats,
   paResults: PAResult[],
   offenseModifier: number,
+  inning: number,
+  halfInning: 'top' | 'bottom',
+  awayScore: number,
+  homeScore: number,
 ): HalfInningResult {
   let runnerState = freshRunnerState();
   let runs = 0;
   let hits = 0;
   let batterIdx = startBatterIdx;
   let paCount = 0;
+  let currentAwayScore = awayScore;
+  let currentHomeScore = homeScore;
 
   while (runnerState.outs < 3) {
     const batter = lineup[batterIdx % lineup.length]!;
 
-    const paResult = resolvePlateAppearance(
+    const resolved = resolvePlateAppearance(
       rng,
       {
         batterAttrs: batter.hitterAttributes,
@@ -282,14 +300,37 @@ function simulateHalfInning(
       pitcher.id,
     );
 
-    paResults.push(paResult);
-    paCount++;
-
     // Advance runners
     const outsBefore = runnerState.outs;
-    const markovResult = advanceRunners(runnerState, paResult.outcome);
+    const runnersOn = countRunnersOnBase(runnerState.bases);
+    const scoreBefore: [number, number] = [currentAwayScore, currentHomeScore];
+    const markovResult = advanceRunners(runnerState, resolved.outcome);
     runs += markovResult.runsScored;
     runnerState = markovResult.newState;
+    if (halfInning === 'top') {
+      currentAwayScore += markovResult.runsScored;
+    } else {
+      currentHomeScore += markovResult.runsScored;
+    }
+    const scoreAfter: [number, number] = [currentAwayScore, currentHomeScore];
+    const paResult: PAResult = {
+      ...resolved,
+      inning,
+      halfInning,
+      outs: outsBefore,
+      runnersOn,
+      scoreBefore,
+      scoreAfter,
+      rbiOnPlay: markovResult.runsScored,
+      isWalkOff:
+        halfInning === 'bottom'
+        && inning >= 9
+        && scoreBefore[1] <= scoreBefore[0]
+        && scoreAfter[1] > scoreAfter[0],
+    };
+
+    paResults.push(paResult);
+    paCount++;
 
     // Track stats
     const bStats = getStats(batter, battingTeamId);

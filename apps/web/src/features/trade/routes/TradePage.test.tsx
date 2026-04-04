@@ -21,6 +21,16 @@ const mockedUseGameStore = vi.mocked(useGameStore);
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 function createWorkerMock() {
+  const gmDialogue = {
+    mode: 'buyer' as const,
+    urgency: 'high' as const,
+    headline: 'Boston Red Sox bring a live deadline call',
+    lines: [
+      'We are buying wins, not moving bodies for the sake of motion.',
+      'The model is simple: match the surplus value and we can keep talking.',
+      'Right now the offer is light for what you are asking us to surrender.',
+    ],
+  };
   const userPlayer = {
     id: 'nyy-1',
     firstName: 'Anthony',
@@ -148,6 +158,9 @@ function createWorkerMock() {
       deadlineDay: 122,
       daysUntilDeadline: 4,
       deadlineMode: true,
+      teamMode: 'buyer',
+      modeSummary: 'The room expects you to push for MLB impact before the deadline shuts.',
+      countdownLabel: '4 days to deadline',
       hotOffers: [
         {
           id: 'offer-1',
@@ -183,6 +196,7 @@ function createWorkerMock() {
           urgencyTag: 'EXPIRING SOON',
           bidderCount: 3,
           biddingSummary: '3 clubs are in on Anthony Volpe.',
+          dialogue: gmDialogue,
         },
       ],
       ticker: [
@@ -190,6 +204,15 @@ function createWorkerMock() {
           id: 'ticker-1',
           summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
           timestamp: 'S4D117',
+        },
+      ],
+      chatter: [
+        {
+          id: 'user-mode-buyer',
+          headline: 'New York Yankees are flagged as buyers',
+          detail: 'The room is reading urgency around upgrades that move the playoff needle.',
+          mode: 'buyer',
+          teamId: null,
         },
       ],
       recap: {
@@ -217,6 +240,7 @@ function createWorkerMock() {
         losers: ['Boston Red Sox'],
       },
     }),
+    getTradeDialogue: vi.fn().mockResolvedValue(gmDialogue),
     proposeTrade: vi.fn().mockResolvedValue({ decision: 'accepted', reason: 'Deal works.' }),
     respondToTradeOffer: vi.fn().mockResolvedValue({ decision: 'accepted', message: 'Accepted.' }),
   };
@@ -280,11 +304,16 @@ describe('TradePage', () => {
     await renderPage();
 
     expect(container.textContent).toContain('4 days until trade deadline');
+    expect(container.textContent).toContain('Trade Deadline Theatre');
+    expect(container.textContent).toContain('4 days to deadline');
+    expect(container.textContent).toContain('Buyer');
     expect(container.textContent).toContain('Hot Offers');
     expect(container.textContent).toContain('Boston Red Sox');
     expect(container.textContent).toContain('Roman Anthony');
     expect(container.textContent).toContain('EXPIRING SOON');
     expect(container.textContent).toContain('3 clubs are in on Anthony Volpe.');
+    expect(container.textContent).toContain('GM Dialogue');
+    expect(container.textContent).toContain('Right now the offer is light for what you are asking us to surrender.');
     expect(container.textContent).toContain('League Trade Ticker');
     expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
     expect(container.textContent).toContain('Trade History');
@@ -319,8 +348,12 @@ describe('TradePage', () => {
       deadlineDay: 122,
       daysUntilDeadline: 0,
       deadlineMode: false,
+      teamMode: 'standing_pat',
+      modeSummary: 'The market reads you as flexible, but not urgent enough to blink first.',
+      countdownLabel: 'Deadline Day',
       hotOffers: [],
       ticker: [],
+      chatter: [],
       recap: {
         analysisHeadline: 'Deadline winners and losers',
         yourTrades: [
@@ -374,8 +407,12 @@ describe('TradePage', () => {
       deadlineDay: 122,
       daysUntilDeadline: null,
       deadlineMode: false,
+      teamMode: 'standing_pat',
+      modeSummary: 'The market reads you as flexible, but not urgent enough to blink first.',
+      countdownLabel: 'Market Closed',
       hotOffers: [],
       ticker: [],
+      chatter: [],
       recap: null,
     });
     mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);

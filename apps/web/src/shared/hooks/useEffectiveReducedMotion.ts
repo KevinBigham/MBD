@@ -6,7 +6,8 @@ function getInitialReducedMotionPreference(): boolean {
     return false;
   }
 
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  return mediaQuery?.matches ?? false;
 }
 
 export function useEffectiveReducedMotion(): boolean {
@@ -19,8 +20,12 @@ export function useEffectiveReducedMotion(): boolean {
     }
 
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (!mediaQuery) {
+      return;
+    }
+
     const updatePreference = () => {
-      setReducedMotion(mediaQuery.matches);
+      setReducedMotion(mediaQuery.matches ?? false);
     };
 
     updatePreference();

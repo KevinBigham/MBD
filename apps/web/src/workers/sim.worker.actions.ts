@@ -142,6 +142,7 @@ import {
   resetTradeDeadlineState,
   respondToTradeOffer,
 } from './sim.worker.trade.js';
+import { publishDraftGradesNarrative } from './sim.worker.draft.js';
 import {
   recordSeasonArchive,
   ensureNarrativeState,
@@ -1420,9 +1421,12 @@ export const actionApi = {
   importSnapshot(snapshot: unknown) {
     return measureRuntimeSync('lastLoadMs', () => {
       resetTradeDeadlineState();
-      setState(importGameSnapshot(snapshot));
+      const importedState = importGameSnapshot(snapshot);
+      const preservedBriefing = importedState.briefingQueue.map((item) => ({ ...item }));
+      setState(importedState);
       const s = requireState();
       ensureNarrativeState(s);
+      s.briefingQueue = preservedBriefing;
       syncAchievementState(s, { publish: false });
       return {
         success: true as const,
@@ -1490,8 +1494,12 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
     }
+    const result = makeUserDraftSelection(s, prospectId);
+    if (result.success && result.draft?.status === 'complete') {
+      publishDraftGradesNarrative(s);
+    }
     return {
-      ...makeUserDraftSelection(s, prospectId),
+      ...result,
       flowStateChanged: true,
     };
   },
@@ -1532,8 +1540,12 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
     }
+    const result = simulateRemainingDraftSession(s);
+    if (result.success && result.draft?.status === 'complete') {
+      publishDraftGradesNarrative(s);
+    }
     return {
-      ...simulateRemainingDraftSession(s),
+      ...result,
       flowStateChanged: true,
     };
   },

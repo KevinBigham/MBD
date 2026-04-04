@@ -21,14 +21,20 @@ export type PAOutcome = z.infer<typeof PAOutcomeEnum>;
 
 export const PAResultSchema = z.object({
   outcome: PAOutcomeEnum,
-  runnersAdvanced: z.number().int().min(0),
-  runsScored: z.number().int().min(0),
   batterId: z.string(),
   pitcherId: z.string(),
+  inning: z.number().int().min(1),
+  halfInning: z.enum(['top', 'bottom']),
+  outs: z.number().int().min(0).max(2),
+  runnersOn: z.number().int().min(0).max(3),
+  scoreBefore: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+  scoreAfter: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+  rbiOnPlay: z.number().int().min(0),
+  isWalkOff: z.boolean(),
 });
 export type PAResult = z.infer<typeof PAResultSchema>;
 
-export const InningHalfEnum = z.enum(["TOP", "BOTTOM"]);
+export const InningHalfEnum = z.enum(['top', 'bottom']);
 export type InningHalf = z.infer<typeof InningHalfEnum>;
 
 export const GameResultSchema = z.object({
@@ -38,6 +44,9 @@ export const GameResultSchema = z.object({
   awayScore: z.number().int().min(0),
   innings: z.number().int().min(1),
   paResults: z.array(PAResultSchema),
+  winningPitcherId: z.string().optional(),
+  losingPitcherId: z.string().optional(),
+  savePitcherId: z.string().nullable().optional(),
   date: z.string(),
   isPlayoff: z.boolean(),
 });

@@ -11,6 +11,7 @@ import {
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
+import type { WorkerApi } from '@/workers/sim.worker';
 import type {
   DraftActionResult,
   DraftBoardCell,
@@ -18,6 +19,10 @@ import type {
   DraftRoomProspect,
   DraftRoomView,
 } from '@/workers/sim.worker.helpers';
+
+type DraftCommentaryView = Awaited<ReturnType<WorkerApi['getDraftCommentary']>>;
+type DraftProspectReactionView = Awaited<ReturnType<WorkerApi['getDraftProspectReaction']>>;
+type DraftPostDraftGradesView = Awaited<ReturnType<WorkerApi['getDraftPostDraftGrades']>>;
 
 function gradeTextClass(grade: number): string {
   if (grade >= 60) return 'text-accent-success';
@@ -58,6 +63,50 @@ function compensationContextLabel(
   return compensation.compensationFromTeamName
     ? `QO for ${compensation.compensationForPlayerName} from ${compensation.compensationFromTeamName}`
     : `QO for ${compensation.compensationForPlayerName}`;
+}
+
+function commentaryTagLabel(tag: NonNullable<DraftCommentaryView>['entries'][number]['tag']): string {
+  switch (tag) {
+    case 'commissioner':
+      return 'Commissioner';
+    case 'scouting-director':
+      return 'Scouting Director';
+    default:
+      return 'Analyst Desk';
+  }
+}
+
+function commentaryToneClasses(tone: NonNullable<DraftCommentaryView>['entries'][number]['tone']): string {
+  switch (tone) {
+    case 'user':
+      return 'border-accent-success/30 bg-accent-success/10';
+    case 'division_rival':
+      return 'border-accent-warning/30 bg-accent-warning/10';
+    default:
+      return 'border-dynasty-border bg-dynasty-elevated/70';
+  }
+}
+
+function buzzTrendClasses(trend: NonNullable<DraftCommentaryView>['buzz'][number]['trend']): string {
+  switch (trend) {
+    case 'up':
+      return 'text-accent-success';
+    case 'down':
+      return 'text-accent-danger';
+    default:
+      return 'text-accent-info';
+  }
+}
+
+function recommendationChipClass(recommendation: NonNullable<DraftProspectReactionView>['recommendation']): string {
+  switch (recommendation) {
+    case 'sprint':
+      return 'border-accent-success/30 bg-accent-success/10 text-accent-success';
+    case 'hover':
+      return 'border-accent-info/30 bg-accent-info/10 text-accent-info';
+    default:
+      return 'border-accent-warning/30 bg-accent-warning/10 text-accent-warning';
+  }
 }
 
 function statusText(view: DraftRoomView | null, phase: string): string {
@@ -499,6 +548,185 @@ function DraftBoard({ draft, visibleCount }: { draft: DraftRoomView; visibleCoun
   );
 }
 
+function WarRoomPanel({
+  commentary,
+  reaction,
+  selectedProspect,
+}: {
+  commentary: DraftCommentaryView | null;
+  reaction: DraftProspectReactionView | null;
+  selectedProspect: DraftRoomProspect | null;
+}) {
+  const feedRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!feedRef.current) {
+      return;
+    }
+
+    if (typeof feedRef.current.scrollTo === 'function') {
+      feedRef.current.scrollTo({
+        top: feedRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+      return;
+    }
+
+    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [commentary?.entries.length]);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+        <div className="border-b border-dynasty-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Radio className="h-4 w-4 text-accent-info" />
+            <div>
+              <h2 className="font-heading text-sm font-semibold text-dynasty-text">War Room</h2>
+              <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                Live commentary, market buzz, and room pressure
+              </p>
+            </div>
+          </div>
+          {commentary?.heartbeat ? (
+            <p className="mt-3 font-heading text-sm text-dynasty-textBright">{commentary.heartbeat}</p>
+          ) : null}
+        </div>
+
+        <div className="border-b border-dynasty-border px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">Buzz Tracker</p>
+            <span className="font-data text-[11px] text-dynasty-muted">{commentary?.buzz.length ?? 0} signals</span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {commentary?.buzz.length ? commentary.buzz.map((item) => (
+              <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated/70 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-heading text-xs font-semibold text-dynasty-textBright">{item.label}</p>
+                  <span className={`font-data text-[11px] uppercase tracking-[0.18em] ${buzzTrendClasses(item.trend)}`}>
+                    {item.urgency}
+                  </span>
+                </div>
+                <p className="mt-1 font-heading text-xs text-dynasty-muted">{item.summary}</p>
+              </div>
+            )) : (
+              <p className="font-heading text-xs text-dynasty-muted">The room is still gathering signals.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="border-b border-dynasty-border px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">Pick Preview</p>
+            {reaction ? (
+              <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${recommendationChipClass(reaction.recommendation)}`}>
+                {reaction.recommendation}
+              </span>
+            ) : null}
+          </div>
+          {reaction ? (
+            <div className="mt-3 space-y-2">
+              <p className="font-heading text-sm font-semibold text-dynasty-textBright">{reaction.headline}</p>
+              <p className="font-heading text-xs text-dynasty-text">{reaction.summary}</p>
+              <p className="font-heading text-xs text-dynasty-muted">{reaction.fit}</p>
+              <p className="font-heading text-xs text-dynasty-muted">{reaction.risk}</p>
+              <p className="font-heading text-xs text-dynasty-muted">{reaction.signability}</p>
+            </div>
+          ) : (
+            <p className="mt-3 font-heading text-xs text-dynasty-muted">
+              {selectedProspect
+                ? 'Loading preview...'
+                : 'Select a prospect to see the war-room read.'}
+            </p>
+          )}
+        </div>
+
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">Commentary Feed</p>
+            <span className="font-data text-[11px] text-dynasty-muted">{commentary?.entries.length ?? 0} notes</span>
+          </div>
+          <div ref={feedRef} className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+            {commentary?.entries.length ? commentary.entries.map((entry) => (
+              <div key={entry.id} className={`rounded border px-3 py-2 ${commentaryToneClasses(entry.tone)}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                    {commentaryTagLabel(entry.tag)}
+                  </p>
+                  {entry.pickNumber ? (
+                    <span className="font-data text-[11px] text-dynasty-muted">Pick {entry.pickNumber}</span>
+                  ) : null}
+                </div>
+                <p className="mt-1 font-heading text-sm font-semibold text-dynasty-textBright">{entry.headline}</p>
+                <p className="mt-1 font-heading text-xs text-dynasty-muted">{entry.detail}</p>
+              </div>
+            )) : (
+              <p className="font-heading text-xs text-dynasty-muted">
+                Start the draft to bring the war-room feed online.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PostDraftGrades({ gradesView }: { gradesView: DraftPostDraftGradesView | null }) {
+  if (!gradesView || gradesView.grades.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="font-heading text-sm uppercase tracking-[0.18em] text-dynasty-muted">Post-Draft Grades</p>
+          <h2 className="mt-1 font-heading text-xl font-semibold text-dynasty-textBright">League Reaction Board</h2>
+        </div>
+        {gradesView.userTeamGrade ? (
+          <div className="rounded border border-accent-success/30 bg-accent-success/10 px-4 py-3">
+            <p className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-success">Your Class</p>
+            <p className="mt-1 font-heading text-2xl font-semibold text-dynasty-textBright">
+              {gradesView.userTeamGrade.grade}
+            </p>
+            <p className="mt-1 font-heading text-xs text-dynasty-muted">{gradesView.userTeamGrade.summary}</p>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {gradesView.grades.slice(0, 6).map((grade, index) => (
+          <div
+            key={grade.teamId}
+            className={`rounded border px-4 py-3 ${
+              grade.teamId === gradesView.userTeamId
+                ? 'border-accent-success/30 bg-accent-success/10'
+                : 'border-dynasty-border bg-dynasty-elevated/70'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  Rank {index + 1}
+                </p>
+                <p className="mt-1 font-heading text-sm font-semibold text-dynasty-textBright">{grade.teamName}</p>
+                <p className="mt-1 font-heading text-xs text-dynasty-muted">{grade.summary}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-heading text-2xl font-semibold text-dynasty-textBright">{grade.grade}</p>
+                <p className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  Avg {grade.averageScoutingGrade}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DraftSummary({
   draft,
   bonusOffers,
@@ -584,6 +812,9 @@ export default function DraftPage() {
   const worker = useWorker();
   const {
     getDraftClass,
+    getDraftCommentary,
+    getDraftProspectReaction,
+    getDraftPostDraftGrades,
     startDraft,
     makeDraftPick,
     scoutDraftPlayer,
@@ -594,6 +825,9 @@ export default function DraftPage() {
   const { phase, season, isInitialized } = useGameStore();
 
   const [draft, setDraft] = useState<DraftRoomView | null>(null);
+  const [commentary, setCommentary] = useState<DraftCommentaryView | null>(null);
+  const [reaction, setReaction] = useState<DraftProspectReactionView | null>(null);
+  const [gradesView, setGradesView] = useState<DraftPostDraftGradesView | null>(null);
   const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [scouting, setScouting] = useState(false);
@@ -652,6 +886,57 @@ export default function DraftPage() {
   const selectedProspect = draft?.availableProspects.find((prospect) => prospect.id === selectedProspectId) ?? null;
   const visiblePicks = draft?.completedPicks.slice(0, watchTargetCount == null ? draft.completedPicks.length : revealedPickCount) ?? [];
   const watching = watchTargetCount != null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!draft || !worker.isReady) {
+      setCommentary(null);
+      setReaction(null);
+      setGradesView(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadWarRoom = async () => {
+      try {
+        const [nextCommentary, nextReaction, nextGrades] = await Promise.all([
+          getDraftCommentary(visiblePicks.length),
+          selectedProspectId ? getDraftProspectReaction(selectedProspectId) : Promise.resolve(null),
+          getDraftPostDraftGrades(),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setCommentary((nextCommentary ?? null) as DraftCommentaryView | null);
+        setReaction((nextReaction ?? null) as DraftProspectReactionView | null);
+        setGradesView((nextGrades ?? null) as DraftPostDraftGradesView | null);
+      } catch {
+        if (!cancelled) {
+          setCommentary(null);
+          setReaction(null);
+          setGradesView(null);
+        }
+      }
+    };
+
+    loadWarRoom();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    draft,
+    getDraftCommentary,
+    getDraftPostDraftGrades,
+    getDraftProspectReaction,
+    selectedProspectId,
+    visiblePicks.length,
+    worker.isReady,
+  ]);
 
   useEffect(() => {
     if (!draft) {
@@ -889,11 +1174,17 @@ export default function DraftPage() {
           />
         </div>
         <div className="xl:col-span-4">
-          <DraftTicker picks={visiblePicks} progressLabel={progressLabel} />
+          <WarRoomPanel
+            commentary={commentary}
+            reaction={reaction}
+            selectedProspect={selectedProspect}
+          />
         </div>
       </div>
 
+      <DraftTicker picks={visiblePicks} progressLabel={progressLabel} />
       <DraftBoard draft={draft} visibleCount={visiblePicks.length} />
+      <PostDraftGrades gradesView={gradesView} />
       <DraftSummary
         draft={draft}
         bonusOffers={bonusOffers}

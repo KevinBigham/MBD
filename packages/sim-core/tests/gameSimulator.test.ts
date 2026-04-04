@@ -105,6 +105,33 @@ describe('simulateGame', () => {
     }
   });
 
+  it('enriches plate appearance results with inning, runner, and score context', () => {
+    const rng = new GameRNG(212);
+    const away = buildTeam('nyy', rng.fork());
+    const home = buildTeam('bos', rng.fork());
+
+    const { boxScore } = simulateGame(rng, away, home, 'S1D12');
+    const first = boxScore.paResults[0];
+
+    expect(first).toBeTruthy();
+    expect(first?.inning).toBeGreaterThanOrEqual(1);
+    expect(first?.halfInning === 'top' || first?.halfInning === 'bottom').toBe(true);
+    expect(first?.outs).toBeGreaterThanOrEqual(0);
+    expect(first?.outs).toBeLessThanOrEqual(2);
+    expect(first?.runnersOn).toBeGreaterThanOrEqual(0);
+    expect(first?.runnersOn).toBeLessThanOrEqual(3);
+    expect(first?.scoreBefore).toHaveLength(2);
+    expect(first?.scoreAfter).toHaveLength(2);
+    expect(first?.rbiOnPlay).toBeGreaterThanOrEqual(0);
+
+    const walkOffPlay = boxScore.paResults.find((result) => result.isWalkOff);
+    if (walkOffPlay) {
+      expect(walkOffPlay.halfInning).toBe('bottom');
+      expect(walkOffPlay.inning).toBeGreaterThanOrEqual(9);
+      expect(walkOffPlay.scoreAfter[1]).toBeGreaterThan(walkOffPlay.scoreAfter[0]);
+    }
+  });
+
   it('applies offense modifiers to the scoring environment', () => {
     let boostedRuns = 0;
     let suppressedRuns = 0;
