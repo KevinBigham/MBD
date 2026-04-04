@@ -79,6 +79,11 @@ import {
   buildTradeOffersView,
 } from './sim.worker.trade.js';
 import {
+  buildDraftCommentaryView,
+  buildDraftPostDraftGradesView,
+  buildDraftProspectReactionView,
+} from './sim.worker.draft.js';
+import {
   buildAdvancedStatsIndex,
   buildLeagueLeaderEntries,
   getAdvancedStatsForPlayer,
@@ -1468,6 +1473,18 @@ export const queryApi = {
 
   getDraftClass() {
     return buildDraftRoomView(requireState());
+  },
+
+  getDraftCommentary(visiblePickCount?: number) {
+    return buildDraftCommentaryView(requireState(), visiblePickCount);
+  },
+
+  getDraftProspectReaction(prospectId: string) {
+    return buildDraftProspectReactionView(requireState(), prospectId);
+  },
+
+  getDraftPostDraftGrades() {
+    return buildDraftPostDraftGradesView(requireState());
   },
 
   getPlayerTradeValue(playerId: string): PlayerTradeValue | null {

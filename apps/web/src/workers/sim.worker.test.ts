@@ -171,6 +171,41 @@ interface GamePlayByPlayView {
   };
 }
 
+interface DraftCommentaryView {
+  heartbeat: string | null;
+  entries: Array<{
+    id: string;
+    headline: string;
+    detail: string;
+  }>;
+  buzz: Array<{
+    id: string;
+    label: string;
+    summary: string;
+  }>;
+}
+
+interface DraftProspectReactionView {
+  playerId: string;
+  headline: string;
+  summary: string;
+  recommendation: 'sprint' | 'hover' | 'pass';
+}
+
+interface DraftPostDraftGradesView {
+  userTeamId: string;
+  userTeamGrade: {
+    teamId: string;
+    grade: string;
+    summary: string;
+  } | null;
+  grades: Array<{
+    teamId: string;
+    teamName: string;
+    grade: string;
+  }>;
+}
+
 interface MinorLeagueWorkerApi {
   getSetupPreview: (options: {
     seed: number;
@@ -2278,6 +2313,62 @@ describe('sim worker narrative APIs', () => {
     expect(secondRun.draft?.status).toBe('complete');
     expect(secondRun.draft?.userDraftClass?.overallGrade).toMatch(/^[A-F]/);
     expect(secondRun.draft?.userDraftClass?.picks.length).toBeGreaterThan(0);
+  });
+
+  it('builds deterministic draft commentary, preview, and post-draft grades without advancing rng state', () => {
+    startGame(341, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    const workerApi = api as typeof api & {
+      getDraftCommentary: (visiblePickCount?: number) => DraftCommentaryView | null;
+      getDraftProspectReaction: (prospectId: string) => DraftProspectReactionView | null;
+      getDraftPostDraftGrades: () => DraftPostDraftGradesView | null;
+      getDraftClass: () => {
+        completedPicks: Array<{ id?: string }>;
+        availableProspects: Array<{ id: string }>;
+      } | null;
+    };
+
+    api.startDraft();
+    const draft = workerApi.getDraftClass();
+    const prospectId = draft?.availableProspects[0]?.id;
+    expect(prospectId).toBeTruthy();
+
+    const commentaryCallsBefore = requireState().rng.getState().callCount;
+    const firstCommentary = workerApi.getDraftCommentary(draft?.completedPicks.length ?? 0);
+    const secondCommentary = workerApi.getDraftCommentary(draft?.completedPicks.length ?? 0);
+
+    expect(secondCommentary).toEqual(firstCommentary);
+    expect(requireState().rng.getState().callCount).toBe(commentaryCallsBefore);
+    expect(firstCommentary?.entries.length).toBeGreaterThan(0);
+    expect(firstCommentary?.buzz.length).toBeGreaterThan(0);
+
+    const previewCallsBefore = requireState().rng.getState().callCount;
+    const firstPreview = workerApi.getDraftProspectReaction(prospectId!);
+    const secondPreview = workerApi.getDraftProspectReaction(prospectId!);
+
+    expect(secondPreview).toEqual(firstPreview);
+    expect(requireState().rng.getState().callCount).toBe(previewCallsBefore);
+    expect(firstPreview?.playerId).toBe(prospectId);
+    expect(firstPreview?.recommendation).toMatch(/^(sprint|hover|pass)$/);
+
+    api.simulateRemainingDraft();
+
+    const gradesCallsBefore = requireState().rng.getState().callCount;
+    const firstGrades = workerApi.getDraftPostDraftGrades();
+    const secondGrades = workerApi.getDraftPostDraftGrades();
+
+    expect(secondGrades).toEqual(firstGrades);
+    expect(requireState().rng.getState().callCount).toBe(gradesCallsBefore);
+    expect(firstGrades?.grades.length).toBeGreaterThan(0);
+    expect(firstGrades?.userTeamGrade?.grade).toMatch(/^[A-F]/);
   });
 
   it('creates a rule 5 protection audit after the amateur draft and lets the user protect an exposed prospect', () => {
