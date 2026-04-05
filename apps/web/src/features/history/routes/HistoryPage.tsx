@@ -1115,6 +1115,8 @@ export default function HistoryPage() {
                 <EmptyStatePanel
                   description="Complete a season to unlock the full archive browser."
                   title="No archived seasons yet"
+                  actionLabel="Back to Dashboard"
+                  actionHref="/MBD/dashboard"
                 />
               )}
             </section>

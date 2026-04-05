@@ -656,6 +656,8 @@ export default function DashboardPage() {
                 className="border-dynasty-border/60 bg-dynasty-elevated"
                 title="No recent user-team games"
                 description="Sim a few regular-season days and the broadcast booth will start collecting fresh recaps and highlight reels."
+                actionLabel="View Roster"
+                actionHref="/MBD/roster"
               />
             )}
           </section>

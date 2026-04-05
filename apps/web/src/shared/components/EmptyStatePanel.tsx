@@ -1,5 +1,6 @@
+import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Inbox } from 'lucide-react';
+import { ChevronRight, Inbox } from 'lucide-react';
 import { cn } from '@mbd/ui';
 
 interface EmptyStatePanelProps {
@@ -7,6 +8,9 @@ interface EmptyStatePanelProps {
   description: string;
   icon?: LucideIcon;
   className?: string;
+  actionLabel?: string;
+  actionHref?: string;
+  onAction?: () => void;
 }
 
 export function EmptyStatePanel({
@@ -14,7 +18,12 @@ export function EmptyStatePanel({
   description,
   icon: Icon = Inbox,
   className,
+  actionLabel,
+  actionHref,
+  onAction,
 }: EmptyStatePanelProps) {
+  const hasAction = actionLabel && (actionHref || onAction);
+
   return (
     <div
       className={cn(
@@ -27,6 +36,28 @@ export function EmptyStatePanel({
       </div>
       <div className="mt-3 font-heading text-sm text-dynasty-textBright">{title}</div>
       <p className="mt-2 font-heading text-sm leading-6 text-dynasty-muted">{description}</p>
+      {hasAction && (
+        <div className="mt-4">
+          {actionHref ? (
+            <Link
+              to={actionHref}
+              className="focus-ring inline-flex items-center gap-1 rounded-md border border-dynasty-border px-3 py-1.5 font-heading text-xs text-dynasty-muted transition-colors hover:border-dynasty-muted hover:text-dynasty-text"
+            >
+              {actionLabel}
+              <ChevronRight className="h-3 w-3" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={onAction}
+              className="focus-ring inline-flex items-center gap-1 rounded-md border border-dynasty-border px-3 py-1.5 font-heading text-xs text-dynasty-muted transition-colors hover:border-dynasty-muted hover:text-dynasty-text"
+            >
+              {actionLabel}
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
