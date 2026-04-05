@@ -16,6 +16,7 @@ import {
   Settings,
   Save,
   PlusCircle,
+  Keyboard,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
@@ -178,8 +179,37 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               </Command.Item>
             ))}
           </Command.Group>
+
+          <Command.Separator className="my-1 h-px bg-dynasty-border" />
+
+          <Command.Group
+            heading="Keyboard Shortcuts"
+            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-heading [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-dynasty-muted"
+          >
+            {KEYBOARD_SHORTCUTS.map((shortcut) => (
+              <div
+                key={shortcut.label}
+                className="flex items-center justify-between px-3 py-2"
+              >
+                <span className="flex items-center gap-3 text-sm text-dynasty-text">
+                  <Keyboard className="h-4 w-4 text-dynasty-muted" />
+                  <span className="font-heading">{shortcut.label}</span>
+                </span>
+                <kbd className="rounded border border-dynasty-border bg-dynasty-base px-2 py-0.5 font-data text-[10px] text-dynasty-muted">
+                  {shortcut.keys}
+                </kbd>
+              </div>
+            ))}
+          </Command.Group>
         </Command.List>
       </Command>
     </div>
   );
 }
+
+const KEYBOARD_SHORTCUTS = [
+  { label: 'Sim One Day', keys: 'Space' },
+  { label: 'Sim One Week', keys: 'Shift + Space' },
+  { label: 'Sim One Month', keys: 'Cmd + Space' },
+  { label: 'Command Palette', keys: 'Cmd + K' },
+] as const;
