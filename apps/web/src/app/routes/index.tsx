@@ -63,10 +63,13 @@ function LoadingFallback() {
   return (
     <div className="flex items-center justify-center py-24">
       <div className="text-center">
-        <div className="mb-3 font-brand text-2xl text-accent-primary">
+        <div className="mb-3 font-brand text-2xl text-accent-primary motion-safe:animate-pulse">
           MBD
         </div>
-        <div className="font-data text-sm text-dynasty-muted">Loading...</div>
+        <div className="font-data text-sm text-dynasty-muted">Loading route...</div>
+        <div className="mx-auto mt-4 h-0.5 w-16 overflow-hidden rounded-full bg-dynasty-border">
+          <div className="h-full w-8 rounded-full bg-accent-primary motion-safe:animate-[shimmer_1.2s_ease-in-out_infinite]" />
+        </div>
       </div>
     </div>
   );

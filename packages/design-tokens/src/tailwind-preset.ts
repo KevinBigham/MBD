@@ -64,6 +64,10 @@ const mbdPreset = {
           '0%': { transform: 'scale(1.15)', color: 'rgba(249, 115, 22, 1)' },
           '100%': { transform: 'scale(1)', color: 'inherit' },
         },
+        shimmer: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(300%)' },
+        },
       },
     },
   },
