@@ -698,11 +698,20 @@ export default function SetupPage() {
                     type="button"
                     disabled={busySlot != null || !worker.isReady}
                     onClick={() => void handleBeginDynasty()}
-                    className="rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
+                    className="rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:bg-dynasty-muted disabled:text-dynasty-border"
                   >
-                    {wizardMode === 'scenario' ? 'Launch Scenario' : 'Begin Season 1'}
+                    {busySlot != null
+                      ? 'Creating...'
+                      : !worker.isReady
+                        ? 'Loading Engine...'
+                        : wizardMode === 'scenario' ? 'Launch Scenario' : 'Begin Season 1'}
                   </button>
                 </div>
+                {worker.workerStatus === 'error' && (
+                  <p className="mt-2 text-right font-data text-xs text-accent-danger">
+                    Sim engine failed to load. Try refreshing the page.
+                  </p>
+                )}
               </div>
             </div>
 
