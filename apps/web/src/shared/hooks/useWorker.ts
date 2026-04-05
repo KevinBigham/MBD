@@ -177,28 +177,41 @@ function getOrCreateWorker(): Comlink.Remote<WorkerApi> {
     { type: 'module' },
   );
   singletonWorker.addEventListener('error', (event) => {
-    logger.error('Worker runtime error:', event.error ?? event.message);
+    // Critical init errors must be visible even in production builds
+    // eslint-disable-next-line no-console
+    console.error('Worker runtime error:', event.error ?? event.message);
     invalidateWorker('error');
   });
   singletonWorker.addEventListener('messageerror', (event) => {
-    logger.error('Worker message error:', event);
+    // eslint-disable-next-line no-console
+    console.error('Worker message error:', event);
     invalidateWorker('error');
   });
   singletonApi = Comlink.wrap<WorkerApi>(singletonWorker);
 
-  singletonApi
-    .ping()
+  const PING_TIMEOUT_MS = 15_000;
+  const pingTimeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`Worker ping timed out after ${PING_TIMEOUT_MS}ms`)), PING_TIMEOUT_MS),
+  );
+
+  Promise.race([singletonApi.ping(), pingTimeout])
     .then(() => {
       ready = true;
       setWorkerStatus('ready');
     })
     .catch((err: unknown) => {
-      logger.error('Worker ping failed:', err);
+      // Critical — must be visible in production for debugging deploy issues
+      // eslint-disable-next-line no-console
+      console.error('Worker ping failed:', err);
       invalidateWorker('error');
     });
 
   return singletonApi;
 }
+
+// Eager init — start loading the worker as soon as this module is imported
+// so that isReady becomes true before any component checks it.
+getOrCreateWorker();
 
 function subscribe(cb: () => void) {
   listeners.add(cb);
