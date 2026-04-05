@@ -16,6 +16,16 @@ export const mbdPwaManifest = {
       type: 'image/svg+xml',
       purpose: 'any maskable',
     },
+    {
+      src: '/MBD/icon-192.png',
+      sizes: '192x192',
+      type: 'image/png',
+    },
+    {
+      src: '/MBD/icon-512.png',
+      sizes: '512x512',
+      type: 'image/png',
+    },
   ],
 } satisfies Partial<ManifestOptions>;
 
@@ -23,7 +33,7 @@ export function createMbdPwaPlugin() {
   return VitePWA({
     injectRegister: false,
     registerType: 'autoUpdate',
-    includeAssets: ['icon.svg'],
+    includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon-180.png'],
     manifest: mbdPwaManifest,
     workbox: {
       globPatterns: ['**/*.{js,css,html,svg,png,json}'],
