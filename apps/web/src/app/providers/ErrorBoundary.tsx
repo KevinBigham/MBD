@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { logger } from '@/shared/lib/logger';
 
 const IS_DEV = (import.meta as unknown as { env: { DEV: boolean } }).env.DEV;
 
@@ -28,7 +29,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
     const contextLabel = this.props.contextLabel ?? 'Application Shell';
-    console.error(`ErrorBoundary caught an error in ${contextLabel}:`, error, info);
+    logger.error(`ErrorBoundary caught an error in ${contextLabel}:`, error, info);
   }
 
   private handleReload = () => {

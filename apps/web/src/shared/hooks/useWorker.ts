@@ -9,6 +9,7 @@ import {
   SIM_MONTH_BENCHMARK_MS,
   measureAsyncOperation,
 } from '@/shared/lib/performance';
+import { logger } from '@/shared/lib/logger';
 
 type WorkerMethodName = keyof WorkerApi;
 type WorkerMethodParameters<K extends WorkerMethodName> =
@@ -140,7 +141,7 @@ async function invokeWorkerMethod<K extends WorkerMethodName>(
     }
     return result as WorkerMethodReturn<K>;
   } catch (error) {
-    console.error(`Worker ${String(methodName)} failed:`, error);
+    logger.error(`Worker ${String(methodName)} failed:`, error);
     const fatal = isFatalWorkerError(error);
 
     if (fatal && !mutationMethods.has(methodName)) {
@@ -148,7 +149,7 @@ async function invokeWorkerMethod<K extends WorkerMethodName>(
         const restartedApi = await restartWorkerInternal();
         return await call(restartedApi) as WorkerMethodReturn<K>;
       } catch (retryError) {
-        console.error(`Worker ${String(methodName)} retry failed:`, retryError);
+        logger.error(`Worker ${String(methodName)} retry failed:`, retryError);
         toast.error('The simulation worker failed and could not recover.');
         throw retryError;
       }
@@ -158,7 +159,7 @@ async function invokeWorkerMethod<K extends WorkerMethodName>(
       try {
         await restartWorkerInternal();
       } catch (restartError) {
-        console.error('Worker restart failed:', restartError);
+        logger.error('Worker restart failed:', restartError);
       }
     }
 
@@ -176,11 +177,11 @@ function getOrCreateWorker(): Comlink.Remote<WorkerApi> {
     { type: 'module' },
   );
   singletonWorker.addEventListener('error', (event) => {
-    console.error('Worker runtime error:', event.error ?? event.message);
+    logger.error('Worker runtime error:', event.error ?? event.message);
     invalidateWorker('error');
   });
   singletonWorker.addEventListener('messageerror', (event) => {
-    console.error('Worker message error:', event);
+    logger.error('Worker message error:', event);
     invalidateWorker('error');
   });
   singletonApi = Comlink.wrap<WorkerApi>(singletonWorker);
@@ -192,7 +193,7 @@ function getOrCreateWorker(): Comlink.Remote<WorkerApi> {
       setWorkerStatus('ready');
     })
     .catch((err: unknown) => {
-      console.error('Worker ping failed:', err);
+      logger.error('Worker ping failed:', err);
       invalidateWorker('error');
     });
 

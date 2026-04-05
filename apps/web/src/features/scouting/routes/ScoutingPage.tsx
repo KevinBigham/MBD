@@ -16,6 +16,7 @@ import { TEAMS, estimateProjectedWarRange, getTeamById } from '@mbd/sim-core';
 import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { logger } from '@/shared/lib/logger';
 
 interface Scout {
   id: string;
@@ -230,7 +231,7 @@ export default function ScoutingPage() {
         setIFAPool(pool as IFAPoolView);
       }
     } catch (err) {
-      console.error('Failed to fetch IFA pool:', err);
+      logger.error('Failed to fetch IFA pool:', err);
     }
   }, [isInitialized, worker, workerReady]);
 
@@ -249,7 +250,7 @@ export default function ScoutingPage() {
         setOwnerState((ownerData ?? null) as OwnerState | null);
         setIFAPool((pool ?? null) as IFAPoolView | null);
       } catch (err) {
-        console.error('Failed to fetch scouting overview:', err);
+        logger.error('Failed to fetch scouting overview:', err);
       }
     })();
   }, [isInitialized, workerReady, userTeamId, worker]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -274,7 +275,7 @@ export default function ScoutingPage() {
         setRecentReports((prev) => [report as ScoutReport, ...prev].slice(0, 20));
       }
     } catch (err) {
-      console.error('Failed to scout player:', err);
+      logger.error('Failed to scout player:', err);
     }
     setLoading(false);
   }, [workerReady, worker]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -294,7 +295,7 @@ export default function ScoutingPage() {
       setIFABonus(result.report.expectedBonus.toFixed(2));
       await refreshIFAPool();
     } catch (err) {
-      console.error('Failed to scout IFA player:', err);
+      logger.error('Failed to scout IFA player:', err);
       setActionMessage('Unable to scout that prospect right now.');
     } finally {
       setIFALoading(false);
@@ -318,7 +319,7 @@ export default function ScoutingPage() {
       await refreshIFAPool();
       setIFAReport(null);
     } catch (err) {
-      console.error('Failed to sign IFA player:', err);
+      logger.error('Failed to sign IFA player:', err);
       setActionMessage('Unable to finalize that signing.');
     } finally {
       setIFALoading(false);
@@ -340,7 +341,7 @@ export default function ScoutingPage() {
       setActionMessage(`Transferred ${formatMoney(amount)} of pool space. Remaining pool: ${formatMoney(result.remainingBudget)}.`);
       await refreshIFAPool();
     } catch (err) {
-      console.error('Failed to trade IFA pool space:', err);
+      logger.error('Failed to trade IFA pool space:', err);
       setActionMessage('Unable to move pool space right now.');
     } finally {
       setIFALoading(false);

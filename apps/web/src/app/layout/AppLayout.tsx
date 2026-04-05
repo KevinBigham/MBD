@@ -11,6 +11,7 @@ import { TickerBar } from './TickerBar';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
+import { logger } from '@/shared/lib/logger';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
 import { loadGameById, saveGameById, scheduleAutoSave } from '@/shared/lib/saveSystem';
@@ -115,7 +116,7 @@ export function AppLayout() {
 
     if (activeSaveSlot != null) {
       void scheduleAutoSave(activeSaveSlot, saveName, snapshot).catch((error) => {
-        console.error('Failed to autosave snapshot:', error);
+        logger.error('Failed to autosave snapshot:', error);
       });
       return;
     }
@@ -127,7 +128,7 @@ export function AppLayout() {
       isRootSave: existing?.isRootSave ?? false,
       branchMeta: existing?.branchMeta ?? null,
     }).catch((error) => {
-      console.error('Failed to autosave snapshot:', error);
+      logger.error('Failed to autosave snapshot:', error);
     });
   }, [activeSaveId, activeSaveSlot, gmName, teamName, worker]);
 
@@ -185,7 +186,7 @@ export function AppLayout() {
           await persistActiveSave(result.season);
         }
       } catch (err) {
-        console.error('Simulation error:', err);
+        logger.error('Simulation error:', err);
       } finally {
         setSimulating(false);
       }
@@ -243,7 +244,7 @@ export function AppLayout() {
       await worker.acknowledgeMonthlyReport(activeReport.id);
       await refreshMonthlyPulse();
     } catch (err) {
-      console.error('Failed to acknowledge monthly report:', err);
+      logger.error('Failed to acknowledge monthly report:', err);
     } finally {
       setMonthlyPulseBusy(false);
     }
@@ -255,7 +256,7 @@ export function AppLayout() {
       await worker.dismissCeremonyMoment(momentId);
       await Promise.all([refreshCeremony(), refreshMonthlyPulse()]);
     } catch (err) {
-      console.error('Failed to dismiss ceremony moment:', err);
+      logger.error('Failed to dismiss ceremony moment:', err);
     } finally {
       setMonthlyPulseBusy(false);
     }
@@ -268,7 +269,7 @@ export function AppLayout() {
       await worker.dismissDecisionSpotlight(activeDecision.id);
       await refreshMonthlyPulse();
     } catch (err) {
-      console.error('Failed to dismiss decision spotlight:', err);
+      logger.error('Failed to dismiss decision spotlight:', err);
     } finally {
       setMonthlyPulseBusy(false);
     }
@@ -282,7 +283,7 @@ export function AppLayout() {
       await refreshMonthlyPulse();
       navigate(activeDecision.route);
     } catch (err) {
-      console.error('Failed to handle decision spotlight action:', err);
+      logger.error('Failed to handle decision spotlight action:', err);
     } finally {
       setMonthlyPulseBusy(false);
     }

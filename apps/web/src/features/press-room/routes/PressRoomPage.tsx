@@ -13,6 +13,7 @@ import { getTeamById } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
+import { logger } from '@/shared/lib/logger';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 
 type SectionKey = 'briefings' | 'league_wire' | 'press_conferences' | 'scouting';
@@ -163,7 +164,7 @@ export default function PressRoomPage() {
       const nextFeed = await worker.getPressRoomFeed(100);
       setFeed((nextFeed ?? []) as PressRoomEntry[]);
     } catch (err) {
-      console.error('Failed to fetch press room feed:', err);
+      logger.error('Failed to fetch press room feed:', err);
     }
   }, [isInitialized, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 

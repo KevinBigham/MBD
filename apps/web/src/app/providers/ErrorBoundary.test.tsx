@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { ErrorBoundary } from './ErrorBoundary';
+import { logger } from '@/shared/lib/logger';
 
 function CrashRoute(): never {
   throw new Error('Route exploded');
@@ -28,6 +29,7 @@ describe('ErrorBoundary', () => {
   it('renders a custom recovery action when a child route crashes', async () => {
     const onRecover = vi.fn();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
 
     await act(async () => {
       root.render(
@@ -56,7 +58,8 @@ describe('ErrorBoundary', () => {
   });
 
   it('logs the route context when catching an error', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const loggerSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
 
     await act(async () => {
       root.render(
@@ -66,7 +69,7 @@ describe('ErrorBoundary', () => {
       );
     });
 
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(loggerSpy).toHaveBeenCalledWith(
       'ErrorBoundary caught an error in Roster Page:',
       expect.any(Error),
       expect.objectContaining({ componentStack: expect.any(String) }),

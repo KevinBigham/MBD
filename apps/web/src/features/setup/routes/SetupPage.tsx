@@ -4,6 +4,7 @@ import { Play, PlusCircle, Shield, Trash2, Trophy } from 'lucide-react';
 import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { logger } from '@/shared/lib/logger';
 import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
 import {
   SAVE_SLOTS,
@@ -164,7 +165,7 @@ export default function SetupPage() {
     }).then((nextPreview) => {
       setPreview((nextPreview ?? null) as SetupPreview | null);
     }).catch((error) => {
-      console.error('Failed to build dynasty preview:', error);
+      logger.error('Failed to build dynasty preview:', error);
       setStatus('Failed to build the dynasty preview.');
     });
   }, [difficulty, seed, selectedScenario?.startingTeamId, teamId, worker, wizardMode, wizardOpen]);
@@ -181,7 +182,7 @@ export default function SetupPage() {
         setSelectedScenarioId(nextCatalog[0]!.id);
       }
     }).catch((error) => {
-      console.error('Failed to load scenario catalog:', error);
+      logger.error('Failed to load scenario catalog:', error);
     });
   }, [selectedScenarioId, worker, wizardOpen]);
 
@@ -216,7 +217,7 @@ export default function SetupPage() {
 
       await continueFromInspection(result);
     } catch (error) {
-      console.error('Failed to continue save:', error);
+      logger.error('Failed to continue save:', error);
       setStatus(save.slotNumber != null ? `Failed to load slot ${save.slotNumber}.` : `Failed to load branch "${save.name}".`);
     } finally {
       setBusySlot(null);
@@ -231,7 +232,7 @@ export default function SetupPage() {
       setRecoveryState((current) => (current?.slot === slot ? null : current));
       await refreshSaves();
     } catch (error) {
-      console.error('Failed to delete save:', error);
+      logger.error('Failed to delete save:', error);
       setStatus(`Failed to delete slot ${slot}.`);
     } finally {
       setBusySlot(null);
@@ -269,7 +270,7 @@ export default function SetupPage() {
       await refreshSaves();
       await continueFromInspection(repaired);
     } catch (error) {
-      console.error('Failed to repair save:', error);
+      logger.error('Failed to repair save:', error);
       setStatus(`Failed to repair slot ${slot}.`);
     } finally {
       setBusySlot(null);
@@ -331,7 +332,7 @@ export default function SetupPage() {
       });
       navigate('/dashboard');
     } catch (error) {
-      console.error('Failed to create dynasty:', error);
+      logger.error('Failed to create dynasty:', error);
       setStatus('Failed to create the new dynasty.');
     } finally {
       setBusySlot(null);

@@ -1,3 +1,5 @@
+import { logger } from '@/shared/lib/logger';
+
 interface ServiceWorkerRegisterOptions {
   scope?: string;
 }
@@ -25,6 +27,6 @@ export function registerMbdServiceWorker(
   }
 
   void performRegister('/MBD/sw.js', { scope: '/MBD/' }).catch((error) => {
-      console.error('Failed to register the Mr. Baseball Dynasty service worker:', error);
+      logger.error('Failed to register the Mr. Baseball Dynasty service worker:', error);
   });
 }

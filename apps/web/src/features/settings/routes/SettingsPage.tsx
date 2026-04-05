@@ -7,6 +7,7 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { logger } from '@/shared/lib/logger';
 import {
   SAVE_SLOTS,
   clearAllSaves,
@@ -222,7 +223,7 @@ export default function SettingsPage() {
       await refreshSaves();
       setStatus(`Saved snapshot to slot ${slot}.`);
     } catch (error) {
-      console.error('Failed to save game:', error);
+      logger.error('Failed to save game:', error);
       setStatus(`Failed to save slot ${slot}.`);
     } finally {
       setBusySlot(null);
@@ -247,7 +248,7 @@ export default function SettingsPage() {
       await continueFromInspection(result);
       setStatus(`Loaded slot ${slot}.`);
     } catch (error) {
-      console.error('Failed to load game:', error);
+      logger.error('Failed to load game:', error);
       setStatus(`Failed to load slot ${slot}.`);
     } finally {
       setBusySlot(null);
@@ -263,7 +264,7 @@ export default function SettingsPage() {
       await refreshSaves();
       setStatus(`Deleted slot ${slot}.`);
     } catch (error) {
-      console.error('Failed to delete save:', error);
+      logger.error('Failed to delete save:', error);
       setStatus(`Failed to delete slot ${slot}.`);
     } finally {
       setBusySlot(null);
@@ -301,7 +302,7 @@ export default function SettingsPage() {
       await continueFromInspection(repaired);
       setStatus(`Repaired and loaded slot ${slot}.`);
     } catch (error) {
-      console.error('Failed to repair save:', error);
+      logger.error('Failed to repair save:', error);
       setStatus(`Failed to repair slot ${slot}.`);
     } finally {
       setBusySlot(null);
@@ -364,7 +365,7 @@ export default function SettingsPage() {
       window.URL.revokeObjectURL(url);
       setStatus('Exported the current dynasty snapshot.');
     } catch (error) {
-      console.error('Failed to export snapshot:', error);
+      logger.error('Failed to export snapshot:', error);
       setStatus('Failed to export the current dynasty snapshot.');
     }
   }
@@ -387,7 +388,7 @@ export default function SettingsPage() {
       await refreshSaves();
       setStatus(`Imported save into slot ${slot}.`);
     } catch (error) {
-      console.error('Failed to import save:', error);
+      logger.error('Failed to import save:', error);
       setStatus('Failed to import save file.');
     } finally {
       if (importInputRef.current) {
@@ -442,7 +443,7 @@ export default function SettingsPage() {
       setBranchDescription('');
       setStatus('Created a new what-if branch from the active root save.');
     } catch (error) {
-      console.error('Failed to create branch:', error);
+      logger.error('Failed to create branch:', error);
       setStatus('Failed to create a what-if branch.');
     } finally {
       setBranchBusy(false);
@@ -461,7 +462,7 @@ export default function SettingsPage() {
       await refreshBranches();
       setStatus('Deleted the selected what-if branch.');
     } catch (error) {
-      console.error('Failed to delete branch:', error);
+      logger.error('Failed to delete branch:', error);
       setStatus('Failed to delete the selected what-if branch.');
     } finally {
       setBranchBusy(false);
@@ -483,7 +484,7 @@ export default function SettingsPage() {
       setDiagnostics(result.diagnostics);
       setStatus(`Archived ${result.archivedCount} older seasons into the long-term archive.`);
     } catch (error) {
-      console.error('Failed to archive older seasons:', error);
+      logger.error('Failed to archive older seasons:', error);
       setStatus('Failed to archive older seasons.');
     } finally {
       setDiagnosticsBusy(null);
@@ -505,7 +506,7 @@ export default function SettingsPage() {
       setDiagnostics(result.diagnostics);
       setStatus(`Pruned ${result.prunedCount} stale entries from the active save.`);
     } catch (error) {
-      console.error('Failed to prune stale data:', error);
+      logger.error('Failed to prune stale data:', error);
       setStatus('Failed to prune stale data.');
     } finally {
       setDiagnosticsBusy(null);

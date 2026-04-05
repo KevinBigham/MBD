@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { History, Award, Flame, Trophy } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
 import { Link } from 'react-router-dom';
+import { logger } from '@/shared/lib/logger';
 import type {
   ArchivedSeason,
   AwardHistoryEntry,
@@ -519,7 +520,7 @@ export default function HistoryPage() {
       setSeasonComparison((comparisonData ?? null) as SeasonComparisonView | null);
       setDisplayNames((resolvedNames ?? EMPTY_DISPLAY_NAMES) as HistoryDisplayNames);
     } catch (err) {
-      console.error('Failed to fetch history data:', err);
+      logger.error('Failed to fetch history data:', err);
     } finally {
       setLoading(false);
     }
@@ -545,7 +546,7 @@ export default function HistoryPage() {
         }
       })
       .catch((err) => {
-        console.error('Failed to compare seasons:', err);
+        logger.error('Failed to compare seasons:', err);
       });
 
     return () => {

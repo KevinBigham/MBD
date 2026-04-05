@@ -13,6 +13,7 @@ import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { logger } from '@/shared/lib/logger';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 import type { GamePlayByPlayView, GameRecapView } from '../components/gameDayBroadcast';
@@ -363,7 +364,7 @@ export default function DashboardPage() {
         return recapViews[0]?.gameIndex ?? null;
       });
     } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      logger.error('Failed to fetch dashboard data:', error);
     } finally {
       setLoading(false);
     }
@@ -393,7 +394,7 @@ export default function DashboardPage() {
         if (!active) {
           return;
         }
-        console.error('Failed to fetch game play-by-play:', error);
+        logger.error('Failed to fetch game play-by-play:', error);
         setSelectedGameDetail(null);
       })
       .finally(() => {
@@ -427,7 +428,7 @@ export default function DashboardPage() {
         await fetchData();
       }
     } catch (error) {
-      console.error('Failed to apply for job:', error);
+      logger.error('Failed to apply for job:', error);
     } finally {
       setApplyingTeamId(null);
     }
@@ -443,7 +444,7 @@ export default function DashboardPage() {
       updateFromSim(result);
       await fetchData();
     } catch (error) {
-      console.error(`Failed to ${quickActionLabel(action).toLowerCase()}:`, error);
+      logger.error(`Failed to ${quickActionLabel(action).toLowerCase()}:`, error);
     } finally {
       setSimAction(null);
     }
