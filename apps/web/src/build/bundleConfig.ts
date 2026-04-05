@@ -42,11 +42,20 @@ export function resolveAppManualChunk(id: string): string | undefined {
   }
 
   if (
+    includesPackage(normalized, 'recharts')
+    || normalized.includes('/node_modules/d3-')
+    || includesPackage(normalized, 'victory-vendor')
+  ) {
+    return 'vendor-charts';
+  }
+
+  if (
     includesPackage(normalized, '@radix-ui')
     || includesPackage(normalized, 'lucide-react')
     || includesPackage(normalized, 'class-variance-authority')
     || includesPackage(normalized, 'tailwind-merge')
     || includesPackage(normalized, 'cmdk')
+    || includesPackage(normalized, '@dnd-kit')
   ) {
     return 'vendor-ui';
   }
