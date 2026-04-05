@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
 import { logger } from '@/shared/lib/logger';
 
 const IS_DEV = (import.meta as unknown as { env: { DEV: boolean } }).env.DEV;
@@ -9,6 +9,7 @@ interface ErrorBoundaryProps {
   contextLabel?: string;
   recoveryLabel?: string;
   onRecover?: () => void;
+  onRetry?: () => void;
   showBugLink?: boolean;
 }
 
@@ -71,7 +72,19 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
+              {this.props.onRetry && (
+                <button
+                  onClick={() => {
+                    this.setState({ hasError: false, error: null });
+                    this.props.onRetry?.();
+                  }}
+                  className="focus-ring flex items-center gap-2 rounded-md border border-accent-info bg-accent-info/10 px-4 py-2 font-heading text-sm font-semibold text-accent-info transition-colors hover:bg-accent-info/20"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Try Again
+                </button>
+              )}
               <button
                 onClick={this.handleReload}
                 className="focus-ring flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primaryHover"

@@ -75,4 +75,49 @@ describe('ErrorBoundary', () => {
       expect.objectContaining({ componentStack: expect.any(String) }),
     );
   });
+
+  it('renders a Try Again button when onRetry is provided', async () => {
+    const onRetry = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    await act(async () => {
+      root.render(
+        <ErrorBoundary contextLabel="Test" onRetry={onRetry}>
+          <CrashRoute />
+        </ErrorBoundary>,
+      );
+    });
+
+    const retryButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Try Again'),
+    );
+
+    expect(retryButton).not.toBeUndefined();
+
+    await act(async () => {
+      retryButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render Try Again when onRetry is not provided', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    await act(async () => {
+      root.render(
+        <ErrorBoundary contextLabel="Test">
+          <CrashRoute />
+        </ErrorBoundary>,
+      );
+    });
+
+    const retryButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Try Again'),
+    );
+
+    expect(retryButton).toBeUndefined();
+  });
 });
