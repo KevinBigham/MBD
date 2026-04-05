@@ -8,10 +8,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import {
+  CHART_CHUNK_BUDGET_BYTES,
+  CHART_CHUNK_GZIP_BUDGET_BYTES,
   MAIN_THREAD_CHUNK_BUDGET_BYTES,
   MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES,
   WORKER_CHUNK_BUDGET_BYTES,
   WORKER_CHUNK_GZIP_BUDGET_BYTES,
+  isChartBundleFile,
   isWorkerBundleFile,
 } from './bundleConfig';
 
@@ -72,8 +75,9 @@ describe('bundle budgets', () => {
       const rawBytes = source.byteLength;
       const gzipBytes = gzipSync(source).byteLength;
       const isWorker = isWorkerBundleFile(fileName);
-      const rawBudget = isWorker ? WORKER_CHUNK_BUDGET_BYTES : MAIN_THREAD_CHUNK_BUDGET_BYTES;
-      const gzipBudget = isWorker ? WORKER_CHUNK_GZIP_BUDGET_BYTES : MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES;
+      const isChart = isChartBundleFile(fileName);
+      const rawBudget = isWorker ? WORKER_CHUNK_BUDGET_BYTES : isChart ? CHART_CHUNK_BUDGET_BYTES : MAIN_THREAD_CHUNK_BUDGET_BYTES;
+      const gzipBudget = isWorker ? WORKER_CHUNK_GZIP_BUDGET_BYTES : isChart ? CHART_CHUNK_GZIP_BUDGET_BYTES : MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES;
 
       if (rawBytes <= rawBudget && gzipBytes <= gzipBudget) {
         return [];

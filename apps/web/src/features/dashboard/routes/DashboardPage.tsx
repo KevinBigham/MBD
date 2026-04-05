@@ -25,6 +25,7 @@ const FinancialCard = lazy(() => import('../components/FinancialCard'));
 const PressDigestCard = lazy(() => import('../components/PressDigestCard'));
 const GameRecapCard = lazy(() => import('../components/GameRecapCard'));
 const PlayByPlayPanel = lazy(() => import('../components/PlayByPlayPanel'));
+const Sparkline = lazy(() => import('@/shared/components/charts/Sparkline'));
 
 interface DashboardSummary {
   franchise: {
@@ -592,6 +593,37 @@ export default function DashboardPage() {
             recap={seasonRecap.recap}
             storylines={seasonRecap.storylines}
           />
+        ) : null}
+
+        {(summary?.roster.topPerformers ?? []).length > 0 ? (
+          <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4" data-testid="top-performers">
+            <div className="mb-3 flex items-center gap-2">
+              <Flame className="h-4 w-4 text-accent-primary" />
+              <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Top Performers</h2>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(summary?.roster.topPerformers ?? []).map((perf) => (
+                <Link
+                  key={perf.playerId}
+                  to={`/players/${perf.playerId}`}
+                  className="flex items-center gap-3 rounded-lg border border-dynasty-border/60 bg-dynasty-elevated p-3 transition-colors hover:border-accent-primary/40"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate font-heading text-sm text-dynasty-textBright">{perf.name}</div>
+                    <div className="mt-0.5 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+                      {perf.position} · {perf.label}
+                    </div>
+                    <div className="mt-1 font-data text-xs text-dynasty-text">{perf.statLine}</div>
+                  </div>
+                  {perf.sparklineValues.length > 1 ? (
+                    <Suspense fallback={<Skeleton className="h-6 w-20" />}>
+                      <Sparkline values={perf.sparklineValues} width={80} height={24} />
+                    </Suspense>
+                  ) : null}
+                </Link>
+              ))}
+            </div>
+          </section>
         ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">

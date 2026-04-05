@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
-import { Clock3, DollarSign, FileSignature, ShieldCheck } from 'lucide-react';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, Skeleton, StatLine, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
+import { Clock3, DollarSign, FileSignature, GripVertical, ShieldCheck } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+
+const LineupBuilder = lazy(() => import('../components/LineupBuilder'));
+const DepthChartDnD = lazy(() => import('../components/DepthChartDnD'));
 
 interface PlayerDTO {
   id: string;
@@ -223,6 +226,27 @@ function gradeFromValue(value: number, floor: number, ceiling: number): number {
 
 const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 
+const ALL_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'] as const;
+
+function buildDepthChartGroups(roster: PlayerDTO[]) {
+  return ALL_POSITIONS
+    .map((pos) => ({
+      position: pos,
+      players: roster
+        .filter((p) => p.position === pos)
+        .sort((a, b) => b.displayRating - a.displayRating)
+        .map((p) => ({
+          id: p.id,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          position: p.position,
+          displayRating: p.displayRating,
+          letterGrade: p.letterGrade,
+        })),
+    }))
+    .filter((g) => g.players.length > 0);
+}
+
 const MINOR_LEVELS = [
   { key: 'AAA', label: 'AAA' },
   { key: 'AA', label: 'AA' },
@@ -243,7 +267,7 @@ export default function RosterPage() {
   const [compliance, setCompliance] = useState<RosterComplianceView | null>(null);
   const [affiliateOverview, setAffiliateOverview] = useState<AffiliateOverviewView | null>(null);
   const [extensionCandidates, setExtensionCandidates] = useState<ExtensionCandidateView[]>([]);
-  const [activeTab, setActiveTab] = useState<'mlb' | 'minors' | 'contracts'>('mlb');
+  const [activeTab, setActiveTab] = useState<'mlb' | 'minors' | 'contracts' | 'lineup'>('mlb');
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [selectedExtension, setSelectedExtension] = useState<ExtensionCandidateView | null>(null);
   const [extensionOffer, setExtensionOffer] = useState<ExtensionOfferView | null>(null);
@@ -393,11 +417,14 @@ export default function RosterPage() {
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={(value: string) => setActiveTab(value as 'mlb' | 'minors' | 'contracts')}>
+      <Tabs value={activeTab} onValueChange={(value: string) => setActiveTab(value as 'mlb' | 'minors' | 'contracts' | 'lineup')}>
         <TabsList>
           <TabsTrigger value="mlb" onClick={() => setActiveTab('mlb')}>MLB Control Room</TabsTrigger>
           <TabsTrigger value="minors" onClick={() => setActiveTab('minors')}>Minor Leagues</TabsTrigger>
           <TabsTrigger value="contracts" onClick={() => setActiveTab('contracts')}>Contracts</TabsTrigger>
+          <TabsTrigger value="lineup" onClick={() => setActiveTab('lineup')}>
+            <GripVertical className="mr-1 inline h-3 w-3" />Lineup Builder
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -996,6 +1023,49 @@ export default function RosterPage() {
                   Submit Offer
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'lineup' && (
+        <div className="space-y-6" data-testid="lineup-tab">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-heading text-dynasty-text">
+                <GripVertical className="mr-2 inline h-4 w-4 text-accent-primary" />
+                Batting Order
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
+                <LineupBuilder
+                  players={(mlbRoster ?? [])
+                    .filter((p) => !PITCHER_POSITIONS.has(p.position))
+                    .slice(0, 9)
+                    .map((p) => ({
+                      id: p.id,
+                      firstName: p.firstName,
+                      lastName: p.lastName,
+                      position: p.position,
+                      displayRating: p.displayRating,
+                      letterGrade: p.letterGrade,
+                    }))}
+                />
+              </Suspense>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-heading text-dynasty-text">Positional Depth Chart</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
+                <DepthChartDnD
+                  groups={buildDepthChartGroups(mlbRoster ?? [])}
+                />
+              </Suspense>
             </CardContent>
           </Card>
         </div>

@@ -1,5 +1,6 @@
+import { Suspense, lazy } from 'react';
 import { estimateProjectedWarRange } from '@mbd/sim-core';
-import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
+import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar, Skeleton, StatLine } from '@mbd/ui';
 import type { PlayerProfileView } from './playerProfileShared';
 import {
   badgeVariantForSetback,
@@ -10,6 +11,9 @@ import {
   isPitcherProfile,
   labelize,
 } from './playerProfileShared';
+
+const DevCurveChart = lazy(() => import('@/shared/components/charts/DevCurveChart'));
+const CareerArcChart = lazy(() => import('@/shared/components/charts/CareerArcChart'));
 
 export default function DevelopmentTab({
   view,
@@ -69,6 +73,17 @@ export default function DevelopmentTab({
                 { label: 'WAR Ceiling', value: projectedWar.ceilingWar?.toFixed(1) ?? '--' },
               ]}
             />
+            {developmentReports?.history.length ? (
+              <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
+                <div className="mt-2" data-testid="dev-curve-chart">
+                  <DevCurveChart
+                    history={developmentReports.history}
+                    floor={displayBand(player.floor)}
+                    ceiling={displayBand(player.ceiling)}
+                  />
+                </div>
+              </Suspense>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -216,6 +231,21 @@ export default function DevelopmentTab({
           ) : null}
         </CardContent>
       </Card>
+
+      {developmentReports?.history.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading text-dynasty-text">Career Rating Arc</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Suspense fallback={<Skeleton className="h-44 rounded-lg" />}>
+              <div data-testid="career-arc-chart">
+                <CareerArcChart history={developmentReports.history} />
+              </div>
+            </Suspense>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {developmentReports?.debutFlashback ? (
         <Card>
