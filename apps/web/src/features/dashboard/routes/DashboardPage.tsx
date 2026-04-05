@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import {
   ChevronRight,
   Flame,
+  Handshake,
   History,
   Newspaper,
   Play,
+  Users,
 } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
@@ -517,7 +519,26 @@ export default function DashboardPage() {
                 <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">First Day Briefing</div>
                 <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">Welcome, GM {summary.franchise.gmName}</h2>
                 <p className="mt-2 max-w-3xl font-heading text-sm leading-6 text-dynasty-text">
-                  The dashboard is now your live intelligence grid: standings, health, trade market, farm pulse, finance, and press coverage in one pass.
+                  The dashboard is your live intelligence grid. Use the quick-start actions below to jump in, or explore at your own pace.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    to="/MBD/roster"
+                    className="focus-ring inline-flex items-center gap-2 rounded-md border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs text-accent-info transition-colors hover:bg-accent-info/20"
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    Check Your Roster
+                  </Link>
+                  <Link
+                    to="/MBD/trade"
+                    className="focus-ring inline-flex items-center gap-2 rounded-md border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs text-accent-info transition-colors hover:bg-accent-info/20"
+                  >
+                    <Handshake className="h-3.5 w-3.5" />
+                    Explore Trades
+                  </Link>
+                </div>
+                <p className="mt-3 font-data text-[10px] text-dynasty-muted">
+                  Tip: Press Space to sim a day, Shift+Space for a week, or Cmd+K for the command palette.
                 </p>
               </div>
               <button
