@@ -1,6 +1,8 @@
 import { Component, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
+const IS_DEV = (import.meta as unknown as { env: { DEV: boolean } }).env.DEV;
+
 interface ErrorBoundaryProps {
   children: ReactNode;
   contextLabel?: string;
@@ -55,7 +57,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               safe in local storage.
             </p>
 
-            {this.state.error && (
+            {this.state.error && IS_DEV && (
               <div className="mb-6 overflow-auto rounded border border-dynasty-border bg-dynasty-base p-4">
                 <pre className="font-data text-xs text-accent-danger">
                   {this.state.error.message}
@@ -78,7 +80,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </button>
               {this.props.showBugLink !== false ? (
                 <a
-                  href="https://github.com/kevinbigham/mr-baseball-dynasty/issues"
+                  href="https://github.com/KevinBigham/MBD/issues"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="focus-ring flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm text-dynasty-muted transition-colors hover:border-dynasty-muted hover:text-dynasty-text"

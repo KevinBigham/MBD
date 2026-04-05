@@ -1,9 +1,12 @@
 import { useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { dynasty } from '@mbd/design-tokens';
 import { ErrorBoundary } from './providers/ErrorBoundary';
 import { AppRoutes } from './routes';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
+
+const HC_BASE = '#020617'; // slate-950, high-contrast mode base
 
 export function App() {
   const highContrast = usePreferencesStore((state) => state.highContrast);
@@ -24,9 +27,9 @@ export function App() {
           position="bottom-right"
           toastOptions={{
             style: {
-              background: highContrast ? '#020617' : '#0F1930',
-              border: highContrast ? '1px solid #F8FAFC' : '1px solid #1E3A6E',
-              color: highContrast ? '#F8FAFC' : '#E2E8F0',
+              background: highContrast ? HC_BASE : dynasty.surface,
+              border: `1px solid ${highContrast ? dynasty.textBright : dynasty.border}`,
+              color: highContrast ? dynasty.textBright : dynasty.text,
               fontFamily: "'Space Grotesk', sans-serif",
               fontSize: '0.875rem',
             },
