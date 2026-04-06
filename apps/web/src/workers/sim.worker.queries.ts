@@ -1724,4 +1724,113 @@ export const queryApi = {
   getTickerFeed(limit = 25) {
     return requireState().tickerFeed.slice(0, Math.max(1, limit));
   },
+
+  getScheduleView() {
+    if (!state) return null;
+
+    const s = state;
+    const userTeamId = s.userTeamId;
+
+    // Build lookup: "homeTeamId:awayTeamId:date" -> { gameIndex, boxScore }
+    const gameLogLookup = new Map<string, { gameIndex: number; boxScore: GameBoxScore }>();
+    for (let i = 0; i < s.seasonState.gameLog.length; i++) {
+      const bs = s.seasonState.gameLog[i];
+      if (!bs) continue;
+      const key = `${bs.homeTeamId}:${bs.awayTeamId}:${bs.date}`;
+      gameLogLookup.set(key, { gameIndex: i, boxScore: bs });
+    }
+
+    const entries: {
+      day: number;
+      opponentId: string;
+      opponentName: string;
+      opponentAbbr: string;
+      isHome: boolean;
+      isCompleted: boolean;
+      userScore?: number;
+      opponentScore?: number;
+      result?: 'W' | 'L';
+      gameIndex?: number;
+    }[] = [];
+
+    for (const game of s.schedule) {
+      const isHome = game.homeTeamId === userTeamId;
+      const isAway = game.awayTeamId === userTeamId;
+      if (!isHome && !isAway) continue;
+
+      const opponentId = isHome ? game.awayTeamId : game.homeTeamId;
+      const opponentTeam = getTeamById(opponentId);
+      const opponentName = opponentTeam ? `${opponentTeam.city} ${opponentTeam.name}` : opponentId;
+      const opponentAbbr = opponentTeam?.abbreviation ?? opponentId.toUpperCase();
+
+      const dateKey = `S${s.season}D${game.day}`;
+      const lookupKey = `${game.homeTeamId}:${game.awayTeamId}:${dateKey}`;
+      const match = gameLogLookup.get(lookupKey);
+
+      if (match) {
+        const userScore = isHome ? match.boxScore.homeScore : match.boxScore.awayScore;
+        const oppScore = isHome ? match.boxScore.awayScore : match.boxScore.homeScore;
+        entries.push({
+          day: game.day,
+          opponentId,
+          opponentName,
+          opponentAbbr,
+          isHome,
+          isCompleted: true,
+          userScore,
+          opponentScore: oppScore,
+          result: userScore > oppScore ? 'W' : 'L',
+          gameIndex: match.gameIndex,
+        });
+      } else {
+        entries.push({
+          day: game.day,
+          opponentId,
+          opponentName,
+          opponentAbbr,
+          isHome,
+          isCompleted: false,
+        });
+      }
+    }
+
+    return entries;
+  },
+
+  getFinanceOverview() {
+    const s = requireState();
+    const teamPlayers = s.players.filter((p) => p.teamId === s.userTeamId);
+    const payroll = calculateTeamPayroll(s.userTeamId, s.players);
+    const luxuryTax = calculateLuxuryTax(payroll.luxuryTaxPayroll);
+    const budget = getDifficultyAdjustedBudget(s, s.userTeamId);
+    const coachingStaff = s.coachingStaffs.get(s.userTeamId) ?? [];
+    const coachingPayroll = calculateCoachingPayroll(coachingStaff);
+
+    const contracts = teamPlayers
+      .filter((p) => p.contract.annualSalary > 0)
+      .sort((a, b) => b.contract.annualSalary - a.contract.annualSalary)
+      .map((p) => ({
+        playerId: p.id,
+        name: `${p.firstName} ${p.lastName}`,
+        position: p.position,
+        rosterStatus: p.rosterStatus,
+        annualSalary: p.contract.annualSalary,
+        yearsRemaining: p.contract.years,
+        noTradeClause: p.contract.noTradeClause,
+        playerOption: p.contract.playerOption,
+      }));
+
+    return {
+      totalPayroll: payroll.totalPayroll,
+      mlbPayroll: payroll.mlbPayroll,
+      minorsPayroll: payroll.minorsPayroll,
+      luxuryTaxPayroll: payroll.luxuryTaxPayroll,
+      luxuryTax,
+      budget,
+      capSpace: payroll.capSpace,
+      futureCommitments: payroll.futureCommitments,
+      coachingPayroll,
+      contracts,
+    };
+  },
 };

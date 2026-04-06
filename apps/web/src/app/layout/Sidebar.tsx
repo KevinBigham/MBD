@@ -1,13 +1,16 @@
 import { NavLink } from 'react-router-dom';
 import {
+  Award,
   Briefcase,
   Users,
   User,
   BriefcaseBusiness,
+  DollarSign,
   Search,
   FileText,
   ArrowLeftRight,
   Trophy,
+  CalendarDays,
   CalendarRange,
   Newspaper,
   History,
@@ -34,12 +37,15 @@ const baseMainNavItems: NavItem[] = [
   { to: '/players', label: 'Players', icon: <User className="h-5 w-5" /> },
   { to: '/scouting', label: 'Scouting', icon: <Search className="h-5 w-5" /> },
   { to: '/staff', label: 'Staff', icon: <BriefcaseBusiness className="h-5 w-5" /> },
+  { to: '/finance', label: 'Finance', icon: <DollarSign className="h-5 w-5" /> },
   { to: '/draft', label: 'Draft', icon: <FileText className="h-5 w-5" /> },
   { to: '/trade', label: 'Trades', icon: <ArrowLeftRight className="h-5 w-5" /> },
   { to: '/league/standings', label: 'League', icon: <Trophy className="h-5 w-5" /> },
+  { to: '/schedule', label: 'Schedule', icon: <CalendarDays className="h-5 w-5" /> },
   { to: '/playoffs', label: 'Playoffs', icon: <CalendarRange className="h-5 w-5" /> },
   { to: '/press-room', label: 'Press Room', icon: <Newspaper className="h-5 w-5" /> },
   { to: '/history', label: 'History', icon: <History className="h-5 w-5" /> },
+  { to: '/career', label: 'GM Career', icon: <Award className="h-5 w-5" /> },
 ];
 
 const bottomNavItems: NavItem[] = [

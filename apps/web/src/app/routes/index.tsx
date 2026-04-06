@@ -55,6 +55,18 @@ const FreeAgencyPage = lazy(
 const OffseasonPage = lazy(
   () => import('@/features/offseason/routes/OffseasonPage')
 );
+const SchedulePage = lazy(
+  () => import('@/features/schedule/routes/SchedulePage')
+);
+const BoxScorePage = lazy(
+  () => import('@/features/schedule/routes/BoxScorePage')
+);
+const FinancePage = lazy(
+  () => import('@/features/finance/routes/FinancePage')
+);
+const GMCareerPage = lazy(
+  () => import('@/features/gm-career/routes/GMCareerPage')
+);
 const SettingsPage = lazy(
   () => import('@/features/settings/routes/SettingsPage')
 );
@@ -105,10 +117,14 @@ export function AppRoutes() {
             <Route path="leaders" element={withRouteBoundary('Leaders', <LeadersPage />)} />
             <Route index element={<Navigate to="standings" replace />} />
           </Route>
+          <Route path="schedule" element={withRouteBoundary('Schedule', <SchedulePage />)} />
+          <Route path="games/:gameIndex" element={withRouteBoundary('Box Score', <BoxScorePage />)} />
           <Route path="press-room" element={withRouteBoundary('Press Room', <PressRoomPage />)} />
           <Route path="playoffs" element={withRouteBoundary('Playoffs', <PlayoffsPage />)} />
           <Route path="free-agency" element={withRouteBoundary('Free Agency', <FreeAgencyPage />)} />
           <Route path="offseason" element={withRouteBoundary('Offseason', <OffseasonPage />)} />
+          <Route path="finance" element={withRouteBoundary('Finance', <FinancePage />)} />
+          <Route path="career" element={withRouteBoundary('GM Career', <GMCareerPage />)} />
           <Route path="history" element={withRouteBoundary('History', <HistoryPage />)} />
           <Route path="settings" element={withRouteBoundary('Settings', <SettingsPage />)} />
           {/* Catch-all redirect */}

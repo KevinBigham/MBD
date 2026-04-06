@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
 import {
+  Award,
   Briefcase,
   Users,
   User,
   BriefcaseBusiness,
+  DollarSign,
   Search,
   FileText,
   ArrowLeftRight,
   Trophy,
+  CalendarDays,
   CalendarRange,
   Newspaper,
   History,
@@ -55,13 +58,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { id: 'nav-players', label: 'Players', icon: <User className="h-4 w-4" />, action: () => navigate('/players'), group: 'navigation' },
     { id: 'nav-scouting', label: 'Scouting', icon: <Search className="h-4 w-4" />, action: () => navigate('/scouting'), group: 'navigation' },
     { id: 'nav-staff', label: 'Staff', icon: <BriefcaseBusiness className="h-4 w-4" />, action: () => navigate('/staff'), group: 'navigation' },
+    { id: 'nav-finance', label: 'Finance', icon: <DollarSign className="h-4 w-4" />, action: () => navigate('/finance'), group: 'navigation' },
     { id: 'nav-draft', label: 'Draft Room', icon: <FileText className="h-4 w-4" />, action: () => navigate('/draft'), group: 'navigation' },
     { id: 'nav-trade', label: 'Trade Center', icon: <ArrowLeftRight className="h-4 w-4" />, action: () => navigate('/trade'), group: 'navigation' },
     { id: 'nav-standings', label: 'League Standings', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/standings'), group: 'navigation' },
     { id: 'nav-leaders', label: 'Stat Leaders', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/leaders'), group: 'navigation' },
+    { id: 'nav-schedule', label: 'Season Schedule', icon: <CalendarDays className="h-4 w-4" />, action: () => navigate('/schedule'), group: 'navigation' },
     { id: 'nav-playoffs', label: 'Playoffs', icon: <CalendarRange className="h-4 w-4" />, action: () => navigate('/playoffs'), group: 'navigation' },
     { id: 'nav-press-room', label: 'Press Room', icon: <Newspaper className="h-4 w-4" />, action: () => navigate('/press-room'), group: 'navigation' },
     { id: 'nav-history', label: 'Franchise History', icon: <History className="h-4 w-4" />, action: () => navigate('/history'), group: 'navigation' },
+    { id: 'nav-career', label: 'GM Career', icon: <Award className="h-4 w-4" />, action: () => navigate('/career'), group: 'navigation' },
     { id: 'nav-settings', label: 'Settings', icon: <Settings className="h-4 w-4" />, action: () => navigate('/settings'), group: 'navigation' },
     // Actions
     {

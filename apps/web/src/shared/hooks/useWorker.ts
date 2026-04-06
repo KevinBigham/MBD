@@ -362,6 +362,7 @@ export function useWorker() {
   );
 
   const getStandings = useCallback(async () => api.getStandings(), [api]);
+  const getScheduleView = useCallback(async () => api.getScheduleView(), [api]);
 
   const getTeamRoster = useCallback(
     async (teamId: string) => api.getTeamRoster(teamId),
@@ -693,13 +694,14 @@ export function useWorker() {
       runMutation(() => api.resolveRule5OfferBack(playerId, acceptReturn)),
     [api, runMutation],
   );
+  const getFinanceOverview = useCallback(async () => api.getFinanceOverview(), [api]);
 
   return {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,
-    getStandings, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getAdvancedStats,
+    getStandings, getScheduleView, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getAdvancedStats,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getSeasonRecap, getOffseasonHeadline, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
@@ -715,6 +717,7 @@ export function useWorker() {
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory, getSeasonArchive, compareSeasons, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames,
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,
+    getFinanceOverview,
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
     subscribeToFlowUpdates,
     restartWorker,
