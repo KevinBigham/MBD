@@ -38,6 +38,8 @@ export function createMbdPwaPlugin() {
     workbox: {
       globPatterns: ['**/*.{js,css,html,svg,png,json}'],
       navigateFallback: '/MBD/index.html',
+      skipWaiting: true,
+      clientsClaim: true,
     },
   });
 }
