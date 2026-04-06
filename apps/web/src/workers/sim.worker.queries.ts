@@ -1546,6 +1546,36 @@ export const queryApi = {
     return buildOffseasonStateView(requireState());
   },
 
+  getSpringTrainingView() {
+    const s = requireState();
+    const teamId = s.userTeamId;
+    const rosterState = s.rosterStates.get(teamId);
+    const rosterIssues = getRosterComplianceIssuesForTeam(s, teamId);
+    const rawCandidates = getPromotionCandidatesForTeam(s, teamId);
+    const promotionCandidates = rawCandidates
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map((candidate) => {
+        const player = s.players.find((p) => p.id === candidate.playerId);
+        return {
+          playerId: candidate.playerId,
+          playerName: player ? `${player.firstName} ${player.lastName}` : candidate.playerId,
+          position: player?.position ?? 'UTIL',
+          overallRating: player?.overallRating ?? 0,
+          currentLevel: candidate.currentLevel,
+          score: candidate.score,
+          reason: candidate.reason,
+        };
+      });
+
+    return {
+      rosterIssues,
+      promotionCandidates,
+      currentRosterSize: rosterState?.mlbRoster.length ?? 0,
+      rosterLimit: getActiveRosterLimit(s.day),
+    };
+  },
+
   getSeasonRecap(season?: number) {
     return buildSeasonRecapView(requireState(), season);
   },
@@ -1795,6 +1825,90 @@ export const queryApi = {
     }
 
     return entries;
+  },
+
+  getAllTimeLeaders() {
+    const s = requireState();
+    const LEADER_LIMIT = 10;
+    const MIN_PA_FOR_AVG = 500;
+    const MIN_IP_FOR_ERA = 200;
+
+    type LeaderEntry = {
+      playerId: string;
+      playerName: string;
+      value: number;
+      display: string;
+    };
+
+    function resolvePlayerName(playerId: string): string {
+      const active = s.players.find((p) => p.id === playerId);
+      if (active) return `${active.firstName} ${active.lastName}`;
+      const historical = s.historicalPlayers.find((h) => h.playerId === playerId);
+      if (historical) return historical.fullName;
+      return playerId;
+    }
+
+    function topN(
+      entries: { playerId: string; value: number; display: string }[],
+      ascending = false,
+    ): LeaderEntry[] {
+      const sorted = [...entries].sort((a, b) =>
+        ascending ? a.value - b.value : b.value - a.value,
+      );
+      return sorted.slice(0, LEADER_LIMIT).map((e) => ({
+        playerId: e.playerId,
+        playerName: resolvePlayerName(e.playerId),
+        value: e.value,
+        display: e.display,
+      }));
+    }
+
+    // Batting categories
+    const hitsEntries: { playerId: string; value: number; display: string }[] = [];
+    const hrEntries: { playerId: string; value: number; display: string }[] = [];
+    const rbiEntries: { playerId: string; value: number; display: string }[] = [];
+
+    // Pitching categories
+    const winsEntries: { playerId: string; value: number; display: string }[] = [];
+    const strikeoutEntries: { playerId: string; value: number; display: string }[] = [];
+    const eraEntries: { playerId: string; value: number; display: string }[] = [];
+    const savesEntries: { playerId: string; value: number; display: string }[] = [];
+
+    for (const ledger of s.careerStats) {
+      if (ledger.batting) {
+        hitsEntries.push({ playerId: ledger.playerId, value: ledger.batting.hits, display: String(ledger.batting.hits) });
+        hrEntries.push({ playerId: ledger.playerId, value: ledger.batting.hr, display: String(ledger.batting.hr) });
+        rbiEntries.push({ playerId: ledger.playerId, value: ledger.batting.rbi, display: String(ledger.batting.rbi) });
+      }
+      if (ledger.pitching) {
+        winsEntries.push({ playerId: ledger.playerId, value: ledger.pitching.wins, display: String(ledger.pitching.wins) });
+        strikeoutEntries.push({ playerId: ledger.playerId, value: ledger.pitching.strikeouts, display: String(ledger.pitching.strikeouts) });
+        if (ledger.pitching.inningsPitched >= MIN_IP_FOR_ERA) {
+          const era = ledger.pitching.inningsPitched > 0
+            ? (ledger.pitching.earnedRuns / ledger.pitching.inningsPitched) * 9
+            : 0;
+          eraEntries.push({ playerId: ledger.playerId, value: era, display: era.toFixed(2) });
+        }
+        const saves = ledger.saves ?? 0;
+        if (saves > 0) {
+          savesEntries.push({ playerId: ledger.playerId, value: saves, display: String(saves) });
+        }
+      }
+    }
+
+    return {
+      batting: {
+        hits: topN(hitsEntries),
+        hr: topN(hrEntries),
+        rbi: topN(rbiEntries),
+      },
+      pitching: {
+        wins: topN(winsEntries),
+        strikeouts: topN(strikeoutEntries),
+        era: topN(eraEntries, true),
+        saves: topN(savesEntries),
+      },
+    };
   },
 
   getFinanceOverview() {

@@ -407,6 +407,60 @@ describe('OffseasonPage', () => {
     expect(toggleRule5Protection).toHaveBeenCalledWith('risk-1');
   });
 
+  it('renders the spring training panel with roster data and call-up candidates', async () => {
+    mockedUseWorker.mockReturnValue(
+      buildWorkerMock({
+        getOffseasonState: vi.fn().mockResolvedValue(
+          buildOffseasonState({
+            currentPhase: 'spring_training',
+            phaseDay: 3,
+            totalDay: 80,
+            transactionGroups: [],
+          }),
+        ),
+        getSpringTrainingView: vi.fn().mockResolvedValue({
+          rosterIssues: [
+            { code: 'active_roster_over_limit', message: 'MLB roster has 28 players (limit 26).', severity: 'error' },
+          ],
+          promotionCandidates: [
+            {
+              playerId: 'prospect-1',
+              playerName: 'Marco Callup',
+              position: 'SS',
+              overallRating: 340,
+              currentLevel: 'AAA',
+              score: 88,
+              reason: 'Strong spring performance',
+            },
+            {
+              playerId: 'prospect-2',
+              playerName: 'Jake Farmhand',
+              position: 'SP',
+              overallRating: 295,
+              currentLevel: 'AA',
+              score: 72,
+              reason: 'Ready for next level',
+            },
+          ],
+          currentRosterSize: 28,
+          rosterLimit: 26,
+        }),
+      }) as unknown as ReturnType<typeof useWorker>,
+    );
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Spring Training');
+    expect(container.textContent).toContain('Finalize your 26-man roster');
+    expect(container.textContent).toContain('28/26');
+    expect(container.textContent).toContain('Roster Compliance Issues');
+    expect(container.textContent).toContain('MLB roster has 28 players (limit 26).');
+    expect(container.textContent).toContain('Top Call-Up Candidates');
+    expect(container.textContent).toContain('Marco Callup');
+    expect(container.textContent).toContain('Jake Farmhand');
+    expect(container.textContent).toContain('Strong spring performance');
+  });
+
   it('renders the Rule 5 board controls and resolves offer-back actions', async () => {
     const passRule5Pick = vi.fn().mockResolvedValue({ success: true });
     const resolveRule5OfferBack = vi.fn().mockResolvedValue({ success: true });

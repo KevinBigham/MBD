@@ -664,6 +664,7 @@ export function useWorker() {
     async (playerIds: string[], teamIds: string[]) => api.resolveHistoryDisplayNames(playerIds, teamIds),
     [api],
   );
+  const getAllTimeLeaders = useCallback(async () => api.getAllTimeLeaders(), [api]);
 
   const searchPlayers = useCallback(
     async (query: string, limit?: number) => api.searchPlayers(query, limit),
@@ -695,6 +696,7 @@ export function useWorker() {
     [api, runMutation],
   );
   const getFinanceOverview = useCallback(async () => api.getFinanceOverview(), [api]);
+  const getSpringTrainingView = useCallback(async () => api.getSpringTrainingView(), [api]);
 
   return {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, simToPlayoffs,
@@ -715,9 +717,10 @@ export function useWorker() {
     proceedToOffseason, startNextSeason,
     getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getGMCareer, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
     getPersonalityProfile, getAwardRaces, getRivalries,
-    getAwardHistory, getSeasonHistory, getSeasonArchive, compareSeasons, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames,
+    getAwardHistory, getSeasonHistory, getSeasonArchive, compareSeasons, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames, getAllTimeLeaders,
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,
     getFinanceOverview,
+    getSpringTrainingView,
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
     subscribeToFlowUpdates,
     restartWorker,

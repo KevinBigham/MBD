@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { History, Award, Flame, Trophy } from 'lucide-react';
+import { History, Award, Flame, Trophy, BarChart3 } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
 import { Link } from 'react-router-dom';
 import { logger } from '@/shared/lib/logger';
@@ -101,6 +101,27 @@ interface AchievementView {
   };
 }
 
+interface AllTimeLeaderEntry {
+  playerId: string;
+  playerName: string;
+  value: number;
+  display: string;
+}
+
+interface AllTimeLeadersView {
+  batting: {
+    hits: AllTimeLeaderEntry[];
+    hr: AllTimeLeaderEntry[];
+    rbi: AllTimeLeaderEntry[];
+  };
+  pitching: {
+    wins: AllTimeLeaderEntry[];
+    strikeouts: AllTimeLeaderEntry[];
+    era: AllTimeLeaderEntry[];
+    saves: AllTimeLeaderEntry[];
+  };
+}
+
 interface BranchSaveView {
   id: string;
   season: number;
@@ -123,7 +144,7 @@ const EMPTY_DISPLAY_NAMES: HistoryDisplayNames = {
   teams: {},
 };
 
-const HISTORY_TABS = ['records', 'seasons', 'timeline', 'legacy', 'awards'] as const;
+const HISTORY_TABS = ['records', 'seasons', 'leaders', 'timeline', 'legacy', 'awards'] as const;
 type HistoryTab = (typeof HISTORY_TABS)[number];
 const SEASON_BROWSER_TABS = ['standings', 'playoffs', 'awards', 'leaders', 'transactions', 'draft', 'financials'] as const;
 type SeasonBrowserTab = (typeof SEASON_BROWSER_TABS)[number];
@@ -397,6 +418,7 @@ export default function HistoryPage() {
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
   const [branches, setBranches] = useState<BranchSaveView[]>([]);
   const [timelineComparisons, setTimelineComparisons] = useState<TimelineComparison[]>([]);
+  const [allTimeLeaders, setAllTimeLeaders] = useState<AllTimeLeadersView | null>(null);
   const [loading, setLoading] = useState(true);
   const timelineRootSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : activeSaveId;
 
@@ -410,7 +432,7 @@ export default function HistoryPage() {
       const recordWatchPromise = typeof worker.getRecordWatchList === 'function'
         ? worker.getRecordWatchList(userTeamId)
         : Promise.resolve([]);
-      const [races, awards, seasons, historyOverviewData, recordBookData, recordWatchData, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData, cardsData, liveLeaderboardData, storedLeaderboardData, branchData] = await Promise.all([
+      const [races, awards, seasons, historyOverviewData, recordBookData, recordWatchData, rivalriesData, hallOfFameData, timelineData, dynastyData, achievementData, cardsData, liveLeaderboardData, storedLeaderboardData, branchData, leadersData] = await Promise.all([
         worker.getAwardRaces(),
         worker.getAwardHistory(),
         worker.getSeasonHistory(),
@@ -428,6 +450,7 @@ export default function HistoryPage() {
         timelineRootSaveId && typeof worker.getBranches === 'function'
           ? worker.getBranches(timelineRootSaveId)
           : Promise.resolve([]),
+        typeof worker.getAllTimeLeaders === 'function' ? worker.getAllTimeLeaders() : Promise.resolve(null),
       ]);
       const nextAwardRaces = races ?? null;
       const nextAwardHistory = awards ?? [];
@@ -514,6 +537,7 @@ export default function HistoryPage() {
       setLeaderboardEntries(mergedLeaderboard);
       setBranches(nextBranches);
       setTimelineComparisons(nextTimelineComparisons);
+      setAllTimeLeaders((leadersData ?? null) as AllTimeLeadersView | null);
       setSelectedAchievementId((current) => current ?? (((achievementData ?? []) as AchievementView[])[0]?.id ?? null));
       setSelectedSeason((current) => current ?? initialSelectedSeason);
       setComparisonSeason((current) => current ?? initialComparisonSeason);
@@ -663,7 +687,7 @@ export default function HistoryPage() {
                 onClick={() => setSelectedHistoryTab(tab)}
                 type="button"
               >
-                {tab === 'awards' ? 'Awards / HOF' : tab === 'legacy' ? 'Legacy' : tab}
+                {tab === 'awards' ? 'Awards / HOF' : tab === 'legacy' ? 'Legacy' : tab === 'leaders' ? 'All-Time Leaders' : tab}
               </button>
             ))}
           </div>
@@ -1120,6 +1144,43 @@ export default function HistoryPage() {
                 />
               )}
             </section>
+          </div>
+        )}
+
+        {selectedHistoryTab === 'leaders' && (
+          <div className="space-y-6">
+            {allTimeLeaders ? (
+              <>
+                <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+                  <div className="mb-4 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-accent-primary" />
+                    <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Career Batting Leaders</h2>
+                  </div>
+                  <div className="grid gap-6 md:grid-cols-3">
+                    <AllTimeLeaderColumn title="Hits" entries={allTimeLeaders.batting.hits} />
+                    <AllTimeLeaderColumn title="Home Runs" entries={allTimeLeaders.batting.hr} />
+                    <AllTimeLeaderColumn title="RBI" entries={allTimeLeaders.batting.rbi} />
+                  </div>
+                </section>
+                <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+                  <div className="mb-4 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-accent-info" />
+                    <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Career Pitching Leaders</h2>
+                  </div>
+                  <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+                    <AllTimeLeaderColumn title="Wins" entries={allTimeLeaders.pitching.wins} />
+                    <AllTimeLeaderColumn title="Strikeouts" entries={allTimeLeaders.pitching.strikeouts} />
+                    <AllTimeLeaderColumn title="ERA (min 200 IP)" entries={allTimeLeaders.pitching.era} />
+                    <AllTimeLeaderColumn title="Saves" entries={allTimeLeaders.pitching.saves} />
+                  </div>
+                </section>
+              </>
+            ) : (
+              <EmptyStatePanel
+                title="No career stats recorded yet"
+                description="Complete a full season to start building the all-time leaderboards."
+              />
+            )}
           </div>
         )}
 
@@ -1647,6 +1708,40 @@ function LeaderList({
             <div className="font-data text-sm text-dynasty-textBright">{leader.value}</div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function AllTimeLeaderColumn({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: AllTimeLeaderEntry[];
+}) {
+  return (
+    <div>
+      <div className="mb-3 font-heading text-xs uppercase tracking-[0.16em] text-dynasty-muted">
+        {title}
+      </div>
+      <div className="space-y-1">
+        {entries.length > 0 ? entries.map((entry, index) => (
+          <div key={`${title}-${entry.playerId}`} className="flex items-center gap-3 rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
+            <div className="w-5 shrink-0 font-data text-xs text-dynasty-muted">{index + 1}</div>
+            <Link
+              className="min-w-0 flex-1 truncate font-heading text-sm text-accent-primary hover:text-accent-primary/80"
+              to={`/players/${entry.playerId}`}
+            >
+              {entry.playerName}
+            </Link>
+            <div className="shrink-0 font-data text-sm text-dynasty-textBright">{entry.display}</div>
+          </div>
+        )) : (
+          <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3 font-heading text-sm text-dynasty-muted">
+            No leaders recorded yet.
+          </div>
+        )}
       </div>
     </div>
   );

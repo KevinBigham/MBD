@@ -102,6 +102,38 @@ describe('MomentCardOverlay', () => {
     expect(onDismiss).toHaveBeenCalledWith('moment-world-series');
   });
 
+  it('renders award ceremony card with trophy icon and award title', async () => {
+    const awardMoment: CeremonyMoment = {
+      id: 'award-moment-1-AL-MVP-player1',
+      type: 'award',
+      title: 'MOST VALUABLE PLAYER',
+      subtitle: 'AL · Season 1',
+      detailLines: ['Aaron Judge · New York Yankees', '.312 AVG · 42 HR · 121 RBI', '178 H · 98 R · 72 BB'],
+      soundEffect: 'achievement_unlock',
+      autoDismissMs: 5000,
+      createdAt: 'S1D162',
+      theme: 'historic',
+      relatedTeamIds: ['nyy'],
+      relatedPlayerIds: ['player1'],
+    };
+
+    await act(async () => {
+      root.render(
+        <MomentCardOverlay
+          moment={awardMoment}
+          busy={false}
+          onDismiss={vi.fn()}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('MOST VALUABLE PLAYER');
+    expect(container.textContent).toContain('AL · Season 1');
+    expect(container.textContent).toContain('Aaron Judge · New York Yankees');
+    expect(container.textContent).toContain('.312 AVG · 42 HR · 121 RBI');
+    expect(container.textContent).toContain('Award Ceremony');
+  });
+
   it('pauses the auto-dismiss timer while the document is hidden', async () => {
     const onDismiss = vi.fn();
     await act(async () => {

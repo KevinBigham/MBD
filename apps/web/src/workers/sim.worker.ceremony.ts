@@ -13,6 +13,7 @@ import {
   determinePlayoffSeeds,
   getTeamById,
   toDisplayRating,
+  type PlayerGameStats,
   type PlayoffSeriesState,
 } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
@@ -181,18 +182,77 @@ export function queuePlayoffSeriesMoment(state: FullGameState, series: PlayoffSe
   });
 }
 
+const AWARD_DISPLAY_NAMES: Record<string, string> = {
+  MVP: 'MOST VALUABLE PLAYER',
+  CY_YOUNG: 'CY YOUNG AWARD',
+  ROY: 'ROOKIE OF THE YEAR',
+  GOLD_GLOVE: 'GOLD GLOVE AWARD',
+  SILVER_SLUGGER: 'SILVER SLUGGER AWARD',
+};
+
+function formatBattingAverage(hits: number, ab: number): string {
+  if (ab === 0) return '.000';
+  const avg = hits / ab;
+  return avg.toFixed(3).replace(/^0/, '');
+}
+
+function formatERA(earnedRuns: number, ipThirds: number): string {
+  if (ipThirds === 0) return '0.00';
+  const ip = ipThirds / 3;
+  return (earnedRuns * 9 / ip).toFixed(2);
+}
+
+function formatInningsPitched(ipThirds: number): string {
+  const full = Math.floor(ipThirds / 3);
+  const remainder = ipThirds % 3;
+  return remainder === 0 ? `${full}` : `${full}.${remainder}`;
+}
+
+function buildAwardStatLines(
+  award: string,
+  stats: PlayerGameStats | undefined,
+): string[] {
+  if (!stats) return [];
+
+  const isPitcher = stats.ip > 0 && stats.pa < 30;
+
+  if (award === 'CY_YOUNG' || (isPitcher && award !== 'SILVER_SLUGGER')) {
+    return [
+      `${stats.wins}W-${stats.losses}L · ${formatERA(stats.earnedRuns, stats.ip)} ERA`,
+      `${stats.strikeouts} K · ${formatInningsPitched(stats.ip)} IP`,
+    ];
+  }
+
+  return [
+    `${formatBattingAverage(stats.hits, stats.ab)} AVG · ${stats.hr} HR · ${stats.rbi} RBI`,
+    `${stats.hits} H · ${stats.runs} R · ${stats.bb} BB`,
+  ];
+}
+
 export function queueAwardMoments(state: FullGameState, awards: AwardHistoryEntry[]) {
   for (const award of awards) {
     if (award.teamId !== state.userTeamId) {
       continue;
     }
 
+    const player = state.players.find((p) => p.id === award.playerId);
+    const playerName = player
+      ? `${player.firstName} ${player.lastName}`
+      : award.summary.split(' ').slice(0, 2).join(' ');
+    const stats = state.seasonState.playerSeasonStats.get(award.playerId);
+    const statLines = buildAwardStatLines(award.award, stats);
+
+    const detailLines = [
+      `${playerName} · ${teamLabel(award.teamId)}`,
+      ...statLines,
+    ];
+
     queueCeremonyMoment(state, {
       id: `award-moment-${award.season}-${award.league}-${award.award}-${award.playerId}`,
       type: 'award',
-      title: award.award.toUpperCase(),
-      subtitle: award.summary.split(' ')[0] ?? teamLabel(award.teamId),
-      detailLines: [award.summary],
+      title: AWARD_DISPLAY_NAMES[award.award] ?? award.award.toUpperCase(),
+      subtitle: `${award.league} · Season ${award.season}`,
+      detailLines,
       soundEffect: 'achievement_unlock',
       autoDismissMs: 5000,
       createdAt: currentTimestamp(state),
