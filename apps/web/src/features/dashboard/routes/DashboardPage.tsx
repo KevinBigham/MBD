@@ -29,6 +29,7 @@ const PressDigestCard = lazy(() => import('../components/PressDigestCard'));
 const GameRecapCard = lazy(() => import('../components/GameRecapCard'));
 const PlayByPlayPanel = lazy(() => import('../components/PlayByPlayPanel'));
 const Sparkline = lazy(() => import('@/shared/components/charts/Sparkline'));
+const GameAdvisor = lazy(() => import('../components/GameAdvisor'));
 
 interface DashboardSummary {
   franchise: {
@@ -553,6 +554,11 @@ export default function DashboardPage() {
             </div>
           </section>
         ) : null}
+
+        {/* Smart advisor */}
+        <Suspense fallback={null}>
+          <GameAdvisor />
+        </Suspense>
 
         {career?.jobSearchActive && (jobMarket?.availableJobs.length ?? 0) > 0 ? (
           <section className="rounded-xl border border-accent-warning/40 bg-accent-warning/10 p-5">
