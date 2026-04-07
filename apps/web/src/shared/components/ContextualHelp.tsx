@@ -13,9 +13,11 @@ interface ContextualHelpProps {
   description: string;
   /** Optional list of key actions available on this page */
   actions?: string[];
+  /** Optional keyboard shortcuts relevant to this page */
+  shortcuts?: Array<{ key: string; description: string }>;
 }
 
-export function ContextualHelp({ title, description, actions }: ContextualHelpProps) {
+export function ContextualHelp({ title, description, actions, shortcuts }: ContextualHelpProps) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +85,19 @@ export function ContextualHelp({ title, description, actions }: ContextualHelpPr
               </ul>
             </div>
           )}
+          {shortcuts && shortcuts.length > 0 && (
+            <div className="mt-3 border-t border-dynasty-border pt-2">
+              <div className="font-heading text-[10px] uppercase tracking-wider text-dynasty-muted">Keyboard Shortcuts</div>
+              <div className="mt-1 space-y-1">
+                {shortcuts.map((shortcut) => (
+                  <div key={shortcut.key} className="flex items-center justify-between gap-2">
+                    <span className="font-data text-xs text-dynasty-text">{shortcut.description}</span>
+                    <kbd className="rounded border border-dynasty-border bg-dynasty-elevated px-1.5 py-0.5 font-data text-[10px] text-dynasty-muted">{shortcut.key}</kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -98,6 +113,12 @@ export const PAGE_HELP: Record<string, ContextualHelpProps> = {
     title: 'Front Office',
     description: 'Your command center. See standings, recent game results, roster health, trade intel, farm system status, and financial overview at a glance.',
     actions: ['Sim Day/Week/Month with bottom controls', 'Click cards to navigate to details'],
+    shortcuts: [
+      { key: 'Space', description: 'Sim one day' },
+      { key: 'Shift+Space', description: 'Sim one week' },
+      { key: 'Cmd/Ctrl+Space', description: 'Sim one month' },
+      { key: 'Cmd/Ctrl+K', description: 'Command palette' },
+    ],
   },
   '/front-office': {
     title: 'Owner Intel',
