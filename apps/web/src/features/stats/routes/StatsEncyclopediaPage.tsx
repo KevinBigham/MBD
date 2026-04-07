@@ -291,33 +291,22 @@ function LeagueContextPanel({ context }: { context: LeagueContextView | null }) 
 
 export default function StatsEncyclopediaPage() {
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { isInitialized, season, day, phase } = useGameStore();
   const [leagueContext, setLeagueContext] = useState<LeagueContextView | null>(null);
   const [filter, setFilter] = useState<CategoryFilter>('all');
-  const [loading, setLoading] = useState(true);
 
   const fetchContext = useCallback(async () => {
-    if (!isInitialized || !worker.isReady) return;
-    setLoading(true);
+    if (!isInitialized || !workerReady) return;
     try {
-      const data = await worker.getLeagueLeaders('war', 1);
-      // The league context isn't directly exposed as a standalone query,
-      // but we can derive it from the dashboard summary or leaders data.
-      // For now, we use getFinanceOverview or getPerformanceDiagnostics to signal readiness.
       const diag = await worker.getPerformanceDiagnostics();
       if (diag && typeof diag === 'object' && 'leagueContext' in diag) {
         setLeagueContext(diag.leagueContext as LeagueContextView);
-      } else {
-        // Fallback: just show that data exists if leaders returned
-        if (Array.isArray(data) && data.length > 0) {
-          setLeagueContext(null); // Will show "sim games" message
-        }
       }
     } catch {
-      // noop
+      // noop — league context is optional
     }
-    setLoading(false);
-  }, [isInitialized, worker]);
+  }, [isInitialized, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     void fetchContext();
@@ -329,7 +318,7 @@ export default function StatsEncyclopediaPage() {
       : STAT_DEFINITIONS.filter((s) => s.category === filter);
 
   return (
-    <PageShell loading={loading}>
+    <PageShell>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
