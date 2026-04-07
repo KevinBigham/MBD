@@ -112,7 +112,7 @@ import type {
   OffseasonStateView,
   SimResultDTO,
 } from './sim.worker.helpers.js';
-import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
+import { exportGameSnapshot, importGameSnapshot, isSaveCompatible } from './snapshot.js';
 import {
   captureSeasonAchievementFacts,
   recordDraftedHomegrownPlayer,
@@ -1420,6 +1420,10 @@ export const actionApi = {
 
   importSnapshot(snapshot: unknown) {
     return measureRuntimeSync('lastLoadMs', () => {
+      const compat = isSaveCompatible(snapshot);
+      if (!compat.compatible) {
+        return { success: false as const, error: compat.reason ?? 'Incompatible save.' };
+      }
       resetTradeDeadlineState();
       const importedState = importGameSnapshot(snapshot);
       const preservedBriefing = importedState.briefingQueue.map((item) => ({ ...item }));

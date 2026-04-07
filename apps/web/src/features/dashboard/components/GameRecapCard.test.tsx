@@ -49,7 +49,7 @@ describe('GameRecapCard', () => {
         <GameRecapCard
           recap={{
             gameIndex: 14,
-            recap: 'Yankees close the door late.',
+            recap: 'Tycoons close the door late.',
             highlights: [
               { type: 'homer', text: 'Judge homers in the first.' },
               { type: 'clutch_k', text: 'Closer strands the tying run.' },

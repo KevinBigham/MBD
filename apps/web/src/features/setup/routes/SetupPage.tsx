@@ -54,37 +54,37 @@ interface ScenarioCatalogEntry {
 }
 
 const TEAM_OPTIONS = [
-  { id: 'phx', label: 'Phoenix Dust Devils' },
   { id: 'atl', label: 'Atlanta Peach Kings' },
+  { id: 'aus', label: 'Austin Bat Colony' },
   { id: 'bal', label: 'Baltimore Crab Cakes' },
   { id: 'bos', label: 'Boston Noreasters' },
+  { id: 'cha', label: 'Charlotte Hornets' },
   { id: 'chi', label: 'Chicago Deep Dish' },
-  { id: 'col', label: 'Columbus Buckeyes' },
-  { id: 'nas', label: 'Nashville Honky Tonks' },
   { id: 'cle', label: 'Cleveland Forge' },
-  { id: 'col', label: 'Denver Altitude' },
+  { id: 'col', label: 'Columbus Buckeyes' },
+  { id: 'dal', label: 'Dallas Lone Stars' },
+  { id: 'den', label: 'Denver Altitude' },
   { id: 'det', label: 'Detroit Motor Kings' },
   { id: 'hou', label: 'Houston Space Cowboys' },
-  { id: 'kc', label: 'Kansas City BBQ Fountains' },
-  { id: 'dal', label: 'Dallas Lone Stars' },
+  { id: 'ind', label: 'Indianapolis Speedsters' },
+  { id: 'kc',  label: 'Kansas City BBQ Fountains' },
   { id: 'lax', label: 'Los Angeles Sunset Strip' },
   { id: 'mia', label: 'Miami Hurricanes' },
   { id: 'mil', label: 'Milwaukee Suds' },
-  { id: 'min', label: 'Minneapolis Frost Giants' },
-  { id: 'ral', label: 'Raleigh Pines' },
+  { id: 'msp', label: 'Minneapolis Frost Giants' },
+  { id: 'nas', label: 'Nashville Honky Tonks' },
   { id: 'nym', label: 'New York Tycoons' },
-  { id: 'nym', label: 'New York Tycoons' },
-  { id: 'por', label: 'Portland Sasquatch' },
+  { id: 'orl', label: 'Orlando Thunder' },
   { id: 'phi', label: 'Philadelphia Liberty Bells' },
+  { id: 'phx', label: 'Phoenix Dust Devils' },
   { id: 'pit', label: 'Pittsburgh Smokestack' },
   { id: 'por', label: 'Portland Sasquatch' },
+  { id: 'ral', label: 'Raleigh Pines' },
+  { id: 'sat', label: 'San Antonio Riverwalk' },
   { id: 'sdg', label: 'San Diego Surf Hounds' },
   { id: 'sea', label: 'Seattle Drizzle' },
   { id: 'sfb', label: 'San Francisco Fog Horns' },
   { id: 'stl', label: 'St. Louis Archers' },
-  { id: 'orl', label: 'Orlando Thunder' },
-  { id: 'sat', label: 'San Antonio Riverwalk' },
-  { id: 'cha', label: 'Charlotte Hornets' },
   { id: 'wsh', label: 'Washington Monuments' },
 ] as const;
 
@@ -241,6 +241,11 @@ export default function SetupPage() {
 
   async function continueFromInspection(result: Extract<SaveInspectionResult, { status: 'ok' }>) {
     const imported = await worker.importSnapshot(result.save.snapshot);
+    if (!imported.success) {
+      const msg = 'error' in imported ? (imported as { error?: string }).error : 'Incompatible save.';
+      setStatus(typeof msg === 'string' ? msg : 'This save is from an older version and is no longer compatible. Please start a new dynasty.');
+      return;
+    }
     initializeGame({
       season: imported.season,
       day: imported.day,

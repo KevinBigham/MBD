@@ -114,6 +114,7 @@ describe('SetupPage', () => {
         phase: 'preseason',
       }),
       importSnapshot: vi.fn().mockResolvedValue({
+        success: true,
         season: 4,
         day: 88,
         phase: 'regular',
@@ -130,7 +131,7 @@ describe('SetupPage', () => {
       {
         id: 'save-slot-1',
         slotNumber: 1,
-        name: 'Yankees Year 4',
+        name: 'Tycoons Year 4',
         season: 4,
         day: 88,
         phase: 'regular',
@@ -176,7 +177,7 @@ describe('SetupPage', () => {
         save: {
           id: 'save-slot-1',
           slotNumber: 1,
-          name: 'Yankees Year 4',
+          name: 'Tycoons Year 4',
           season: 4,
           day: 88,
           phase: 'regular',
@@ -282,7 +283,7 @@ describe('SetupPage', () => {
       save: {
         id: 'save-slot-1',
         slotNumber: 1,
-        name: 'Yankees Year 4',
+        name: 'Tycoons Year 4',
         season: 4,
         day: 88,
         phase: 'regular',
@@ -318,7 +319,7 @@ describe('SetupPage', () => {
       save: {
         id: 'save-slot-1',
         slotNumber: 1,
-        name: 'Recovered Yankees Year 4',
+        name: 'Recovered Tycoons Year 4',
         season: 4,
         day: 88,
         phase: 'regular',

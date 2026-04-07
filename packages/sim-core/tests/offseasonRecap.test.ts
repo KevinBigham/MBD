@@ -8,7 +8,7 @@ function buildSeasonHistory(overrides: Partial<SeasonHistoryEntry> = {}): Season
     championTeamId: 'nym',
     runnerUpTeamId: 'lax',
     worldSeriesRecord: '4-2',
-    summary: 'The Yankees finished the job and closed the season on top.',
+    summary: 'The Tycoons finished the job and closed the season on top.',
     awards: [],
     keyMoments: [
       'Deadline blockbuster reshaped the bullpen',
@@ -95,7 +95,7 @@ describe('offseason recap narrative', () => {
     const seasonHistory = buildSeasonHistory({
       championTeamId: 'hou',
       runnerUpTeamId: 'atl',
-      summary: 'The Yankees faded late and missed the bracket.',
+      summary: 'The Tycoons faded late and missed the bracket.',
       userSeason: {
         teamId: 'nym',
         record: '81-81',

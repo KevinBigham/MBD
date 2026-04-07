@@ -349,7 +349,7 @@ describe('DashboardPage', () => {
               tag: 'RUMOR',
               priority: 2,
               headline: 'Deadline buzz is building.',
-              body: 'Clubs are circling the Yankees for bullpen help.',
+              body: 'Clubs are circling the Tycoons for bullpen help.',
               timestamp: 'S4D88',
               relatedTeamIds: ['nym'],
               relatedPlayerIds: [],
@@ -729,7 +729,7 @@ describe('DashboardPage', () => {
       getGamePlayByPlay: vi.fn().mockResolvedValue(null),
       getSeasonRecap: vi.fn().mockResolvedValue({
         season: 4,
-        recap: 'A 94-68 season and a deep October run kept the Yankees in the center of the story.',
+        recap: 'A 94-68 season and a deep October run kept the Tycoons in the center of the story.',
         storylines: [
           'Juan Soto anchored the lineup',
           'Deadline pitching depth changed the staff mix',
@@ -770,6 +770,6 @@ describe('DashboardPage', () => {
 
     expect(container.textContent).toContain('Offseason Outlook');
     expect(container.textContent).toContain('October left New York with a live title window');
-    expect(container.textContent).toContain('A 94-68 season and a deep October run kept the Yankees in the center of the story.');
+    expect(container.textContent).toContain('A 94-68 season and a deep October run kept the Tycoons in the center of the story.');
   });
 });

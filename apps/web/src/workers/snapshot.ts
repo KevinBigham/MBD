@@ -60,6 +60,7 @@ import {
   type TeamRecord,
   type GameBoxScore,
   type NewsItem,
+  getTeamById,
 } from '@mbd/sim-core';
 import {
   createEmptyDraftState,
@@ -377,6 +378,26 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
     achievements: state.achievements,
     performanceDiagnostics: state.performanceDiagnostics,
   });
+}
+
+/** Check whether a save was created with the current team roster. */
+export function isSaveCompatible(snapshotLike: unknown): { compatible: boolean; reason?: string } {
+  if (snapshotLike == null || typeof snapshotLike !== 'object') {
+    return { compatible: false, reason: 'Invalid save data.' };
+  }
+  const snap = snapshotLike as Record<string, unknown>;
+  const teamId = typeof snap.userTeamId === 'string' ? snap.userTeamId : '';
+  if (!getTeamById(teamId)) {
+    return { compatible: false, reason: `Team "${teamId}" no longer exists. The league was rebranded — please start a new dynasty.` };
+  }
+  // Check a sample of player team IDs
+  const players = Array.isArray(snap.players) ? snap.players as Array<{ teamId?: string }> : [];
+  const teamIds = new Set(players.slice(0, 100).map((p) => p.teamId).filter(Boolean));
+  const unknownTeams = [...teamIds].filter((id) => !getTeamById(id as string));
+  if (unknownTeams.length > 3) {
+    return { compatible: false, reason: 'This save uses old team rosters that are no longer compatible. Please start a new dynasty.' };
+  }
+  return { compatible: true };
 }
 
 export function importGameSnapshot(snapshotLike: unknown): FullGameState {

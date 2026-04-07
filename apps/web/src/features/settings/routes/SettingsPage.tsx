@@ -273,6 +273,11 @@ export default function SettingsPage() {
 
   async function continueFromInspection(result: Extract<SaveInspectionResult, { status: 'ok' }>) {
     const imported = await worker.importSnapshot(result.save.snapshot);
+    if (!imported.success) {
+      const errorMsg = 'error' in imported ? (imported as { error?: string }).error : 'Failed to load save.';
+      logger.error('Save incompatible:', errorMsg);
+      return;
+    }
     initializeGame({
       season: imported.season,
       day: imported.day,

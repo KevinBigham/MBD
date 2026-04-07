@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TradeAsset } from '@mbd/contracts';
+import { TEAMS } from '@mbd/sim-core';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -151,24 +152,7 @@ const EMPTY_TRADE_ASSET_INVENTORY: TradeAssetInventoryView = {
   ifaRemaining: 0,
 };
 
-const ALL_TEAMS = [
-  { id: 'bal', name: 'Crab Cakes', abbr: 'BAL' }, { id: 'bos', name: "Noreasters", abbr: 'BOS' },
-  { id: 'nym', name: 'Tycoons', abbr: 'NYT' }, { id: 'orl', name: 'Thunder', abbr: 'ORL' },
-  { id: 'cha', name: 'Hornets', abbr: 'CHA' }, { id: 'col', name: 'Buckeyes', abbr: 'CLB' },
-  { id: 'cle', name: 'Forge', abbr: 'CLE' }, { id: 'det', name: 'Motor Kings', abbr: 'DET' },
-  { id: 'kc', name: 'BBQ Fountains', abbr: 'KCF' }, { id: 'min', name: 'Frost Giants', abbr: 'MIN' },
-  { id: 'hou', name: 'Space Cowboys', abbr: 'HOU' }, { id: 'dal', name: 'Lone Stars', abbr: 'DAL' },
-  { id: 'por', name: 'Sasquatch', abbr: 'POR' }, { id: 'sea', name: 'Drizzle', abbr: 'SEA' },
-  { id: 'sat', name: 'Riverwalk', abbr: 'SAT' }, { id: 'atl', name: 'Peach Kings', abbr: 'ATL' },
-  { id: 'mia', name: 'Hurricanes', abbr: 'MIA' }, { id: 'nym', name: 'Tycoons', abbr: 'NYT' },
-  { id: 'phi', name: 'Liberty Bells', abbr: 'PHI' }, { id: 'wsh', name: 'Monuments', abbr: 'WSH' },
-  { id: 'chi', name: 'Deep Dish', abbr: 'CHI' }, { id: 'nas', name: 'Honky Tonks', abbr: 'NAS' },
-  { id: 'mil', name: 'Suds', abbr: 'MIL' }, { id: 'pit', name: 'Smokestack', abbr: 'PIT' },
-  { id: 'stl', name: 'Archers', abbr: 'STL' }, { id: 'phx', name: 'Dust Devils', abbr: 'PHX' },
-  { id: 'col', name: 'Altitude', abbr: 'COL' }, { id: 'lax', name: 'Sunset Strip', abbr: 'LAX' },
-  { id: 'sdg', name: 'Surf Hounds', abbr: 'SDG' }, { id: 'sfb', name: 'Fog Horns', abbr: 'SFB' },
-  { id: 'ral', name: 'Pines', abbr: 'RAL' }, { id: 'por', name: 'Sasquatch', abbr: 'POR' },
-];
+const ALL_TEAMS = TEAMS.map((t) => ({ id: t.id, name: t.name, abbr: t.abbreviation }));
 
 function gradeColor(grade: string): string {
   switch (grade) {
