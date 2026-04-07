@@ -668,6 +668,20 @@ export {
   calculateDynastyLeaderboardScore,
 } from './sharing/index.js';
 
+// Invariants
+export {
+  checkUniquePlayerAssignment,
+  checkRosterLimits,
+  checkStandingsConsistency,
+  checkRatingBounds,
+  runInvariantChecks,
+} from './invariants/checker.js';
+export type {
+  InvariantSeverity,
+  InvariantViolation,
+  InvariantCheckResult,
+} from './invariants/checker.js';
+
 // Scenarios
 export {
   SCENARIO_LIBRARY,
