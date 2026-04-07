@@ -3,7 +3,7 @@
  * chooses a response that affects team morale and owner satisfaction.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Mic, Shield, MessageCircle, ArrowRight } from 'lucide-react';
 import { getAudioEngine } from '@/shared/lib/audio';
 
@@ -78,6 +78,10 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ tone: string; moraleDelta: number; ownerDelta: number } | null>(null);
+
+  useEffect(() => {
+    getAudioEngine().playEffect('press_conference');
+  }, []);
 
   const handleSelect = (responseId: string) => {
     if (submitting || result) return;
