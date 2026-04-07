@@ -6,7 +6,7 @@
  * Kevin is creating these - as they land in public/logos/ they'll appear automatically.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /* ---------- team color palette ---------- */
 
@@ -149,6 +149,11 @@ export function TeamLogo({ teamId, size = 'md', className }: TeamLogoProps) {
   const px = SIZE_MAP[size];
   const base = (import.meta as unknown as { env: { BASE_URL: string } }).env.BASE_URL;
   const logoPath = `${base}logos/${teamId}.svg`;
+
+  // Reset error state when teamId changes so we re-attempt the real logo
+  useEffect(() => {
+    setImgError(false);
+  }, [teamId]);
 
   if (imgError) {
     return <MonogramBadge teamId={teamId} size={size} className={className} />;

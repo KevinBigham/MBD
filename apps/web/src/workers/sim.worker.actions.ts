@@ -1243,11 +1243,14 @@ export const actionApi = {
       return { success: false as const, error: 'Invalid response.' };
     }
 
-    // Apply morale delta — playerMorale stores objects, not plain numbers
-    const currentMorale = s.playerMorale.get(s.userTeamId);
-    if (currentMorale != null && typeof currentMorale === 'object' && 'overall' in currentMorale) {
-      const m = currentMorale as { overall: number };
-      m.overall = Math.max(0, Math.min(100, m.overall + response.moraleDelta));
+    // Apply morale delta to all players on the user's team
+    // playerMorale is Map<playerId, { playerId, score, trend, summary, lastUpdated }>
+    for (const player of s.players) {
+      if (player.teamId !== s.userTeamId) continue;
+      const morale = s.playerMorale.get(player.id);
+      if (morale) {
+        morale.score = Math.max(0, Math.min(100, morale.score + response.moraleDelta));
+      }
     }
 
     // Apply owner satisfaction delta
