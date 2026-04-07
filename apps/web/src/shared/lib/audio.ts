@@ -16,7 +16,10 @@ export type AudioEffectName =
   | 'walk_off'
   | 'playoff_clinch'
   | 'world_series_win'
-  | 'achievement_unlock';
+  | 'achievement_unlock'
+  | 'press_conference'
+  | 'record_broken'
+  | 'season_end';
 
 export type AmbientMode =
   | 'office'
@@ -392,6 +395,24 @@ export class AudioEngine {
       case 'achievement_unlock':
         this.playTone(context, destination, { type: 'triangle', frequency: 784, gain: 0.06, duration: 0.14 });
         this.playTone(context, destination, { type: 'triangle', frequency: 988, gain: 0.06, duration: 0.2, startOffset: 0.08 });
+        break;
+      case 'press_conference':
+        // Camera shutter + murmur: short white noise burst then low hum
+        this.playNoiseBurst(context, destination, { gain: 0.05, duration: 0.15, filterType: 'highpass', frequency: 3000 });
+        this.playTone(context, destination, { type: 'sine', frequency: 220, gain: 0.03, duration: 0.6, startOffset: 0.1 });
+        break;
+      case 'record_broken':
+        // Ascending fanfare: three rising tones with crowd noise
+        this.playTone(context, destination, { type: 'sawtooth', frequency: 440, gain: 0.06, duration: 0.2 });
+        this.playTone(context, destination, { type: 'sawtooth', frequency: 554, gain: 0.065, duration: 0.25, startOffset: 0.1 });
+        this.playTone(context, destination, { type: 'sawtooth', frequency: 659, gain: 0.07, duration: 0.4, startOffset: 0.2 });
+        this.playNoiseBurst(context, destination, { gain: 0.05, duration: 1.2, filterType: 'bandpass', frequency: 1100 });
+        break;
+      case 'season_end':
+        // Slow descending chord: end of era feel
+        this.playTone(context, destination, { type: 'triangle', frequency: 523, gain: 0.05, duration: 0.8 });
+        this.playTone(context, destination, { type: 'triangle', frequency: 440, gain: 0.05, duration: 0.8, startOffset: 0.2 });
+        this.playTone(context, destination, { type: 'sine', frequency: 330, gain: 0.04, duration: 1.2, startOffset: 0.4 });
         break;
     }
   }

@@ -19,6 +19,7 @@ import {
   getTeamById,
   getTopFreeAgents,
   getUnreadNews,
+  generateInteractivePressConference,
   SCENARIO_LIBRARY,
   scoutPlayer,
   toInternalRating,
@@ -1594,6 +1595,52 @@ export const queryApi = {
 
   getPressRoomFeed(limit: number = 100) {
     return buildPressRoomFeed(requireState(), limit);
+  },
+
+  getInteractivePressConference() {
+    const s = requireState();
+    const standings = s.seasonState.standings.getFullStandings();
+    const userStanding = Object.values(standings)
+      .flat()
+      .find((entry) => entry.teamId === s.userTeamId);
+    if (!userStanding) return null;
+
+    const pcOwnerState = s.ownerState.get(s.userTeamId);
+    const ownerTone: 'supportive' | 'neutral' | 'impatient' =
+      pcOwnerState && pcOwnerState.patience < 30 ? 'impatient'
+        : pcOwnerState && pcOwnerState.patience > 70 ? 'supportive'
+          : 'neutral';
+
+    const recentTrade = s.tradeState.tradeHistory
+      .filter((trade) => trade.fromTeamId === s.userTeamId || trade.toTeamId === s.userTeamId)
+      .sort((a, b) => {
+        const aTime = typeof a.timestamp === 'string' ? a.timestamp : '';
+        const bTime = typeof b.timestamp === 'string' ? b.timestamp : '';
+        return bTime.localeCompare(aTime);
+      })[0];
+
+    const topProspects = s.players.filter(
+      (p) => p.teamId === s.userTeamId && p.rosterStatus !== 'MLB' && (p.ceiling ?? p.overallRating) >= 350,
+    );
+
+    // Derive division rank from gamesBack (0 = first place)
+    const divisionRank = userStanding.gamesBack === 0 ? 1 : Math.ceil(userStanding.gamesBack / 3) + 1;
+
+    return generateInteractivePressConference({
+      season: s.season,
+      day: s.day,
+      userTeamId: s.userTeamId,
+      teamRecord: {
+        wins: userStanding.wins,
+        losses: userStanding.losses,
+        divisionRank,
+        gamesBack: userStanding.gamesBack,
+      },
+      ownerTone,
+      recentTradeHeadline: recentTrade ? (recentTrade.summary ?? null) : null,
+      farmStrength: Math.min(100, topProspects.length * 20),
+      topProspectCount: topProspects.length,
+    });
   },
 
   getTeamChemistry(teamId?: string) {

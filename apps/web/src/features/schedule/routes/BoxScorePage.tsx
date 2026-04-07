@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 
 interface PlayEntry {
   inning: number;
@@ -113,7 +114,8 @@ export default function BoxScorePage() {
       {/* Score header */}
       <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
         <div className="flex items-center justify-between">
-          <div className="text-center">
+          <div className="flex flex-col items-center gap-2">
+            <TeamLogo teamId={boxScore.awayTeamId} size="lg" />
             <div className="font-heading text-lg font-bold text-dynasty-text">
               {boxScore.awayTeamId.toUpperCase()}
             </div>
@@ -122,7 +124,8 @@ export default function BoxScorePage() {
             </div>
           </div>
           <div className="font-heading text-sm text-dynasty-muted">FINAL</div>
-          <div className="text-center">
+          <div className="flex flex-col items-center gap-2">
+            <TeamLogo teamId={boxScore.homeTeamId} size="lg" />
             <div className="font-heading text-lg font-bold text-dynasty-text">
               {boxScore.homeTeamId.toUpperCase()}
             </div>

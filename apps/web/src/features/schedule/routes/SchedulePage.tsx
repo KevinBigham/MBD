@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 
 interface ScheduleGameEntry {
   day: number;
@@ -94,11 +95,16 @@ export default function SchedulePage() {
                   >
                     <td className="px-4 py-2 font-data text-dynasty-muted">{game.day}</td>
                     <td className="px-4 py-2">
-                      <div className="font-heading font-medium text-dynasty-text">
-                        {game.opponentAbbr}
-                      </div>
-                      <div className="font-heading text-xs text-dynasty-muted">
-                        {game.opponentName}
+                      <div className="flex items-center gap-2.5">
+                        <TeamLogo teamId={game.opponentId} size="sm" />
+                        <div>
+                          <div className="font-heading font-medium text-dynasty-text">
+                            {game.opponentAbbr}
+                          </div>
+                          <div className="font-heading text-xs text-dynasty-muted">
+                            {game.opponentName}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-2 py-2 text-center font-data text-dynasty-muted">

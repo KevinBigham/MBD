@@ -1,5 +1,6 @@
 import { estimateProjectedWarRange } from '@mbd/sim-core';
 import { Badge, Card, CardContent, GradeBar, StatLine } from '@mbd/ui';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 import {
   badgeVariantForStoryPhase,
   badgeVariantForTrajectory,
@@ -28,7 +29,8 @@ export default function ProfileHeader({
       <CardContent className="space-y-6 p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+              <TeamLogo teamId={player.teamId} size="xs" />
               {player.teamId.toUpperCase()} · {player.rosterStatus}
             </div>
             <h1 className="mt-2 font-brand text-4xl tracking-wide text-dynasty-textBright">

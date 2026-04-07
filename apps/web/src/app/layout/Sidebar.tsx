@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   Activity,
   Award,
+  BarChart3,
   Briefcase,
   Building2,
   Users,
@@ -12,8 +13,10 @@ import {
   FileText,
   ArrowLeftRight,
   Flame,
+  MoreHorizontal,
   Trophy,
   Target,
+  TrendingUp,
   CalendarDays,
   CalendarRange,
   Newspaper,
@@ -21,6 +24,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
@@ -46,6 +50,8 @@ const baseMainNavItems: NavItem[] = [
   { to: '/draft', label: 'Draft', icon: <FileText className="h-5 w-5" /> },
   { to: '/trade', label: 'Trades', icon: <ArrowLeftRight className="h-5 w-5" /> },
   { to: '/league/standings', label: 'League', icon: <Trophy className="h-5 w-5" /> },
+  { to: '/stats', label: 'Stats', icon: <BarChart3 className="h-5 w-5" /> },
+  { to: '/records', label: 'Records', icon: <TrendingUp className="h-5 w-5" /> },
   { to: '/rivalries', label: 'Rivalries', icon: <Flame className="h-5 w-5" /> },
   { to: '/schedule', label: 'Schedule', icon: <CalendarDays className="h-5 w-5" /> },
   { to: '/pulse', label: 'Pulse', icon: <Activity className="h-5 w-5" /> },
@@ -95,6 +101,102 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   );
 }
 
+/** Mobile bottom tab indices: Dashboard, Roster, Draft, Trade, League, More */
+const MOBILE_TAB_INDICES = [0, 2, 8, 9, 10];
+
+function MobileTabLink({ item }: { item: NavItem }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === '/dashboard'}
+      onClick={() => getAudioEngine().playEffect('tab_switch')}
+      className={({ isActive }) =>
+        [
+          'flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
+          isActive ? 'text-accent-primary' : 'text-dynasty-muted',
+        ].join(' ')
+      }
+    >
+      {item.icon}
+      <span>{item.label.length > 8 ? item.label.slice(0, 7) + '.' : item.label}</span>
+    </NavLink>
+  );
+}
+
+function MobileMoreDrawer({
+  items,
+  open,
+  onClose,
+}: {
+  items: NavItem[];
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <div className="flex-1" onClick={onClose} aria-hidden />
+      <div className="max-h-[70vh] overflow-y-auto rounded-t-xl border-t border-dynasty-border bg-dynasty-surface pb-safe">
+        <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
+          <span className="font-heading text-sm font-semibold text-dynasty-textBright">Navigation</span>
+          <button onClick={onClose} className="rounded p-1 text-dynasty-muted hover:text-dynasty-text" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <nav className="grid grid-cols-4 gap-1 p-3">
+          {items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={() => {
+                getAudioEngine().playEffect('tab_switch');
+                onClose();
+              }}
+              className={({ isActive }) =>
+                [
+                  'flex flex-col items-center gap-1 rounded-lg p-3 text-center transition-colors',
+                  isActive
+                    ? 'bg-accent-primary/10 text-accent-primary'
+                    : 'text-dynasty-muted hover:bg-dynasty-elevated hover:text-dynasty-text',
+                ].join(' ')
+              }
+            >
+              {item.icon}
+              <span className="font-heading text-[10px]">{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+export function MobileTabBar({ items }: { items: NavItem[] }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const tabItems = MOBILE_TAB_INDICES.map((i) => items[i]).filter((item): item is NavItem => item != null);
+
+  return (
+    <>
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-dynasty-border bg-dynasty-surface md:hidden" aria-label="Mobile navigation">
+        {tabItems.map((item) => (
+          <MobileTabLink key={item.to} item={item} />
+        ))}
+        <button
+          onClick={() => {
+            getAudioEngine().playEffect('button_click');
+            setMoreOpen(true);
+          }}
+          className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium text-dynasty-muted"
+        >
+          <MoreHorizontal className="h-5 w-5" />
+          <span>More</span>
+        </button>
+      </nav>
+      <MobileMoreDrawer items={items} open={moreOpen} onClose={() => setMoreOpen(false)} />
+    </>
+  );
+}
+
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const worker = useWorker();
@@ -114,7 +216,7 @@ export function Sidebar() {
     })();
   }, [day, isInitialized, phase, season, worker]);
 
-  const mainNavItems = baseMainNavItems.map((item) => {
+  const mainNavItems: NavItem[] = baseMainNavItems.map((item) => {
     if (item.to === '/press-room') {
       return { ...item, badge: pressRoomCount };
     }
@@ -125,43 +227,49 @@ export function Sidebar() {
   });
 
   return (
-    <aside
-      className={[
-        'flex flex-col border-r border-dynasty-border bg-dynasty-surface transition-all duration-200',
-        collapsed ? 'w-14' : 'w-52',
-      ].join(' ')}
-    >
-      {/* Collapse toggle */}
-      <div className="flex items-center justify-end border-b border-dynasty-border p-2">
-        <button
-          onClick={() => {
-            getAudioEngine().playEffect('button_click');
-            setCollapsed(!collapsed);
-          }}
-          className="focus-ring rounded p-1 text-dynasty-muted transition-colors hover:text-dynasty-text"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-        </button>
-      </div>
+    <>
+      {/* Desktop sidebar — hidden on mobile */}
+      <aside
+        className={[
+          'hidden flex-col border-r border-dynasty-border bg-dynasty-surface transition-all duration-200 md:flex',
+          collapsed ? 'w-14' : 'w-52',
+        ].join(' ')}
+      >
+        {/* Collapse toggle */}
+        <div className="flex items-center justify-end border-b border-dynasty-border p-2">
+          <button
+            onClick={() => {
+              getAudioEngine().playEffect('button_click');
+              setCollapsed(!collapsed);
+            }}
+            className="focus-ring rounded p-1 text-dynasty-muted transition-colors hover:text-dynasty-text"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </button>
+        </div>
 
-      {/* Main navigation */}
-      <nav className="flex flex-1 flex-col gap-0.5 p-2" aria-label="Main navigation">
-        {mainNavItems.map((item) => (
-          <SidebarLink key={item.to} item={item} collapsed={collapsed} />
-        ))}
-      </nav>
+        {/* Main navigation */}
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2" aria-label="Main navigation">
+          {mainNavItems.map((item) => (
+            <SidebarLink key={item.to} item={item} collapsed={collapsed} />
+          ))}
+        </nav>
 
-      {/* Bottom navigation */}
-      <nav className="border-t border-dynasty-border p-2" aria-label="Settings">
-        {bottomNavItems.map((item) => (
-          <SidebarLink key={item.to} item={item} collapsed={collapsed} />
-        ))}
-      </nav>
-    </aside>
+        {/* Bottom navigation */}
+        <nav className="border-t border-dynasty-border p-2" aria-label="Settings">
+          {bottomNavItems.map((item) => (
+            <SidebarLink key={item.to} item={item} collapsed={collapsed} />
+          ))}
+        </nav>
+      </aside>
+
+      {/* Mobile bottom tab bar — visible only on small screens */}
+      <MobileTabBar items={[...mainNavItems, ...bottomNavItems]} />
+    </>
   );
 }

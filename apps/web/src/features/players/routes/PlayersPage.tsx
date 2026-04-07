@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 
 interface PlayerDTO {
   id: string;
@@ -122,7 +123,12 @@ export default function PlayersPage() {
                     </Link>
                   </td>
                   <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
-                  <td className="px-2 py-2 font-data text-dynasty-muted">{player.teamId.toUpperCase()}</td>
+                  <td className="px-2 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <TeamLogo teamId={player.teamId} size="xs" />
+                      <span className="font-data text-dynasty-muted">{player.teamId.toUpperCase()}</span>
+                    </div>
+                  </td>
                   <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
                   <td className="px-2 py-2 text-center">
                     <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeColor(player.letterGrade)}`}>

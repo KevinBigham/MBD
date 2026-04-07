@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, PlusCircle, Shield, Trash2, Trophy } from 'lucide-react';
 import { PageShell } from '@/shared/components/PageShell';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
@@ -722,11 +723,14 @@ export default function SetupPage() {
 
             <div className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-warning">Season Preview</div>
-              <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">
-                {wizardMode === 'scenario'
-                  ? (selectedScenario?.name ?? 'Preparing Scenario')
-                  : (preview?.teamName ?? 'Preparing Preview')}
-              </h2>
+              <div className="mt-3 flex items-center gap-3">
+                <TeamLogo teamId={teamId} size="xl" />
+                <h2 className="font-brand text-3xl text-dynasty-textBright">
+                  {wizardMode === 'scenario'
+                    ? (selectedScenario?.name ?? 'Preparing Scenario')
+                    : (preview?.teamName ?? 'Preparing Preview')}
+                </h2>
+              </div>
               <p className="mt-3 font-heading text-sm leading-6 text-dynasty-muted">
                 {wizardMode === 'scenario'
                   ? (selectedScenario?.description ?? 'Loading the scenario framing and opening roster context.')

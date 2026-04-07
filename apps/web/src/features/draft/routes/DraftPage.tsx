@@ -11,6 +11,7 @@ import {
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 import type { WorkerApi } from '@/workers/sim.worker';
 import type {
   DraftActionResult,
@@ -710,7 +711,10 @@ function PostDraftGrades({ gradesView }: { gradesView: DraftPostDraftGradesView 
                 <p className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
                   Rank {index + 1}
                 </p>
-                <p className="mt-1 font-heading text-sm font-semibold text-dynasty-textBright">{grade.teamName}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <TeamLogo teamId={grade.teamId} size="sm" />
+                  <span className="font-heading text-sm font-semibold text-dynasty-textBright">{grade.teamName}</span>
+                </div>
                 <p className="mt-1 font-heading text-xs text-dynasty-muted">{grade.summary}</p>
               </div>
               <div className="text-right">

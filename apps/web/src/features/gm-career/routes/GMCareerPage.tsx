@@ -4,6 +4,7 @@ import { Award, Briefcase, Clock, MapPin, Trophy } from 'lucide-react';
 import { getTeamById } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 
 interface CareerEntry {
   teamId: string;
@@ -232,7 +233,8 @@ export default function GMCareerPage() {
                   <div className="flex-1 rounded-lg border border-dynasty-border bg-dynasty-elevated/40 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-heading text-sm font-semibold text-dynasty-text">
+                        <div className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+                          <TeamLogo teamId={entry.teamId} size="sm" />
                           {teamDisplayName(entry.teamId)}
                         </div>
                         <div className="mt-0.5 font-data text-xs text-dynasty-muted">
@@ -289,7 +291,8 @@ export default function GMCareerPage() {
                   className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 p-3"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="font-heading text-sm font-semibold text-dynasty-text">
+                    <div className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+                      <TeamLogo teamId={job.teamId} size="sm" />
                       {teamDisplayName(job.teamId)}
                     </div>
                     <Badge variant="outline" className="text-[10px]">{job.difficulty}</Badge>

@@ -54,6 +54,7 @@ export {
   detectBreakoutCountdowns,
   generateDebutFlashback,
   generatePressConference,
+  generateInteractivePressConference,
 } from './farmNarratives.js';
 export {
   generateOffseasonHeadline,
@@ -122,4 +123,6 @@ export type {
   BreakoutCountdown,
   BreakoutCountdownSnapshot,
   PressConferenceContext,
+  PressConferenceResponse,
+  InteractivePressConference,
 } from './farmNarratives.js';

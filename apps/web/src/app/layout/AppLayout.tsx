@@ -8,6 +8,7 @@ import { MomentCardOverlay } from './MomentCardOverlay';
 import { SeasonFlowCard } from './SeasonFlowCard';
 import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import { TickerBar } from './TickerBar';
+import { PressConferenceModal } from '@/features/press-room/components/PressConferenceModal';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
@@ -85,6 +86,13 @@ export function AppLayout() {
   const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseView | null>(null);
   const [tickerFeed, setTickerFeed] = useState<TickerEntry[]>([]);
   const [monthlyPulseBusy, setMonthlyPulseBusy] = useState(false);
+  const [pressConference, setPressConference] = useState<{
+    id: string; topic: string; question: string;
+    ownerTone: 'supportive' | 'neutral' | 'impatient';
+    teamId: string; season: number; day: number;
+    responses: Array<{ id: string; label: string; tone: 'confident' | 'measured' | 'deflect'; quote: string; moraleDelta: number; ownerDelta: number; generatesNews: boolean }>;
+  } | null>(null);
+  const [pressConferenceShownForDay, setPressConferenceShownForDay] = useState<string | null>(null);
   const worker = useWorker();
   const workerReady = worker.isReady;
   const {
@@ -144,6 +152,21 @@ export function AppLayout() {
     setMonthlyPulse(next as MonthlyPulseView);
   }, [worker, workerReady]);
 
+  const refreshPressConference = useCallback(async () => {
+    if (!workerReady || phase !== 'regular') return;
+    const dayKey = `${season}-${day}`;
+    if (pressConferenceShownForDay === dayKey) return;
+    try {
+      const conf = await worker.getInteractivePressConference();
+      if (conf) {
+        setPressConference(conf as typeof pressConference);
+        setPressConferenceShownForDay(dayKey);
+      }
+    } catch {
+      // noop — press conferences are optional
+    }
+  }, [workerReady, phase, season, day, pressConferenceShownForDay, worker]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const refreshTickerFeed = useCallback(async () => {
     if (!workerReady) return;
     const next = await worker.getTickerFeed(20);
@@ -163,13 +186,15 @@ export function AppLayout() {
     void refreshCeremony();
     void refreshMonthlyPulse();
     void refreshTickerFeed();
+    void refreshPressConference();
     return worker.subscribeToFlowUpdates(() => {
       void refreshSeasonFlow();
       void refreshCeremony();
       void refreshMonthlyPulse();
       void refreshTickerFeed();
+      void refreshPressConference();
     });
-  }, [isInitialized, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, refreshTickerFeed, worker, workerReady]);
+  }, [isInitialized, refreshCeremony, refreshMonthlyPulse, refreshPressConference, refreshSeasonFlow, refreshTickerFeed, worker, workerReady]);
 
   const handleSim = useCallback(
     async (
@@ -396,7 +421,7 @@ export function AppLayout() {
       {/* Main area: sidebar + content */}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4 pb-20 md:p-6 md:pb-6">
           <>
             {seasonFlow && (
               <SeasonFlowCard
@@ -444,6 +469,16 @@ export function AppLayout() {
         onDecisionDismiss={() => void handleDecisionDismiss()}
         onDecisionAction={() => void handleDecisionAction()}
       />
+
+      {pressConference && !activeMoment && !activeReport && !activeDecision && (
+        <PressConferenceModal
+          conference={pressConference}
+          onRespond={async (confId, respId) => {
+            await worker.respondToPressConference(confId, respId);
+          }}
+          onDismiss={() => setPressConference(null)}
+        />
+      )}
     </div>
   );
 }

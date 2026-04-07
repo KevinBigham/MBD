@@ -85,6 +85,12 @@ const PulsePage = lazy(
 const ScenarioCatalogPage = lazy(
   () => import('@/features/scenarios/routes/ScenarioCatalogPage')
 );
+const StatsEncyclopediaPage = lazy(
+  () => import('@/features/stats/routes/StatsEncyclopediaPage')
+);
+const RecordWatchPage = lazy(
+  () => import('@/features/records/routes/RecordWatchPage')
+);
 
 function LoadingFallback() {
   return (
@@ -146,6 +152,8 @@ export function AppRoutes() {
           <Route path="front-office" element={withRouteBoundary('Owner Intel', <FrontOfficePage />)} />
           <Route path="pulse" element={withRouteBoundary('Pulse', <PulsePage />)} />
           <Route path="scenarios" element={withRouteBoundary('Challenges', <ScenarioCatalogPage />)} />
+          <Route path="stats" element={withRouteBoundary('Stats Encyclopedia', <StatsEncyclopediaPage />)} />
+          <Route path="records" element={withRouteBoundary('Record Watch', <RecordWatchPage />)} />
           <Route path="settings" element={withRouteBoundary('Settings', <SettingsPage />)} />
           {/* Catch-all redirect */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

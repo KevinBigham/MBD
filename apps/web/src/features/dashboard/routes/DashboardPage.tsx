@@ -13,6 +13,7 @@ import { Skeleton } from '@mbd/ui';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { logger } from '@/shared/lib/logger';
@@ -29,6 +30,7 @@ const PressDigestCard = lazy(() => import('../components/PressDigestCard'));
 const GameRecapCard = lazy(() => import('../components/GameRecapCard'));
 const PlayByPlayPanel = lazy(() => import('../components/PlayByPlayPanel'));
 const Sparkline = lazy(() => import('@/shared/components/charts/Sparkline'));
+const GameAdvisor = lazy(() => import('../components/GameAdvisor'));
 
 interface DashboardSummary {
   franchise: {
@@ -462,7 +464,10 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="font-data text-[11px] uppercase tracking-[0.2em] text-accent-info">Franchise Identity</div>
-              <h1 className="mt-3 font-brand text-4xl text-dynasty-textBright">{summary?.franchise.teamName ?? 'Front Office'}</h1>
+              <div className="mt-3 flex items-center gap-4">
+                {userTeamId && <TeamLogo teamId={userTeamId} size="xl" />}
+                <h1 className="font-brand text-4xl text-dynasty-textBright">{summary?.franchise.teamName ?? 'Front Office'}</h1>
+              </div>
               <div className="mt-3 flex flex-wrap gap-3 font-heading text-sm text-dynasty-muted">
                 <span>GM {summary?.franchise.gmName ?? 'General Manager'}</span>
                 <span>Season {season}</span>
@@ -553,6 +558,11 @@ export default function DashboardPage() {
             </div>
           </section>
         ) : null}
+
+        {/* Smart advisor */}
+        <Suspense fallback={null}>
+          <GameAdvisor />
+        </Suspense>
 
         {career?.jobSearchActive && (jobMarket?.availableJobs.length ?? 0) > 0 ? (
           <section className="rounded-xl border border-accent-warning/40 bg-accent-warning/10 p-5">

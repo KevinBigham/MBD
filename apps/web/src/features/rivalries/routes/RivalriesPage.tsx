@@ -6,6 +6,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 
 interface RivalryEvent {
   season: number;
@@ -100,9 +101,11 @@ function RivalryCard({ r }: { r: Rivalry }) {
         {/* Matchup */}
         <div className="flex-1">
           <div className="flex items-center gap-2">
+            <TeamLogo teamId={r.teamA} size="sm" />
             <span className="font-brand text-xl text-dynasty-textBright">{teamAbbr(r.teamA)}</span>
             <Swords className="h-4 w-4 text-dynasty-muted" />
             <span className="font-brand text-xl text-dynasty-textBright">{teamAbbr(r.teamB)}</span>
+            <TeamLogo teamId={r.teamB} size="sm" />
             <Badge className={[
               'ml-auto font-data text-[10px] uppercase',
               isHot ? 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger' : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted',

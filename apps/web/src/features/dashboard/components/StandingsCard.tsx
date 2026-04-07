@@ -1,4 +1,5 @@
 import { Trophy } from 'lucide-react';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 
 interface StandingsEntryView {
   teamId: string;
@@ -44,7 +45,12 @@ export default function StandingsCard({ standings, userTeamId }: StandingsCardPr
                   team.teamId === userTeamId ? 'bg-accent-primary/10' : ''
                 }`}
               >
-                <td className="px-2 py-2 font-heading text-sm text-dynasty-textBright">{team.abbreviation}</td>
+                <td className="px-2 py-2">
+                  <div className="flex items-center gap-2">
+                    <TeamLogo teamId={team.teamId} size="xs" />
+                    <span className="font-heading text-sm text-dynasty-textBright">{team.abbreviation}</span>
+                  </div>
+                </td>
                 <td className="px-2 py-2 text-right font-data text-sm text-dynasty-text">{team.wins}</td>
                 <td className="px-2 py-2 text-right font-data text-sm text-dynasty-text">{team.losses}</td>
                 <td className="px-2 py-2 text-right font-data text-sm text-dynasty-muted">{team.pct}</td>

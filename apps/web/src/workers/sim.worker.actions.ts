@@ -7,6 +7,7 @@ import {
   calculateFanSentiment,
   calculateRushingRisk,
   GameRNG,
+  generateInteractivePressConference,
   TEAMS,
   assignGMPersonality,
   buildRosterState,
@@ -1202,6 +1203,88 @@ export const actionApi = {
 
   dismissCeremonyMoment(momentId: string) {
     return dismissCeremonyMomentState(requireState(), momentId);
+  },
+
+  respondToPressConference(conferenceId: string, responseId: string) {
+    const s = requireState();
+
+    // Regenerate the conference to validate the response
+    const pcStandings = s.seasonState.standings.getFullStandings();
+    const pcUserStanding = Object.values(pcStandings).flat().find((e) => e.teamId === s.userTeamId);
+    if (!pcUserStanding) return { success: false as const, error: 'No standings.' };
+
+    const pcOwner = s.ownerState.get(s.userTeamId);
+    const pcOwnerTone: 'supportive' | 'neutral' | 'impatient' =
+      pcOwner && pcOwner.patience < 30 ? 'impatient'
+        : pcOwner && pcOwner.patience > 70 ? 'supportive'
+          : 'neutral';
+    const pcProspects = s.players.filter(
+      (p) => p.teamId === s.userTeamId && p.rosterStatus !== 'MLB' && (p.ceiling ?? p.overallRating) >= 350,
+    );
+    const pcTrade = s.tradeState.tradeHistory
+      .filter((t) => t.fromTeamId === s.userTeamId || t.toTeamId === s.userTeamId)
+      .sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''))[0];
+    const pcDivRank = pcUserStanding.gamesBack === 0 ? 1 : Math.ceil(pcUserStanding.gamesBack / 3) + 1;
+
+    const conf = generateInteractivePressConference({
+      season: s.season, day: s.day, userTeamId: s.userTeamId,
+      teamRecord: { wins: pcUserStanding.wins, losses: pcUserStanding.losses, divisionRank: pcDivRank, gamesBack: pcUserStanding.gamesBack },
+      ownerTone: pcOwnerTone,
+      recentTradeHeadline: pcTrade?.summary ?? null,
+      farmStrength: Math.min(100, pcProspects.length * 20),
+      topProspectCount: pcProspects.length,
+    });
+    if (!conf || conf.id !== conferenceId) {
+      return { success: false as const, error: 'Press conference expired.' };
+    }
+
+    const response = conf.responses.find((r) => r.id === responseId);
+    if (!response) {
+      return { success: false as const, error: 'Invalid response.' };
+    }
+
+    // Apply morale delta to all players on the user's team
+    // playerMorale is Map<playerId, { playerId, score, trend, summary, lastUpdated }>
+    for (const player of s.players) {
+      if (player.teamId !== s.userTeamId) continue;
+      const morale = s.playerMorale.get(player.id);
+      if (morale) {
+        morale.score = Math.max(0, Math.min(100, morale.score + response.moraleDelta));
+      }
+    }
+
+    // Apply owner satisfaction delta
+    const pcOwnerForUpdate = s.ownerState.get(s.userTeamId);
+    if (pcOwnerForUpdate) {
+      s.ownerState.set(s.userTeamId, {
+        ...pcOwnerForUpdate,
+        patience: Math.max(0, Math.min(100, pcOwnerForUpdate.patience + response.ownerDelta)),
+      });
+    }
+
+    // Generate news story if the response warrants it
+    if (response.generatesNews) {
+      const toneLabel = response.tone === 'confident' ? 'bold' : response.tone === 'deflect' ? 'evasive' : 'measured';
+      s.news.unshift({
+        id: `press-response-${conferenceId}-${response.tone}`,
+        headline: `GM takes ${toneLabel} stance in press conference`,
+        body: `"${response.quote}" — the GM's response drew ${response.tone === 'confident' ? 'applause from the fanbase' : 'mixed reactions from the media'}.`,
+        priority: 3,
+        category: 'press_conference',
+        tag: 'ANALYSIS',
+        timestamp: `S${s.season}D${s.day}`,
+        relatedPlayerIds: [],
+        relatedTeamIds: [s.userTeamId],
+        read: false,
+      });
+    }
+
+    return {
+      success: true as const,
+      tone: response.tone,
+      moraleDelta: response.moraleDelta,
+      ownerDelta: response.ownerDelta,
+    };
   },
 
   applyForJob(teamId: string) {

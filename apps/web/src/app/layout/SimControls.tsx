@@ -53,8 +53,8 @@ export function SimControls({
   const showRegularControls = flow?.canUseRegularSimControls ?? true;
 
   return (
-    <footer className="border-t border-dynasty-border bg-dynasty-surface px-4 py-2">
-      <div className="flex items-center gap-3">
+    <footer className="border-t border-dynasty-border bg-dynasty-surface px-3 py-2 pb-2 md:px-4 md:pb-2">
+      <div className="flex items-center gap-2 md:gap-3">
         {/* Status display */}
         <div className="hidden min-w-[140px] md:block">
           <div className="font-data text-xs text-dynasty-muted">{flow?.phaseLabel ?? `Season ${season}`}</div>
@@ -68,7 +68,7 @@ export function SimControls({
         </div>
 
         {showRegularControls ? (
-          <div className="flex flex-1 gap-2">
+          <div className="grid flex-1 grid-cols-2 gap-1.5 sm:flex sm:gap-2">
             <SimButton
               onClick={onSimDay}
               disabled={isSimulating}

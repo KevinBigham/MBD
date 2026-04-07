@@ -8,6 +8,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { PlayoffBracket, PlayoffSeriesState } from '@mbd/sim-core';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 import type { SeasonFlowPreviewSeries } from '@/app/layout/seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
@@ -123,10 +124,12 @@ export default function PlayoffsPage() {
                         <span>Best of {card.bestOf}</span>
                       </div>
                       <div className="mt-3 space-y-2">
-                        <div className="font-heading text-sm text-dynasty-text">
+                        <div className="flex items-center gap-2 font-heading text-sm text-dynasty-text">
+                          {live?.higherSeed.teamId && <TeamLogo teamId={live.higherSeed.teamId} size="xs" />}
                           {live ? `${live.higherSeed.seed} ${teamName(live.higherSeed.teamId, card.home.teamName)}` : `${card.home.seed ?? ''} ${card.home.teamName}`.trim()}
                         </div>
-                        <div className="font-heading text-sm text-dynasty-text">
+                        <div className="flex items-center gap-2 font-heading text-sm text-dynasty-text">
+                          {live?.lowerSeed.teamId && <TeamLogo teamId={live.lowerSeed.teamId} size="xs" />}
                           {live ? `${live.lowerSeed.seed} ${teamName(live.lowerSeed.teamId, card.away.teamName)}` : `${card.away.seed ?? ''} ${card.away.teamName}`.trim()}
                         </div>
                       </div>
