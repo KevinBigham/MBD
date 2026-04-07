@@ -16,7 +16,7 @@ const BIG_MARKET_TEAM_IDS = new Set([
   'dal',  // Dallas Lone Stars
   'phi',  // Philadelphia Liberty Bells
   'bos',  // Boston Noreasters
-  'sfb',  // San Francisco Fog Horns
+  'sfb',  // San Francisco Sourdoughs
 ]);
 
 function clamp(value: number, min: number, max: number): number {

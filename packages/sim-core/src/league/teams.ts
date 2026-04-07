@@ -51,7 +51,7 @@ export const TEAMS: readonly TeamDef[] = [
   { id: 'aus', name: 'Bat Colony',     city: 'Austin',        abbreviation: 'AUS', division: 'NL_CENTRAL', parkFactor: 1.01 },
   // National West
   { id: 'lax', name: 'Sunset Strip',   city: 'Los Angeles',   abbreviation: 'LAX', division: 'NL_WEST', parkFactor: 0.99 },
-  { id: 'sfb', name: 'Fog Horns',      city: 'San Francisco', abbreviation: 'SFB', division: 'NL_WEST', parkFactor: 0.95 },
+  { id: 'sfb', name: 'Sourdoughs',     city: 'San Francisco', abbreviation: 'SFB', division: 'NL_WEST', parkFactor: 0.95 },
   { id: 'phx', name: 'Dust Devils',    city: 'Phoenix',       abbreviation: 'PHX', division: 'NL_WEST', parkFactor: 1.02 },
   { id: 'sea', name: 'Drizzle',        city: 'Seattle',       abbreviation: 'SEA', division: 'NL_WEST', parkFactor: 0.97 },
   { id: 'sdg', name: 'Surf Hounds',    city: 'San Diego',     abbreviation: 'SDG', division: 'NL_WEST', parkFactor: 0.97 },

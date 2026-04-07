@@ -19,7 +19,7 @@ vi.mock('@mbd/sim-core', () => ({
     if (teamId === 'nym') return { city: 'New York', name: 'Tycoons', abbreviation: 'NYT' };
     if (teamId === 'bos') return { city: 'Boston', name: "Noreasters", abbreviation: 'BOS' };
     if (teamId === 'lax') return { city: 'Los Angeles', name: 'Sunset Strip', abbreviation: 'LAX' };
-    if (teamId === 'sfg') return { city: 'San Francisco', name: 'Fog Horns', abbreviation: 'SFB' };
+    if (teamId === 'sfg') return { city: 'San Francisco', name: 'Sourdoughs', abbreviation: 'SFB' };
     return null;
   }),
 }));

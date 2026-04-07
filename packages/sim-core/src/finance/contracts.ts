@@ -98,7 +98,7 @@ export const TEAM_MARKETS: Record<string, MarketConfig> = {
   dal: LARGE_MARKET,   // Dallas Lone Stars
   phi: LARGE_MARKET,   // Philadelphia Liberty Bells
   bos: LARGE_MARKET,   // Boston Noreasters
-  sfb: LARGE_MARKET,   // San Francisco Fog Horns
+  sfb: LARGE_MARKET,   // San Francisco Sourdoughs
   // Medium markets
   wsh: MEDIUM_MARKET,  // Washington Monuments
   mia: MEDIUM_MARKET,  // Miami Hurricanes

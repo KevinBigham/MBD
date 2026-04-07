@@ -83,7 +83,7 @@ const TEAM_OPTIONS = [
   { id: 'sat', label: 'San Antonio Riverwalk' },
   { id: 'sdg', label: 'San Diego Surf Hounds' },
   { id: 'sea', label: 'Seattle Drizzle' },
-  { id: 'sfb', label: 'San Francisco Fog Horns' },
+  { id: 'sfb', label: 'San Francisco Sourdoughs' },
   { id: 'stl', label: 'St. Louis Archers' },
   { id: 'wsh', label: 'Washington Monuments' },
 ] as const;
