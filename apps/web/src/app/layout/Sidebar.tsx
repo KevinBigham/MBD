@@ -1,7 +1,9 @@
 import { NavLink } from 'react-router-dom';
 import {
+  Activity,
   Award,
   Briefcase,
+  Building2,
   Users,
   User,
   BriefcaseBusiness,
@@ -9,7 +11,9 @@ import {
   Search,
   FileText,
   ArrowLeftRight,
+  Flame,
   Trophy,
+  Target,
   CalendarDays,
   CalendarRange,
   Newspaper,
@@ -32,6 +36,7 @@ interface NavItem {
 
 const baseMainNavItems: NavItem[] = [
   { to: '/dashboard', label: 'Front Office', icon: <Briefcase className="h-5 w-5" /> },
+  { to: '/front-office', label: 'Owner Intel', icon: <Building2 className="h-5 w-5" /> },
   { to: '/roster', label: 'Roster', icon: <Users className="h-5 w-5" /> },
   { to: '/minors', label: 'Minors', icon: <Users className="h-5 w-5" /> },
   { to: '/players', label: 'Players', icon: <User className="h-5 w-5" /> },
@@ -41,11 +46,15 @@ const baseMainNavItems: NavItem[] = [
   { to: '/draft', label: 'Draft', icon: <FileText className="h-5 w-5" /> },
   { to: '/trade', label: 'Trades', icon: <ArrowLeftRight className="h-5 w-5" /> },
   { to: '/league/standings', label: 'League', icon: <Trophy className="h-5 w-5" /> },
+  { to: '/rivalries', label: 'Rivalries', icon: <Flame className="h-5 w-5" /> },
   { to: '/schedule', label: 'Schedule', icon: <CalendarDays className="h-5 w-5" /> },
+  { to: '/pulse', label: 'Pulse', icon: <Activity className="h-5 w-5" /> },
   { to: '/playoffs', label: 'Playoffs', icon: <CalendarRange className="h-5 w-5" /> },
   { to: '/press-room', label: 'Press Room', icon: <Newspaper className="h-5 w-5" /> },
   { to: '/history', label: 'History', icon: <History className="h-5 w-5" /> },
   { to: '/career', label: 'GM Career', icon: <Award className="h-5 w-5" /> },
+  { to: '/achievements', label: 'Trophies', icon: <Trophy className="h-5 w-5" /> },
+  { to: '/scenarios', label: 'Challenges', icon: <Target className="h-5 w-5" /> },
 ];
 
 const bottomNavItems: NavItem[] = [

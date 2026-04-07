@@ -11,12 +11,14 @@ import {
   Coins,
   Globe2,
   Handshake,
+  Scale,
 } from 'lucide-react';
 import { TEAMS, estimateProjectedWarRange, getTeamById } from '@mbd/sim-core';
 import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
+import { ScoutConflictsTab } from '../components/ScoutConflictsTab';
 
 interface Scout {
   id: string;
@@ -206,7 +208,7 @@ export default function ScoutingPage() {
   const workerReady = worker.isReady;
   const { userTeamId, isInitialized } = useGameStore();
 
-  const [activeView, setActiveView] = useState<'pro' | 'international'>('international');
+  const [activeView, setActiveView] = useState<'pro' | 'international' | 'conflicts'>('international');
   const [scouts, setScouts] = useState<Scout[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PlayerDTO[]>([]);
@@ -363,7 +365,7 @@ export default function ScoutingPage() {
       </div>
 
       <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-2">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <button
             type="button"
             onClick={() => setActiveView('international')}
@@ -385,6 +387,17 @@ export default function ScoutingPage() {
               Pro Reports
             </div>
             <p className="mt-1 font-heading text-xs">Search major and minor league players and build your live report board.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView('conflicts')}
+            className={`rounded-md px-4 py-3 text-left ${activeView === 'conflicts' ? 'bg-dynasty-elevated text-dynasty-textBright' : 'text-dynasty-muted hover:bg-dynasty-elevated/60'}`}
+          >
+            <div className="flex items-center gap-2 font-heading text-sm font-semibold">
+              <Scale className="h-4 w-4 text-accent-danger" />
+              Scout Conflicts
+            </div>
+            <p className="mt-1 font-heading text-xs">When scouts disagree, review the war board and see who was right.</p>
           </button>
         </div>
       </section>
@@ -452,7 +465,7 @@ export default function ScoutingPage() {
         )}
       </section>
 
-      {activeView === 'pro' ? (
+      {activeView === 'conflicts' ? null : activeView === 'pro' ? (
         <>
           <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
             <div className="mb-3 flex items-center gap-2">
@@ -942,6 +955,10 @@ export default function ScoutingPage() {
             )}
           </section>
         </>
+      )}
+
+      {activeView === 'conflicts' && (
+        <ScoutConflictsTab />
       )}
       </div>
     </PageShell>

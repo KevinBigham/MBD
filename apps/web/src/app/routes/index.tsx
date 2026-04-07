@@ -70,6 +70,21 @@ const GMCareerPage = lazy(
 const SettingsPage = lazy(
   () => import('@/features/settings/routes/SettingsPage')
 );
+const AchievementsPage = lazy(
+  () => import('@/features/achievements/routes/AchievementsPage')
+);
+const RivalriesPage = lazy(
+  () => import('@/features/rivalries/routes/RivalriesPage')
+);
+const FrontOfficePage = lazy(
+  () => import('@/features/front-office/routes/FrontOfficePage')
+);
+const PulsePage = lazy(
+  () => import('@/features/pulse/routes/PulsePage')
+);
+const ScenarioCatalogPage = lazy(
+  () => import('@/features/scenarios/routes/ScenarioCatalogPage')
+);
 
 function LoadingFallback() {
   return (
@@ -126,6 +141,11 @@ export function AppRoutes() {
           <Route path="finance" element={withRouteBoundary('Finance', <FinancePage />)} />
           <Route path="career" element={withRouteBoundary('GM Career', <GMCareerPage />)} />
           <Route path="history" element={withRouteBoundary('History', <HistoryPage />)} />
+          <Route path="achievements" element={withRouteBoundary('Achievements', <AchievementsPage />)} />
+          <Route path="rivalries" element={withRouteBoundary('Rivalries', <RivalriesPage />)} />
+          <Route path="front-office" element={withRouteBoundary('Owner Intel', <FrontOfficePage />)} />
+          <Route path="pulse" element={withRouteBoundary('Pulse', <PulsePage />)} />
+          <Route path="scenarios" element={withRouteBoundary('Challenges', <ScenarioCatalogPage />)} />
           <Route path="settings" element={withRouteBoundary('Settings', <SettingsPage />)} />
           {/* Catch-all redirect */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
