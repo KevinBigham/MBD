@@ -13,6 +13,7 @@ import { Skeleton } from '@mbd/ui';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { logger } from '@/shared/lib/logger';
@@ -463,7 +464,10 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="font-data text-[11px] uppercase tracking-[0.2em] text-accent-info">Franchise Identity</div>
-              <h1 className="mt-3 font-brand text-4xl text-dynasty-textBright">{summary?.franchise.teamName ?? 'Front Office'}</h1>
+              <div className="mt-3 flex items-center gap-4">
+                {userTeamId && <TeamLogo teamId={userTeamId} size="xl" />}
+                <h1 className="font-brand text-4xl text-dynasty-textBright">{summary?.franchise.teamName ?? 'Front Office'}</h1>
+              </div>
               <div className="mt-3 flex flex-wrap gap-3 font-heading text-sm text-dynasty-muted">
                 <span>GM {summary?.franchise.gmName ?? 'General Manager'}</span>
                 <span>Season {season}</span>
