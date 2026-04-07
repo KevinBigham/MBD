@@ -38,8 +38,8 @@ describe('scout conflicts', () => {
 
     const staff = buildStaff(99);
     const prospect = buildProspect(12, 'college_underclass');
-    const conflict = generateScoutConflict!(new simCore.GameRNG(44), prospect, staff, 4, 'nyy');
-    const repeat = generateScoutConflict!(new simCore.GameRNG(44), prospect, staff, 4, 'nyy');
+    const conflict = generateScoutConflict!(new simCore.GameRNG(44), prospect, staff, 4, 'nym');
+    const repeat = generateScoutConflict!(new simCore.GameRNG(44), prospect, staff, 4, 'nym');
 
     expect(conflict.opinions).toHaveLength(3);
     expect(conflict.opinions.map((entry) => entry.source)).toEqual([
@@ -78,8 +78,8 @@ describe('scout conflicts', () => {
     expect(typeof resolveScoutConflicts).toBe('function');
 
     const staff = buildStaff(123);
-    const prep = generateScoutConflict!(new simCore.GameRNG(7), buildProspect(3, 'high_school'), staff, 4, 'nyy');
-    const senior = generateScoutConflict!(new simCore.GameRNG(7), buildProspect(3, 'college_senior'), staff, 4, 'nyy');
+    const prep = generateScoutConflict!(new simCore.GameRNG(7), buildProspect(3, 'high_school'), staff, 4, 'nym');
+    const senior = generateScoutConflict!(new simCore.GameRNG(7), buildProspect(3, 'college_senior'), staff, 4, 'nym');
 
     expect(prep.divergence).toBeGreaterThan(senior.divergence);
 

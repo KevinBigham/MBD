@@ -46,9 +46,9 @@ describe('getTeamsByDivision', () => {
 
 describe('getTeamById', () => {
   it('finds a known team', () => {
-    const team = getTeamById('nyy');
+    const team = getTeamById('nym');
     expect(team).toBeDefined();
-    expect(team!.name).toBe('Yankees');
+    expect(team!.name).toBe('Tycoons');
   });
 
   it('returns undefined for unknown id', () => {

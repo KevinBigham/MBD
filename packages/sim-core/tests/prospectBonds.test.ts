@@ -22,7 +22,7 @@ describe('prospect bonds', () => {
   });
 
   it('increments bond strength for a season in the system and records an mlb debut', () => {
-    const player = generatePlayer(new GameRNG(41), 'CF', 'nyy', 'MLB');
+    const player = generatePlayer(new GameRNG(41), 'CF', 'nym', 'MLB');
     player.id = 'prospect-2';
     const bonds = updateProspectBonds({
       season: 6,
@@ -41,7 +41,7 @@ describe('prospect bonds', () => {
         player.id,
         {
           playerId: player.id,
-          originTeamId: 'nyy',
+          originTeamId: 'nym',
           acquisitionType: 'draft',
           acquiredSeason: 5,
           draftSeason: 5,
@@ -63,15 +63,15 @@ describe('prospect bonds', () => {
   });
 
   it('adds all-star loyalty for the original organization only once', () => {
-    const player = generatePlayer(new GameRNG(42), 'CF', 'nyy', 'MLB');
+    const player = generatePlayer(new GameRNG(42), 'CF', 'nym', 'MLB');
     player.id = 'prospect-3';
     const awardHistory: AwardHistoryEntry[] = [
-      { season: 7, award: 'All-Star', league: 'MLB', playerId: player.id, teamId: 'nyy', summary: 'All-Star.' },
+      { season: 7, award: 'All-Star', league: 'MLB', playerId: player.id, teamId: 'nym', summary: 'All-Star.' },
     ];
 
     const origin: PlayerOrigin = {
       playerId: player.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       acquiredSeason: 4,
       draftSeason: 4,

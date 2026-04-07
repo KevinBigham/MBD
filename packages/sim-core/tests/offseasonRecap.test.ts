@@ -5,8 +5,8 @@ import { generateOffseasonHeadline, generateSeasonRecapNarrative } from '../src/
 function buildSeasonHistory(overrides: Partial<SeasonHistoryEntry> = {}): SeasonHistoryEntry {
   return {
     season: 4,
-    championTeamId: 'nyy',
-    runnerUpTeamId: 'lad',
+    championTeamId: 'nym',
+    runnerUpTeamId: 'lax',
     worldSeriesRecord: '4-2',
     summary: 'The Yankees finished the job and closed the season on top.',
     awards: [],
@@ -24,7 +24,7 @@ function buildSeasonHistory(overrides: Partial<SeasonHistoryEntry> = {}): Season
     notableRetirements: [],
     blockbusterTrades: [],
     userSeason: {
-      teamId: 'nyy',
+      teamId: 'nym',
       record: '97-65',
       playoffResult: 'Won the World Series',
       storylines: [
@@ -53,7 +53,7 @@ function buildSeasonArchive(overrides: Partial<SeasonArchiveEntry> = {}): Season
       {
         type: 'trade',
         headline: 'Deadline blockbuster reshaped the bullpen',
-        teams: ['New York Yankees', 'Seattle Mariners'],
+        teams: ['New York Tycoons', 'Seattle Drizzle'],
         players: ['Jordan Reliever'],
         impactScore: 88,
       },
@@ -61,7 +61,7 @@ function buildSeasonArchive(overrides: Partial<SeasonArchiveEntry> = {}): Season
     draftClass: [],
     financials: [],
     userSummary: {
-      teamId: 'nyy',
+      teamId: 'nym',
       record: '97-65',
       playoffResult: 'Won the World Series',
       storylines: ['Judge delivered in the postseason'],
@@ -97,7 +97,7 @@ describe('offseason recap narrative', () => {
       runnerUpTeamId: 'atl',
       summary: 'The Yankees faded late and missed the bracket.',
       userSeason: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '81-81',
         playoffResult: 'Missed the playoffs',
         storylines: ['A shallow rotation was exposed by August'],
@@ -105,7 +105,7 @@ describe('offseason recap narrative', () => {
     });
     const seasonArchive = buildSeasonArchive({
       userSummary: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '81-81',
         playoffResult: 'Missed the playoffs',
         storylines: ['A shallow rotation was exposed by August'],

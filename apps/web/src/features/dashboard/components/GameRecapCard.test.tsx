@@ -10,7 +10,7 @@ import GameRecapCard from './GameRecapCard';
 
 function createBoxScore(): GameBoxScore {
   return {
-    homeTeamId: 'nyy',
+    homeTeamId: 'nym',
     awayTeamId: 'bos',
     homeScore: 5,
     awayScore: 3,
@@ -64,7 +64,7 @@ describe('GameRecapCard', () => {
     });
 
     expect(container.textContent).toContain('BOS');
-    expect(container.textContent).toContain('NYY');
+    expect(container.textContent).toContain('NYT');
     expect(container.textContent).toContain('3-5');
     expect(container.textContent).toContain('2 highlights');
     expect(container.innerHTML).toContain('border-accent-primary/50');

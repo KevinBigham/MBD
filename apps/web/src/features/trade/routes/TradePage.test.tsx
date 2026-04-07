@@ -24,7 +24,7 @@ function createWorkerMock() {
   const gmDialogue = {
     mode: 'buyer' as const,
     urgency: 'high' as const,
-    headline: 'Boston Red Sox bring a live deadline call',
+    headline: 'Boston Noreasters bring a live deadline call',
     lines: [
       'We are buying wins, not moving bodies for the sake of motion.',
       'The model is simple: match the surplus value and we can keep talking.',
@@ -41,7 +41,7 @@ function createWorkerMock() {
     displayRating: 72,
     letterGrade: 'B',
     rosterStatus: 'MLB',
-    teamId: 'nyy',
+    teamId: 'nym',
     stats: null,
   };
   const partnerPlayer = {
@@ -60,18 +60,18 @@ function createWorkerMock() {
 
   return {
     isReady: true,
-    getTeamRoster: vi.fn().mockImplementation(async (teamId: string) => (teamId === 'nyy' ? [userPlayer] : [partnerPlayer])),
+    getTeamRoster: vi.fn().mockImplementation(async (teamId: string) => (teamId === 'nym' ? [userPlayer] : [partnerPlayer])),
     getTradeOffers: vi.fn().mockResolvedValue([
       {
         id: 'offer-1',
         fromTeamId: 'bos',
-        fromTeamName: 'Boston Red Sox',
+        fromTeamName: 'Boston Noreasters',
         fromTeamAbbreviation: 'BOS',
-        toTeamId: 'nyy',
-        toTeamName: 'New York Yankees',
-        toTeamAbbreviation: 'NYY',
+        toTeamId: 'nym',
+        toTeamName: 'New York Tycoons',
+        toTeamAbbreviation: 'NYT',
         fairnessScore: -6,
-        message: 'The Boston Red Sox want to discuss a trade.',
+        message: 'The Boston Noreasters want to discuss a trade.',
         createdAt: 'S4D95',
         offeringAssets: [
           {
@@ -98,14 +98,14 @@ function createWorkerMock() {
     getTradeHistory: vi.fn().mockResolvedValue([
       {
         id: 'history-1',
-        fromTeamId: 'tb',
-        fromTeamName: 'Tampa Bay Rays',
-        fromTeamAbbreviation: 'TBR',
-        toTeamId: 'tor',
-        toTeamName: 'Toronto Blue Jays',
-        toTeamAbbreviation: 'TOR',
+        fromTeamId: 'orl',
+        fromTeamName: 'Orlando Thunder',
+        fromTeamAbbreviation: 'ORL',
+        toTeamId: 'cha',
+        toTeamName: 'Charlotte Hornets',
+        toTeamAbbreviation: 'CHA',
         fairnessScore: 9,
-        summary: 'Tampa Bay Rays sent Drew Example to Toronto Blue Jays for Chris Sample.',
+        summary: 'Orlando Thunder sent Drew Example to Charlotte Hornets for Chris Sample.',
         timestamp: 'S4D90',
         offeringAssets: [
           {
@@ -130,14 +130,14 @@ function createWorkerMock() {
       },
     ]),
     getTradeAssetInventory: vi.fn().mockImplementation(async (teamId: string) => (
-      teamId === 'nyy'
+      teamId === 'nym'
         ? {
           draftPicks: [
             {
               key: 'draft:4:1:nyy',
               label: 'R1 4',
               detail: 'NYY original',
-              asset: { type: 'draft_pick', season: 4, round: 1, originalTeamId: 'nyy' },
+              asset: { type: 'draft_pick', season: 4, round: 1, originalTeamId: 'nym' },
             },
           ],
           ifaRemaining: 3.5,
@@ -165,13 +165,13 @@ function createWorkerMock() {
         {
           id: 'offer-1',
           fromTeamId: 'bos',
-          fromTeamName: 'Boston Red Sox',
+          fromTeamName: 'Boston Noreasters',
           fromTeamAbbreviation: 'BOS',
-          toTeamId: 'nyy',
-          toTeamName: 'New York Yankees',
-          toTeamAbbreviation: 'NYY',
+          toTeamId: 'nym',
+          toTeamName: 'New York Tycoons',
+          toTeamAbbreviation: 'NYT',
           fairnessScore: -6,
-          message: 'The Boston Red Sox want to discuss a trade.',
+          message: 'The Boston Noreasters want to discuss a trade.',
           createdAt: 'S4D118',
           offeringAssets: [
             {
@@ -202,14 +202,14 @@ function createWorkerMock() {
       ticker: [
         {
           id: 'ticker-1',
-          summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+          summary: 'Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.',
           timestamp: 'S4D117',
         },
       ],
       chatter: [
         {
           id: 'user-mode-buyer',
-          headline: 'New York Yankees are flagged as buyers',
+          headline: 'New York Tycoons are flagged as buyers',
           detail: 'The room is reading urgency around upgrades that move the playoff needle.',
           mode: 'buyer',
           teamId: null,
@@ -220,24 +220,24 @@ function createWorkerMock() {
         yourTrades: [
           {
             id: 'recap-trade-1',
-            summary: 'New York Yankees sent Anthony Volpe to Boston Red Sox for Roman Anthony.',
+            summary: 'New York Tycoons sent Anthony Volpe to Boston Noreasters for Roman Anthony.',
             outcome: 'completed',
           },
           {
             id: 'recap-trade-2',
-            summary: 'Boston Red Sox offer for Anthony Volpe expired at the deadline.',
+            summary: 'Boston Noreasters offer for Anthony Volpe expired at the deadline.',
             outcome: 'missed',
           },
         ],
         majorMoves: [
           {
             id: 'ticker-1',
-            summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+            summary: 'Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.',
             timestamp: 'S4D117',
           },
         ],
-        winners: ['Seattle Mariners', 'New York Yankees'],
-        losers: ['Boston Red Sox'],
+        winners: ['Seattle Drizzle', 'New York Tycoons'],
+        losers: ['Boston Noreasters'],
       },
     }),
     getTradeDialogue: vi.fn().mockResolvedValue(gmDialogue),
@@ -284,8 +284,8 @@ describe('TradePage', () => {
       day: 95,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 95,
       isSimulating: false,
@@ -308,16 +308,16 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('4 days to deadline');
     expect(container.textContent).toContain('Buyer');
     expect(container.textContent).toContain('Hot Offers');
-    expect(container.textContent).toContain('Boston Red Sox');
+    expect(container.textContent).toContain('Boston Noreasters');
     expect(container.textContent).toContain('Roman Anthony');
     expect(container.textContent).toContain('EXPIRING SOON');
     expect(container.textContent).toContain('3 clubs are in on Anthony Volpe.');
     expect(container.textContent).toContain('GM Dialogue');
     expect(container.textContent).toContain('Right now the offer is light for what you are asking us to surrender.');
     expect(container.textContent).toContain('League Trade Ticker');
-    expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
+    expect(container.textContent).toContain('Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.');
     expect(container.textContent).toContain('Trade History');
-    expect(container.textContent).toContain('Tampa Bay Rays sent Drew Example to Toronto Blue Jays for Chris Sample.');
+    expect(container.textContent).toContain('Orlando Thunder sent Drew Example to Charlotte Hornets for Chris Sample.');
   });
 
   it('renders the closed-state banner after the trade deadline', async () => {
@@ -326,8 +326,8 @@ describe('TradePage', () => {
       day: 121,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 121,
       isSimulating: false,
@@ -359,13 +359,13 @@ describe('TradePage', () => {
         yourTrades: [
           {
             id: 'missed-trade',
-            summary: 'Boston Red Sox offer for Anthony Volpe expired at the deadline.',
+            summary: 'Boston Noreasters offer for Anthony Volpe expired at the deadline.',
             outcome: 'missed',
           },
         ],
         majorMoves: [],
-        winners: ['Seattle Mariners'],
-        losers: ['Boston Red Sox'],
+        winners: ['Seattle Drizzle'],
+        losers: ['Boston Noreasters'],
       },
     });
     mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
@@ -385,8 +385,8 @@ describe('TradePage', () => {
       day: 124,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 124,
       isSimulating: false,
@@ -430,8 +430,8 @@ describe('TradePage', () => {
       day: 95,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 95,
       isSimulating: false,
@@ -516,7 +516,7 @@ describe('TradePage', () => {
     expect(worker.proposeTrade).toHaveBeenCalledWith(
       [
         { type: 'player', playerId: 'nyy-1' },
-        { type: 'draft_pick', season: 4, round: 1, originalTeamId: 'nyy' },
+        { type: 'draft_pick', season: 4, round: 1, originalTeamId: 'nym' },
         { type: 'ifa_pool_space', amount: 1.5 },
       ],
       [
@@ -534,8 +534,8 @@ describe('TradePage', () => {
       day: 95,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 95,
       isSimulating: false,

@@ -57,7 +57,7 @@ const visiblePicks: DraftNarrativePick[] = [
     round: 1,
     pickNumber: 1,
     teamId: 'bos',
-    teamName: 'Boston Red Sox',
+    teamName: 'Boston Noreasters',
     teamAbbreviation: 'BOS',
     playerId: 'bos-1',
     playerName: 'Mason Vale',
@@ -69,9 +69,9 @@ const visiblePicks: DraftNarrativePick[] = [
   {
     round: 1,
     pickNumber: 2,
-    teamId: 'nyy',
-    teamName: 'New York Yankees',
-    teamAbbreviation: 'NYY',
+    teamId: 'nym',
+    teamName: 'New York Tycoons',
+    teamAbbreviation: 'NYT',
     playerId: 'nyy-1',
     playerName: 'Eli Prospect',
     position: 'SS',
@@ -82,9 +82,9 @@ const visiblePicks: DraftNarrativePick[] = [
   {
     round: 1,
     pickNumber: 3,
-    teamId: 'tb',
-    teamName: 'Tampa Bay Rays',
-    teamAbbreviation: 'TBR',
+    teamId: 'orl',
+    teamName: 'Orlando Thunder',
+    teamAbbreviation: 'ORL',
     playerId: 'tb-1',
     playerName: 'Noah Closer',
     position: 'RP',
@@ -98,9 +98,9 @@ const currentPick: DraftNarrativeCurrentPick = {
   round: 1,
   pickNumber: 4,
   totalPicks: 64,
-  teamId: 'nyy',
-  teamName: 'New York Yankees',
-  teamAbbreviation: 'NYY',
+  teamId: 'nym',
+  teamName: 'New York Tycoons',
+  teamAbbreviation: 'NYT',
   userOnClock: true,
 };
 
@@ -125,7 +125,7 @@ describe('draft narrative builders', () => {
 
     expect(first).toEqual(second);
     expect(first.commentary.length).toBeGreaterThanOrEqual(4);
-    expect(first.commentary.at(-1)?.headline).toContain('NYY');
+    expect(first.commentary.at(-1)?.headline).toContain('NYT');
     expect(first.buzz.some((item) => item.label === 'Value Slide' && item.summary.includes('Jace Sullivan'))).toBe(true);
   });
 
@@ -133,7 +133,7 @@ describe('draft narrative builders', () => {
     const preview = generateDraftPickPreview(new GameRNG(44), {
       prospect: availableProspects[0]!,
       currentPick,
-      teamName: 'New York Yankees',
+      teamName: 'New York Tycoons',
     });
 
     expect(preview.playerId).toBe('prospect-1');
@@ -147,9 +147,9 @@ describe('draft narrative builders', () => {
         {
           round: 2,
           pickNumber: 34,
-          teamId: 'nyy',
-          teamName: 'New York Yankees',
-          teamAbbreviation: 'NYY',
+          teamId: 'nym',
+          teamName: 'New York Tycoons',
+          teamAbbreviation: 'NYT',
           playerId: 'nyy-2',
           playerName: 'Drew Calder',
           position: 'C',
@@ -161,7 +161,7 @@ describe('draft narrative builders', () => {
           round: 2,
           pickNumber: 33,
           teamId: 'bos',
-          teamName: 'Boston Red Sox',
+          teamName: 'Boston Noreasters',
           teamAbbreviation: 'BOS',
           playerId: 'bos-2',
           playerName: 'Kade Benton',
@@ -174,8 +174,8 @@ describe('draft narrative builders', () => {
       totalPicks: 64,
     });
 
-    expect(grades[0]?.teamId).toBe('nyy');
+    expect(grades[0]?.teamId).toBe('nym');
     expect(grades[0]?.grade).toBe('C');
-    expect(grades[0]?.summary).toContain('New York Yankees');
+    expect(grades[0]?.summary).toContain('New York Tycoons');
   });
 });

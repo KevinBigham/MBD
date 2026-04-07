@@ -54,7 +54,7 @@ export function applyScenarioOverrides(
     next.franchise = {
       ...next.franchise,
       teamId: 'por',
-      teamName: 'Portland Evergreens',
+      teamName: 'Portland Sasquatch',
       teamAbbreviation: 'POR',
       teamDivision: teamDivisionLabel('por'),
     };

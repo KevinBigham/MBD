@@ -16,8 +16,8 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 
 vi.mock('@mbd/sim-core', () => ({
   getTeamById: vi.fn((teamId: string) => {
-    if (teamId === 'nyy') return { city: 'New York', name: 'Yankees', abbreviation: 'NYY' };
-    if (teamId === 'bos') return { city: 'Boston', name: 'Red Sox', abbreviation: 'BOS' };
+    if (teamId === 'nym') return { city: 'New York', name: 'Tycoons', abbreviation: 'NYT' };
+    if (teamId === 'bos') return { city: 'Boston', name: "Noreasters", abbreviation: 'BOS' };
     return null;
   }),
 }));
@@ -42,7 +42,7 @@ const MOCK_GM_CAREER = {
       reputation: 42,
     },
     {
-      teamId: 'nyy',
+      teamId: 'nym',
       seasons: 2,
       record: { wins: 190, losses: 134 },
       championships: 1,
@@ -52,7 +52,7 @@ const MOCK_GM_CAREER = {
       reputation: 78,
     },
   ],
-  currentTeamId: 'nyy',
+  currentTeamId: 'nym',
   reputation: 78,
   overallRecord: { wins: 440, losses: 370 },
   championships: 1,
@@ -82,8 +82,8 @@ describe('GMCareerPage', () => {
       day: 1,
       phase: 'regular_season',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       gmName: 'Kevin Bigham',
       playerCount: 780,
       gamesPlayed: 0,
@@ -129,7 +129,7 @@ describe('GMCareerPage', () => {
 
     // GM profile
     expect(container.textContent).toContain('Kevin Bigham');
-    expect(container.textContent).toContain('New York Yankees');
+    expect(container.textContent).toContain('New York Tycoons');
 
     // Career record
     expect(container.textContent).toContain('440');
@@ -139,7 +139,7 @@ describe('GMCareerPage', () => {
     expect(container.textContent).toContain('1');
 
     // Timeline entries
-    expect(container.textContent).toContain('Boston Red Sox');
+    expect(container.textContent).toContain('Boston Noreasters');
     expect(container.textContent).toContain('Fired');
     expect(container.textContent).toContain('Missed playoffs');
     expect(container.textContent).toContain('Active');

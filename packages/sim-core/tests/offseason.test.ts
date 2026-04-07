@@ -97,7 +97,7 @@ describe('skipCurrentPhase', () => {
 describe('determineRetirements', () => {
   it('retires some old players', () => {
     const rng1 = new GameRNG(42);
-    const roster = generateTeamRoster(rng1, 'NYY');
+    const roster = generateTeamRoster(rng1, 'NYT');
     // Make some players old
     const oldRoster = roster.map((p) =>
       p.age >= 30 ? { ...p, age: 40, overallRating: 80 } : p,
@@ -117,8 +117,8 @@ describe('determineRetirements', () => {
 describe('autoResolveTenderNonTender', () => {
   it('produces valid decisions', () => {
     const rng1 = new GameRNG(42);
-    const roster = generateTeamRoster(rng1, 'NYY');
-    const mlbPlayers = roster.filter((p) => p.teamId === 'NYY' && p.rosterStatus === 'MLB');
+    const roster = generateTeamRoster(rng1, 'NYT');
+    const mlbPlayers = roster.filter((p) => p.teamId === 'NYT' && p.rosterStatus === 'MLB');
 
     // Assign service times: some arb-eligible
     const serviceTime = new Map<string, number>();
@@ -127,7 +127,7 @@ describe('autoResolveTenderNonTender', () => {
     });
 
     const rng2 = new GameRNG(99);
-    const result = autoResolveTenderNonTender(rng2, 'NYY', roster, serviceTime);
+    const result = autoResolveTenderNonTender(rng2, 'NYT', roster, serviceTime);
 
     expect(Array.isArray(result.tendered)).toBe(true);
     expect(Array.isArray(result.nonTendered)).toBe(true);
@@ -140,8 +140,8 @@ describe('autoResolveTenderNonTender', () => {
   });
 
   it('is deterministic for the same roster and service-time map', () => {
-    const roster = generateTeamRoster(new GameRNG(77), 'NYY');
-    const mlbPlayers = roster.filter((player) => player.teamId === 'NYY' && player.rosterStatus === 'MLB');
+    const roster = generateTeamRoster(new GameRNG(77), 'NYT');
+    const mlbPlayers = roster.filter((player) => player.teamId === 'NYT' && player.rosterStatus === 'MLB');
     const serviceTime = new Map<string, number>();
 
     mlbPlayers.forEach((player, index) => {
@@ -152,8 +152,8 @@ describe('autoResolveTenderNonTender', () => {
       }
     });
 
-    const first = autoResolveTenderNonTender(new GameRNG(901), 'NYY', roster, serviceTime);
-    const second = autoResolveTenderNonTender(new GameRNG(901), 'NYY', roster, serviceTime);
+    const first = autoResolveTenderNonTender(new GameRNG(901), 'NYT', roster, serviceTime);
+    const second = autoResolveTenderNonTender(new GameRNG(901), 'NYT', roster, serviceTime);
 
     expect(second).toEqual(first);
     expect(first.nonTendered.length).toBeGreaterThan(0);

@@ -27,7 +27,7 @@ function buildPAResult(overrides: Partial<PAResult> = {}): PAResult {
 function buildBoxScore(paResults: PAResult[]): GameBoxScore {
   return {
     homeTeamId: 'bos',
-    awayTeamId: 'nyy',
+    awayTeamId: 'nym',
     homeScore: 4,
     awayScore: 5,
     innings: 10,
@@ -53,8 +53,8 @@ describe('play-by-play narrative engine', () => {
       }),
       'Mason Cruz',
       'Eli Warren',
-      'Yankees',
-      'Red Sox',
+      'Tycoons',
+      "Noreasters",
     );
     expect(singleText).toContain('Mason Cruz');
     expect(singleText.toLowerCase()).toMatch(/single|scores|scoring/);
@@ -72,11 +72,11 @@ describe('play-by-play narrative engine', () => {
       }),
       'Theo Thompson',
       'Victor Lane',
-      'Yankees',
-      'Red Sox',
+      'Tycoons',
+      "Noreasters",
     );
     expect(homerText).toContain('Theo Thompson');
-    expect(homerText).toContain('Red Sox');
+    expect(homerText).toContain("Noreasters");
     expect(homerText.toLowerCase()).toMatch(/walk-off|gone|home run/);
 
     const strikeoutText = generatePlayByPlay(
@@ -89,8 +89,8 @@ describe('play-by-play narrative engine', () => {
       }),
       'Luis Vega',
       'Cal Foster',
-      'Yankees',
-      'Red Sox',
+      'Tycoons',
+      "Noreasters",
     );
     expect(strikeoutText).toContain('Luis Vega');
     expect(strikeoutText.toLowerCase()).toMatch(/strike|threat|strand/);
@@ -105,8 +105,8 @@ describe('play-by-play narrative engine', () => {
       }),
       'Noah Price',
       'Cal Foster',
-      'Yankees',
-      'Red Sox',
+      'Tycoons',
+      "Noreasters",
     );
     expect(doublePlayText).toContain('Cal Foster');
     expect(doublePlayText.toLowerCase()).toMatch(/double play|around the horn/);
@@ -124,8 +124,8 @@ describe('play-by-play narrative engine', () => {
       }),
       'Evan Cole',
       'Riley Stone',
-      'Yankees',
-      'Red Sox',
+      'Tycoons',
+      "Noreasters",
     );
     expect(walkText).toContain('Evan Cole');
     expect(walkText.toLowerCase()).toMatch(/ball four|force/);
@@ -143,8 +143,8 @@ describe('play-by-play narrative engine', () => {
       rbiOnPlay: 2,
     });
 
-    const first = generatePlayByPlay(pa, 'Theo Thompson', 'Victor Lane', 'Yankees', 'Red Sox');
-    const second = generatePlayByPlay(pa, 'Theo Thompson', 'Victor Lane', 'Yankees', 'Red Sox');
+    const first = generatePlayByPlay(pa, 'Theo Thompson', 'Victor Lane', 'Tycoons', "Noreasters");
+    const second = generatePlayByPlay(pa, 'Theo Thompson', 'Victor Lane', 'Tycoons', "Noreasters");
 
     expect(first).toBe(second);
   });
@@ -206,8 +206,8 @@ describe('play-by-play narrative engine', () => {
       ['pitcher-walkoff', 'Owen Hale'],
     ]);
     const teamNames = new Map<string, string>([
-      ['nyy', 'Yankees'],
-      ['bos', 'Red Sox'],
+      ['nym', 'Tycoons'],
+      ['bos', "Noreasters"],
     ]);
 
     const highlights = generateGameHighlights(boxScore, playerNames, teamNames);
@@ -237,16 +237,16 @@ describe('play-by-play narrative engine', () => {
       ['pitcher-walkoff', 'Owen Hale'],
     ]);
     const teamNames = new Map<string, string>([
-      ['nyy', 'Yankees'],
-      ['bos', 'Red Sox'],
+      ['nym', 'Tycoons'],
+      ['bos', "Noreasters"],
     ]);
 
     const highlights = generateGameHighlights(boxScore, playerNames, teamNames);
     const recap = generateGameRecap(boxScore, highlights, playerNames, teamNames);
     const sentenceCount = recap.split(/[.!?]+/).map((part) => part.trim()).filter(Boolean).length;
 
-    expect(recap).toContain('Yankees');
-    expect(recap).toContain('Red Sox');
+    expect(recap).toContain('Tycoons');
+    expect(recap).toContain("Noreasters");
     expect(recap).toMatch(/5-4|4-5/);
     expect(sentenceCount).toBeGreaterThanOrEqual(2);
     expect(sentenceCount).toBeLessThanOrEqual(3);
@@ -273,8 +273,8 @@ describe('play-by-play narrative engine', () => {
         ['pitcher-extras', 'Victor Lane'],
       ]),
       new Map([
-        ['nyy', 'Yankees'],
-        ['bos', 'Red Sox'],
+        ['nym', 'Tycoons'],
+        ['bos', "Noreasters"],
       ]),
     );
 

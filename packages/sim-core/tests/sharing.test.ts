@@ -9,7 +9,7 @@ function createSnapshot(): GameSnapshot {
     season: 6,
     day: 162,
     phase: 'offseason',
-    userTeamId: 'nyy',
+    userTeamId: 'nym',
     players: [],
     schedule: [],
     seasonState: {
@@ -48,7 +48,7 @@ function createSnapshot(): GameSnapshot {
       franchiseTimeline: [
         {
           season: 4,
-          teamId: 'nyy',
+          teamId: 'nym',
           record: '97-65',
           winTotal: 97,
           playoffResult: 'World Series champion',
@@ -88,7 +88,7 @@ function createSnapshot(): GameSnapshot {
       gmCareer: {
         careerHistory: [
           {
-            teamId: 'nyy',
+            teamId: 'nym',
             seasons: 4,
             record: { wins: 360, losses: 288 },
             championships: 1,
@@ -153,7 +153,7 @@ function createSnapshot(): GameSnapshot {
       difficulty: 'hard',
       createdAt: 'S1D1',
       teamId: 'bos',
-      teamName: 'Boston Red Sox',
+      teamName: 'Boston Noreasters',
       teamAbbreviation: 'BOS',
       teamDivision: 'AL East',
       onboarding: { welcomeBriefingSeen: true, firstMonthlyPulseSeen: true },
@@ -224,8 +224,8 @@ describe('dynasty sharing', () => {
     };
     snapshot.narrative.seasonHistory = [{
       season: 6,
-      championTeamId: 'lad',
-      runnerUpTeamId: 'nyy',
+      championTeamId: 'lax',
+      runnerUpTeamId: 'nym',
       worldSeriesRecord: '4-2',
       summary: 'Los Angeles finished the climb and New York was left chasing the last step.',
       awards: [],
@@ -234,7 +234,7 @@ describe('dynasty sharing', () => {
       notableRetirements: [],
       blockbusterTrades: [],
       userSeason: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '92-70',
         playoffResult: 'Division Series loss',
         storylines: ['October exposed the last roster gap.'],
@@ -245,7 +245,7 @@ describe('dynasty sharing', () => {
       timelineEvents: ['October exposed the last roster gap.'],
       transactions: [],
       userSummary: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '92-70',
         playoffResult: 'Division Series loss',
         storylines: ['October exposed the last roster gap.'],

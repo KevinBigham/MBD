@@ -9,7 +9,7 @@ function createTimelineSnapshot(overrides: Partial<GameSnapshot> = {}): GameSnap
     season: 6,
     day: 120,
     phase: 'regular',
-    userTeamId: 'nyy',
+    userTeamId: 'nym',
     players: [],
     schedule: [],
     seasonState: {
@@ -17,7 +17,7 @@ function createTimelineSnapshot(overrides: Partial<GameSnapshot> = {}): GameSnap
       currentDay: 120,
       standings: [
         {
-          teamId: 'nyy',
+          teamId: 'nym',
           wins: 84,
           losses: 60,
           divisionRank: 2,
@@ -126,9 +126,9 @@ function createTimelineSnapshot(overrides: Partial<GameSnapshot> = {}): GameSnap
       difficulty: 'standard',
       playMode: 'standard',
       createdAt: 'S1D1',
-      teamId: 'nyy',
-      teamName: 'New York Yankees',
-      teamAbbreviation: 'NYY',
+      teamId: 'nym',
+      teamName: 'New York Tycoons',
+      teamAbbreviation: 'NYT',
       teamDivision: 'AL_EAST',
       onboarding: {
         welcomeBriefingSeen: true,
@@ -193,7 +193,7 @@ function createPlayer(id: string, firstName: string, lastName: string): GameSnap
     },
     rosterStatus: 'MLB',
     developmentPhase: 'Prime',
-    teamId: 'nyy',
+    teamId: 'nym',
     rule5EligibleAfterSeason: 1,
     serviceTimeDays: 500,
     optionYearsUsed: 0,
@@ -223,7 +223,7 @@ describe('compareTimelines', () => {
         franchiseTimeline: [
           {
             season: 4,
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '84-78',
             winTotal: 84,
             playoffResult: 'Missed playoffs',
@@ -238,7 +238,7 @@ describe('compareTimelines', () => {
           },
           {
             season: 5,
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '86-76',
             winTotal: 86,
             playoffResult: 'Division Series exit',
@@ -258,7 +258,7 @@ describe('compareTimelines', () => {
         tradeHistory: [
           {
             id: 'trade-parent',
-            fromTeamId: 'nyy',
+            fromTeamId: 'nym',
             toTeamId: 'bos',
             offeringAssets: [],
             requestingAssets: [],
@@ -278,7 +278,7 @@ describe('compareTimelines', () => {
         season: 6,
         currentDay: 120,
         standings: [
-          { teamId: 'nyy', wins: 90, losses: 54, divisionRank: 1, gamesBack: 0 },
+          { teamId: 'nym', wins: 90, losses: 54, divisionRank: 1, gamesBack: 0 },
         ],
         playerSeasonStats: [],
         gameLog: [],
@@ -289,7 +289,7 @@ describe('compareTimelines', () => {
         franchiseTimeline: [
           {
             season: 4,
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '84-78',
             winTotal: 84,
             playoffResult: 'Missed playoffs',
@@ -304,7 +304,7 @@ describe('compareTimelines', () => {
           },
           {
             season: 5,
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '96-66',
             winTotal: 96,
             playoffResult: 'Champion',
@@ -324,7 +324,7 @@ describe('compareTimelines', () => {
         tradeHistory: [
           {
             id: 'trade-branch-1',
-            fromTeamId: 'nyy',
+            fromTeamId: 'nym',
             toTeamId: 'bos',
             offeringAssets: [],
             requestingAssets: [],
@@ -334,7 +334,7 @@ describe('compareTimelines', () => {
           },
           {
             id: 'trade-branch-2',
-            fromTeamId: 'nyy',
+            fromTeamId: 'nym',
             toTeamId: 'sea',
             offeringAssets: [],
             requestingAssets: [],
@@ -344,8 +344,8 @@ describe('compareTimelines', () => {
           },
           {
             id: 'trade-branch-3',
-            fromTeamId: 'nyy',
-            toTeamId: 'sd',
+            fromTeamId: 'nym',
+            toTeamId: 'sdg',
             offeringAssets: [],
             requestingAssets: [],
             fairnessScore: 0,

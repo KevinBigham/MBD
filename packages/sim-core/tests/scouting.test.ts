@@ -17,7 +17,7 @@ import type { Scout, GeneratedPlayer } from '../src/index.js';
 
 function makePlayer(seed: number): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  return generatePlayer(rng, 'SS', 'NYY', 'MLB');
+  return generatePlayer(rng, 'SS', 'NYT', 'MLB');
 }
 
 function makeHighQualityScout(rng: GameRNG): Scout {
@@ -50,7 +50,7 @@ describe('generateScout', () => {
 describe('generateScoutingStaff', () => {
   it('creates 5 scouts', () => {
     const rng = new GameRNG(42);
-    const staff = generateScoutingStaff(rng, 'NYY');
+    const staff = generateScoutingStaff(rng, 'NYT');
     expect(staff.length).toBe(5);
     for (const scout of staff) {
       expect(scout.id).toBeTruthy();

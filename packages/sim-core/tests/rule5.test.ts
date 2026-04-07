@@ -54,7 +54,7 @@ describe('calculateRule5EligibleAfterSeason', () => {
 
 describe('estimateBackfilledRule5EligibilityAfterSeason', () => {
   it('backfills old saves deterministically from age and roster level', () => {
-    const player = makePlayer(10, 'nyy', 'AAA', 25, 0);
+    const player = makePlayer(10, 'nym', 'AAA', 25, 0);
 
     expect(estimateBackfilledRule5EligibilityAfterSeason(player, 7)).toBe(6);
     expect(estimateBackfilledRule5EligibilityAfterSeason(player, 7)).toBe(6);
@@ -63,94 +63,94 @@ describe('estimateBackfilledRule5EligibilityAfterSeason', () => {
 
 describe('createRule5Session', () => {
   it('includes only unprotected players who are eligible after the current season', () => {
-    const protectedPlayer = makePlayer(1, 'nyy', 'MLB', 22, 2);
-    const exposedPlayer = makePlayer(2, 'nyy', 'AA', 23, 2);
-    const notYetEligible = makePlayer(3, 'nyy', 'AA', 20, 4);
+    const protectedPlayer = makePlayer(1, 'nym', 'MLB', 22, 2);
+    const exposedPlayer = makePlayer(2, 'nym', 'AA', 23, 2);
+    const notYetEligible = makePlayer(3, 'nym', 'AA', 20, 4);
 
     const session = createRule5Session({
       season: 2,
-      draftOrder: ['bos', 'nyy'],
+      draftOrder: ['bos', 'nym'],
       players: [protectedPlayer, exposedPlayer, notYetEligible],
       rosterStates: new Map([
-        ['nyy', makeRosterState('nyy', [protectedPlayer.id])],
+        ['nym', makeRosterState('nym', [protectedPlayer.id])],
         ['bos', makeRosterState('bos', [])],
       ]),
     });
 
     expect(session.phase).toBe('protection_audit');
     expect(session.eligiblePlayers.map((player) => player.playerId)).toEqual([exposedPlayer.id]);
-    expect(session.protectedPlayerIdsByTeam.nyy).toContain(protectedPlayer.id);
+    expect(session.protectedPlayerIdsByTeam.nym).toContain(protectedPlayer.id);
   });
 
   it('ignores legacy minor-league 40-man noise when building the initial eligible pool', () => {
-    const exposedPlayer = makePlayer(12, 'nyy', 'AA', 22, 2);
+    const exposedPlayer = makePlayer(12, 'nym', 'AA', 22, 2);
 
     const session = createRule5Session({
       season: 2,
-      draftOrder: ['bos', 'nyy'],
+      draftOrder: ['bos', 'nym'],
       players: [exposedPlayer],
       rosterStates: new Map([
-        ['nyy', makeRosterState('nyy', [], [exposedPlayer.id])],
+        ['nym', makeRosterState('nym', [], [exposedPlayer.id])],
         ['bos', makeRosterState('bos', [])],
       ]),
     });
 
-    expect(session.protectedPlayerIdsByTeam.nyy).toEqual([]);
+    expect(session.protectedPlayerIdsByTeam.nym).toEqual([]);
     expect(session.eligiblePlayers.map((player) => player.playerId)).toEqual([exposedPlayer.id]);
   });
 
   it('refuses to protect another player when the 40-man roster is already full', () => {
-    const exposedPlayer = makePlayer(4, 'nyy', 'AA', 23, 2);
+    const exposedPlayer = makePlayer(4, 'nym', 'AA', 23, 2);
     const fullFortyMan = Array.from({ length: 40 }, (_, index) => `forty-${index}`);
     const session = createRule5Session({
       season: 2,
-      draftOrder: ['bos', 'nyy'],
+      draftOrder: ['bos', 'nym'],
       players: [exposedPlayer],
       rosterStates: new Map([
-        ['nyy', makeRosterState('nyy', fullFortyMan)],
+        ['nym', makeRosterState('nym', fullFortyMan)],
         ['bos', makeRosterState('bos', [])],
       ]),
     });
 
-    const result = toggleRule5Protection(session, 'nyy', exposedPlayer.id);
+    const result = toggleRule5Protection(session, 'nym', exposedPlayer.id);
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/40-man/i);
   });
 
   it('round-trips a player between protected and exposed states', () => {
-    const exposedPlayer = makePlayer(11, 'nyy', 'AA', 23, 2);
+    const exposedPlayer = makePlayer(11, 'nym', 'AA', 23, 2);
     const session = createRule5Session({
       season: 2,
-      draftOrder: ['bos', 'nyy'],
+      draftOrder: ['bos', 'nym'],
       players: [exposedPlayer],
       rosterStates: new Map([
-        ['nyy', makeRosterState('nyy', [])],
+        ['nym', makeRosterState('nym', [])],
         ['bos', makeRosterState('bos', [])],
       ]),
     });
 
-    const protectedResult = toggleRule5Protection(session, 'nyy', exposedPlayer.id);
-    const unprotectedResult = toggleRule5Protection(protectedResult.session, 'nyy', exposedPlayer.id);
+    const protectedResult = toggleRule5Protection(session, 'nym', exposedPlayer.id);
+    const unprotectedResult = toggleRule5Protection(protectedResult.session, 'nym', exposedPlayer.id);
 
     expect(protectedResult.success).toBe(true);
-    expect(protectedResult.session.protectedPlayerIdsByTeam.nyy).toContain(exposedPlayer.id);
+    expect(protectedResult.session.protectedPlayerIdsByTeam.nym).toContain(exposedPlayer.id);
     expect(protectedResult.session.eligiblePlayers).toHaveLength(0);
     expect(unprotectedResult.success).toBe(true);
-    expect(unprotectedResult.session.protectedPlayerIdsByTeam.nyy).not.toContain(exposedPlayer.id);
+    expect(unprotectedResult.session.protectedPlayerIdsByTeam.nym).not.toContain(exposedPlayer.id);
     expect(unprotectedResult.session.eligiblePlayers.map((player) => player.playerId)).toEqual([exposedPlayer.id]);
   });
 });
 
 describe('rule 5 draft loop', () => {
   it('creates an active roster obligation for a drafted player', () => {
-    const exposedPlayer = makePlayer(5, 'nyy', 'AA', 23, 2);
+    const exposedPlayer = makePlayer(5, 'nym', 'AA', 23, 2);
     const session = lockRule5ProtectionAudit(createRule5Session({
       season: 2,
-      draftOrder: ['bos', 'nyy'],
+      draftOrder: ['bos', 'nym'],
       players: [exposedPlayer],
       rosterStates: new Map([
-        ['nyy', makeRosterState('nyy', [])],
+        ['nym', makeRosterState('nym', [])],
         ['bos', makeRosterState('bos', [])],
       ]),
     }));
@@ -164,7 +164,7 @@ describe('rule 5 draft loop', () => {
       expect.objectContaining({
         playerId: exposedPlayer.id,
         draftingTeamId: 'bos',
-        originalTeamId: 'nyy',
+        originalTeamId: 'nym',
         status: 'active',
       }),
     ]);
@@ -173,16 +173,16 @@ describe('rule 5 draft loop', () => {
   it('ends the draft after every team passes in sequence', () => {
     const session = lockRule5ProtectionAudit(createRule5Session({
       season: 2,
-      draftOrder: ['bos', 'nyy'],
+      draftOrder: ['bos', 'nym'],
       players: [],
       rosterStates: new Map([
-        ['nyy', makeRosterState('nyy', [])],
+        ['nym', makeRosterState('nym', [])],
         ['bos', makeRosterState('bos', [])],
       ]),
     }));
 
     const afterFirstPass = passRule5DraftTurn(session, 'bos');
-    const afterSecondPass = passRule5DraftTurn(afterFirstPass.session, 'nyy');
+    const afterSecondPass = passRule5DraftTurn(afterFirstPass.session, 'nym');
 
     expect(afterFirstPass.success).toBe(true);
     expect(afterSecondPass.success).toBe(true);

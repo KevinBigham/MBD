@@ -17,7 +17,7 @@ import type { TradeProposal, GeneratedPlayer } from '../src/index.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makePlayer(seed: number, teamId: string = 'NYY'): GeneratedPlayer {
+function makePlayer(seed: number, teamId: string = 'NYT'): GeneratedPlayer {
   const rng = new GameRNG(seed);
   return generatePlayer(rng, 'SS', teamId, 'MLB');
 }
@@ -60,7 +60,7 @@ describe('evaluatePlayerTradeValue', () => {
 
 describe('comparePackages', () => {
   it('returns fairness score between -100 and 100', () => {
-    const player1 = makePlayer(42, 'NYY');
+    const player1 = makePlayer(42, 'NYT');
     const player2 = makePlayer(43, 'BOS');
     const result = comparePackages([player1], [player2]);
     expect(result.fairness).toBeGreaterThanOrEqual(-100);
@@ -73,7 +73,7 @@ describe('comparePackages', () => {
 describe('assignGMPersonality', () => {
   it('returns a valid GM personality', () => {
     const rng = new GameRNG(42);
-    const personality = assignGMPersonality(rng, 'NYY');
+    const personality = assignGMPersonality(rng, 'NYT');
     const validPersonalities = ['aggressive', 'conservative', 'analytical', 'prospect_hugger', 'win_now'];
     expect(validPersonalities).toContain(personality);
   });
@@ -82,7 +82,7 @@ describe('assignGMPersonality', () => {
 describe('evaluateTradeProposal', () => {
   it('returns a valid decision', () => {
     const rng1 = new GameRNG(42);
-    const nyyRoster = generateTeamRoster(rng1, 'NYY');
+    const nyyRoster = generateTeamRoster(rng1, 'NYT');
     const rng2 = new GameRNG(99);
     const bosRoster = generateTeamRoster(rng2, 'BOS');
 
@@ -91,7 +91,7 @@ describe('evaluateTradeProposal', () => {
 
     const proposal: TradeProposal = {
       id: 'test-trade-1',
-      fromTeamId: 'NYY',
+      fromTeamId: 'NYT',
       toTeamId: 'BOS',
       playersOffered: [nyyMLB[0]!.id],
       playersRequested: [bosMLB[0]!.id],
@@ -109,10 +109,10 @@ describe('evaluateTradeProposal', () => {
 
   it('rejects trade requests built around protected top prospects', () => {
     const rental = {
-      ...makePlayer(2001, 'NYY'),
+      ...makePlayer(2001, 'NYT'),
       age: 31,
       contract: {
-        ...makePlayer(2001, 'NYY').contract,
+        ...makePlayer(2001, 'NYT').contract,
         years: 1,
         annualSalary: 15,
         totalValue: 15,
@@ -129,7 +129,7 @@ describe('evaluateTradeProposal', () => {
 
     const proposal: TradeProposal = {
       id: 'top-prospect-test',
-      fromTeamId: 'NYY',
+      fromTeamId: 'NYT',
       toTeamId: 'BOS',
       playersOffered: [rental.id],
       playersRequested: [protectedProspect.id],
@@ -150,11 +150,11 @@ describe('evaluateTradeProposal', () => {
   });
 
   it('rejects proposals that reference missing player ids instead of throwing', () => {
-    const roster = generateTeamRoster(new GameRNG(2004), 'NYY').filter((player) => player.rosterStatus === 'MLB');
+    const roster = generateTeamRoster(new GameRNG(2004), 'NYT').filter((player) => player.rosterStatus === 'MLB');
     const opponent = generateTeamRoster(new GameRNG(2005), 'BOS').filter((player) => player.rosterStatus === 'MLB');
     const proposal: TradeProposal = {
       id: 'missing-player-test',
-      fromTeamId: 'NYY',
+      fromTeamId: 'NYT',
       toTeamId: 'BOS',
       playersOffered: ['missing-offer'],
       playersRequested: [opponent[0]!.id],
@@ -181,7 +181,7 @@ describe('evaluateTradeProposal', () => {
 describe('generateAITradeOffers', () => {
   it('keeps protected prospects out of contender offer packages', () => {
     const protectedProspect = {
-      ...makePlayer(3001, 'NYY'),
+      ...makePlayer(3001, 'NYT'),
       age: 20,
       position: 'SS' as const,
       rosterStatus: 'AAA' as const,
@@ -190,12 +190,12 @@ describe('generateAITradeOffers', () => {
       overallRating: 300,
     };
     const weakStarter = {
-      ...makePlayer(3002, 'NYY'),
+      ...makePlayer(3002, 'NYT'),
       position: 'SS' as const,
       overallRating: 205,
     };
     const tradeChip = {
-      ...makePlayer(3003, 'NYY'),
+      ...makePlayer(3003, 'NYT'),
       position: 'RF' as const,
       overallRating: 325,
       age: 29,
@@ -215,14 +215,14 @@ describe('generateAITradeOffers', () => {
 
     const proposals = generateAITradeOffers(
       new GameRNG(3005),
-      'NYY',
+      'NYT',
       [weakStarter, tradeChip, protectedProspect],
       [weakStarter, tradeChip, protectedProspect, target],
       'win_now',
       true,
       {
         currentDay: 110,
-        contenderTeamIds: ['NYY', 'BOS'],
+        contenderTeamIds: ['NYT', 'BOS'],
       },
     );
 
@@ -231,12 +231,12 @@ describe('generateAITradeOffers', () => {
 
   it('lets non-contenders shop rentals for future value at the deadline', () => {
     const rentalStarter = {
-      ...makePlayer(3011, 'OAK'),
+      ...makePlayer(3011, 'POR'),
       position: 'SP' as const,
       age: 31,
       overallRating: 338,
       contract: {
-        ...makePlayer(3011, 'OAK').contract,
+        ...makePlayer(3011, 'POR').contract,
         years: 1,
         annualSalary: 14,
         totalValue: 14,
@@ -260,7 +260,7 @@ describe('generateAITradeOffers', () => {
 
     const proposals = generateAITradeOffers(
       new GameRNG(3014),
-      'OAK',
+      'POR',
       [rentalStarter],
       [rentalStarter, buyerProspect, buyerStarter],
       'analytical',
@@ -272,7 +272,7 @@ describe('generateAITradeOffers', () => {
     );
 
     expect(proposals.length).toBeGreaterThan(0);
-    expect(proposals[0]?.fromTeamId).toBe('OAK');
+    expect(proposals[0]?.fromTeamId).toBe('POR');
     expect(proposals[0]?.toTeamId).toBe('BOS');
     expect(proposals[0]?.playersOffered).toContain(rentalStarter.id);
     expect(proposals[0]?.playersRequested).toContain(buyerProspect.id);
@@ -281,13 +281,13 @@ describe('generateAITradeOffers', () => {
 
 describe('executeTrade', () => {
   it('moves players between teams', () => {
-    const player1 = makePlayer(42, 'NYY');
+    const player1 = makePlayer(42, 'NYT');
     const player2 = makePlayer(43, 'BOS');
     const allPlayers = [player1, player2];
 
     const proposal: TradeProposal = {
       id: 'test-trade-2',
-      fromTeamId: 'NYY',
+      fromTeamId: 'NYT',
       toTeamId: 'BOS',
       playersOffered: [player1.id],
       playersRequested: [player2.id],
@@ -301,7 +301,7 @@ describe('executeTrade', () => {
     // player1 should now be on BOS
     expect(allPlayers.find((p) => p.id === player1.id)!.teamId).toBe('BOS');
     // player2 should now be on NYY
-    expect(allPlayers.find((p) => p.id === player2.id)!.teamId).toBe('NYY');
+    expect(allPlayers.find((p) => p.id === player2.id)!.teamId).toBe('NYT');
   });
 });
 

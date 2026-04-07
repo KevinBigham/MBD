@@ -20,19 +20,19 @@ describe('rivalry engine', () => {
   it('seeds historical rivalries on initialization', () => {
     const rivalries = baseRivalries();
 
-    expect(getRivalry(rivalries, 'nyy', 'bos')?.origin).toBe('historical');
-    expect(getRivalry(rivalries, 'lad', 'sf')?.intensity).toBeGreaterThanOrEqual(70);
-    expect(getRivalry(rivalries, 'chc', 'stl')).toBeTruthy();
+    expect(getRivalry(rivalries, 'nym', 'bos')?.origin).toBe('historical');
+    expect(getRivalry(rivalries, 'lax', 'sfb')?.intensity).toBeGreaterThanOrEqual(70);
+    expect(getRivalry(rivalries, 'chi', 'det')).toBeTruthy();
   });
 
   it('tracks head-to-head records for active rivalry games', () => {
     const rivalries = recordRivalryGame(baseRivalries(), {
-      homeTeamId: 'nyy',
+      homeTeamId: 'nym',
       awayTeamId: 'bos',
       homeScore: 5,
       awayScore: 4,
     }, 3);
-    const rivalry = getRivalry(rivalries, 'nyy', 'bos');
+    const rivalry = getRivalry(rivalries, 'nym', 'bos');
 
     expect(rivalry?.currentSeasonWinsA ?? rivalry?.currentSeasonWinsB).toBeGreaterThan(0);
     expect((rivalry?.historicalWinsA ?? 0) + (rivalry?.historicalWinsB ?? 0)).toBe(1);
@@ -47,14 +47,14 @@ describe('rivalry engine', () => {
         standingsByDivision: {
           AL_EAST: [
             { teamId: 'bal', wins: 92, losses: 70, pct: 0.568, gamesBack: 0, runsScored: 0, runsAllowed: 0, runDifferential: 0, streak: '-', last10Wins: 5, last10Losses: 5 },
-            { teamId: 'tb', wins: 90, losses: 72, pct: 0.556, gamesBack: 2, runsScored: 0, runsAllowed: 0, runDifferential: 0, streak: '-', last10Wins: 5, last10Losses: 5 },
+            { teamId: 'orl', wins: 90, losses: 72, pct: 0.556, gamesBack: 2, runsScored: 0, runsAllowed: 0, runDifferential: 0, streak: '-', last10Wins: 5, last10Losses: 5 },
           ],
         },
         playoffSeries: [],
       });
     }
 
-    const rivalry = getRivalry(rivalries, 'bal', 'tb');
+    const rivalry = getRivalry(rivalries, 'bal', 'orl');
     expect(rivalry?.origin).toBe('division_race');
     expect(rivalry?.closeRaceStreak).toBe(3);
     expect(rivalry?.intensity).toBeGreaterThanOrEqual(55);
@@ -67,9 +67,9 @@ describe('rivalry engine', () => {
       standingsByDivision: {},
       playoffSeries: [{
         higherSeed: { teamId: 'hou', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
-        lowerSeed: { teamId: 'tex', seed: 3, wins: 91, losses: 71, league: 'AL', divisionWinner: false },
+        lowerSeed: { teamId: 'sat', seed: 3, wins: 91, losses: 71, league: 'AL', divisionWinner: false },
         winnerId: 'hou',
-        loserId: 'tex',
+        loserId: 'sat',
         round: 'CHAMPIONSHIP_SERIES',
       }],
     });
@@ -78,14 +78,14 @@ describe('rivalry engine', () => {
       standingsByDivision: {},
       playoffSeries: [{
         higherSeed: { teamId: 'hou', seed: 2, wins: 95, losses: 67, league: 'AL', divisionWinner: false },
-        lowerSeed: { teamId: 'tex', seed: 3, wins: 92, losses: 70, league: 'AL', divisionWinner: false },
-        winnerId: 'tex',
+        lowerSeed: { teamId: 'sat', seed: 3, wins: 92, losses: 70, league: 'AL', divisionWinner: false },
+        winnerId: 'sat',
         loserId: 'hou',
         round: 'DIVISION_SERIES',
       }],
     });
 
-    const rivalry = getRivalry(rivalries, 'hou', 'tex');
+    const rivalry = getRivalry(rivalries, 'hou', 'sat');
     expect(rivalry?.origin).toBe('playoff');
     expect(rivalry?.playoffSeriesStreak).toBe(2);
     expect(rivalry?.reasons).toContain('Back-to-back playoff meetings');
@@ -94,12 +94,12 @@ describe('rivalry engine', () => {
   it('records blockbuster trade events as rivalry accelerants', () => {
     const rivalries = recordBlockbusterTradeRivalry(new Map(), {
       season: 4,
-      fromTeamId: 'nyy',
+      fromTeamId: 'nym',
       toTeamId: 'bos',
       impactScore: 54,
       summary: 'Blockbuster trade reopened old wounds',
     });
-    const rivalry = getRivalry(rivalries, 'nyy', 'bos');
+    const rivalry = getRivalry(rivalries, 'nym', 'bos');
 
     expect(rivalry?.lastTradeSeason).toBe(4);
     expect(rivalry?.reasons).toContain('Blockbuster trade reopened old wounds');
@@ -109,12 +109,12 @@ describe('rivalry engine', () => {
   it('records star defections across rivalry lines', () => {
     const rivalries = recordStarDefectionRivalry(new Map(), {
       season: 5,
-      fromTeamId: 'lad',
-      toTeamId: 'sf',
+      fromTeamId: 'lax',
+      toTeamId: 'sfb',
       playerName: 'Ace Example',
       starScore: 355,
     });
-    const rivalry = getRivalry(rivalries, 'lad', 'sf');
+    const rivalry = getRivalry(rivalries, 'lax', 'sfb');
 
     expect(rivalry?.lastDefectionSeason).toBe(5);
     expect(rivalry?.reasons.some((reason) => reason.includes('Ace Example'))).toBe(true);
@@ -125,7 +125,7 @@ describe('rivalry engine', () => {
     let rivalries = recordBlockbusterTradeRivalry(new Map(), {
       season: 2,
       fromTeamId: 'sea',
-      toTeamId: 'tex',
+      toTeamId: 'sat',
       impactScore: 48,
     });
 
@@ -135,20 +135,20 @@ describe('rivalry engine', () => {
       playoffSeries: [],
     });
 
-    expect(getRivalry(rivalries, 'sea', 'tex')?.intensity).toBeLessThan(60);
+    expect(getRivalry(rivalries, 'sea', 'sat')?.intensity).toBeLessThan(60);
   });
 
   it('applies an extra trade penalty when a rival is asked to move stars', () => {
-    const penalty = rivalryTradePenalty(baseRivalries(), 'nyy', 'bos', [365, 328, 250]);
-    const neutralPenalty = rivalryTradePenalty(new Map(), 'nyy', 'oak', [365]);
+    const penalty = rivalryTradePenalty(baseRivalries(), 'nym', 'bos', [365, 328, 250]);
+    const neutralPenalty = rivalryTradePenalty(new Map(), 'nym', 'por', [365]);
 
     expect(penalty).toBeGreaterThan(neutralPenalty);
     expect(penalty).toBeGreaterThan(10);
   });
 
   it('amplifies chemistry edges in rivalry games', () => {
-    const boost = rivalryGameModifier(baseRivalries(), 'nyy', 'bos', 78);
-    const drag = rivalryGameModifier(baseRivalries(), 'bos', 'nyy', 28);
+    const boost = rivalryGameModifier(baseRivalries(), 'nym', 'bos', 78);
+    const drag = rivalryGameModifier(baseRivalries(), 'bos', 'nym', 28);
 
     expect(boost).toBeGreaterThan(0);
     expect(drag).toBeLessThan(0);

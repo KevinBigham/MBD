@@ -12,13 +12,13 @@ import { RATING_MIN, RATING_MAX } from '../src/player/attributes.js';
 describe('generatePlayer', () => {
   it('generates a player with valid attributes', () => {
     const rng = new GameRNG(42);
-    const player = generatePlayer(rng, 'SS', 'nyy', 'MLB');
+    const player = generatePlayer(rng, 'SS', 'nym', 'MLB');
 
     expect(player.id).toBeTruthy();
     expect(player.firstName).toBeTruthy();
     expect(player.lastName).toBeTruthy();
     expect(player.position).toBe('SS');
-    expect(player.teamId).toBe('nyy');
+    expect(player.teamId).toBe('nym');
     expect(player.rosterStatus).toBe('MLB');
     expect(player.age).toBeGreaterThanOrEqual(24);
     expect(player.age).toBeLessThanOrEqual(38);
@@ -36,7 +36,7 @@ describe('generatePlayer', () => {
 
   it('generates pitcher attributes for pitcher positions', () => {
     const rng = new GameRNG(99);
-    const player = generatePlayer(rng, 'SP', 'lad', 'MLB');
+    const player = generatePlayer(rng, 'SP', 'lax', 'MLB');
 
     expect(player.pitcherAttributes).not.toBeNull();
     expect(player.pitcherAttributes!.stuff).toBeGreaterThanOrEqual(RATING_MIN);
@@ -52,8 +52,8 @@ describe('generatePlayer', () => {
   it('is deterministic with same seed', () => {
     const rng1 = new GameRNG(555);
     const rng2 = new GameRNG(555);
-    const p1 = generatePlayer(rng1, 'SS', 'nyy', 'MLB');
-    const p2 = generatePlayer(rng2, 'SS', 'nyy', 'MLB');
+    const p1 = generatePlayer(rng1, 'SS', 'nym', 'MLB');
+    const p2 = generatePlayer(rng2, 'SS', 'nym', 'MLB');
 
     expect(p1.firstName).toBe(p2.firstName);
     expect(p1.lastName).toBe(p2.lastName);
@@ -64,8 +64,8 @@ describe('generatePlayer', () => {
   it('assigns 2-3 deterministic personality traits to generated players', () => {
     const rng1 = new GameRNG(909);
     const rng2 = new GameRNG(909);
-    const p1 = generatePlayer(rng1, 'SS', 'nyy', 'MLB');
-    const p2 = generatePlayer(rng2, 'SS', 'nyy', 'MLB');
+    const p1 = generatePlayer(rng1, 'SS', 'nym', 'MLB');
+    const p2 = generatePlayer(rng2, 'SS', 'nym', 'MLB');
 
     expect(p1.personalityTraits).toEqual(p2.personalityTraits);
     expect(p1.personalityTraits?.length ?? 0).toBeGreaterThanOrEqual(2);
@@ -75,9 +75,9 @@ describe('generatePlayer', () => {
 
   it('generates younger players for lower minor leagues', () => {
     const rng = new GameRNG(77);
-    const mlb = generatePlayer(rng, 'SS', 'nyy', 'MLB');
+    const mlb = generatePlayer(rng, 'SS', 'nym', 'MLB');
     const rng2 = new GameRNG(77);
-    const rookie = generatePlayer(rng2, 'SS', 'nyy', 'ROOKIE');
+    const rookie = generatePlayer(rng2, 'SS', 'nym', 'ROOKIE');
 
     // MLB players are generally older than ROOKIE players
     // (Statistical tendency, not absolute guarantee due to randomness)
@@ -89,7 +89,7 @@ describe('generatePlayer', () => {
 describe('generateTeamRoster', () => {
   it('generates a roster of ~170 players', () => {
     const rng = new GameRNG(42);
-    const roster = generateTeamRoster(rng, 'nyy');
+    const roster = generateTeamRoster(rng, 'nym');
 
     // MLB: 28 (from template) + minors: 141 = ~169
     expect(roster.length).toBeGreaterThan(140);
@@ -98,7 +98,7 @@ describe('generateTeamRoster', () => {
 
   it('includes players at all roster levels', () => {
     const rng = new GameRNG(42);
-    const roster = generateTeamRoster(rng, 'lad');
+    const roster = generateTeamRoster(rng, 'lax');
 
     const levels = new Set(roster.map(p => p.rosterStatus));
     expect(levels.has('MLB')).toBe(true);
@@ -126,7 +126,7 @@ describe('generateTeamRoster', () => {
 describe('generateLeaguePlayers', () => {
   it('generates players for all teams', () => {
     const rng = new GameRNG(42);
-    const teamIds = ['nyy', 'bos', 'lad'];
+    const teamIds = ['nym', 'bos', 'lax'];
     const players = generateLeaguePlayers(rng, teamIds);
 
     expect(players.length).toBeGreaterThan(400);

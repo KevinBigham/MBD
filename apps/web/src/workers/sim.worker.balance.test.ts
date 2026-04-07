@@ -44,7 +44,7 @@ async function loadWorkerHarness() {
 function startGame(
   actionApi: Awaited<ReturnType<typeof loadWorkerHarness>>['actionApi'],
   seed: number,
-  userTeamId: string = 'nyy',
+  userTeamId: string = 'nym',
 ) {
   return actionApi.newGame({
     seed,

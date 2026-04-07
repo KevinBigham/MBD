@@ -469,7 +469,83 @@ export function generateTeamRoster(rng: GameRNG, teamId: string): GeneratedPlaye
     }
   }
 
+  // KC BBQ Fountains special overrides — slightly overpowered franchise
+  if (teamId === 'kc') {
+    applyKCOverrides(players);
+  }
+
   return players;
+}
+
+// ---------------------------------------------------------------------------
+// Kansas City BBQ Fountains — franchise cornerstone overrides
+// ---------------------------------------------------------------------------
+
+const KC_SP_DH_OVERALL = 504;    // ~75 display
+const KC_SP_DH_CEILING = 550;    // ~80 display
+const KC_SS_OVERALL = 458;       // ~70 display
+const KC_SS_CEILING = 550;       // ~80 display
+const KC_PITCHING_BOOST = 40;    // +5-8 display points to SP staff
+const KC_DEFENSE_BOOST = 35;     // +5-6 display points to infield defense
+
+function applyKCOverrides(players: GeneratedPlayer[]): void {
+  // Find the first SP on the MLB roster — make them the 23yo SP/DH phenom
+  const mlbSP = players.find(p => p.position === 'SP' && p.rosterStatus === 'MLB');
+  if (mlbSP) {
+    mlbSP.age = 23;
+    mlbSP.firstName = 'Marcus';
+    mlbSP.lastName = 'Fontaine';
+    mlbSP.overallRating = KC_SP_DH_OVERALL;
+    mlbSP.ceiling = KC_SP_DH_CEILING;
+    mlbSP.developmentPhase = 'Ascent';
+    if (mlbSP.pitcherAttributes) {
+      mlbSP.pitcherAttributes.stuff = 78;
+      mlbSP.pitcherAttributes.control = 72;
+      mlbSP.pitcherAttributes.stamina = 70;
+      mlbSP.pitcherAttributes.velocity = 76;
+      mlbSP.pitcherAttributes.movement = 74;
+    }
+    // Also a DH-caliber bat
+    mlbSP.hitterAttributes.contact = 65;
+    mlbSP.hitterAttributes.power = 70;
+    mlbSP.hitterAttributes.eye = 60;
+  }
+
+  // Find the first SS on the MLB roster — make them the 25yo A-Rod archetype
+  const mlbSS = players.find(p => p.position === 'SS' && p.rosterStatus === 'MLB');
+  if (mlbSS) {
+    mlbSS.age = 25;
+    mlbSS.firstName = 'Alejandro';
+    mlbSS.lastName = 'Fuentes';
+    mlbSS.overallRating = KC_SS_OVERALL;
+    mlbSS.ceiling = KC_SS_CEILING;
+    mlbSS.developmentPhase = 'Ascent';
+    mlbSS.hitterAttributes.contact = 72;
+    mlbSS.hitterAttributes.power = 74;
+    mlbSS.hitterAttributes.eye = 68;
+    mlbSS.hitterAttributes.speed = 70;
+    mlbSS.hitterAttributes.defense = 75;
+    mlbSS.hitterAttributes.durability = 72;
+  }
+
+  // Boost all MLB starting pitchers
+  for (const p of players) {
+    if (p.rosterStatus === 'MLB' && p.position === 'SP' && p.pitcherAttributes && p !== mlbSP) {
+      p.pitcherAttributes.stuff = Math.min(80, p.pitcherAttributes.stuff + Math.round(KC_PITCHING_BOOST / 8));
+      p.pitcherAttributes.control = Math.min(80, p.pitcherAttributes.control + Math.round(KC_PITCHING_BOOST / 8));
+      p.pitcherAttributes.velocity = Math.min(80, p.pitcherAttributes.velocity + Math.round(KC_PITCHING_BOOST / 8));
+      p.pitcherAttributes.movement = Math.min(80, p.pitcherAttributes.movement + Math.round(KC_PITCHING_BOOST / 8));
+      p.overallRating = Math.min(550, p.overallRating + KC_PITCHING_BOOST);
+    }
+  }
+
+  // Boost infield defense across the board
+  const infieldPositions = new Set(['SS', '2B', '3B', '1B', 'C']);
+  for (const p of players) {
+    if (p.rosterStatus === 'MLB' && infieldPositions.has(p.position)) {
+      p.hitterAttributes.defense = Math.min(80, p.hitterAttributes.defense + Math.round(KC_DEFENSE_BOOST / 6));
+    }
+  }
 }
 
 /**

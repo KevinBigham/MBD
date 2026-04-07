@@ -9,16 +9,14 @@ export interface CareerStandingsEntry {
 }
 
 const BIG_MARKET_TEAM_IDS = new Set([
-  'bos',
-  'chc',
-  'cws',
-  'lad',
-  'laa',
-  'nym',
-  'nyy',
-  'phi',
-  'sf',
-  'tor',
+  'nym',  // New York Tycoons
+  'chi',  // Chicago Deep Dish
+  'lax',  // Los Angeles Sunset Strip
+  'hou',  // Houston Space Cowboys
+  'dal',  // Dallas Lone Stars
+  'phi',  // Philadelphia Liberty Bells
+  'bos',  // Boston Noreasters
+  'sfb',  // San Francisco Fog Horns
 ]);
 
 function clamp(value: number, min: number, max: number): number {

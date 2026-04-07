@@ -68,7 +68,7 @@ describe('simulateMonth', () => {
   it('skips games cleanly when a team cannot field a pitcher', () => {
     const openingDay = buildSeasonInputs(1);
     const strippedPlayers = openingDay.players.filter((player) =>
-      !(player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null),
+      !(player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null),
     );
 
     expect(() =>

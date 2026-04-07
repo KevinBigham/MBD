@@ -152,22 +152,22 @@ const EMPTY_TRADE_ASSET_INVENTORY: TradeAssetInventoryView = {
 };
 
 const ALL_TEAMS = [
-  { id: 'bal', name: 'Orioles', abbr: 'BAL' }, { id: 'bos', name: 'Red Sox', abbr: 'BOS' },
-  { id: 'nyy', name: 'Yankees', abbr: 'NYY' }, { id: 'tb', name: 'Rays', abbr: 'TBR' },
-  { id: 'tor', name: 'Blue Jays', abbr: 'TOR' }, { id: 'cws', name: 'White Sox', abbr: 'CWS' },
-  { id: 'cle', name: 'Guardians', abbr: 'CLE' }, { id: 'det', name: 'Tigers', abbr: 'DET' },
-  { id: 'kc', name: 'Royals', abbr: 'KCR' }, { id: 'min', name: 'Twins', abbr: 'MIN' },
-  { id: 'hou', name: 'Astros', abbr: 'HOU' }, { id: 'laa', name: 'Angels', abbr: 'LAA' },
-  { id: 'oak', name: 'Athletics', abbr: 'OAK' }, { id: 'sea', name: 'Mariners', abbr: 'SEA' },
-  { id: 'tex', name: 'Rangers', abbr: 'TEX' }, { id: 'atl', name: 'Braves', abbr: 'ATL' },
-  { id: 'mia', name: 'Marlins', abbr: 'MIA' }, { id: 'nym', name: 'Mets', abbr: 'NYM' },
-  { id: 'phi', name: 'Phillies', abbr: 'PHI' }, { id: 'wsh', name: 'Nationals', abbr: 'WSH' },
-  { id: 'chc', name: 'Cubs', abbr: 'CHC' }, { id: 'cin', name: 'Reds', abbr: 'CIN' },
-  { id: 'mil', name: 'Brewers', abbr: 'MIL' }, { id: 'pit', name: 'Pirates', abbr: 'PIT' },
-  { id: 'stl', name: 'Cardinals', abbr: 'STL' }, { id: 'ari', name: 'Diamondbacks', abbr: 'ARI' },
-  { id: 'col', name: 'Rockies', abbr: 'COL' }, { id: 'lad', name: 'Dodgers', abbr: 'LAD' },
-  { id: 'sd', name: 'Padres', abbr: 'SDP' }, { id: 'sf', name: 'Giants', abbr: 'SFG' },
-  { id: 'mtl', name: 'Expos', abbr: 'MTL' }, { id: 'por', name: 'Evergreens', abbr: 'POR' },
+  { id: 'bal', name: 'Crab Cakes', abbr: 'BAL' }, { id: 'bos', name: "Noreasters", abbr: 'BOS' },
+  { id: 'nym', name: 'Tycoons', abbr: 'NYT' }, { id: 'orl', name: 'Thunder', abbr: 'ORL' },
+  { id: 'cha', name: 'Hornets', abbr: 'CHA' }, { id: 'col', name: 'Buckeyes', abbr: 'CLB' },
+  { id: 'cle', name: 'Forge', abbr: 'CLE' }, { id: 'det', name: 'Motor Kings', abbr: 'DET' },
+  { id: 'kc', name: 'BBQ Fountains', abbr: 'KCF' }, { id: 'min', name: 'Frost Giants', abbr: 'MIN' },
+  { id: 'hou', name: 'Space Cowboys', abbr: 'HOU' }, { id: 'dal', name: 'Lone Stars', abbr: 'DAL' },
+  { id: 'por', name: 'Sasquatch', abbr: 'POR' }, { id: 'sea', name: 'Drizzle', abbr: 'SEA' },
+  { id: 'sat', name: 'Riverwalk', abbr: 'SAT' }, { id: 'atl', name: 'Peach Kings', abbr: 'ATL' },
+  { id: 'mia', name: 'Hurricanes', abbr: 'MIA' }, { id: 'nym', name: 'Tycoons', abbr: 'NYT' },
+  { id: 'phi', name: 'Liberty Bells', abbr: 'PHI' }, { id: 'wsh', name: 'Monuments', abbr: 'WSH' },
+  { id: 'chi', name: 'Deep Dish', abbr: 'CHI' }, { id: 'nas', name: 'Honky Tonks', abbr: 'NAS' },
+  { id: 'mil', name: 'Suds', abbr: 'MIL' }, { id: 'pit', name: 'Smokestack', abbr: 'PIT' },
+  { id: 'stl', name: 'Archers', abbr: 'STL' }, { id: 'phx', name: 'Dust Devils', abbr: 'PHX' },
+  { id: 'col', name: 'Altitude', abbr: 'COL' }, { id: 'lax', name: 'Sunset Strip', abbr: 'LAX' },
+  { id: 'sdg', name: 'Surf Hounds', abbr: 'SDG' }, { id: 'sfb', name: 'Fog Horns', abbr: 'SFB' },
+  { id: 'ral', name: 'Pines', abbr: 'RAL' }, { id: 'por', name: 'Sasquatch', abbr: 'POR' },
 ];
 
 function gradeColor(grade: string): string {

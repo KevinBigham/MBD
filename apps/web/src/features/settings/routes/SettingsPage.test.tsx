@@ -94,7 +94,7 @@ describe('SettingsPage', () => {
       season: 3,
       day: 87,
       phase: 'regular',
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       activeSaveId: 'save-slot-1',
       activeSaveSlot: 1,
       initializeGame: vi.fn(),

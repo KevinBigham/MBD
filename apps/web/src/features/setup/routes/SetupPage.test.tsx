@@ -83,8 +83,8 @@ describe('SetupPage', () => {
       isReady: true,
       getScenarioCatalog: vi.fn().mockResolvedValue([]),
       getSetupPreview: vi.fn().mockResolvedValue({
-        teamId: 'nyy',
-        teamName: 'New York Yankees',
+        teamId: 'nym',
+        teamName: 'New York Tycoons',
         division: 'AL_EAST',
         payrollTier: 'Premier',
         farmSystemRating: 'B+',
@@ -94,7 +94,7 @@ describe('SetupPage', () => {
           { playerId: 'p-judge', name: 'Aaron Judge', position: 'RF', overall: 78 },
         ],
         divisionRivals: [
-          { teamId: 'bos', teamName: 'Boston Red Sox' },
+          { teamId: 'bos', teamName: 'Boston Noreasters' },
         ],
       }),
       newGame: vi.fn().mockResolvedValue({
@@ -102,8 +102,8 @@ describe('SetupPage', () => {
         day: 1,
         phase: 'preseason',
         playerCount: 780,
-        userTeamId: 'nyy',
-        teamName: 'New York Yankees',
+        userTeamId: 'nym',
+        teamName: 'New York Tycoons',
         gmName: 'Alex Rivera',
         difficulty: 'hard',
       }),
@@ -118,8 +118,8 @@ describe('SetupPage', () => {
         day: 88,
         phase: 'regular',
         playerCount: 780,
-        userTeamId: 'nyy',
-        teamName: 'New York Yankees',
+        userTeamId: 'nym',
+        teamName: 'New York Tycoons',
         gmName: 'General Manager',
         difficulty: 'standard',
       }),
@@ -142,15 +142,15 @@ describe('SetupPage', () => {
           season: 4,
           day: 88,
           phase: 'regular',
-          userTeamId: 'nyy',
+          userTeamId: 'nym',
           franchise: {
             gmName: 'General Manager',
             difficulty: 'standard',
             playMode: 'standard',
             createdAt: 'S1D1',
-            teamId: 'nyy',
-            teamName: 'New York Yankees',
-            teamAbbreviation: 'NYY',
+            teamId: 'nym',
+            teamName: 'New York Tycoons',
+            teamAbbreviation: 'NYT',
             teamDivision: 'AL_EAST',
             onboarding: {
               welcomeBriefingSeen: true,
@@ -159,7 +159,7 @@ describe('SetupPage', () => {
           },
           achievements: {
             unlocked: [
-              { id: 'champion', unlockedAt: 'S3D180', season: 3, teamId: 'nyy', summary: 'Won the World Series.' },
+              { id: 'champion', unlockedAt: 'S3D180', season: 3, teamId: 'nym', summary: 'Won the World Series.' },
             ],
             progress: [],
             counters: [],
@@ -187,15 +187,15 @@ describe('SetupPage', () => {
             season: 4,
             day: 88,
             phase: 'regular',
-            userTeamId: 'nyy',
+            userTeamId: 'nym',
             franchise: {
               gmName: 'General Manager',
               difficulty: 'standard',
               playMode: 'standard',
               createdAt: 'S1D1',
-              teamId: 'nyy',
-              teamName: 'New York Yankees',
-              teamAbbreviation: 'NYY',
+              teamId: 'nym',
+              teamName: 'New York Tycoons',
+              teamAbbreviation: 'NYT',
               teamDivision: 'AL_EAST',
               onboarding: {
                 welcomeBriefingSeen: true,
@@ -204,7 +204,7 @@ describe('SetupPage', () => {
             },
             achievements: {
               unlocked: [
-                { id: 'champion', unlockedAt: 'S3D180', season: 3, teamId: 'nyy', summary: 'Won the World Series.' },
+                { id: 'champion', unlockedAt: 'S3D180', season: 3, teamId: 'nym', summary: 'Won the World Series.' },
               ],
               progress: [],
               counters: [],
@@ -250,9 +250,9 @@ describe('SetupPage', () => {
                 difficulty: 'standard',
                 playMode: 'standard',
                 createdAt: 'S1D1',
-                teamId: 'nyy',
-                teamName: 'New York Yankees',
-                teamAbbreviation: 'NYY',
+                teamId: 'nym',
+                teamName: 'New York Tycoons',
+                teamAbbreviation: 'NYT',
                 teamDivision: 'AL_EAST',
                 onboarding: {
                   welcomeBriefingSeen: true,
@@ -298,9 +298,9 @@ describe('SetupPage', () => {
             difficulty: 'standard',
             playMode: 'standard',
             createdAt: 'S1D1',
-            teamId: 'nyy',
-            teamName: 'New York Yankees',
-            teamAbbreviation: 'NYY',
+            teamId: 'nym',
+            teamName: 'New York Tycoons',
+            teamAbbreviation: 'NYT',
             teamDivision: 'AL_EAST',
             onboarding: {
               welcomeBriefingSeen: true,
@@ -334,9 +334,9 @@ describe('SetupPage', () => {
             difficulty: 'standard',
             playMode: 'standard',
             createdAt: 'S1D1',
-            teamId: 'nyy',
-            teamName: 'New York Yankees',
-            teamAbbreviation: 'NYY',
+            teamId: 'nym',
+            teamName: 'New York Tycoons',
+            teamAbbreviation: 'NYT',
             teamDivision: 'AL_EAST',
             onboarding: {
               welcomeBriefingSeen: true,
@@ -371,9 +371,9 @@ describe('SetupPage', () => {
             difficulty: 'standard',
             playMode: 'standard',
             createdAt: 'S1D1',
-            teamId: 'nyy',
-            teamName: 'New York Yankees',
-            teamAbbreviation: 'NYY',
+            teamId: 'nym',
+            teamName: 'New York Tycoons',
+            teamAbbreviation: 'NYT',
             teamDivision: 'AL_EAST',
             onboarding: {
               welcomeBriefingSeen: true,
@@ -418,7 +418,7 @@ describe('SetupPage', () => {
     });
 
     expect(container.textContent).toContain('Welcome to Mr. Baseball Dynasty');
-    expect(container.textContent).toContain('New York Yankees');
+    expect(container.textContent).toContain('New York Tycoons');
 
     const newDynastyButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('New Dynasty'),
@@ -436,7 +436,7 @@ describe('SetupPage', () => {
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
       setValue?.call(gmNameInput, 'Alex Rivera');
       gmNameInput?.dispatchEvent(new Event('input', { bubbles: true }));
-      teamSelect!.value = 'nyy';
+      teamSelect!.value = 'nym';
       teamSelect?.dispatchEvent(new Event('change', { bubbles: true }));
       difficultySelect!.value = 'hard';
       difficultySelect?.dispatchEvent(new Event('change', { bubbles: true }));
@@ -445,7 +445,7 @@ describe('SetupPage', () => {
     });
 
     expect(container.textContent).toContain('Aaron Judge');
-    expect(container.textContent).toContain('Boston Red Sox');
+    expect(container.textContent).toContain('Boston Noreasters');
 
     const previewCall = vi.mocked(workerMock.getSetupPreview).mock.calls.at(-1)?.[0];
 
@@ -461,7 +461,7 @@ describe('SetupPage', () => {
     const newGameCall = vi.mocked(workerMock.newGame).mock.calls[0]?.[0];
     expect(previewCall?.seed).toBe(newGameCall?.seed);
     expect(newGameCall).toMatchObject({
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       gmName: 'Alex Rivera',
       difficulty: 'hard',
       saveSlot: 2,

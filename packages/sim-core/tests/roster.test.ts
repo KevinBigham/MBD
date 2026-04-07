@@ -21,7 +21,7 @@ import type { RosterState, GeneratedPlayer } from '../src/index.js';
 
 function makeRoster(seed: number): GeneratedPlayer[] {
   const rng = new GameRNG(seed);
-  return generateTeamRoster(rng, 'NYY');
+  return generateTeamRoster(rng, 'NYT');
 }
 
 // ---------------------------------------------------------------------------
@@ -31,8 +31,8 @@ function makeRoster(seed: number): GeneratedPlayer[] {
 describe('buildRosterState', () => {
   it('creates valid state with mlb and 40-man rosters', () => {
     const roster = makeRoster(42);
-    const state = buildRosterState('NYY', roster);
-    expect(state.teamId).toBe('NYY');
+    const state = buildRosterState('NYT', roster);
+    expect(state.teamId).toBe('NYT');
     expect(state.mlbRoster.length).toBeGreaterThan(0);
     expect(state.fortyManRoster.length).toBeGreaterThanOrEqual(state.mlbRoster.length);
     expect(state.transactions).toEqual([]);
@@ -49,11 +49,11 @@ describe('validateRoster', () => {
       'SP', 'SP', 'SP', 'SP', 'SP', 'RP', 'RP', 'RP', 'RP', 'CL',
       '1B', '2B', '3B', 'LF', 'RF', 'SS'] as const;
     for (const pos of positions) {
-      players.push(generatePlayer(rng, pos, 'NYY', 'MLB'));
+      players.push(generatePlayer(rng, pos, 'NYT', 'MLB'));
     }
     const mlbIds = players.map((p) => p.id);
     const state: RosterState = {
-      teamId: 'NYY',
+      teamId: 'NYT',
       mlbRoster: mlbIds,
       fortyManRoster: [...mlbIds], // all MLB on 40-man
       transactions: [],
@@ -65,11 +65,11 @@ describe('validateRoster', () => {
 
   it('fails if MLB roster exceeds 26 players', () => {
     const roster = makeRoster(42);
-    const state = buildRosterState('NYY', roster);
+    const state = buildRosterState('NYT', roster);
     // Manually add extra players to exceed limit
     const extraIds: string[] = [];
     const aaaPlayers = roster.filter(
-      (p) => p.teamId === 'NYY' && p.rosterStatus === 'AAA',
+      (p) => p.teamId === 'NYT' && p.rosterStatus === 'AAA',
     );
     for (let i = 0; i < 10; i++) {
       if (aaaPlayers[i]) {
@@ -91,8 +91,8 @@ describe('promotePlayer', () => {
   it('moves player up one level', () => {
     const roster = makeRoster(42);
     // Build a controlled state: put a few MLB and AAA players on the 40-man
-    const mlbPlayers = roster.filter((p) => p.teamId === 'NYY' && p.rosterStatus === 'MLB');
-    const aaaPlayers = roster.filter((p) => p.teamId === 'NYY' && p.rosterStatus === 'AAA');
+    const mlbPlayers = roster.filter((p) => p.teamId === 'NYT' && p.rosterStatus === 'MLB');
+    const aaaPlayers = roster.filter((p) => p.teamId === 'NYT' && p.rosterStatus === 'AAA');
     const aaaPlayer = aaaPlayers[0]!;
     expect(aaaPlayer).toBeTruthy();
 
@@ -101,7 +101,7 @@ describe('promotePlayer', () => {
     const smallFortyMan = [...smallMlb, aaaPlayer.id]; // under 40 limit
 
     const state: RosterState = {
-      teamId: 'NYY',
+      teamId: 'NYT',
       mlbRoster: smallMlb,
       fortyManRoster: smallFortyMan,
       transactions: [],
@@ -118,7 +118,7 @@ describe('promotePlayer', () => {
 describe('demotePlayer', () => {
   it('moves player down one level', () => {
     const roster = makeRoster(42);
-    const state = buildRosterState('NYY', roster);
+    const state = buildRosterState('NYT', roster);
     const mlbPlayerId = state.mlbRoster[0]!;
     const result = demotePlayer(mlbPlayerId, roster, state, 'S1D1');
     expect(result.success).toBe(true);
@@ -132,7 +132,7 @@ describe('demotePlayer', () => {
 describe('dfaPlayer', () => {
   it('removes player from 40-man roster', () => {
     const roster = makeRoster(42);
-    const state = buildRosterState('NYY', roster);
+    const state = buildRosterState('NYT', roster);
     const mlbPlayerId = state.mlbRoster[0]!;
     const result = dfaPlayer(mlbPlayerId, roster, state, 'S1D1');
     expect(result.success).toBe(true);
@@ -167,7 +167,7 @@ describe('getNextLevel', () => {
 describe('needsRosterMove', () => {
   it('detects over-limit rosters', () => {
     const state: RosterState = {
-      teamId: 'NYY',
+      teamId: 'NYT',
       mlbRoster: Array.from({ length: 30 }, (_, i) => `p${i}`),
       fortyManRoster: Array.from({ length: 30 }, (_, i) => `p${i}`),
       transactions: [],
@@ -177,7 +177,7 @@ describe('needsRosterMove', () => {
 
   it('returns false for within-limits roster', () => {
     const state: RosterState = {
-      teamId: 'NYY',
+      teamId: 'NYT',
       mlbRoster: Array.from({ length: 25 }, (_, i) => `p${i}`),
       fortyManRoster: Array.from({ length: 38 }, (_, i) => `p${i}`),
       transactions: [],

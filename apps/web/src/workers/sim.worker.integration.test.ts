@@ -11,7 +11,7 @@ vi.mock('comlink', () => ({
 import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
 
-function startGame(seed: number, userTeamId: string = 'nyy') {
+function startGame(seed: number, userTeamId: string = 'nym') {
   return api.newGame({
     seed,
     userTeamId,
@@ -189,7 +189,7 @@ function normalizeSnapshotForComparison(snapshot: GameSnapshot): GameSnapshot {
 function seedRetiringHallOfFamer() {
   const state = requireState();
   const icon = state.players.find(
-    (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
   );
 
   if (!icon) {
@@ -208,7 +208,7 @@ function seedRetiringHallOfFamer() {
     playerName: 'Victor Legacy',
     position: icon.position,
     seasonsPlayed: 20,
-    teamIds: ['nyy'],
+    teamIds: ['nym'],
     peakOverall: 99,
     championshipRings: 3,
     allStarSelections: 10,
@@ -226,7 +226,7 @@ function seedRetiringHallOfFamer() {
       award: 'MVP',
       league: 'MLB',
       playerId: icon.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       summary: 'Won the MVP award.',
     },
     {
@@ -234,7 +234,7 @@ function seedRetiringHallOfFamer() {
       award: 'Silver Slugger',
       league: 'MLB',
       playerId: icon.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       summary: 'Anchored the middle of the order.',
     },
   ];

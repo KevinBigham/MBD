@@ -50,7 +50,7 @@ describe('narrative consequences', () => {
 
     expect(typeof applyOwnerDecisionDelta).toBe('function');
 
-    const owner = simCore.createOwnerState('nyy', 210_000_000);
+    const owner = simCore.createOwnerState('nym', 210_000_000);
     const updated = applyOwnerDecisionDelta!(owner, 60, 'Ownership loved the move.');
 
     expect(updated.patience).toBe(100);
@@ -76,16 +76,16 @@ describe('narrative consequences', () => {
     expect(typeof buildTradeConsequenceBundle).toBe('function');
 
     const acquired = withOverrides(makePlayer(1, 'bos', 'CF'), {
-      teamId: 'nyy',
+      teamId: 'nym',
       firstName: 'Victor',
       lastName: 'Valez',
     });
-    const tradedAway = withOverrides(makePlayer(2, 'nyy', 'RF'), {
+    const tradedAway = withOverrides(makePlayer(2, 'nym', 'RF'), {
       teamId: 'bos',
       firstName: 'Martin',
       lastName: 'Cole',
     });
-    const remaining = withOverrides(makePlayer(3, 'nyy', 'SS'), {
+    const remaining = withOverrides(makePlayer(3, 'nym', 'SS'), {
       firstName: 'Luis',
       lastName: 'Ramos',
     });
@@ -94,7 +94,7 @@ describe('narrative consequences', () => {
       rng: new simCore.GameRNG(9),
       season: 3,
       day: 88,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       partnerTeamId: 'bos',
       acquiredPlayers: [acquired],
       tradedAwayPlayers: [tradedAway],
@@ -134,11 +134,11 @@ describe('narrative consequences', () => {
     expect(typeof buildSigningConsequenceBundle).toBe('function');
 
     const signedPlayer = withOverrides(makePlayer(4, 'fa', 'SP'), {
-      teamId: 'nyy',
+      teamId: 'nym',
       firstName: 'Diego',
       lastName: 'Mendez',
     });
-    const teammate = withOverrides(makePlayer(5, 'nyy', '1B'), {
+    const teammate = withOverrides(makePlayer(5, 'nym', '1B'), {
       firstName: 'Evan',
       lastName: 'Parker',
     });
@@ -147,7 +147,7 @@ describe('narrative consequences', () => {
       rng: new simCore.GameRNG(12),
       season: 4,
       day: 12,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       player: signedPlayer,
       annualSalary: 18,
       years: 4,
@@ -185,30 +185,30 @@ describe('narrative consequences', () => {
     expect(typeof buildPostseasonConsequenceBundle).toBe('function');
 
     const roster = [
-      withOverrides(makePlayer(6, 'nyy', 'SS'), { firstName: 'Alex', lastName: 'Stone' }),
-      withOverrides(makePlayer(7, 'nyy', 'CF'), { firstName: 'Jalen', lastName: 'Frost' }),
+      withOverrides(makePlayer(6, 'nym', 'SS'), { firstName: 'Alex', lastName: 'Stone' }),
+      withOverrides(makePlayer(7, 'nym', 'CF'), { firstName: 'Jalen', lastName: 'Frost' }),
     ];
     const bracket: PlayoffBracket = {
       seeds: [
-        { teamId: 'nyy', seed: 1, wins: 101, losses: 61 },
+        { teamId: 'nym', seed: 1, wins: 101, losses: 61 },
         { teamId: 'bos', seed: 2, wins: 96, losses: 66 },
       ],
       series: [
-        { winnerId: 'nyy', loserId: 'bos', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
+        { winnerId: 'nym', loserId: 'bos', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
       ],
-      champion: 'nyy',
+      champion: 'nym',
     };
 
     const bundle = buildPostseasonConsequenceBundle!({
       rng: new simCore.GameRNG(22),
       season: 5,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       playoffBracket: bracket,
       userOutcome: 'champion',
       standings: [
-        { teamId: 'nyy', wins: 101, losses: 61 },
+        { teamId: 'nym', wins: 101, losses: 61 },
         { teamId: 'bos', wins: 96, losses: 66 },
-        { teamId: 'tb', wins: 79, losses: 83 },
+        { teamId: 'orl', wins: 79, losses: 83 },
       ],
       userPlayers: roster,
     });
@@ -237,7 +237,7 @@ describe('narrative consequences', () => {
 
     expect(typeof buildRetirementConsequenceBundle).toBe('function');
 
-    const userRetiree = withOverrides(makePlayer(8, 'nyy', 'C'), {
+    const userRetiree = withOverrides(makePlayer(8, 'nym', 'C'), {
       firstName: 'Marcus',
       lastName: 'Dean',
       age: 40,
@@ -254,7 +254,7 @@ describe('narrative consequences', () => {
         leadership: 77,
       },
     });
-    const teammate = withOverrides(makePlayer(10, 'nyy', '2B'), {
+    const teammate = withOverrides(makePlayer(10, 'nym', '2B'), {
       firstName: 'Sam',
       lastName: 'Hale',
     });
@@ -263,7 +263,7 @@ describe('narrative consequences', () => {
       rng: new simCore.GameRNG(41),
       season: 6,
       day: 1,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       retiredPlayers: [userRetiree, leagueRetiree],
       remainingUserPlayers: [teammate],
     });
@@ -304,23 +304,23 @@ describe('narrative consequences', () => {
     expect(typeof buildTradeAftermathChain).toBe('function');
     expect(typeof appendConsequenceWatchers).toBe('function');
 
-    const tradedAway = withOverrides(makePlayer(11, 'nyy', 'RF'), {
+    const tradedAway = withOverrides(makePlayer(11, 'nym', 'RF'), {
       firstName: 'Diego',
       lastName: 'Serrano',
       teamId: 'bos',
       serviceTimeDays: 172 * 6,
     });
-    const replacement = withOverrides(makePlayer(12, 'nyy', 'LF'), {
+    const replacement = withOverrides(makePlayer(12, 'nym', 'LF'), {
       firstName: 'Eli',
       lastName: 'Young',
-      teamId: 'nyy',
+      teamId: 'nym',
     });
 
     const watchers = buildTradeAftermathChain!({
       rng: new simCore.GameRNG(77),
       season: 4,
       day: 88,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       tradedAwayPlayers: [tradedAway],
       replacementPlayers: [replacement],
       seasonsWithTeamByPlayerId: {
@@ -399,15 +399,15 @@ describe('narrative consequences', () => {
     expect(typeof calculateRushingRisk).toBe('function');
     expect(typeof calculateFanSentiment).toBe('function');
 
-    const player = withOverrides(makePlayer(13, 'nyy', 'CF'), {
+    const player = withOverrides(makePlayer(13, 'nym', 'CF'), {
       firstName: 'Avery',
       lastName: 'Mills',
-      teamId: 'nyy',
+      teamId: 'nym',
     });
-    const replacement = withOverrides(makePlayer(14, 'nyy', 'LF'), {
+    const replacement = withOverrides(makePlayer(14, 'nym', 'LF'), {
       firstName: 'Cole',
       lastName: 'Parker',
-      teamId: 'nyy',
+      teamId: 'nym',
     });
     const playerStats = new Map<string, PlayerGameStats>([
       [player.id, {
@@ -464,7 +464,7 @@ describe('narrative consequences', () => {
       rng: new simCore.GameRNG(17),
       season: 5,
       day: 1,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       players: [player, replacement],
       playerStats: Array.from(playerStats.entries()),
       watchers: [{

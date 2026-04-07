@@ -71,8 +71,8 @@ describe('PressRoomPage', () => {
       day: 44,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 43,
       isSimulating: false,
@@ -98,7 +98,7 @@ describe('PressRoomPage', () => {
           headline: 'Owner pressure is rising.',
           body: 'Ownership wants a stronger response this month.',
           timestamp: 'S3D44',
-          relatedTeamIds: ['nyy'],
+          relatedTeamIds: ['nym'],
           relatedPlayerIds: [],
         },
         {
@@ -110,7 +110,7 @@ describe('PressRoomPage', () => {
           headline: 'Scouting report: Double-A slugger is forcing the issue',
           body: 'Internal evaluators want the next promotion discussion on the table.',
           timestamp: 'S3D44',
-          relatedTeamIds: ['nyy'],
+          relatedTeamIds: ['nym'],
           relatedPlayerIds: ['prospect-1'],
         },
         {
@@ -122,7 +122,7 @@ describe('PressRoomPage', () => {
           headline: 'Breaking trade headline',
           body: 'New York added a bullpen arm in a deadline swing.',
           timestamp: 'S3D43',
-          relatedTeamIds: ['nyy', 'bos'],
+          relatedTeamIds: ['nym', 'bos'],
           relatedPlayerIds: [],
         },
         {
@@ -143,10 +143,10 @@ describe('PressRoomPage', () => {
           category: 'press_conference',
           tag: 'DEBATE',
           priority: 3,
-          headline: 'Press Conference: New York Yankees',
+          headline: 'Press Conference: New York Tycoons',
           body: 'A calmer room framed the question this way: Your prospect pipeline is drawing real attention.',
           timestamp: 'S3D44',
-          relatedTeamIds: ['nyy'],
+          relatedTeamIds: ['nym'],
           relatedPlayerIds: [],
         },
       ]),
@@ -178,7 +178,7 @@ describe('PressRoomPage', () => {
     expect(container.textContent).toContain('Press Room');
     expect(container.textContent).toContain('Owner pressure is rising.');
     expect(container.textContent).toContain('Breaking trade headline');
-    expect(container.textContent).toContain('Press Conference: New York Yankees');
+    expect(container.textContent).toContain('Press Conference: New York Tycoons');
     expect(container.textContent).toContain('Team Briefings');
     expect(container.textContent).toContain('Press Conferences');
     expect(container.textContent).toContain('League Wire');

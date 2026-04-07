@@ -46,7 +46,7 @@ function makeHitterProspect(): GeneratedPlayer {
     },
     rosterStatus: 'AA',
     developmentPhase: 'Prospect',
-    teamId: 'nyy',
+    teamId: 'nym',
     nationality: 'latin',
     overallRating: 235,
     potentialRating: 320,
@@ -76,15 +76,15 @@ function makeCoach(overrides: Partial<Coach>): Coach {
     experienceYears: 11,
     contractYears: 2,
     annualSalary: 2.4,
-    teamId: 'nyy',
+    teamId: 'nym',
     ...overrides,
   };
 }
 
 describe('generateCoachingStaff', () => {
   it('builds a deterministic 12-role staff for a team', () => {
-    const first = generateCoachingStaff(new GameRNG(77), 'nyy');
-    const second = generateCoachingStaff(new GameRNG(77), 'nyy');
+    const first = generateCoachingStaff(new GameRNG(77), 'nym');
+    const second = generateCoachingStaff(new GameRNG(77), 'nym');
 
     expect(first).toHaveLength(12);
     expect(second).toEqual(first);

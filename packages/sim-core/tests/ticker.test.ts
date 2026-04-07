@@ -9,10 +9,10 @@ describe('ticker engine', () => {
       season: 4,
       day: 92,
       scores: [{
-        winningTeamId: 'nyy',
-        winningTeamName: 'Yankees',
+        winningTeamId: 'nym',
+        winningTeamName: 'Tycoons',
         losingTeamId: 'bos',
-        losingTeamName: 'Red Sox',
+        losingTeamName: "Noreasters",
         winningScore: 5,
         losingScore: 3,
         starPlayerId: 'player-1',
@@ -22,15 +22,15 @@ describe('ticker engine', () => {
         hr: 2,
       }],
       standingsChanges: [{
-        teamId: 'nyy',
-        teamName: 'Yankees',
+        teamId: 'nym',
+        teamName: 'Tycoons',
         division: 'AL East',
         tookSoleLead: true,
       }],
       injuries: [{
         playerId: 'player-2',
         playerName: 'Ben Ace',
-        teamId: 'nyy',
+        teamId: 'nym',
         injury: 'forearm strain',
       }],
       trades: [],
@@ -39,7 +39,7 @@ describe('ticker engine', () => {
       recordWatches: [],
       rumorCandidates: [{
         teamId: 'bos',
-        teamName: 'Red Sox',
+        teamName: "Noreasters",
         position: 'SP',
       }],
       rumorsEnabled: true,
@@ -48,7 +48,7 @@ describe('ticker engine', () => {
     expect(entries.some((entry) =>
       entry.category === 'score'
       && entry.priority === 2
-      && entry.text.includes('Yankees defeats Red Sox 5-3')
+      && entry.text.includes('Tycoons defeats Noreasters 5-3')
       && entry.text.includes('Alex Slugger goes 3-for-4 with 2 HR'),
     )).toBe(true);
 
@@ -56,7 +56,7 @@ describe('ticker engine', () => {
       entry.category === 'standings'
       && entry.priority === 3
       && entry.text.includes('sole possession of first place')
-      && entry.relatedTeamIds.includes('nyy'),
+      && entry.relatedTeamIds.includes('nym'),
     )).toBe(true);
 
     expect(entries.some((entry) =>
@@ -69,7 +69,7 @@ describe('ticker engine', () => {
     expect(entries.some((entry) =>
       entry.category === 'rumor'
       && entry.priority === 2
-      && entry.text.includes('Sources: Red Sox exploring trades for SP'),
+      && entry.text.includes('Sources: Noreasters exploring trades for SP'),
     )).toBe(true);
   });
 
@@ -83,10 +83,10 @@ describe('ticker engine', () => {
       standingsChanges: [],
       injuries: [],
       trades: [{
-        acquiringTeamId: 'lad',
-        acquiringTeamName: 'Dodgers',
+        acquiringTeamId: 'lax',
+        acquiringTeamName: 'Sunset Strip',
         fromTeamId: 'mia',
-        fromTeamName: 'Marlins',
+        fromTeamName: 'Hurricanes',
         acquiredPlayerId: 'player-10',
         acquiredPlayerName: 'Carlos Trade',
         returnPlayerId: 'player-11',
@@ -95,20 +95,20 @@ describe('ticker engine', () => {
       milestones: [{
         playerId: 'player-20',
         playerName: 'Victor Veteran',
-        teamId: 'lad',
+        teamId: 'lax',
         text: 'records career hit #2000',
       }],
       prospectCallups: [{
         playerId: 'player-30',
         playerName: 'Danny Prospect',
         teamId: 'mia',
-        teamName: 'Marlins',
+        teamName: 'Hurricanes',
         fromLevel: 'AAA',
       }],
       recordWatches: [{
         playerId: 'player-40',
         playerName: 'Sam Pace',
-        teamId: 'lad',
+        teamId: 'lax',
         text: 'home run record',
         currentStat: 47,
       }],
@@ -129,7 +129,7 @@ describe('ticker engine', () => {
       category: 'score' as const,
       text: `Entry ${index}`,
       priority: 2 as const,
-      relatedTeamIds: ['nyy'],
+      relatedTeamIds: ['nym'],
       relatedPlayerIds: [],
       expiresDay: index < 3 ? 10 : 400,
     }));

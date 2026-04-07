@@ -11,12 +11,12 @@ import {
 describe('front office dynamics', () => {
   it('raises owner budgets when satisfaction and spending appetite are strong', () => {
     const cheapOwner = {
-      ...createOwnerState('oak', 128_000_000),
+      ...createOwnerState('por', 128_000_000),
       spendingWillingness: 'cheap' as const,
       satisfaction: 42,
     };
     const lavishOwner = {
-      ...createOwnerState('nyy', 214_000_000),
+      ...createOwnerState('nym', 214_000_000),
       spendingWillingness: 'lavish' as const,
       satisfaction: 84,
     };
@@ -45,7 +45,7 @@ describe('front office dynamics', () => {
   });
 
   it('moves reputation, trade leverage, and FA appeal together', () => {
-    const baseline = createFrontOfficeState('nyy');
+    const baseline = createFrontOfficeState('nym');
     const improved = evaluateFrontOfficeState(baseline, {
       draftDelta: 8,
       tradeDelta: 12,

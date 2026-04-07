@@ -58,7 +58,7 @@ function buildOffseasonState(overrides: Record<string, unknown> = {}) {
           {
             id: 'fa-1',
             tone: 'division_rival',
-            summary: 'Corbin Burnes signed with Boston Red Sox for $28.5M/yr (5 years)',
+            summary: 'Corbin Burnes signed with Boston Noreasters for $28.5M/yr (5 years)',
           },
         ],
       },
@@ -113,8 +113,8 @@ describe('OffseasonPage', () => {
       day: 1,
       phase: 'offseason',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 162,
       isSimulating: false,
@@ -167,7 +167,7 @@ describe('OffseasonPage', () => {
     expect(container.textContent).toContain('Arbitration');
     expect(container.textContent).toContain('Free Agency');
     expect(container.textContent).toContain('Juan Soto signed for $12.4M/yr (1 year)');
-    expect(container.textContent).toContain('Corbin Burnes signed with Boston Red Sox for $28.5M/yr (5 years)');
+    expect(container.textContent).toContain('Corbin Burnes signed with Boston Noreasters for $28.5M/yr (5 years)');
     expect(container.textContent).toContain('October left New York with a live title window');
     expect(container.textContent).toContain('A 94-68 run and a deep October push kept the contention window open.');
     expect(container.innerHTML).toContain('accent-success');
@@ -188,7 +188,7 @@ describe('OffseasonPage', () => {
                   {
                     id: 'qo-1',
                     tone: 'user',
-                    summary: 'New York Yankees extended a qualifying offer to Juan Slugger.',
+                    summary: 'New York Tycoons extended a qualifying offer to Juan Slugger.',
                   },
                 ],
               },
@@ -219,7 +219,7 @@ describe('OffseasonPage', () => {
                   {
                     id: 'extension-1',
                     tone: 'user',
-                    summary: 'Juan Cornerstone signed an extension with New York Yankees for $22.4M/yr (6 years)',
+                    summary: 'Juan Cornerstone signed an extension with New York Tycoons for $22.4M/yr (6 years)',
                   },
                 ],
               },
@@ -262,7 +262,7 @@ describe('OffseasonPage', () => {
                   {
                     id: 'qo-issued-1',
                     tone: 'user',
-                    summary: 'New York Yankees issued a qualifying offer to Victor Veteran for $21.40M/yr.',
+                    summary: 'New York Tycoons issued a qualifying offer to Victor Veteran for $21.40M/yr.',
                   },
                 ],
               },
@@ -316,7 +316,7 @@ describe('OffseasonPage', () => {
               {
                 id: 'protect-risk-1',
                 tone: 'user',
-                summary: 'New York Yankees protected Ricky Protect on the 40-man roster',
+                summary: 'New York Tycoons protected Ricky Protect on the 40-man roster',
               },
             ],
           },
@@ -327,7 +327,7 @@ describe('OffseasonPage', () => {
               {
                 id: 'rule5-pick-1',
                 tone: 'division_rival',
-                summary: 'Rule 5 Pick 1: Boston Red Sox selected Danny Stash from Oakland Athletics',
+                summary: 'Rule 5 Pick 1: Boston Noreasters selected Danny Stash from Portland Sasquatch',
               },
             ],
           },
@@ -335,14 +335,14 @@ describe('OffseasonPage', () => {
         rule5: {
           phase: 'protection_audit',
           currentTeamId: null,
-          draftOrder: ['ath', 'bos', 'nyy'],
+          draftOrder: ['ath', 'bos', 'nym'],
           consecutivePasses: 0,
           protectedCount: 4,
           protectedLimit: 40,
           protectedPlayers: [
             {
               playerId: 'keep-1',
-              teamId: 'nyy',
+              teamId: 'nym',
               playerName: 'Ricky Protect',
               position: 'SS',
               age: 22,
@@ -354,7 +354,7 @@ describe('OffseasonPage', () => {
           eligiblePlayers: [
             {
               playerId: 'risk-1',
-              teamId: 'nyy',
+              teamId: 'nym',
               playerName: 'Evan Exposed',
               position: 'SP',
               age: 23,
@@ -396,7 +396,7 @@ describe('OffseasonPage', () => {
     expect(container.textContent).toContain('Ricky Protect');
     expect(container.textContent).toContain('Evan Exposed');
     expect(container.textContent).toContain('Draft Order');
-    expect(container.textContent).toContain('Rule 5 Pick 1: Boston Red Sox selected Danny Stash from Oakland Athletics');
+    expect(container.textContent).toContain('Rule 5 Pick 1: Boston Noreasters selected Danny Stash from Portland Sasquatch');
 
     await act(async () => {
       findButton('Protect')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -480,15 +480,15 @@ describe('OffseasonPage', () => {
                   {
                     id: 'offer-back-1',
                     tone: 'user',
-                    summary: 'New York Yankees must offer offer-1 back to Boston Red Sox',
+                    summary: 'New York Tycoons must offer offer-1 back to Boston Noreasters',
                   },
                 ],
               },
             ],
             rule5: {
               phase: 'rule5_draft',
-              currentTeamId: 'nyy',
-              draftOrder: ['nyy', 'bos', 'ath'],
+              currentTeamId: 'nym',
+              draftOrder: ['nym', 'bos', 'ath'],
               consecutivePasses: 1,
               protectedCount: 5,
               protectedLimit: 40,
@@ -519,7 +519,7 @@ describe('OffseasonPage', () => {
                 {
                   playerId: 'offer-1',
                   originalTeamId: 'bos',
-                  draftingTeamId: 'nyy',
+                  draftingTeamId: 'nym',
                   draftedAfterSeason: 4,
                   status: 'active',
                 },
@@ -528,7 +528,7 @@ describe('OffseasonPage', () => {
                 {
                   playerId: 'offer-1',
                   originalTeamId: 'bos',
-                  draftingTeamId: 'nyy',
+                  draftingTeamId: 'nym',
                   status: 'pending',
                 },
               ],
@@ -542,11 +542,11 @@ describe('OffseasonPage', () => {
 
     await renderPage();
 
-    expect(container.textContent).toContain('On Clock: New York Yankees');
+    expect(container.textContent).toContain('On Clock: New York Tycoons');
     expect(container.textContent).toContain('Consecutive Passes 1/3');
     expect(container.textContent).toContain('Theo Reserve');
     expect(container.textContent).toContain('Offer-Back Queue');
-    expect(container.textContent).toContain('New York Yankees must offer offer-1 back to Boston Red Sox');
+    expect(container.textContent).toContain('New York Tycoons must offer offer-1 back to Boston Noreasters');
 
     await act(async () => {
       findButton('Pass Pick')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));

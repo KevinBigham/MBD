@@ -1313,7 +1313,7 @@ export const queryApi = {
   },
 
   getUserTeamId(): string {
-    return state?.userTeamId ?? 'nyy';
+    return state?.userTeamId ?? 'nym';
   },
 
   searchPlayers(query: string, limit: number = 20): PlayerDTO[] {

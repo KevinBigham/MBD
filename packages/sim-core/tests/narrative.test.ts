@@ -17,17 +17,17 @@ import type { NewsItem, GameEvent, GeneratedPlayer } from '../src/index.js';
 
 function makePlayer(seed: number): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  return generatePlayer(rng, 'SS', 'NYY', 'MLB');
+  return generatePlayer(rng, 'SS', 'NYT', 'MLB');
 }
 
 function makeGameResultEvent(player: GeneratedPlayer): GameEvent {
   return {
     type: 'game_result',
     data: {
-      winningTeamId: 'NYY',
+      winningTeamId: 'NYT',
       losingTeamId: 'BOS',
-      winningTeamName: 'Yankees',
-      losingTeamName: 'Red Sox',
+      winningTeamName: 'Tycoons',
+      losingTeamName: "Noreasters",
       starPlayerId: player.id,
       hits: 3,
       ab: 4,
@@ -61,7 +61,7 @@ function makeSampleNews(count: number): NewsItem[] {
       category: categories[i % categories.length]!,
       timestamp: `S1D${i}`,
       relatedPlayerIds: [`player-${i}`],
-      relatedTeamIds: ['NYY'],
+      relatedTeamIds: ['NYT'],
       read: i % 3 === 0, // Every third item is read
     });
   }
@@ -90,12 +90,12 @@ describe('generateNews', () => {
     const player = makePlayer(42);
     const events: GameEvent[] = [
       makeGameResultEvent(player),
-      makeEvent('injury', { playerId: player.id, teamId: 'NYY', teamName: 'Yankees', injury: 'hamstring strain', ilDays: 15 }, 1, 50),
-      makeEvent('trade', { player1Id: player.id, team1Id: 'NYY', team1Name: 'Yankees', team2Id: 'BOS', team2Name: 'Red Sox' }, 1, 55),
+      makeEvent('injury', { playerId: player.id, teamId: 'NYT', teamName: 'Tycoons', injury: 'hamstring strain', ilDays: 15 }, 1, 50),
+      makeEvent('trade', { player1Id: player.id, team1Id: 'NYT', team1Name: 'Tycoons', team2Id: 'BOS', team2Name: "Noreasters" }, 1, 55),
       makeEvent('extension', {
         playerId: player.id,
-        teamId: 'NYY',
-        teamName: 'Yankees',
+        teamId: 'NYT',
+        teamName: 'Tycoons',
         years: 8,
         totalValue: 280,
         outcome: 'accepted',
@@ -104,35 +104,35 @@ describe('generateNews', () => {
       }, 1, 90),
       makeEvent('qualifying_offer', {
         playerId: player.id,
-        teamId: 'NYY',
-        teamName: 'Yankees',
+        teamId: 'NYT',
+        teamName: 'Tycoons',
         amount: 21.1,
         outcome: 'rejected',
       }, 1, 161),
       makeEvent('coaching', {
         teamId: 'BOS',
-        teamName: 'Red Sox',
+        teamName: "Noreasters",
         coachName: 'Sam Walker',
         role: 'pitching_coach',
       }, 1, 72),
       makeEvent('development', {
         playerId: player.id,
         playerName: `${player.firstName} ${player.lastName}`,
-        teamId: 'NYY',
-        teamName: 'Yankees',
+        teamId: 'NYT',
+        teamName: 'Tycoons',
         level: 'AAA',
       }, 1, 68),
       makeEvent('rivalry', {
-        team1Id: 'NYY',
-        team1Name: 'Yankees',
+        team1Id: 'NYT',
+        team1Name: 'Tycoons',
         team2Id: 'BOS',
-        team2Name: 'Red Sox',
+        team2Name: "Noreasters",
         intensity: 76,
         playoffPosition: '1.5 games apart in the Wild Card race',
       }, 1, 101),
       makeEvent('rumor', {
-        teamId: 'NYY',
-        teamName: 'Yankees',
+        teamId: 'NYT',
+        teamName: 'Tycoons',
         targetPlayerId: player.id,
         daysToDeadline: 4,
         need: 'rotation help',
@@ -154,8 +154,8 @@ describe('generateNews', () => {
     const rng = new GameRNG(501);
     const event = makeEvent('extension', {
       playerId: player.id,
-      teamId: 'NYY',
-      teamName: 'Yankees',
+      teamId: 'NYT',
+      teamName: 'Tycoons',
       years: 8,
       totalValue: 280,
       outcome: 'accepted',
@@ -170,10 +170,10 @@ describe('generateNews', () => {
       category: 'extension',
       tag: 'BREAKING',
       relatedPlayerIds: [player.id],
-      relatedTeamIds: ['NYY'],
+      relatedTeamIds: ['NYT'],
       timestamp: 'S2D95',
     });
-    expect(item.headline).toContain('Yankees');
+    expect(item.headline).toContain('Tycoons');
     expect(item.body).toContain('$280.0M');
     expect(item.body).toContain('61-37 record');
     expect(item.body).toContain('W5 streak');
@@ -184,8 +184,8 @@ describe('generateNews', () => {
     const rng = new GameRNG(502);
     const event = makeEvent('qualifying_offer', {
       playerId: player.id,
-      teamId: 'NYY',
-      teamName: 'Yankees',
+      teamId: 'NYT',
+      teamName: 'Tycoons',
       amount: 21.1,
       outcome: 'rejected',
       record: '86-76',
@@ -197,7 +197,7 @@ describe('generateNews', () => {
       category: 'qualifying_offer',
       tag: 'BREAKING',
       relatedPlayerIds: [player.id],
-      relatedTeamIds: ['NYY'],
+      relatedTeamIds: ['NYT'],
     });
     expect(item.body).toContain('$21.1M');
     expect(item.body).toContain('free agency');
@@ -207,7 +207,7 @@ describe('generateNews', () => {
     const rng = new GameRNG(503);
     const event = makeEvent('coaching', {
       teamId: 'BOS',
-      teamName: 'Red Sox',
+      teamName: "Noreasters",
       coachName: 'Maggie Price',
       role: 'pitching_coach',
       playoffPosition: '3 games out of the Wild Card',
@@ -231,8 +231,8 @@ describe('generateNews', () => {
     const event = makeEvent('development', {
       playerId: player.id,
       playerName: `${player.firstName} ${player.lastName}`,
-      teamId: 'NYY',
-      teamName: 'Yankees',
+      teamId: 'NYT',
+      teamName: 'Tycoons',
       level: 'AAA',
       streak: '12-game hitting',
     }, 2, 64);
@@ -243,7 +243,7 @@ describe('generateNews', () => {
       category: 'development',
       tag: 'ANALYSIS',
       relatedPlayerIds: [player.id],
-      relatedTeamIds: ['NYY'],
+      relatedTeamIds: ['NYT'],
     });
     expect(item.headline).toContain('AAA');
     expect(item.body).toContain('AAA');
@@ -253,10 +253,10 @@ describe('generateNews', () => {
   it('generates rivalry coverage with both clubs attached', () => {
     const rng = new GameRNG(505);
     const event = makeEvent('rivalry', {
-      team1Id: 'NYY',
-      team1Name: 'Yankees',
+      team1Id: 'NYT',
+      team1Name: 'Tycoons',
       team2Id: 'BOS',
-      team2Name: 'Red Sox',
+      team2Name: "Noreasters",
       intensity: 84,
       playoffPosition: 'tied atop the division',
     }, 4, 122);
@@ -266,9 +266,9 @@ describe('generateNews', () => {
     expect(item).toMatchObject({
       category: 'rivalry',
       tag: 'ANALYSIS',
-      relatedTeamIds: ['NYY', 'BOS'],
+      relatedTeamIds: ['NYT', 'BOS'],
     });
-    expect(item.headline).toMatch(/Yankees|Red Sox/);
+    expect(item.headline).toMatch(/Tycoons|Noreasters/);
     expect(item.body).toContain('84');
     expect(item.body).toContain('tied atop the division');
   });
@@ -277,8 +277,8 @@ describe('generateNews', () => {
     const player = makePlayer(45);
     const rng = new GameRNG(506);
     const event = makeEvent('rumor', {
-      teamId: 'NYY',
-      teamName: 'Yankees',
+      teamId: 'NYT',
+      teamName: 'Tycoons',
       targetPlayerId: player.id,
       targetName: `${player.firstName} ${player.lastName}`,
       daysToDeadline: 5,
@@ -291,9 +291,9 @@ describe('generateNews', () => {
       category: 'rumor',
       tag: 'RUMOR',
       relatedPlayerIds: [player.id],
-      relatedTeamIds: ['NYY'],
+      relatedTeamIds: ['NYT'],
     });
-    expect(item.headline).toContain('Yankees');
+    expect(item.headline).toContain('Tycoons');
     expect(item.body).toContain('rumor traffic');
     expect(item.body).toContain('5 days to the deadline');
   });
@@ -301,8 +301,8 @@ describe('generateNews', () => {
   it('is deterministic for repeated rumor events with the same seed', () => {
     const player = makePlayer(46);
     const event = makeEvent('rumor', {
-      teamId: 'NYY',
-      teamName: 'Yankees',
+      teamId: 'NYT',
+      teamName: 'Tycoons',
       targetPlayerId: player.id,
       daysToDeadline: 3,
       need: 'rotation help',
@@ -318,8 +318,8 @@ describe('generateNews', () => {
     const player = makePlayer(47);
     const event = makeEvent('extension', {
       playerId: player.id,
-      teamId: 'NYY',
-      teamName: 'Yankees',
+      teamId: 'NYT',
+      teamName: 'Tycoons',
       years: 7,
       totalValue: 210,
       outcome: 'accepted',
@@ -418,7 +418,7 @@ describe('deduplicateNews', () => {
         category: 'injury',
         timestamp: 'S1D10',
         relatedPlayerIds: ['p1'],
-        relatedTeamIds: ['NYY'],
+        relatedTeamIds: ['NYT'],
         read: false,
       },
       {
@@ -429,7 +429,7 @@ describe('deduplicateNews', () => {
         category: 'injury',
         timestamp: 'S1D10',
         relatedPlayerIds: ['p1'],
-        relatedTeamIds: ['NYY'],
+        relatedTeamIds: ['NYT'],
         read: false,
       },
       {

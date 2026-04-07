@@ -30,9 +30,9 @@ describe('StandingsCard', () => {
         <StandingsCard
           standings={[
             {
-              teamId: 'nyy',
-              teamName: 'New York Yankees',
-              abbreviation: 'NYY',
+              teamId: 'nym',
+              teamName: 'New York Tycoons',
+              abbreviation: 'NYT',
               wins: 50,
               losses: 38,
               pct: '.568',
@@ -41,7 +41,7 @@ describe('StandingsCard', () => {
             },
             {
               teamId: 'bos',
-              teamName: 'Boston Red Sox',
+              teamName: 'Boston Noreasters',
               abbreviation: 'BOS',
               wins: 48,
               losses: 40,
@@ -50,13 +50,13 @@ describe('StandingsCard', () => {
               streak: 'L1',
             },
           ]}
-          userTeamId="nyy"
+          userTeamId="nym"
         />,
       );
     });
 
     expect(container.textContent).toContain('Standings');
-    expect(container.textContent).toContain('NYY');
+    expect(container.textContent).toContain('NYT');
     expect(container.textContent).toContain('BOS');
     expect(container.innerHTML).toContain('bg-accent-primary/10');
   });

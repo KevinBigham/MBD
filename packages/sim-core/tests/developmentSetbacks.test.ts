@@ -12,7 +12,7 @@ describe('development setbacks', () => {
   it('generates a deterministic positive hot streak when the seeded roll lands there', () => {
     let result = null;
     for (let seed = 1; seed < 500; seed += 1) {
-      const player = generatePlayer(new GameRNG(seed + 1000), 'SS', 'nyy', 'AA');
+      const player = generatePlayer(new GameRNG(seed + 1000), 'SS', 'nym', 'AA');
       const setback = checkDevelopmentSetback(new GameRNG(seed), player, 6, 5);
       if (setback?.type === 'hot_streak') {
         result = setback;
@@ -25,7 +25,7 @@ describe('development setbacks', () => {
   });
 
   it('applies and then recovers a negative setback modifier', () => {
-    const player = generatePlayer(new GameRNG(71), 'SS', 'nyy', 'AA');
+    const player = generatePlayer(new GameRNG(71), 'SS', 'nym', 'AA');
     const setback = {
       playerId: player.id,
       type: 'mental_block' as const,

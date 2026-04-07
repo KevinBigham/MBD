@@ -35,9 +35,9 @@ const HISTORICAL_RIVALRIES: Array<{
   intensity: number;
   reason: string;
 }> = [
-  { teamA: 'nyy', teamB: 'bos', intensity: 78, reason: 'Historic AL East feud' },
-  { teamA: 'lad', teamB: 'sf', intensity: 76, reason: 'Historic West Coast feud' },
-  { teamA: 'chc', teamB: 'stl', intensity: 72, reason: 'Historic NL Central feud' },
+  { teamA: 'nym', teamB: 'bos', intensity: 78, reason: 'Historic East Coast feud' },
+  { teamA: 'lax', teamB: 'sfb', intensity: 76, reason: 'Historic California feud' },
+  { teamA: 'chi', teamB: 'det', intensity: 72, reason: 'Historic Great Lakes feud' },
 ];
 
 function rivalryId(teamA: string, teamB: string): string {

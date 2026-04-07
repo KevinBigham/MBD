@@ -21,7 +21,7 @@ import type { GeneratedPlayer } from '../src/index.js';
 
 function makePlayer(seed: number, position: string = 'SS'): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  return generatePlayer(rng, position as any, 'NYY', 'MLB');
+  return generatePlayer(rng, position as any, 'NYT', 'MLB');
 }
 
 function makeExpiringPlayer(seed: number): GeneratedPlayer {
@@ -157,19 +157,19 @@ describe('simulateFullFreeAgency', () => {
     const market = createFreeAgencyMarket(1, players);
     const budgets = new Map([
       ['bos', 220],
-      ['tor', 5],
+      ['cha', 5],
     ]);
     const payrolls = new Map([
       ['bos', 20],
-      ['tor', 4.8],
+      ['cha', 4.8],
     ]);
     const needs = new Map([
       ['bos', new Map([['SS', 95]])],
-      ['tor', new Map([['SS', 10]])],
+      ['cha', new Map([['SS', 10]])],
     ]);
 
-    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
-    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
+    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nym');
+    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nym');
 
     expect(second).toEqual(first);
     expect(first.day).toBe(60);
@@ -186,7 +186,7 @@ describe('makeUserOffer', () => {
     const freeAgent = market.freeAgents[0]!;
 
     const result = makeUserOffer(market, {
-      teamId: 'nyy',
+      teamId: 'nym',
       playerId: freeAgent.player.id,
       years: 4,
       annualSalary: Number((freeAgent.marketValue * 0.77).toFixed(2)),
@@ -211,16 +211,16 @@ describe('simulateFADay', () => {
     const next = simulateFADay(
       new GameRNG(260),
       market,
-      new Map([['oak', 200], ['bos', 200]]),
-      new Map([['oak', 90], ['bos', 90]]),
+      new Map([['por', 200], ['bos', 200]]),
+      new Map([['por', 90], ['bos', 90]]),
       new Map([
-        ['oak', new Map([[player.position, 80]])],
+        ['por', new Map([[player.position, 80]])],
         ['bos', new Map([[player.position, 80]])],
       ]),
-      (teamId, playerId) => (teamId === 'oak' && playerId === player.id ? 78 : 55),
+      (teamId, playerId) => (teamId === 'por' && playerId === player.id ? 78 : 55),
     );
 
-    expect(next.signedPlayers[0]?.signedWith).toBe('oak');
+    expect(next.signedPlayers[0]?.signedWith).toBe('por');
   });
 });
 
@@ -242,7 +242,7 @@ describe('generateAIOffer', () => {
 
     const offer = generateAIOffer(
       new GameRNG(301),
-      'oak',
+      'por',
       player,
       125,
       92,

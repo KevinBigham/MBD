@@ -35,8 +35,8 @@ describe('SchedulePage', () => {
       day: 10,
       phase: 'regular_season',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 10,
       isSimulating: false,
@@ -85,7 +85,7 @@ describe('SchedulePage', () => {
         {
           day: 1,
           opponentId: 'bos',
-          opponentName: 'Boston Red Sox',
+          opponentName: 'Boston Noreasters',
           opponentAbbr: 'BOS',
           isHome: true,
           isCompleted: true,
@@ -97,7 +97,7 @@ describe('SchedulePage', () => {
         {
           day: 2,
           opponentId: 'bal',
-          opponentName: 'Baltimore Orioles',
+          opponentName: 'Baltimore Crab Cakes',
           opponentAbbr: 'BAL',
           isHome: false,
           isCompleted: false,
@@ -127,7 +127,7 @@ describe('SchedulePage', () => {
         {
           day: 1,
           opponentId: 'bos',
-          opponentName: 'Boston Red Sox',
+          opponentName: 'Boston Noreasters',
           opponentAbbr: 'BOS',
           isHome: true,
           isCompleted: true,
@@ -139,7 +139,7 @@ describe('SchedulePage', () => {
         {
           day: 2,
           opponentId: 'bal',
-          opponentName: 'Baltimore Orioles',
+          opponentName: 'Baltimore Crab Cakes',
           opponentAbbr: 'BAL',
           isHome: false,
           isCompleted: true,

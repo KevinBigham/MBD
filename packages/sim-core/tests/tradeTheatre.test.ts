@@ -33,7 +33,7 @@ describe('trade theatre narrative builders', () => {
   it('generates deterministic dialogue and chatter from stable seeds', () => {
     const build = () => ({
       dialogue: generateTradeDialogue(new GameRNG(71), {
-        teamName: 'Boston Red Sox',
+        teamName: 'Boston Noreasters',
         gmPersonality: 'analytical',
         mode: 'buyer',
         daysUntilDeadline: 4,
@@ -42,15 +42,15 @@ describe('trade theatre narrative builders', () => {
         negotiationType: 'proposal',
       }),
       chatter: generateTradeChatter(new GameRNG(71), {
-        userTeamName: 'New York Yankees',
+        userTeamName: 'New York Tycoons',
         userMode: 'buyer',
         daysUntilDeadline: 4,
         activeTeams: [
-          { teamId: 'bos', teamName: 'Boston Red Sox', mode: 'buyer' },
-          { teamId: 'sea', teamName: 'Seattle Mariners', mode: 'seller' },
+          { teamId: 'bos', teamName: 'Boston Noreasters', mode: 'buyer' },
+          { teamId: 'sea', teamName: 'Seattle Drizzle', mode: 'seller' },
         ],
         recentTradeSummaries: [
-          'Seattle Mariners sent Drew Heater to San Diego Padres for Miguel Prospect.',
+          'Seattle Drizzle sent Drew Heater to San Diego Surf Hounds for Miguel Prospect.',
         ],
       }),
     });
@@ -59,9 +59,9 @@ describe('trade theatre narrative builders', () => {
     const second = build();
 
     expect(second).toEqual(first);
-    expect(first.dialogue.headline).toContain('Boston Red Sox');
+    expect(first.dialogue.headline).toContain('Boston Noreasters');
     expect(first.dialogue.lines.length).toBe(3);
-    expect(first.chatter[0]?.headline).toContain('New York Yankees');
-    expect(first.chatter.some((item) => item.detail.includes('Seattle Mariners'))).toBe(true);
+    expect(first.chatter[0]?.headline).toContain('New York Tycoons');
+    expect(first.chatter.some((item) => item.detail.includes('Seattle Drizzle'))).toBe(true);
   });
 });

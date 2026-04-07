@@ -16,7 +16,7 @@ import {
 function createStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
   return {
     playerId: 'player-1',
-    teamId: 'nyy',
+    teamId: 'nym',
     pa: 0,
     ab: 0,
     hits: 0,
@@ -76,7 +76,7 @@ describe('advanced stats', () => {
 
   it('builds credible hitter and pitcher advanced stat lines', () => {
     const rng = new GameRNG(42);
-    const hitter = generatePlayer(rng.fork(), 'SS', 'nyy', 'MLB');
+    const hitter = generatePlayer(rng.fork(), 'SS', 'nym', 'MLB');
     const pitcher = generatePlayer(rng.fork(), 'SP', 'bos', 'MLB');
 
     const hitterStats = createStats({
@@ -126,7 +126,7 @@ describe('advanced stats', () => {
       leagueFip: 4.1,
       runsPerPlateAppearance: 0.12,
       teamParkFactors: new Map<string, number>([
-        ['nyy', 0.99],
+        ['nym', 0.99],
         ['bos', 1.01],
       ]),
     };

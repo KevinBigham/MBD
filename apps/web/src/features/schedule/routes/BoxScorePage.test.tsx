@@ -45,8 +45,8 @@ describe('BoxScorePage', () => {
       day: 10,
       phase: 'regular_season',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 10,
       isSimulating: false,
@@ -74,13 +74,13 @@ describe('BoxScorePage', () => {
       isReady: true,
       getGamePlayByPlay: vi.fn().mockResolvedValue({
         gameIndex: 0,
-        recap: 'A great game between NYY and BOS.',
+        recap: 'A great game between NYT and BOS.',
         highlights: [],
         plays: [
           { inning: 1, halfInning: 'top', text: 'Batter grounds out.', isHighlight: false },
         ],
         boxScore: {
-          homeTeamId: 'nyy',
+          homeTeamId: 'nym',
           awayTeamId: 'bos',
           homeScore: 5,
           awayScore: 3,
@@ -97,7 +97,7 @@ describe('BoxScorePage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('NYY');
+    expect(container.textContent).toContain('NYT');
     expect(container.textContent).toContain('BOS');
     expect(container.textContent).toContain('5');
     expect(container.textContent).toContain('3');
@@ -115,7 +115,7 @@ describe('BoxScorePage', () => {
           { inning: 1, halfInning: 'top', text: 'Jones homers to left.', isHighlight: true },
         ],
         boxScore: {
-          homeTeamId: 'nyy',
+          homeTeamId: 'nym',
           awayTeamId: 'bos',
           homeScore: 2,
           awayScore: 1,

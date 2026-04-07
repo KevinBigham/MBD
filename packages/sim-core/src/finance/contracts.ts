@@ -84,52 +84,47 @@ const MEDIUM_MARKET: MarketConfig = { size: 'medium', budgetMin: 200, budgetMax:
 const SMALL_MARKET: MarketConfig = { size: 'small', budgetMin: 150, budgetMax: 200 };
 
 const TEAM_MARKET_ALIASES: Record<string, string> = {
-  tbr: 'tb',
-  kcr: 'kc',
-  sdp: 'sd',
-  sfg: 'sf',
-  ana: 'laa',
-  mon: 'mtl',
+  kcf: 'kc',
+  nyt: 'nym',
 };
 
 /** Team-to-market-config mapping */
 export const TEAM_MARKETS: Record<string, MarketConfig> = {
   // Large markets
-  nyy: LARGE_MARKET,
-  lad: LARGE_MARKET,
-  nym: LARGE_MARKET,
-  chc: LARGE_MARKET,
-  bos: LARGE_MARKET,
-  sf:  LARGE_MARKET,
-  phi: LARGE_MARKET,
-  hou: LARGE_MARKET,
+  nym: LARGE_MARKET,   // New York Tycoons
+  chi: LARGE_MARKET,   // Chicago Deep Dish
+  lax: LARGE_MARKET,   // Los Angeles Sunset Strip
+  hou: LARGE_MARKET,   // Houston Space Cowboys
+  dal: LARGE_MARKET,   // Dallas Lone Stars
+  phi: LARGE_MARKET,   // Philadelphia Liberty Bells
+  bos: LARGE_MARKET,   // Boston Noreasters
+  sfb: LARGE_MARKET,   // San Francisco Fog Horns
   // Medium markets
-  atl: MEDIUM_MARKET,
-  stl: MEDIUM_MARKET,
-  tex: MEDIUM_MARKET,
-  sd:  MEDIUM_MARKET,
-  sea: MEDIUM_MARKET,
-  laa: MEDIUM_MARKET,
-  tor: MEDIUM_MARKET,
-  wsh: MEDIUM_MARKET,
-  min: MEDIUM_MARKET,
-  cle: MEDIUM_MARKET,
-  det: MEDIUM_MARKET,
-  ari: MEDIUM_MARKET,
-  col: MEDIUM_MARKET,
+  wsh: MEDIUM_MARKET,  // Washington Monuments
+  mia: MEDIUM_MARKET,  // Miami Hurricanes
+  atl: MEDIUM_MARKET,  // Atlanta Peach Kings
+  det: MEDIUM_MARKET,  // Detroit Motor Kings
+  cle: MEDIUM_MARKET,  // Cleveland Forge
+  msp: MEDIUM_MARKET,  // Minneapolis Frost Giants
+  stl: MEDIUM_MARKET,  // St. Louis Archers
+  sea: MEDIUM_MARKET,  // Seattle Drizzle
+  den: MEDIUM_MARKET,  // Denver Altitude
+  phx: MEDIUM_MARKET,  // Phoenix Dust Devils
+  sdg: MEDIUM_MARKET,  // San Diego Surf Hounds
+  kc:  MEDIUM_MARKET,  // Kansas City BBQ Fountains
+  nas: MEDIUM_MARKET,  // Nashville Honky Tonks
+  sat: MEDIUM_MARKET,  // San Antonio Riverwalk
   // Small markets
-  mil: SMALL_MARKET,
-  pit: SMALL_MARKET,
-  cin: SMALL_MARKET,
-  tb:  SMALL_MARKET,
-  oak: SMALL_MARKET,
-  kc:  SMALL_MARKET,
-  bal: SMALL_MARKET,
-  mia: SMALL_MARKET,
-  cws: SMALL_MARKET,
-  por: SMALL_MARKET,
-  // Special
-  mtl: { size: 'small', budgetMin: 155, budgetMax: 165 },
+  bal: SMALL_MARKET,   // Baltimore Crab Cakes
+  pit: SMALL_MARKET,   // Pittsburgh Smokestack
+  col: SMALL_MARKET,   // Columbus Buckeyes
+  mil: SMALL_MARKET,   // Milwaukee Suds
+  ind: SMALL_MARKET,   // Indianapolis Speedsters
+  cha: SMALL_MARKET,   // Charlotte Hornets
+  orl: SMALL_MARKET,   // Orlando Thunder
+  ral: SMALL_MARKET,   // Raleigh Pines
+  aus: SMALL_MARKET,   // Austin Bat Colony
+  por: SMALL_MARKET,   // Portland Sasquatch
 };
 
 function normalizeTeamMarketKey(teamId: string): string {

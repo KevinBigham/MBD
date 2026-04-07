@@ -30,48 +30,48 @@ function entry(teamId: string, wins: number, losses: number): StandingsEntry {
 function standingsFixture(): Record<string, StandingsEntry[]> {
   return {
     AL_EAST: [
-      entry('nyy', 101, 61),
+      entry('nym', 101, 61),
       entry('bal', 95, 67),
       entry('bos', 89, 73),
-      entry('tb', 84, 78),
-      entry('tor', 78, 84),
+      entry('wsh', 84, 78),
+      entry('phi', 78, 84),
     ],
     AL_CENTRAL: [
       entry('cle', 96, 66),
       entry('det', 90, 72),
-      entry('min', 88, 74),
-      entry('kc', 80, 82),
-      entry('cws', 72, 90),
+      entry('chi', 88, 74),
+      entry('col', 80, 82),
+      entry('pit', 72, 90),
     ],
     AL_WEST: [
-      entry('hou', 98, 64),
-      entry('sea', 93, 69),
-      entry('tex', 87, 75),
-      entry('por', 83, 79),
-      entry('laa', 76, 86),
-      entry('oak', 70, 92),
+      entry('kc', 98, 64),
+      entry('msp', 93, 69),
+      entry('stl', 87, 75),
+      entry('ind', 83, 79),
+      entry('mil', 76, 86),
+      entry('nas', 70, 92),
     ],
     NL_EAST: [
       entry('atl', 102, 60),
-      entry('phi', 98, 64),
-      entry('nym', 86, 76),
-      entry('mtl', 82, 80),
+      entry('cha', 98, 64),
+      entry('orl', 86, 76),
+      entry('ral', 82, 80),
       entry('mia', 74, 88),
-      entry('wsh', 68, 94),
     ],
     NL_CENTRAL: [
-      entry('mil', 97, 65),
-      entry('chc', 91, 71),
-      entry('cin', 85, 77),
-      entry('stl', 79, 83),
-      entry('pit', 71, 91),
+      entry('hou', 97, 65),
+      entry('dal', 91, 71),
+      entry('sat', 85, 77),
+      entry('den', 79, 83),
+      entry('aus', 71, 91),
     ],
     NL_WEST: [
-      entry('lad', 100, 62),
-      entry('sd', 94, 68),
-      entry('ari', 89, 73),
-      entry('sf', 81, 81),
-      entry('col', 66, 96),
+      entry('lax', 100, 62),
+      entry('sdg', 94, 68),
+      entry('phx', 89, 73),
+      entry('sea', 81, 81),
+      entry('sfb', 74, 88),
+      entry('por', 66, 96),
     ],
   };
 }
@@ -97,9 +97,9 @@ describe('playoff bracket state', () => {
       low: `${series.lowerSeed.seed}-${series.lowerSeed.teamId}`,
     }))).toEqual([
       { id: 'AL-WC-1', round: 'WILD_CARD', league: 'AL', bestOf: 3, high: '3-cle', low: '6-det' },
-      { id: 'AL-WC-2', round: 'WILD_CARD', league: 'AL', bestOf: 3, high: '4-bal', low: '5-sea' },
-      { id: 'NL-WC-1', round: 'WILD_CARD', league: 'NL', bestOf: 3, high: '3-mil', low: '6-chc' },
-      { id: 'NL-WC-2', round: 'WILD_CARD', league: 'NL', bestOf: 3, high: '4-phi', low: '5-sd' },
+      { id: 'AL-WC-2', round: 'WILD_CARD', league: 'AL', bestOf: 3, high: '4-bal', low: '5-msp' },
+      { id: 'NL-WC-1', round: 'WILD_CARD', league: 'NL', bestOf: 3, high: '3-hou', low: '6-dal' },
+      { id: 'NL-WC-2', round: 'WILD_CARD', league: 'NL', bestOf: 3, high: '4-cha', low: '5-sdg' },
     ]);
 
     expect(preview.map((series) => ({
@@ -128,12 +128,12 @@ describe('playoff bracket state', () => {
   it('sims one playoff game with key performers and updates series score', () => {
     const rng = new GameRNG(23);
     const players = generateLeaguePlayers(rng.fork(), [
-      'nyy', 'bal', 'bos', 'tb', 'tor',
-      'cle', 'det', 'min', 'kc', 'cws',
-      'hou', 'sea', 'tex', 'por', 'laa', 'oak',
-      'atl', 'phi', 'nym', 'mtl', 'mia', 'wsh',
-      'mil', 'chc', 'cin', 'stl', 'pit',
-      'lad', 'sd', 'ari', 'sf', 'col',
+      'nym', 'bal', 'bos', 'wsh', 'phi',
+      'cle', 'det', 'chi', 'col', 'pit',
+      'kc', 'msp', 'stl', 'ind', 'mil', 'nas',
+      'atl', 'cha', 'orl', 'ral', 'mia',
+      'hou', 'dal', 'sat', 'den', 'aus',
+      'lax', 'sdg', 'phx', 'sea', 'sfb', 'por',
     ]);
     const bracket = initializePlayoffBracket(standingsFixture(), rng.fork());
 
@@ -150,12 +150,12 @@ describe('playoff bracket state', () => {
   it('advances rounds, preserves completed-series history, and finishes the bracket', () => {
     const rng = new GameRNG(31);
     const players = generateLeaguePlayers(rng.fork(), [
-      'nyy', 'bal', 'bos', 'tb', 'tor',
-      'cle', 'det', 'min', 'kc', 'cws',
-      'hou', 'sea', 'tex', 'por', 'laa', 'oak',
-      'atl', 'phi', 'nym', 'mtl', 'mia', 'wsh',
-      'mil', 'chc', 'cin', 'stl', 'pit',
-      'lad', 'sd', 'ari', 'sf', 'col',
+      'nym', 'bal', 'bos', 'wsh', 'phi',
+      'cle', 'det', 'chi', 'col', 'pit',
+      'kc', 'msp', 'stl', 'ind', 'mil', 'nas',
+      'atl', 'cha', 'orl', 'ral', 'mia',
+      'hou', 'dal', 'sat', 'den', 'aus',
+      'lax', 'sdg', 'phx', 'sea', 'sfb', 'por',
     ]);
     let bracket = initializePlayoffBracket(standingsFixture(), rng.fork());
 

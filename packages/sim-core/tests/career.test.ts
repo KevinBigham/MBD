@@ -20,15 +20,15 @@ function makeStandings() {
 
 describe('GM career system', () => {
   it('initializes a career ledger and records season results deterministically', () => {
-    const career = initializeGMCareer(new GameRNG(44), 'nyy', 'Alex Rivera', 1);
+    const career = initializeGMCareer(new GameRNG(44), 'nym', 'Alex Rivera', 1);
     const updated = recordSeasonResult(career, 1, 94, 68, 'World Series champion');
 
-    expect(career.currentTeamId).toBe('nyy');
+    expect(career.currentTeamId).toBe('nym');
     expect(career.careerHistory).toHaveLength(1);
     expect(updated.overallRecord).toEqual({ wins: 94, losses: 68 });
     expect(updated.championships).toBe(1);
     expect(updated.careerHistory[0]).toMatchObject({
-      teamId: 'nyy',
+      teamId: 'nym',
       seasons: 1,
       championships: 1,
       record: { wins: 94, losses: 68 },
@@ -37,7 +37,7 @@ describe('GM career system', () => {
   });
 
   it('creates better job markets for stronger reputations', () => {
-    const baseline = initializeGMCareer(new GameRNG(17), 'oak', 'Jamie Porter', 3);
+    const baseline = initializeGMCareer(new GameRNG(17), 'por', 'Jamie Porter', 3);
     const lowRep = { ...baseline, reputation: 28 };
     const highRep = { ...baseline, reputation: 82 };
     const standings = makeStandings();
@@ -54,7 +54,7 @@ describe('GM career system', () => {
 
   it('records firings, allows a new job, and keeps legacy scoring stable', () => {
     const career = recordSeasonResult(
-      initializeGMCareer(new GameRNG(71), 'nyy', 'Taylor Hughes', 2),
+      initializeGMCareer(new GameRNG(71), 'nym', 'Taylor Hughes', 2),
       2,
       88,
       74,
@@ -64,7 +64,7 @@ describe('GM career system', () => {
     const rehired = applyForJob(fired, 'bos', 3);
 
     expect(fired.careerHistory[0]).toMatchObject({
-      teamId: 'nyy',
+      teamId: 'nym',
       firedSeason: 2,
       firedReason: 'Owner lost faith in the direction.',
     });

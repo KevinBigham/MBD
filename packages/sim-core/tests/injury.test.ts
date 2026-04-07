@@ -18,7 +18,7 @@ import type { Injury, GeneratedPlayer } from '../src/index.js';
 
 function makeDurableHitter(seed: number): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  const player = generatePlayer(rng, 'CF', 'NYY', 'MLB');
+  const player = generatePlayer(rng, 'CF', 'NYT', 'MLB');
   return {
     ...player,
     age: 25,
@@ -175,7 +175,7 @@ describe('describeInjury', () => {
 describe('processInjuries', () => {
   it('returns a map of injuries for a roster', () => {
     const rng1 = new GameRNG(42);
-    const roster = generateTeamRoster(rng1, 'NYY');
+    const roster = generateTeamRoster(rng1, 'NYT');
     const mlbPlayers = roster.filter((p) => p.rosterStatus === 'MLB');
     const rng2 = new GameRNG(99);
     const injuries = processInjuries(rng2, mlbPlayers);

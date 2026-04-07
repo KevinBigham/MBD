@@ -36,7 +36,7 @@ function createSnapshot(): GameSnapshot {
     season: 3,
     day: 97,
     phase: 'regular',
-    userTeamId: 'nyy',
+    userTeamId: 'nym',
     players: [],
     schedule: [],
     seasonState: {
@@ -90,8 +90,8 @@ function createSnapshot(): GameSnapshot {
       seasonHistory: [
         {
           season: 2,
-          championTeamId: 'nyy',
-          runnerUpTeamId: 'lad',
+          championTeamId: 'nym',
+          runnerUpTeamId: 'lax',
           worldSeriesRecord: '4-2',
           summary: 'New York finished the job.',
           awards: [],
@@ -151,9 +151,9 @@ function createSnapshot(): GameSnapshot {
       difficulty: 'standard',
       playMode: 'standard',
       createdAt: 'S3D97',
-      teamId: 'nyy',
-      teamName: 'New York Yankees',
-      teamAbbreviation: 'NYY',
+      teamId: 'nym',
+      teamName: 'New York Tycoons',
+      teamAbbreviation: 'NYT',
       teamDivision: 'AL East',
       onboarding: {
         welcomeBriefingSeen: true,
@@ -348,7 +348,7 @@ describe('saveSystem helpers', () => {
         season: 5,
         day: 12,
         phase: 'offseason',
-        userTeamId: 'nyy',
+        userTeamId: 'nym',
         players: [],
         schedule: [],
         seasonState: {
@@ -399,14 +399,14 @@ describe('saveSystem helpers', () => {
               season: 4,
               award: 'MVP',
               playerId: 'player-1',
-              teamId: 'nyy',
+              teamId: 'nym',
               summary: 'Carried the lineup.',
             },
           ],
           seasonHistory: [
             {
               season: 4,
-              championTeamId: 'nyy',
+              championTeamId: 'nym',
               summary: 'Won it all.',
               awards: [],
               keyMoments: ['Wrapped up the title.'],

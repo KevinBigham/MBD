@@ -23,7 +23,7 @@ import type { ContractDetail, GeneratedPlayer } from '../src/index.js';
 
 function makePlayer(seed: number, position: string = 'SS'): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  return generatePlayer(rng, position as any, 'NYY', 'MLB');
+  return generatePlayer(rng, position as any, 'NYT', 'MLB');
 }
 
 // ---------------------------------------------------------------------------
@@ -84,9 +84,9 @@ describe('resolveArbitration', () => {
 describe('calculateTeamPayroll', () => {
   it('sums salaries correctly for a team', () => {
     const rng = new GameRNG(42);
-    const roster = generateTeamRoster(rng, 'NYY');
-    const payroll = calculateTeamPayroll('NYY', roster);
-    expect(payroll.teamId).toBe('NYY');
+    const roster = generateTeamRoster(rng, 'NYT');
+    const payroll = calculateTeamPayroll('NYT', roster);
+    expect(payroll.teamId).toBe('NYT');
     expect(payroll.totalPayroll).toBeGreaterThan(0);
     expect(payroll.mlbPayroll).toBeGreaterThanOrEqual(0);
     expect(payroll.minorsPayroll).toBeGreaterThanOrEqual(0);
@@ -118,7 +118,7 @@ describe('calculateLuxuryTax', () => {
 
 describe('getTeamBudget', () => {
   it('returns different amounts for large vs small market', () => {
-    const largeBudget = getTeamBudget('nyy');
+    const largeBudget = getTeamBudget('nym');
     const smallBudget = getTeamBudget('pit');
     expect(largeBudget).toBeGreaterThan(smallBudget);
   });
@@ -135,11 +135,9 @@ describe('getTeamBudget', () => {
   });
 
   it('normalizes legacy alias keys to the canonical team budget', () => {
-    expect(getTeamBudget('TBR')).toBe(getTeamBudget('tb'));
-    expect(getTeamBudget('KCR')).toBe(getTeamBudget('kc'));
-    expect(getTeamBudget('SDP')).toBe(getTeamBudget('sd'));
-    expect(getTeamBudget('SFG')).toBe(getTeamBudget('sf'));
-    expect(getTeamBudget('ANA')).toBe(getTeamBudget('laa'));
+    expect(getTeamBudget('ORL')).toBe(getTeamBudget('orl'));
+    expect(getTeamBudget('KCF')).toBe(getTeamBudget('kc'));
+    expect(getTeamBudget('NYT')).toBe(getTeamBudget('nym'));
   });
 });
 
@@ -147,7 +145,7 @@ describe('advanceContracts', () => {
   it('decrements yearsRemaining', () => {
     const contracts: ContractDetail[] = [
       {
-        playerId: 'p1', teamId: 'NYY', years: 3, yearsRemaining: 3,
+        playerId: 'p1', teamId: 'NYT', years: 3, yearsRemaining: 3,
         annualSalary: 10, totalValue: 30, noTradeClause: false,
         playerOption: false, teamOption: false, signingBonus: 0,
         yearSalaries: [10, 10, 10], status: 'active',
@@ -161,7 +159,7 @@ describe('advanceContracts', () => {
   it('marks contract as expired when yearsRemaining reaches 0', () => {
     const contracts: ContractDetail[] = [
       {
-        playerId: 'p1', teamId: 'NYY', years: 1, yearsRemaining: 1,
+        playerId: 'p1', teamId: 'NYT', years: 1, yearsRemaining: 1,
         annualSalary: 5, totalValue: 5, noTradeClause: false,
         playerOption: false, teamOption: false, signingBonus: 0,
         yearSalaries: [5], status: 'active',
@@ -176,14 +174,14 @@ describe('advanceContracts', () => {
 describe('getArbEligiblePlayers', () => {
   it('filters correctly by service time', () => {
     const rng = new GameRNG(42);
-    const roster = generateTeamRoster(rng, 'NYY');
+    const roster = generateTeamRoster(rng, 'NYT');
     const mlbPlayers = roster.filter((p) => p.rosterStatus === 'MLB');
     const serviceTime = new Map<string, number>();
     mlbPlayers.forEach((p, i) => {
       // Give alternating service times: some arb-eligible, some not
       serviceTime.set(p.id, i % 2 === 0 ? 4 : 1);
     });
-    const eligible = getArbEligiblePlayers(roster, 'NYY', serviceTime);
+    const eligible = getArbEligiblePlayers(roster, 'NYT', serviceTime);
     // All eligible should have service time between 3 and 6
     for (const p of eligible) {
       const years = serviceTime.get(p.id) ?? 0;

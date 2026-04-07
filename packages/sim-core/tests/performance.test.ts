@@ -14,7 +14,7 @@ function createArchiveEntry(
     season,
     standings: [
       {
-        teamId: 'nyy',
+        teamId: 'nym',
         wins: 90 - (season % 7),
         losses: 72 + (season % 7),
         divisionRank: 1,
@@ -31,8 +31,8 @@ function createArchiveEntry(
     playoffSeries: [
       {
         round: 'World Series',
-        winnerTeamId: 'nyy',
-        loserTeamId: 'lad',
+        winnerTeamId: 'nym',
+        loserTeamId: 'lax',
         result: '4-2',
       },
     ],
@@ -42,7 +42,7 @@ function createArchiveEntry(
         award: 'MVP',
         league: 'MLB',
         playerId: `mvp-${season}`,
-        teamId: 'nyy',
+        teamId: 'nym',
         summary: `MVP for season ${season}`,
       },
       {
@@ -50,24 +50,24 @@ function createArchiveEntry(
         award: 'CY_YOUNG',
         league: 'MLB',
         playerId: `cy-${season}`,
-        teamId: 'nyy',
+        teamId: 'nym',
         summary: `Cy Young for season ${season}`,
       },
     ],
     statLeaders: {
-      hr: [{ playerId: `slugger-${season}`, teamId: 'nyy', value: '44', summary: `Slugger ${season} hit 44 HR.` }],
-      rbi: [{ playerId: `runproducer-${season}`, teamId: 'nyy', value: '121', summary: `Run Producer ${season} drove in 121 runs.` }],
-      avg: [{ playerId: `bat-${season}`, teamId: 'nyy', value: '.321', summary: `Bat ${season} hit .321.` }],
-      era: [{ playerId: `ace-${season}`, teamId: 'nyy', value: '2.81', summary: `Ace ${season} posted a 2.81 ERA.` }],
-      k: [{ playerId: `k-${season}`, teamId: 'nyy', value: '241', summary: `Strikeout ${season} recorded 241 K.` }],
-      w: [{ playerId: `wins-${season}`, teamId: 'nyy', value: '19', summary: `Winner ${season} won 19 games.` }],
+      hr: [{ playerId: `slugger-${season}`, teamId: 'nym', value: '44', summary: `Slugger ${season} hit 44 HR.` }],
+      rbi: [{ playerId: `runproducer-${season}`, teamId: 'nym', value: '121', summary: `Run Producer ${season} drove in 121 runs.` }],
+      avg: [{ playerId: `bat-${season}`, teamId: 'nym', value: '.321', summary: `Bat ${season} hit .321.` }],
+      era: [{ playerId: `ace-${season}`, teamId: 'nym', value: '2.81', summary: `Ace ${season} posted a 2.81 ERA.` }],
+      k: [{ playerId: `k-${season}`, teamId: 'nym', value: '241', summary: `Strikeout ${season} recorded 241 K.` }],
+      w: [{ playerId: `wins-${season}`, teamId: 'nym', value: '19', summary: `Winner ${season} won 19 games.` }],
     },
     transactions: [
       {
         headline: `Blockbuster ${season}`,
         summary: `Major move in season ${season}`,
         playerIds: [`trade-${season}`],
-        teamIds: ['nyy', 'bos'],
+        teamIds: ['nym', 'bos'],
         impactScore: 80,
       },
     ],
@@ -76,19 +76,19 @@ function createArchiveEntry(
         pickNumber: 1,
         playerId: `pick-${season}`,
         playerName: `Pick ${season}`,
-        teamId: 'nyy',
+        teamId: 'nym',
         currentStatus: 'MLB',
       },
     ],
     financials: [
       {
-        teamId: 'nyy',
+        teamId: 'nym',
         payroll: 210,
         budget: 225,
       },
     ],
     userSummary: {
-      teamId: 'nyy',
+      teamId: 'nym',
       record: '90-72',
       playoffResult: 'Won World Series',
       storylines: [`Season ${season} title run`],
@@ -106,7 +106,7 @@ function createSnapshot(): GameSnapshot {
     season: 25,
     day: 97,
     phase: 'regular',
-    userTeamId: 'nyy',
+    userTeamId: 'nym',
     players: [],
     schedule: [],
     seasonState: {
@@ -184,7 +184,7 @@ function createSnapshot(): GameSnapshot {
         {
           id: 'watcher-old',
           type: 'trade_aftershock',
-          targetTeamId: 'nyy',
+          targetTeamId: 'nym',
           createdSeason: 18,
           createdDay: 1,
           expiresSeason: 19,
@@ -202,7 +202,7 @@ function createSnapshot(): GameSnapshot {
       },
       scoutConflicts: Array.from({ length: 102 }, (_, index) => ({
         prospectId: `prospect-${index}`,
-        teamId: 'nyy',
+        teamId: 'nym',
         createdSeason: 24,
         divergence: 20 - (index % 5),
         opinions: [],
@@ -218,7 +218,7 @@ function createSnapshot(): GameSnapshot {
         stats: [],
         highlights: [],
         generatedAt: `S${index + 1}D1`,
-        teamId: 'nyy',
+        teamId: 'nym',
         season: index + 1,
         textSummary: `Card ${index}`,
       })),
@@ -279,9 +279,9 @@ function createSnapshot(): GameSnapshot {
       difficulty: 'standard',
       playMode: 'standard',
       createdAt: 'S25D97',
-      teamId: 'nyy',
-      teamName: 'New York Yankees',
-      teamAbbreviation: 'NYY',
+      teamId: 'nym',
+      teamName: 'New York Tycoons',
+      teamAbbreviation: 'NYT',
       teamDivision: 'AL East',
       onboarding: {
         welcomeBriefingSeen: true,
@@ -315,13 +315,13 @@ describe('performance snapshot helpers', () => {
     expect(archived.narrative.archivedSeasons).toHaveLength(14);
     expect(archived.narrative.archivedSeasons[0]).toMatchObject({
       season: 1,
-      championTeamId: 'nyy',
+      championTeamId: 'nym',
       championshipWon: true,
       playoffResult: 'Won World Series',
       userRecord: { wins: 90, losses: 72 },
     });
     expect(archived.narrative.archivedSeasons[0]?.standings[0]).toMatchObject({
-      teamId: 'nyy',
+      teamId: 'nym',
       wins: expect.any(Number),
       losses: expect.any(Number),
       divisionRank: 1,

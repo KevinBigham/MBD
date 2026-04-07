@@ -48,7 +48,7 @@ function makePlayer(overrides: Partial<GeneratedPlayer>): GeneratedPlayer {
     },
     rosterStatus: 'AA',
     developmentPhase: 'Prospect',
-    teamId: 'nyy',
+    teamId: 'nym',
     nationality: 'latin',
     overallRating: 220,
     potentialRating: 310,
@@ -84,8 +84,8 @@ describe('initializePlayerDevelopmentProfile', () => {
 describe('runMonthlyDevelopmentCheckpoint', () => {
   it('records monthly development reports and processed months', () => {
     const player = makePlayer({});
-    const staff = new Map([['nyy', generateCoachingStaff(new GameRNG(21), 'nyy')]]);
-    const state = createMinorLeagueState(['nyy'], 1);
+    const staff = new Map([['nym', generateCoachingStaff(new GameRNG(21), 'nym')]]);
+    const state = createMinorLeagueState(['nym'], 1);
 
     const result = runMonthlyDevelopmentCheckpoint(
       new GameRNG(22),
@@ -104,14 +104,14 @@ describe('runMonthlyDevelopmentCheckpoint', () => {
 
   it('produces stronger progress under better coaching', () => {
     const player = makePlayer({});
-    const strongStaff = new Map([['nyy', generateCoachingStaff(new GameRNG(31), 'nyy')]]);
-    const weakStaff = new Map([['nyy', generateCoachingStaff(new GameRNG(32), 'nyy').map((coach) => ({
+    const strongStaff = new Map([['nym', generateCoachingStaff(new GameRNG(31), 'nym')]]);
+    const weakStaff = new Map([['nym', generateCoachingStaff(new GameRNG(32), 'nym').map((coach) => ({
       ...coach,
       teachingAbility: 0.35,
       developmentBonus: 0.01,
       personalityFit: 0.4,
     }))]]);
-    const baselineState = createMinorLeagueState(['nyy'], 1);
+    const baselineState = createMinorLeagueState(['nym'], 1);
 
     const strong = runMonthlyDevelopmentCheckpoint(
       new GameRNG(33),
@@ -139,14 +139,14 @@ describe('runMonthlyDevelopmentCheckpoint', () => {
 describe('reconcileDevelopmentPipeline', () => {
   it('keeps annual reconciliation within the player potential band', () => {
     const player = makePlayer({ ceiling: 245, floor: 205, overallRating: 220 });
-    const staff = new Map([['nyy', generateCoachingStaff(new GameRNG(41), 'nyy')]]);
+    const staff = new Map([['nym', generateCoachingStaff(new GameRNG(41), 'nym')]]);
     const seededState = runMonthlyDevelopmentCheckpoint(
       new GameRNG(42),
       1,
       1,
       [player],
       staff,
-      createMinorLeagueState(['nyy'], 1),
+      createMinorLeagueState(['nym'], 1),
     ).state;
 
     const reconciled = reconcileDevelopmentPipeline(
@@ -181,7 +181,7 @@ describe('getPositionConversionTargets', () => {
 describe('getBreakoutProbability', () => {
   it('improves breakout odds with stronger coaching support', () => {
     const player = makePlayer({});
-    const strongStaff = generateCoachingStaff(new GameRNG(51), 'nyy');
+    const strongStaff = generateCoachingStaff(new GameRNG(51), 'nym');
     const weakStaff = strongStaff.map((coach) => ({
       ...coach,
       teachingAbility: 0.3,

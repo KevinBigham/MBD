@@ -16,9 +16,9 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 
 vi.mock('@mbd/sim-core', () => ({
   getTeamById: vi.fn((teamId: string) => {
-    if (teamId === 'oak') return { city: 'Oakland', name: 'Athletics', abbreviation: 'OAK' };
-    if (teamId === 'cws') return { city: 'Chicago', name: 'White Sox', abbreviation: 'CWS' };
-    if (teamId === 'lad') return { city: 'Los Angeles', name: 'Dodgers', abbreviation: 'LAD' };
+    if (teamId === 'por') return { city: 'Oakland', name: 'Sasquatch', abbreviation: 'POR' };
+    if (teamId === 'col') return { city: 'Chicago', name: 'Buckeyes', abbreviation: 'CLB' };
+    if (teamId === 'lax') return { city: 'Los Angeles', name: 'Sunset Strip', abbreviation: 'LAX' };
     return null;
   }),
 }));
@@ -38,7 +38,7 @@ const MOCK_CATALOG = [
     difficulty: 'hard',
     maxSeasons: 5,
     requiresCareerMode: false,
-    startingTeamId: 'oak',
+    startingTeamId: 'por',
   },
   {
     id: 'rebuild',
@@ -47,7 +47,7 @@ const MOCK_CATALOG = [
     difficulty: 'standard',
     maxSeasons: 3,
     requiresCareerMode: false,
-    startingTeamId: 'cws',
+    startingTeamId: 'col',
   },
   {
     id: 'dynasty',
@@ -56,7 +56,7 @@ const MOCK_CATALOG = [
     difficulty: 'legendary',
     maxSeasons: 5,
     requiresCareerMode: false,
-    startingTeamId: 'lad',
+    startingTeamId: 'lax',
   },
 ];
 
@@ -83,8 +83,8 @@ describe('ScenarioCatalogPage', () => {
       day: 1,
       phase: 'regular_season',
       isInitialized: true,
-      userTeamId: 'oak',
-      teamName: 'Athletics',
+      userTeamId: 'por',
+      teamName: 'Sasquatch',
       gmName: 'Kevin Bigham',
       playerCount: 780,
       gamesPlayed: 0,

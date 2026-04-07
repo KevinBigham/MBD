@@ -16,10 +16,10 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 
 vi.mock('@mbd/sim-core', () => ({
   getTeamById: vi.fn((teamId: string) => {
-    if (teamId === 'nyy') return { city: 'New York', name: 'Yankees', abbreviation: 'NYY' };
-    if (teamId === 'bos') return { city: 'Boston', name: 'Red Sox', abbreviation: 'BOS' };
-    if (teamId === 'lad') return { city: 'Los Angeles', name: 'Dodgers', abbreviation: 'LAD' };
-    if (teamId === 'sfg') return { city: 'San Francisco', name: 'Giants', abbreviation: 'SFG' };
+    if (teamId === 'nym') return { city: 'New York', name: 'Tycoons', abbreviation: 'NYT' };
+    if (teamId === 'bos') return { city: 'Boston', name: "Noreasters", abbreviation: 'BOS' };
+    if (teamId === 'lax') return { city: 'Los Angeles', name: 'Sunset Strip', abbreviation: 'LAX' };
+    if (teamId === 'sfg') return { city: 'San Francisco', name: 'Fog Horns', abbreviation: 'SFB' };
     return null;
   }),
 }));
@@ -34,7 +34,7 @@ const mockedUseGameStore = vi.mocked(useGameStore);
 const MOCK_RIVALRIES = [
   {
     id: 'nyy-bos',
-    teamA: 'nyy',
+    teamA: 'nym',
     teamB: 'bos',
     intensity: 85,
     summary: 'The greatest rivalry in baseball.',
@@ -54,7 +54,7 @@ const MOCK_RIVALRIES = [
   },
   {
     id: 'lad-sfg',
-    teamA: 'lad',
+    teamA: 'lax',
     teamB: 'sfg',
     intensity: 35,
     summary: 'West coast classic.',
@@ -85,8 +85,8 @@ describe('RivalriesPage', () => {
       day: 1,
       phase: 'regular_season',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       gmName: 'Kevin Bigham',
       playerCount: 780,
       gamesPlayed: 0,
@@ -129,7 +129,7 @@ describe('RivalriesPage', () => {
     expect(container.textContent).toContain('Rivalry Watch');
     expect(container.textContent).toContain('1');
     expect(container.textContent).toContain('active');
-    expect(container.textContent).toContain('NYY');
+    expect(container.textContent).toContain('NYT');
     expect(container.textContent).toContain('BOS');
     expect(container.textContent).toContain('HEATED 85');
     expect(container.textContent).toContain('historical');
@@ -155,8 +155,8 @@ describe('RivalriesPage', () => {
     });
 
     expect(container.textContent).toContain('DORMANT');
-    expect(container.textContent).toContain('LAD');
-    expect(container.textContent).toContain('SFG');
+    expect(container.textContent).toContain('LAX');
+    expect(container.textContent).toContain('SFB');
   });
 
   it('shows empty state when no rivalries', async () => {

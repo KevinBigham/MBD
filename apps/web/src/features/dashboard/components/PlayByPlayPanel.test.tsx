@@ -27,7 +27,7 @@ function createPlayResult(overrides: Partial<PAResult>): PAResult {
 
 function createBoxScore(): GameBoxScore {
   return {
-    homeTeamId: 'nyy',
+    homeTeamId: 'nym',
     awayTeamId: 'bos',
     homeScore: 3,
     awayScore: 2,
@@ -137,7 +137,7 @@ describe('PlayByPlayPanel', () => {
     expect(container.textContent).toContain('New York walked it off in the 10th.');
     expect(container.textContent).toContain('Linescore');
     expect(container.textContent).toContain('BOS');
-    expect(container.textContent).toContain('NYY');
+    expect(container.textContent).toContain('NYT');
     expect(container.textContent).toContain('Top 1st');
     expect(container.textContent).toContain('Bottom 10th');
     expect(container.textContent).toContain('Highlight');

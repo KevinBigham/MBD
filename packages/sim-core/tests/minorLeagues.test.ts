@@ -43,9 +43,9 @@ function makeAffiliatePlayers(teamId: string, level: Extract<RosterLevel, 'AAA' 
 
 describe('minor league service time and options', () => {
   it('accrues service time only for players on the MLB roster', () => {
-    const mlbPlayer = makePlayer(1, 'nyy', 'SS', 'MLB');
-    const aaaPlayer = makePlayer(2, 'nyy', 'SS', 'AAA');
-    const state = createMinorLeagueState(['nyy'], 1);
+    const mlbPlayer = makePlayer(1, 'nym', 'SS', 'MLB');
+    const aaaPlayer = makePlayer(2, 'nym', 'SS', 'AAA');
+    const state = createMinorLeagueState(['nym'], 1);
 
     const result = accrueServiceTimeDay([mlbPlayer, aaaPlayer], state);
     const updatedMLB = result.players.find((player) => player.id === mlbPlayer.id)!;
@@ -57,8 +57,8 @@ describe('minor league service time and options', () => {
   });
 
   it('consumes at most one option year per season and flags players after the third', () => {
-    let player = makePlayer(3, 'nyy', 'SS', 'MLB');
-    let state = createMinorLeagueState(['nyy'], 1);
+    let player = makePlayer(3, 'nym', 'SS', 'MLB');
+    let state = createMinorLeagueState(['nym'], 1);
 
     ({ player, state } = consumeOptionYear(player, state, 1));
     expect(player.optionYearsUsed).toBe(1);
@@ -79,17 +79,17 @@ describe('minor league service time and options', () => {
 describe('minor league waivers and roster compliance', () => {
   it('orders waiver priority from worst record to best record', () => {
     const priority = buildWaiverPriority([
-      { teamId: 'lad', wins: 70, losses: 50 },
+      { teamId: 'lax', wins: 70, losses: 50 },
       { teamId: 'pit', wins: 45, losses: 75 },
-      { teamId: 'nyy', wins: 60, losses: 60 },
+      { teamId: 'nym', wins: 60, losses: 60 },
       { teamId: 'bos', wins: 45, losses: 75 },
     ]);
 
-    expect(priority).toEqual(['bos', 'pit', 'nyy', 'lad']);
+    expect(priority).toEqual(['bos', 'pit', 'nym', 'lax']);
   });
 
   it('places players on waivers and lets the highest-priority team claim them', () => {
-    const player = makePlayer(4, 'nyy', 'SS', 'MLB', {
+    const player = makePlayer(4, 'nym', 'SS', 'MLB', {
       contract: {
         years: 2,
         annualSalary: 7,
@@ -98,8 +98,8 @@ describe('minor league waivers and roster compliance', () => {
         teamOption: false,
       },
     });
-    let state = createMinorLeagueState(['nyy', 'pit'], 1);
-    state = placeOnWaivers(state, player, ['pit', 'nyy'], 1, 90);
+    let state = createMinorLeagueState(['nym', 'pit'], 1);
+    state = placeOnWaivers(state, player, ['pit', 'nym'], 1, 90);
 
     const result = claimOffWaivers([player], state, player.id, 'pit');
     const claimedPlayer = result.players.find((candidate) => candidate.id === player.id)!;
@@ -113,13 +113,13 @@ describe('minor league waivers and roster compliance', () => {
 
   it('flags active-roster and 40-man compliance issues with September expansion support', () => {
     const mlbPlayers = Array.from({ length: 28 }, (_, index) =>
-      makePlayer(10 + index, 'nyy', index < 14 ? 'SS' : 'SP', 'MLB'),
+      makePlayer(10 + index, 'nym', index < 14 ? 'SS' : 'SP', 'MLB'),
     );
     const aaaPlayers = Array.from({ length: 13 }, (_, index) =>
-      makePlayer(100 + index, 'nyy', index % 2 === 0 ? 'CF' : 'RP', 'AAA'),
+      makePlayer(100 + index, 'nym', index % 2 === 0 ? 'CF' : 'RP', 'AAA'),
     );
     const allPlayers = [...mlbPlayers, ...aaaPlayers];
-    const rosterState = buildRosterState('nyy', allPlayers);
+    const rosterState = buildRosterState('nym', allPlayers);
 
     const regularSeasonIssues = getRosterComplianceIssues(allPlayers, rosterState, 120);
     const expandedRosterIssues = getRosterComplianceIssues(allPlayers, rosterState, 150);
@@ -133,18 +133,18 @@ describe('minor league waivers and roster compliance', () => {
 
 describe('minor league promotion engine', () => {
   it('recommends promotions for players who clear level-appropriate stat thresholds', () => {
-    const player = makePlayer(200, 'nyy', 'SS', 'AA', {
+    const player = makePlayer(200, 'nym', 'SS', 'AA', {
       age: 21,
       overallRating: 335,
       minorLeagueLevel: 'AA',
     });
-    const depth = makePlayer(201, 'nyy', 'CF', 'AA', {
+    const depth = makePlayer(201, 'nym', 'CF', 'AA', {
       age: 24,
       overallRating: 275,
       minorLeagueLevel: 'AA',
     });
-    const state = createMinorLeagueState(['nyy'], 1);
-    const affiliateState = state.affiliateStates.find((entry) => entry.teamId === 'nyy' && entry.level === 'AA')!;
+    const state = createMinorLeagueState(['nym'], 1);
+    const affiliateState = state.affiliateStates.find((entry) => entry.teamId === 'nym' && entry.level === 'AA')!;
     affiliateState.playerStats = [
       [
         player.id,
@@ -186,7 +186,7 @@ describe('minor league promotion engine', () => {
       ],
     ];
 
-    const candidates = getPromotionCandidates([player, depth], state, 'nyy');
+    const candidates = getPromotionCandidates([player, depth], state, 'nym');
 
     expect(candidates[0]?.playerId).toBe(player.id);
     expect(candidates[0]?.targetLevel).toBe('AAA');
@@ -196,17 +196,17 @@ describe('minor league promotion engine', () => {
 
 describe('affiliate simulation', () => {
   it('simulates affiliate days deterministically and keeps only the last 30 days of box scores', () => {
-    const teamIds = ['nyy', 'bos'];
+    const teamIds = ['nym', 'bos'];
     const players = [
-      ...makeAffiliatePlayers('nyy', 'AAA'),
+      ...makeAffiliatePlayers('nym', 'AAA'),
       ...makeAffiliatePlayers('bos', 'AAA'),
-      ...makeAffiliatePlayers('nyy', 'AA'),
+      ...makeAffiliatePlayers('nym', 'AA'),
       ...makeAffiliatePlayers('bos', 'AA'),
-      ...makeAffiliatePlayers('nyy', 'A_PLUS'),
+      ...makeAffiliatePlayers('nym', 'A_PLUS'),
       ...makeAffiliatePlayers('bos', 'A_PLUS'),
-      ...makeAffiliatePlayers('nyy', 'A'),
+      ...makeAffiliatePlayers('nym', 'A'),
       ...makeAffiliatePlayers('bos', 'A'),
-      ...makeAffiliatePlayers('nyy', 'ROOKIE'),
+      ...makeAffiliatePlayers('nym', 'ROOKIE'),
       ...makeAffiliatePlayers('bos', 'ROOKIE'),
     ];
 
@@ -224,7 +224,7 @@ describe('affiliate simulation', () => {
     expect(first.affiliateBoxScores.length).toBeGreaterThan(0);
     expect(first.affiliateBoxScores.every((boxScore) => boxScore.day >= 10)).toBe(true);
 
-    const aaaState = first.affiliateStates.find((entry) => entry.teamId === 'nyy' && entry.level === 'AAA')!;
+    const aaaState = first.affiliateStates.find((entry) => entry.teamId === 'nym' && entry.level === 'AAA')!;
     expect(aaaState.gamesPlayed).toBeGreaterThan(0);
     expect(aaaState.playerStats.length).toBeGreaterThan(0);
   });

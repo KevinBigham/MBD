@@ -19,7 +19,7 @@ function createCandidate(overrides: Partial<HallOfFameCandidate> = {}): HallOfFa
     seasonsPlayed: 14,
     peakOverall: 78,
     currentOverall: 62,
-    teamIds: ['nyy', 'sea'],
+    teamIds: ['nym', 'sea'],
     championshipRings: 2,
     allStarSelections: 0,
     careerStats: {
@@ -27,7 +27,7 @@ function createCandidate(overrides: Partial<HallOfFameCandidate> = {}): HallOfFa
       playerName: 'Test Legend',
       position: 'CF',
       seasonsPlayed: 14,
-      teamIds: ['nyy', 'sea'],
+      teamIds: ['nym', 'sea'],
       peakOverall: 78,
       championshipRings: 2,
       allStarSelections: 0,
@@ -45,9 +45,9 @@ function createCandidate(overrides: Partial<HallOfFameCandidate> = {}): HallOfFa
 describe('hall of fame scoring', () => {
   it('scores elite multi-award careers above the first-ballot threshold', () => {
     const awardHistory: AwardHistoryEntry[] = [
-      { season: 4, award: 'MVP', league: 'AL', playerId: 'p1', teamId: 'nyy', summary: 'Won MVP.' },
-      { season: 7, award: 'MVP', league: 'AL', playerId: 'p1', teamId: 'nyy', summary: 'Won MVP again.' },
-      { season: 2, award: 'ROY', league: 'AL', playerId: 'p1', teamId: 'nyy', summary: 'Won ROY.' },
+      { season: 4, award: 'MVP', league: 'AL', playerId: 'p1', teamId: 'nym', summary: 'Won MVP.' },
+      { season: 7, award: 'MVP', league: 'AL', playerId: 'p1', teamId: 'nym', summary: 'Won MVP again.' },
+      { season: 2, award: 'ROY', league: 'AL', playerId: 'p1', teamId: 'nym', summary: 'Won ROY.' },
     ];
 
     const result = evaluateHOFCandidate(createCandidate(), awardHistory);
@@ -59,7 +59,7 @@ describe('hall of fame scoring', () => {
 
   it('places borderline candidates on the ballot before induction', () => {
     const awardHistory: AwardHistoryEntry[] = [
-      { season: 5, award: 'CY_YOUNG', league: 'NL', playerId: 'p1', teamId: 'lad', summary: 'Won the Cy Young.' },
+      { season: 5, award: 'CY_YOUNG', league: 'NL', playerId: 'p1', teamId: 'lax', summary: 'Won the Cy Young.' },
     ];
     const candidate = createCandidate({
       position: 'SP',
@@ -71,7 +71,7 @@ describe('hall of fame scoring', () => {
         playerName: 'Test Legend',
         position: 'SP',
         seasonsPlayed: 11,
-        teamIds: ['lad'],
+        teamIds: ['lax'],
         peakOverall: 72,
         championshipRings: 0,
         allStarSelections: 0,
@@ -109,7 +109,7 @@ describe('hall of fame scoring', () => {
           playerName: 'Borderline Ace',
           position: 'SP',
           seasonsPlayed: 11,
-          teamIds: ['lad'],
+          teamIds: ['lax'],
           peakOverall: 72,
           championshipRings: 0,
           allStarSelections: 0,
@@ -124,10 +124,10 @@ describe('hall of fame scoring', () => {
       }),
     ];
     const awardHistory: AwardHistoryEntry[] = [
-      { season: 4, award: 'MVP', league: 'AL', playerId: 'first-ballot', teamId: 'nyy', summary: 'Won MVP.' },
-      { season: 8, award: 'MVP', league: 'AL', playerId: 'first-ballot', teamId: 'nyy', summary: 'Won MVP again.' },
-      { season: 2, award: 'ROY', league: 'AL', playerId: 'first-ballot', teamId: 'nyy', summary: 'Won ROY.' },
-      { season: 5, award: 'CY_YOUNG', league: 'NL', playerId: 'borderline', teamId: 'lad', summary: 'Won Cy Young.' },
+      { season: 4, award: 'MVP', league: 'AL', playerId: 'first-ballot', teamId: 'nym', summary: 'Won MVP.' },
+      { season: 8, award: 'MVP', league: 'AL', playerId: 'first-ballot', teamId: 'nym', summary: 'Won MVP again.' },
+      { season: 2, award: 'ROY', league: 'AL', playerId: 'first-ballot', teamId: 'nym', summary: 'Won ROY.' },
+      { season: 5, award: 'CY_YOUNG', league: 'NL', playerId: 'borderline', teamId: 'lax', summary: 'Won Cy Young.' },
     ];
 
     const firstPass = processHOFInductions({
@@ -161,7 +161,7 @@ describe('dynasty scoring', () => {
     const timeline: FranchiseTimelineEntry[] = [
       {
         season: 1,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '92-70',
         winTotal: 92,
         playoffResult: 'World Series champion',
@@ -176,7 +176,7 @@ describe('dynasty scoring', () => {
       },
       {
         season: 2,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '95-67',
         winTotal: 95,
         playoffResult: 'World Series runner-up',
@@ -191,7 +191,7 @@ describe('dynasty scoring', () => {
       },
       {
         season: 3,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '78-84',
         winTotal: 78,
         playoffResult: 'Missed playoffs',

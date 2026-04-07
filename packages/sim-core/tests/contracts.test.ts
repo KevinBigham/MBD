@@ -17,11 +17,11 @@ import {
 
 function makePlayer(seed: number, position: GeneratedPlayer['position'] = 'SS'): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  const player = generatePlayer(rng, position, 'nyy', 'MLB');
+  const player = generatePlayer(rng, position, 'nym', 'MLB');
   return {
     ...player,
     rosterStatus: 'MLB',
-    teamId: 'nyy',
+    teamId: 'nym',
     contract: {
       ...player.contract,
       years: 1,
@@ -59,7 +59,7 @@ function setHitterRatings(player: GeneratedPlayer, rating: number): GeneratedPla
 function createTeamContext(overrides: Partial<ExtensionTeamContext> = {}): ExtensionTeamContext {
   return {
     season: 5,
-    teamId: 'nyy',
+    teamId: 'nym',
     teamWinPct: 0.58,
     teamBudget: 220,
     currentPayroll: 150,
@@ -291,7 +291,7 @@ describe('qualifying offers', () => {
 
     const candidates = getQualifyingOfferEligiblePlayers(
       [eligible, tooCheap, tooInexperienced, notExpiring],
-      'nyy',
+      'nym',
       serviceTime,
     );
 
@@ -303,7 +303,7 @@ describe('qualifying offers', () => {
       ...setHitterRatings(makePlayer(205), 340),
       age: 35,
     };
-    const record = issueQualifyingOffer(player, 'nyy', 5, 21);
+    const record = issueQualifyingOffer(player, 'nym', 5, 21);
 
     const first = resolveQualifyingOffer(player, record, new GameRNG(303));
     const second = resolveQualifyingOffer(player, record, new GameRNG(303));
@@ -321,8 +321,8 @@ describe('qualifying offers', () => {
       age: 27,
       developmentTrajectory: 'ahead_of_curve' as const,
     };
-    const veteranOffer = issueQualifyingOffer(veteran, 'nyy', 5, 21);
-    const starOffer = issueQualifyingOffer(star, 'nyy', 5, 21);
+    const veteranOffer = issueQualifyingOffer(veteran, 'nym', 5, 21);
+    const starOffer = issueQualifyingOffer(star, 'nym', 5, 21);
 
     expect(resolveQualifyingOffer(veteran, veteranOffer, new GameRNG(404)).record.status).toBe('accepted');
     expect(resolveQualifyingOffer(star, starOffer, new GameRNG(404)).record.status).toBe('rejected');

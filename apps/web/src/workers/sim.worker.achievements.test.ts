@@ -19,7 +19,7 @@ import {
   syncAchievementState,
 } from './sim.worker.achievements';
 
-function startGame(seed: number, userTeamId: string = 'nyy') {
+function startGame(seed: number, userTeamId: string = 'nym') {
   return api.newGame({
     seed,
     userTeamId,
@@ -31,7 +31,7 @@ function startGame(seed: number, userTeamId: string = 'nyy') {
 
 describe('worker achievement state', () => {
   beforeEach(() => {
-    startGame(991, 'nyy');
+    startGame(991, 'nym');
   });
 
   it('unlocks achievements once and publishes a ceremony card plus breaking-style news', () => {
@@ -39,7 +39,7 @@ describe('worker achievement state', () => {
     state.franchiseTimeline = [
       {
         season: 1,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '96-66',
         winTotal: 96,
         playoffResult: 'Champion',
@@ -72,7 +72,7 @@ describe('worker achievement state', () => {
         id: 'champion',
         unlockedAt: 'S1D180',
         season: 1,
-        teamId: 'nyy',
+        teamId: 'nym',
         summary: 'Won the World Series.',
       },
     ];
@@ -108,7 +108,7 @@ describe('worker achievement state', () => {
 
   it('captures season achievement facts for bargain free agents and franchise records', () => {
     const state = requireState();
-    const hitter = state.players.find((player) => player.teamId === 'nyy' && player.pitcherAttributes == null && player.rosterStatus === 'MLB')!;
+    const hitter = state.players.find((player) => player.teamId === 'nym' && player.pitcherAttributes == null && player.rosterStatus === 'MLB')!;
     hitter.age = 27;
     hitter.position = 'SS';
     hitter.overallRating = 430;
@@ -179,7 +179,7 @@ describe('worker achievement state', () => {
 
     state.seasonState.playerSeasonStats.set(hitter.id, {
       playerId: hitter.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       pa: 710,
       ab: 620,
       hits: 230,
@@ -218,7 +218,7 @@ describe('worker achievement state', () => {
     state.franchiseTimeline = [
       {
         season: 1,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '98-64',
         winTotal: 98,
         playoffResult: 'Champion',
@@ -245,7 +245,7 @@ describe('worker achievement state', () => {
     state.franchiseTimeline = [
       {
         season: 1,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '61-101',
         winTotal: 61,
         playoffResult: 'Missed playoffs',
@@ -260,7 +260,7 @@ describe('worker achievement state', () => {
       },
       {
         season: 2,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '94-68',
         winTotal: 94,
         playoffResult: 'Champion',
@@ -277,7 +277,7 @@ describe('worker achievement state', () => {
     state.tradeState.tradeHistory = [
       {
         id: 'trade-1',
-        fromTeamId: 'nyy',
+        fromTeamId: 'nym',
         toTeamId: 'bos',
         offeringAssets: [],
         requestingAssets: [],
@@ -287,8 +287,8 @@ describe('worker achievement state', () => {
       },
       {
         id: 'trade-2',
-        fromTeamId: 'nyy',
-        toTeamId: 'lad',
+        fromTeamId: 'nym',
+        toTeamId: 'lax',
         offeringAssets: [],
         requestingAssets: [],
         fairnessScore: 7,
@@ -297,7 +297,7 @@ describe('worker achievement state', () => {
       },
       {
         id: 'trade-3',
-        fromTeamId: 'nyy',
+        fromTeamId: 'nym',
         toTeamId: 'sea',
         offeringAssets: [],
         requestingAssets: [],
@@ -312,7 +312,7 @@ describe('worker achievement state', () => {
         playerName: 'Drafted Legend',
         position: 'SS',
         seasonsPlayed: 12,
-        teamIds: ['nyy'],
+        teamIds: ['nym'],
         inductionSeason: 9,
         score: 92,
         inductionType: 'first_ballot',
@@ -323,7 +323,7 @@ describe('worker achievement state', () => {
           playerName: 'Drafted Legend',
           position: 'SS',
           seasonsPlayed: 12,
-          teamIds: ['nyy'],
+          teamIds: ['nym'],
           peakOverall: 88,
           championshipRings: 1,
           allStarSelections: 5,

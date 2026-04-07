@@ -90,35 +90,35 @@ describe('IFA signing and pool management', () => {
   it('filters signed prospects out of the available pool and enforces budgets', () => {
     const state = createInternationalScoutingState(
       new GameRNG(55),
-      ['nyy', 'bos'],
+      ['nym', 'bos'],
       4,
     );
     const target = getAvailableIFAProspects(state)[0]!;
 
-    const signed = signIFAProspect(state, 'nyy', target.id, 1.5);
+    const signed = signIFAProspect(state, 'nym', target.id, 1.5);
 
     expect(getAvailableIFAProspects(signed.state).some((prospect) => prospect.id === target.id)).toBe(false);
     expect(signed.signedPlayer.rosterStatus).toBe('ROOKIE');
     expect(signed.signedPlayer.minorLeagueLevel).toBe('ROOKIE');
-    expect(getRemainingIFABudget(signed.state.budgets.get('nyy')!)).toBe(3.5);
+    expect(getRemainingIFABudget(signed.state.budgets.get('nym')!)).toBe(3.5);
 
-    expect(() => signIFAProspect(signed.state, 'nyy', target.id, 0.5)).toThrow(/already signed/i);
-    expect(() => signIFAProspect(state, 'nyy', target.id, 6)).toThrow(/bonus pool/i);
+    expect(() => signIFAProspect(signed.state, 'nym', target.id, 0.5)).toThrow(/already signed/i);
+    expect(() => signIFAProspect(state, 'nym', target.id, 6)).toThrow(/bonus pool/i);
   });
 
   it('supports trading bonus pool space without allowing overdraws', () => {
     const state = createInternationalScoutingState(
       new GameRNG(77),
-      ['nyy', 'bos'],
+      ['nym', 'bos'],
       2,
     );
 
-    const traded = tradeIFABonusPool(state, 'nyy', 'bos', 1.25);
+    const traded = tradeIFABonusPool(state, 'nym', 'bos', 1.25);
 
-    expect(getRemainingIFABudget(traded.budgets.get('nyy')!)).toBe(3.75);
+    expect(getRemainingIFABudget(traded.budgets.get('nym')!)).toBe(3.75);
     expect(getRemainingIFABudget(traded.budgets.get('bos')!)).toBe(6.25);
 
-    expect(() => tradeIFABonusPool(traded, 'nyy', 'bos', 10)).toThrow(/available/i);
-    expect(() => tradeIFABonusPool(traded, 'nyy', 'bos', 0)).toThrow(/positive/i);
+    expect(() => tradeIFABonusPool(traded, 'nym', 'bos', 10)).toThrow(/available/i);
+    expect(() => tradeIFABonusPool(traded, 'nym', 'bos', 0)).toThrow(/positive/i);
   });
 });

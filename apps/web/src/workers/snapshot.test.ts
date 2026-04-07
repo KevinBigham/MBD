@@ -152,7 +152,7 @@ function createState(): FullGameState {
     }
   }
 
-  const narrative = createNarrativeSample('nyy');
+  const narrative = createNarrativeSample('nym');
 
   return {
     rng,
@@ -162,7 +162,7 @@ function createState(): FullGameState {
     players,
     schedule,
     seasonState: dayOne.newState,
-    userTeamId: 'nyy',
+    userTeamId: 'nym',
     playoffBracket: null,
     injuries: new Map(),
     serviceTime,
@@ -226,8 +226,8 @@ function createState(): FullGameState {
     historicalPlayers: narrative.historicalPlayers,
     mentorRelationships: narrative.mentorRelationships,
     frontOfficeState: narrative.frontOfficeState,
-    franchise: createDefaultFranchiseState('nyy', 1, dayOne.newState.currentDay),
-    gmCareer: initializeGMCareer(new GameRNG(99), 'nyy', 'General Manager', 1),
+    franchise: createDefaultFranchiseState('nym', 1, dayOne.newState.currentDay),
+    gmCareer: initializeGMCareer(new GameRNG(99), 'nym', 'General Manager', 1),
     jobMarket: {
       availableJobs: [],
       applicationDeadlineSeason: null,
@@ -261,9 +261,9 @@ describe('snapshot helpers', () => {
       id: 'ticker-1',
       timestamp: 'S1D2',
       category: 'score',
-      text: 'Yankees defeats Red Sox 5-3.',
+      text: 'Tycoons defeats Noreasters 5-3.',
       priority: 2,
-      relatedTeamIds: ['nyy', 'bos'],
+      relatedTeamIds: ['nym', 'bos'],
       relatedPlayerIds: [candidate.id],
       expiresDay: 5,
     });
@@ -335,7 +335,7 @@ describe('snapshot helpers', () => {
     candidate.rule5EligibleAfterSeason = original.season;
     original.rule5Session = createRule5Session({
       season: original.season,
-      draftOrder: ['nyy', 'bos'],
+      draftOrder: ['nym', 'bos'],
       players: original.players,
       rosterStates: original.rosterStates,
     });
@@ -343,7 +343,7 @@ describe('snapshot helpers', () => {
       {
         playerId: candidate.id,
         originalTeamId: 'bos',
-        draftingTeamId: 'nyy',
+        draftingTeamId: 'nym',
         draftedAfterSeason: original.season,
         status: 'active',
       },
@@ -352,7 +352,7 @@ describe('snapshot helpers', () => {
       {
         playerId: candidate.id,
         originalTeamId: 'bos',
-        draftingTeamId: 'nyy',
+        draftingTeamId: 'nym',
         status: 'pending',
       },
     ];
@@ -388,11 +388,11 @@ describe('snapshot helpers', () => {
     expect(restored.day).toBe(original.day);
     expect(restored.seasonState.currentDay).toBe(original.seasonState.currentDay);
     expect(restored.rng.nextInt(0, 10_000)).toBe(original.rng.nextInt(0, 10_000));
-    expect(restored.teamChemistry.get('nyy')?.score).toBe(57);
-    expect(restored.ownerState.get('nyy')?.hotSeat).toBe(true);
+    expect(restored.teamChemistry.get('nym')?.score).toBe(57);
+    expect(restored.ownerState.get('nym')?.hotSeat).toBe(true);
     expect(restored.briefingQueue[0]?.headline).toContain('Ownership');
-    expect(restored.storyFlags.get('nyy')).toContain('owner_hot_seat');
-    expect(restored.rivalries.get('nyy:bos')?.intensity).toBe(63);
+    expect(restored.storyFlags.get('nym')).toContain('owner_hot_seat');
+    expect(restored.rivalries.get('nym:bos')?.intensity).toBe(63);
     expect(restored.recordBook).toEqual([]);
     expect(restored.recordWatch).toEqual([]);
     expect(restored.seasonArchive).toEqual([]);
@@ -433,7 +433,7 @@ describe('snapshot helpers', () => {
       season: index + 1,
       standings: [
         {
-          teamId: 'nyy',
+          teamId: 'nym',
           wins: 90,
           losses: 72,
           divisionRank: 1,
@@ -443,8 +443,8 @@ describe('snapshot helpers', () => {
       playoffSeries: [
         {
           round: 'World Series',
-          winnerTeamId: 'nyy',
-          loserTeamId: 'lad',
+          winnerTeamId: 'nym',
+          loserTeamId: 'lax',
           result: '4-2',
         },
       ],
@@ -454,12 +454,12 @@ describe('snapshot helpers', () => {
           award: 'MVP',
           league: 'MLB',
           playerId: `mvp-${index + 1}`,
-          teamId: 'nyy',
+          teamId: 'nym',
           summary: 'Won MVP',
         },
       ],
       statLeaders: {
-        hr: [{ playerId: 'slugger', teamId: 'nyy', value: '42', summary: 'Slugger hit 42 HR.' }],
+        hr: [{ playerId: 'slugger', teamId: 'nym', value: '42', summary: 'Slugger hit 42 HR.' }],
         rbi: [],
         avg: [],
         era: [],
@@ -470,7 +470,7 @@ describe('snapshot helpers', () => {
       draftClass: [],
       financials: [],
       userSummary: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '90-72',
         playoffResult: 'Won World Series',
         storylines: ['Title run'],
@@ -488,7 +488,7 @@ describe('snapshot helpers', () => {
     expect(restored.archivedSeasons[0]).toMatchObject({
       season: 1,
       championshipWon: true,
-      championTeamId: 'nyy',
+      championTeamId: 'nym',
     });
   });
 
@@ -561,7 +561,7 @@ describe('snapshot helpers', () => {
     original.franchiseTimeline = [
       {
         season: 1,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '81-81',
         winTotal: 81,
         playoffResult: 'Missed playoffs',
@@ -576,7 +576,7 @@ describe('snapshot helpers', () => {
       },
       {
         season: 2,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '93-69',
         winTotal: 93,
         playoffResult: 'World Series champion',
@@ -591,7 +591,7 @@ describe('snapshot helpers', () => {
       },
       {
         season: 3,
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '88-74',
         winTotal: 88,
         playoffResult: 'Division Series exit',
@@ -605,7 +605,7 @@ describe('snapshot helpers', () => {
         dynastyScore: 42,
       },
     ];
-    const userRecord = original.seasonState.standings.getRecord('nyy');
+    const userRecord = original.seasonState.standings.getRecord('nym');
     if (!userRecord) {
       throw new Error('Expected user record');
     }
@@ -622,7 +622,7 @@ describe('snapshot helpers', () => {
     });
 
     expect(restored.franchise.playMode).toBe('standard');
-    expect(restored.gmCareer.currentTeamId).toBe('nyy');
+    expect(restored.gmCareer.currentTeamId).toBe('nym');
     expect(restored.gmCareer.overallRecord).toEqual({ wins: 338, losses: 278 });
     expect(restored.gmCareer.championships).toBe(1);
     expect(restored.jobMarket.availableJobs).toEqual([]);
@@ -636,7 +636,7 @@ describe('snapshot helpers', () => {
     const original = createState();
     original.season = 4;
     const draftedProspect = original.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'AA',
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'AA',
     )!;
     original.seasonArchive = [
       {
@@ -657,7 +657,7 @@ describe('snapshot helpers', () => {
           pickNumber: 42,
           playerId: draftedProspect.id,
           playerName: `${draftedProspect.firstName} ${draftedProspect.lastName}`,
-          teamId: 'nyy',
+          teamId: 'nym',
           currentStatus: 'AA',
         }],
         financials: [],
@@ -697,7 +697,7 @@ describe('snapshot helpers', () => {
     expect(restored.minorLeagueState.activeDevelopmentSetbacks).toEqual([]);
     expect(restored.playerOrigins.get(draftedProspect.id)).toMatchObject({
       playerId: draftedProspect.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       draftSeason: 3,
       draftRound: 2,
@@ -758,7 +758,7 @@ describe('snapshot helpers', () => {
     expect(restoredMLBPlayer.optionYearsUsed).toBe(0);
     expect(restoredMLBPlayer.isOutOfOptions).toBe(false);
     expect(restoredMinorLeaguer.minorLeagueLevel).toBe(minorLeaguer.rosterStatus);
-    expect(restored.coachingStaffs.get('nyy')).toHaveLength(12);
+    expect(restored.coachingStaffs.get('nym')).toHaveLength(12);
     expect(restored.coachFreeAgentPool.length).toBeGreaterThan(0);
     expect(restored.minorLeagueState.processedDevelopmentMonths).toEqual([]);
   });
@@ -842,14 +842,14 @@ describe('snapshot helpers', () => {
             season: 1,
             award: 'MVP',
             playerId: 'player-1',
-            teamId: 'nyy',
+            teamId: 'nym',
             summary: 'Historic season.',
           },
         ],
         seasonHistory: [
           {
             season: 1,
-            championTeamId: 'nyy',
+            championTeamId: 'nym',
             summary: 'Won the title.',
             awards: [],
             keyMoments: ['Won Game 6 at home.'],

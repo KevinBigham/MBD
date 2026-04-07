@@ -76,13 +76,13 @@ describe('rankProspects', () => {
 describe('determineDraftOrder', () => {
   it('puts worst team first', () => {
     const records = [
-      { teamId: 'NYY', wins: 95, losses: 67 },
+      { teamId: 'NYT', wins: 95, losses: 67 },
       { teamId: 'PIT', wins: 55, losses: 107 },
-      { teamId: 'LAD', wins: 100, losses: 62 },
+      { teamId: 'LAX', wins: 100, losses: 62 },
     ];
     const order = determineDraftOrder(records);
     expect(order[0]).toBe('PIT');
-    expect(order[order.length - 1]).toBe('LAD');
+    expect(order[order.length - 1]).toBe('LAX');
   });
 });
 
@@ -91,9 +91,9 @@ describe('aiSelectPick', () => {
     const rng1 = new GameRNG(42);
     const draftClass = generateDraftClass(rng1, 1);
     const rng2 = new GameRNG(42);
-    const teamRoster = generateTeamRoster(rng2, 'NYY');
+    const teamRoster = generateTeamRoster(rng2, 'NYT');
     const rng3 = new GameRNG(100);
-    const pick = aiSelectPick(rng3, 'NYY', draftClass.prospects, teamRoster);
+    const pick = aiSelectPick(rng3, 'NYT', draftClass.prospects, teamRoster);
     expect(pick).toBeTruthy();
     expect(pick.player.id).toBeTruthy();
     // Should be one of the available prospects
@@ -105,7 +105,7 @@ describe('aiSelectPick', () => {
 describe('evaluateTeamNeeds', () => {
   it('returns needs for all positions', () => {
     const rng = new GameRNG(42);
-    const roster = generateTeamRoster(rng, 'NYY');
+    const roster = generateTeamRoster(rng, 'NYT');
     const needs = evaluateTeamNeeds(roster);
     expect(needs.size).toBeGreaterThan(0);
     for (const [pos, score] of needs) {
@@ -131,7 +131,7 @@ describe('simulateFullDraft', () => {
     }
 
     const rng2 = new GameRNG(99);
-    const result = simulateFullDraft(rng2, draftClass, draftOrder, teamRosters, 'NYY');
+    const result = simulateFullDraft(rng2, draftClass, draftOrder, teamRosters, 'NYT');
 
     expect(result.picks.length).toBe(DRAFT_ROUNDS * NUM_TEAMS);
     expect(result.undrafted.length).toBe(DRAFT_CLASS_SIZE - (DRAFT_ROUNDS * NUM_TEAMS));
@@ -146,7 +146,7 @@ describe('simulateFullDraft', () => {
       teamRosters.set(team.id, []);
     }
     const rng2 = new GameRNG(99);
-    const result = simulateFullDraft(rng2, draftClass, draftOrder, teamRosters, 'NYY');
+    const result = simulateFullDraft(rng2, draftClass, draftOrder, teamRosters, 'NYT');
     for (const pick of result.picks) {
       expect(pick.teamId).toBeTruthy();
       expect(pick.prospect.player.teamId).toBe(pick.teamId);
@@ -216,7 +216,7 @@ describe('draft pick ownership and compensation', () => {
     const ownership = createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), 4);
     expect(ownership.length).toBe(TEAMS.length * DRAFT_ROUNDS * 2);
     expect(
-      ownership.some((pick) => pick.season === 4 && pick.round === 1 && pick.originalTeamId === 'nyy'),
+      ownership.some((pick) => pick.season === 4 && pick.round === 1 && pick.originalTeamId === 'nym'),
     ).toBe(true);
     expect(
       ownership.some((pick) => pick.season === 5 && pick.round === 20 && pick.originalTeamId === 'bos'),
@@ -228,12 +228,12 @@ describe('draft pick ownership and compensation', () => {
     const traded = tradeDraftPickOwnership(
       ownership,
       { season: 8, round: 2, originalTeamId: 'bos' },
-      'nyy',
+      'nym',
     );
 
     expect(
       traded.find((pick) => pick.season === 8 && pick.round === 2 && pick.originalTeamId === 'bos')?.currentTeamId,
-    ).toBe('nyy');
+    ).toBe('nym');
   });
 
   it('inserts compensatory picks between the first and second rounds', () => {
@@ -242,15 +242,15 @@ describe('draft pick ownership and compensation', () => {
       season: 9,
       awardedToTeamId: 'pit',
       compensationForPlayerId: 'fa-1',
-      compensationFromTeamId: 'nyy',
+      compensationFromTeamId: 'nym',
       order: 1,
     });
     const draftSlots = buildDraftPickSlots(determineDraftOrder([
       { teamId: 'pit', wins: 60, losses: 102 },
       { teamId: 'bos', wins: 70, losses: 92 },
-      { teamId: 'nyy', wins: 90, losses: 72 },
+      { teamId: 'nym', wins: 90, losses: 72 },
       ...TEAMS
-        .filter((team) => !['pit', 'bos', 'nyy'].includes(team.id))
+        .filter((team) => !['pit', 'bos', 'nym'].includes(team.id))
         .map((team, index) => ({ teamId: team.id, wins: 71 + index, losses: 91 - index })),
     ]), ownership, compensatory, 9);
 
@@ -267,14 +267,14 @@ describe('draft pick ownership and compensation', () => {
         season: 9,
         awardedToTeamId: 'bos',
         compensationForPlayerId: 'fa-standard',
-        compensationFromTeamId: 'nyy',
+        compensationFromTeamId: 'nym',
         order: 100,
       },
     ], {
       season: 9,
       awardedToTeamId: 'pit',
       compensationForPlayerId: 'fa-premium',
-      compensationFromTeamId: 'lad',
+      compensationFromTeamId: 'lax',
       priorityGroup: 'premium',
     });
 
@@ -287,9 +287,9 @@ describe('draft pick ownership and compensation', () => {
     const standingsOrder = determineDraftOrder([
       { teamId: 'pit', wins: 50, losses: 112 },
       { teamId: 'bos', wins: 65, losses: 97 },
-      { teamId: 'nyy', wins: 88, losses: 74 },
+      { teamId: 'nym', wins: 88, losses: 74 },
       ...TEAMS
-        .filter((team) => !['pit', 'bos', 'nyy'].includes(team.id))
+        .filter((team) => !['pit', 'bos', 'nym'].includes(team.id))
         .map((team, index) => ({ teamId: team.id, wins: 66 + index, losses: 96 - index })),
     ]);
 

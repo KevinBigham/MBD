@@ -8,6 +8,7 @@ import {
   evaluatePlayerTradeValue,
   type GeneratedPlayer,
   type PlayerGameStats,
+  TEAMS,
 } from '@mbd/sim-core';
 
 vi.mock('comlink', () => ({
@@ -41,7 +42,7 @@ const mockedListBranches = vi.mocked(listBranches);
 const mockedLoadGameById = vi.mocked(loadGameById);
 const mockedSaveGameById = vi.mocked(saveGameById);
 
-function startGame(seed: number, userTeamId: string = 'nyy') {
+function startGame(seed: number, userTeamId: string = 'nym') {
   return api.newGame({
     seed,
     userTeamId,
@@ -63,7 +64,7 @@ function startGameWithOptions(
 ) {
   return api.newGame({
     seed: options.seed ?? 123,
-    userTeamId: options.userTeamId ?? 'nyy',
+    userTeamId: options.userTeamId ?? 'nym',
     gmName: options.gmName ?? 'General Manager',
     difficulty: options.difficulty ?? 'standard',
     saveSlot: options.saveSlot ?? 1,
@@ -440,7 +441,7 @@ interface MinorLeagueWorkerApi {
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
   return {
     playerId: 'player',
-    teamId: 'nyy',
+    teamId: 'nym',
     gamesPlayed: 0,
     pa: 0,
     ab: 0,
@@ -497,7 +498,7 @@ function setHitterProfile(
 function buildIncomingOffer(offerId: string) {
   const state = requireState();
   const requested = state.players.find(
-    (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
   )!;
   const offered = state.players.find(
     (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
@@ -512,7 +513,7 @@ function buildIncomingOffer(offerId: string) {
     offer: {
       id: offerId,
       fromTeamId: 'bos',
-      toTeamId: 'nyy',
+      toTeamId: 'nym',
       offeringAssets: [{ type: 'player' as const, playerId: offered.id }],
       requestingAssets: [{ type: 'player' as const, playerId: requested.id }],
       fairnessScore: -4,
@@ -525,7 +526,7 @@ function buildIncomingOffer(offerId: string) {
 function configureMonthlyTradeScenario() {
   const state = requireState();
   const userBatters = state.players.filter(
-    (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
   );
   const partnerBatters = state.players.filter(
     (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
@@ -565,27 +566,27 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('hydrates briefing, chemistry, and owner state for a new game', () => {
-    startGame(123, 'nyy');
+    startGame(123, 'nym');
 
-    const chemistry = api.getTeamChemistry('nyy');
-    const owner = api.getOwnerState('nyy');
-    const frontOffice = (api as typeof api & MinorLeagueWorkerApi).getFrontOfficeState('nyy');
+    const chemistry = api.getTeamChemistry('nym');
+    const owner = api.getOwnerState('nym');
+    const frontOffice = (api as typeof api & MinorLeagueWorkerApi).getFrontOfficeState('nym');
     const briefing = api.getBriefing(10);
 
-    expect(chemistry?.teamId).toBe('nyy');
+    expect(chemistry?.teamId).toBe('nym');
     expect(chemistry?.score).toBeGreaterThanOrEqual(0);
-    expect(owner?.teamId).toBe('nyy');
+    expect(owner?.teamId).toBe('nym');
     expect(typeof owner?.summary).toBe('string');
-    expect(frontOffice?.teamId).toBe('nyy');
+    expect(frontOffice?.teamId).toBe('nym');
     expect(briefing.length).toBeGreaterThan(0);
   });
 
   it('surfaces rivalry intel through dashboard and history queries', () => {
-    startGame(1234, 'nyy');
+    startGame(1234, 'nym');
     const state = requireState();
-    state.rivalries.set('bos:nyy', {
-      id: 'bos:nyy',
-      teamA: 'nyy',
+    state.rivalries.set('bos:nym', {
+      id: 'bos:nym',
+      teamA: 'nym',
       teamB: 'bos',
       intensity: 86,
       summary: 'Every series is carrying real postseason weight.',
@@ -605,17 +606,17 @@ describe('sim worker narrative APIs', () => {
     });
 
     const summary = api.getDashboardSummary();
-    const rivalries = api.getRivalries('nyy');
+    const rivalries = api.getRivalries('nym');
 
     expect(summary?.intel.rivalries[0]).toMatchObject({
-      id: 'bos:nyy',
+      id: 'bos:nym',
       opponentTeamId: 'bos',
       intensity: 86,
-      currentSeasonRecord: 'NYY 8-5 BOS',
-      historicalRecord: 'NYY 144-132 BOS',
+      currentSeasonRecord: 'NYT 8-5 BOS',
+      historicalRecord: 'NYT 144-132 BOS',
     });
     expect(rivalries[0]).toMatchObject({
-      id: 'bos:nyy',
+      id: 'bos:nym',
       origin: 'historical',
       currentSeasonWinsA: 8,
       currentSeasonWinsB: 5,
@@ -625,11 +626,11 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('surfaces active storylines on the dashboard and player query', () => {
-    startGame(4321, 'nyy');
+    startGame(4321, 'nym');
     const state = requireState();
-    const userPlayer = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB');
+    const userPlayer = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB');
     const rivalPlayer = state.players.find((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB');
-    const prospect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB');
+    const prospect = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus !== 'MLB');
     if (!userPlayer || !rivalPlayer || !prospect) {
       throw new Error('Expected baseline players for story arc query test.');
     }
@@ -699,7 +700,7 @@ describe('sim worker narrative APIs', () => {
   it('accepts object-based new game options and persists franchise identity settings', () => {
     const result = startGameWithOptions({
       seed: 123,
-      userTeamId: 'mtl',
+      userTeamId: 'ral',
       gmName: 'Alex Rivera',
       difficulty: 'hard',
       saveSlot: 4,
@@ -711,11 +712,11 @@ describe('sim worker narrative APIs', () => {
       day: 1,
       phase: 'preseason',
     });
-    expect(state.userTeamId).toBe('mtl');
+    expect(state.userTeamId).toBe('ral');
     expect(state.franchise).toMatchObject({
       gmName: 'Alex Rivera',
       difficulty: 'hard',
-      teamId: 'mtl',
+      teamId: 'ral',
       onboarding: {
         welcomeBriefingSeen: false,
         firstMonthlyPulseSeen: false,
@@ -750,7 +751,7 @@ describe('sim worker narrative APIs', () => {
   it('initializes career mode and exposes the GM career ledger', () => {
     startGameWithOptions({
       seed: 919,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       gmName: 'Alex Rivera',
       playMode: 'career',
     });
@@ -759,7 +760,7 @@ describe('sim worker narrative APIs', () => {
 
     expect(state.franchise.playMode).toBe('career');
     expect(career).toMatchObject({
-      currentTeamId: 'nyy',
+      currentTeamId: 'nym',
       reputation: 50,
       overallRecord: { wins: 0, losses: 0 },
     });
@@ -767,9 +768,9 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('seeds coaching staffs and a coach free-agent market for a new game', () => {
-    startGame(124, 'nyy');
+    startGame(124, 'nym');
 
-    const staff = (api as typeof api & MinorLeagueWorkerApi).getCoachingStaff('nyy');
+    const staff = (api as typeof api & MinorLeagueWorkerApi).getCoachingStaff('nym');
     const pool = (api as typeof api & MinorLeagueWorkerApi).getCoachFreeAgents();
     const market = (api as typeof api & MinorLeagueWorkerApi).getCoachMarket();
 
@@ -779,10 +780,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('creates monthly development report history when the season advances', () => {
-    startGame(125, 'nyy');
+    startGame(125, 'nym');
     api.simMonth();
 
-    const prospect = api.getFullRoster('nyy').minors.AA?.[0];
+    const prospect = api.getFullRoster('nym').minors.AA?.[0];
     expect(prospect).toBeTruthy();
     const report = (api as typeof api & MinorLeagueWorkerApi).getDevelopmentReport(prospect!.id);
     const reports = (api as typeof api & MinorLeagueWorkerApi).getDevelopmentReports(prospect!.id);
@@ -793,10 +794,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('exposes development path, bond, and setback data through worker queries', () => {
-    startGame(126, 'nyy');
+    startGame(126, 'nym');
     const state = requireState();
     const workerApi = api as typeof api & MinorLeagueWorkerApi;
-    const prospect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+    const prospect = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AA')!;
     prospect.overallRating = 74;
     prospect.ceiling = 82;
 
@@ -836,7 +837,7 @@ describe('sim worker narrative APIs', () => {
     }];
 
     const reports = workerApi.getDevelopmentReports(prospect.id);
-    const overview = workerApi.getAffiliateOverview('nyy');
+    const overview = workerApi.getAffiliateOverview('nym');
 
     expect(reports?.minorLeagueProgression[0]?.level).toBe('AA');
     expect(reports?.prospectBond?.bondStrength).toBe(28);
@@ -847,17 +848,17 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('builds a unified player profile view with career, development, and scout conflict data', () => {
-    startGame(1261, 'nyy');
+    startGame(1261, 'nym');
     const state = requireState();
     const workerApi = api as typeof api & MinorLeagueWorkerApi;
-    const prospect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+    const prospect = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AA')!;
 
     state.careerStats.push({
       playerId: prospect.id,
       playerName: `${prospect.firstName} ${prospect.lastName}`,
       position: prospect.position,
       seasonsPlayed: 2,
-      teamIds: ['nyy'],
+      teamIds: ['nym'],
       peakOverall: 61,
       championshipRings: 0,
       allStarSelections: 0,
@@ -878,7 +879,7 @@ describe('sim worker narrative APIs', () => {
     });
     state.scoutConflicts.push({
       prospectId: prospect.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       prospectType: 'draft',
       createdSeason: state.season,
       resolutionSeason: state.season + 2,
@@ -918,7 +919,7 @@ describe('sim worker narrative APIs', () => {
     });
     state.minorLeagueState.developmentReports.push({
       playerId: prospect.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       season: state.season,
       month: 4,
       trajectory: 'ahead_of_curve',
@@ -938,9 +939,9 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('returns a deterministic scouting fallback in the player profile view when no conflict exists', () => {
-    startGame(1262, 'nyy');
+    startGame(1262, 'nym');
     const workerApi = api as typeof api & MinorLeagueWorkerApi;
-    const player = requireState().players.find((candidate) => candidate.teamId === 'nyy' && candidate.rosterStatus === 'MLB')!;
+    const player = requireState().players.find((candidate) => candidate.teamId === 'nym' && candidate.rosterStatus === 'MLB')!;
 
     const first = workerApi.getPlayerProfileView(player.id);
     const second = workerApi.getPlayerProfileView(player.id);
@@ -952,7 +953,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('advances to calendar month boundaries and creates a pending monthly pulse report', () => {
-    startGame(1251, 'nyy');
+    startGame(1251, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 31;
@@ -977,7 +978,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('builds red, yellow, and blue monthly spotlight items and supports acknowledgement flow', () => {
-    startGame(1252, 'nyy');
+    startGame(1252, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 92;
@@ -987,20 +988,20 @@ describe('sim worker narrative APIs', () => {
     };
 
     const extraMlb = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB',
+      (player) => player.teamId === 'nym' && player.rosterStatus !== 'MLB',
     )!;
     const prospect = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB' && player.id !== extraMlb.id,
+      (player) => player.teamId === 'nym' && player.rosterStatus !== 'MLB' && player.id !== extraMlb.id,
     )!;
     extraMlb.rosterStatus = 'MLB';
     extraMlb.minorLeagueLevel = null;
     prospect.rosterStatus = 'AAA';
     prospect.minorLeagueLevel = 'AAA';
-    state.rosterStates.set('nyy', buildRosterState('nyy', state.players));
+    state.rosterStates.set('nym', buildRosterState('nym', state.players));
     state.tradeState.pendingOffers = [buildIncomingOffer('monthly-pulse-offer').offer];
     state.minorLeagueState.affiliateStates = [
       {
-        teamId: 'nyy',
+        teamId: 'nym',
         level: 'AAA',
         season: state.season,
         gamesPlayed: 48,
@@ -1052,16 +1053,16 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('adds an owner ultimatum to the monthly spotlight when satisfaction collapses', () => {
-    startGame(5151, 'nyy');
+    startGame(5151, 'nym');
     const state = requireState();
     const monthlyApi = api as typeof api & MinorLeagueWorkerApi;
     state.phase = 'regular';
     state.day = 31;
-    const owner = state.ownerState.get('nyy');
+    const owner = state.ownerState.get('nym');
     if (!owner) {
       throw new Error('Expected owner state');
     }
-    state.ownerState.set('nyy', {
+    state.ownerState.set('nym', {
       ...owner,
       satisfaction: 24,
       patience: 28,
@@ -1079,12 +1080,12 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('fires the GM after an ultimatum remains unresolved and blocks gameplay actions', () => {
-    startGame(6161, 'nyy');
+    startGame(6161, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 120;
     (state.seasonState as typeof state.seasonState & { currentDay: number }).currentDay = 120;
-    const standingsRecord = state.seasonState.standings.getRecord('nyy');
+    const standingsRecord = state.seasonState.standings.getRecord('nym');
     if (!standingsRecord) {
       throw new Error('Expected user standings record');
     }
@@ -1092,12 +1093,12 @@ describe('sim worker narrative APIs', () => {
     standingsRecord.losses = 89;
     standingsRecord.streak = -6;
     standingsRecord.last10 = [2, 8];
-    state.storyFlags.set('nyy', [`owner_meeting_${state.season}`]);
-    const owner = state.ownerState.get('nyy');
+    state.storyFlags.set('nym', [`owner_meeting_${state.season}`]);
+    const owner = state.ownerState.get('nym');
     if (!owner) {
       throw new Error('Expected owner state');
     }
-    state.ownerState.set('nyy', {
+    state.ownerState.set('nym', {
       ...owner,
       satisfaction: 8,
       patience: 12,
@@ -1116,14 +1117,14 @@ describe('sim worker narrative APIs', () => {
   it('opens a job market instead of ending the save for career-mode dynasties', () => {
     startGameWithOptions({
       seed: 6262,
-      userTeamId: 'nyy',
+      userTeamId: 'nym',
       playMode: 'career',
     });
     const state = requireState();
     state.phase = 'regular';
     state.day = 120;
     (state.seasonState as typeof state.seasonState & { currentDay: number }).currentDay = 120;
-    const standingsRecord = state.seasonState.standings.getRecord('nyy');
+    const standingsRecord = state.seasonState.standings.getRecord('nym');
     if (!standingsRecord) {
       throw new Error('Expected user standings record');
     }
@@ -1131,12 +1132,12 @@ describe('sim worker narrative APIs', () => {
     standingsRecord.losses = 89;
     standingsRecord.streak = -6;
     standingsRecord.last10 = [2, 8];
-    state.storyFlags.set('nyy', [`owner_meeting_${state.season}`]);
-    const owner = state.ownerState.get('nyy');
+    state.storyFlags.set('nym', [`owner_meeting_${state.season}`]);
+    const owner = state.ownerState.get('nym');
     if (!owner) {
       throw new Error('Expected owner state');
     }
-    state.ownerState.set('nyy', {
+    state.ownerState.set('nym', {
       ...owner,
       satisfaction: 8,
       patience: 12,
@@ -1154,7 +1155,7 @@ describe('sim worker narrative APIs', () => {
     expect(jobMarket?.availableJobs.length).toBeGreaterThanOrEqual(3);
     expect(career?.careerHistory[0]?.firedSeason).toBe(state.season);
 
-    const selectedTeamId = jobMarket?.availableJobs.find((job) => job.teamId !== 'nyy')?.teamId;
+    const selectedTeamId = jobMarket?.availableJobs.find((job) => job.teamId !== 'nym')?.teamId;
     expect(selectedTeamId).toBeTruthy();
 
     const result = (api as typeof api & MinorLeagueWorkerApi).applyForJob(selectedTeamId!);
@@ -1163,7 +1164,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('publishes record watch stories after monthly sim when a user player is on pace', () => {
-    startGame(1253, 'nyy');
+    startGame(1253, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 31;
@@ -1173,13 +1174,13 @@ describe('sim worker narrative APIs', () => {
     };
 
     const hitter = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
-    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')!;
+    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nym:individual_single_season:hr')!;
     hrEntry.holders = [{
       playerId: 'historic-hr-holder',
       playerName: 'Historic Slugger',
-      teamId: 'nyy',
+      teamId: 'nym',
       season: 1,
       value: 44,
       displayValue: '44',
@@ -1187,7 +1188,7 @@ describe('sim worker narrative APIs', () => {
     hrEntry.trackingFromSeason = null;
     state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
       playerId: hitter.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       gamesPlayed: 31,
       pa: 140,
       ab: 120,
@@ -1200,7 +1201,7 @@ describe('sim worker narrative APIs', () => {
 
     const watches = (api as typeof api & {
       getRecordWatchList: (teamId?: string) => Array<{ playerId: string; recordLabel: string }>;
-    }).getRecordWatchList('nyy');
+    }).getRecordWatchList('nym');
     const news = requireState().news;
 
     expect(watches.some((entry) => entry.playerId === hitter.id && entry.recordLabel === 'Most Home Runs')).toBe(true);
@@ -1208,7 +1209,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('queues a record broken ceremony when the user club passes a tracked mark', () => {
-    startGame(1254, 'nyy');
+    startGame(1254, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 31;
@@ -1218,13 +1219,13 @@ describe('sim worker narrative APIs', () => {
     };
 
     const hitter = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
-    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')!;
+    const hrEntry = state.recordBook.find((entry) => entry.id === 'franchise:nym:individual_single_season:hr')!;
     hrEntry.holders = [{
       playerId: 'historic-hr-holder',
       playerName: 'Historic Slugger',
-      teamId: 'nyy',
+      teamId: 'nym',
       season: 1,
       value: 10,
       displayValue: '10',
@@ -1232,7 +1233,7 @@ describe('sim worker narrative APIs', () => {
     hrEntry.trackingFromSeason = null;
     state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
       playerId: hitter.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       gamesPlayed: 31,
       pa: 140,
       ab: 120,
@@ -1248,14 +1249,14 @@ describe('sim worker narrative APIs', () => {
       getRecordBook: (teamId?: string) => {
         franchise: Array<{ id: string; holders: Array<{ playerId: string | null; value: number }> }>;
       };
-    }).getRecordBook('nyy');
-    expect(recordBook.franchise.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hr')?.holders[0]?.playerId).toBe(hitter.id);
+    }).getRecordBook('nym');
+    expect(recordBook.franchise.find((entry) => entry.id === 'franchise:nym:individual_single_season:hr')?.holders[0]?.playerId).toBe(hitter.id);
   });
 
   it('returns historical player data after a retired player leaves the live pool', () => {
-    startGame(1255, 'nyy');
+    startGame(1255, 'nym');
     const state = requireState();
-    const player = state.players.find((candidate) => candidate.teamId === 'nyy' && candidate.rosterStatus === 'MLB')!;
+    const player = state.players.find((candidate) => candidate.teamId === 'nym' && candidate.rosterStatus === 'MLB')!;
 
     state.historicalPlayers = [{
       playerId: player.id,
@@ -1286,7 +1287,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('routes offseason progression through extensions before qualifying offers', () => {
-    startGame(126, 'nyy');
+    startGame(126, 'nym');
     const state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -1304,10 +1305,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('resets extension negotiations when a fresh offer is requested', () => {
-    startGame(127, 'nyy');
+    startGame(127, 'nym');
     const state = requireState();
     const candidate = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
 
     setHitterProfile(candidate, 'SS', 500, 27, 4);
@@ -1325,7 +1326,7 @@ describe('sim worker narrative APIs', () => {
     };
 
     const extensionApi = api as typeof api & MinorLeagueWorkerApi;
-    const candidates = extensionApi.getExtensionCandidates('nyy');
+    const candidates = extensionApi.getExtensionCandidates('nym');
     const entry = candidates.find((player) => player.playerId === candidate.id);
     const openingOffer = extensionApi.getExtensionOffer(candidate.id, 5);
 
@@ -1352,10 +1353,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('issues and resolves qualifying offers through worker APIs', () => {
-    startGame(128, 'nyy');
+    startGame(128, 'nym');
     const state = requireState();
     const candidate = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
 
     setHitterProfile(candidate, 'RF', 480, 34, 18);
@@ -1374,7 +1375,7 @@ describe('sim worker narrative APIs', () => {
 
     const extensionApi = api as typeof api & MinorLeagueWorkerApi;
     const salary = extensionApi.getQualifyingOfferSalary();
-    const eligible = extensionApi.getQualifyingOfferEligible('nyy');
+    const eligible = extensionApi.getQualifyingOfferEligible('nym');
     const issued = extensionApi.issueQualifyingOffer(candidate.id);
 
     expect(salary).toBeGreaterThan(0);
@@ -1400,7 +1401,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('supports hiring and firing coaches through the worker market APIs', () => {
-    startGame(129, 'nyy');
+    startGame(129, 'nym');
     const state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -1411,13 +1412,13 @@ describe('sim worker narrative APIs', () => {
     };
 
     const workerApi = api as typeof api & MinorLeagueWorkerApi;
-    const currentStaff = workerApi.getCoachingStaff('nyy');
+    const currentStaff = workerApi.getCoachingStaff('nym');
     const firedCoach = currentStaff[0]!;
     const fireResult = workerApi.fireCoach(firedCoach.id);
     const marketAfterFire = workerApi.getCoachMarket();
     const replacement = marketAfterFire.find((coach) => coach.role === firedCoach.role) ?? marketAfterFire[0]!;
     const hireResult = workerApi.hireCoach(replacement.id);
-    const finalStaff = workerApi.getCoachingStaff('nyy');
+    const finalStaff = workerApi.getCoachingStaff('nym');
     const coachingGroup = api.getOffseasonState()?.transactionGroups.find(
       (group) => group.phase === 'coaching_changes',
     );
@@ -1431,11 +1432,11 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('returns personality profiles and award races after the season starts', () => {
-    startGame(456, 'nyy');
+    startGame(456, 'nym');
     api.simDay();
     api.simDay();
 
-    const roster = api.getTeamRoster('nyy');
+    const roster = api.getTeamRoster('nym');
     const profile = api.getPersonalityProfile(roster[0]!.id);
     const awardRaces = api.getAwardRaces();
 
@@ -1448,17 +1449,17 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('forms mentor relationships and publishes a clubhouse mentor story', () => {
-    startGame(458, 'nyy');
+    startGame(458, 'nym');
     const state = requireState();
     const veteran = state.players.find(
       (player) =>
-        player.teamId === 'nyy'
+        player.teamId === 'nym'
         && player.rosterStatus === 'MLB'
         && player.position === 'SS',
     )!;
     const rookie = state.players.find(
       (player) =>
-        player.teamId === 'nyy'
+        player.teamId === 'nym'
         && player.rosterStatus === 'AAA'
         && player.pitcherAttributes == null
         && player.position === 'SS',
@@ -1483,48 +1484,48 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('resolves history display names from live worker state', () => {
-    startGame(457, 'nyy');
+    startGame(457, 'nym');
 
-    const player = api.getTeamRoster('nyy')[0]!;
-    const names = api.resolveHistoryDisplayNames([player.id], ['nyy', 'bos']);
+    const player = api.getTeamRoster('nym')[0]!;
+    const names = api.resolveHistoryDisplayNames([player.id], ['nym', 'bos']);
 
     expect(names.players[player.id]).toBe(`${player.firstName} ${player.lastName}`);
-    expect(names.teams.nyy).toBe('New York Yankees');
-    expect(names.teams.bos).toBe('Boston Red Sox');
+    expect(names.teams.nym).toBe('New York Tycoons');
+    expect(names.teams.bos).toBe('Boston Noreasters');
   });
 
   it('restores narrative state through snapshot import', () => {
-    startGame(789, 'nyy');
+    startGame(789, 'nym');
     api.simDay();
     api.simDay();
 
-    const beforeChemistry = api.getTeamChemistry('nyy');
+    const beforeChemistry = api.getTeamChemistry('nym');
     const beforeBriefing = api.getBriefing(10);
     const snapshot = api.exportSnapshot();
 
     startGame(999, 'bos');
     api.importSnapshot(snapshot);
 
-    expect(api.getTeamChemistry('nyy')).toEqual(beforeChemistry);
+    expect(api.getTeamChemistry('nym')).toEqual(beforeChemistry);
     expect(api.getBriefing(10)).toEqual(beforeBriefing);
   });
 
   it('exposes minor league management queries and affiliate box scores', () => {
-    startGame(111, 'nyy');
+    startGame(111, 'nym');
     api.simDay();
 
     const workerApi = api as unknown as MinorLeagueWorkerApi;
     const state = requireState();
-    const mlbPlayer = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB')!;
+    const mlbPlayer = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
     const beforeServiceTime = (api.getPlayer(mlbPlayer.id) as unknown as WorkerPlayerView).serviceTimeDays;
 
     api.simDay();
 
     const afterServiceTime = (api.getPlayer(mlbPlayer.id) as unknown as WorkerPlayerView).serviceTimeDays;
 
-    const promotionTarget = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+    const promotionTarget = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AA')!;
     const affiliateState = state.minorLeagueState.affiliateStates.find(
-      (entry) => entry.teamId === 'nyy' && entry.level === 'AA',
+      (entry) => entry.teamId === 'nym' && entry.level === 'AA',
     )!;
     affiliateState.playerStats = [[promotionTarget.id, {
       playerId: promotionTarget.id,
@@ -1543,14 +1544,14 @@ describe('sim worker narrative APIs', () => {
       losses: 0,
     }]];
 
-    const rosterState = state.rosterStates.get('nyy')!;
+    const rosterState = state.rosterStates.get('nym')!;
     rosterState.fortyManRoster = state.players
-      .filter((player) => player.teamId === 'nyy')
+      .filter((player) => player.teamId === 'nym')
       .map((player) => player.id);
 
-    const promotionCandidates = workerApi.getPromotionCandidates('nyy');
-    const compliance = workerApi.getRosterComplianceIssues('nyy');
-    const affiliateOverview = workerApi.getAffiliateOverview('nyy');
+    const promotionCandidates = workerApi.getPromotionCandidates('nym');
+    const compliance = workerApi.getRosterComplianceIssues('nym');
+    const affiliateOverview = workerApi.getAffiliateOverview('nym');
     const latestBoxScore = workerApi.getAffiliateBoxScore(affiliateOverview.recentBoxScores[0]!.id);
 
     expect(afterServiceTime).toBe(beforeServiceTime + 1);
@@ -1563,36 +1564,49 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('routes out-of-options demotions through waivers and allows the priority team to claim the player', () => {
-    startGame(112, 'ari');
+    startGame(112, 'phx');
     const workerApi = api as unknown as MinorLeagueWorkerApi;
     const state = requireState();
+    // Ensure user team has the worst record so it gets waiver priority
+    for (const team of TEAMS) {
+      const record = state.seasonState.standings.getRecord(team.id);
+      if (record) {
+        if (team.id === 'phx') {
+          record.wins = 0;
+          record.losses = 20;
+        } else {
+          record.wins = 10;
+          record.losses = 10;
+        }
+      }
+    }
     const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
     player.optionYearsUsed = 3;
     player.isOutOfOptions = true;
 
     const demotionResult = api.demotePlayer(player.id);
-    const overviewBeforeClaim = workerApi.getAffiliateOverview('ari');
+    const overviewBeforeClaim = workerApi.getAffiliateOverview('phx');
 
     expect(demotionResult.success).toBe(true);
     expect(overviewBeforeClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'pending')).toBe(true);
 
     const claimResult = api.claimOffWaivers(player.id);
     const claimedPlayer = api.getPlayer(player.id) as unknown as WorkerPlayerView;
-    const overviewAfterClaim = workerApi.getAffiliateOverview('ari');
+    const overviewAfterClaim = workerApi.getAffiliateOverview('phx');
 
     expect(claimResult.success).toBe(true);
-    expect(claimedPlayer.teamId).toBe('ari');
+    expect(claimedPlayer.teamId).toBe('phx');
     expect(claimedPlayer.rosterStatus).toBe('AAA');
     expect(overviewAfterClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'claimed')).toBe(true);
   });
 
   it('adds trade consequences after an accepted user trade', () => {
-    startGame(321, 'nyy');
+    startGame(321, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 60;
     const userPlayers = state.players
-      .filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && !player.contract.noTradeClause)
+      .filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && !player.contract.noTradeClause)
       .sort((left, right) => evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall);
     const partnerPlayers = state.players
       .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && !player.contract.noTradeClause)
@@ -1602,7 +1616,7 @@ describe('sim worker narrative APIs', () => {
     const requested = partnerPlayers[0]!;
     const baselineAcquiredMorale = state.playerMorale.get(requested.id)?.score ?? 0;
     const baselineOutgoingMorale = state.playerMorale.get(offered.id)?.score ?? 0;
-    const beforeOwner = api.getOwnerState('nyy');
+    const beforeOwner = api.getOwnerState('nym');
 
     const result = api.proposeTrade(
       [{ type: 'player', playerId: offered.id }],
@@ -1615,7 +1629,7 @@ describe('sim worker narrative APIs', () => {
     const afterState = requireState();
     const tradeNews = api.getNews(25).find((item) => item.category === 'trade');
     const tradeBriefing = api.getBriefing(25).find((item) => item.category === 'news' && item.relatedPlayerIds.includes(requested.id));
-    const afterOwner = api.getOwnerState('nyy');
+    const afterOwner = api.getOwnerState('nym');
 
     expect(tradeNews).toBeTruthy();
     expect(tradeBriefing).toBeTruthy();
@@ -1625,12 +1639,12 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('adds signing consequences after a successful user offer', () => {
-    startGame(654, 'nyy');
+    startGame(654, 'nym');
     const market = api.getFreeAgents(50);
     const target = market[0]!;
-    const teammate = requireState().players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB')!;
+    const teammate = requireState().players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
     const baselineTeammateMorale = requireState().playerMorale.get(teammate.id)?.score ?? 0;
-    const beforeOwner = api.getOwnerState('nyy');
+    const beforeOwner = api.getOwnerState('nym');
 
     const result = api.makeContractOffer(target.player.id, 4, Math.ceil(target.marketValue));
 
@@ -1639,10 +1653,10 @@ describe('sim worker narrative APIs', () => {
     const afterState = requireState();
     const signingNews = api.getNews(25).find((item) => item.category === 'signing' && item.relatedPlayerIds.includes(target.player.id));
     const signingBriefing = api.getBriefing(25).find((item) => item.category === 'news' && item.relatedPlayerIds.includes(target.player.id));
-    const afterOwner = api.getOwnerState('nyy');
+    const afterOwner = api.getOwnerState('nym');
     const signedPlayer = afterState.players.find((player) => player.id === target.player.id);
 
-    expect(signedPlayer?.teamId).toBe('nyy');
+    expect(signedPlayer?.teamId).toBe('nym');
     expect(signingNews).toBeTruthy();
     expect(signingBriefing).toBeTruthy();
     expect(afterState.playerMorale.get(target.player.id)?.score).toBeGreaterThan(0);
@@ -1651,7 +1665,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('adds postseason consequences before recording season history', () => {
-    startGame(987, 'nyy');
+    startGame(987, 'nym');
     const state = requireState();
     state.phase = 'playoffs';
     state.news = [];
@@ -1659,8 +1673,8 @@ describe('sim worker narrative APIs', () => {
     state.seasonHistory = [];
     state.playoffBracket = {
       seeds: [
-        { teamId: 'nyy', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
-        { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+        { teamId: 'nym', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+        { teamId: 'lax', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
       ],
       currentRound: 'WORLD_SERIES',
       currentRoundSeries: [
@@ -1669,15 +1683,15 @@ describe('sim worker narrative APIs', () => {
           round: 'WORLD_SERIES',
           league: 'MLB',
           bestOf: 7,
-          higherSeed: { teamId: 'nyy', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
-          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          higherSeed: { teamId: 'nym', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lax', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
           games: [],
           higherSeedWins: 4,
           lowerSeedWins: 2,
-          leaderSummary: 'NYY won 4-2',
+          leaderSummary: 'NYT won 4-2',
           status: 'complete',
-          winnerId: 'nyy',
-          loserId: 'lad',
+          winnerId: 'nym',
+          loserId: 'lax',
         },
       ],
       completedRounds: [{
@@ -1687,28 +1701,28 @@ describe('sim worker narrative APIs', () => {
           round: 'WORLD_SERIES',
           league: 'MLB',
           bestOf: 7,
-          higherSeed: { teamId: 'nyy', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
-          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          higherSeed: { teamId: 'nym', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lax', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
           games: [],
           higherSeedWins: 4,
           lowerSeedWins: 2,
-          leaderSummary: 'NYY won 4-2',
+          leaderSummary: 'NYT won 4-2',
           status: 'complete',
-          winnerId: 'nyy',
-          loserId: 'lad',
+          winnerId: 'nym',
+          loserId: 'lax',
         }],
       }],
       series: [
-        { winnerId: 'nyy', loserId: 'lad', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
+        { winnerId: 'nym', loserId: 'lax', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
       ],
-      champion: 'nyy',
-      runnerUp: 'lad',
+      champion: 'nym',
+      runnerUp: 'lax',
     };
-    const beforeOwner = api.getOwnerState('nyy');
+    const beforeOwner = api.getOwnerState('nym');
 
     api.simDay();
 
-    const afterOwner = api.getOwnerState('nyy');
+    const afterOwner = api.getOwnerState('nym');
     const briefing = api.getBriefing(25).find((item) => item.category === 'news');
     const history = api.getSeasonHistory();
     const playoffNews = api.getNews(25).find((item) => item.category === 'playoff');
@@ -1720,10 +1734,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('emits retirement consequences before offseason rollover removes players', () => {
-    startGame(222, 'nyy');
+    startGame(222, 'nym');
     const state = requireState();
     const userVeterans = state.players
-      .filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB');
+      .filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB');
     for (const veteran of userVeterans) {
       veteran.age = 45;
       veteran.overallRating = 390;
@@ -1745,14 +1759,14 @@ describe('sim worker narrative APIs', () => {
     api.startNextSeason();
 
     const retirementNews = api.getNews(25).find((item) => item.category === 'roster_move');
-    const retirementBriefing = api.getBriefing(25).find((item) => item.category === 'news' && item.relatedTeamIds.includes('nyy'));
+    const retirementBriefing = api.getBriefing(25).find((item) => item.category === 'news' && item.relatedTeamIds.includes('nym'));
 
     expect(retirementNews).toBeTruthy();
     expect(retirementBriefing).toBeTruthy();
   });
 
   it('records AI tender decisions once and removes non-tendered players from team control', () => {
-    startGame(333, 'nyy');
+    startGame(333, 'nym');
     const state = requireState();
     const [cutCandidate, keepCandidate] = state.players
       .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')
@@ -1797,10 +1811,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('records arbitration results and exposes formatted transaction groups for the offseason ledger', () => {
-    startGame(336, 'nyy');
+    startGame(336, 'nym');
     const state = requireState();
     const [arbCandidate] = state.players
-      .filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB')
+      .filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')
       .slice(0, 1);
 
     expect(arbCandidate).toBeTruthy();
@@ -1838,10 +1852,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('fast-forwards AI free agency, records rival signings, and emits press coverage', () => {
-    startGame(334, 'nyy');
+    startGame(334, 'nym');
     const state = requireState();
     const target = state.players.find(
-      (player) => player.teamId === 'oak' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'por' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
 
     state.phase = 'offseason';
@@ -1894,7 +1908,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('records rich season recaps and finalizes retirements into the same history entry', () => {
-    startGame(335, 'nyy');
+    startGame(335, 'nym');
     const state = requireState();
     const standingsRecords = (state.seasonState.standings as unknown as {
       records: Map<string, {
@@ -1910,16 +1924,16 @@ describe('sim worker narrative APIs', () => {
       }>;
     }).records;
     const alMvp = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
     const alRbi = state.players.find(
-      (player) => player.teamId === 'tb' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'orl' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
     const alAvg = state.players.find(
-      (player) => player.teamId === 'tor' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'cha' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
     const nlMvp = state.players.find(
-      (player) => player.teamId === 'lad' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'lax' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
     const nlHr = state.players.find(
       (player) => player.teamId === 'atl' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
@@ -1937,13 +1951,13 @@ describe('sim worker narrative APIs', () => {
       (player) => player.teamId === 'sea' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
     )!;
     const nlCy = state.players.find(
-      (player) => player.teamId === 'sd' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+      (player) => player.teamId === 'sdg' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
     )!;
     const nlK = state.players.find(
       (player) => player.teamId === 'mil' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
     )!;
     const nlW = state.players.find(
-      (player) => player.teamId === 'sf' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+      (player) => player.teamId === 'sfb' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
     )!;
     const alRoy = state.players.find(
       (player) => player.teamId === 'bal' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
@@ -1955,8 +1969,8 @@ describe('sim worker narrative APIs', () => {
     alRoy.age = 22;
     nlRoy.age = 22;
     alMvp.overallRating = 430;
-    standingsRecords.set('nyy', {
-      teamId: 'nyy',
+    standingsRecords.set('nym', {
+      teamId: 'nym',
       wins: 99,
       losses: 63,
       runsScored: 845,
@@ -1966,8 +1980,8 @@ describe('sim worker narrative APIs', () => {
       divisionWins: 52,
       divisionLosses: 24,
     });
-    standingsRecords.set('lad', {
-      teamId: 'lad',
+    standingsRecords.set('lax', {
+      teamId: 'lax',
       wins: 98,
       losses: 64,
       runsScored: 832,
@@ -1998,15 +2012,15 @@ describe('sim worker narrative APIs', () => {
       category: 'trade',
       timestamp: 'S1D120',
       relatedPlayerIds: [alMvp.id],
-      relatedTeamIds: ['nyy', 'lad'],
+      relatedTeamIds: ['nym', 'lax'],
       read: false,
     }];
     state.briefingQueue = [];
     state.seasonHistory = [];
     state.playoffBracket = {
       seeds: [
-        { teamId: 'nyy', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
-        { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+        { teamId: 'nym', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+        { teamId: 'lax', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
       ],
       currentRound: 'WORLD_SERIES',
       currentRoundSeries: [
@@ -2015,15 +2029,15 @@ describe('sim worker narrative APIs', () => {
           round: 'WORLD_SERIES',
           league: 'MLB',
           bestOf: 7,
-          higherSeed: { teamId: 'nyy', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
-          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          higherSeed: { teamId: 'nym', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lax', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
           games: [],
           higherSeedWins: 4,
           lowerSeedWins: 2,
-          leaderSummary: 'NYY won 4-2',
+          leaderSummary: 'NYT won 4-2',
           status: 'complete',
-          winnerId: 'nyy',
-          loserId: 'lad',
+          winnerId: 'nym',
+          loserId: 'lax',
         },
       ],
       completedRounds: [{
@@ -2033,37 +2047,37 @@ describe('sim worker narrative APIs', () => {
           round: 'WORLD_SERIES',
           league: 'MLB',
           bestOf: 7,
-          higherSeed: { teamId: 'nyy', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
-          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          higherSeed: { teamId: 'nym', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lax', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
           games: [],
           higherSeedWins: 4,
           lowerSeedWins: 2,
-          leaderSummary: 'NYY won 4-2',
+          leaderSummary: 'NYT won 4-2',
           status: 'complete',
-          winnerId: 'nyy',
-          loserId: 'lad',
+          winnerId: 'nym',
+          loserId: 'lax',
         }],
       }],
       series: [
-        { winnerId: 'nyy', loserId: 'lad', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
+        { winnerId: 'nym', loserId: 'lax', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
       ],
-      champion: 'nyy',
-      runnerUp: 'lad',
+      champion: 'nym',
+      runnerUp: 'lax',
     };
     state.seasonState.playerSeasonStats.clear();
     for (const [playerId, stats] of new Map([
-      [alMvp.id, createPlayerStats({ playerId: alMvp.id, teamId: 'nyy', pa: 680, ab: 600, hits: 198, hr: 44, rbi: 131, bb: 70, runs: 118 })],
-      [alRbi.id, createPlayerStats({ playerId: alRbi.id, teamId: 'tb', pa: 650, ab: 590, hits: 177, hr: 35, rbi: 122, bb: 58, runs: 99 })],
-      [alAvg.id, createPlayerStats({ playerId: alAvg.id, teamId: 'tor', pa: 620, ab: 540, hits: 189, hr: 18, rbi: 84, bb: 63, runs: 95 })],
-      [nlMvp.id, createPlayerStats({ playerId: nlMvp.id, teamId: 'lad', pa: 670, ab: 595, hits: 191, hr: 39, rbi: 121, bb: 72, runs: 117 })],
+      [alMvp.id, createPlayerStats({ playerId: alMvp.id, teamId: 'nym', pa: 680, ab: 600, hits: 198, hr: 44, rbi: 131, bb: 70, runs: 118 })],
+      [alRbi.id, createPlayerStats({ playerId: alRbi.id, teamId: 'orl', pa: 650, ab: 590, hits: 177, hr: 35, rbi: 122, bb: 58, runs: 99 })],
+      [alAvg.id, createPlayerStats({ playerId: alAvg.id, teamId: 'cha', pa: 620, ab: 540, hits: 189, hr: 18, rbi: 84, bb: 63, runs: 95 })],
+      [nlMvp.id, createPlayerStats({ playerId: nlMvp.id, teamId: 'lax', pa: 670, ab: 595, hits: 191, hr: 39, rbi: 121, bb: 72, runs: 117 })],
       [nlHr.id, createPlayerStats({ playerId: nlHr.id, teamId: 'atl', pa: 640, ab: 580, hits: 171, hr: 41, rbi: 111, bb: 60, runs: 101 })],
       [nlAvg.id, createPlayerStats({ playerId: nlAvg.id, teamId: 'phi', pa: 610, ab: 530, hits: 183, hr: 21, rbi: 76, bb: 64, runs: 92 })],
       [alCy.id, createPlayerStats({ playerId: alCy.id, teamId: 'bos', ip: 650, earnedRuns: 68, strikeouts: 236, walks: 47, hitsAllowed: 144, wins: 18, losses: 6 })],
       [alK.id, createPlayerStats({ playerId: alK.id, teamId: 'cle', ip: 620, earnedRuns: 73, strikeouts: 251, walks: 54, hitsAllowed: 150, wins: 16, losses: 7 })],
       [alW.id, createPlayerStats({ playerId: alW.id, teamId: 'sea', ip: 640, earnedRuns: 79, strikeouts: 218, walks: 52, hitsAllowed: 156, wins: 20, losses: 5 })],
-      [nlCy.id, createPlayerStats({ playerId: nlCy.id, teamId: 'sd', ip: 660, earnedRuns: 66, strikeouts: 244, walks: 45, hitsAllowed: 140, wins: 19, losses: 4 })],
+      [nlCy.id, createPlayerStats({ playerId: nlCy.id, teamId: 'sdg', ip: 660, earnedRuns: 66, strikeouts: 244, walks: 45, hitsAllowed: 140, wins: 19, losses: 4 })],
       [nlK.id, createPlayerStats({ playerId: nlK.id, teamId: 'mil', ip: 625, earnedRuns: 71, strikeouts: 246, walks: 50, hitsAllowed: 148, wins: 17, losses: 6 })],
-      [nlW.id, createPlayerStats({ playerId: nlW.id, teamId: 'sf', ip: 635, earnedRuns: 74, strikeouts: 221, walks: 55, hitsAllowed: 152, wins: 21, losses: 5 })],
+      [nlW.id, createPlayerStats({ playerId: nlW.id, teamId: 'sfb', ip: 635, earnedRuns: 74, strikeouts: 221, walks: 55, hitsAllowed: 152, wins: 21, losses: 5 })],
       [alRoy.id, createPlayerStats({ playerId: alRoy.id, teamId: 'bal', pa: 570, ab: 510, hits: 158, hr: 24, rbi: 82, bb: 48, runs: 77 })],
       [nlRoy.id, createPlayerStats({ playerId: nlRoy.id, teamId: 'nym', pa: 560, ab: 500, hits: 152, hr: 20, rbi: 74, bb: 45, runs: 71 })],
     ])) {
@@ -2074,22 +2088,22 @@ describe('sim worker narrative APIs', () => {
 
     const recap = api.getSeasonHistory()[0]!;
     const archive = api.getSeasonArchive(1)!;
-    expect(recap.championTeamId).toBe('nyy');
-    expect(recap.runnerUpTeamId).toBe('lad');
+    expect(recap.championTeamId).toBe('nym');
+    expect(recap.runnerUpTeamId).toBe('lax');
     expect(recap.worldSeriesRecord).toBe('4-2');
     expect(recap.awards).toHaveLength(10);
     expect(recap.statLeaders.hr.length).toBe(3);
     expect(recap.statLeaders.w[0]?.playerId).toBe(nlW.id);
     expect(recap.blockbusterTrades[0]?.headline).toBe('Deadline blockbuster reshaped the race');
-    expect(recap.userSeason?.teamId).toBe('nyy');
+    expect(recap.userSeason?.teamId).toBe('nym');
     expect(recap.userSeason?.playoffResult).toContain('Champion');
     expect(archive.awards).toHaveLength(10);
-    expect(archive.standings.find((entry) => entry.teamId === 'nyy')?.wins).toBe(99);
-    expect(archive.playoffSeries[0]?.winnerTeamId).toBe('nyy');
+    expect(archive.standings.find((entry) => entry.teamId === 'nym')?.wins).toBe(99);
+    expect(archive.playoffSeries[0]?.winnerTeamId).toBe('nym');
     expect(archive.transactions[0]?.headline).toBe('Deadline blockbuster reshaped the race');
-    expect(archive.financials.some((entry) => entry.teamId === 'nyy')).toBe(true);
+    expect(archive.financials.some((entry) => entry.teamId === 'nym')).toBe(true);
 
-    for (const veteran of state.players.filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB').slice(0, 4)) {
+    for (const veteran of state.players.filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB').slice(0, 4)) {
       veteran.age = 45;
       veteran.overallRating = 390;
       state.serviceTime.set(veteran.id, 12);
@@ -2106,7 +2120,7 @@ describe('sim worker narrative APIs', () => {
         ...createOffseasonState(state.season).phaseResults,
         freeAgentSignings: [{
           playerId: alMvp.id,
-          teamId: 'nyy',
+          teamId: 'nym',
           years: 7,
           annualSalary: 32,
           totalValue: 224,
@@ -2114,7 +2128,7 @@ describe('sim worker narrative APIs', () => {
         draftPicks: [{
           round: 1,
           pickNumber: 8,
-          teamId: 'nyy',
+          teamId: 'nym',
           playerId: 'draft-1',
           playerName: 'Calvin Velez',
           position: 'SS',
@@ -2123,7 +2137,7 @@ describe('sim worker narrative APIs', () => {
         }],
         ifaSignings: [{
           playerId: 'ifa-1',
-          teamId: 'nyy',
+          teamId: 'nym',
           playerName: 'Luis Encarnacion',
           position: 'CF',
           country: 'Dominican Republic',
@@ -2147,16 +2161,16 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('compares archived seasons with user-team deltas', () => {
-    startGame(336, 'nyy');
+    startGame(336, 'nym');
     const state = requireState();
     state.seasonArchive = [
       {
         season: 1,
         standings: [
-          { teamId: 'nyy', wins: 88, losses: 74, divisionRank: 2, gamesBack: 5 },
+          { teamId: 'nym', wins: 88, losses: 74, divisionRank: 2, gamesBack: 5 },
         ],
         playoffSeries: [
-          { round: 'CHAMPIONSHIP_SERIES', winnerTeamId: 'hou', loserTeamId: 'nyy', result: '4-2' },
+          { round: 'CHAMPIONSHIP_SERIES', winnerTeamId: 'hou', loserTeamId: 'nym', result: '4-2' },
         ],
         awards: [],
         statLeaders: {
@@ -2170,10 +2184,10 @@ describe('sim worker narrative APIs', () => {
         transactions: [],
         draftClass: [],
         financials: [
-          { teamId: 'nyy', payroll: 210, budget: 228 },
+          { teamId: 'nym', payroll: 210, budget: 228 },
         ],
         userSummary: {
-          teamId: 'nyy',
+          teamId: 'nym',
           record: '88-74',
           playoffResult: 'Championship Series exit',
           storylines: ['Came up short in October.'],
@@ -2183,10 +2197,10 @@ describe('sim worker narrative APIs', () => {
       {
         season: 2,
         standings: [
-          { teamId: 'nyy', wins: 97, losses: 65, divisionRank: 1, gamesBack: 0 },
+          { teamId: 'nym', wins: 97, losses: 65, divisionRank: 1, gamesBack: 0 },
         ],
         playoffSeries: [
-          { round: 'WORLD_SERIES', winnerTeamId: 'nyy', loserTeamId: 'lad', result: '4-2' },
+          { round: 'WORLD_SERIES', winnerTeamId: 'nym', loserTeamId: 'lax', result: '4-2' },
         ],
         awards: [],
         statLeaders: {
@@ -2200,10 +2214,10 @@ describe('sim worker narrative APIs', () => {
         transactions: [],
         draftClass: [],
         financials: [
-          { teamId: 'nyy', payroll: 235, budget: 248 },
+          { teamId: 'nym', payroll: 235, budget: 248 },
         ],
         userSummary: {
-          teamId: 'nyy',
+          teamId: 'nym',
           record: '97-65',
           playoffResult: 'Champion',
           storylines: ['Closed the season with a title.'],
@@ -2216,7 +2230,7 @@ describe('sim worker narrative APIs', () => {
 
     expect(comparison?.left?.season).toBe(1);
     expect(comparison?.right?.season).toBe(2);
-    expect(comparison?.userTeamId).toBe('nyy');
+    expect(comparison?.userTeamId).toBe('nym');
     expect(comparison?.deltas.wins).toBe(9);
     expect(comparison?.deltas.payroll).toBe(25);
     expect(comparison?.deltas.budget).toBe(20);
@@ -2226,7 +2240,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('records draft picks with structured detail and auto-advances to the next user turn', () => {
-    startGame(338, 'nyy');
+    startGame(338, 'nym');
     const state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -2247,7 +2261,7 @@ describe('sim worker narrative APIs', () => {
     };
 
     expect(start.success).toBe(true);
-    expect(start.draft?.currentPick?.teamId).toBe('nyy');
+    expect(start.draft?.currentPick?.teamId).toBe('nym');
     expect(start.draft?.currentPick?.userOnClock).toBe(true);
     expect(start.draft?.completedPicks.length).toBe(start.newPicks.length);
 
@@ -2270,8 +2284,8 @@ describe('sim worker narrative APIs', () => {
     };
 
     expect(result.success).toBe(true);
-    expect(result.newPicks[0]?.teamId).toBe('nyy');
-    expect(requireState().players.find((player) => player.id === result.newPicks[0]?.playerId)?.teamId).toBe('nyy');
+    expect(result.newPicks[0]?.teamId).toBe('nym');
+    expect(requireState().players.find((player) => player.id === result.newPicks[0]?.playerId)?.teamId).toBe('nym');
 
     const offseasonPick = requireState().offseasonState?.phaseResults.draftPicks.find(
       (entry) => entry.playerId === result.newPicks[0]?.playerId,
@@ -2285,7 +2299,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('simulates the remaining draft deterministically and builds a user draft summary', () => {
-    startGame(339, 'nyy');
+    startGame(339, 'nym');
     let state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -2311,7 +2325,7 @@ describe('sim worker narrative APIs', () => {
 
     setState(null);
 
-    startGame(339, 'nyy');
+    startGame(339, 'nym');
     state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -2344,7 +2358,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('builds deterministic draft commentary, preview, and post-draft grades without advancing rng state', () => {
-    startGame(341, 'nyy');
+    startGame(341, 'nym');
     const state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -2400,7 +2414,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('publishes post-draft grades into news and the press room when the draft completes', () => {
-    startGame(3412, 'nyy');
+    startGame(3412, 'nym');
     const state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -2428,10 +2442,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('creates a rule 5 protection audit after the amateur draft and lets the user protect an exposed prospect', () => {
-    startGame(340, 'nyy');
+    startGame(340, 'nym');
     const state = requireState();
     const candidate = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'AA',
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'AA',
     )!;
 
     candidate.rule5EligibleAfterSeason = state.season;
@@ -2442,8 +2456,8 @@ describe('sim worker narrative APIs', () => {
       phaseDay: 3,
       totalDay: 40,
     };
-    state.rosterStates.set('nyy', {
-      ...state.rosterStates.get('nyy')!,
+    state.rosterStates.set('nym', {
+      ...state.rosterStates.get('nym')!,
       fortyManRoster: [],
     });
 
@@ -2476,17 +2490,17 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('blocks demoting active rule 5 players until the offer-back flow resolves', () => {
-    startGame(341, 'nyy');
+    startGame(341, 'nym');
     const state = requireState();
     const player = state.players.find(
-      (candidate) => candidate.teamId === 'nyy' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+      (candidate) => candidate.teamId === 'nym' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
     )!;
 
     state.rule5Obligations = [
       {
         playerId: player.id,
         originalTeamId: 'bos',
-        draftingTeamId: 'nyy',
+        draftingTeamId: 'nym',
         draftedAfterSeason: state.season,
         status: 'active',
       },
@@ -2499,7 +2513,7 @@ describe('sim worker narrative APIs', () => {
     expect(state.rule5OfferBackStates[0]).toEqual(expect.objectContaining({
       playerId: player.id,
       originalTeamId: 'bos',
-      draftingTeamId: 'nyy',
+      draftingTeamId: 'nym',
       status: 'pending',
     }));
 
@@ -2513,7 +2527,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('opens the international signing phase after the Rule 5 draft and seeds the IFA pool', () => {
-    startGame(342, 'nyy');
+    startGame(342, 'nym');
     const state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -2534,7 +2548,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('scouts, signs, and trades IFA pool space during the international signing window', () => {
-    startGame(343, 'nyy');
+    startGame(343, 'nym');
     const state = requireState();
     state.phase = 'offseason';
     state.offseasonState = {
@@ -2576,10 +2590,10 @@ describe('sim worker narrative APIs', () => {
     const remainingBudgetAfterSigning = (signResult as { remainingBudget: number }).remainingBudget;
     expect(remainingBudgetAfterSigning).toBeDefined();
     expect(remainingBudgetAfterSigning).toBeLessThan(poolBefore.budget.remaining);
-    expect(state.players.some((player) => player.id === target.id && player.teamId === 'nyy' && player.rosterStatus === 'ROOKIE')).toBe(true);
+    expect(state.players.some((player) => player.id === target.id && player.teamId === 'nym' && player.rosterStatus === 'ROOKIE')).toBe(true);
     expect(state.playerOrigins.get(target.id)).toMatchObject({
       playerId: target.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'ifa',
       acquiredSeason: state.season,
     });
@@ -2603,7 +2617,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('closes the trade market after the deadline day and clears pending offers', () => {
-    startGame(340, 'nyy');
+    startGame(340, 'nym');
     const state = requireState();
     state.phase = 'regular';
 
@@ -2625,14 +2639,14 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('builds deadline state with urgency tags, bidding wars, and a trade ticker', () => {
-    startGame(3401, 'nyy');
+    startGame(3401, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 118;
 
     const first = buildIncomingOffer('deadline-hot-1');
     const second = buildIncomingOffer('deadline-hot-2');
-    second.offer.fromTeamId = 'tb';
+    second.offer.fromTeamId = 'orl';
     second.offer.id = 'deadline-hot-2';
     second.offer.message = 'Tampa Bay is circling with a final framework.';
 
@@ -2641,11 +2655,11 @@ describe('sim worker narrative APIs', () => {
       {
         id: 'ticker-trade-1',
         fromTeamId: 'sea',
-        toTeamId: 'sd',
+        toTeamId: 'sdg',
         offeringAssets: [{ type: 'player', playerId: first.offered.id }],
         requestingAssets: [{ type: 'player', playerId: first.requested.id }],
         fairnessScore: 18,
-        summary: 'Seattle Mariners sent Drew Heater to San Diego Padres for Miguel Prospect.',
+        summary: 'Seattle Drizzle sent Drew Heater to San Diego Surf Hounds for Miguel Prospect.',
         timestamp: 'S1D117',
       },
     ];
@@ -2672,11 +2686,11 @@ describe('sim worker narrative APIs', () => {
     expect(deadlineState.hotOffers.some((offer) => offer.bidderCount > 1)).toBe(true);
     expect(deadlineState.hotOffers.some((offer) => offer.biddingSummary?.includes('clubs'))).toBe(true);
     expect(deadlineState.hotOffers[0]?.dialogue.lines.length).toBe(3);
-    expect(deadlineState.ticker[0]?.summary).toContain('Seattle Mariners');
+    expect(deadlineState.ticker[0]?.summary).toContain('Seattle Drizzle');
   });
 
   it('builds deterministic trade dialogue without advancing rng state', () => {
-    startGame(34015, 'nyy');
+    startGame(34015, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 118;
@@ -2700,13 +2714,13 @@ describe('sim worker narrative APIs', () => {
 
     expect(second).toEqual(first);
     expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
-    expect(first.headline).toContain('Boston Red Sox');
+    expect(first.headline).toContain('Boston Noreasters');
     expect(first.lines.length).toBe(3);
     expect(first.mode).toMatch(/^(buyer|seller|standing_pat)$/);
   });
 
   it('creates a deadline recap and analysis when the market closes', () => {
-    startGame(3402, 'nyy');
+    startGame(3402, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 122;
@@ -2716,22 +2730,22 @@ describe('sim worker narrative APIs', () => {
     state.tradeState.tradeHistory = [
       {
         id: 'deadline-user-trade',
-        fromTeamId: 'nyy',
+        fromTeamId: 'nym',
         toTeamId: 'bos',
         offeringAssets: [{ type: 'player', playerId: requested.id }],
         requestingAssets: [{ type: 'player', playerId: offered.id }],
         fairnessScore: 14,
-        summary: 'New York Yankees sent Anthony Volpe to Boston Red Sox for Roman Anthony.',
+        summary: 'New York Tycoons sent Anthony Volpe to Boston Noreasters for Roman Anthony.',
         timestamp: 'S1D121',
       },
       {
         id: 'deadline-ai-trade',
         fromTeamId: 'sea',
-        toTeamId: 'lad',
+        toTeamId: 'lax',
         offeringAssets: [{ type: 'player', playerId: offered.id }],
         requestingAssets: [{ type: 'player', playerId: requested.id }],
         fairnessScore: -8,
-        summary: 'Seattle Mariners sent Drew Heater to Los Angeles Dodgers for Miguel Prospect.',
+        summary: 'Seattle Drizzle sent Drew Heater to Los Angeles Sunset Strip for Miguel Prospect.',
         timestamp: 'S1D121',
       },
     ];
@@ -2762,7 +2776,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('generates deterministic deadline trade bursts with the same seed', () => {
-    startGame(3403, 'nyy');
+    startGame(3403, 'nym');
     let state = requireState();
     state.phase = 'regular';
     state.day = 114;
@@ -2774,7 +2788,7 @@ describe('sim worker narrative APIs', () => {
       history: api.getTradeHistory(),
     };
 
-    startGame(3403, 'nyy');
+    startGame(3403, 'nym');
     state = requireState();
     state.phase = 'regular';
     state.day = 114;
@@ -2791,33 +2805,33 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('generates deterministic monthly AI trade offers for the user inbox', () => {
-    startGame(341, 'nyy');
+    startGame(341, 'nym');
     let state = requireState();
     state.phase = 'regular';
-    state.day = 31;
+    state.day = 114;
     configureMonthlyTradeScenario();
 
-    processTradeMarketActivity(state, 30, 31);
+    processTradeMarketActivity(state, 91, 114);
     const firstRun = api.getTradeOffers();
 
     expect(firstRun.length).toBeGreaterThan(0);
-    expect(firstRun.every((offer) => offer.toTeamId === 'nyy')).toBe(true);
+    expect(firstRun.every((offer) => offer.toTeamId === 'nym')).toBe(true);
     expect(firstRun.some((offer) => offer.requestingAssets.some((asset) => asset.type === 'player'))).toBe(true);
 
-    startGame(341, 'nyy');
+    startGame(341, 'nym');
     state = requireState();
     state.phase = 'regular';
-    state.day = 31;
+    state.day = 114;
     configureMonthlyTradeScenario();
 
-    processTradeMarketActivity(state, 30, 31);
+    processTradeMarketActivity(state, 91, 114);
     const secondRun = api.getTradeOffers();
 
     expect(secondRun).toEqual(firstRun);
   });
 
   it('accepts AI trade offers and records history, news, briefing, and morale updates', () => {
-    startGame(342, 'nyy');
+    startGame(342, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 60;
@@ -2834,7 +2848,7 @@ describe('sim worker narrative APIs', () => {
     expect(result.decision).toBe('accepted');
     expect(api.getTradeOffers()).toEqual([]);
     expect(api.getTradeHistory()[0]?.id).toBe(offer.id);
-    expect(requireState().players.find((player) => player.id === offered.id)?.teamId).toBe('nyy');
+    expect(requireState().players.find((player) => player.id === offered.id)?.teamId).toBe('nym');
     expect(requireState().players.find((player) => player.id === requested.id)?.teamId).toBe('bos');
     expect(api.getNews(25).some((item) => item.category === 'trade' && item.relatedPlayerIds.includes(offered.id))).toBe(true);
     expect(api.getBriefing(25).some((item) => item.category === 'news' && item.relatedPlayerIds.includes(offered.id))).toBe(true);
@@ -2843,7 +2857,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('carries accepted trade dialogue into consequence stories and the press room', () => {
-    startGame(3421, 'nyy');
+    startGame(3421, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 60;
@@ -2888,7 +2902,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('advances trade sagas and annotates homegrown aftermath when a bonded player is moved', () => {
-    startGame(3422, 'nyy');
+    startGame(3422, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 60;
@@ -2914,7 +2928,7 @@ describe('sim worker narrative APIs', () => {
     }];
     state.playerOrigins.set(requested.id, {
       playerId: requested.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       acquiredSeason: 1,
       draftSeason: 1,
@@ -2943,7 +2957,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('declines AI trade offers and records the response in morale, news, and briefing', () => {
-    startGame(343, 'nyy');
+    startGame(343, 'nym');
     const state = requireState();
     state.phase = 'regular';
     state.day = 60;
@@ -2964,20 +2978,20 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('returns ceremony moments in queue order and dismisses them sequentially', () => {
-    startGame(3431, 'nyy');
+    startGame(3431, 'nym');
     const state = requireState();
     state.ceremony.pendingMoments = [
       {
         id: 'moment-a',
         type: 'playoff_clinch',
         title: 'POSTSEASON BOUND',
-        subtitle: 'New York Yankees',
+        subtitle: 'New York Tycoons',
         detailLines: ['Clinched a playoff berth.'],
         soundEffect: 'playoff_clinch',
         autoDismissMs: 5000,
         createdAt: 'S1D150',
         theme: 'celebration',
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
       },
       {
@@ -2990,7 +3004,7 @@ describe('sim worker narrative APIs', () => {
         autoDismissMs: 5000,
         createdAt: 'S1D151',
         theme: 'future',
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         relatedPlayerIds: ['prospect-1'],
       },
     ];
@@ -3012,7 +3026,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('queues a playoff clinch moment when the regular season rolls into the playoffs', () => {
-    startGame(344, 'nyy');
+    startGame(344, 'nym');
     const state = requireState();
     const finalRegularSeasonDay = Math.max(...state.schedule.map((game) => game.day));
 
@@ -3024,7 +3038,7 @@ describe('sim worker narrative APIs', () => {
     };
 
     for (let win = 0; win < 140; win += 1) {
-      state.seasonState.standings.recordGame('nyy', 'bos', 5, 1, true);
+      state.seasonState.standings.recordGame('nym', 'bos', 5, 1, true);
     }
 
     api.simDay();
@@ -3040,12 +3054,12 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('queues a prospect debut flashback on a homegrown player first MLB game', () => {
-    startGame(3441, 'nyy');
+    startGame(3441, 'nym');
     api.simDay();
     api.simDay();
     const state = requireState();
-    const promotionTarget = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AAA')!;
-    const rosterState = state.rosterStates.get('nyy')!;
+    const promotionTarget = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AAA')!;
+    const rosterState = state.rosterStates.get('nym')!;
     rosterState.mlbRoster = rosterState.mlbRoster.slice(0, 25);
     rosterState.fortyManRoster = [
       ...rosterState.fortyManRoster.filter((playerId) => playerId !== promotionTarget.id).slice(0, 39),
@@ -3062,7 +3076,7 @@ describe('sim worker narrative APIs', () => {
     }];
     state.playerOrigins.set(promotionTarget.id, {
       playerId: promotionTarget.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       acquiredSeason: state.season,
       draftSeason: state.season,
@@ -3075,7 +3089,7 @@ describe('sim worker narrative APIs', () => {
     const result = api.promotePlayer(promotionTarget.id);
     state.seasonState.playerSeasonStats.set(promotionTarget.id, createPlayerStats({
       playerId: promotionTarget.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       pa: 4,
       ab: 4,
       hits: 2,
@@ -3106,12 +3120,12 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('combines a prospect debut with a same-day record watch into one ticker entry', () => {
-    startGame(3442, 'nyy');
+    startGame(3442, 'nym');
     api.simDay();
     api.simDay();
     const state = requireState();
-    const promotionTarget = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AAA')!;
-    const rosterState = state.rosterStates.get('nyy')!;
+    const promotionTarget = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AAA')!;
+    const rosterState = state.rosterStates.get('nym')!;
     rosterState.mlbRoster = rosterState.mlbRoster.slice(0, 25);
     rosterState.fortyManRoster = [
       ...rosterState.fortyManRoster.filter((playerId) => playerId !== promotionTarget.id).slice(0, 39),
@@ -3128,7 +3142,7 @@ describe('sim worker narrative APIs', () => {
     }];
     state.playerOrigins.set(promotionTarget.id, {
       playerId: promotionTarget.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       acquiredSeason: state.season,
       draftSeason: state.season,
@@ -3138,14 +3152,14 @@ describe('sim worker narrative APIs', () => {
       bonusAmount: 4.4,
     });
 
-    const hitsRecord = state.recordBook.find((entry) => entry.id === 'franchise:nyy:individual_single_season:hits');
+    const hitsRecord = state.recordBook.find((entry) => entry.id === 'franchise:nym:individual_single_season:hits');
     if (!hitsRecord) {
       throw new Error('Expected franchise hits record to exist.');
     }
     hitsRecord.holders = [{
       playerId: 'historic-hits-holder',
       playerName: 'Historic Contact Bat',
-      teamId: 'nyy',
+      teamId: 'nym',
       season: 1,
       value: 95,
       displayValue: '95',
@@ -3154,7 +3168,7 @@ describe('sim worker narrative APIs', () => {
     api.promotePlayer(promotionTarget.id);
     state.seasonState.playerSeasonStats.set(promotionTarget.id, createPlayerStats({
       playerId: promotionTarget.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       gamesPlayed: 1,
       pa: 4,
       ab: 4,
@@ -3178,7 +3192,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('publishes monthly history, scenario, and anniversary ticker hooks', () => {
-    startGame(3555, 'nyy');
+    startGame(3555, 'nym');
     const state = requireState();
     state.season = 6;
     state.phase = 'regular';
@@ -3188,10 +3202,10 @@ describe('sim worker narrative APIs', () => {
       currentDay: 30,
     };
     for (let win = 0; win < 68; win += 1) {
-      state.seasonState.standings.recordGame('nyy', 'bos', 5, 3, true);
+      state.seasonState.standings.recordGame('nym', 'bos', 5, 3, true);
     }
     for (let loss = 0; loss < 22; loss += 1) {
-      state.seasonState.standings.recordGame('bos', 'nyy', 5, 3, true);
+      state.seasonState.standings.recordGame('bos', 'nym', 5, 3, true);
     }
     state.challengeState = {
       scenarioId: 'rebuild',
@@ -3229,10 +3243,10 @@ describe('sim worker narrative APIs', () => {
         timelineEvents: ['A walk-off clinched the division'],
       },
     ];
-    const veteran = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB')!;
+    const veteran = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
     state.playerOrigins.set(veteran.id, {
       playerId: veteran.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       acquiredSeason: 1,
       draftSeason: 1,
@@ -3254,10 +3268,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('publishes a where-are-they-now offseason note for a traded-away player', () => {
-    startGame(3556, 'nyy');
+    startGame(3556, 'nym');
     const state = requireState();
     const tradedPlayer = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
     tradedPlayer.teamId = 'bos';
     state.seasonState.playerSeasonStats.set(tradedPlayer.id, createPlayerStats({
@@ -3272,12 +3286,12 @@ describe('sim worker narrative APIs', () => {
     }));
     state.tradeState.tradeHistory = [{
       id: 'where-are-they-now-trade',
-      fromTeamId: 'nyy',
+      fromTeamId: 'nym',
       toTeamId: 'bos',
       offeringAssets: [{ type: 'player', playerId: tradedPlayer.id }],
       requestingAssets: [],
       fairnessScore: 6,
-      summary: 'New York Yankees sent a homegrown bat to Boston Red Sox.',
+      summary: 'New York Tycoons sent a homegrown bat to Boston Noreasters.',
       timestamp: `S${state.season}D118`,
     }];
     state.phase = 'offseason';
@@ -3296,7 +3310,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('builds recent game recaps and play-by-play views without advancing rng state', () => {
-    startGame(3557, 'nyy');
+    startGame(3557, 'nym');
 
     const workerApi = api as typeof api & {
       getRecentGameRecaps: (count?: number) => RecentGameRecapView[];
@@ -3334,7 +3348,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('builds prospect pipeline ETA buckets plus offseason narrative reads without advancing rng state', () => {
-    startGame(3558, 'nyy');
+    startGame(3558, 'nym');
     const state = requireState();
     const workerApi = api as typeof api & {
       getProspectPipeline: (teamId?: string) => ProspectPipelineView;
@@ -3342,9 +3356,9 @@ describe('sim worker narrative APIs', () => {
       getOffseasonHeadline: (season?: number) => OffseasonHeadlineView | null;
     };
 
-    const readyProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AAA')!;
-    const nextWaveProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
-    const longViewProspect = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'A')!;
+    const readyProspect = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AAA')!;
+    const nextWaveProspect = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AA')!;
+    const longViewProspect = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'A')!;
 
     readyProspect.overallRating = 62;
     readyProspect.ceiling = 70;
@@ -3379,10 +3393,10 @@ describe('sim worker narrative APIs', () => {
     }]]];
     state.seasonHistory.push({
       season: state.season,
-      championTeamId: 'nyy',
-      runnerUpTeamId: 'lad',
+      championTeamId: 'nym',
+      runnerUpTeamId: 'lax',
       worldSeriesRecord: '4-2',
-      summary: 'The Yankees finished the job and closed the season on top.',
+      summary: 'The Tycoons finished the job and closed the season on top.',
       awards: [],
       keyMoments: ['Deadline blockbuster reshaped the bullpen'],
       statLeaders: {
@@ -3396,7 +3410,7 @@ describe('sim worker narrative APIs', () => {
       notableRetirements: [],
       blockbusterTrades: [],
       userSeason: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '97-65',
         playoffResult: 'Won the World Series',
         storylines: ['Judge delivered in the postseason'],
@@ -3419,13 +3433,13 @@ describe('sim worker narrative APIs', () => {
         headline: 'Deadline blockbuster reshaped the bullpen',
         summary: 'New York added Jordan Reliever and stabilized the late innings.',
         playerIds: ['Jordan Reliever'],
-        teamIds: ['nyy', 'sea'],
+        teamIds: ['nym', 'sea'],
         impactScore: 88,
       }],
       draftClass: [],
       financials: [],
       userSummary: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: '97-65',
         playoffResult: 'Won the World Series',
         storylines: ['Judge delivered in the postseason'],
@@ -3434,8 +3448,8 @@ describe('sim worker narrative APIs', () => {
     });
 
     const rngCallsBefore = requireState().rng.getState().callCount;
-    const firstPipeline = workerApi.getProspectPipeline('nyy');
-    const secondPipeline = workerApi.getProspectPipeline('nyy');
+    const firstPipeline = workerApi.getProspectPipeline('nym');
+    const secondPipeline = workerApi.getProspectPipeline('nym');
     const firstRecap = workerApi.getSeasonRecap(state.season);
     const secondRecap = workerApi.getSeasonRecap(state.season);
     const firstHeadline = workerApi.getOffseasonHeadline(state.season);
@@ -3454,7 +3468,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {
-    startGame(344, 'nyy');
+    startGame(344, 'nym');
 
     const result = api.simToPlayoffs();
     const flow = api.getSeasonFlowState() as { status: string; action: string | null };
@@ -3466,7 +3480,7 @@ describe('sim worker narrative APIs', () => {
   }, 30_000);
 
   it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {
-    startGame(345, 'nyy');
+    startGame(345, 'nym');
     const state = requireState();
     state.phase = 'playoffs';
     state.day = 1;
@@ -3515,7 +3529,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('supports interactive playoff progression through game, series, round, and remaining-bracket APIs', () => {
-    startGame(512, 'nyy');
+    startGame(512, 'nym');
     const state = requireState();
     state.phase = 'playoffs';
     state.day = 1;
@@ -3541,10 +3555,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('processes hall of fame inductions and updates the franchise timeline across rollover', () => {
-    startGame(513, 'nyy');
+    startGame(513, 'nym');
     const state = requireState();
     const icon = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
 
     icon.firstName = 'Derek';
@@ -3558,12 +3572,12 @@ describe('sim worker narrative APIs', () => {
       award: 'MVP',
       league: 'AL',
       playerId: icon.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       summary: `${icon.firstName} ${icon.lastName} won AL MVP.`,
     } satisfies AwardHistoryEntry);
     state.seasonState.playerSeasonStats.set(icon.id, createPlayerStats({
       playerId: icon.id,
-      teamId: 'nyy',
+      teamId: 'nym',
       pa: 780,
       ab: 680,
       hits: 320,
@@ -3576,8 +3590,8 @@ describe('sim worker narrative APIs', () => {
     state.phase = 'playoffs';
     state.playoffBracket = {
       seeds: [
-        { teamId: 'nyy', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
-        { teamId: 'lad', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+        { teamId: 'nym', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
+        { teamId: 'lax', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
       ],
       currentRound: 'WORLD_SERIES',
       currentRoundSeries: [{
@@ -3585,15 +3599,15 @@ describe('sim worker narrative APIs', () => {
         round: 'WORLD_SERIES',
         league: 'MLB',
         bestOf: 7,
-        higherSeed: { teamId: 'nyy', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
-        lowerSeed: { teamId: 'lad', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+        higherSeed: { teamId: 'nym', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
+        lowerSeed: { teamId: 'lax', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
         games: [],
         higherSeedWins: 4,
         lowerSeedWins: 1,
-        leaderSummary: 'NYY won 4-1',
+        leaderSummary: 'NYT won 4-1',
         status: 'complete',
-        winnerId: 'nyy',
-        loserId: 'lad',
+        winnerId: 'nym',
+        loserId: 'lax',
       }],
       completedRounds: [{
         round: 'WORLD_SERIES',
@@ -3602,22 +3616,22 @@ describe('sim worker narrative APIs', () => {
           round: 'WORLD_SERIES',
           league: 'MLB',
           bestOf: 7,
-          higherSeed: { teamId: 'nyy', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
-          lowerSeed: { teamId: 'lad', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+          higherSeed: { teamId: 'nym', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lax', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
           games: [],
           higherSeedWins: 4,
           lowerSeedWins: 1,
-          leaderSummary: 'NYY won 4-1',
+          leaderSummary: 'NYT won 4-1',
           status: 'complete',
-          winnerId: 'nyy',
-          loserId: 'lad',
+          winnerId: 'nym',
+          loserId: 'lax',
         }],
       }],
       series: [
-        { winnerId: 'nyy', loserId: 'lad', winnerWins: 4, loserWins: 1, games: [], round: 'WORLD_SERIES' },
+        { winnerId: 'nym', loserId: 'lax', winnerWins: 4, loserWins: 1, games: [], round: 'WORLD_SERIES' },
       ],
-      champion: 'nyy',
-      runnerUp: 'lad',
+      champion: 'nym',
+      runnerUp: 'lax',
     };
 
     api.simDay();
@@ -3637,7 +3651,7 @@ describe('sim worker narrative APIs', () => {
         playerName: `${icon.firstName} ${icon.lastName}`,
         position: icon.position,
         seasonsPlayed: 13,
-        teamIds: ['nyy'],
+        teamIds: ['nym'],
         peakOverall: 80,
         championshipRings: 1,
         allStarSelections: 0,
@@ -3667,7 +3681,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {
-    startGame(777, 'nyy');
+    startGame(777, 'nym');
     const state = requireState();
     state.news = [
       {
@@ -3678,7 +3692,7 @@ describe('sim worker narrative APIs', () => {
         category: 'performance',
         timestamp: 'S1D9',
         relatedPlayerIds: [],
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         read: true,
       },
       {
@@ -3689,19 +3703,19 @@ describe('sim worker narrative APIs', () => {
         category: 'trade',
         timestamp: 'S1D10',
         relatedPlayerIds: [],
-        relatedTeamIds: ['nyy', 'bos'],
+        relatedTeamIds: ['nym', 'bos'],
         read: false,
       },
       {
         id: 'press-conference-1',
-        headline: 'Press Conference: New York Yankees',
+        headline: 'Press Conference: New York Tycoons',
         body: 'The room carried a sharper edge: Why should fans stay patient?',
         priority: 3,
         category: 'press_conference',
         tag: 'ANALYSIS',
         timestamp: 'S1D10',
         relatedPlayerIds: [],
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         read: false,
       },
     ];
@@ -3712,7 +3726,7 @@ describe('sim worker narrative APIs', () => {
         category: 'news',
         headline: 'Duplicate wrapper should be suppressed',
         body: 'This wrapper should not survive when the underlying news item exists.',
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
         timestamp: 'S1D10',
         acknowledged: false,
@@ -3723,7 +3737,7 @@ describe('sim worker narrative APIs', () => {
         category: 'owner',
         headline: 'Owner pressure is rising.',
         body: 'Ownership wants a stronger response after a rough week.',
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
         timestamp: 'S1D10',
         acknowledged: false,
@@ -3734,7 +3748,7 @@ describe('sim worker narrative APIs', () => {
         category: 'rivalry',
         headline: 'The rivalry is escalating.',
         body: 'Boston keeps showing up in the biggest spots.',
-        relatedTeamIds: ['nyy', 'bos'],
+        relatedTeamIds: ['nym', 'bos'],
         relatedPlayerIds: [],
         timestamp: 'S1D10',
         acknowledged: false,
@@ -3769,7 +3783,7 @@ describe('sim worker narrative APIs', () => {
         id: 'press-conference-1',
         source: 'press_conference',
         category: 'press_conference',
-        headline: 'Press Conference: New York Yankees',
+        headline: 'Press Conference: New York Tycoons',
         timestamp: 'S1D10',
       }),
       expect.objectContaining({
@@ -3780,10 +3794,10 @@ describe('sim worker narrative APIs', () => {
         timestamp: 'S1D9',
       }),
       expect.objectContaining({
-        id: 'synthetic-rivalry-bos:nyy-1-1',
+        id: 'synthetic-rivalry-bos:nym-1-1',
         source: 'league_wire',
         category: 'rivalry',
-        headline: 'Rivalry watch: NYY vs BOS',
+        headline: 'Rivalry watch: NYT vs BOS',
         timestamp: 'S1D1',
       }),
     ]);
@@ -3791,7 +3805,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('defaults press room feed to the newest 100 entries', () => {
-    startGame(778, 'nyy');
+    startGame(778, 'nym');
     const state = requireState();
     state.news = Array.from({ length: 120 }, (_, index) => ({
       id: `news-${index + 1}`,
@@ -3801,7 +3815,7 @@ describe('sim worker narrative APIs', () => {
       category: 'performance' as const,
       timestamp: `S1D${index + 1}`,
       relatedPlayerIds: [],
-      relatedTeamIds: ['nyy'],
+      relatedTeamIds: ['nym'],
       read: index % 2 === 0,
     }));
     state.briefingQueue = [];
@@ -3814,13 +3828,13 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('injects synthetic rumor, development, rivalry, and hot-stove entries with derived tags', () => {
-    startGame(779, 'nyy');
+    startGame(779, 'nym');
     const state = requireState();
     const prospect = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus !== 'MLB',
+      (player) => player.teamId === 'nym' && player.rosterStatus !== 'MLB',
     )!;
     const freeAgentTarget = state.players.find(
-      (player) => player.teamId === 'oak' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'por' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
 
     state.day = 100;
@@ -3828,7 +3842,7 @@ describe('sim worker narrative APIs', () => {
     state.minorLeagueState.developmentReports = [
       {
         playerId: prospect.id,
-        teamId: 'nyy',
+        teamId: 'nym',
         season: state.season,
         month: 6,
         trajectory: 'ahead_of_curve',
@@ -3836,9 +3850,9 @@ describe('sim worker narrative APIs', () => {
         overallRating: prospect.overallRating,
       },
     ];
-    state.rivalries.set('bos:nyy', {
-      id: 'bos:nyy',
-      teamA: 'nyy',
+    state.rivalries.set('bos:nym', {
+      id: 'bos:nym',
+      teamA: 'nym',
       teamB: 'bos',
       intensity: 74,
       summary: 'The division race is getting personal again.',
@@ -3861,7 +3875,7 @@ describe('sim worker narrative APIs', () => {
           },
           marketValue: 27.5,
           demandLevel: 'elite',
-          interestedTeams: ['bos', 'lad', 'chc'],
+          interestedTeams: ['bos', 'lax', 'chi'],
           signedWith: null,
           contract: null,
         },
@@ -3878,7 +3892,7 @@ describe('sim worker narrative APIs', () => {
     expect(deadlineRumor).toMatchObject({
       category: 'rumor',
       tag: 'RUMOR',
-      relatedTeamIds: ['nyy'],
+      relatedTeamIds: ['nym'],
     });
     expect(deadlineRumor?.headline).toContain('Deadline buzz');
 
@@ -3886,7 +3900,7 @@ describe('sim worker narrative APIs', () => {
       category: 'rumor',
       tag: 'RUMOR',
       relatedPlayerIds: [freeAgentTarget.id],
-      relatedTeamIds: ['bos', 'lad', 'chc'],
+      relatedTeamIds: ['bos', 'lax', 'chi'],
     });
     expect(hotStoveRumor?.headline).toContain(freeAgentTarget.firstName);
 
@@ -3894,7 +3908,7 @@ describe('sim worker narrative APIs', () => {
       category: 'development',
       tag: 'ANALYSIS',
       relatedPlayerIds: [prospect.id],
-      relatedTeamIds: ['nyy'],
+      relatedTeamIds: ['nym'],
     });
     expect(development?.headline).toContain(`${prospect.firstName} ${prospect.lastName}`);
     expect(development?.body).toContain('promotion');
@@ -3902,26 +3916,26 @@ describe('sim worker narrative APIs', () => {
     expect(rivalry).toMatchObject({
       category: 'rivalry',
       tag: 'WATCH',
-      relatedTeamIds: ['nyy', 'bos'],
+      relatedTeamIds: ['nym', 'bos'],
     });
-    expect(rivalry?.headline).toContain('NYY');
+    expect(rivalry?.headline).toContain('NYT');
     expect(rivalry?.headline).toContain('BOS');
   });
 
   it('derives debate and watch tags from category and keywords instead of passthrough tags', () => {
-    startGame(7800, 'nyy');
+    startGame(7800, 'nym');
     const state = requireState();
     state.news = [
       {
         id: 'press-1',
-        headline: 'Press Conference: New York Yankees',
+        headline: 'Press Conference: New York Tycoons',
         body: 'The room turned into a live debate over the deadline posture.',
         priority: 3,
         category: 'press_conference',
         tag: 'BREAKING',
         timestamp: 'S1D12',
         relatedPlayerIds: [],
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         read: false,
       },
     ];
@@ -3932,7 +3946,7 @@ describe('sim worker narrative APIs', () => {
         category: 'development',
         headline: 'Prospect watch: the next promotion call is getting louder',
         body: 'Scouts want another look after a strong week.',
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
         timestamp: 'S1D12',
         acknowledged: false,
@@ -3946,11 +3960,11 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('adds rivalry-flavored ticker text for heated score lines', () => {
-    startGame(7801, 'nyy');
+    startGame(7801, 'nym');
     const state = requireState();
-    state.rivalries.set('bos:nyy', {
-      id: 'bos:nyy',
-      teamA: 'nyy',
+    state.rivalries.set('bos:nym', {
+      id: 'bos:nym',
+      teamA: 'nym',
       teamB: 'bos',
       intensity: 88,
       active: true,
@@ -3972,7 +3986,7 @@ describe('sim worker narrative APIs', () => {
     refreshTickerFeed(state, {
       simDay: state.day,
       games: [{
-        homeTeamId: 'nyy',
+        homeTeamId: 'nym',
         awayTeamId: 'bos',
         homeScore: 5,
         awayScore: 3,
@@ -3993,10 +4007,10 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('feeds dramatic game highlights into the ticker and league news', () => {
-    startGame(7802, 'nyy');
+    startGame(7802, 'nym');
     const state = requireState();
     const hitter = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
     const pitcher = state.players.find(
       (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
@@ -4005,7 +4019,7 @@ describe('sim worker narrative APIs', () => {
     refreshTickerFeed(state, {
       simDay: state.day,
       games: [{
-        homeTeamId: 'nyy',
+        homeTeamId: 'nym',
         awayTeamId: 'bos',
         homeScore: 6,
         awayScore: 5,
@@ -4035,7 +4049,7 @@ describe('sim worker narrative APIs', () => {
 
     const highlightNews = state.news.find((item) =>
       item.category === 'performance'
-      && item.relatedTeamIds.includes('nyy')
+      && item.relatedTeamIds.includes('nym')
       && item.relatedTeamIds.includes('bos'),
     );
 
@@ -4046,13 +4060,13 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('returns advanced stat lines and advanced leaderboard results', () => {
-    startGame(780, 'nyy');
+    startGame(780, 'nym');
     const state = requireState();
     const hitter = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
     )!;
     const pitcher = state.players.find(
-      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
     )!;
 
     state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
@@ -4102,7 +4116,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('creates a what-if branch and loads it by id', async () => {
-    startGame(123, 'nyy');
+    startGame(123, 'nym');
     mockedCreateBranchSave.mockResolvedValue({
       id: 'branch-1',
       slotNumber: null,
@@ -4166,7 +4180,7 @@ describe('sim worker narrative APIs', () => {
       expect.objectContaining({
         season: 1,
         day: 1,
-        userTeamId: 'nyy',
+        userTeamId: 'nym',
       }),
       'Aggressive deadline push',
     );
@@ -4174,7 +4188,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('enforces the 3-branch cap per parent save', async () => {
-    startGame(321, 'nyy');
+    startGame(321, 'nym');
     mockedCreateBranchSave
       .mockResolvedValueOnce({
         id: 'branch-1',
@@ -4259,7 +4273,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('deletes a branch and removes it from parent metadata', async () => {
-    startGame(456, 'nyy');
+    startGame(456, 'nym');
     mockedCreateBranchSave.mockResolvedValue({
       id: 'branch-rollback',
       slotNumber: null,
@@ -4298,7 +4312,7 @@ describe('sim worker narrative APIs', () => {
   });
 
   it('reports runtime diagnostics and persists archive and prune maintenance to an explicit save id', async () => {
-    startGame(654, 'nyy');
+    startGame(654, 'nym');
     const workerApi = api as typeof api & MinorLeagueWorkerApi;
     const snapshot = workerApi.exportSnapshot();
 
@@ -4314,7 +4328,7 @@ describe('sim worker narrative APIs', () => {
     state.seasonArchive = Array.from({ length: 12 }, (_, index) => ({
       season: index + 1,
       standings: [{
-        teamId: 'nyy',
+        teamId: 'nym',
         wins: 80 + index,
         losses: 82 - Math.min(index, 10),
         divisionRank: 1,
@@ -4334,7 +4348,7 @@ describe('sim worker narrative APIs', () => {
       draftClass: [],
       financials: [],
       userSummary: {
-        teamId: 'nyy',
+        teamId: 'nym',
         record: `${80 + index}-${82 - Math.min(index, 10)}`,
         playoffResult: 'Missed playoffs',
         storylines: [`Season ${index + 1}`],
@@ -4349,7 +4363,7 @@ describe('sim worker narrative APIs', () => {
         category: 'rumor',
         text: 'Old ticker',
         priority: 4,
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
         expiresDay: 3,
       },
@@ -4359,7 +4373,7 @@ describe('sim worker narrative APIs', () => {
         category: 'score',
         text: 'Fresh ticker',
         priority: 2,
-        relatedTeamIds: ['nyy'],
+        relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
         expiresDay: 30,
       },

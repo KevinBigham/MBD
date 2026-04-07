@@ -23,7 +23,7 @@ const mockedUseGameStore = vi.mocked(useGameStore);
 
 function createBoxScore(overrides: Partial<GameBoxScore>): GameBoxScore {
   return {
-    homeTeamId: 'nyy',
+    homeTeamId: 'nym',
     awayTeamId: 'bos',
     homeScore: 5,
     awayScore: 3,
@@ -46,7 +46,7 @@ const recentRecaps = [
     playByPlay: [
       { inning: 1, halfInning: 'bottom' as const, text: 'Judge ambushes a fastball in the first.', isHighlight: true },
     ],
-    boxScore: createBoxScore({ homeTeamId: 'nyy', awayTeamId: 'tor', homeScore: 6, awayScore: 2 }),
+    boxScore: createBoxScore({ homeTeamId: 'nym', awayTeamId: 'cha', homeScore: 6, awayScore: 2 }),
   },
   {
     gameIndex: 91,
@@ -55,7 +55,7 @@ const recentRecaps = [
     playByPlay: [
       { inning: 9, halfInning: 'top' as const, text: 'Boston grabs the lead late.', isHighlight: true },
     ],
-    boxScore: createBoxScore({ homeTeamId: 'nyy', awayTeamId: 'bos', homeScore: 2, awayScore: 4 }),
+    boxScore: createBoxScore({ homeTeamId: 'nym', awayTeamId: 'bos', homeScore: 2, awayScore: 4 }),
   },
   {
     gameIndex: 92,
@@ -65,7 +65,7 @@ const recentRecaps = [
       { inning: 10, halfInning: 'bottom' as const, text: 'Walk-off homer sends the Bronx home happy.', isHighlight: true },
     ],
     boxScore: createBoxScore({
-      homeTeamId: 'nyy',
+      homeTeamId: 'nym',
       awayTeamId: 'bos',
       homeScore: 3,
       awayScore: 2,
@@ -97,7 +97,7 @@ const playByPlayByGameIndex = new Map([
     plays: [
       { inning: 1, halfInning: 'bottom' as const, text: 'Judge ambushes a fastball in the first.', isHighlight: true },
     ],
-    boxScore: createBoxScore({ homeTeamId: 'nyy', awayTeamId: 'tor', homeScore: 6, awayScore: 2 }),
+    boxScore: createBoxScore({ homeTeamId: 'nym', awayTeamId: 'cha', homeScore: 6, awayScore: 2 }),
   }],
   [91, {
     gameIndex: 91,
@@ -106,7 +106,7 @@ const playByPlayByGameIndex = new Map([
     plays: [
       { inning: 9, halfInning: 'top' as const, text: 'Boston grabs the lead late.', isHighlight: true },
     ],
-    boxScore: createBoxScore({ homeTeamId: 'nyy', awayTeamId: 'bos', homeScore: 2, awayScore: 4 }),
+    boxScore: createBoxScore({ homeTeamId: 'nym', awayTeamId: 'bos', homeScore: 2, awayScore: 4 }),
   }],
   [92, {
     gameIndex: 92,
@@ -116,7 +116,7 @@ const playByPlayByGameIndex = new Map([
       { inning: 10, halfInning: 'bottom' as const, text: 'Walk-off homer sends the Bronx home happy.', isHighlight: true },
     ],
     boxScore: createBoxScore({
-      homeTeamId: 'nyy',
+      homeTeamId: 'nym',
       awayTeamId: 'bos',
       homeScore: 3,
       awayScore: 2,
@@ -154,8 +154,8 @@ describe('DashboardPage', () => {
       day: 88,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -175,8 +175,8 @@ describe('DashboardPage', () => {
       isReady: true,
       getDashboardSummary: vi.fn().mockResolvedValue({
         franchise: {
-          teamName: 'New York Yankees',
-          abbreviation: 'NYY',
+          teamName: 'New York Tycoons',
+          abbreviation: 'NYT',
           gmName: 'Alex Rivera',
           difficulty: 'hard',
           welcomeBriefingPending: true,
@@ -262,11 +262,11 @@ describe('DashboardPage', () => {
           daysUntilDeadline: 34,
           deadlineMode: false,
           activeTradeOffers: 3,
-          recentSummary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+          recentSummary: 'Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.',
           recentTrades: [
             {
               id: 'ticker-1',
-              summary: 'Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.',
+              summary: 'Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.',
               timestamp: 'S4D88',
             },
           ],
@@ -295,8 +295,8 @@ describe('DashboardPage', () => {
           {
             playerId: 'p1',
             playerName: 'Aaron Judge',
-            teamId: 'nyy',
-            teamName: 'New York Yankees',
+            teamId: 'nym',
+            teamName: 'New York Tycoons',
             arcType: 'dynasty_cornerstone',
             phase: 'climax',
             latestMilestone: 'All eyes on Aaron Judge as the dynasty cornerstone reaches a crescendo.',
@@ -304,9 +304,9 @@ describe('DashboardPage', () => {
         ],
         divisionStandings: [
           {
-            teamId: 'nyy',
-            teamName: 'New York Yankees',
-            abbreviation: 'NYY',
+            teamId: 'nym',
+            teamName: 'New York Tycoons',
+            abbreviation: 'NYT',
             wins: 50,
             losses: 38,
             pct: '.568',
@@ -326,7 +326,7 @@ describe('DashboardPage', () => {
             headline: 'Owner pressure is rising.',
             body: 'Ownership wants a stronger response this month.',
             timestamp: 'S4D88',
-            relatedTeamIds: ['nyy'],
+            relatedTeamIds: ['nym'],
             relatedPlayerIds: [],
           },
           feed: [
@@ -339,7 +339,7 @@ describe('DashboardPage', () => {
               headline: 'Owner pressure is rising.',
               body: 'Ownership wants a stronger response this month.',
               timestamp: 'S4D88',
-              relatedTeamIds: ['nyy'],
+              relatedTeamIds: ['nym'],
               relatedPlayerIds: [],
             },
             {
@@ -351,7 +351,7 @@ describe('DashboardPage', () => {
               headline: 'Deadline buzz is building.',
               body: 'Clubs are circling the Yankees for bullpen help.',
               timestamp: 'S4D88',
-              relatedTeamIds: ['nyy'],
+              relatedTeamIds: ['nym'],
               relatedPlayerIds: [],
             },
           ],
@@ -371,17 +371,17 @@ describe('DashboardPage', () => {
       getOffseasonHeadline: vi.fn().mockResolvedValue(null),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockResolvedValue({
-        currentTeamId: 'nyy',
+        currentTeamId: 'nym',
         reputation: 64,
         overallRecord: { wins: 312, losses: 254 },
-        careerHistory: [{ teamId: 'nyy', firedSeason: null }],
+        careerHistory: [{ teamId: 'nym', firedSeason: null }],
         jobSearchActive: false,
         lastFiredReason: null,
       }),
       getJobMarket: vi.fn().mockResolvedValue({
         availableJobs: [],
       }),
-      applyForJob: vi.fn().mockResolvedValue({ success: true, teamId: 'bos', teamName: 'Boston Red Sox' }),
+      applyForJob: vi.fn().mockResolvedValue({ success: true, teamId: 'bos', teamName: 'Boston Noreasters' }),
     } as unknown as ReturnType<typeof useWorker>);
   });
 
@@ -426,7 +426,7 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('This Day in History');
     expect(container.textContent).toContain('NYY 8-5 BOS');
     expect(container.textContent).toContain('NYY 144-132 BOS');
-    expect(container.textContent).toContain('Seattle Mariners sent Drew Example to San Diego Padres for Chris Sample.');
+    expect(container.textContent).toContain('Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.');
     expect(container.textContent).toContain('Spencer Jones');
     expect(container.textContent).toContain('Aaron Judge');
     expect(container.textContent).toContain('dynasty cornerstone');
@@ -476,15 +476,15 @@ describe('DashboardPage', () => {
   });
 
   it('shows the career job market and lets the user take over a new team', async () => {
-    const applyForJob = vi.fn().mockResolvedValue({ success: true, teamId: 'bos', teamName: 'Boston Red Sox' });
+    const applyForJob = vi.fn().mockResolvedValue({ success: true, teamId: 'bos', teamName: 'Boston Noreasters' });
     const initializeGame = vi.fn();
     mockedUseGameStore.mockReturnValue({
       season: 4,
       day: 88,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -503,8 +503,8 @@ describe('DashboardPage', () => {
       isReady: true,
       getDashboardSummary: vi.fn().mockResolvedValue({
         franchise: {
-          teamName: 'New York Yankees',
-          abbreviation: 'NYY',
+          teamName: 'New York Tycoons',
+          abbreviation: 'NYT',
           gmName: 'Alex Rivera',
           difficulty: 'hard',
           welcomeBriefingPending: false,
@@ -578,10 +578,10 @@ describe('DashboardPage', () => {
       getOffseasonHeadline: vi.fn().mockResolvedValue(null),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockResolvedValue({
-        currentTeamId: 'nyy',
+        currentTeamId: 'nym',
         reputation: 58,
         overallRecord: { wins: 312, losses: 254 },
-        careerHistory: [{ teamId: 'nyy', firedSeason: 4 }],
+        careerHistory: [{ teamId: 'nym', firedSeason: 4 }],
         jobSearchActive: true,
         lastFiredReason: 'Owner fired the GM after satisfaction collapsed.',
       }),
@@ -625,7 +625,7 @@ describe('DashboardPage', () => {
     expect(applyForJob).toHaveBeenCalledWith('bos');
     expect(initializeGame).toHaveBeenCalledWith(expect.objectContaining({
       userTeamId: 'bos',
-      teamName: 'Boston Red Sox',
+      teamName: 'Boston Noreasters',
     }));
   });
 
@@ -635,8 +635,8 @@ describe('DashboardPage', () => {
       day: 165,
       phase: 'offseason',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 162,
       isSimulating: false,
@@ -655,8 +655,8 @@ describe('DashboardPage', () => {
       isReady: true,
       getDashboardSummary: vi.fn().mockResolvedValue({
         franchise: {
-          teamName: 'New York Yankees',
-          abbreviation: 'NYY',
+          teamName: 'New York Tycoons',
+          abbreviation: 'NYT',
           gmName: 'Alex Rivera',
           difficulty: 'hard',
           welcomeBriefingPending: false,
@@ -741,10 +741,10 @@ describe('DashboardPage', () => {
       }),
       dismissWelcomeBriefing: vi.fn().mockResolvedValue({ success: true }),
       getGMCareer: vi.fn().mockResolvedValue({
-        currentTeamId: 'nyy',
+        currentTeamId: 'nym',
         reputation: 68,
         overallRecord: { wins: 312, losses: 254 },
-        careerHistory: [{ teamId: 'nyy', firedSeason: null }],
+        careerHistory: [{ teamId: 'nym', firedSeason: null }],
         jobSearchActive: false,
         lastFiredReason: null,
       }),

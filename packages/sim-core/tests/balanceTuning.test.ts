@@ -48,7 +48,7 @@ function generateOpeningDayLeague(seed: number) {
 
 function makeExpiredPlayer(seed: number, overrides: Partial<GeneratedPlayer>): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  const player = generatePlayer(rng, 'SS', 'nyy', 'MLB');
+  const player = generatePlayer(rng, 'SS', 'nym', 'MLB');
   return {
     ...player,
     ...overrides,

@@ -54,38 +54,38 @@ interface ScenarioCatalogEntry {
 }
 
 const TEAM_OPTIONS = [
-  { id: 'ari', label: 'Arizona Diamondbacks' },
-  { id: 'atl', label: 'Atlanta Braves' },
-  { id: 'bal', label: 'Baltimore Orioles' },
-  { id: 'bos', label: 'Boston Red Sox' },
-  { id: 'chc', label: 'Chicago Cubs' },
-  { id: 'cws', label: 'Chicago White Sox' },
-  { id: 'cin', label: 'Cincinnati Reds' },
-  { id: 'cle', label: 'Cleveland Guardians' },
-  { id: 'col', label: 'Colorado Rockies' },
-  { id: 'det', label: 'Detroit Tigers' },
-  { id: 'hou', label: 'Houston Astros' },
-  { id: 'kc', label: 'Kansas City Royals' },
-  { id: 'laa', label: 'Los Angeles Angels' },
-  { id: 'lad', label: 'Los Angeles Dodgers' },
-  { id: 'mia', label: 'Miami Marlins' },
-  { id: 'mil', label: 'Milwaukee Brewers' },
-  { id: 'min', label: 'Minnesota Twins' },
-  { id: 'mtl', label: 'Montreal Expos' },
-  { id: 'nym', label: 'New York Mets' },
-  { id: 'nyy', label: 'New York Yankees' },
-  { id: 'oak', label: 'Oakland Athletics' },
-  { id: 'phi', label: 'Philadelphia Phillies' },
-  { id: 'pit', label: 'Pittsburgh Pirates' },
-  { id: 'por', label: 'Portland Evergreens' },
-  { id: 'sd', label: 'San Diego Padres' },
-  { id: 'sea', label: 'Seattle Mariners' },
-  { id: 'sf', label: 'San Francisco Giants' },
-  { id: 'stl', label: 'St. Louis Cardinals' },
-  { id: 'tb', label: 'Tampa Bay Rays' },
-  { id: 'tex', label: 'Texas Rangers' },
-  { id: 'tor', label: 'Toronto Blue Jays' },
-  { id: 'wsh', label: 'Washington Nationals' },
+  { id: 'phx', label: 'Phoenix Dust Devils' },
+  { id: 'atl', label: 'Atlanta Peach Kings' },
+  { id: 'bal', label: 'Baltimore Crab Cakes' },
+  { id: 'bos', label: 'Boston Noreasters' },
+  { id: 'chi', label: 'Chicago Deep Dish' },
+  { id: 'col', label: 'Columbus Buckeyes' },
+  { id: 'nas', label: 'Nashville Honky Tonks' },
+  { id: 'cle', label: 'Cleveland Forge' },
+  { id: 'col', label: 'Denver Altitude' },
+  { id: 'det', label: 'Detroit Motor Kings' },
+  { id: 'hou', label: 'Houston Space Cowboys' },
+  { id: 'kc', label: 'Kansas City BBQ Fountains' },
+  { id: 'dal', label: 'Dallas Lone Stars' },
+  { id: 'lax', label: 'Los Angeles Sunset Strip' },
+  { id: 'mia', label: 'Miami Hurricanes' },
+  { id: 'mil', label: 'Milwaukee Suds' },
+  { id: 'min', label: 'Minneapolis Frost Giants' },
+  { id: 'ral', label: 'Raleigh Pines' },
+  { id: 'nym', label: 'New York Tycoons' },
+  { id: 'nym', label: 'New York Tycoons' },
+  { id: 'por', label: 'Portland Sasquatch' },
+  { id: 'phi', label: 'Philadelphia Liberty Bells' },
+  { id: 'pit', label: 'Pittsburgh Smokestack' },
+  { id: 'por', label: 'Portland Sasquatch' },
+  { id: 'sdg', label: 'San Diego Surf Hounds' },
+  { id: 'sea', label: 'Seattle Drizzle' },
+  { id: 'sfb', label: 'San Francisco Fog Horns' },
+  { id: 'stl', label: 'St. Louis Archers' },
+  { id: 'orl', label: 'Orlando Thunder' },
+  { id: 'sat', label: 'San Antonio Riverwalk' },
+  { id: 'cha', label: 'Charlotte Hornets' },
+  { id: 'wsh', label: 'Washington Monuments' },
 ] as const;
 
 const GM_FIRST_NAMES = ['Alex', 'Jordan', 'Jamie', 'Taylor', 'Morgan', 'Casey'] as const;
@@ -123,7 +123,7 @@ export default function SetupPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<number>(2);
   const [seed, setSeed] = useState<number>(() => Date.now());
-  const [teamId, setTeamId] = useState<string>('nyy');
+  const [teamId, setTeamId] = useState<string>('nym');
   const [difficulty, setDifficulty] = useState<SetupDifficulty>('standard');
   const [playMode, setPlayMode] = useState<SetupPlayMode>('standard');
   const [wizardMode, setWizardMode] = useState<SetupWizardMode>('dynasty');

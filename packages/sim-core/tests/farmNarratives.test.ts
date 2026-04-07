@@ -13,7 +13,7 @@ function makePlayer(
   seed: number,
   overrides: Partial<GeneratedPlayer> = {},
   position: GeneratedPlayer['position'] = 'SS',
-  teamId: string = 'nyy',
+  teamId: string = 'nym',
   rosterStatus: GeneratedPlayer['rosterStatus'] = 'MLB',
 ): GeneratedPlayer {
   return {
@@ -24,7 +24,7 @@ function makePlayer(
 
 describe('farm narratives', () => {
   it('captures draft provenance and journey highlights in a debut flashback', () => {
-    const player = makePlayer(1, { overallRating: 346, firstName: 'Marco', lastName: 'Ascension', rosterStatus: 'MLB' }, 'SS', 'nyy', 'MLB');
+    const player = makePlayer(1, { overallRating: 346, firstName: 'Marco', lastName: 'Ascension', rosterStatus: 'MLB' }, 'SS', 'nym', 'MLB');
     const bond: ProspectBond = {
       prospectId: player.id,
       draftedSeason: 3,
@@ -36,7 +36,7 @@ describe('farm narratives', () => {
     };
     const origin: PlayerOrigin = {
       playerId: player.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       acquiredSeason: 3,
       draftSeason: 3,
@@ -66,14 +66,14 @@ describe('farm narratives', () => {
 
   it('detects up to three AA/AAA breakout countdowns', () => {
     const players = [
-      makePlayer(2, { age: 21, firstName: 'Cal', lastName: 'Velez', overallRating: 332, ceiling: 410 }, 'SS', 'nyy', 'AA'),
-      makePlayer(3, { age: 22, firstName: 'Tom', lastName: 'Harbor', overallRating: 340, ceiling: 415 }, 'CF', 'nyy', 'AAA'),
-      makePlayer(4, { age: 23, firstName: 'Eli', lastName: 'Stone', overallRating: 336, ceiling: 408 }, 'SP', 'nyy', 'AAA'),
-      makePlayer(5, { age: 23, firstName: 'Nico', lastName: 'Lane', overallRating: 320, ceiling: 390 }, '3B', 'nyy', 'AA'),
+      makePlayer(2, { age: 21, firstName: 'Cal', lastName: 'Velez', overallRating: 332, ceiling: 410 }, 'SS', 'nym', 'AA'),
+      makePlayer(3, { age: 22, firstName: 'Tom', lastName: 'Harbor', overallRating: 340, ceiling: 415 }, 'CF', 'nym', 'AAA'),
+      makePlayer(4, { age: 23, firstName: 'Eli', lastName: 'Stone', overallRating: 336, ceiling: 408 }, 'SP', 'nym', 'AAA'),
+      makePlayer(5, { age: 23, firstName: 'Nico', lastName: 'Lane', overallRating: 320, ceiling: 390 }, '3B', 'nym', 'AA'),
     ];
     const playerOrigins = new Map<string, PlayerOrigin>(players.map((player, index) => [player.id, {
       playerId: player.id,
-      originTeamId: 'nyy',
+      originTeamId: 'nym',
       acquisitionType: 'draft',
       acquiredSeason: 5,
       draftSeason: 5,
@@ -117,7 +117,7 @@ describe('farm narratives', () => {
       {
         season: 6,
         day: 92,
-        userTeamId: 'nyy',
+        userTeamId: 'nym',
         teamRecord: { wins: 38, losses: 54, divisionRank: 4, gamesBack: 11 },
         ownerTone: 'impatient' as const,
         recentTradeHeadline: null,
@@ -131,7 +131,7 @@ describe('farm narratives', () => {
       {
         season: 6,
         day: 92,
-        userTeamId: 'nyy',
+        userTeamId: 'nym',
         teamRecord: { wins: 47, losses: 45, divisionRank: 2, gamesBack: 3 },
         ownerTone: 'supportive' as const,
         recentTradeHeadline: null,

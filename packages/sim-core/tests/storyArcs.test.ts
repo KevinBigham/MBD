@@ -12,7 +12,7 @@ function makePlayer(
   seed: number,
   overrides: Partial<GeneratedPlayer> = {},
   position: GeneratedPlayer['position'] = 'SS',
-  teamId: string = 'nyy',
+  teamId: string = 'nym',
   rosterStatus: GeneratedPlayer['rosterStatus'] = 'MLB',
 ): GeneratedPlayer {
   return {
@@ -25,14 +25,14 @@ function buildSnapshot(overrides: Partial<Parameters<typeof detectNewStoryArcs>[
   return {
     season: 6,
     day: 108,
-    userTeamId: 'nyy',
+    userTeamId: 'nym',
     players: [],
     playerStoryArcs: [],
     seasonStats: new Map(),
     standings: new Map<string, { wins: number; losses: number }>([
-      ['nyy', { wins: 58, losses: 40 }],
+      ['nym', { wins: 58, losses: 40 }],
       ['bos', { wins: 44, losses: 54 }],
-      ['lad', { wins: 55, losses: 45 }],
+      ['lax', { wins: 55, losses: 45 }],
     ]),
     awardHistory: [] as AwardHistoryEntry[],
     playerOrigins: new Map<string, PlayerOrigin>(),
@@ -42,14 +42,14 @@ function buildSnapshot(overrides: Partial<Parameters<typeof detectNewStoryArcs>[
 
 describe('story arcs', () => {
   it.each([
-    ['rookie_sensation', makePlayer(1, { age: 23, serviceTimeDays: 100 }, 'CF', 'nyy', 'MLB'), { pa: 140, ab: 120, hits: 40, hr: 9 }],
-    ['breakout_campaign', makePlayer(2, { age: 27, serviceTimeDays: 400, overallRating: 330 }, 'RF', 'lad', 'MLB'), { pa: 180, ab: 150, hits: 52, hr: 17, rbi: 68 }],
-    ['comeback_trail', makePlayer(3, { age: 29, developmentTrajectory: 'ahead_of_curve', overallRating: 390 }, '1B', 'nyy', 'MLB'), { pa: 130, ab: 110, hits: 34, hr: 8 }],
+    ['rookie_sensation', makePlayer(1, { age: 23, serviceTimeDays: 100 }, 'CF', 'nym', 'MLB'), { pa: 140, ab: 120, hits: 40, hr: 9 }],
+    ['breakout_campaign', makePlayer(2, { age: 27, serviceTimeDays: 400, overallRating: 330 }, 'RF', 'lax', 'MLB'), { pa: 180, ab: 150, hits: 52, hr: 17, rbi: 68 }],
+    ['comeback_trail', makePlayer(3, { age: 29, developmentTrajectory: 'ahead_of_curve', overallRating: 390 }, '1B', 'nym', 'MLB'), { pa: 130, ab: 110, hits: 34, hr: 8 }],
     ['decline_watch', makePlayer(4, { age: 35, developmentTrajectory: 'bust_risk' }, 'DH', 'bos', 'MLB'), { pa: 130, ab: 120, hits: 25, hr: 4 }],
     ['trade_saga', makePlayer(5, { contract: { ...makePlayer(5).contract, years: 1 }, overallRating: 340 }, 'SP', 'bos', 'MLB'), { ip: 78, earnedRuns: 27, wins: 7, strikeouts: 82 }],
-    ['contract_drama', makePlayer(6, { age: 32, contract: { ...makePlayer(6).contract, years: 1 }, overallRating: 360 }, '3B', 'nyy', 'MLB'), { pa: 155, ab: 140, hits: 48, hr: 19, rbi: 73 }],
-    ['prospect_rise', makePlayer(7, { age: 21, overallRating: 320 }, 'SS', 'nyy', 'AAA'), { pa: 0 }],
-    ['dynasty_cornerstone', makePlayer(8, { age: 31, serviceTimeDays: 9 * 172, overallRating: 365 }, 'CF', 'nyy', 'MLB'), { pa: 160, ab: 142, hits: 46, hr: 15 }],
+    ['contract_drama', makePlayer(6, { age: 32, contract: { ...makePlayer(6).contract, years: 1 }, overallRating: 360 }, '3B', 'nym', 'MLB'), { pa: 155, ab: 140, hits: 48, hr: 19, rbi: 73 }],
+    ['prospect_rise', makePlayer(7, { age: 21, overallRating: 320 }, 'SS', 'nym', 'AAA'), { pa: 0 }],
+    ['dynasty_cornerstone', makePlayer(8, { age: 31, serviceTimeDays: 9 * 172, overallRating: 365 }, 'CF', 'nym', 'MLB'), { pa: 160, ab: 142, hits: 46, hr: 15 }],
   ] as const)('detects %s arcs from player state', (expectedArcType, player, stats) => {
     const awardHistory: AwardHistoryEntry[] = expectedArcType === 'dynasty_cornerstone'
       ? [
@@ -62,7 +62,7 @@ describe('story arcs', () => {
     if (expectedArcType === 'prospect_rise') {
       origins.set(player.id, {
         playerId: player.id,
-        originTeamId: 'nyy',
+        originTeamId: 'nym',
         acquisitionType: 'draft',
         acquiredSeason: 5,
         draftSeason: 5,
@@ -87,16 +87,16 @@ describe('story arcs', () => {
   });
 
   it('enforces the 5-arc cap and skips players with an existing active arc', () => {
-    const rookie = makePlayer(21, { age: 23, serviceTimeDays: 100 }, 'CF', 'nyy', 'MLB');
+    const rookie = makePlayer(21, { age: 23, serviceTimeDays: 100 }, 'CF', 'nym', 'MLB');
     const players = [
       rookie,
-      makePlayer(22, { age: 27, serviceTimeDays: 400, overallRating: 330 }, 'RF', 'lad', 'MLB'),
-      makePlayer(23, { age: 29, developmentTrajectory: 'ahead_of_curve', overallRating: 390 }, '1B', 'nyy', 'MLB'),
+      makePlayer(22, { age: 27, serviceTimeDays: 400, overallRating: 330 }, 'RF', 'lax', 'MLB'),
+      makePlayer(23, { age: 29, developmentTrajectory: 'ahead_of_curve', overallRating: 390 }, '1B', 'nym', 'MLB'),
       makePlayer(24, { age: 35, developmentTrajectory: 'bust_risk' }, 'DH', 'bos', 'MLB'),
       makePlayer(25, { contract: { ...makePlayer(25).contract, years: 1 }, overallRating: 340 }, 'SP', 'bos', 'MLB'),
-      makePlayer(26, { age: 32, contract: { ...makePlayer(26).contract, years: 1 }, overallRating: 360 }, '3B', 'nyy', 'MLB'),
-      makePlayer(27, { age: 21, overallRating: 320 }, 'SS', 'nyy', 'AAA'),
-      makePlayer(28, { age: 31, serviceTimeDays: 9 * 172, overallRating: 365 }, 'CF', 'nyy', 'MLB'),
+      makePlayer(26, { age: 32, contract: { ...makePlayer(26).contract, years: 1 }, overallRating: 360 }, '3B', 'nym', 'MLB'),
+      makePlayer(27, { age: 21, overallRating: 320 }, 'SS', 'nym', 'AAA'),
+      makePlayer(28, { age: 31, serviceTimeDays: 9 * 172, overallRating: 365 }, 'CF', 'nym', 'MLB'),
     ];
     const seasonStats = new Map(players.map((player, index) => [player.id, {
       pa: player.rosterStatus === 'MLB' ? 150 + index : 0,
@@ -113,7 +113,7 @@ describe('story arcs', () => {
       players[6]!.id,
       {
         playerId: players[6]!.id,
-        originTeamId: 'nyy',
+        originTeamId: 'nym',
         acquisitionType: 'draft',
         acquiredSeason: 5,
         draftSeason: 5,
@@ -124,9 +124,9 @@ describe('story arcs', () => {
       },
     ]]);
     const awardHistory: AwardHistoryEntry[] = [
-      { season: 3, award: 'All-Star', league: 'MLB', playerId: players[7]!.id, teamId: 'nyy', summary: 'All-Star nod.' },
-      { season: 4, award: 'All-Star', league: 'MLB', playerId: players[7]!.id, teamId: 'nyy', summary: 'All-Star nod.' },
-      { season: 5, award: 'All-Star', league: 'MLB', playerId: players[7]!.id, teamId: 'nyy', summary: 'All-Star nod.' },
+      { season: 3, award: 'All-Star', league: 'MLB', playerId: players[7]!.id, teamId: 'nym', summary: 'All-Star nod.' },
+      { season: 4, award: 'All-Star', league: 'MLB', playerId: players[7]!.id, teamId: 'nym', summary: 'All-Star nod.' },
+      { season: 5, award: 'All-Star', league: 'MLB', playerId: players[7]!.id, teamId: 'nym', summary: 'All-Star nod.' },
     ];
 
     const arcs = detectNewStoryArcs(new GameRNG(9), buildSnapshot({
@@ -150,9 +150,9 @@ describe('story arcs', () => {
   });
 
   it('advances arc phases, emits news/ticker updates, and preserves resolved history', () => {
-    const risingPlayer = makePlayer(31, { age: 23, serviceTimeDays: 100 }, 'CF', 'nyy', 'MLB');
-    const climaxPlayer = makePlayer(32, { age: 27, serviceTimeDays: 400, overallRating: 330 }, 'RF', 'lad', 'MLB');
-    const resolutionPlayer = makePlayer(33, { age: 21, overallRating: 320 }, 'SS', 'nyy', 'MLB');
+    const risingPlayer = makePlayer(31, { age: 23, serviceTimeDays: 100 }, 'CF', 'nym', 'MLB');
+    const climaxPlayer = makePlayer(32, { age: 27, serviceTimeDays: 400, overallRating: 330 }, 'RF', 'lax', 'MLB');
+    const resolutionPlayer = makePlayer(33, { age: 21, overallRating: 320 }, 'SS', 'nym', 'MLB');
     const snapshot = buildSnapshot({
       day: 150,
       players: [risingPlayer, climaxPlayer, resolutionPlayer],
@@ -206,7 +206,7 @@ describe('story arcs', () => {
   });
 
   it('is deterministic with the same seeded input', () => {
-    const player = makePlayer(41, { age: 23, serviceTimeDays: 100 }, 'CF', 'nyy', 'MLB');
+    const player = makePlayer(41, { age: 23, serviceTimeDays: 100 }, 'CF', 'nym', 'MLB');
     const snapshot = buildSnapshot({
       players: [player],
       seasonStats: new Map([[player.id, { pa: 160, ab: 140, hits: 47, hr: 11 }]]),

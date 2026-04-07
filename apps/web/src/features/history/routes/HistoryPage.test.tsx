@@ -34,8 +34,8 @@ describe('HistoryPage', () => {
       day: 162,
       phase: 'offseason',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 162,
       isSimulating: false,
@@ -56,7 +56,7 @@ describe('HistoryPage', () => {
       getAwardRaces: vi.fn().mockResolvedValue({
         mvp: [{
           playerId: 'player-mvp',
-          teamId: 'nyy',
+          teamId: 'nym',
           score: 99,
           summary: 'The lineup is running through one elite bat.',
         }],
@@ -79,7 +79,7 @@ describe('HistoryPage', () => {
           award: 'MVP',
           league: 'AL',
           playerId: 'player-mvp',
-          teamId: 'nyy',
+          teamId: 'nym',
           summary: 'Mike Trout carried the offense all summer.',
         },
       ]),
@@ -87,11 +87,11 @@ describe('HistoryPage', () => {
         {
           season: 1,
           championTeamId: 'hou',
-          runnerUpTeamId: 'nyy',
+          runnerUpTeamId: 'nym',
           worldSeriesRecord: '4-3',
           summary: 'Houston survived a seven-game classic.',
           awards: [],
-          keyMoments: ['The Yankees fell one win short.'],
+          keyMoments: ['The Tycoons fell one win short.'],
           statLeaders: {
             hr: [],
             rbi: [],
@@ -103,7 +103,7 @@ describe('HistoryPage', () => {
           notableRetirements: [],
           blockbusterTrades: [],
           userSeason: {
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '88-74',
             playoffResult: 'Championship Series exit',
             storylines: ['Came up short late in October.'],
@@ -111,8 +111,8 @@ describe('HistoryPage', () => {
         },
         {
           season: 2,
-          championTeamId: 'nyy',
-          runnerUpTeamId: 'lad',
+          championTeamId: 'nym',
+          runnerUpTeamId: 'lax',
           worldSeriesRecord: '4-2',
           summary: 'New York survived a heavyweight October bracket.',
           awards: [{
@@ -120,33 +120,33 @@ describe('HistoryPage', () => {
             award: 'MVP',
             league: 'AL',
             playerId: 'player-mvp',
-            teamId: 'nyy',
+            teamId: 'nym',
             summary: 'Mike Trout carried the offense all summer.',
           }],
           keyMoments: ['Mike Trout changed the lineup ceiling.'],
           statLeaders: {
-            hr: [{ playerId: 'player-mvp', teamId: 'nyy', value: '44', summary: '44 HR' }],
-            rbi: [{ playerId: 'player-rbi', teamId: 'nyy', value: '131', summary: '131 RBI' }],
-            avg: [{ playerId: 'player-avg', teamId: 'tor', value: '.350', summary: '.350 AVG' }],
+            hr: [{ playerId: 'player-mvp', teamId: 'nym', value: '44', summary: '44 HR' }],
+            rbi: [{ playerId: 'player-rbi', teamId: 'nym', value: '131', summary: '131 RBI' }],
+            avg: [{ playerId: 'player-avg', teamId: 'cha', value: '.350', summary: '.350 AVG' }],
             era: [{ playerId: 'player-era', teamId: 'bos', value: '2.61', summary: '2.61 ERA' }],
             k: [{ playerId: 'player-k', teamId: 'bos', value: '236', summary: '236 K' }],
             w: [{ playerId: 'player-w', teamId: 'sea', value: '20', summary: '20 W' }],
           },
           notableRetirements: [{
             playerId: 'player-retire',
-            teamId: 'nyy',
+            teamId: 'nym',
             seasonsPlayed: 14,
             overallRating: 78,
             summary: 'A franchise fixture walked away after 14 seasons.',
           }],
           blockbusterTrades: [{
             headline: 'Deadline blockbuster reshaped the race',
-            summary: 'The Yankees bought aggressively at the deadline.',
+            summary: 'The Tycoons bought aggressively at the deadline.',
             playerIds: ['player-mvp'],
-            teamIds: ['nyy', 'lad'],
+            teamIds: ['nym', 'lax'],
           }],
           userSeason: {
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '97-65',
             playoffResult: 'Champion',
             storylines: ['Won the World Series in six games.'],
@@ -158,10 +158,10 @@ describe('HistoryPage', () => {
           return {
             season: 1,
             standings: [
-              { teamId: 'nyy', wins: 88, losses: 74, divisionRank: 2, gamesBack: 5 },
+              { teamId: 'nym', wins: 88, losses: 74, divisionRank: 2, gamesBack: 5 },
             ],
             playoffSeries: [
-              { round: 'CHAMPIONSHIP_SERIES', winnerTeamId: 'hou', loserTeamId: 'nyy', result: '4-2' },
+              { round: 'CHAMPIONSHIP_SERIES', winnerTeamId: 'hou', loserTeamId: 'nym', result: '4-2' },
             ],
             awards: [],
             statLeaders: {
@@ -177,7 +177,7 @@ describe('HistoryPage', () => {
                 headline: 'Midwinter reset thinned the roster',
                 summary: 'New York cleared payroll and prospect space.',
                 playerIds: ['player-mvp'],
-                teamIds: ['nyy'],
+                teamIds: ['nym'],
                 impactScore: 76,
               },
             ],
@@ -186,15 +186,15 @@ describe('HistoryPage', () => {
                 pickNumber: 12,
                 playerId: 'pick-1',
                 playerName: 'Jorge Mendez',
-                teamId: 'nyy',
+                teamId: 'nym',
                 currentStatus: 'AAA',
               },
             ],
             financials: [
-              { teamId: 'nyy', payroll: 220, budget: 235 },
+              { teamId: 'nym', payroll: 220, budget: 235 },
             ],
             userSummary: {
-              teamId: 'nyy',
+              teamId: 'nym',
               record: '88-74',
               playoffResult: 'Championship Series exit',
               storylines: ['Came up short late in October.'],
@@ -206,26 +206,26 @@ describe('HistoryPage', () => {
         return {
           season: 2,
           standings: [
-            { teamId: 'nyy', wins: 97, losses: 65, divisionRank: 1, gamesBack: 0 },
+            { teamId: 'nym', wins: 97, losses: 65, divisionRank: 1, gamesBack: 0 },
             { teamId: 'bos', wins: 92, losses: 70, divisionRank: 2, gamesBack: 5 },
-            { teamId: 'lad', wins: 98, losses: 64, divisionRank: 1, gamesBack: 0 },
+            { teamId: 'lax', wins: 98, losses: 64, divisionRank: 1, gamesBack: 0 },
           ],
           playoffSeries: [
-            { round: 'ALCS', winnerTeamId: 'nyy', loserTeamId: 'hou', result: '4-1' },
-            { round: 'WORLD_SERIES', winnerTeamId: 'nyy', loserTeamId: 'lad', result: '4-2' },
+            { round: 'ALCS', winnerTeamId: 'nym', loserTeamId: 'hou', result: '4-1' },
+            { round: 'WORLD_SERIES', winnerTeamId: 'nym', loserTeamId: 'lax', result: '4-2' },
           ],
           awards: [{
             season: 2,
             award: 'MVP',
             league: 'AL',
             playerId: 'player-mvp',
-            teamId: 'nyy',
+            teamId: 'nym',
             summary: 'Mike Trout carried the offense all summer.',
           }],
           statLeaders: {
-            hr: [{ playerId: 'player-mvp', teamId: 'nyy', value: '44', summary: '44 HR' }],
-            rbi: [{ playerId: 'player-rbi', teamId: 'nyy', value: '131', summary: '131 RBI' }],
-            avg: [{ playerId: 'player-avg', teamId: 'tor', value: '.350', summary: '.350 AVG' }],
+            hr: [{ playerId: 'player-mvp', teamId: 'nym', value: '44', summary: '44 HR' }],
+            rbi: [{ playerId: 'player-rbi', teamId: 'nym', value: '131', summary: '131 RBI' }],
+            avg: [{ playerId: 'player-avg', teamId: 'cha', value: '.350', summary: '.350 AVG' }],
             era: [{ playerId: 'player-era', teamId: 'bos', value: '2.61', summary: '2.61 ERA' }],
             k: [{ playerId: 'player-k', teamId: 'bos', value: '236', summary: '236 K' }],
             w: [{ playerId: 'player-w', teamId: 'sea', value: '20', summary: '20 W' }],
@@ -233,9 +233,9 @@ describe('HistoryPage', () => {
           transactions: [
             {
               headline: 'Deadline blockbuster reshaped the race',
-              summary: 'The Yankees bought aggressively at the deadline.',
+              summary: 'The Tycoons bought aggressively at the deadline.',
               playerIds: ['player-mvp'],
-              teamIds: ['nyy', 'lad'],
+              teamIds: ['nym', 'lax'],
               impactScore: 91,
             },
           ],
@@ -244,16 +244,16 @@ describe('HistoryPage', () => {
               pickNumber: 8,
               playerId: 'pick-2',
               playerName: 'Calvin Velez',
-              teamId: 'nyy',
+              teamId: 'nym',
               currentStatus: 'AA',
             },
           ],
           financials: [
-            { teamId: 'nyy', payroll: 245, budget: 255 },
+            { teamId: 'nym', payroll: 245, budget: 255 },
             { teamId: 'bos', payroll: 231, budget: 240 },
           ],
           userSummary: {
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '97-65',
             playoffResult: 'Champion',
             storylines: ['Won the World Series in six games.'],
@@ -262,26 +262,26 @@ describe('HistoryPage', () => {
         };
       }),
       compareSeasons: vi.fn().mockResolvedValue({
-        userTeamId: 'nyy',
+        userTeamId: 'nym',
         left: {
           season: 1,
           userSummary: {
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '88-74',
             playoffResult: 'Championship Series exit',
             storylines: ['Came up short late in October.'],
           },
-          financials: [{ teamId: 'nyy', payroll: 220, budget: 235 }],
+          financials: [{ teamId: 'nym', payroll: 220, budget: 235 }],
         },
         right: {
           season: 2,
           userSummary: {
-            teamId: 'nyy',
+            teamId: 'nym',
             record: '97-65',
             playoffResult: 'Champion',
             storylines: ['Won the World Series in six games.'],
           },
-          financials: [{ teamId: 'nyy', payroll: 245, budget: 255 }],
+          financials: [{ teamId: 'nym', payroll: 245, budget: 255 }],
         },
         deltas: {
           wins: 9,
@@ -294,7 +294,7 @@ describe('HistoryPage', () => {
           {
             id: 'franchise:nyy:individual_single_season:hr',
             scope: 'franchise',
-            teamId: 'nyy',
+            teamId: 'nym',
             category: 'individual_single_season',
             stat: 'hr',
             label: 'Most Home Runs',
@@ -302,7 +302,7 @@ describe('HistoryPage', () => {
             holders: [{
               playerId: 'player-mvp',
               playerName: 'Mike Trout',
-              teamId: 'nyy',
+              teamId: 'nym',
               season: 2,
               value: 44,
               displayValue: '44',
@@ -319,7 +319,7 @@ describe('HistoryPage', () => {
           recordId: 'franchise:nyy:individual_single_season:hr',
           playerId: 'player-mvp',
           playerName: 'Mike Trout',
-          teamId: 'nyy',
+          teamId: 'nym',
           recordLabel: 'Most Home Runs',
           currentValue: 24,
           projectedValue: 61,
@@ -331,7 +331,7 @@ describe('HistoryPage', () => {
       getRivalries: vi.fn().mockResolvedValue([
         {
           id: 'nyy-bos',
-          teamA: 'nyy',
+          teamA: 'nym',
           teamB: 'bos',
           intensity: 84,
           summary: 'Every series is carrying real postseason weight.',
@@ -350,7 +350,7 @@ describe('HistoryPage', () => {
           playerName: 'Derek Jeter',
           position: 'SS',
           seasonsPlayed: 18,
-          teamIds: ['nyy'],
+          teamIds: ['nym'],
           inductionSeason: 5,
           score: 91,
           inductionType: 'first_ballot',
@@ -481,12 +481,12 @@ describe('HistoryPage', () => {
           'player-retire': 'Anthony Rizzo',
         },
         teams: {
-          nyy: 'New York Yankees',
-          bos: 'Boston Red Sox',
-          bal: 'Baltimore Orioles',
-          tor: 'Toronto Blue Jays',
-          sea: 'Seattle Mariners',
-          lad: 'Los Angeles Dodgers',
+          nym: 'New York Tycoons',
+          bos: 'Boston Noreasters',
+          bal: 'Baltimore Crab Cakes',
+          tor: 'Charlotte Hornets',
+          sea: 'Seattle Drizzle',
+          lad: 'Los Angeles Sunset Strip',
         },
       }),
     } as unknown as ReturnType<typeof useWorker>);
@@ -521,8 +521,8 @@ describe('HistoryPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('New York Yankees');
-    expect(container.textContent).toContain('Boston Red Sox');
+    expect(container.textContent).toContain('New York Tycoons');
+    expect(container.textContent).toContain('Boston Noreasters');
     expect(container.textContent).toContain('Season Browser');
     expect(container.textContent).toContain('Compare Seasons');
     expect(container.textContent).toContain('Season 2 vs Season 1');
@@ -540,9 +540,9 @@ describe('HistoryPage', () => {
     expect(container.textContent).toContain('Origin');
     expect(container.textContent).toContain('Historical');
     expect(container.textContent).toContain('Current season');
-    expect(container.textContent).toContain('NYY 8-5 BOS');
+    expect(container.textContent).toContain('NYT 8-5 BOS');
     expect(container.textContent).toContain('Historical record');
-    expect(container.textContent).toContain('NYY 144-132 BOS');
+    expect(container.textContent).toContain('NYT 144-132 BOS');
 
     await clickButton('timeline');
     expect(container.textContent).toContain('Aggressive deadline push');

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GameSnapshot } from '@mbd/contracts';
 import * as simCore from '../src/index.js';
 
-function createSnapshot(teamId: string = 'nyy'): GameSnapshot {
+function createSnapshot(teamId: string = 'nym'): GameSnapshot {
   return {
     schemaVersion: 13,
     rng: { seed: 11, callCount: 0 },
@@ -101,8 +101,8 @@ function createSnapshot(teamId: string = 'nyy'): GameSnapshot {
       difficulty: 'standard',
       createdAt: 'S3D1',
       teamId,
-      teamName: 'New York Yankees',
-      teamAbbreviation: 'NYY',
+      teamName: 'New York Tycoons',
+      teamAbbreviation: 'NYT',
       teamDivision: 'AL East',
       onboarding: { welcomeBriefingSeen: true, firstMonthlyPulseSeen: true },
       playMode: 'standard',
@@ -157,7 +157,7 @@ describe('challenge scenarios', () => {
     expect(expansion).toBeDefined();
     expect(perfectSeason).toBeDefined();
 
-    const overridden = applyScenarioOverrides!(new simCore.GameRNG(3), createSnapshot('nyy'), expansion!);
+    const overridden = applyScenarioOverrides!(new simCore.GameRNG(3), createSnapshot('nym'), expansion!);
     expect(overridden.userTeamId).toBe('por');
     expect(overridden.franchise.teamId).toBe('por');
 

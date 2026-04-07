@@ -43,13 +43,13 @@ describe('MomentCardOverlay', () => {
     id: 'moment-world-series',
     type: 'world_series_win',
     title: 'WORLD CHAMPIONS',
-    subtitle: 'New York Yankees',
-    detailLines: ['Defeated Los Angeles Dodgers 4-2', 'MVP: Aaron Judge'],
+    subtitle: 'New York Tycoons',
+    detailLines: ['Defeated Los Angeles Sunset Strip 4-2', 'MVP: Aaron Judge'],
     soundEffect: 'world_series_win',
     autoDismissMs: 5000,
     createdAt: 'S1D180',
     theme: 'celebration',
-    relatedTeamIds: ['nyy', 'lad'],
+    relatedTeamIds: ['nym', 'lax'],
     relatedPlayerIds: ['nyy-1'],
   };
 
@@ -65,7 +65,7 @@ describe('MomentCardOverlay', () => {
     });
 
     expect(container.textContent).toContain('WORLD CHAMPIONS');
-    expect(container.textContent).toContain('New York Yankees');
+    expect(container.textContent).toContain('New York Tycoons');
     expect(container.textContent).toContain('Aaron Judge');
   });
 
@@ -108,12 +108,12 @@ describe('MomentCardOverlay', () => {
       type: 'award',
       title: 'MOST VALUABLE PLAYER',
       subtitle: 'AL · Season 1',
-      detailLines: ['Aaron Judge · New York Yankees', '.312 AVG · 42 HR · 121 RBI', '178 H · 98 R · 72 BB'],
+      detailLines: ['Aaron Judge · New York Tycoons', '.312 AVG · 42 HR · 121 RBI', '178 H · 98 R · 72 BB'],
       soundEffect: 'achievement_unlock',
       autoDismissMs: 5000,
       createdAt: 'S1D162',
       theme: 'historic',
-      relatedTeamIds: ['nyy'],
+      relatedTeamIds: ['nym'],
       relatedPlayerIds: ['player1'],
     };
 
@@ -129,7 +129,7 @@ describe('MomentCardOverlay', () => {
 
     expect(container.textContent).toContain('MOST VALUABLE PLAYER');
     expect(container.textContent).toContain('AL · Season 1');
-    expect(container.textContent).toContain('Aaron Judge · New York Yankees');
+    expect(container.textContent).toContain('Aaron Judge · New York Tycoons');
     expect(container.textContent).toContain('.312 AVG · 42 HR · 121 RBI');
     expect(container.textContent).toContain('Award Ceremony');
   });

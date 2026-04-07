@@ -35,8 +35,8 @@ describe('LeadersPage', () => {
       day: 88,
       phase: 'regular',
       isInitialized: true,
-      userTeamId: 'nyy',
-      teamName: 'Yankees',
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -67,7 +67,7 @@ describe('LeadersPage', () => {
           firstName: 'Gerrit',
           lastName: 'Cole',
           position: 'SP',
-          teamId: 'nyy',
+          teamId: 'nym',
           displayRating: 68,
           stats: {
             avg: '.000',
@@ -98,7 +98,7 @@ describe('LeadersPage', () => {
         firstName: 'Aaron',
         lastName: 'Judge',
         position: 'RF',
-        teamId: 'nyy',
+        teamId: 'nym',
         displayRating: 73,
         stats: {
           avg: '.318',

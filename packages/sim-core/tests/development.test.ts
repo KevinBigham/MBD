@@ -17,19 +17,19 @@ import type { DevProgram, GeneratedPlayer } from '../src/index.js';
 
 function makeYoungHitter(seed: number): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  const player = generatePlayer(rng, 'SS', 'NYY', 'MLB');
+  const player = generatePlayer(rng, 'SS', 'NYT', 'MLB');
   return { ...player, age: 22, developmentPhase: 'Prospect' as const };
 }
 
 function makeOldHitter(seed: number): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  const player = generatePlayer(rng, '1B', 'NYY', 'MLB');
+  const player = generatePlayer(rng, '1B', 'NYT', 'MLB');
   return { ...player, age: 38, developmentPhase: 'Retirement' as const };
 }
 
 function makePrimeHitter(seed: number): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  const player = generatePlayer(rng, 'CF', 'NYY', 'MLB');
+  const player = generatePlayer(rng, 'CF', 'NYT', 'MLB');
   return { ...player, age: 28, developmentPhase: 'Prime' as const };
 }
 
@@ -150,7 +150,7 @@ describe('developPlayer', () => {
 describe('developAllPlayers', () => {
   it('processes all players and returns developed roster', () => {
     const rng1 = new GameRNG(42);
-    const roster = generateTeamRoster(rng1, 'NYY');
+    const roster = generateTeamRoster(rng1, 'NYT');
     const initialCount = roster.length;
     const rng2 = new GameRNG(99);
     const developed = developAllPlayers(rng2, roster);
