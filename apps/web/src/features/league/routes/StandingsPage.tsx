@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 
 interface TeamStandings {
   teamId: string;
@@ -84,11 +85,16 @@ export default function StandingsPage() {
                         }`}
                       >
                         <td className="px-4 py-2">
-                          <div className="font-heading font-medium text-dynasty-text">
-                            {team.abbreviation}
-                          </div>
-                          <div className="font-heading text-xs text-dynasty-muted">
-                            {team.city} {team.teamName}
+                          <div className="flex items-center gap-2.5">
+                            <TeamLogo teamId={team.teamId} size="sm" />
+                            <div>
+                              <div className="font-heading font-medium text-dynasty-text">
+                                {team.abbreviation}
+                              </div>
+                              <div className="font-heading text-xs text-dynasty-muted">
+                                {team.city} {team.teamName}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.wins}</td>

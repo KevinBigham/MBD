@@ -1,6 +1,8 @@
 import { Settings, Command } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { TeamLogo } from '@/shared/components/TeamLogo';
+import { ContextualHelp, PAGE_HELP } from '@/shared/components/ContextualHelp';
 import type { SeasonFlowState } from './seasonFlow';
 
 interface TopBarProps {
@@ -9,7 +11,9 @@ interface TopBarProps {
 }
 
 export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
-  const { season, day, phase, teamName } = useGameStore();
+  const { season, day, phase, teamName, userTeamId } = useGameStore();
+  const location = useLocation();
+  const helpContent = PAGE_HELP[location.pathname] ?? null;
   const phaseLabel = flow?.phaseLabel ?? `Season ${season} — Day ${day}`;
   const detailLabel = flow?.detailLabel ?? phase;
   const progress = Math.round((flow?.progress ?? 0) * 100);
@@ -26,6 +30,7 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
             {phaseLabel}
           </div>
           <div className="mt-1 flex items-center gap-2">
+            {userTeamId && <TeamLogo teamId={userTeamId} size="xs" />}
             <span className="truncate font-heading text-xs text-dynasty-muted">{teamName}</span>
             <span className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">
               {detailLabel}
@@ -41,8 +46,15 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
         </div>
       </div>
 
-      {/* Right: Command palette trigger + Settings */}
+      {/* Right: Help + Command palette trigger + Settings */}
       <div className="flex items-center gap-2">
+        {helpContent && (
+          <ContextualHelp
+            title={helpContent.title}
+            description={helpContent.description}
+            actions={helpContent.actions}
+          />
+        )}
         <button
           onClick={onOpenCommandPalette}
           className="focus-ring flex items-center gap-1.5 rounded-md border border-dynasty-border px-2.5 py-1.5 text-xs text-dynasty-muted transition-colors hover:border-dynasty-muted hover:text-dynasty-text"
