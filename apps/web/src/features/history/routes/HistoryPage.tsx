@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { History, Award, Flame, Trophy, BarChart3 } from 'lucide-react';
+import { History, Award, Flame, Trophy, BarChart3, Film } from 'lucide-react';
 import { Skeleton } from '@mbd/ui';
 import { Link } from 'react-router-dom';
 import { logger } from '@/shared/lib/logger';
@@ -23,6 +23,8 @@ import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { listLeaderboardEntries, type LeaderboardEntry } from '@/shared/lib/saveSystem';
+import { TimelineComparisonPanel } from '../components/TimelineComparisonPanel';
+import { SeasonRecapModal, type SeasonRecapData } from '../components/SeasonRecapModal';
 
 interface HistoryDisplayNames {
   players: Record<string, string>;
@@ -324,6 +326,76 @@ function formatSignedMetric(value: number | null | undefined, suffix: string): s
   return `${sign}${value}${suffix}`;
 }
 
+function buildSeasonRecapData(
+  archive: SeasonArchiveEntry,
+  seasonHistory: SeasonHistoryEntry | undefined,
+  userTeamId: string,
+  displayNames: HistoryDisplayNames,
+): SeasonRecapData {
+  const teamDef = getTeamById(userTeamId);
+  const teamName = teamDef?.name ?? userTeamId;
+
+  const userStanding = archive.standings?.find((s) => s.teamId === userTeamId);
+  const wins = userStanding?.wins ?? 0;
+  const losses = userStanding?.losses ?? 0;
+  const pct = wins + losses > 0 ? (wins / (wins + losses)).toFixed(3) : '.000';
+
+  const userSummary = archive.userSummary ?? seasonHistory?.userSeason;
+  const isChampion = seasonHistory?.championTeamId === userTeamId;
+
+  function leaderForStat(leaders: SeasonStatLeader[] | undefined): { name: string; value: string } | null {
+    if (!leaders || leaders.length === 0) return null;
+    const teamLeader = leaders.find((l) => l.teamId === userTeamId) ?? leaders[0];
+    if (!teamLeader) return null;
+    const name = displayNames.players[teamLeader.playerId] ?? 'Unknown';
+    return { name, value: teamLeader.value ?? teamLeader.summary ?? '' };
+  }
+
+  const awards = (archive.awards ?? [])
+    .filter((a) => a.teamId === userTeamId)
+    .slice(0, 6)
+    .map((a) => ({
+      award: a.award ?? 'Award',
+      playerName: displayNames.players[a.playerId] ?? 'Unknown',
+    }));
+
+  const keyTransactions = (archive.transactions ?? [])
+    .slice(0, 8)
+    .map((tx) => ({ description: tx.headline }));
+
+  const narrative = seasonHistory
+    ? `${userSummary?.record ?? `${wins}-${losses}`}. ${userSummary?.playoffResult ?? 'Did not qualify.'}${seasonHistory.summary ? ` ${seasonHistory.summary}` : ''}`
+    : `${wins}-${losses}. Season ${archive.season} complete.`;
+
+  const financialEntry = archive.financials?.find((f) => f.teamId === userTeamId);
+
+  return {
+    season: archive.season,
+    teamName,
+    teamId: userTeamId,
+    record: `${wins}-${losses}`,
+    winPct: pct,
+    divisionRank: userStanding?.divisionRank ?? 0,
+    gamesBack: userStanding?.gamesBack ?? 0,
+    playoffResult: userSummary?.playoffResult ?? null,
+    isChampion,
+    statLeaders: {
+      hr: leaderForStat(archive.statLeaders?.hr),
+      rbi: leaderForStat(archive.statLeaders?.rbi),
+      avg: leaderForStat(archive.statLeaders?.avg),
+      era: leaderForStat(archive.statLeaders?.era),
+      k: leaderForStat(archive.statLeaders?.k),
+      w: leaderForStat(archive.statLeaders?.w),
+    },
+    awards,
+    keyTransactions,
+    narrative,
+    storylines: userSummary?.storylines ?? seasonHistory?.keyMoments ?? [],
+    fanSentiment: null,
+    payroll: financialEntry?.payroll != null ? `$${financialEntry.payroll.toFixed(1)}M` : null,
+  };
+}
+
 function HistorySkeleton() {
   return (
     <div className="space-y-6" data-testid="history-loading">
@@ -419,6 +491,7 @@ export default function HistoryPage() {
   const [branches, setBranches] = useState<BranchSaveView[]>([]);
   const [timelineComparisons, setTimelineComparisons] = useState<TimelineComparison[]>([]);
   const [allTimeLeaders, setAllTimeLeaders] = useState<AllTimeLeadersView | null>(null);
+  const [recapData, setRecapData] = useState<SeasonRecapData | null>(null);
   const [loading, setLoading] = useState(true);
   const timelineRootSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : activeSaveId;
 
@@ -836,8 +909,25 @@ export default function HistoryPage() {
                     <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="font-heading text-base text-dynasty-textBright">Season {selectedArchive.season} Archive</div>
-                        <div className="font-data text-xs text-dynasty-muted">
-                          {formatSeasonViewRecord(selectedArchive)}
+                        <div className="flex items-center gap-3">
+                          {!isArchivedSeasonView(selectedArchive) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isArchivedSeasonView(selectedArchive)) return;
+                                const seasonHist = seasonHistory.find((s) => s.season === selectedArchive.season);
+                                const recap = buildSeasonRecapData(selectedArchive, seasonHist, userTeamId, displayNames);
+                                setRecapData(recap);
+                              }}
+                              className="focus-ring flex items-center gap-1.5 rounded border border-accent-primary/40 bg-accent-primary/10 px-2.5 py-1 font-heading text-xs text-accent-primary transition-colors hover:bg-accent-primary/20"
+                            >
+                              <Film className="h-3.5 w-3.5" />
+                              Year in Review
+                            </button>
+                          )}
+                          <div className="font-data text-xs text-dynasty-muted">
+                            {formatSeasonViewRecord(selectedArchive)}
+                          </div>
                         </div>
                       </div>
                       <div className="mt-2 font-heading text-sm text-dynasty-text">
@@ -1191,77 +1281,9 @@ export default function HistoryPage() {
                 <History className="h-4 w-4 text-accent-success" />
                 <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">What-If Timeline Branches</h2>
               </div>
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="space-y-4">
                 {timelineComparisons.length > 0 ? timelineComparisons.map((comparison) => (
-                  <div key={comparison.branchMeta.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="font-heading text-base text-dynasty-textBright">
-                          {comparison.branchMeta.description}
-                        </div>
-                        <div className="mt-1 font-heading text-xs text-dynasty-muted">
-                          Forked in Season {comparison.branchMeta.branchedAtSeason} · Day {comparison.branchMeta.branchedAtDay}
-                        </div>
-                      </div>
-                      <div className="font-data text-sm text-dynasty-textBright">
-                        {comparison.recordDelta.branch.wins}-{comparison.recordDelta.branch.losses}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded border border-dynasty-border/70 px-3 py-2">
-                        <div className="font-heading text-[11px] uppercase text-dynasty-muted">Win swing</div>
-                        <div className="mt-1 font-data text-sm text-dynasty-textBright">
-                          {formatSignedMetric(comparison.recordDelta.delta, ' wins')}
-                        </div>
-                      </div>
-                      <div className="rounded border border-dynasty-border/70 px-3 py-2">
-                        <div className="font-heading text-[11px] uppercase text-dynasty-muted">Division swing</div>
-                        <div className="mt-1 font-data text-sm text-dynasty-textBright">
-                          {formatSignedMetric(comparison.standingsDelta.delta, ' spots')}
-                        </div>
-                      </div>
-                      <div className="rounded border border-dynasty-border/70 px-3 py-2">
-                        <div className="font-heading text-[11px] uppercase text-dynasty-muted">Titles</div>
-                        <div className="mt-1 font-data text-sm text-dynasty-textBright">
-                          {comparison.championshipsDelta.branch}
-                        </div>
-                      </div>
-                      <div className="rounded border border-dynasty-border/70 px-3 py-2">
-                        <div className="font-heading text-[11px] uppercase text-dynasty-muted">Trades</div>
-                        <div className="mt-1 font-data text-sm text-dynasty-textBright">
-                          {comparison.tradesDelta.branch}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 rounded border border-dynasty-border/70 px-3 py-3">
-                      <div className="font-heading text-[11px] uppercase text-dynasty-muted">Roster swing</div>
-                      {comparison.rosterDelta.added.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {comparison.rosterDelta.added.map((player) => (
-                            <span key={`${comparison.branchMeta.id}-added-${player}`} className="rounded border border-accent-success/40 bg-accent-success/10 px-2 py-1 font-heading text-xs text-dynasty-text">
-                              {player}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                      {comparison.rosterDelta.lost.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {comparison.rosterDelta.lost.map((player) => (
-                            <span key={`${comparison.branchMeta.id}-lost-${player}`} className="rounded border border-accent-danger/40 bg-accent-danger/10 px-2 py-1 font-heading text-xs text-dynasty-text">
-                              {player}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                      {comparison.rosterDelta.added.length === 0 && comparison.rosterDelta.lost.length === 0 ? (
-                        <div className="mt-2 font-heading text-xs text-dynasty-muted">
-                          No roster changes diverged from the parent save.
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+                  <TimelineComparisonPanel key={comparison.branchMeta.id} comparison={comparison} />
                 )) : (
                   <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
                     No what-if branches are available for this save.
@@ -1530,6 +1552,10 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+
+      {recapData && (
+        <SeasonRecapModal data={recapData} onDismiss={() => setRecapData(null)} />
+      )}
     </PageShell>
   );
 }
