@@ -21,10 +21,16 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   return (
     <header className="flex h-12 items-center justify-between border-b border-dynasty-border bg-dynasty-surface px-4">
       {/* Left: Brand + Season context */}
-      <div className="flex min-w-0 items-center gap-4">
+      <div className="flex min-w-0 items-center gap-3">
         <span className="font-brand text-2xl tracking-wide text-accent-primary">
           MBD
         </span>
+        {/* Mobile compact: just logo + phase */}
+        <div className="flex items-center gap-2 sm:hidden">
+          {userTeamId && <TeamLogo teamId={userTeamId} size="xs" />}
+          <span className="truncate font-heading text-xs text-dynasty-muted">{detailLabel}</span>
+        </div>
+        {/* Desktop full: phase, team, progress */}
         <div className="hidden min-w-0 sm:block">
           <div className="truncate font-heading font-medium text-dynasty-text">
             {phaseLabel}
