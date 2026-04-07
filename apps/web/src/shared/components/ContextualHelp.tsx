@@ -42,7 +42,7 @@ export function ContextualHelp({ title, description, actions, shortcuts }: Conte
   }, [open]);
 
   return (
-    <div className="relative inline-block">
+    <div className="relative inline-block" data-tour="contextual-help">
       <button
         type="button"
         onClick={() => setOpen(!open)}

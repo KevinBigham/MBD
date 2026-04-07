@@ -20,6 +20,20 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/components/TourProvider', () => ({
+  useTour: () => ({
+    active: false,
+    currentStep: 0,
+    totalSteps: 9,
+    startTour: vi.fn(),
+    nextStep: vi.fn(),
+    prevStep: vi.fn(),
+    skipTour: vi.fn(),
+    restartTour: vi.fn(),
+    completed: false,
+  }),
+}));
+
 vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),

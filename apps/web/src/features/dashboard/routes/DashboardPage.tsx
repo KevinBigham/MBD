@@ -459,7 +459,7 @@ export default function DashboardPage() {
 
   return (
     <PageShell loading={loading && summary == null} skeleton={<DashboardSkeleton />}>
-      <div className="space-y-6">
+      <div className="space-y-6" data-tour="dashboard-grid" data-tour-ready={summary?.franchise.welcomeBriefingPending === false ? 'true' : undefined}>
         <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>

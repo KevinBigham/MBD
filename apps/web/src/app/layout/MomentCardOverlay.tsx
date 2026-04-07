@@ -97,7 +97,7 @@ export function MomentCardOverlay({ moment, busy, onDismiss }: MomentCardOverlay
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div data-overlay="moment-card" className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         aria-label="Dismiss moment card"
         className="absolute inset-0 cursor-default bg-black/75 backdrop-blur-sm"

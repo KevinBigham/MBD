@@ -1,9 +1,27 @@
-import { Settings, Command } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Command, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { ContextualHelp, PAGE_HELP } from '@/shared/components/ContextualHelp';
 import type { SeasonFlowState } from './seasonFlow';
+
+function useOnlineStatus(): boolean {
+  const [online, setOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  );
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+  return online;
+}
 
 interface TopBarProps {
   onOpenCommandPalette: () => void;
@@ -13,6 +31,7 @@ interface TopBarProps {
 export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   const { season, day, phase, teamName, userTeamId } = useGameStore();
   const location = useLocation();
+  const online = useOnlineStatus();
   const helpContent = PAGE_HELP[location.pathname] ?? null;
   const phaseLabel = flow?.phaseLabel ?? `Season ${season} — Day ${day}`;
   const detailLabel = flow?.detailLabel ?? phase;
@@ -54,6 +73,15 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
 
       {/* Right: Help + Command palette trigger + Settings */}
       <div className="flex items-center gap-2">
+        {!online && (
+          <span
+            className="flex items-center gap-1 rounded-md bg-accent-warning/10 px-2 py-1 font-data text-[11px] text-accent-warning"
+            role="status"
+          >
+            <WifiOff className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Offline</span>
+          </span>
+        )}
         {helpContent && (
           <ContextualHelp
             title={helpContent.title}

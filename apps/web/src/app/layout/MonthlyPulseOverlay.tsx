@@ -64,7 +64,7 @@ export function MonthlyPulseOverlay({
   const keyReturns = report?.keyReturns ?? [];
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+    <div data-overlay="monthly-pulse" className="fixed inset-0 z-40 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
       <section className={`relative w-full max-w-3xl overflow-hidden rounded-2xl border border-dynasty-border bg-[radial-gradient(circle_at_top,rgba(181,166,114,0.1),transparent_42%),linear-gradient(180deg,rgba(20,24,28,0.98),rgba(13,16,19,0.98))] shadow-2xl ${reducedMotion ? '' : 'animate-ceremony-fade-in'}`}>

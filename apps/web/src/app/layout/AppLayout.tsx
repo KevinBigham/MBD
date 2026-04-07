@@ -9,6 +9,7 @@ import { SeasonFlowCard } from './SeasonFlowCard';
 import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import { TickerBar } from './TickerBar';
 import { PressConferenceModal } from '@/features/press-room/components/PressConferenceModal';
+import { TourProvider } from '@/shared/components/TourProvider';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
@@ -409,7 +410,14 @@ export function AppLayout() {
   }
 
   return (
+    <TourProvider>
     <div className="flex h-screen flex-col bg-dynasty-base">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-accent-primary focus:px-4 focus:py-2 focus:font-heading focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
       <div className="sr-only" aria-live="polite">
         {seasonFlow?.phaseLabel ?? `Season ${season}, Day ${day}`}
         {' '}
@@ -421,7 +429,7 @@ export function AppLayout() {
       {/* Main area: sidebar + content */}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-4 pb-20 md:p-6 md:pb-6">
+        <main id="main-content" className="flex-1 overflow-y-auto p-4 pb-20 md:p-6 md:pb-6">
           <>
             {seasonFlow && (
               <SeasonFlowCard
@@ -480,5 +488,6 @@ export function AppLayout() {
         />
       )}
     </div>
+    </TourProvider>
   );
 }
