@@ -256,3 +256,171 @@ export function generatePressConference(
     read: false,
   };
 }
+
+/* ---------- interactive press conference ---------- */
+
+export interface PressConferenceResponse {
+  id: string;
+  label: string;
+  tone: 'confident' | 'measured' | 'deflect';
+  quote: string;
+  /** Morale delta for the team (-10 to +10) */
+  moraleDelta: number;
+  /** Owner satisfaction delta (-8 to +8) */
+  ownerDelta: number;
+  /** Whether this generates a follow-up news story */
+  generatesNews: boolean;
+}
+
+export interface InteractivePressConference {
+  id: string;
+  topic: string;
+  question: string;
+  ownerTone: PressConferenceContext['ownerTone'];
+  teamId: string;
+  season: number;
+  day: number;
+  responses: [PressConferenceResponse, PressConferenceResponse, PressConferenceResponse];
+}
+
+const RESPONSE_TEMPLATES: Record<string, {
+  confident: { label: string; quote: string; moraleDelta: number; ownerDelta: number };
+  measured: { label: string; quote: string; moraleDelta: number; ownerDelta: number };
+  deflect: { label: string; quote: string; moraleDelta: number; ownerDelta: number };
+}> = {
+  first_place: {
+    confident: {
+      label: 'We\'re built for this',
+      quote: 'This roster was assembled to win, and that\'s exactly what we\'re doing. No one should be surprised.',
+      moraleDelta: 5,
+      ownerDelta: 3,
+    },
+    measured: {
+      label: 'Stay focused',
+      quote: 'We appreciate the recognition, but there\'s a lot of baseball left. We\'re taking it one series at a time.',
+      moraleDelta: 2,
+      ownerDelta: 1,
+    },
+    deflect: {
+      label: 'Credit the players',
+      quote: 'I\'m just putting the pieces in place. The guys in that clubhouse are the ones making it happen every night.',
+      moraleDelta: 4,
+      ownerDelta: 0,
+    },
+  },
+  trade_reaction: {
+    confident: {
+      label: 'No regrets',
+      quote: 'We did our homework. I\'d make that deal again tomorrow. The numbers backed us up.',
+      moraleDelta: 1,
+      ownerDelta: 4,
+    },
+    measured: {
+      label: 'Time will tell',
+      quote: 'Every trade is a calculated risk. We\'re confident in the process, but we\'ll let the results speak for themselves.',
+      moraleDelta: 0,
+      ownerDelta: 2,
+    },
+    deflect: {
+      label: 'Next question',
+      quote: 'I\'m not going to relitigate every deal with the press. We\'re focused on winning games.',
+      moraleDelta: -2,
+      ownerDelta: -1,
+    },
+  },
+  rebuild: {
+    confident: {
+      label: 'Trust the process',
+      quote: 'We have a clear plan. The farm system is loaded, and the payoff is closer than people think.',
+      moraleDelta: 3,
+      ownerDelta: -2,
+    },
+    measured: {
+      label: 'Honest assessment',
+      quote: 'We\'re not where we want to be yet, but the foundation is being laid. Patience will be rewarded.',
+      moraleDelta: 1,
+      ownerDelta: 1,
+    },
+    deflect: {
+      label: 'Blame injuries',
+      quote: 'A healthy roster looks very different from what we\'re putting out there right now. Context matters.',
+      moraleDelta: -1,
+      ownerDelta: -3,
+    },
+  },
+  farm_pipeline: {
+    confident: {
+      label: 'Prospects are ready',
+      quote: 'Some of these kids are closer than people realize. Don\'t be surprised if you see fresh faces soon.',
+      moraleDelta: 4,
+      ownerDelta: 2,
+    },
+    measured: {
+      label: 'Development takes time',
+      quote: 'We won\'t rush anyone. When they\'re ready, they\'ll get their shot. Not a day before.',
+      moraleDelta: 1,
+      ownerDelta: 3,
+    },
+    deflect: {
+      label: 'Keep expectations low',
+      quote: 'Prospect rankings are fun for the fans, but they don\'t win games. We\'ll see what happens.',
+      moraleDelta: -2,
+      ownerDelta: 0,
+    },
+  },
+};
+
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- farm_pipeline is always defined above
+const DEFAULT_RESPONSES = RESPONSE_TEMPLATES.farm_pipeline!;
+
+export function generateInteractivePressConference(
+  context: PressConferenceContext,
+): InteractivePressConference | null {
+  const prompt = pressConferenceQuestion(context);
+  if (!prompt) {
+    return null;
+  }
+
+  const resolved = RESPONSE_TEMPLATES[prompt.topic];
+  const templates = resolved ?? DEFAULT_RESPONSES;
+  const baseId = `press-conf-${context.season}-${context.day}-${prompt.topic}`;
+
+  return {
+    id: baseId,
+    topic: prompt.topic,
+    question: `${ownerToneLead(context.ownerTone)} ${prompt.question}`,
+    ownerTone: context.ownerTone,
+    teamId: context.userTeamId,
+    season: context.season,
+    day: context.day,
+    responses: [
+      {
+        id: `${baseId}-confident`,
+        label: templates.confident.label,
+        tone: 'confident',
+        quote: templates.confident.quote,
+        moraleDelta: templates.confident.moraleDelta,
+        ownerDelta: templates.confident.ownerDelta,
+        generatesNews: true,
+      },
+      {
+        id: `${baseId}-measured`,
+        label: templates.measured.label,
+        tone: 'measured',
+        quote: templates.measured.quote,
+        moraleDelta: templates.measured.moraleDelta,
+        ownerDelta: templates.measured.ownerDelta,
+        generatesNews: false,
+      },
+      {
+        id: `${baseId}-deflect`,
+        label: templates.deflect.label,
+        tone: 'deflect',
+        quote: templates.deflect.quote,
+        moraleDelta: templates.deflect.moraleDelta,
+        ownerDelta: templates.deflect.ownerDelta,
+        generatesNews: true,
+      },
+    ],
+  };
+}

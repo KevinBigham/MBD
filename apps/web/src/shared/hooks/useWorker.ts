@@ -40,6 +40,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'dismissDecisionSpotlight',
   'dismissCeremonyMoment',
   'dismissWelcomeBriefing',
+  'respondToPressConference',
   'applyForJob',
   'simToPlayoffs',
   'simPlayoffGame',
@@ -322,6 +323,14 @@ export function useWorker() {
   );
   const dismissWelcomeBriefing = useCallback(
     async () => runMutation(() => api.dismissWelcomeBriefing()),
+    [api, runMutation],
+  );
+  const getInteractivePressConference = useCallback(
+    async () => api.getInteractivePressConference(),
+    [api],
+  );
+  const respondToPressConference = useCallback(
+    async (conferenceId: string, responseId: string) => runMutation(() => api.respondToPressConference(conferenceId, responseId)),
     [api, runMutation],
   );
   const simToPlayoffs = useCallback(async () => runMutation(() => api.simToPlayoffs()), [api, runMutation]);
@@ -703,7 +712,7 @@ export function useWorker() {
   const getSpringTrainingView = useCallback(async () => api.getSpringTrainingView(), [api]);
 
   return {
-    ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, simToPlayoffs,
+    ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,

@@ -605,6 +605,7 @@ export {
   detectBreakoutCountdowns,
   generateDebutFlashback,
   generatePressConference,
+  generateInteractivePressConference,
   generateOffseasonHeadline,
   generateSeasonRecapNarrative,
 } from './narrative/index.js';
@@ -655,6 +656,8 @@ export type {
   BreakoutCountdown,
   BreakoutCountdownSnapshot,
   PressConferenceContext,
+  PressConferenceResponse,
+  InteractivePressConference,
 } from './narrative/index.js';
 
 // Sharing
