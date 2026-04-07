@@ -5,6 +5,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
+import { useTour } from '@/shared/components/TourProvider';
 import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { logger } from '@/shared/lib/logger';
@@ -114,6 +115,19 @@ function SettingsSection(props: {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function TutorialRestartButton() {
+  const { restartTour, completed } = useTour();
+  return (
+    <button
+      type="button"
+      onClick={restartTour}
+      className="focus-ring rounded border border-dynasty-border px-3 py-1.5 font-heading text-xs text-dynasty-text transition-colors hover:bg-dynasty-elevated"
+    >
+      {completed ? 'Replay Tutorial Tour' : 'Start Tutorial Tour'}
+    </button>
   );
 }
 
@@ -1036,13 +1050,16 @@ export default function SettingsPage() {
           open={openSections.about}
           onToggle={() => toggleSection('about')}
         >
-          <div className="space-y-1">
-            <p className="font-heading text-sm text-dynasty-muted">
-              Mr. Baseball Dynasty v0.0.1
-            </p>
-            <p className="font-data text-xs text-dynasty-muted">
-              Built with TypeScript, React, Vite, Web Workers, and deterministic pure-rand simulation.
-            </p>
+          <div className="space-y-3">
+            <div>
+              <p className="font-heading text-sm text-dynasty-muted">
+                Mr. Baseball Dynasty v0.0.1
+              </p>
+              <p className="font-data text-xs text-dynasty-muted">
+                Built with TypeScript, React, Vite, Web Workers, and deterministic pure-rand simulation.
+              </p>
+            </div>
+            <TutorialRestartButton />
           </div>
         </SettingsSection>
       </div>

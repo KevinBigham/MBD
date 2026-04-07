@@ -53,10 +53,10 @@ export function SimControls({
   const showRegularControls = flow?.canUseRegularSimControls ?? true;
 
   return (
-    <footer className="border-t border-dynasty-border bg-dynasty-surface px-3 py-2 pb-2 md:px-4 md:pb-2">
+    <footer data-tour="sim-controls" className="border-t border-dynasty-border bg-dynasty-surface px-3 py-2 pb-2 md:px-4 md:pb-2">
       <div className="flex items-center gap-2 md:gap-3">
         {/* Status display */}
-        <div className="hidden min-w-[140px] md:block">
+        <div className="hidden min-w-[140px] md:block" aria-live="polite">
           <div className="font-data text-xs text-dynasty-muted">{flow?.phaseLabel ?? `Season ${season}`}</div>
           <div className="font-data text-xs uppercase text-accent-info">{flow?.detailLabel ?? 'Simulation ready'}</div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-dynasty-border">

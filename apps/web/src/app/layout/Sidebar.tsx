@@ -230,6 +230,7 @@ export function Sidebar() {
     <>
       {/* Desktop sidebar — hidden on mobile */}
       <aside
+        data-tour="sidebar"
         className={[
           'hidden flex-col border-r border-dynasty-border bg-dynasty-surface transition-all duration-200 md:flex',
           collapsed ? 'w-14' : 'w-52',
