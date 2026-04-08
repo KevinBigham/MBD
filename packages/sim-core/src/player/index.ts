@@ -153,3 +153,24 @@ export type {
   MentorshipPairing,
   MentorshipEvent,
 } from './mentorship.js';
+export {
+  comparePlayersHead2Head,
+  comparePlayerStats,
+  rankPlayerAttributes,
+  generateComparisonSummary,
+} from './comparison.js';
+export type {
+  AttributeComparison,
+  ComparisonResult,
+  RankedAttribute,
+  StatComparison,
+} from './comparison.js';
+export {
+  findSimilarPlayers,
+  getPlayerArchetype,
+} from './similarity.js';
+export type {
+  SimilarPlayer,
+  SimilarityResult,
+  PlayerArchetype,
+} from './similarity.js';

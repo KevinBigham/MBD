@@ -34,6 +34,12 @@ export {
   calculateMilestoneProgress,
   getMilestoneAlerts,
 } from './stats/milestones.js';
+export {
+  SEASON_GAMES,
+  findNotableProjections,
+  formatPaceLabel,
+  projectSeasonStats,
+} from './stats/projections.js';
 export type {
   AdvancedStatLine,
   LeagueAdvancedContext,
@@ -46,6 +52,13 @@ export type {
   MilestoneProgress,
   MilestoneAlert,
 } from './stats/milestones.js';
+export type {
+  HitterProjectedStatLine,
+  NotableProjection,
+  PitcherProjectedStatLine,
+  ProjectedStatLine,
+  SeasonProjection,
+} from './stats/projections.js';
 
 // Player
 export {
@@ -70,6 +83,12 @@ export {
   ALL_POSITIONS,
   ROSTER_LEVELS,
   DEV_PHASES,
+  comparePlayersHead2Head,
+  comparePlayerStats,
+  rankPlayerAttributes,
+  generateComparisonSummary,
+  findSimilarPlayers,
+  getPlayerArchetype,
 } from './player/index.js';
 export type {
   HitterAttributes,
@@ -84,6 +103,13 @@ export type {
   DeferredMoneyInstallment,
   ExtensionHistoryEntry,
   GeneratedPlayer,
+  AttributeComparison,
+  ComparisonResult,
+  RankedAttribute,
+  StatComparison,
+  SimilarPlayer,
+  SimilarityResult,
+  PlayerArchetype,
 } from './player/index.js';
 export {
   PERSONALITY_TRAITS,
@@ -646,6 +672,8 @@ export {
   generatePlayByPlay,
   generateGameHighlights,
   generateGameRecap,
+  SITUATION_CONTEXTS,
+  generateEnhancedPlayByPlay,
   generateDraftCommentary,
   generateDraftBuzz,
   generateDraftPickPreview,
@@ -689,6 +717,8 @@ export type {
   RushingRisk,
   FanSentimentContext,
   GameHighlight,
+  EnhancedPlayByPlayEntry,
+  PlayByPlayContext,
   DraftNarrativeTone,
   DraftNarrativeProspect,
   DraftNarrativePick,
