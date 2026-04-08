@@ -2091,9 +2091,9 @@ export const queryApi = {
         name: `${c.firstName} ${c.lastName}`,
         role: c.role,
         specialty: c.specialty,
-        teaching: c.teachingAbility,
-        impact: c.developmentBonus,
-        fit: c.personalityFit,
+        teaching: Math.round(c.teachingAbility * 100),
+        impact: Math.round(c.developmentBonus * 100 / 0.3),
+        fit: Math.round(c.personalityFit * 100),
         salary: c.annualSalary,
       })),
     };
@@ -2127,7 +2127,10 @@ export const queryApi = {
     const objectiveSet = getScenarioObjectives(scenarioId);
     if (!objectiveSet) return null;
 
-    const history = s.seasonHistory ?? [];
+    // Scope to challenge start season — only count history DURING the challenge
+    const challengeStartSeason = s.challengeState?.startSeason ?? 1;
+    const fullHistory = s.seasonHistory ?? [];
+    const history = fullHistory.filter(sh => sh.season >= challengeStartSeason);
 
     // Parse wins from "W-L" record strings in userSeason
     const parseWins = (record: string | undefined): number => {
@@ -2141,14 +2144,36 @@ export const queryApi = {
       sh.userSeason?.playoffResult && sh.userSeason.playoffResult !== 'Missed Playoffs',
     ).length;
 
+    // Count developed prospects: MLB players age <= 25 with overall > 350 on user's team
+    const teamPlayers = getTeamPlayers(s.userTeamId);
+    const topProspectsDeveloped = teamPlayers.filter(p =>
+      p.rosterStatus === 'MLB' && p.age <= 25 && p.overallRating > 350,
+    ).length;
+
+    // Payroll history — not available in archived standings, use empty for now
+    const payrollHistory = history.map(() => 0);
+
+    // Count all-stars from award history during challenge
+    const allStarAwards = (s.awardHistory ?? []).filter(
+      a => a.season >= challengeStartSeason && a.teamId === s.userTeamId,
+    );
+    // Group by season and count unique seasons with all-star selections
+    const allStarsBySeason = new Map<number, number>();
+    for (const a of allStarAwards) {
+      allStarsBySeason.set(a.season, (allStarsBySeason.get(a.season) ?? 0) + 1);
+    }
+    const allStarCounts = history.map(sh => allStarsBySeason.get(sh.season) ?? 0);
+
+    const seasonsInChallenge = Math.max(0, s.season - challengeStartSeason);
+
     const context = {
-      seasonsPlayed: s.season - 1,
+      seasonsPlayed: seasonsInChallenge,
       winsBySeason: history.map(sh => parseWins(sh.userSeason?.record)),
       playoffAppearances,
       championships,
-      topProspectsDeveloped: 0,
-      payrollHistory: [] as number[],
-      allStarCounts: [] as number[],
+      topProspectsDeveloped,
+      payrollHistory,
+      allStarCounts,
       tradeCount: s.tradeState.tradeHistory.length,
       recordBookEntries: s.recordBook.length,
     };
