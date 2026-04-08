@@ -36,6 +36,10 @@ export {
   generateGameRecap,
 } from './playByPlay.js';
 export {
+  SITUATION_CONTEXTS,
+  generateEnhancedPlayByPlay,
+} from './playByPlayEnhanced.js';
+export {
   generateDraftCommentary,
   generateDraftBuzz,
   generateDraftPickPreview,
@@ -94,6 +98,10 @@ export type {
 export type {
   GameHighlight,
 } from './playByPlay.js';
+export type {
+  EnhancedPlayByPlayEntry,
+  PlayByPlayContext,
+} from './playByPlayEnhanced.js';
 export type {
   DraftNarrativeTone,
   DraftNarrativeProspect,
