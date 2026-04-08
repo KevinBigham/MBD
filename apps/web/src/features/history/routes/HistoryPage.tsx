@@ -23,8 +23,13 @@ import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { listLeaderboardEntries, type LeaderboardEntry } from '@/shared/lib/saveSystem';
+import { DynastyTimelineChapterCard } from '../components/DynastyTimelineChapterCard';
 import { TimelineComparisonPanel } from '../components/TimelineComparisonPanel';
 import { SeasonRecapModal, type SeasonRecapData } from '../components/SeasonRecapModal';
+import {
+  buildDynastyTimelineChapters,
+  type DynastyTimelineEntryLike,
+} from '../lib/buildDynastyTimelineChapters';
 
 interface HistoryDisplayNames {
   players: Record<string, string>;
@@ -44,16 +49,6 @@ interface HallOfFameEntryView {
     batting: { hits: number; hr: number; rbi: number } | null;
     pitching: { wins: number; strikeouts: number; inningsPitched: number; earnedRuns: number } | null;
   };
-}
-
-interface FranchiseTimelineEntryView {
-  season: number;
-  record: string;
-  playoffResult: string;
-  championship: boolean;
-  keyAcquisitions: string[];
-  keyDepartures: string[];
-  dynastyScore: number;
 }
 
 interface DynastyScoreSummary {
@@ -475,7 +470,7 @@ export default function HistoryPage() {
   const [recordWatch, setRecordWatch] = useState<RecordWatchEntry[]>([]);
   const [rivalries, setRivalries] = useState<Rivalry[]>([]);
   const [hallOfFame, setHallOfFame] = useState<HallOfFameEntryView[]>([]);
-  const [franchiseTimeline, setFranchiseTimeline] = useState<FranchiseTimelineEntryView[]>([]);
+  const [franchiseTimeline, setFranchiseTimeline] = useState<DynastyTimelineEntryLike[]>([]);
   const [dynastyScore, setDynastyScore] = useState<DynastyScoreSummary | null>(null);
   const [achievements, setAchievements] = useState<AchievementView[]>([]);
   const [selectedAchievementId, setSelectedAchievementId] = useState<string | null>(null);
@@ -492,8 +487,14 @@ export default function HistoryPage() {
   const [timelineComparisons, setTimelineComparisons] = useState<TimelineComparison[]>([]);
   const [allTimeLeaders, setAllTimeLeaders] = useState<AllTimeLeadersView | null>(null);
   const [recapData, setRecapData] = useState<SeasonRecapData | null>(null);
+  const [expandedTimelineChapterId, setExpandedTimelineChapterId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const timelineRootSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : activeSaveId;
+  const dynastyTimelineChapters = buildDynastyTimelineChapters({
+    franchiseTimeline,
+    seasonViews,
+    seasonHistory,
+  });
 
   const fetchHistory = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -584,7 +585,7 @@ export default function HistoryPage() {
       setRecordWatch(nextRecordWatch);
       setRivalries(nextRivalries as Rivalry[]);
       setHallOfFame(nextHallOfFame as HallOfFameEntryView[]);
-      setFranchiseTimeline(nextTimeline as FranchiseTimelineEntryView[]);
+      setFranchiseTimeline(nextTimeline as DynastyTimelineEntryLike[]);
       const liveEntries = (liveLeaderboardData ?? []) as LeaderboardEntry[];
       const storedEntries = (storedLeaderboardData ?? []) as LeaderboardEntry[];
       const nextBranches = (branchData ?? []) as BranchSaveView[];
@@ -626,6 +627,19 @@ export default function HistoryPage() {
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory, day, season, phase]);
+
+  useEffect(() => {
+    if (dynastyTimelineChapters.length === 0) {
+      setExpandedTimelineChapterId(null);
+      return;
+    }
+
+    setExpandedTimelineChapterId((current) =>
+      current && dynastyTimelineChapters.some((chapter) => chapter.id === current)
+        ? current
+        : dynastyTimelineChapters[0]!.id,
+    );
+  }, [franchiseTimeline, seasonViews, seasonHistory]);
 
   useEffect(() => {
     if (!isInitialized || !workerReady || selectedSeason == null || comparisonSeason == null || selectedSeason === comparisonSeason) {
@@ -688,6 +702,16 @@ export default function HistoryPage() {
   const selectedAchievement = achievements.find((achievement) => achievement.id === selectedAchievementId) ?? achievements[0] ?? null;
   const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked).length;
   const groupedStandings = groupArchiveStandings(selectedArchive);
+
+  function openTimelineSeasonRecap(targetSeason: number) {
+    const archive = seasonViews[targetSeason] ?? null;
+    if (!isFullSeasonArchive(archive)) {
+      return;
+    }
+
+    const seasonHist = seasonHistory.find((entry) => entry.season === targetSeason);
+    setRecapData(buildSeasonRecapData(archive, seasonHist, userTeamId, displayNames));
+  }
   const visibleHistoryTabs = branches.length > 0
     ? HISTORY_TABS
     : HISTORY_TABS.filter((tab) => tab !== 'timeline');
@@ -1298,26 +1322,15 @@ export default function HistoryPage() {
                 <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Franchise Timeline</h2>
               </div>
               <div className="space-y-3">
-                {franchiseTimeline.length > 0 ? franchiseTimeline.map((entry) => (
-                  <div key={entry.season} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-heading text-sm text-dynasty-text">Season {entry.season}</div>
-                      <div className="font-data text-xs text-dynasty-muted">Dynasty score {entry.dynastyScore}</div>
-                    </div>
-                    <div className="mt-1 font-heading text-sm text-dynasty-muted">
-                      {entry.record} · {entry.playoffResult} {entry.championship ? '· Title' : ''}
-                    </div>
-                    {entry.keyAcquisitions.length > 0 && (
-                      <div className="mt-3 font-heading text-xs text-dynasty-muted">
-                        Added: {entry.keyAcquisitions.join(' | ')}
-                      </div>
-                    )}
-                    {entry.keyDepartures.length > 0 && (
-                      <div className="mt-2 font-heading text-xs text-dynasty-muted">
-                        Lost: {entry.keyDepartures.join(' | ')}
-                      </div>
-                    )}
-                  </div>
+                {dynastyTimelineChapters.length > 0 ? dynastyTimelineChapters.map((chapter) => (
+                  <DynastyTimelineChapterCard
+                    key={chapter.id}
+                    chapter={chapter}
+                    expanded={expandedTimelineChapterId === chapter.id}
+                    onToggle={() => setExpandedTimelineChapterId((current) => current === chapter.id ? null : chapter.id)}
+                    onOpenRecap={openTimelineSeasonRecap}
+                    canOpenRecap={(targetSeason) => isFullSeasonArchive(seasonViews[targetSeason] ?? null)}
+                  />
                 )) : (
                   <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
                     The franchise timeline starts once the first season closes.
