@@ -43,12 +43,12 @@ export function TickerBar({ entries, onSelectEntry }: TickerBarProps) {
           100% { transform: translateX(-50%); }
         }
       `}</style>
-      <div className="flex items-center gap-3 overflow-hidden px-3 py-2" aria-hidden="true">
-        <div className="flex items-center gap-2 whitespace-nowrap border-r border-dynasty-border pr-3 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+      <div className="flex items-center gap-3 overflow-hidden px-3 py-2">
+        <div className="flex items-center gap-2 whitespace-nowrap border-r border-dynasty-border pr-3 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted" aria-hidden="true">
           <Newspaper className="h-3.5 w-3.5" />
           League Wire
         </div>
-        <div className="overflow-hidden">
+        <div className="overflow-hidden" role="list" aria-label="League headlines">
           <div
             className="flex min-w-max items-center gap-3"
             style={entries.length > 1 ? { animation: 'mbd-ticker-scroll 28s linear infinite' } : undefined}
@@ -57,12 +57,12 @@ export function TickerBar({ entries, onSelectEntry }: TickerBarProps) {
               <button
                 key={`${entry.id}-${index}`}
                 type="button"
+                role="listitem"
                 onClick={() => onSelectEntry(entry)}
                 className={`font-heading text-sm transition hover:text-accent-primary ${priorityClass(entry.priority)}`}
-                tabIndex={-1}
               >
                 <span>{entry.text}</span>
-                <span className="ml-3 text-dynasty-muted">•</span>
+                <span className="ml-3 text-dynasty-muted" aria-hidden="true">•</span>
               </button>
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { type FC } from 'react';
+import { type FC, useEffect } from 'react';
 import { Keyboard, X } from 'lucide-react';
 
 interface KeyboardShortcutsPanelProps {
@@ -53,6 +53,18 @@ export const KeyboardShortcutsPanel: FC<KeyboardShortcutsPanelProps> = ({
   open,
   onClose,
 }) => {
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (

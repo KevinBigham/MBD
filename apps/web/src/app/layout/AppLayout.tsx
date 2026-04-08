@@ -385,7 +385,7 @@ export function AppLayout() {
         return;
       }
 
-      if (commandPaletteOpen || isEditableTarget(event.target) || !seasonFlow?.canUseRegularSimControls) {
+      if (commandPaletteOpen || shortcutsPanelOpen || isEditableTarget(event.target) || !seasonFlow?.canUseRegularSimControls) {
         return;
       }
 
@@ -411,7 +411,7 @@ export function AppLayout() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [commandPaletteOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
+  }, [commandPaletteOpen, shortcutsPanelOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
 
   if (!isInitialized) {
     return <Navigate to="/" replace />;
