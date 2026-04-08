@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
+import { PageHelp } from '@/shared/components/PageHelp';
 
 interface TeamStandings {
   teamId: string;
@@ -161,11 +162,14 @@ export default function StandingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-bold text-dynasty-text">League Standings</h1>
-        <p className="font-data text-sm text-dynasty-muted">
-          Season {season} | Day {day}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold text-dynasty-text">League Standings</h1>
+          <p className="font-data text-sm text-dynasty-muted">
+            Season {season} | Day {day}
+          </p>
+        </div>
+        <PageHelp pageKey="standings" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

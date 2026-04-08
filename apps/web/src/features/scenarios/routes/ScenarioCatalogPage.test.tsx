@@ -113,6 +113,7 @@ describe('ScenarioCatalogPage', () => {
       isReady: true,
       getScenarioCatalog: vi.fn().mockResolvedValue(MOCK_CATALOG),
       getScenarioProgress: vi.fn().mockResolvedValue(MOCK_PROGRESS),
+      getScenarioObjectivesView: vi.fn().mockResolvedValue(null),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -148,6 +149,7 @@ describe('ScenarioCatalogPage', () => {
       isReady: true,
       getScenarioCatalog: vi.fn().mockResolvedValue(MOCK_CATALOG),
       getScenarioProgress: vi.fn().mockResolvedValue(null),
+      getScenarioObjectivesView: vi.fn().mockResolvedValue(null),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {

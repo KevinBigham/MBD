@@ -17,6 +17,7 @@ import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { PageHelp } from '@/shared/components/PageHelp';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
 
@@ -913,11 +914,14 @@ export default function TradePage() {
   return (
     <PageShell loading={loading && deadlineState == null} skeleton={<TradeSkeleton />}>
       <div className="space-y-4">
-      <div>
-        <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Trade Center</h1>
-        <p className="mt-1 font-heading text-sm text-dynasty-muted">
-          Deadline pressure, incoming offers, and every deal from around the league.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Trade Center</h1>
+          <p className="mt-1 font-heading text-sm text-dynasty-muted">
+            Deadline pressure, incoming offers, and every deal from around the league.
+          </p>
+        </div>
+        <PageHelp pageKey="trade" />
       </div>
 
       <div className={`rounded-lg border px-4 py-3 ${

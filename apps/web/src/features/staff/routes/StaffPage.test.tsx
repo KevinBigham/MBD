@@ -109,6 +109,12 @@ describe('StaffPage', () => {
       }),
       hireCoach,
       fireCoach,
+      getCoachingChemistry: vi.fn().mockResolvedValue({
+        harmony: { overallScore: 72, synergies: [], weakestLink: null, strongestBond: null },
+        issues: [],
+        playerAffinities: [],
+        coaches: [],
+      }),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
