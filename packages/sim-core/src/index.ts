@@ -29,12 +29,23 @@ export {
   estimateProjectedWarFromGrade,
   estimateProjectedWarRange,
 } from './stats/advanced.js';
+export {
+  CAREER_MILESTONES,
+  calculateMilestoneProgress,
+  getMilestoneAlerts,
+} from './stats/milestones.js';
 export type {
   AdvancedStatLine,
   LeagueAdvancedContext,
   LeaderboardStatKey,
   ProjectedWarRange,
 } from './stats/advanced.js';
+export type {
+  CareerMilestoneDefinition,
+  CareerStatTotals,
+  MilestoneProgress,
+  MilestoneAlert,
+} from './stats/milestones.js';
 
 // Player
 export {
@@ -172,6 +183,9 @@ export {
   buildFrontOfficeBriefing,
   calculateAwardRaces,
   finalizeAwardResults,
+  AWARD_NAMES,
+  generateAwardNarrative,
+  generateAwardCeremony,
   getRivalry,
   seedHistoricalRivalries,
   upsertRivalry,
@@ -213,6 +227,10 @@ export type {
   UpdateRecordBookArgs,
   AwardRaceEntry,
   AwardRaces,
+  AwardReactionTone,
+  AwardNarrativeContext,
+  AwardNarrative,
+  AwardCeremonyScript,
   RivalrySeasonReviewContext,
   RivalryTradeContext,
   RivalryDefectionContext,
@@ -342,6 +360,10 @@ export {
   calculateExtensionOffer,
   negotiateExtension,
   processTeamExtensions,
+  findComparableContracts,
+  generateMarketReport,
+  predictSigning,
+  generateMarketSummary,
 } from './finance/index.js';
 export type {
   ContractDetail,
@@ -354,6 +376,11 @@ export type {
   ExtensionNegotiationSession,
   ExtensionResult,
   TeamExtensionProcessResult,
+  ComparableContract,
+  SigningPrediction,
+  MarketReportContext,
+  MarketReport,
+  MarketSummary,
 } from './finance/index.js';
 
 // Scouting
@@ -440,6 +467,10 @@ export {
   assignGMPersonality,
   evaluateTradeProposal,
   generateAITradeOffers,
+  generateDeadlineTimeline,
+  getDeadlineEventsForDay,
+  generateBiddingWar,
+  resolveDeadlineBuzzerBeater,
   executeTrade,
   generateTradeId,
 } from './trade/index.js';
@@ -450,6 +481,12 @@ export type {
   TradeStatus,
   TradeProposal,
   TradeResult,
+  DeadlineEventType,
+  DeadlineEvent,
+  DeadlineContext,
+  BiddingRound,
+  BiddingWar,
+  BuzzerBeaterResult,
 } from './trade/index.js';
 
 // Roster Management

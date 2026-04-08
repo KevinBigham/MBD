@@ -50,3 +50,15 @@ export {
   negotiateExtension,
   processTeamExtensions,
 } from './contracts.js';
+
+export {
+  findComparableContracts,
+  generateMarketReport,
+  predictSigning,
+  generateMarketSummary,
+  type ComparableContract,
+  type SigningPrediction,
+  type MarketReportContext,
+  type MarketReport,
+  type MarketSummary,
+} from './marketIntelligence.js';

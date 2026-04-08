@@ -21,3 +21,16 @@ export {
   type TradeProposal,
   type TradeResult,
 } from './tradeAI.js';
+
+export {
+  generateDeadlineTimeline,
+  getDeadlineEventsForDay,
+  generateBiddingWar,
+  resolveDeadlineBuzzerBeater,
+  type DeadlineEventType,
+  type DeadlineEvent,
+  type DeadlineContext,
+  type BiddingRound,
+  type BiddingWar,
+  type BuzzerBeaterResult,
+} from './deadlineDrama.js';

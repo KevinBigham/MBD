@@ -67,6 +67,18 @@ export type {
 } from './awards.js';
 
 export {
+  AWARD_NAMES,
+  generateAwardNarrative,
+  generateAwardCeremony,
+} from './awardNarratives.js';
+export type {
+  AwardReactionTone,
+  AwardNarrativeContext,
+  AwardNarrative,
+  AwardCeremonyScript,
+} from './awardNarratives.js';
+
+export {
   getRivalry,
   seedHistoricalRivalries,
   upsertRivalry,
