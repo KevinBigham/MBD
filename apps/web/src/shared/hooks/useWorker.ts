@@ -724,6 +724,11 @@ export function useWorker() {
     [api],
   );
 
+  // Round 2 API integration
+  const getTradeDeadlineDrama = useCallback(async () => api.getTradeDeadlineDrama(), [api]);
+  const getMilestoneTrackerAlerts = useCallback(async () => api.getMilestoneTrackerAlerts(), [api]);
+  const getFreeAgencyMarketIntelligence = useCallback(async () => api.getFreeAgencyMarketIntelligence(), [api]);
+
   return {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
@@ -749,6 +754,7 @@ export function useWorker() {
     getSpringTrainingView,
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
     getEnhancedPressConference, respondToEnhancedPressConference, getCoachingChemistry, getMentorships, getScenarioObjectivesView,
+    getTradeDeadlineDrama, getMilestoneTrackerAlerts, getFreeAgencyMarketIntelligence,
     subscribeToFlowUpdates,
     restartWorker,
     workerStatus: currentWorkerStatus,

@@ -18,6 +18,7 @@ import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { PageHelp } from '@/shared/components/PageHelp';
+import DeadlineDramaPanel from '../components/DeadlineDramaPanel';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
 
@@ -935,6 +936,7 @@ export default function TradePage() {
       </div>
 
       <DeadlineTheatreCard deadlineState={deadlineState} />
+      <DeadlineDramaPanel />
 
       {deadlineState?.recap ? (
         <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
