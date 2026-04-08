@@ -57,6 +57,11 @@ export {
   generateInteractivePressConference,
 } from './farmNarratives.js';
 export {
+  evaluatePressConferenceResponse,
+  generateEnhancedPressConference,
+  selectPressConferenceTopic,
+} from './pressConferences.js';
+export {
   generateOffseasonHeadline,
   generateSeasonRecapNarrative,
 } from './offseasonRecap.js';
@@ -126,3 +131,13 @@ export type {
   PressConferenceResponse,
   InteractivePressConference,
 } from './farmNarratives.js';
+export type {
+  PressConferenceResponseTone,
+  PressConferenceSeasonRange,
+  PressConferenceTopicCategory,
+  PressConferenceTopicContext,
+  EnhancedPressConferenceResponse,
+  PressConferenceTopic,
+  EnhancedPressConference,
+  PressConferenceOutcome,
+} from './pressConferences.js';

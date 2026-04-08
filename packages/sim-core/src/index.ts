@@ -109,6 +109,18 @@ export {
   isDevelopmentSetbackExpired,
   reconcileDevelopmentPipeline,
   runMonthlyDevelopmentCheckpoint,
+  calculateCoachSynergy,
+  calculateCoachPlayerAffinity,
+  calculateStaffHarmony,
+  getCoachDevelopmentBonus,
+  identifyChemistryIssues,
+  findMentorCandidates,
+  findProtegeeCandidates,
+  pairMentors,
+  advanceMentorship,
+  getMentorshipDevelopmentBonus,
+  toMentorRelationship,
+  fromMentorRelationship,
 } from './player/index.js';
 export type {
   BreakoutEvent,
@@ -116,6 +128,12 @@ export type {
   CoachSpecialty,
   Coach,
   ProspectBondSnapshot,
+  CoachSynergy,
+  CoachPlayerAffinity,
+  StaffHarmony,
+  ChemistryIssue,
+  MentorshipPairing,
+  MentorshipEvent,
 } from './player/index.js';
 
 // League
@@ -606,6 +624,9 @@ export {
   generateDebutFlashback,
   generatePressConference,
   generateInteractivePressConference,
+  selectPressConferenceTopic,
+  generateEnhancedPressConference,
+  evaluatePressConferenceResponse,
   generateOffseasonHeadline,
   generateSeasonRecapNarrative,
 } from './narrative/index.js';
@@ -658,6 +679,14 @@ export type {
   PressConferenceContext,
   PressConferenceResponse,
   InteractivePressConference,
+  PressConferenceResponseTone,
+  PressConferenceSeasonRange,
+  PressConferenceTopicCategory,
+  PressConferenceTopicContext,
+  EnhancedPressConferenceResponse,
+  PressConferenceTopic,
+  EnhancedPressConference,
+  PressConferenceOutcome,
 } from './narrative/index.js';
 
 // Sharing
@@ -690,4 +719,12 @@ export {
   applyScenarioOverrides,
   evaluateScenarioProgress,
   completeScenario,
+  SCENARIO_OBJECTIVES,
+  getScenarioObjectives,
+  evaluateObjectiveProgress,
+} from './scenarios/index.js';
+export type {
+  ScenarioObjective,
+  ScenarioObjectiveSet,
+  ObjectiveProgressContext,
 } from './scenarios/index.js';

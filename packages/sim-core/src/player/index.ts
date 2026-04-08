@@ -126,3 +126,30 @@ export {
 export type {
   BreakoutEvent,
 } from './breakouts.js';
+
+export {
+  calculateCoachSynergy,
+  calculateCoachPlayerAffinity,
+  calculateStaffHarmony,
+  getCoachDevelopmentBonus,
+  identifyChemistryIssues,
+} from './coachingChemistry.js';
+export type {
+  CoachSynergy,
+  CoachPlayerAffinity,
+  StaffHarmony,
+  ChemistryIssue,
+} from './coachingChemistry.js';
+export {
+  findMentorCandidates,
+  findProtegeeCandidates,
+  pairMentors,
+  advanceMentorship,
+  getMentorshipDevelopmentBonus,
+  toMentorRelationship,
+  fromMentorRelationship,
+} from './mentorship.js';
+export type {
+  MentorshipPairing,
+  MentorshipEvent,
+} from './mentorship.js';
