@@ -1023,19 +1023,20 @@ function definitionById(id: string): PressConferenceTopicDefinition | null {
 }
 
 function conferenceId(topicId: string, context: PressConferenceTopicContext): string {
-  return `press-conference-${context.season}-${context.day}-${topicId}`;
+  return `press-conference-${context.teamId}-${context.season}-${context.day}-${topicId}`;
 }
 
-function parseConferenceId(value: string): { season: number; day: number; topicId: string } | null {
-  const match = /^press-conference-(\d+)-(\d+)-(.+)$/.exec(value);
+function parseConferenceId(value: string): { teamId: string; season: number; day: number; topicId: string } | null {
+  const match = /^press-conference-([a-z]+)-(\d+)-(\d+)-(.+)$/.exec(value);
   if (!match) {
     return null;
   }
 
   return {
-    season: Number(match[1]),
-    day: Number(match[2]),
-    topicId: match[3] ?? '',
+    teamId: match[1] ?? '',
+    season: Number(match[2]),
+    day: Number(match[3]),
+    topicId: match[4] ?? '',
   };
 }
 
