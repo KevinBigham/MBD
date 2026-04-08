@@ -3,6 +3,7 @@ import { ArrowRight, Award, Sparkles, Star, Trophy, X } from 'lucide-react';
 import type { CeremonyMoment } from '@mbd/contracts';
 import { useEffectiveReducedMotion } from '@/shared/hooks/useEffectiveReducedMotion';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 
 interface MomentCardOverlayProps {
   moment: CeremonyMoment | null;
@@ -33,6 +34,7 @@ function AwardIcon({ className }: { className?: string }) {
 export function MomentCardOverlay({ moment, busy, onDismiss }: MomentCardOverlayProps) {
   const dismissRef = useRef(onDismiss);
   const reducedMotion = useEffectiveReducedMotion();
+  const trapRef = useFocusTrap<HTMLDivElement>(moment != null);
   dismissRef.current = onDismiss;
 
   useEffect(() => {
@@ -97,7 +99,7 @@ export function MomentCardOverlay({ moment, busy, onDismiss }: MomentCardOverlay
   }
 
   return (
-    <div data-overlay="moment-card" className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div ref={trapRef} data-overlay="moment-card" className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         aria-label="Dismiss moment card"
         className="absolute inset-0 cursor-default bg-black/75 backdrop-blur-sm"

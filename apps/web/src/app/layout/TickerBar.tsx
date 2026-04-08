@@ -29,15 +29,21 @@ export function TickerBar({ entries, onSelectEntry }: TickerBarProps) {
 
   const marqueeEntries = entries.length > 1 ? [...entries, ...entries] : entries;
 
+  const topHeadline = entries[0]?.text ?? '';
+
   return (
-    <div className="border-t border-dynasty-border bg-dynasty-surface/95">
+    <div className="border-t border-dynasty-border bg-dynasty-surface/95" role="complementary" aria-label="League news ticker">
+      {/* Screen reader summary — hidden visually, read by assistive tech */}
+      <div className="sr-only" aria-live="polite">
+        {entries.length} league updates. Latest: {topHeadline}
+      </div>
       <style>{`
         @keyframes mbd-ticker-scroll {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
       `}</style>
-      <div className="flex items-center gap-3 overflow-hidden px-3 py-2">
+      <div className="flex items-center gap-3 overflow-hidden px-3 py-2" aria-hidden="true">
         <div className="flex items-center gap-2 whitespace-nowrap border-r border-dynasty-border pr-3 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
           <Newspaper className="h-3.5 w-3.5" />
           League Wire
@@ -53,6 +59,7 @@ export function TickerBar({ entries, onSelectEntry }: TickerBarProps) {
                 type="button"
                 onClick={() => onSelectEntry(entry)}
                 className={`font-heading text-sm transition hover:text-accent-primary ${priorityClass(entry.priority)}`}
+                tabIndex={-1}
               >
                 <span>{entry.text}</span>
                 <span className="ml-3 text-dynasty-muted">•</span>

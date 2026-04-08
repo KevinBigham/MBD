@@ -9,7 +9,7 @@ export const dynasty = {
   elevated: '#142447',
   overlay: '#1A2D5A',
   border: '#1E3A6E',
-  muted: '#64748B',
+  muted: '#8A9BB5',
   text: '#E2E8F0',
   textBright: '#F8FAFC',
 } as const;
