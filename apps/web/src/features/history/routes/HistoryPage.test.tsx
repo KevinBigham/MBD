@@ -560,6 +560,44 @@ describe('HistoryPage', () => {
     expect(container.textContent).not.toContain('nyy vs bos');
   });
 
+  it('renders dynasty timeline chapters with expand or collapse behavior and recap reuse', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <HistoryPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await clickButton('timeline');
+
+    const chapterToggle = container.querySelector<HTMLButtonElement>('[data-testid="dynasty-chapter-toggle"]');
+    expect(chapterToggle).toBeTruthy();
+    expect(chapterToggle?.textContent).toContain('Peak Years');
+    expect(chapterToggle?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.textContent).toContain('Anthony Rizzo retired');
+    expect(container.textContent).toContain('Open Recap');
+
+    await act(async () => {
+      chapterToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(chapterToggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).not.toContain('Open Recap');
+
+    await act(async () => {
+      chapterToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    await clickButton('Open Recap');
+    expect(container.textContent).toContain('Year in Review');
+    expect(container.textContent).toContain('Season 2');
+  });
+
   it('renders a trophy room empty state before any achievements are unlocked', async () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
