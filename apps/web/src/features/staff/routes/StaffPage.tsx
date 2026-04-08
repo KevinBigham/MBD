@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine, Tabs, TabsContent, TabsList, TabsTrigger } from '@mbd/ui';
-import { BriefcaseBusiness, Handshake, Sparkles, Wallet } from 'lucide-react';
+import { AlertTriangle, BriefcaseBusiness, Handshake, Link2, Sparkles, Unlink2, Wallet } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import CoachingRadarChart from '../components/CoachingRadarChart';
 
 interface CoachView {
   id: string;
@@ -32,6 +33,24 @@ interface StaffBudgetView {
   remaining: number;
 }
 
+interface SynergyEntry {
+  coachAId: string;
+  coachBId: string;
+  synergyScore: number;
+  factors: string[];
+}
+
+interface ChemistryView {
+  harmony: {
+    overallScore: number;
+    synergies: SynergyEntry[];
+    weakestLink: SynergyEntry | null;
+    strongestBond: SynergyEntry | null;
+  };
+  issues: Array<{ severity: 'low' | 'medium' | 'high'; description: string; involvedIds: string[] }>;
+  coaches: Array<{ id: string; name: string; role: string; specialty: string; teaching: number; impact: number; fit: number; salary: number }>;
+}
+
 function roleLabel(role: string): string {
   return role.replaceAll('_', ' ');
 }
@@ -54,23 +73,26 @@ export default function StaffPage() {
   const [impact, setImpact] = useState<CoachingImpactView[]>([]);
   const [budget, setBudget] = useState<StaffBudgetView | null>(null);
   const [busyCoachId, setBusyCoachId] = useState<string | null>(null);
+  const [chemistry, setChemistry] = useState<ChemistryView | null>(null);
 
   const canManage = phase === 'offseason';
 
   const fetchStaffData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
 
-    const [staffData, marketData, impactData, budgetData] = await Promise.all([
+    const [staffData, marketData, impactData, budgetData, chemistryData] = await Promise.all([
       worker.getCoachingStaff(userTeamId),
       worker.getCoachMarket(),
       worker.getCoachingImpact(userTeamId),
       worker.getStaffBudget(userTeamId),
+      worker.getCoachingChemistry(),
     ]);
 
     setStaff((staffData ?? []) as CoachView[]);
     setMarket((marketData ?? []) as CoachView[]);
     setImpact((impactData ?? []) as CoachingImpactView[]);
     setBudget((budgetData ?? null) as StaffBudgetView | null);
+    setChemistry((chemistryData ?? null) as ChemistryView | null);
   }, [isInitialized, userTeamId, worker, workerReady]);
 
   useEffect(() => {
@@ -223,6 +245,120 @@ export default function StaffPage() {
               </CardContent>
             </Card>
           </div>
+
+          {chemistry && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
+                  <Handshake className="h-4 w-4 text-accent-primary" />
+                  Staff Chemistry
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="flex items-center gap-4">
+                  <span
+                    className={`font-data text-4xl font-bold ${
+                      chemistry.harmony.overallScore >= 70
+                        ? 'text-accent-success'
+                        : chemistry.harmony.overallScore >= 40
+                          ? 'text-accent-warning'
+                          : 'text-accent-danger'
+                    }`}
+                  >
+                    {chemistry.harmony.overallScore}
+                  </span>
+                  <span className="font-heading text-sm text-dynasty-muted">
+                    Harmony Score
+                  </span>
+                </div>
+
+                <CoachingRadarChart
+                  coaches={chemistry.coaches.map((c) => ({
+                    name: c.name,
+                    teaching: c.teaching,
+                    impact: c.impact,
+                    fit: c.fit,
+                    role: c.role,
+                  }))}
+                />
+
+                {chemistry.issues.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="font-heading text-sm text-dynasty-text">Issues</h4>
+                    {chemistry.issues.map((issue, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-2 rounded-lg border border-dynasty-border bg-dynasty-elevated/60 p-3"
+                      >
+                        <AlertTriangle
+                          className={`mt-0.5 h-4 w-4 shrink-0 ${
+                            issue.severity === 'high'
+                              ? 'text-accent-danger'
+                              : issue.severity === 'medium'
+                                ? 'text-accent-warning'
+                                : 'text-dynasty-muted'
+                          }`}
+                        />
+                        <div className="flex-1">
+                          <Badge
+                            variant={
+                              issue.severity === 'high'
+                                ? 'danger'
+                                : issue.severity === 'medium'
+                                  ? 'warning'
+                                  : 'outline'
+                            }
+                            className="mb-1"
+                          >
+                            {issue.severity}
+                          </Badge>
+                          <p className="font-data text-sm text-dynasty-text">
+                            {issue.description}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {chemistry.harmony.strongestBond && (
+                    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Link2 className="h-4 w-4 text-accent-success" />
+                        <span className="font-heading text-sm text-dynasty-text">Strongest Bond</span>
+                      </div>
+                      <span className="font-data text-2xl font-bold text-accent-success">
+                        {chemistry.harmony.strongestBond.synergyScore}
+                      </span>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {chemistry.harmony.strongestBond.factors.map((f) => (
+                          <Badge key={f} variant="outline" className="text-[10px]">{f}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {chemistry.harmony.weakestLink && (
+                    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Unlink2 className="h-4 w-4 text-accent-danger" />
+                        <span className="font-heading text-sm text-dynasty-text">Weakest Link</span>
+                      </div>
+                      <span className="font-data text-2xl font-bold text-accent-danger">
+                        {chemistry.harmony.weakestLink.synergyScore}
+                      </span>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {chemistry.harmony.weakestLink.factors.map((f) => (
+                          <Badge key={f} variant="outline" className="text-[10px]">{f}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="market">

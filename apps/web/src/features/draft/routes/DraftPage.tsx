@@ -12,6 +12,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { TeamLogo } from '@/shared/components/TeamLogo';
+import { PageHelp } from '@/shared/components/PageHelp';
 import type { WorkerApi } from '@/workers/sim.worker';
 import type {
   DraftActionResult,
@@ -1074,9 +1075,12 @@ export default function DraftPage() {
   if (phase !== 'offseason') {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
-          <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
+            <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
+          </div>
+          <PageHelp pageKey="draft" />
         </div>
 
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">

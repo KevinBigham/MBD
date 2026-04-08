@@ -711,6 +711,19 @@ export function useWorker() {
   const getFinanceOverview = useCallback(async () => api.getFinanceOverview(), [api]);
   const getSpringTrainingView = useCallback(async () => api.getSpringTrainingView(), [api]);
 
+  // Round 1 API integration
+  const getEnhancedPressConference = useCallback(async () => api.getEnhancedPressConference(), [api]);
+  const respondToEnhancedPressConference = useCallback(
+    async (confId: string, respId: string) => api.respondToEnhancedPressConference(confId, respId),
+    [api],
+  );
+  const getCoachingChemistry = useCallback(async () => api.getCoachingChemistry(), [api]);
+  const getMentorships = useCallback(async () => api.getMentorships(), [api]);
+  const getScenarioObjectivesView = useCallback(
+    async (scenarioId: string) => api.getScenarioObjectivesView(scenarioId),
+    [api],
+  );
+
   return {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
@@ -735,6 +748,7 @@ export function useWorker() {
     getFinanceOverview,
     getSpringTrainingView,
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
+    getEnhancedPressConference, respondToEnhancedPressConference, getCoachingChemistry, getMentorships, getScenarioObjectivesView,
     subscribeToFlowUpdates,
     restartWorker,
     workerStatus: currentWorkerStatus,

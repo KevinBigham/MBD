@@ -24,6 +24,22 @@ import {
   scoutPlayer,
   toInternalRating,
   toLetterGrade,
+  // Round 1 APIs
+  selectPressConferenceTopic,
+  generateEnhancedPressConference,
+  evaluatePressConferenceResponse,
+  calculateCoachSynergy,
+  calculateCoachPlayerAffinity,
+  calculateStaffHarmony,
+  getCoachDevelopmentBonus,
+  identifyChemistryIssues,
+  findMentorCandidates,
+  findProtegeeCandidates,
+  pairMentors,
+  advanceMentorship,
+  getMentorshipDevelopmentBonus,
+  getScenarioObjectives,
+  evaluateObjectiveProgress,
 } from '@mbd/sim-core';
 import type { CareerStatsLedger, HistoricalPlayer, ScoutConflict } from '@mbd/contracts';
 import type {
@@ -1993,5 +2009,150 @@ export const queryApi = {
       coachingPayroll,
       contracts,
     };
+  },
+
+  // ---------------------------------------------------------------------------
+  // Round 1 API Integration: Press Conferences, Coaching, Mentorship, Scenarios
+  // ---------------------------------------------------------------------------
+
+  getEnhancedPressConference() {
+    const s = requireState();
+    const rng = createStableWorkerRng(s, 'enhanced-press-conference');
+    const teamPlayers = getTeamPlayers(s.userTeamId);
+    const standingsTracker = s.seasonState.standings;
+    const userRecord = standingsTracker.getRecord(s.userTeamId);
+    const userOwner = s.ownerState.get(s.userTeamId);
+    const injuredStarIds = [...s.injuries.keys()];
+    const hasInjuredStar = teamPlayers.some(p =>
+      injuredStarIds.includes(p.id) && p.overallRating > 350 && p.rosterStatus === 'MLB',
+    );
+
+    const context = {
+      season: s.season,
+      day: s.day,
+      teamId: s.userTeamId,
+      teamRecord: { wins: userRecord?.wins ?? 0, losses: userRecord?.losses ?? 0 },
+      recentResults: [] as Array<'W' | 'L'>,
+      ownerTone: (userOwner?.hotSeat ? 'impatient' : 'neutral') as 'supportive' | 'neutral' | 'impatient',
+      hasInjuredStar,
+      hasRecentTrade: false,
+      hasRecentCallup: false,
+      isPlayoffContender: (userRecord?.wins ?? 0) > (userRecord?.losses ?? 1),
+      divisionRank: 3,
+      gamesBack: 0,
+      isOffseason: s.phase === 'offseason',
+    };
+
+    const topic = selectPressConferenceTopic(rng, context);
+    if (!topic) return null;
+
+    return generateEnhancedPressConference(rng, context);
+  },
+
+  respondToEnhancedPressConference(conferenceId: string, responseId: string) {
+    return evaluatePressConferenceResponse(conferenceId, responseId);
+  },
+
+  getCoachingChemistry() {
+    const s = requireState();
+    const coaches = s.coachingStaffs.get(s.userTeamId) ?? [];
+    const teamPlayers = getTeamPlayers(s.userTeamId).filter(p => p.rosterStatus === 'MLB');
+
+    const harmony = calculateStaffHarmony(coaches);
+    const issues = identifyChemistryIssues(coaches, teamPlayers);
+
+    const playerAffinities = teamPlayers.slice(0, 15).map(p => {
+      const affinities = coaches.map(c => {
+        const affinity = calculateCoachPlayerAffinity(c, p);
+        return {
+          coachId: affinity.coachId,
+          coachName: `${c.firstName} ${c.lastName}`,
+          playerId: affinity.playerId,
+          affinityScore: affinity.affinityScore,
+          factors: affinity.factors,
+          developmentBonus: getCoachDevelopmentBonus(c, p),
+        };
+      });
+      return {
+        playerId: p.id,
+        playerName: `${p.firstName} ${p.lastName}`,
+        position: p.position,
+        bestCoach: affinities.sort((a, b) => b.affinityScore - a.affinityScore)[0] ?? null,
+        affinities,
+      };
+    });
+
+    return {
+      harmony,
+      issues,
+      playerAffinities,
+      coaches: coaches.map(c => ({
+        id: c.id,
+        name: `${c.firstName} ${c.lastName}`,
+        role: c.role,
+        specialty: c.specialty,
+        teaching: c.teachingAbility,
+        impact: c.developmentBonus,
+        fit: c.personalityFit,
+        salary: c.annualSalary,
+      })),
+    };
+  },
+
+  getMentorships() {
+    const s = requireState();
+    const teamPlayers = getTeamPlayers(s.userTeamId);
+    const rng = createStableWorkerRng(s, 'mentorship');
+    const mentors = findMentorCandidates(teamPlayers);
+    const protegees = findProtegeeCandidates(teamPlayers);
+    const pairings = pairMentors(rng, mentors, protegees);
+
+    return {
+      mentorCount: mentors.length,
+      protegeeCount: protegees.length,
+      pairings: pairings.map(p => {
+        const mentor = teamPlayers.find(pl => pl.id === p.mentorId);
+        const protegee = teamPlayers.find(pl => pl.id === p.protegeeId);
+        return {
+          ...p,
+          mentorName: mentor ? `${mentor.firstName} ${mentor.lastName}` : 'Unknown',
+          protegeeName: protegee ? `${protegee.firstName} ${protegee.lastName}` : 'Unknown',
+        };
+      }),
+    };
+  },
+
+  getScenarioObjectivesView(scenarioId: string) {
+    const s = requireState();
+    const objectiveSet = getScenarioObjectives(scenarioId);
+    if (!objectiveSet) return null;
+
+    const history = s.seasonHistory ?? [];
+
+    // Parse wins from "W-L" record strings in userSeason
+    const parseWins = (record: string | undefined): number => {
+      if (!record) return 0;
+      const parts = record.split('-');
+      return parseInt(parts[0] ?? '0', 10) || 0;
+    };
+
+    const championships = history.filter(sh => sh.championTeamId === s.userTeamId).length;
+    const playoffAppearances = history.filter(sh =>
+      sh.userSeason?.playoffResult && sh.userSeason.playoffResult !== 'Missed Playoffs',
+    ).length;
+
+    const context = {
+      seasonsPlayed: s.season - 1,
+      winsBySeason: history.map(sh => parseWins(sh.userSeason?.record)),
+      playoffAppearances,
+      championships,
+      topProspectsDeveloped: 0,
+      payrollHistory: [] as number[],
+      allStarCounts: [] as number[],
+      tradeCount: s.tradeState.tradeHistory.length,
+      recordBookEntries: s.recordBook.length,
+    };
+
+    return evaluateObjectiveProgress(scenarioId, context);
   },
 };

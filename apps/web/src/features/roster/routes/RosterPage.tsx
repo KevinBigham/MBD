@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, Skeleton, StatLine, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
 import { Clock3, DollarSign, FileSignature, GripVertical, ShieldCheck } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { PageHelp } from '@/shared/components/PageHelp';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 
 const LineupBuilder = lazy(() => import('../components/LineupBuilder'));
@@ -382,11 +383,14 @@ export default function RosterPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-bold text-dynasty-text">Roster</h1>
-        <p className="font-data text-sm text-dynasty-muted">
-          {mlbRoster.length} players on active roster
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold text-dynasty-text">Roster</h1>
+          <p className="font-data text-sm text-dynasty-muted">
+            {mlbRoster.length} players on active roster
+          </p>
+        </div>
+        <PageHelp pageKey="roster" />
       </div>
 
       {chemistry && (
