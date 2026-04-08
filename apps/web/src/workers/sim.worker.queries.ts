@@ -2150,12 +2150,14 @@ export const queryApi = {
       p.rosterStatus === 'MLB' && p.age <= 25 && p.overallRating > 350,
     ).length;
 
-    // Payroll history — not available in archived standings, use empty for now
-    const payrollHistory = history.map(() => 0);
+    // Payroll history — not tracked in archived standings; omit rather than
+    // zero-fill so scenario objectives that check payroll thresholds (e.g.
+    // Moneyball's $125M cap) don't see false positives from placeholder zeros.
+    const payrollHistory: number[] = [];
 
-    // Count all-stars from award history during challenge
+    // Count All-Star selections only (not MVP/Cy Young/etc.) from award history
     const allStarAwards = (s.awardHistory ?? []).filter(
-      a => a.season >= challengeStartSeason && a.teamId === s.userTeamId,
+      a => a.season >= challengeStartSeason && a.teamId === s.userTeamId && a.award === 'All-Star',
     );
     // Group by season and count unique seasons with all-star selections
     const allStarsBySeason = new Map<number, number>();
