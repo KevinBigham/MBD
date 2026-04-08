@@ -28,6 +28,13 @@ import {
   selectPressConferenceTopic,
   generateEnhancedPressConference,
   evaluatePressConferenceResponse,
+  // Round 2 APIs
+  generateDeadlineTimeline,
+  getDeadlineEventsForDay,
+  generateBiddingWar,
+  getMilestoneAlerts,
+  generateMarketReport,
+  generateMarketSummary,
   calculateCoachSynergy,
   calculateCoachPlayerAffinity,
   calculateStaffHarmony,
@@ -2181,5 +2188,140 @@ export const queryApi = {
     };
 
     return evaluateObjectiveProgress(scenarioId, context);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Round 2 API Integration: Trade Deadline, Milestones, FA Market Intelligence
+  // ---------------------------------------------------------------------------
+
+  getTradeDeadlineDrama() {
+    const s = requireState();
+    if (s.phase !== 'regular') return null;
+    const rng = createStableWorkerRng(s, 'deadline-drama');
+    const standings = s.seasonState.standings;
+    const allEntries = standings.getLeagueStandings();
+
+    // Identify contenders (top half by winning pct) and sellers (bottom third)
+    const contenderIds = allEntries.slice(0, 12).map(e => e.teamId);
+    const sellerIds = allEntries.slice(22).map(e => e.teamId);
+
+    // Top trade targets: highest-rated players on seller teams
+    const sellerPlayers = s.players
+      .filter(p => sellerIds.includes(p.teamId) && p.rosterStatus === 'MLB')
+      .sort((a, b) => b.overallRating - a.overallRating);
+    const topTargetIds = sellerPlayers.slice(0, 8).map(p => p.id);
+
+    const context = {
+      season: s.season,
+      day: s.day,
+      standings: allEntries.map(e => ({ teamId: e.teamId, wins: e.wins, losses: e.losses })),
+      contenderTeamIds: contenderIds,
+      sellerTeamIds: sellerIds,
+      topTargetPlayerIds: topTargetIds,
+    };
+
+    const timeline = generateDeadlineTimeline(rng, context);
+    const todayEvents = getDeadlineEventsForDay(timeline, s.day);
+
+    // Generate a bidding war if there are contenders and targets
+    let activeBiddingWar = null;
+    if (topTargetIds.length > 0 && contenderIds.length >= 2) {
+      activeBiddingWar = generateBiddingWar(rng, topTargetIds[0]!, contenderIds.slice(0, 3));
+    }
+
+    // Resolve player names for display
+    const resolvePlayerName = (id: string) => {
+      const p = s.players.find(pl => pl.id === id);
+      return p ? `${p.firstName} ${p.lastName}` : 'Unknown';
+    };
+
+    return {
+      season: s.season,
+      day: s.day,
+      deadlineDay: 100,
+      daysUntilDeadline: Math.max(0, 100 - s.day),
+      isPastDeadline: s.day > 100,
+      todayEvents,
+      fullTimeline: timeline,
+      activeBiddingWar: activeBiddingWar ? {
+        ...activeBiddingWar,
+        targetPlayerName: resolvePlayerName(activeBiddingWar.targetPlayerId),
+      } : null,
+      contenderCount: contenderIds.length,
+      sellerCount: sellerIds.length,
+    };
+  },
+
+  getMilestoneTrackerAlerts() {
+    const s = requireState();
+    const teamPlayers = getTeamPlayers(s.userTeamId).filter(p => p.rosterStatus === 'MLB');
+
+    // Build career stat totals from careerStats ledger
+    const playerData = teamPlayers.map(p => {
+      const career = s.careerStats.find(
+        (cs: { playerId: string }) => cs.playerId === p.id,
+      );
+      const isPitcher = p.position === 'SP' || p.position === 'RP' || p.position === 'CL';
+      return {
+        id: p.id,
+        name: `${p.firstName} ${p.lastName}`,
+        careerStats: {
+          hits: career?.batting?.hits ?? 0,
+          hr: career?.batting?.hr ?? 0,
+          rbi: career?.batting?.rbi ?? 0,
+          sb: 0,
+          strikeouts: career?.pitching?.strikeouts ?? 0,
+          wins: career?.pitching?.wins ?? 0,
+          saves: career?.saves ?? 0,
+          isPitcher,
+          seasonsPlayed: Math.max(1, Math.floor(p.serviceTimeDays / 180)),
+        },
+        seasonsPlayed: Math.max(1, Math.floor(p.serviceTimeDays / 180)),
+      };
+    });
+
+    return getMilestoneAlerts(playerData);
+  },
+
+  getFreeAgencyMarketIntelligence() {
+    const s = requireState();
+    if (!s.freeAgencyMarket) return null;
+    const rng = createStableWorkerRng(s, 'market-intel');
+
+    // Build team budget info
+    const teams = s.seasonState.standings.getLeagueStandings().map(e => {
+      const budget = 80 + (e.wins > e.losses ? 20 : 0);
+      const teamPlayers = s.players.filter(p => p.teamId === e.teamId && p.rosterStatus === 'MLB');
+      const payroll = teamPlayers.reduce((sum, p) => sum + (p.contract?.annualSalary ?? 0), 0);
+      return {
+        teamId: e.teamId,
+        budgetRemaining: Math.max(0, budget - payroll),
+        needsPosition: true,
+      };
+    });
+
+    // Get top free agents and generate reports
+    const freeAgents = s.freeAgencyMarket.freeAgents?.slice(0, 15) ?? [];
+    const reports = freeAgents.map(fa => {
+      const player = fa.player;
+      return generateMarketReport(rng, {
+        playerId: player.id,
+        playerName: `${player.firstName} ${player.lastName}`,
+        position: player.position,
+        age: player.age,
+        overallRating: player.overallRating,
+        warProjection: player.overallRating / 100,
+        historicalSignings: [],
+        teams,
+      });
+    });
+
+    const summary = generateMarketSummary(reports);
+
+    return {
+      reports: reports.slice(0, 10),
+      summary,
+      totalFreeAgents: freeAgents.length,
+    };
   },
 };

@@ -31,6 +31,7 @@ const GameRecapCard = lazy(() => import('../components/GameRecapCard'));
 const PlayByPlayPanel = lazy(() => import('../components/PlayByPlayPanel'));
 const Sparkline = lazy(() => import('@/shared/components/charts/Sparkline'));
 const GameAdvisor = lazy(() => import('../components/GameAdvisor'));
+const MilestoneTrackerCard = lazy(() => import('../components/MilestoneTrackerCard'));
 
 interface DashboardSummary {
   franchise: {
@@ -737,6 +738,9 @@ export default function DashboardPage() {
               feed={summary?.pressRoom.feed ?? []}
               unreadCount={summary?.pressRoom.unreadCount ?? 0}
             />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Milestone Watch" />}>
+            <MilestoneTrackerCard />
           </Suspense>
         </section>
 

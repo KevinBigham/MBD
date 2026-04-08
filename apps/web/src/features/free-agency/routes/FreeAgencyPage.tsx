@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, lazy, useEffect, useState, useCallback } from 'react';
 import {
   DollarSign, TrendingUp, User, Filter,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
+
+const MarketIntelPanel = lazy(() => import('../components/MarketIntelPanel'));
 
 interface FreeAgentRow {
   id: string;
@@ -304,6 +306,11 @@ export default function FreeAgencyPage() {
           </div>
         </div>
       </div>
+
+      {/* Market Intelligence */}
+      <Suspense fallback={null}>
+        <MarketIntelPanel />
+      </Suspense>
     </div>
   );
 }
