@@ -26,6 +26,121 @@ const DIVISION_LABELS: Record<string, string> = {
   NL_WEST: 'NL West',
 };
 
+function DivisionCard({ divKey, teams, userTeamId }: {
+  divKey: string;
+  teams: TeamStandings[];
+  userTeamId: string;
+}) {
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+      <div className="border-b border-dynasty-border px-4 py-3">
+        <h2 className="font-heading text-sm font-semibold text-dynasty-text">
+          {DIVISION_LABELS[divKey] ?? divKey}
+        </h2>
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
+              <th className="px-4 py-2 text-left font-heading">Team</th>
+              <th className="px-2 py-2 text-right font-data">W</th>
+              <th className="px-2 py-2 text-right font-data">L</th>
+              <th className="px-2 py-2 text-right font-data">PCT</th>
+              <th className="px-2 py-2 text-right font-data">GB</th>
+              <th className="px-2 py-2 text-right font-data">DIFF</th>
+              <th className="px-2 py-2 text-right font-data">STRK</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map(team => (
+              <tr
+                key={team.teamId}
+                className={`border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated ${
+                  team.teamId === userTeamId ? 'bg-accent-primary/10' : ''
+                }`}
+              >
+                <td className="px-4 py-2">
+                  <div className="flex items-center gap-2.5">
+                    <TeamLogo teamId={team.teamId} size="sm" />
+                    <div>
+                      <div className="font-heading font-medium text-dynasty-text">
+                        {team.abbreviation}
+                      </div>
+                      <div className="font-heading text-xs text-dynasty-muted">
+                        {team.city} {team.teamName}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.wins}</td>
+                <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.losses}</td>
+                <td className="px-2 py-2 text-right font-data text-dynasty-muted">{team.pct}</td>
+                <td className="px-2 py-2 text-right font-data text-dynasty-muted">
+                  {team.gamesBack === 0 ? '-' : team.gamesBack.toFixed(1)}
+                </td>
+                <td className={`px-2 py-2 text-right font-data ${
+                  team.runDifferential >= 0 ? 'text-accent-success' : 'text-accent-danger'
+                }`}>
+                  {team.runDifferential >= 0 ? '+' : ''}{team.runDifferential}
+                </td>
+                <td className={`px-2 py-2 text-right font-data ${
+                  team.streak.startsWith('W') ? 'text-accent-success' : 'text-accent-danger'
+                }`}>
+                  {team.streak}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile card view */}
+      <div className="md:hidden divide-y divide-dynasty-border/30">
+        {teams.map((team, idx) => (
+          <div
+            key={team.teamId}
+            className={`px-3 py-2.5 ${team.teamId === userTeamId ? 'bg-accent-primary/10' : ''}`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="font-data text-[10px] text-dynasty-muted w-4">{idx + 1}</span>
+                <TeamLogo teamId={team.teamId} size="xs" />
+                <span className="font-heading text-sm font-medium text-dynasty-text">
+                  {team.abbreviation}
+                </span>
+              </div>
+              <div className="font-data text-sm font-semibold text-dynasty-text">
+                {team.wins}-{team.losses}
+              </div>
+            </div>
+            <div className="flex items-center gap-4 pl-6 text-[11px] font-data">
+              <span className="text-dynasty-muted">
+                PCT <span className="text-dynasty-text">{team.pct}</span>
+              </span>
+              <span className="text-dynasty-muted">
+                GB <span className="text-dynasty-text">{team.gamesBack === 0 ? '-' : team.gamesBack.toFixed(1)}</span>
+              </span>
+              <span className={team.runDifferential >= 0 ? 'text-accent-success' : 'text-accent-danger'}>
+                {team.runDifferential >= 0 ? '+' : ''}{team.runDifferential}
+              </span>
+              <span className={team.streak.startsWith('W') ? 'text-accent-success' : 'text-accent-danger'}>
+                {team.streak}
+              </span>
+            </div>
+          </div>
+        ))}
+        {teams.length === 0 && (
+          <div className="px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
+            Sim games to see standings
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StandingsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -54,80 +169,14 @@ export default function StandingsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {divisionOrder.map(div => {
-          const teams = standings[div] ?? [];
-          return (
-            <div key={div} className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-              <div className="border-b border-dynasty-border px-4 py-3">
-                <h2 className="font-heading text-sm font-semibold text-dynasty-text">
-                  {DIVISION_LABELS[div] ?? div}
-                </h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                      <th className="px-4 py-2 text-left font-heading">Team</th>
-                      <th className="px-2 py-2 text-right font-data">W</th>
-                      <th className="px-2 py-2 text-right font-data">L</th>
-                      <th className="px-2 py-2 text-right font-data">PCT</th>
-                      <th className="px-2 py-2 text-right font-data">GB</th>
-                      <th className="px-2 py-2 text-right font-data">DIFF</th>
-                      <th className="px-2 py-2 text-right font-data">STRK</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teams.map(team => (
-                      <tr
-                        key={team.teamId}
-                        className={`border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated ${
-                          team.teamId === userTeamId ? 'bg-accent-primary/10' : ''
-                        }`}
-                      >
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-2.5">
-                            <TeamLogo teamId={team.teamId} size="sm" />
-                            <div>
-                              <div className="font-heading font-medium text-dynasty-text">
-                                {team.abbreviation}
-                              </div>
-                              <div className="font-heading text-xs text-dynasty-muted">
-                                {team.city} {team.teamName}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.wins}</td>
-                        <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.losses}</td>
-                        <td className="px-2 py-2 text-right font-data text-dynasty-muted">{team.pct}</td>
-                        <td className="px-2 py-2 text-right font-data text-dynasty-muted">
-                          {team.gamesBack === 0 ? '-' : team.gamesBack.toFixed(1)}
-                        </td>
-                        <td className={`px-2 py-2 text-right font-data ${
-                          team.runDifferential >= 0 ? 'text-accent-success' : 'text-accent-danger'
-                        }`}>
-                          {team.runDifferential >= 0 ? '+' : ''}{team.runDifferential}
-                        </td>
-                        <td className={`px-2 py-2 text-right font-data ${
-                          team.streak.startsWith('W') ? 'text-accent-success' : 'text-accent-danger'
-                        }`}>
-                          {team.streak}
-                        </td>
-                      </tr>
-                    ))}
-                    {teams.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
-                          Sim games to see standings
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          );
-        })}
+        {divisionOrder.map(div => (
+          <DivisionCard
+            key={div}
+            divKey={div}
+            teams={standings[div] ?? []}
+            userTeamId={userTeamId}
+          />
+        ))}
       </div>
     </div>
   );

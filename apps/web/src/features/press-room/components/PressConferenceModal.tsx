@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { Mic, Shield, MessageCircle, ArrowRight } from 'lucide-react';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 
 interface PressConferenceResponse {
   id: string;
@@ -78,6 +79,7 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ tone: string; moraleDelta: number; ownerDelta: number } | null>(null);
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
 
   useEffect(() => {
     getAudioEngine().playEffect('press_conference');
@@ -105,7 +107,7 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div ref={trapRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-xl rounded-xl border border-dynasty-border bg-dynasty-surface shadow-2xl">
         {/* Header */}
         <div className="border-b border-dynasty-border px-6 py-4">

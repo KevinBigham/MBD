@@ -10,6 +10,7 @@ import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import { TickerBar } from './TickerBar';
 import { PressConferenceModal } from '@/features/press-room/components/PressConferenceModal';
 import { TourProvider } from '@/shared/components/TourProvider';
+import { KeyboardShortcutsPanel } from '@/shared/components/KeyboardShortcutsPanel';
 import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStore';
@@ -82,6 +83,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shortcutsPanelOpen, setShortcutsPanelOpen] = useState(false);
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
   const [activeMoment, setActiveMoment] = useState<CeremonyMoment | null>(null);
   const [monthlyPulse, setMonthlyPulse] = useState<MonthlyPulseView | null>(null);
@@ -377,7 +379,13 @@ export function AppLayout() {
         return;
       }
 
-      if (commandPaletteOpen || isEditableTarget(event.target) || !seasonFlow?.canUseRegularSimControls) {
+      if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+        event.preventDefault();
+        setShortcutsPanelOpen((prev) => !prev);
+        return;
+      }
+
+      if (commandPaletteOpen || shortcutsPanelOpen || isEditableTarget(event.target) || !seasonFlow?.canUseRegularSimControls) {
         return;
       }
 
@@ -403,7 +411,7 @@ export function AppLayout() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [commandPaletteOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
+  }, [commandPaletteOpen, shortcutsPanelOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
 
   if (!isInitialized) {
     return <Navigate to="/" replace />;
@@ -477,6 +485,8 @@ export function AppLayout() {
         onDecisionDismiss={() => void handleDecisionDismiss()}
         onDecisionAction={() => void handleDecisionAction()}
       />
+
+      <KeyboardShortcutsPanel open={shortcutsPanelOpen} onClose={() => setShortcutsPanelOpen(false)} />
 
       {pressConference && !activeMoment && !activeReport && !activeDecision && (
         <PressConferenceModal
