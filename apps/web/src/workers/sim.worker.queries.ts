@@ -2288,7 +2288,7 @@ export const queryApi = {
 
     // Build team budget info
     const teams = s.seasonState.standings.getLeagueStandings().map(e => {
-      const budget = 80_000_000 + (e.wins > e.losses ? 20_000_000 : 0);
+      const budget = 80 + (e.wins > e.losses ? 20 : 0);
       const teamPlayers = s.players.filter(p => p.teamId === e.teamId && p.rosterStatus === 'MLB');
       const payroll = teamPlayers.reduce((sum, p) => sum + (p.contract?.annualSalary ?? 0), 0);
       return {

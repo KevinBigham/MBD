@@ -61,14 +61,13 @@ interface MarketIntelligenceData {
 
 const MAX_VISIBLE_REPORTS = 8;
 const MAX_VISIBLE_COMPS = 3;
-const MILLION = 1_000_000;
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Salaries in sim-core are already in millions (e.g., 18.5 = $18.5M). */
 function formatMoney(value: number): string {
-  return `$${(value / MILLION).toFixed(1)}M`;
+  return `$${value.toFixed(1)}M`;
 }
 
 const DEMAND_CONFIG: Record<
@@ -175,7 +174,7 @@ function PlayerReportCard({ report }: { report: MarketReport }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Link
-              to={`/player/${report.playerId}`}
+              to={`/players/${report.playerId}`}
               className="font-heading text-sm text-dynasty-textBright hover:text-accent-primary"
             >
               {report.playerName}
