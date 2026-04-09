@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import PipelineView, { type ProspectPipelineView } from '../components/PipelineView';
+
+const ProspectBreakoutTracker = lazy(() => import('../components/ProspectBreakoutTracker'));
 
 interface AffiliateOverviewView {
   affiliates: Array<{
@@ -264,6 +266,10 @@ export default function MinorsPage() {
           )}
         </div>
       </div>
+
+      <Suspense fallback={null}>
+        <ProspectBreakoutTracker />
+      </Suspense>
 
       <PipelineView pipeline={pipeline} />
 

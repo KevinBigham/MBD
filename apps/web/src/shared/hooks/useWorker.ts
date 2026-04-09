@@ -751,6 +751,18 @@ export function useWorker() {
     [api],
   );
 
+  // Round 4 API integration
+  const getBreakoutIntelligence = useCallback(
+    async (playerId: string) => api.getBreakoutIntelligence(playerId),
+    [api],
+  );
+  const getProspectBreakoutWatch = useCallback(async () => api.getProspectBreakoutWatch(), [api]);
+  const getScoutConsensus = useCallback(
+    async (playerId: string) => api.getScoutConsensus(playerId),
+    [api],
+  );
+  const getPlayoffMomentum = useCallback(async () => api.getPlayoffMomentum(), [api]);
+
   return {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
@@ -778,6 +790,7 @@ export function useWorker() {
     getEnhancedPressConference, respondToEnhancedPressConference, getCoachingChemistry, getMentorships, getScenarioObjectivesView,
     getTradeDeadlineDrama, getMilestoneTrackerAlerts, getFreeAgencyMarketIntelligence,
     getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
+    getBreakoutIntelligence, getProspectBreakoutWatch, getScoutConsensus, getPlayoffMomentum,
     subscribeToFlowUpdates,
     restartWorker,
     workerStatus: currentWorkerStatus,

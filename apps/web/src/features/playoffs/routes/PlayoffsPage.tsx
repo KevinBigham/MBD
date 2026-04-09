@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import {
   ArrowRight,
   Play,
@@ -7,6 +7,8 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react';
+
+const MomentumPanel = lazy(() => import('../components/MomentumPanel'));
 import type { PlayoffBracket, PlayoffSeriesState } from '@mbd/sim-core';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import type { SeasonFlowPreviewSeries } from '@/app/layout/seasonFlow';
@@ -107,6 +109,10 @@ export default function PlayoffsPage() {
           </div>
         </div>
       </div>
+
+      <Suspense fallback={null}>
+        <MomentumPanel />
+      </Suspense>
 
       <section className="grid gap-4 xl:grid-cols-4">
         {ROUND_LABELS.map((round) => {

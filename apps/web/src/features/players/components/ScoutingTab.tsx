@@ -4,6 +4,7 @@ import type { PlayerProfileView } from './playerProfileShared';
 import { labelize } from './playerProfileShared';
 
 const SimilarPlayersPanel = lazy(() => import('./SimilarPlayersPanel'));
+const ScoutConsensusPanel = lazy(() => import('./ScoutConsensusPanel'));
 
 function StatChip({
   label,
@@ -34,6 +35,12 @@ export default function ScoutingTab({
   const similarPanel = !player.historical ? (
     <Suspense fallback={null}>
       <SimilarPlayersPanel playerId={player.id} />
+    </Suspense>
+  ) : null;
+
+  const consensusPanel = !player.historical ? (
+    <Suspense fallback={null}>
+      <ScoutConsensusPanel playerId={player.id} />
     </Suspense>
   ) : null;
 
@@ -87,6 +94,7 @@ export default function ScoutingTab({
             </div>
           </CardContent>
         </Card>
+        {consensusPanel}
         {similarPanel}
       </div>
     );
@@ -134,6 +142,7 @@ export default function ScoutingTab({
             </div>
           </CardContent>
         </Card>
+        {consensusPanel}
         {similarPanel}
       </div>
     );

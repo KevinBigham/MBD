@@ -59,6 +59,16 @@ import {
   getPlayerArchetype,
   generateEnhancedPlayByPlay,
   generateAwardCeremony,
+  // Round 4 APIs — foundation intelligence
+  calculateBreakoutProbability,
+  classifyDevelopmentTrajectory,
+  detectRegressionRisk,
+  predictProspectCeiling,
+  generateBreakoutScoutReport,
+  buildMultiScoutConsensus,
+  estimateAttributeWithUncertainty,
+  buildPlayoffGameModifiers,
+  generateMomentumNarrative,
 } from '@mbd/sim-core';
 import type { CareerStatsLedger, HistoricalPlayer, ScoutConflict } from '@mbd/contracts';
 import type {
@@ -2498,6 +2508,209 @@ export const queryApi = {
     });
 
     return generateAwardCeremony(rng, contexts, targetSeason);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Round 4 API Integration: Breakout Intelligence, Scout Consensus, Playoff Momentum
+  // ---------------------------------------------------------------------------
+
+  getBreakoutIntelligence(playerId: string) {
+    const s = requireState();
+    const player = s.players.find(p => p.id === playerId);
+    if (!player) return null;
+
+    const coaches = s.coachingStaffs.get(player.teamId) ?? [];
+
+    // Build season history from development reports if available
+    const history: Array<{ prevRating: number; currRating: number }> = [];
+    // Use development checkpoint data if stored — fall back to empty
+    // The breakout engine handles empty history gracefully (neutral score)
+
+    const assessment = calculateBreakoutProbability(player, history, coaches);
+    const rng = createStableWorkerRng(s, `breakout-${playerId}`);
+    const ceiling = predictProspectCeiling(rng, player);
+    const deltas = history.map(h => h.currRating - h.prevRating);
+    const regression = detectRegressionRisk(player, deltas);
+    const trajectory = classifyDevelopmentTrajectory(deltas);
+    const scoutReport = generateBreakoutScoutReport(rng, player, assessment);
+
+    return {
+      assessment,
+      ceiling,
+      regression,
+      trajectory,
+      scoutReport,
+      playerName: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      age: player.age,
+      developmentPhase: player.developmentPhase,
+    };
+  },
+
+  getProspectBreakoutWatch() {
+    const s = requireState();
+    const prospects = getTeamPlayers(s.userTeamId).filter(p =>
+      p.rosterStatus !== 'MLB'
+      && (p.developmentPhase === 'Prospect' || p.developmentPhase === 'Ascent' || p.developmentPhase === 'Prime'),
+    );
+
+    const coaches = s.coachingStaffs.get(s.userTeamId) ?? [];
+
+    const watchList = prospects.map(p => {
+      const assessment = calculateBreakoutProbability(p, [], coaches);
+      const deltas: number[] = [];
+      const trajectory = classifyDevelopmentTrajectory(deltas);
+
+      return {
+        playerId: p.id,
+        playerName: `${p.firstName} ${p.lastName}`,
+        position: p.position,
+        age: p.age,
+        level: p.minorLeagueLevel ?? p.rosterStatus,
+        probability: assessment.probability,
+        riskLevel: assessment.riskLevel,
+        narrativeHook: assessment.narrativeHook,
+        trajectory,
+        topFactor: assessment.factors[0]?.name ?? 'Overall profile',
+      };
+    })
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 10);
+
+    return { watchList };
+  },
+
+  getScoutConsensus(playerId: string) {
+    const s = requireState();
+    const player = s.players.find(p => p.id === playerId);
+    if (!player) return null;
+
+    // Use coaching staff as evaluators (farm director, coordinators, and coaches all observe players)
+    const staff = s.coachingStaffs.get(s.userTeamId) ?? [];
+    if (staff.length === 0) return null;
+
+    // Pick the 3-5 most relevant staff members as "scouts"
+    const evaluators = staff.slice(0, 5);
+    const rng = createStableWorkerRng(s, `scout-consensus-${playerId}`);
+
+    // Build observations from staff evaluators
+    const observations = evaluators.map((scout, idx) => {
+      const scoutSkill = Math.round(scout.teachingAbility * 100);
+      const estimate = estimateAttributeWithUncertainty(
+        rng, player.overallRating, scoutSkill, 3 + idx,
+      );
+      return {
+        scoutId: scout.id,
+        playerId: player.id,
+        observedRating: estimate.pointEstimate,
+        confidence: estimate.confidence,
+        timestamp: `S${s.season}D${s.day}`,
+        scoutSkill,
+      };
+    });
+
+    const consensus = buildMultiScoutConsensus(observations);
+
+    // Build attribute estimates for key attributes
+    const isPitcher = player.pitcherAttributes !== null;
+    const attrKeys = isPitcher
+      ? ['stuff', 'control', 'stamina', 'velocity', 'movement'] as const
+      : ['contact', 'power', 'eye', 'speed', 'defense'] as const;
+
+    const bestEvaluator = evaluators.reduce((best, sc) =>
+      (sc.teachingAbility > (best?.teachingAbility ?? 0)) ? sc : best, evaluators[0]!);
+
+    const attributeEstimates = attrKeys.map(key => {
+      let trueValue = 0;
+      if (isPitcher && player.pitcherAttributes) {
+        trueValue = player.pitcherAttributes[key as keyof NonNullable<typeof player.pitcherAttributes>] as number ?? 0;
+      } else {
+        trueValue = player.hitterAttributes[key as keyof typeof player.hitterAttributes] as number ?? 0;
+      }
+      const estimate = estimateAttributeWithUncertainty(
+        rng, trueValue, Math.round(bestEvaluator.teachingAbility * 100), 4,
+      );
+      return { attribute: key, ...estimate };
+    });
+
+    return {
+      consensus,
+      attributeEstimates,
+      scoutCount: evaluators.length,
+      observations: observations.map(o => {
+        const scout = evaluators.find(sc => sc.id === o.scoutId);
+        return {
+          scoutId: o.scoutId,
+          scoutName: scout ? `${scout.firstName} ${scout.lastName}` : 'Unknown',
+          observedRating: o.observedRating,
+          confidence: o.confidence,
+        };
+      }),
+    };
+  },
+
+  getPlayoffMomentum() {
+    const s = requireState();
+    if (s.phase !== 'playoffs' || !s.playoffBracket) return null;
+
+    const rng = createStableWorkerRng(s, 'playoff-momentum');
+
+    // Use currentRoundSeries which has PlayoffSeriesState with status, higherSeed, lowerSeed
+    const activeSeries = s.playoffBracket.currentRoundSeries.find(
+      series => series.status !== 'complete',
+    );
+    if (!activeSeries) return null;
+
+    const homeTeamId = activeSeries.higherSeed.teamId;
+    const awayTeamId = activeSeries.lowerSeed.teamId;
+
+    const standings = s.seasonState.standings.getLeagueStandings();
+    const homeStanding = standings.find(e => e.teamId === homeTeamId);
+    const awayStanding = standings.find(e => e.teamId === awayTeamId);
+
+    const roundMap: Record<string, 'WC' | 'DS' | 'CS' | 'WS'> = {
+      WILD_CARD: 'WC', DIVISION_SERIES: 'DS',
+      CHAMPIONSHIP_SERIES: 'CS', WORLD_SERIES: 'WS',
+    };
+
+    const seriesHomeWins = activeSeries.higherSeedWins;
+    const seriesAwayWins = activeSeries.lowerSeedWins;
+    const bestOf = activeSeries.bestOf;
+    const winsToAdvance = Math.ceil(bestOf / 2);
+    const isElimination = seriesHomeWins === winsToAdvance - 1 || seriesAwayWins === winsToAdvance - 1;
+
+    const context = {
+      homeTeamWins: homeStanding?.wins ?? 81,
+      homeTeamLosses: homeStanding?.losses ?? 81,
+      awayTeamWins: awayStanding?.wins ?? 81,
+      awayTeamLosses: awayStanding?.losses ?? 81,
+      seriesHomeWins,
+      seriesAwayWins,
+      homeStarterGamesInSeries: 1,
+      awayStarterGamesInSeries: 1,
+      homeStarterDaysSinceStart: 5,
+      awayStarterDaysSinceStart: 5,
+      homeStarterStamina: 350,
+      awayStarterStamina: 350,
+      homeRecentResults: [] as boolean[],
+      awayRecentResults: [] as boolean[],
+      isElimination,
+      round: roundMap[activeSeries.round] ?? ('DS' as const),
+    };
+
+    const modifiers = buildPlayoffGameModifiers(context);
+    const narrative = generateMomentumNarrative(rng, modifiers);
+
+    return {
+      homeTeamId,
+      awayTeamId,
+      seriesHomeWins,
+      seriesAwayWins,
+      round: context.round,
+      isElimination,
+      modifiers,
+      narrative,
+    };
   },
 
   getFreeAgencyMarketIntelligence() {
