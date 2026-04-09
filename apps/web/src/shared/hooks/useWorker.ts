@@ -84,6 +84,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'makeRule5Pick',
   'passRule5Pick',
   'resolveRule5OfferBack',
+  'completeOnboarding',
 ]);
 
 function notifyListeners() {
@@ -769,6 +770,14 @@ export function useWorker() {
   );
   const getPlayoffMomentum = useCallback(async () => api.getPlayoffMomentum(), [api]);
 
+  // Onboarding
+  const getOnboardingData = useCallback(async () => api.getOnboardingData(), [api]);
+  const completeOnboarding = useCallback(
+    async (philosophy: Parameters<typeof api.completeOnboarding>[0]) =>
+      runMutation(() => api.completeOnboarding(philosophy)),
+    [api, runMutation],
+  );
+
   return {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
@@ -797,6 +806,7 @@ export function useWorker() {
     getTradeDeadlineDrama, getMilestoneTrackerAlerts, getFreeAgencyMarketIntelligence,
     getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
     getBreakoutIntelligence, getProspectBreakoutWatch, getScoutConsensus, getPlayoffMomentum,
+    getOnboardingData, completeOnboarding,
     subscribeToFlowUpdates,
     restartWorker,
     workerStatus: currentWorkerStatus,
