@@ -162,3 +162,8 @@ export class GameRNG {
     return rng;
   }
 }
+
+/** Convenience factory to standardize seeded RNG creation across tests and engine helpers. */
+export function createGameRNG(seed: number): GameRNG {
+  return new GameRNG(seed);
+}

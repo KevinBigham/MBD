@@ -1,4 +1,4 @@
-export { GameRNG } from './prng.js';
+export { GameRNG, createGameRNG } from './prng.js';
 export type { GameRNGState } from './prng.js';
 
 export { computeLog5Probabilities } from './log5.js';
