@@ -143,6 +143,11 @@ import {
   getAdvancedStatsForPlayer,
 } from './sim.worker.stats.js';
 import {
+  getOnboardingData,
+  completeOnboarding,
+} from './sim.worker.onboarding.js';
+import type { GMPhilosophy } from '@mbd/sim-core';
+import {
   getActiveDevelopmentSetbackView,
   getMinorLeagueProgressionView,
   getProspectBondView,
@@ -2762,5 +2767,14 @@ export const queryApi = {
       summary,
       totalFreeAgents: freeAgents.length,
     };
+  },
+
+  // Onboarding Wizard
+  getOnboardingData() {
+    return getOnboardingData();
+  },
+
+  completeOnboarding(philosophy: GMPhilosophy) {
+    completeOnboarding(philosophy);
   },
 };
