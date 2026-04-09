@@ -91,6 +91,9 @@ const StatsEncyclopediaPage = lazy(
 const RecordWatchPage = lazy(
   () => import('@/features/records/routes/RecordWatchPage')
 );
+const PlayerComparisonPage = lazy(
+  () => import('@/features/players/routes/PlayerComparisonPage')
+);
 
 function LoadingFallback() {
   return (
@@ -126,6 +129,7 @@ export function AppRoutes() {
           <Route path="roster" element={withRouteBoundary('Roster', <RosterPage />)} />
           <Route path="minors" element={withRouteBoundary('Minors', <MinorsPage />)} />
           <Route path="players" element={withRouteBoundary('Players', <PlayersPage />)} />
+          <Route path="players/compare" element={withRouteBoundary('Player Comparison', <PlayerComparisonPage />)} />
           <Route path="players/:playerId" element={withRouteBoundary('Player Profile', <PlayerProfilePage />)} />
           <Route path="scouting" element={withRouteBoundary('Scouting', <ScoutingPage />)} />
           <Route path="staff" element={withRouteBoundary('Staff', <StaffPage />)} />

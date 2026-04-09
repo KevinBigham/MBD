@@ -47,6 +47,18 @@ import {
   getMentorshipDevelopmentBonus,
   getScenarioObjectives,
   evaluateObjectiveProgress,
+  // Round 3 APIs — unwired modules
+  comparePlayersHead2Head,
+  comparePlayerStats,
+  generateComparisonSummary,
+  rankPlayerAttributes,
+  projectSeasonStats,
+  findNotableProjections,
+  SEASON_GAMES,
+  findSimilarPlayers,
+  getPlayerArchetype,
+  generateEnhancedPlayByPlay,
+  generateAwardCeremony,
 } from '@mbd/sim-core';
 import type { CareerStatsLedger, HistoricalPlayer, ScoutConflict } from '@mbd/contracts';
 import type {
@@ -2281,6 +2293,211 @@ export const queryApi = {
     });
 
     return getMilestoneAlerts(playerData);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Round 3 API Integration: Comparison, Projections, Similarity, Enhanced PBP, Awards
+  // ---------------------------------------------------------------------------
+
+  getPlayerComparison(playerIdA: string, playerIdB: string) {
+    const s = requireState();
+    const playerA = s.players.find(p => p.id === playerIdA);
+    const playerB = s.players.find(p => p.id === playerIdB);
+    if (!playerA || !playerB) return null;
+
+    const comparison = comparePlayersHead2Head(playerA, playerB);
+    const statsA = s.seasonState.playerSeasonStats.get(playerIdA);
+    const statsB = s.seasonState.playerSeasonStats.get(playerIdB);
+    const statComparison = statsA && statsB ? comparePlayerStats(statsA, statsB) : [];
+    const summary = generateComparisonSummary(comparison);
+    const rankedA = rankPlayerAttributes(playerA);
+    const rankedB = rankPlayerAttributes(playerB);
+
+    return {
+      comparison,
+      statComparison,
+      summary,
+      rankedA,
+      rankedB,
+      playerA: {
+        id: playerA.id,
+        name: `${playerA.firstName} ${playerA.lastName}`,
+        position: playerA.position,
+        age: playerA.age,
+        teamId: playerA.teamId,
+      },
+      playerB: {
+        id: playerB.id,
+        name: `${playerB.firstName} ${playerB.lastName}`,
+        position: playerB.position,
+        age: playerB.age,
+        teamId: playerB.teamId,
+      },
+    };
+  },
+
+  getSeasonProjections(playerId: string) {
+    const s = requireState();
+    const player = s.players.find(p => p.id === playerId);
+    if (!player) return null;
+
+    const stats = s.seasonState.playerSeasonStats.get(playerId);
+    if (!stats) return null;
+
+    const gamesPlayed = stats.gamesPlayed ?? 0;
+    const projection = projectSeasonStats(stats, gamesPlayed, SEASON_GAMES);
+    if (!projection) return null;
+
+    const allProjections = s.players
+      .filter(p => p.teamId === s.userTeamId && p.rosterStatus === 'MLB')
+      .map(p => {
+        const pStats = s.seasonState.playerSeasonStats.get(p.id);
+        if (!pStats) return null;
+        return projectSeasonStats(pStats, pStats.gamesPlayed ?? 0, SEASON_GAMES);
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+
+    const notable = findNotableProjections(allProjections);
+    const playerNotable = notable.filter(n => n.playerId === playerId);
+
+    return {
+      projection,
+      notableProjections: playerNotable,
+      teamNotableCount: notable.length,
+    };
+  },
+
+  getPlayerSimilarity(playerId: string) {
+    const s = requireState();
+    const target = s.players.find(p => p.id === playerId);
+    if (!target) return null;
+
+    const candidates = s.players.filter(p =>
+      p.id !== playerId && p.rosterStatus === 'MLB',
+    );
+
+    const archetype = getPlayerArchetype(target);
+    const similar = findSimilarPlayers(target, candidates, 5);
+
+    return {
+      archetype,
+      similarPlayers: similar.comparisons.map(sp => {
+        const p = s.players.find(pl => pl.id === sp.playerId);
+        return {
+          ...sp,
+          position: p?.position ?? 'UTIL',
+          teamId: p?.teamId ?? '',
+          age: p?.age ?? 0,
+        };
+      }),
+    };
+  },
+
+  getEnhancedGamePlayByPlay(gameIndex: number) {
+    const s = requireState();
+    const boxScore = s.seasonState.gameLog[gameIndex];
+    if (!boxScore) return null;
+
+    const rng = createStableWorkerRng(s, `enhanced-pbp-${gameIndex}`);
+    const playerNames = new Map<string, string>();
+    for (const p of s.players) {
+      playerNames.set(p.id, `${p.firstName} ${p.lastName}`);
+    }
+    for (const hp of s.historicalPlayers) {
+      if (!playerNames.has(hp.playerId)) {
+        playerNames.set(hp.playerId, hp.fullName);
+      }
+    }
+
+    const gameImportance: 'regular' | 'playoff' | 'world_series' = boxScore.isPlayoff
+      ? 'world_series'
+      : 'regular';
+
+    const entries = boxScore.paResults.map(pa => {
+      const scoreDiff = pa.halfInning === 'bottom'
+        ? pa.scoreBefore[0] - pa.scoreBefore[1]
+        : pa.scoreBefore[1] - pa.scoreBefore[0];
+
+      const context = {
+        inning: pa.inning,
+        outs: pa.outs,
+        runnersOn: pa.runnersOn,
+        scoreDifferential: scoreDiff,
+        isHomeTeam: pa.halfInning === 'bottom',
+        batterName: playerNames.get(pa.batterId) ?? pa.batterId,
+        pitcherName: playerNames.get(pa.pitcherId) ?? pa.pitcherId,
+        gameImportance,
+      };
+
+      return generateEnhancedPlayByPlay(rng, pa, context);
+    });
+
+    return {
+      gameIndex,
+      homeTeamId: boxScore.homeTeamId,
+      awayTeamId: boxScore.awayTeamId,
+      entries,
+      highlightCount: entries.filter(e => e.isHighlight).length,
+      maxExcitement: entries.reduce((max, e) => Math.max(max, e.excitement), 1 as number),
+    };
+  },
+
+  getAwardCeremony(season?: number) {
+    const s = requireState();
+    const targetSeason = season ?? s.season;
+    const seasonAwards = s.awardHistory.filter(a => a.season === targetSeason);
+    if (seasonAwards.length === 0) return null;
+
+    const rng = createStableWorkerRng(s, `award-ceremony-${targetSeason}`);
+
+    // Map award IDs to their canonical keys
+    const awardKeyMap: Record<string, string> = {
+      MVP: 'MVP',
+      'Cy Young': 'CY_YOUNG',
+      'Rookie of the Year': 'ROY',
+      'Gold Glove': 'GOLD_GLOVE',
+      'Silver Slugger': 'SILVER_SLUGGER',
+      'Reliever of the Year': 'RELIEVER_OF_YEAR',
+    };
+
+    const contexts = seasonAwards.map(entry => {
+      const player = s.players.find(p => p.id === entry.playerId);
+      const stats = s.seasonState.playerSeasonStats.get(entry.playerId);
+      const leaguePrefix = entry.league === 'AL' ? '_AL' : entry.league === 'NL' ? '_NL' : '';
+      const baseKey = awardKeyMap[entry.award] ?? entry.award.toUpperCase().replace(/\s+/g, '_');
+      const awardId = `${baseKey}${leaguePrefix}`;
+
+      // Count previous awards for repeat detection
+      const previousWins = s.awardHistory.filter(
+        a => a.playerId === entry.playerId && a.season < targetSeason,
+      ).length;
+
+      // Get team record from standings
+      const standings = s.seasonState.standings.getLeagueStandings();
+      const teamEntry = standings.find(e => e.teamId === entry.teamId);
+      const wins = teamEntry?.wins ?? 81;
+      const losses = teamEntry?.losses ?? 81;
+
+      // Pick reaction tone based on player personality if available
+      const tones: Array<'confident' | 'humble' | 'measured'> = ['confident', 'humble', 'measured'];
+      const toneIndex = (entry.playerId.charCodeAt(0) + targetSeason) % 3;
+
+      return {
+        awardId,
+        winnerId: entry.playerId,
+        winnerName: player ? `${player.firstName} ${player.lastName}` : entry.playerId,
+        winnerTeamId: entry.teamId,
+        winnerStatLine: entry.summary || stats?.toString() || 'N/A',
+        runnerUpNames: [] as string[],
+        winnerAge: player?.age ?? 28,
+        isFirstAward: previousWins === 0,
+        isRepeatWinner: previousWins > 0,
+        reactionTone: tones[toneIndex]!,
+        teamRecord: { wins, losses },
+      };
+    });
+
+    return generateAwardCeremony(rng, contexts, targetSeason);
   },
 
   getFreeAgencyMarketIntelligence() {

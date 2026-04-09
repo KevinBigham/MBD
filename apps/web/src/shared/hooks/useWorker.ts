@@ -729,6 +729,28 @@ export function useWorker() {
   const getMilestoneTrackerAlerts = useCallback(async () => api.getMilestoneTrackerAlerts(), [api]);
   const getFreeAgencyMarketIntelligence = useCallback(async () => api.getFreeAgencyMarketIntelligence(), [api]);
 
+  // Round 3 API integration
+  const getPlayerComparison = useCallback(
+    async (playerIdA: string, playerIdB: string) => api.getPlayerComparison(playerIdA, playerIdB),
+    [api],
+  );
+  const getSeasonProjections = useCallback(
+    async (playerId: string) => api.getSeasonProjections(playerId),
+    [api],
+  );
+  const getPlayerSimilarity = useCallback(
+    async (playerId: string) => api.getPlayerSimilarity(playerId),
+    [api],
+  );
+  const getEnhancedGamePlayByPlay = useCallback(
+    async (gameIndex: number) => api.getEnhancedGamePlayByPlay(gameIndex),
+    [api],
+  );
+  const getAwardCeremony = useCallback(
+    async (season?: number) => api.getAwardCeremony(season),
+    [api],
+  );
+
   return {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
@@ -755,6 +777,7 @@ export function useWorker() {
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
     getEnhancedPressConference, respondToEnhancedPressConference, getCoachingChemistry, getMentorships, getScenarioObjectivesView,
     getTradeDeadlineDrama, getMilestoneTrackerAlerts, getFreeAgencyMarketIntelligence,
+    getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
     subscribeToFlowUpdates,
     restartWorker,
     workerStatus: currentWorkerStatus,
