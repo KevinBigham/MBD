@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   ClipboardX,
   FileSignature,
+  GitCompareArrows,
   History,
   LineChart,
   ShieldAlert,
@@ -346,6 +347,16 @@ export default function PlayerProfilePage() {
                   <CardTitle className="font-heading text-dynasty-text">Quick Actions</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* Compare button — always visible for non-historical */}
+                  {!player.historical && (
+                    <Button asChild variant="outline" className="w-full justify-start">
+                      <Link to={`/players/compare?a=${player.id}`}>
+                        <GitCompareArrows className="h-4 w-4" />
+                        Compare Player
+                      </Link>
+                    </Button>
+                  )}
+
                   {isUserTeamPlayer ? (
                     <>
                       <Button asChild variant="outline" className="w-full justify-start">

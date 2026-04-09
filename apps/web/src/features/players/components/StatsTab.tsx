@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@mbd/ui';
 import type { PlayerProfileView } from './playerProfileShared';
 import {
@@ -5,6 +6,8 @@ import {
   formatInnings,
   isPitcherProfile,
 } from './playerProfileShared';
+
+const ProjectionsPanel = lazy(() => import('./ProjectionsPanel'));
 
 function StatBlock({
   label,
@@ -104,6 +107,12 @@ export default function StatsTab({
           </CardContent>
         </Card>
       ) : null}
+
+      {!player.historical && (
+        <Suspense fallback={null}>
+          <ProjectionsPanel playerId={player.id} />
+        </Suspense>
+      )}
 
       <Card>
         <CardHeader>

@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
+
+const EnhancedPlayByPlay = lazy(() => import('../components/EnhancedPlayByPlay'));
 
 interface PlayEntry {
   inning: number;
@@ -194,7 +196,12 @@ export default function BoxScorePage() {
         </div>
       )}
 
-      {/* Play-by-play */}
+      {/* Enhanced play-by-play */}
+      <Suspense fallback={null}>
+        <EnhancedPlayByPlay gameIndex={gameIndex} />
+      </Suspense>
+
+      {/* Classic play-by-play */}
       <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
         <div className="border-b border-dynasty-border px-4 py-3">
           <h2 className="font-heading text-sm font-semibold text-dynasty-text">Play-by-Play</h2>

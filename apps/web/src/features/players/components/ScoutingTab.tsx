@@ -1,6 +1,9 @@
+import { Suspense, lazy } from 'react';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '@mbd/ui';
 import type { PlayerProfileView } from './playerProfileShared';
 import { labelize } from './playerProfileShared';
+
+const SimilarPlayersPanel = lazy(() => import('./SimilarPlayersPanel'));
 
 function StatChip({
   label,
@@ -27,6 +30,12 @@ export default function ScoutingTab({
   }
 
   const { player, scoutConflict, scoutingReport, scoutingHistoryNote } = view;
+
+  const similarPanel = !player.historical ? (
+    <Suspense fallback={null}>
+      <SimilarPlayersPanel playerId={player.id} />
+    </Suspense>
+  ) : null;
 
   if (scoutConflict) {
     return (
@@ -78,6 +87,7 @@ export default function ScoutingTab({
             </div>
           </CardContent>
         </Card>
+        {similarPanel}
       </div>
     );
   }
@@ -124,25 +134,29 @@ export default function ScoutingTab({
             </div>
           </CardContent>
         </Card>
+        {similarPanel}
       </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-heading text-dynasty-text">Scouting</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
-          {player.historical
-            ? 'Historical scouting snapshots are not tracked in v15.'
-            : 'No scouting context is available for this player right now.'}
-        </div>
-        <div className="rounded-lg border border-accent-info/30 bg-accent-info/10 px-4 py-3 font-heading text-sm text-accent-info">
-          {scoutingHistoryNote}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-heading text-dynasty-text">Scouting</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
+            {player.historical
+              ? 'Historical scouting snapshots are not tracked in v15.'
+              : 'No scouting context is available for this player right now.'}
+          </div>
+          <div className="rounded-lg border border-accent-info/30 bg-accent-info/10 px-4 py-3 font-heading text-sm text-accent-info">
+            {scoutingHistoryNote}
+          </div>
+        </CardContent>
+      </Card>
+      {similarPanel}
+    </div>
   );
 }

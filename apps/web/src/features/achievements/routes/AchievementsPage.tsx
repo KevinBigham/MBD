@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Badge } from '@mbd/ui';
-import { Lock, Trophy } from 'lucide-react';
+import { Award, Lock, Trophy } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+
+const AwardCeremonyModal = lazy(() => import('../components/AwardCeremonyModal'));
 
 interface AchievementView {
   id: string;
@@ -87,6 +89,23 @@ function AchievementCard({ a }: { a: AchievementView }) {
   );
 }
 
+interface CeremonyScript {
+  season: number;
+  awards: Array<{
+    awardId: string;
+    awardName: string;
+    winnerId: string;
+    winnerName: string;
+    headline: string;
+    votingSummary: string;
+    historicalContext: string;
+    reactionQuote: string;
+    runnerUpNames: string[];
+  }>;
+  openingRemarks: string;
+  closingRemarks: string;
+}
+
 export default function AchievementsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -94,6 +113,8 @@ export default function AchievementsPage() {
   const [achievements, setAchievements] = useState<AchievementView[]>([]);
   const [filter, setFilter] = useState<Category>('all');
   const [loading, setLoading] = useState(true);
+  const [ceremony, setCeremony] = useState<CeremonyScript | null>(null);
+  const [ceremonyLoading, setCeremonyLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -101,6 +122,16 @@ export default function AchievementsPage() {
     const data = await worker.getAchievements();
     setAchievements((data ?? []) as AchievementView[]);
     setLoading(false);
+  }, [isInitialized, worker, workerReady]);
+
+  const openCeremony = useCallback(async () => {
+    if (!isInitialized || !workerReady) return;
+    setCeremonyLoading(true);
+    const script = await worker.getAwardCeremony();
+    if (script) {
+      setCeremony(script as CeremonyScript);
+    }
+    setCeremonyLoading(false);
   }, [isInitialized, worker, workerReady]);
 
   useEffect(() => {
@@ -125,12 +156,23 @@ export default function AchievementsPage() {
     <PageShell loading={loading}>
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="font-brand text-3xl tracking-wide text-dynasty-textBright">Trophy Room</h1>
-          <p className="mt-1 font-data text-sm text-dynasty-muted">
-            <span className="text-accent-warning">{unlockedCount}</span>
-            <span> / {totalCount} unlocked</span>
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="font-brand text-3xl tracking-wide text-dynasty-textBright">Trophy Room</h1>
+            <p className="mt-1 font-data text-sm text-dynasty-muted">
+              <span className="text-accent-warning">{unlockedCount}</span>
+              <span> / {totalCount} unlocked</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void openCeremony()}
+            disabled={ceremonyLoading}
+            className="flex items-center gap-2 rounded-lg border border-accent-warning/30 bg-accent-warning/10 px-4 py-2 font-heading text-sm text-accent-warning transition-colors hover:bg-accent-warning/20 disabled:opacity-50"
+          >
+            <Award className="h-4 w-4" />
+            {ceremonyLoading ? 'Loading...' : 'Awards Ceremony'}
+          </button>
         </div>
 
         {/* Category filter */}
@@ -177,6 +219,15 @@ export default function AchievementsPage() {
           </div>
         )}
       </div>
+
+      {ceremony && (
+        <Suspense fallback={null}>
+          <AwardCeremonyModal
+            ceremony={ceremony}
+            onClose={() => setCeremony(null)}
+          />
+        </Suspense>
+      )}
     </PageShell>
   );
 }
