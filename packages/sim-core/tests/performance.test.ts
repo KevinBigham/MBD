@@ -331,6 +331,18 @@ describe('performance snapshot helpers', () => {
     });
   });
 
+  it('falls back to franchise.teamId when userTeamId is absent during archiving', () => {
+    const snapshot = createSnapshot();
+
+    const archived = archiveOldSeasons({
+      ...snapshot,
+      userTeamId: undefined,
+    }, 25, 10);
+
+    expect(archived.narrative.archivedSeasons[0]?.championTeamId).toBe('nym');
+    expect(archived.narrative.archivedSeasons[0]?.championshipWon).toBe(true);
+  });
+
   it('prunes stale narrative and roster bloat within phase 14 caps', () => {
     const snapshot = createSnapshot();
 

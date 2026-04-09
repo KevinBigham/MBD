@@ -268,6 +268,10 @@ function buildGameTeam(teamId: string, allPlayers: GeneratedPlayer[]): GameTeam 
   };
 }
 
+function canFieldGameTeam(team: GameTeam): boolean {
+  return team.lineup.length >= 9 && team.pitcher != null;
+}
+
 function playerPerformanceScore(stats: PlayerGameStats): number {
   const hitting = stats.hits * 2 + stats.hr * 5 + stats.rbi * 1.5 + stats.runs + stats.bb * 0.5;
   const pitching = stats.ip + stats.strikeouts * 1.5 - stats.earnedRuns * 2 - stats.walks * 0.5 + stats.wins * 4;
@@ -544,14 +548,24 @@ export function simPlayoffGame(
   const home = buildGameTeam(host.teamId, allPlayers);
   const away = buildGameTeam(guest.teamId, allPlayers);
 
-  if (home.lineup.length < 9 || away.lineup.length < 9) {
-    const higherSeedWins = series.higherSeedWins + 1;
+  const homeCanField = canFieldGameTeam(home);
+  const awayCanField = canFieldGameTeam(away);
+
+  if (!homeCanField || !awayCanField) {
+    const winnerId = homeCanField === awayCanField
+      ? series.higherSeed.teamId
+      : homeCanField
+        ? host.teamId
+        : guest.teamId;
+    const higherSeedWon = winnerId === series.higherSeed.teamId;
+    const winsNeeded = getWinsNeeded(series.bestOf);
     const completed = {
       ...series,
-      higherSeedWins,
+      higherSeedWins: higherSeedWon ? winsNeeded : 0,
+      lowerSeedWins: higherSeedWon ? 0 : winsNeeded,
       status: 'complete' as const,
-      winnerId: series.higherSeed.teamId,
-      loserId: series.lowerSeed.teamId,
+      winnerId,
+      loserId: higherSeedWon ? series.lowerSeed.teamId : series.higherSeed.teamId,
     };
     return {
       ...completed,

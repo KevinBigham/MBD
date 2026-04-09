@@ -82,13 +82,14 @@ export function archiveOldSeasons(
   currentSeason: number = snapshot.season,
   keepRecentCount: number = DEFAULT_RECENT_SEASON_COUNT,
 ): GameSnapshot {
+  const userTeamId = snapshot.userTeamId ?? snapshot.franchise.teamId;
   const keepThresholdSeason = Math.max(1, currentSeason - keepRecentCount);
   const seasonArchive = snapshot.narrative.seasonArchive ?? [];
   const archivedSeasons = snapshot.narrative.archivedSeasons ?? [];
 
   const newlyArchived = seasonArchive
     .filter((entry) => entry.season < keepThresholdSeason)
-    .map((entry) => compressSeason(entry, snapshot.userTeamId));
+    .map((entry) => compressSeason(entry, userTeamId));
   const retainedArchive = seasonArchive.filter((entry) => entry.season >= keepThresholdSeason);
 
   const nextSnapshot: GameSnapshot = {

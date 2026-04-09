@@ -176,4 +176,36 @@ describe('challenge scenarios', () => {
     expect(progress.progress).toBe(1);
     expect(progress.message.length).toBeGreaterThan(0);
   });
+
+  it('falls back to franchise.teamId when userTeamId is absent during progress evaluation', () => {
+    const scenarioLibrary = (
+      simCore as unknown as {
+        SCENARIO_LIBRARY?: Array<{ id: string }>;
+      }
+    ).SCENARIO_LIBRARY;
+    const evaluateScenarioProgress = (
+      simCore as unknown as {
+        evaluateScenarioProgress?: (
+          snapshot: GameSnapshot,
+          scenario: { id: string; description: string },
+        ) => { met: boolean; progress: number; message: string };
+      }
+    ).evaluateScenarioProgress;
+
+    const perfectSeason = scenarioLibrary?.find((entry) => entry.id === 'perfect_season');
+    expect(perfectSeason).toBeDefined();
+    expect(typeof evaluateScenarioProgress).toBe('function');
+
+    const snapshot = createSnapshot('nym');
+    snapshot.userTeamId = undefined as unknown as GameSnapshot['userTeamId'];
+    snapshot.franchise.teamId = 'por';
+    snapshot.seasonState.standings = [
+      ['por', { wins: 117, losses: 45 }],
+    ] as unknown as GameSnapshot['seasonState']['standings'];
+
+    const progress = evaluateScenarioProgress!(snapshot, perfectSeason!);
+
+    expect(progress.met).toBe(true);
+    expect(progress.progress).toBe(1);
+  });
 });

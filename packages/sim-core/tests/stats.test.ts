@@ -147,6 +147,30 @@ describe('advanced stats', () => {
     expect(pitcherLine.war).toBeLessThan(12);
   });
 
+  it('preserves a legitimate zero FIP constant instead of replacing it with the default', () => {
+    const pitcher = generatePlayer(new GameRNG(77), 'SP', 'nym', 'MLB');
+    const pitcherStats = createStats({
+      playerId: pitcher.id,
+      teamId: pitcher.teamId,
+      ip: 27,
+      earnedRuns: 0,
+      strikeouts: 0,
+      walks: 0,
+      hitsAllowed: 0,
+      homeRunsAllowed: 0,
+      hitBatters: 0,
+      flyBallsAllowed: 0,
+    });
+
+    const context = buildLeagueAdvancedContext(
+      [pitcher],
+      new Map([[pitcher.id, pitcherStats]]),
+    );
+
+    expect(context.fipConstant).toBe(0);
+    expect(context.leagueFip).toBe(0);
+  });
+
   it('maps scouting-grade bands to projected WAR ranges', () => {
     const hitterProjection = estimateProjectedWarRange({
       overall: 55,

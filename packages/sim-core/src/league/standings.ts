@@ -36,6 +36,21 @@ export interface StandingsEntry {
   last10Losses: number;
 }
 
+function cloneRecord(record: TeamRecord): TeamRecord {
+  return {
+    ...record,
+    last10: [...record.last10] as [number, number],
+  };
+}
+
+function compareStandingsEntries(left: StandingsEntry, right: StandingsEntry): number {
+  if (right.pct !== left.pct) return right.pct - left.pct;
+  if (right.wins !== left.wins) return right.wins - left.wins;
+  if (left.losses !== right.losses) return left.losses - right.losses;
+  if (right.runDifferential !== left.runDifferential) return right.runDifferential - left.runDifferential;
+  return left.teamId.localeCompare(right.teamId);
+}
+
 // ---------------------------------------------------------------------------
 // Standings tracker
 // ---------------------------------------------------------------------------
@@ -129,7 +144,7 @@ export class StandingsTracker {
     }
 
     // Sort by win pct descending
-    entries.sort((a, b) => b.pct - a.pct);
+    entries.sort(compareStandingsEntries);
 
     // Compute games back from division leader
     if (entries.length > 0) {
@@ -157,7 +172,7 @@ export class StandingsTracker {
     for (const div of DIVISIONS) {
       all.push(...this.getDivisionStandings(div));
     }
-    return all.sort((a, b) => b.pct - a.pct);
+    return all.sort(compareStandingsEntries);
   }
 
   /** Get a team's record. */
@@ -167,14 +182,14 @@ export class StandingsTracker {
 
   /** Serialize for save state. */
   serialize(): TeamRecord[] {
-    return Array.from(this.records.values());
+    return Array.from(this.records.values(), cloneRecord);
   }
 
   /** Restore from save state. */
   static deserialize(records: TeamRecord[]): StandingsTracker {
     const tracker = new StandingsTracker([]);
     for (const r of records) {
-      tracker.records.set(r.teamId, { ...r });
+      tracker.records.set(r.teamId, cloneRecord(r));
     }
     return tracker;
   }

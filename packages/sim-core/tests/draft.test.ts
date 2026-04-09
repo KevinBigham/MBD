@@ -3,6 +3,7 @@ import {
   GameRNG,
   generateTeamRoster,
   generateDraftClass,
+  type DraftProspect,
   rankProspects,
   determineDraftOrder,
   aiSelectPick,
@@ -70,6 +71,53 @@ describe('rankProspects', () => {
     for (let i = 1; i < ranked.length; i++) {
       expect(ranked[i - 1]!.scoutingGrade).toBeGreaterThanOrEqual(ranked[i]!.scoutingGrade);
     }
+  });
+
+  it('does not mutate the source prospect records when re-ranking', () => {
+    const rng = new GameRNG(52);
+    const [first, second, third] = generateDraftClass(rng, 2).prospects.slice(0, 3);
+    const prospects: DraftProspect[] = [first!, second!, third!].map((prospect, index) => ({
+      ...prospect,
+      scoutingGrade: 60,
+      positionRank: 0,
+      draftRound: 0,
+      consensusRank: index + 10,
+      player: {
+        ...prospect.player,
+        id: `rank-prospect-${index + 1}`,
+      },
+    }));
+    const snapshot = prospects.map((prospect) => ({
+      ...prospect,
+      player: { ...prospect.player },
+    }));
+
+    rankProspects(prospects);
+
+    expect(prospects).toEqual(snapshot);
+  });
+
+  it('breaks tied scouting grades deterministically regardless of input order', () => {
+    const rng = new GameRNG(53);
+    const [first, second, third] = generateDraftClass(rng, 3).prospects.slice(0, 3);
+    const prospects: DraftProspect[] = [first!, second!, third!].map((prospect, index) => ({
+      ...prospect,
+      scoutingGrade: 65,
+      positionRank: 0,
+      draftRound: 0,
+      consensusRank: index + 1,
+      player: {
+        ...prospect.player,
+        id: `tied-prospect-${index + 1}`,
+      },
+    }));
+
+    const forward = rankProspects(prospects);
+    const reversed = rankProspects([...prospects].reverse());
+
+    expect(forward.map((prospect) => prospect.player.id)).toEqual(
+      reversed.map((prospect) => prospect.player.id),
+    );
   });
 });
 
@@ -150,6 +198,28 @@ describe('simulateFullDraft', () => {
     for (const pick of result.picks) {
       expect(pick.teamId).toBeTruthy();
       expect(pick.prospect.player.teamId).toBe(pick.teamId);
+    }
+  });
+
+  it('does not mutate the source draft class prospects when teams make picks', () => {
+    const rng = new GameRNG(142);
+    const draftClass = generateDraftClass(rng, 6);
+    const teamIds = TEAMS.map((team) => team.id);
+    const draftOrder = [...teamIds];
+    const teamRosters = new Map<string, any[]>();
+
+    for (const teamId of teamIds) {
+      teamRosters.set(teamId, []);
+    }
+
+    const originalTeamIds = new Map(
+      draftClass.prospects.slice(0, 10).map((prospect) => [prospect.player.id, prospect.player.teamId]),
+    );
+
+    simulateFullDraft(new GameRNG(143), draftClass, draftOrder, teamRosters, 'nym');
+
+    for (const prospect of draftClass.prospects.slice(0, 10)) {
+      expect(prospect.player.teamId).toBe(originalTeamIds.get(prospect.player.id));
     }
   });
 });

@@ -142,4 +142,32 @@ describe('ticker engine', () => {
     expect(pruned[0]?.id).toBe('ticker-204');
     expect(pruned.at(-1)?.id).toBe('ticker-5');
   });
+
+  it('orders same-day ticker items deterministically regardless of input order', () => {
+    const feed = [
+      {
+        id: 'ticker-b',
+        timestamp: 'S4D120',
+        category: 'score' as const,
+        text: 'B',
+        priority: 2 as const,
+        relatedTeamIds: ['nym'],
+        relatedPlayerIds: [],
+        expiresDay: 9999,
+      },
+      {
+        id: 'ticker-a',
+        timestamp: 'S4D120',
+        category: 'trade' as const,
+        text: 'A',
+        priority: 4 as const,
+        relatedTeamIds: ['bos'],
+        relatedPlayerIds: [],
+        expiresDay: 9999,
+      },
+    ];
+
+    expect(pruneTickerFeed(feed, 10, 100).map((entry) => entry.id)).toEqual(['ticker-a', 'ticker-b']);
+    expect(pruneTickerFeed([...feed].reverse(), 10, 100).map((entry) => entry.id)).toEqual(['ticker-a', 'ticker-b']);
+  });
 });

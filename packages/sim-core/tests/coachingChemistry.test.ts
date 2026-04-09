@@ -113,6 +113,17 @@ describe('coaching chemistry', () => {
     expect(aligned.synergyScore).toBeGreaterThan(misaligned.synergyScore);
   });
 
+  it('returns the same synergy regardless of coach argument order', () => {
+    const left = makeCoach({ id: 'coach-a', personalityTraits: ['Leader', 'Hard Worker'] });
+    const right = makeCoach({ id: 'coach-b', personalityTraits: ['Leader', 'Team First'] });
+
+    const forward = calculateCoachSynergy(left, right);
+    const reverse = calculateCoachSynergy(right, left);
+
+    expect(forward.synergyScore).toBe(reverse.synergyScore);
+    expect(forward.factors).toEqual(reverse.factors);
+  });
+
   it('rewards shared positive personality traits', () => {
     const synergy = calculateCoachSynergy(
       makeCoach({ id: 'coach-a', personalityTraits: ['Leader', 'Hard Worker'] }),

@@ -25,6 +25,12 @@ describe('rivalry engine', () => {
     expect(getRivalry(rivalries, 'chi', 'det')).toBeTruthy();
   });
 
+  it('looks up the same rivalry regardless of team-id argument order', () => {
+    const rivalries = baseRivalries();
+
+    expect(getRivalry(rivalries, 'nym', 'bos')).toEqual(getRivalry(rivalries, 'bos', 'nym'));
+  });
+
   it('tracks head-to-head records for active rivalry games', () => {
     const rivalries = recordRivalryGame(baseRivalries(), {
       homeTeamId: 'nym',

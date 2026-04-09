@@ -701,6 +701,7 @@ export function simulateFullFreeAgency(
   teamAttractiveness: FreeAgencyAttractiveness = new Map(),
 ): FreeAgencyMarket {
   let current = { ...market, day: 0, freeAgents: [...market.freeAgents], signedPlayers: [...market.signedPlayers] };
+  const workingPayrolls = new Map(teamPayrolls);
 
   // Apply user offers first -- these are guaranteed attempts on day 0
   if (userOffers && userOffers.length > 0) {
@@ -719,8 +720,8 @@ export function simulateFullFreeAgency(
           current.freeAgents.splice(idx, 1);
 
           // Update user's payroll
-          const userPayroll = teamPayrolls.get(userTeamId) ?? 0;
-          teamPayrolls.set(userTeamId, userPayroll + offer.annualSalary);
+          const userPayroll = workingPayrolls.get(userTeamId) ?? 0;
+          workingPayrolls.set(userTeamId, userPayroll + offer.annualSalary);
         }
       }
     }
@@ -740,7 +741,7 @@ export function simulateFullFreeAgency(
 
   // Simulate each day
   for (let day = 0; day < MARKET_DURATION_DAYS; day++) {
-    current = simulateFADay(rng, current, aiBudgets, teamPayrolls, aiNeeds, aiAttractiveness);
+    current = simulateFADay(rng, current, aiBudgets, workingPayrolls, aiNeeds, aiAttractiveness);
   }
 
   // Force-sign anyone still unsigned with minor league deals

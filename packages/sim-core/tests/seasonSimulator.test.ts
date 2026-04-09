@@ -45,6 +45,21 @@ describe('regular-season calendar helpers', () => {
 });
 
 describe('simulateMonth', () => {
+  it('does not mutate the supplied season state when simulating a day', () => {
+    const openingDay = buildSeasonInputs(1);
+    const standingsBefore = structuredClone(openingDay.seasonState.standings.serialize());
+    const statsBefore = Array.from(openingDay.seasonState.playerSeasonStats.entries()).map(([playerId, stats]) => [
+      playerId,
+      { ...stats },
+    ]);
+
+    simulateDay(openingDay.rng, openingDay.seasonState, openingDay.schedule, openingDay.players);
+
+    expect(openingDay.seasonState.currentDay).toBe(1);
+    expect(openingDay.seasonState.standings.serialize()).toEqual(standingsBefore);
+    expect(Array.from(openingDay.seasonState.playerSeasonStats.entries())).toEqual(statsBefore);
+  });
+
   it('advances only to the next calendar month boundary', () => {
     const april = buildSeasonInputs(1);
     const may = buildSeasonInputs(31);

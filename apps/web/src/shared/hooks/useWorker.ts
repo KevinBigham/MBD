@@ -69,6 +69,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'demotePlayer',
   'designateForAssignment',
   'claimOffWaivers',
+  'makeContractOffer',
   'negotiateExtension',
   'issueQualifyingOffer',
   'resolveQualifyingOffers',
@@ -517,6 +518,11 @@ export function useWorker() {
     async (playerId: string) => runMutation(() => api.claimOffWaivers(playerId)),
     [api, runMutation],
   );
+  const makeContractOffer = useCallback(
+    async (playerId: string, years: number, salary: number) =>
+      runMutation(() => api.makeContractOffer(playerId, years, salary)),
+    [api, runMutation],
+  );
   const getPromotionCandidates = useCallback(
     async (teamId?: string) => api.getPromotionCandidates(teamId),
     [api],
@@ -773,7 +779,7 @@ export function useWorker() {
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
-    getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
+    getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, makeContractOffer,
     getPromotionCandidates, getProspectPipeline, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,
     getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,

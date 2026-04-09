@@ -183,7 +183,7 @@ export function buildMultiScoutConsensus(
   const outlierScoutIds = reports
     .filter((report) => Math.abs(report.observedRating - consensusRaw) > outlierThreshold)
     .map((report) => report.scoutId)
-    .sort();
+    .sort((left, right) => left.localeCompare(right));
 
   return {
     playerId: reports[0]!.playerId,

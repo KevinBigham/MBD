@@ -208,32 +208,46 @@ function marketSignal(context: DeadlineContext): number {
   return context.contenderTeamIds.length + context.sellerTeamIds.length + context.topTargetPlayerIds.length;
 }
 
+function compareStandingStrength(
+  left: { teamId: string; wins: number; losses: number },
+  right: { teamId: string; wins: number; losses: number },
+): number {
+  return (right.wins - right.losses) - (left.wins - left.losses)
+    || left.teamId.localeCompare(right.teamId);
+}
+
+function compareStandingWeakness(
+  left: { teamId: string; wins: number; losses: number },
+  right: { teamId: string; wins: number; losses: number },
+): number {
+  return (left.wins - left.losses) - (right.wins - right.losses)
+    || left.teamId.localeCompare(right.teamId);
+}
+
 function computeEventCount(rng: GameRNG, context: DeadlineContext): number {
   const signalBonus = Math.floor(marketSignal(context) / 2);
   return clamp(MIN_TIMELINE_EVENTS + signalBonus + rng.nextInt(0, 2), MIN_TIMELINE_EVENTS, MAX_TIMELINE_EVENTS);
 }
 
 function chooseTeamIds(rng: GameRNG, context: DeadlineContext): { buyerTeamId: string; sellerTeamId: string } {
+  const strengthOrderedStandings = context.standings.slice().sort(compareStandingStrength);
+  const weaknessOrderedStandings = context.standings.slice().sort(compareStandingWeakness);
   const contenderPool = context.contenderTeamIds.length > 0
     ? context.contenderTeamIds
-    : context.standings
-      .slice()
-      .sort((left, right) => (right.wins - right.losses) - (left.wins - left.losses))
+    : strengthOrderedStandings
       .slice(0, 3)
       .map((entry) => entry.teamId);
 
   const sellerPool = context.sellerTeamIds.length > 0
     ? context.sellerTeamIds
-    : context.standings
-      .slice()
-      .sort((left, right) => (left.wins - left.losses) - (right.wins - right.losses))
+    : weaknessOrderedStandings
       .slice(0, 3)
       .map((entry) => entry.teamId);
 
   const buyerTeamId = choose(rng, contenderPool);
   const sellerFallback = sellerPool.find((teamId) => teamId !== buyerTeamId) ?? sellerPool[0] ?? buyerTeamId;
   const sellerTeamId = sellerFallback === buyerTeamId
-    ? context.standings.find((entry) => entry.teamId !== buyerTeamId)?.teamId ?? sellerFallback
+    ? weaknessOrderedStandings.find((entry) => entry.teamId !== buyerTeamId)?.teamId ?? sellerFallback
     : sellerFallback;
 
   return {

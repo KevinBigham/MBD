@@ -228,4 +228,31 @@ describe('affiliate simulation', () => {
     expect(aaaState.gamesPlayed).toBeGreaterThan(0);
     expect(aaaState.playerStats.length).toBeGreaterThan(0);
   });
+
+  it('normalizes team ordering before building affiliate state and matchups', () => {
+    const ascendingTeamIds = ['bos', 'nym'];
+    const descendingTeamIds = ['nym', 'bos'];
+    const players = [
+      ...makeAffiliatePlayers('bos', 'AAA'),
+      ...makeAffiliatePlayers('nym', 'AAA'),
+      ...makeAffiliatePlayers('bos', 'AA'),
+      ...makeAffiliatePlayers('nym', 'AA'),
+      ...makeAffiliatePlayers('bos', 'A_PLUS'),
+      ...makeAffiliatePlayers('nym', 'A_PLUS'),
+      ...makeAffiliatePlayers('bos', 'A'),
+      ...makeAffiliatePlayers('nym', 'A'),
+      ...makeAffiliatePlayers('bos', 'ROOKIE'),
+      ...makeAffiliatePlayers('nym', 'ROOKIE'),
+    ];
+
+    const ascendingState = createMinorLeagueState(ascendingTeamIds, 1);
+    const descendingState = createMinorLeagueState(descendingTeamIds, 1);
+
+    expect(ascendingState).toEqual(descendingState);
+
+    const nextAscending = simulateAffiliateDay(new GameRNG(77), ascendingState, players, 1, 1, ascendingTeamIds);
+    const nextDescending = simulateAffiliateDay(new GameRNG(77), descendingState, players, 1, 1, descendingTeamIds);
+
+    expect(nextAscending).toEqual(nextDescending);
+  });
 });

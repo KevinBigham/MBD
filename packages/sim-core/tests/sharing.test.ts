@@ -261,4 +261,36 @@ describe('dynasty sharing', () => {
     expect(card.type).toBe('season_recap');
     expect(card.textSummary).toContain(expectedHeadline);
   });
+
+  it('falls back to franchise.teamId when userTeamId is absent', () => {
+    const generateSeasonRecapCard = (
+      simCore as unknown as {
+        generateSeasonRecapCard?: (
+          snapshot: GameSnapshot,
+          season?: number,
+        ) => import('@mbd/contracts').DynastyCard;
+      }
+    ).generateSeasonRecapCard;
+
+    expect(typeof generateSeasonRecapCard).toBe('function');
+
+    const snapshot = createSnapshot() as GameSnapshot;
+    snapshot.userTeamId = undefined as unknown as GameSnapshot['userTeamId'];
+    snapshot.franchise.teamId = 'bos';
+    snapshot.franchise.teamName = 'Boston Noreasters';
+    snapshot.franchise.teamAbbreviation = 'BOS';
+    snapshot.seasonState.standings = [
+      {
+        teamId: 'bos',
+        wins: 91,
+        losses: 71,
+      },
+    ] as unknown as GameSnapshot['seasonState']['standings'];
+
+    const card = generateSeasonRecapCard!(snapshot, 6);
+
+    expect(card.title).toContain('Boston');
+    expect(card.stats.find((entry) => entry.label === 'Record')?.value).toBe('91-71');
+    expect(card.teamId).toBe('bos');
+  });
 });

@@ -29,15 +29,16 @@ export function getScenarioById(id: string): ScenarioDefinition | null {
 
 export function readScenarioRecord(snapshot: GameSnapshot): { wins: number; losses: number } {
   const standings = snapshot.seasonState.standings as Array<{ teamId: string; wins: number; losses: number }> | Array<[string, { wins: number; losses: number }]>;
+  const currentTeamId = snapshot.userTeamId ?? snapshot.franchise.teamId;
   for (const entry of standings) {
     if (Array.isArray(entry)) {
-      if (entry[0] === snapshot.userTeamId) {
+      if (entry[0] === currentTeamId) {
         return { wins: entry[1].wins, losses: entry[1].losses };
       }
       continue;
     }
 
-    if (entry.teamId === snapshot.userTeamId) {
+    if (entry.teamId === currentTeamId) {
       return { wins: entry.wins, losses: entry.losses };
     }
   }

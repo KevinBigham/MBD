@@ -107,6 +107,35 @@ describe('deadline drama timeline', () => {
     expect(teamIds.has('nym')).toBe(true);
     expect(teamIds.has('pit')).toBe(true);
   });
+
+  it('derives tied contender and seller pools deterministically from standings order', () => {
+    const tiedStandings = [
+      { teamId: 'nym', wins: 58, losses: 42 },
+      { teamId: 'bos', wins: 58, losses: 42 },
+      { teamId: 'lax', wins: 58, losses: 42 },
+      { teamId: 'pit', wins: 43, losses: 57 },
+      { teamId: 'por', wins: 43, losses: 57 },
+      { teamId: 'cha', wins: 43, losses: 57 },
+    ];
+    const forward = generateDeadlineTimeline(
+      new GameRNG(118),
+      createContext({
+        standings: tiedStandings,
+        contenderTeamIds: [],
+        sellerTeamIds: [],
+      }),
+    );
+    const reversed = generateDeadlineTimeline(
+      new GameRNG(118),
+      createContext({
+        standings: [...tiedStandings].reverse(),
+        contenderTeamIds: [],
+        sellerTeamIds: [],
+      }),
+    );
+
+    expect(reversed).toEqual(forward);
+  });
 });
 
 describe('generateBiddingWar', () => {

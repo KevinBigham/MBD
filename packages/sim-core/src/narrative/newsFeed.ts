@@ -232,6 +232,46 @@ function formatTimestamp(season: number, day: number): string {
   return `S${season}D${day}`;
 }
 
+function parseTimestampRank(timestamp: string): number {
+  const match = /^S(\d+)D(\d+)$/.exec(timestamp);
+  if (!match) {
+    return 0;
+  }
+
+  return (Number(match[1]) * 1000) + Number(match[2]);
+}
+
+function compareStandingsRecord(
+  left: { teamId: string; wins: number; losses: number },
+  right: { teamId: string; wins: number; losses: number },
+): number {
+  const leftWinPct = left.wins / Math.max(left.wins + left.losses, 1);
+  const rightWinPct = right.wins / Math.max(right.wins + right.losses, 1);
+  if (rightWinPct !== leftWinPct) {
+    return rightWinPct - leftWinPct;
+  }
+  if (right.wins !== left.wins) {
+    return right.wins - left.wins;
+  }
+  if (left.losses !== right.losses) {
+    return left.losses - right.losses;
+  }
+  return left.teamId.localeCompare(right.teamId);
+}
+
+function compareNewsItems(left: NewsItem, right: NewsItem): number {
+  if (left.priority !== right.priority) {
+    return left.priority - right.priority;
+  }
+
+  const timestampDelta = parseTimestampRank(right.timestamp) - parseTimestampRank(left.timestamp);
+  if (timestampDelta !== 0) {
+    return timestampDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 function playerName(player: GeneratedPlayer): string {
   return `${player.firstName} ${player.lastName}`;
 }
@@ -1066,11 +1106,7 @@ export function generateStandingsNews(
   }
 
   // Tight playoff races — find pairs within 2 games
-  const sorted = [...standings].sort((a, b) => {
-    const wpA = a.wins / Math.max(a.wins + a.losses, 1);
-    const wpB = b.wins / Math.max(b.wins + b.losses, 1);
-    return wpB - wpA;
-  });
+  const sorted = [...standings].sort(compareStandingsRecord);
 
   for (let i = 0; i < sorted.length - 1; i++) {
     const a = sorted[i]!;
@@ -1107,7 +1143,7 @@ export function generateStandingsNews(
 export function getUnreadNews(news: NewsItem[]): NewsItem[] {
   return news
     .filter((item) => !item.read)
-    .sort((a, b) => a.priority - b.priority);
+    .sort(compareNewsItems);
 }
 
 /** Mark a specific news item as read. Returns a new array. */
@@ -1126,11 +1162,11 @@ export function deduplicateNews(news: NewsItem[]): NewsItem[] {
   const seen = new Map<string, NewsItem>();
 
   // Sort by priority first so we keep the most important version
-  const sorted = [...news].sort((a, b) => a.priority - b.priority);
+  const sorted = [...news].sort(compareNewsItems);
 
   for (const item of sorted) {
     // Build a dedup key from category + timestamp + sorted player IDs
-    const playerKey = [...item.relatedPlayerIds].sort().join(',');
+    const playerKey = [...item.relatedPlayerIds].sort((left, right) => left.localeCompare(right)).join(',');
     const key = `${item.category}:${item.timestamp}:${playerKey}`;
 
     if (!seen.has(key)) {
@@ -1139,7 +1175,7 @@ export function deduplicateNews(news: NewsItem[]): NewsItem[] {
     // Skip duplicates — the first one (highest priority) wins
   }
 
-  return Array.from(seen.values());
+  return Array.from(seen.values()).sort(compareNewsItems);
 }
 
 // ---------------------------------------------------------------------------
@@ -1174,7 +1210,7 @@ export function generateSeasonRecap(
   }
 
   // Best record
-  const sorted = [...standings].sort((a, b) => b.wins - a.wins);
+  const sorted = [...standings].sort(compareStandingsRecord);
   const best = sorted[0];
   if (best) {
     items.push({
