@@ -47,7 +47,10 @@ export default function MomentumPanel() {
   const [data, setData] = useState<MomentumData | null>(null);
 
   useEffect(() => {
-    if (!isInitialized || !worker.isReady || phase !== 'playoffs') return;
+    if (!isInitialized || !worker.isReady || phase !== 'playoffs') {
+      setData(null);
+      return;
+    }
     void (async () => {
       const result = await worker.getPlayoffMomentum();
       setData(result as MomentumData | null);

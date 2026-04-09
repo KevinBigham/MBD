@@ -2521,10 +2521,19 @@ export const queryApi = {
 
     const coaches = s.coachingStaffs.get(player.teamId) ?? [];
 
-    // Build season history from development reports if available
+    // Build season history from development report checkpoints
+    const devReports = s.minorLeagueState.developmentReports
+      .filter((entry: { playerId: string }) => entry.playerId === playerId)
+      .sort((a: { season: number; month: number }, b: { season: number; month: number }) =>
+        a.season - b.season || a.month - b.month,
+      );
     const history: Array<{ prevRating: number; currRating: number }> = [];
-    // Use development checkpoint data if stored — fall back to empty
-    // The breakout engine handles empty history gracefully (neutral score)
+    for (let i = 1; i < devReports.length; i++) {
+      history.push({
+        prevRating: (devReports[i - 1] as { overallRating: number }).overallRating,
+        currRating: (devReports[i] as { overallRating: number }).overallRating,
+      });
+    }
 
     const assessment = calculateBreakoutProbability(player, history, coaches);
     const rng = createStableWorkerRng(s, `breakout-${playerId}`);
