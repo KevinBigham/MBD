@@ -14,6 +14,7 @@ import {
 
 const DevCurveChart = lazy(() => import('@/shared/components/charts/DevCurveChart'));
 const CareerArcChart = lazy(() => import('@/shared/components/charts/CareerArcChart'));
+const BreakoutIntelligencePanel = lazy(() => import('./BreakoutIntelligencePanel'));
 
 export default function DevelopmentTab({
   view,
@@ -115,6 +116,12 @@ export default function DevelopmentTab({
           </CardContent>
         </Card>
       </div>
+
+      {!player.historical && (
+        <Suspense fallback={null}>
+          <BreakoutIntelligencePanel playerId={player.id} />
+        </Suspense>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>
