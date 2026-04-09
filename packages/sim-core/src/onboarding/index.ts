@@ -10,6 +10,43 @@ export {
   isOnboardingComplete,
 } from './flowEngine.js';
 export {
+  generateAssistantGM,
+  generateFarewell,
+  generateGreeting,
+  getDialogueVoice,
+} from './assistantGM.js';
+export {
+  generateChapterIntro,
+  generateChapterTransition,
+  generateFarmReaction,
+  generateFinancialReaction,
+  generateOwnerReaction,
+  generatePressReaction,
+  generateRosterReaction,
+  generateScoutingReaction,
+  generateStaffReaction,
+  generateStrategyReaction,
+  getNextChapter,
+} from './chapterDialogue.js';
+export {
+  generateChapterTips,
+  generateDecisionExplanation,
+  generateOnboardingHighlights,
+  generateQuickReference,
+} from './coachingTips.js';
+export {
+  reactToDevelopmentStyle,
+  reactToMediaTone,
+  reactToScoutingFocus,
+  reactToSeasonGoal,
+  reactToSpendingStyle,
+  reactToTradeApproach,
+} from './choiceReactions.js';
+export {
+  generateChapterScript,
+  generateFullOnboardingScript,
+} from './scriptOrchestrator.js';
+export {
   generateBudgetOverview,
   generateOwnerMeeting,
   getOwnerPersonalityProfile,
@@ -51,6 +88,34 @@ export {
   evaluateCoachingStaff,
   profileKeyCoaches,
 } from './staffEvaluation.js';
+export type {
+  AssistantGMBackground,
+  AssistantGMPersonality,
+  AssistantGMProfile,
+  BaseballPhilosophy,
+  DialogueVoice,
+} from './assistantGM.js';
+export type {
+  DialogueLine,
+  DialogueTone,
+} from './chapterDialogue.js';
+export type {
+  AllChapterData,
+  ChapterAssessmentData,
+  CoachingTip,
+  DecisionCoaching,
+  DecisionPoint,
+  OnboardingHighlight,
+  QuickReferenceCard,
+} from './coachingTips.js';
+export type {
+  ChoiceReaction,
+} from './choiceReactions.js';
+export type {
+  ChapterScript,
+  OnboardingScript,
+  OnboardingScriptContext,
+} from './scriptOrchestrator.js';
 export type {
   ChapterChoiceValue,
   ChapterChoices,
