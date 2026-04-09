@@ -34,3 +34,28 @@ export {
   type BiddingWar,
   type BuzzerBeaterResult,
 } from './deadlineDrama.js';
+
+export {
+  MAX_NEGOTIATION_ROUNDS,
+  PENDING_EXPIRE_DAYS,
+  INSTANT_REJECT_THRESHOLD,
+  COUNTER_RANGE_LOW,
+  COUNTER_RANGE_HIGH,
+  initiateNegotiation,
+  advanceNegotiation,
+  resolveNegotiation,
+  generateNegotiationDialogue,
+  calculateCounterOffer,
+  isNegotiationComplete,
+} from './tradeNegotiation.js';
+export type {
+  NegotiationProposal,
+  NegotiationContext,
+  NegotiationPhase,
+  NegotiationDialogue,
+  CounterOffer,
+  CounterOfferResult,
+  NegotiationState,
+  NegotiationResponse,
+  NegotiationOutcome,
+} from './tradeNegotiation.js';

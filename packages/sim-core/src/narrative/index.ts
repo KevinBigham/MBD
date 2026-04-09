@@ -69,6 +69,14 @@ export {
   generateOffseasonHeadline,
   generateSeasonRecapNarrative,
 } from './offseasonRecap.js';
+export {
+  EVENTS_PER_MONTH_MIN,
+  EVENTS_PER_MONTH_MAX,
+  EVENT_WEIGHTS,
+  generateMonthlyLeagueEvents,
+  evaluateEventRippleEffects,
+  generateLeagueEventNarrative,
+} from './leagueEvents.js';
 
 export type {
   // Types
@@ -149,3 +157,29 @@ export type {
   EnhancedPressConference,
   PressConferenceOutcome,
 } from './pressConferences.js';
+export type {
+  LeagueEventType,
+  LeagueEventTeamSnapshot,
+  LeagueEventContext,
+  TradeMarketShiftEffectData,
+  ProspectMarketShiftEffectData,
+  GMResetEffectData,
+  SellerSignalEffectData,
+  BudgetShiftEffectData,
+  RevenueShiftEffectData,
+  InternationalMarketShiftEffectData,
+  DraftPickPenaltyEffectData,
+  ExpansionUncertaintyEffectData,
+  LeagueEventEffectData,
+  LeagueEvent,
+  TradeMarketShiftRippleEffect,
+  ProspectMarketShiftRippleEffect,
+  GMResetRippleEffect,
+  SellerSignalRippleEffect,
+  BudgetShiftRippleEffect,
+  DraftPickPenaltyRippleEffect,
+  InternationalMarketShiftRippleEffect,
+  RevenueShiftRippleEffect,
+  ExpansionUncertaintyRippleEffect,
+  RippleEffect,
+} from './leagueEvents.js';

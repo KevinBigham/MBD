@@ -142,3 +142,37 @@ export type {
   CheckAchievementsArgs,
   CheckAchievementsResult,
 } from './achievements.js';
+
+export {
+  RELATIONSHIP_TIER_THRESHOLDS,
+  GRUDGE_DECAY_RATE,
+  PERMANENT_DECAY_RATE,
+  MAX_TRADE_HISTORY,
+  MAX_TRADE_PENALTY_PCT,
+  createRelationshipMap,
+  getRelationship,
+  modifyRelationship,
+  decayRelationships,
+  getRelationshipTier,
+  getTradeValueAdjustment,
+  addTradeMemory,
+  generateRelationshipTooltip,
+} from './gmRelationships.js';
+export type {
+  RelationshipEventType,
+  RelationshipTier,
+  TradeMemory,
+  RelationshipEvent,
+  GMRelationship,
+} from './gmRelationships.js';
+
+export {
+  adjustFABidForRelationship,
+  shouldPassOnWaiverClaim,
+  adjustDraftPickTradeValue,
+  getRule5TargetingBonus,
+  generateRelationshipEffectNarrative,
+} from './relationshipEffects.js';
+export type {
+  RelationshipEffect,
+} from './relationshipEffects.js';
