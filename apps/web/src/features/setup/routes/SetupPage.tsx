@@ -336,7 +336,8 @@ export default function SetupPage() {
         activeSaveId: `save-slot-${selectedSlot}`,
         activeSaveSlot: selectedSlot,
       });
-      navigate('/dashboard');
+      // New dynasties go through onboarding; scenarios skip to dashboard
+      navigate(wizardMode === 'scenario' ? '/dashboard' : '/onboarding');
     } catch (error) {
       logger.error('Failed to create dynasty:', error);
       setStatus('Failed to create the new dynasty.');
