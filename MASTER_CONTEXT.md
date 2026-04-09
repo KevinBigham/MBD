@@ -1,6 +1,6 @@
 # MASTER_CONTEXT.md — Complete Project State for Session Handoff
 
-> Generated: 2026-04-09 | Main: `6280737` | 19 PRs merged | 1,548 tests | ~125K LOC | Schema v15 | LIVE
+> Generated: 2026-04-09 | Main: `23ceca1` | 22 PRs + 3 direct merges | 1,294 sim-core tests | Schema v15 | LIVE
 
 ---
 
@@ -11,6 +11,7 @@
 **Live:** https://kevinbigham.github.io/MBD/
 **Repo:** github.com/KevinBigham/MBD (private)
 **Creator:** Kevin Bigham (director, reads code, doesn't write it)
+**Aesthetic:** Bloomberg Terminal dark theme — data-dense, monospace numbers, no emoji, lucide-react icons only
 
 ---
 
@@ -18,153 +19,202 @@
 
 ```
 mr-baseball-dynasty/                    # pnpm + Turbo monorepo
-+-- apps/web/                          # React 18 + Vite 6 frontend
-|   +-- src/app/                       # Shell, routes, layout (20 files)
-|   +-- src/features/                  # 26 feature modules (105 files)
-|   |   +-- achievements/              # Trophy room + award ceremony modal
-|   |   +-- dashboard/                 # Intelligence grid (8 cards)
-|   |   +-- draft/                     # Draft room with big board
-|   |   +-- finance/                   # Payroll + luxury tax
-|   |   +-- free-agency/               # FA market + intel panel
-|   |   +-- front-office/              # Owner intel + chemistry
-|   |   +-- gm-career/                 # Career timeline + job market
-|   |   +-- history/                   # Dynasty timeline + season recaps
-|   |   +-- league/                    # Standings + stat leaders
-|   |   +-- minors/                    # Pipeline + breakout tracker
-|   |   +-- offseason/                 # 12-phase offseason wizard
-|   |   +-- players/                   # Profiles + comparison + projections + similarity
-|   |   +-- playoffs/                  # Bracket + momentum panel
-|   |   +-- press-room/               # Press conferences + news
-|   |   +-- pulse/                     # Monthly reports
-|   |   +-- records/                   # Record watch
-|   |   +-- rivalries/                 # Rivalry management
-|   |   +-- roster/                    # Lineup builder + depth chart (dnd-kit)
-|   |   +-- scenarios/                 # 10 challenge modes
-|   |   +-- schedule/                  # Game schedule + box scores + enhanced PBP
-|   |   +-- scouting/                  # Scout reports + IFA + conflicts
-|   |   +-- settings/                  # User preferences
-|   |   +-- setup/                     # New game / save management
-|   |   +-- staff/                     # Coaching hire/fire + radar charts
-|   |   +-- stats/                     # Stats encyclopedia
-|   |   +-- trade/                     # Trade proposals + deadline drama
-|   +-- src/shared/                    # Hooks, components, charts (58 files)
-|   +-- src/workers/                   # Web Worker modules (30 files)
-|   +-- src/build/                     # Bundle config, PWA (7 files)
-+-- packages/sim-core/                 # THE ENGINE (113 src, 89 test files, 1,172 tests)
-|   +-- src/math/                      # PRNG (xoroshiro128plus), Log5 probability
-|   +-- src/player/                    # 16 files: generation, attributes, development, coaching, injury, breakout, comparison, similarity, personality, mentorship
-|   +-- src/league/                    # 14 files: teams, standings, awards, records, HOF, rivalries, GM RELATIONSHIPS, RELATIONSHIP EFFECTS
-|   +-- src/sim/                       # 8 files: game/season/playoff sim, Markov FSM, PLAYOFF MOMENTUM
-|   +-- src/trade/                     # 6 files: valuation, AI, multi-team, deadline drama, TRADE NEGOTIATION
-|   +-- src/stats/                     # 4 files: WAR/wOBA/FIP, milestones, projections
-|   +-- src/narrative/                 # 13 files: news, PBP, press conferences, story arcs, LEAGUE EVENTS
-|   +-- src/finance/                   # 3 files: contracts, market intelligence
-|   +-- src/scouting/                  # 5 files: engine, IFA, conflicts, SCOUT LEARNING
-|   +-- src/draft/                     # 6 files: pool, AI, picks, scouting, signing
-|   +-- src/roster/                    # 7 files: FA, minors, offseason, Rule 5
-|   +-- src/onboarding/               # 16 files: FIRST 10 MINUTES engine + ASSISTANT GM character
-|   +-- src/scenarios/                 # 4 files: 10 challenge modes
-|   +-- src/sharing/                   # 3 files: dynasty cards, leaderboard
-|   +-- src/career/                    # 1 file: GM career progression
-|   +-- src/timeline/                  # 1 file: what-if branch comparison
-|   +-- src/performance/              # 1 file: snapshot archival
-|   +-- src/invariants/               # 1 file: runtime checker (18 checks)
-+-- packages/contracts/                # Zod schemas (17 files, save schema v15)
-+-- packages/ui/                       # Component library (13 components, Radix UI)
-+-- packages/sim-worker/               # Web Worker bridge (6 files, Comlink)
-+-- packages/design-tokens/            # Design system tokens (7 files)
+├── apps/web/                           # React 18 + Vite 6 frontend
+│   ├── src/app/                        # Shell, routes (33), layout, providers
+│   ├── src/features/                   # 27 feature modules (lazy-loaded)
+│   │   ├── achievements/               # Awards, ceremony modal
+│   │   ├── dashboard/                  # 10 cards, game advisor, broadcast
+│   │   ├── draft/                      # Draft room
+│   │   ├── finance/                    # Financial overview
+│   │   ├── free-agency/                # FA market + market intel
+│   │   ├── front-office/               # Owner intel
+│   │   ├── gm-career/                  # GM career tracking
+│   │   ├── history/                    # Dynasty timeline, season archive
+│   │   ├── league/                     # Standings, leaders
+│   │   ├── minors/                     # Farm system, prospect pipeline
+│   │   ├── offseason/                  # Offseason phases
+│   │   ├── onboarding/                 # 8-chapter wizard with AGM mentor [NEW]
+│   │   ├── players/                    # Profiles, comparison, breakout intel
+│   │   ├── playoffs/                   # Bracket, momentum panel
+│   │   ├── press-room/                 # Press conferences
+│   │   ├── pulse/                      # Monthly pulse report
+│   │   ├── records/                    # Record watch
+│   │   ├── rivalries/                  # Rivalry tracking
+│   │   ├── roster/                     # Depth chart, lineup builder
+│   │   ├── scenarios/                  # 10 challenge scenarios
+│   │   ├── schedule/                   # Game schedule, box scores, enhanced PBP
+│   │   ├── scouting/                   # Scouting staff, IFA, conflicts
+│   │   ├── settings/                   # User preferences
+│   │   ├── setup/                      # Save hub, new dynasty wizard
+│   │   ├── staff/                      # Coaching staff, radar chart
+│   │   ├── stats/                      # Stats encyclopedia
+│   │   └── trade/                      # Trade room, deadline drama
+│   ├── src/shared/                     # 7 hooks, 24 components, 9 lib files
+│   └── src/workers/                    # 25 worker modules + 6 test files
+├── packages/sim-core/                  # Pure TS simulation engine
+│   └── src/                            # 116 source files across 20 directories
+│       ├── math/                       # PRNG (pure-rand), Log5 probability
+│       ├── player/                     # Generation, attributes, aging, coaching, mentorship
+│       ├── sim/                        # PA resolution, Markov baserunning, game/season/playoff sim
+│       ├── league/                     # Teams, standings, awards, relationships, achievements
+│       ├── draft/                      # Draft class, AI picks, scouting, signing
+│       ├── roster/                     # Roster ops, free agency, minor leagues, offseason
+│       ├── trade/                      # Valuation, AI offers, negotiation, deadline drama
+│       ├── finance/                    # Contracts, market intelligence, arbitration
+│       ├── narrative/                  # News, PBP, press conferences, ticker, story arcs
+│       ├── scouting/                   # Scout staff, IFA, scout learning, conflicts
+│       ├── onboarding/                 # 8-chapter flow engine, AGM mentor, assessments
+│       ├── moments/                    # Signature moments + earned nicknames [NEW]
+│       ├── stats/                      # Advanced stats, milestones, projections
+│       ├── career/                     # GM career, job market
+│       ├── scenarios/                  # 10 scenarios with objectives
+│       ├── sharing/                    # Dynasty cards, leaderboard scoring
+│       ├── timeline/                   # Timeline comparison
+│       ├── performance/                # Archive, prune, snapshot sizing
+│       └── invariants/                 # Data consistency checker
+├── packages/contracts/                 # Zod schemas, save v15
+├── packages/ui/                        # 13 Radix-based components
+├── packages/design-tokens/             # Bloomberg dark theme tokens
+├── packages/sim-worker/                # Comlink bridge
+└── packages/test-utils/                # Shared test fixtures
 ```
+
+---
+
+## Dependency Graph
+
+```
+@mbd/web
+├── @mbd/contracts
+├── @mbd/design-tokens
+├── @mbd/sim-core → @mbd/contracts
+├── @mbd/sim-worker → @mbd/contracts, @mbd/sim-core
+└── @mbd/ui → @mbd/design-tokens
+```
+
+---
+
+## Tech Stack
+
+- TypeScript 5.7 strict, React 18, Vite 6, Tailwind CSS 3.4
+- Zustand 5 (UI state), Dexie (IndexedDB), Zod (schema validation)
+- Web Workers + Comlink, pure-rand xoroshiro128plus (deterministic PRNG)
+- Recharts 3.8 (charts), Radix UI + lucide-react (components)
+- Vitest + fast-check (testing), pnpm + Turborepo (monorepo)
+- GitHub Actions → GitHub Pages (deploy)
 
 ---
 
 ## Systems Inventory
 
-| System | Location | Status | Tests |
-|--------|----------|--------|-------|
-| Game Simulation (PA, game, season) | sim-core/sim/ | Active | 30+ |
-| Player Generation & Attributes | sim-core/player/ | Active | 80+ |
-| Trade System + Living League | sim-core/trade/ + league/ | Active | 60+ |
-| Draft System | sim-core/draft/ | Active | 20+ |
-| Financial System | sim-core/finance/ | Active | 30+ |
-| Scouting + Scout Learning | sim-core/scouting/ | Active | 20+ |
-| Narrative Engine | sim-core/narrative/ | Active | 40+ |
-| Onboarding (First 10 Min) | sim-core/onboarding/ | Active, NOT WIRED TO UI | 232 |
-| Living League | sim-core/league/ + trade/ + narrative/ | Active, NOT WIRED TO UI | 161 |
-| Web Worker Bridge | apps/web/workers/ | Active | — |
-| React UI (26 features) | apps/web/features/ | Active | 376 |
-| Save/Load (IndexedDB) | apps/web/shared/lib/saveSystem | Active | — |
-| PWA + Service Worker | apps/web/build/ | Active | 1 |
+### Simulation Engine (sim-core) — 116 files, 1,294 tests
+
+| System | Key Files | Status |
+|--------|-----------|--------|
+| **Plate Appearance** | `sim/plateAppearance.ts` — Log5 with attribute-to-rate conversion | ✅ Active |
+| **Baserunning** | `sim/markov.ts` — Markov chain state machine | ✅ Active |
+| **Game Sim** | `sim/gameSimulator.ts` — Full 9-inning with extras, bullpen, stats | ✅ Active |
+| **Season Sim** | `sim/seasonSimulator.ts` — Day/week/month with schedule integration | ✅ Active, bug-fixed |
+| **Playoff Sim** | `sim/playoffSimulator.ts` — Bracket with momentum system | ✅ Active, bug-fixed |
+| **Player Generation** | `player/generation.ts` — ~5,400 players with OU aging curves | ✅ Active |
+| **Development** | `player/development.ts` — Age-based progression/regression | ✅ Active |
+| **Draft** | `draft/draftAI.ts` — 32-team AI with need-based evaluation | ✅ Active, bug-fixed |
+| **Free Agency** | `roster/freeAgency.ts` — Multi-day market with AI bidding | ✅ Active, bug-fixed |
+| **Trade** | `trade/tradeAI.ts` + `tradeNegotiation.ts` — AI offers + multi-round negotiation | ✅ Active |
+| **GM Relationships** | `league/gmRelationships.ts` — Persistent scores, trade memory, grudges | ✅ Built, NOT WIRED |
+| **Relationship Effects** | `league/relationshipEffects.ts` — FA/waiver/trade adjustments | ✅ Built, NOT WIRED |
+| **League Events** | `narrative/leagueEvents.ts` — Monthly events with ripple effects | ✅ Built, NOT WIRED |
+| **Signature Moments** | `moments/momentDetector.ts` — 12 types, FIFO 8/player, trait effects | ✅ Built, NOT WIRED |
+| **Earned Nicknames** | `moments/nicknames.ts` — 20 triggers, priority-ordered | ✅ Built, NOT WIRED |
+| **Onboarding Engine** | `onboarding/*.ts` — 16 modules, 8-chapter flow, AGM mentor | ✅ Built, UI SHIPPED |
+| **Narrative** | `narrative/*.ts` — 13 modules for news, PBP, press, ticker, arcs | ✅ Active |
+| **Scouting** | `scouting/*.ts` — Scout learning, IFA, conflicts | ✅ Active |
+
+### Web App — 27 feature modules, 33 routes
+
+| System | Status |
+|--------|--------|
+| **Dashboard** | ✅ Active — 10 cards, broadcast, game advisor |
+| **Onboarding Wizard** | ✅ NEW — 17 files, split-screen 8-chapter flow |
+| **Draft Room** | ✅ Active — AI picks, scouting, big board |
+| **Trade Room** | ✅ Active — Proposals, deadline drama, asset inventory |
+| **Free Agency** | ✅ Active — Market intel, bidding |
+| **Roster Management** | ✅ Active — Depth chart, DnD lineup builder |
+| **Minor Leagues** | ✅ Active — Pipeline, mentorship, prospect tracker |
+| **Player Profiles** | ✅ Active — 10 tabs, breakout intel, scout consensus |
+| **Press Room** | ✅ Active — Interactive conferences |
+| **Playoff Bracket** | ✅ Active — Momentum panel |
+| **History** | ✅ Active — Dynasty timeline, season archive |
+| **All Other Routes** | ✅ Active |
+
+### Persistence
+
+| System | Status |
+|--------|--------|
+| **Save Schema** | v15 with migration chain (Zod validated) |
+| **IndexedDB** | Dexie wrapper with slot-based saves |
+| **Snapshot Export** | Worker-side snapshot → Dexie |
+| **What-If Branches** | Up to 3 parallel timeline branches |
 
 ---
 
-## Shipped Features (What Works Today)
+## Shipped Features (Current Build)
 
-1. Full 162-game season simulation with Log5 plate appearances and Markov baserunning
-2. 32 fictional teams across 6 divisions with market sizes and owner archetypes
-3. ~5,400 generated players with 20-80 attributes, 20 personality traits, OU aging curves
-4. Complete draft system (300+ prospect classes, AI picks, signing)
+1. Full 162-game season sim with Log5 PA + Markov baserunning
+2. 32 fictional teams, 6 divisions, market sizes, owner archetypes
+3. ~5,400 generated players with attributes, personalities, OU aging
+4. Draft system (300+ prospect classes, AI picks, signing)
 5. Trade system with 5 AI GM personalities, deadline drama, multi-team trades
 6. Free agency market with bidding, qualifying offers
-7. Minor league system (6 levels, development pipeline, prospect bonds)
-8. Coaching staff management (12 roles, hire/fire, chemistry)
+7. Minor league system (6 levels, prospect bonds, development pipeline)
+8. Coaching staff management (12 roles, chemistry system, mentorship)
 9. Financial system (contracts, arbitration, extensions, luxury tax)
 10. Scouting with fog-of-war, IFA pool, scout conflicts, Bayesian learning
-11. Narrative engine (17 news categories, press conferences, story arcs, enhanced PBP)
-12. Hall of Fame, records, 48+ achievements
-13. GM career mode with job market
-14. 10 challenge scenarios
-15. What-if timeline branching
-16. Dynasty cards for sharing
-17. Interactive press conferences (12 topics, 4 responses)
-18. Player comparison, similarity, season projections
-19. Breakout intelligence, scout consensus, playoff momentum panels
-20. Award ceremony modal
-21. Bloomberg Terminal dark UI with Recharts visualizations
-22. PWA with offline support, 5 save slots
-23. Command palette (Cmd+K), keyboard shortcuts
-24. Accessibility (skip-to-content, focus traps, WCAG AA contrast)
+11. Narrative engine (17 news categories, press conferences, story arcs, 55+ PBP templates)
+12. Hall of Fame, records, 48+ achievements, 10 challenge scenarios
+13. Player comparison, similarity, projections, breakout intelligence
+14. Scout consensus panel, prospect breakout tracker, playoff momentum
+15. Award ceremony modal, enhanced play-by-play
+16. Bloomberg Terminal dark UI, command palette, keyboard shortcuts, PWA
+17. Save/load with migration chain, what-if branches
+18. **Onboarding Wizard** — 8-chapter split-screen with AGM mentor [NEW]
 
 ---
 
-## In-Progress Work (Built but Not Wired to UI)
+## In-Progress / Unshipped Work
 
-| Feature | Location | Next Step |
-|---------|----------|-----------|
-| **First 10 Minutes Onboarding** | sim-core/onboarding/ (16 files, 232 tests) | Build wizard UI (split-screen with AGM character) |
-| **Assistant GM Character** | sim-core/onboarding/assistantGM.ts + chapterDialogue.ts + coachingTips.ts + choiceReactions.ts + scriptOrchestrator.ts | Wire to onboarding wizard UI |
-| **Living League Relationships** | sim-core/league/gmRelationships.ts | Add to save schema, wire to trade UI |
-| **Trade Negotiation State Machine** | sim-core/trade/tradeNegotiation.ts | Build negotiation UI with counter-offers |
-| **Relationship Effects** | sim-core/league/relationshipEffects.ts | Wire into FA, waiver, draft, Rule 5 systems |
-| **League-Wide Events** | sim-core/narrative/leagueEvents.ts | Wire to news feed and dashboard |
-
----
-
-## Research & Ideas Bank
-
-From Meta AI Muse Spark (saved in REFERENCE/MUSE_SPARK_DESIGN_SPECS.md):
-
-1. **Signature Moments** — Permanent player event storage (walk-off HR, no-hitter, etc.) with trait modifications
-2. **Earned Nicknames** — 20 stat/event-triggered nicknames ("The Flash", "Mr. October", etc.)
-3. **Season Themes** — Hidden annual theme (Last Dance, Youth Movement, Revenge Tour) affecting all narratives
-4. **Narrative Debt** — Unresolved storylines building pressure (traded fan favorite, blocked prospect)
-5. **Press Memory** — Press answers in year 1 create callback questions in year 3
-6. **City Modifiers & Ballpark DNA** — Team-specific hidden modifiers affecting gameplay
-7. **Visual Aging** — Player card desaturation past age 32
-8. **Persistent AGM** — Assistant GM pops up during trades, press conferences, losing streaks
-9. **Seed Sharing** — Export game as shareable URL with deterministic seed
-10. **WebRTC Peer Leagues** — Multiplayer without backend via deterministic sync
-11. **The Living League** — AI GMs with relationship scores, trade memory, grudges (BUILT, not wired)
+| Feature | Location | Status | Next Step |
+|---------|----------|--------|-----------|
+| **Living League** | `league/gmRelationships.ts`, `trade/tradeNegotiation.ts`, `narrative/leagueEvents.ts` | sim-core done (161 tests) | Wire to save schema v16, build UI |
+| **Signature Moments** | `moments/momentDetector.ts` | sim-core done (96 tests) | Wire to game loop post-game scan |
+| **Earned Nicknames** | `moments/nicknames.ts` | sim-core done | Wire to end-of-season evaluation |
+| **Onboarding Wizard** | `features/onboarding/` | UI shipped, needs testing | End-to-end smoke test |
+| **Season Themes** | Muse Spark specs in REFERENCE/ | Design complete, no code | Codex sim-core sprint |
+| **Narrative Debt** | Muse Spark specs | Design complete, no code | Codex sim-core sprint |
+| **Broadcast Voice** | Muse Spark specs | Tone + 10 phrases defined | Template integration |
+| **Franchise Lore** | Muse Spark specs | 3 profiles (KC, Portland, Austin) | More profiles + UI surface |
 
 ---
 
-## Known Issues / Tech Debt
+## Ideas Bank
 
-1. **Bundle budget tight**: worker gzip at 113KB vs 120KB budget (bumped from 110KB in PR #15)
-2. **Pre-existing React DOM warning**: PlayerProfilePage test has cleanup error (not a test failure)
-3. **7 worktrees accumulating**: living-league, assistant-gm, first-10-minutes, foundation-intelligence, dynasty-timeline-chapters, phase15-broadcast, phase16-war-room — should clean up completed ones
-4. **MBD_MASTER_REFERENCE.md stale**: test count says 815, actual is 1,548
-5. **.codex/MBD/plan.md outdated**: references obsolete task codes, should archive
-6. **TUNING.md missing Living League**: needs relationship/negotiation tuning parameters once wired
+From Muse Spark creative specs and session discussions:
+- Persistent AGM beyond onboarding (pops up during trades, press, losing streaks)
+- City modifiers and ballpark DNA (KC = fan loyalty +30%, Austin = power dev +12%)
+- Press memory system (answers in year 1 create callback questions in year 3)
+- Visual player aging (card desaturation past age 32, milestone badges)
+- Seed sharing via URL (mbd://dynasty?seed=abc123&team=KC)
+- Dynasty card PNG export with QR code
+- WebRTC peer leagues (multiplayer via deterministic sync)
+- Weekly challenge seeds (community competition)
+- Team logo visual assets
+- Mobile responsive on remaining pages
+- Stadium and revenue management
+- Online leagues (multiplayer dynasty mode)
+- Historical rosters mode
+- AI-generated commentary with TTS
+- 25 easter eggs defined by Muse Spark (from The 42 HR Club to Terminal Command)
+- 8 player narrative archetypes (Journeyman, Prodigy, Heel, Captain, Ghost, Comeback Kid, Mercenary, Hometown Hero)
 
 ---
 
@@ -172,38 +222,65 @@ From Meta AI Muse Spark (saved in REFERENCE/MUSE_SPARK_DESIGN_SPECS.md):
 
 | Decision | Rationale |
 |----------|-----------|
-| Web Worker for all sim | Never block main thread. UI stays responsive during 5,400-player sim |
-| pure-rand (xoroshiro128plus) | Determinism is sacred. Same seed = same game. Enables replay, sharing, debugging |
-| Zod schemas in contracts package | Single source of truth for types between sim-core and web |
-| No emoji in UI | Professional Bloomberg Terminal aesthetic. lucide-react icons only |
-| Lazy-load all pages | Initial bundle stays under 300KB budget |
-| Comlink for worker bridge | Type-safe RPC without manual message passing |
-| IndexedDB via Dexie | Client-side persistence without backend. 5 save slots |
-| Feature-sliced architecture | Each feature owns its routes, components, and types |
-| Onboarding as sim-core modules | Pure assessment functions consumed by ANY UI (wizard, sidebar, dashboard) |
-| Living League as additive modules | Don't patch existing trade/FA engines. New modules provide adjustment functions |
+| Web Worker for ALL sim logic | Never block main thread. 5,400 players + PA calculations would freeze UI. |
+| Deterministic seeded PRNG (pure-rand xoroshiro128plus) | Same seed = same game. Enables replay, seed sharing, competitive challenges. |
+| Zod schemas in shared contracts package | Single source of truth for types. Runtime validation for save integrity. |
+| No emoji in game UI | Bloomberg Terminal aesthetic. Professional, data-dense feel. |
+| Onboarding as pure sim-core modules | Assessment functions consumed by any UI surface — wizard, sidebar, dashboard. |
+| Living League as additive modules | New modules provide adjustment functions. Existing engines unchanged. |
+| Feature-sliced React architecture | Each feature owns routes, components, types. Prevents circular deps. |
+| Multi-agent team model | ChatGPT architect, Codex builder, Claude reviewer/ops, Muse Spark designer. |
+| Bug audit before feature stacking | 25 determinism bugs caught before building Season Themes on top. |
+
+---
+
+## Known Issues / Tech Debt
+
+1. **Live deploy behind main** — Latest merges not yet deployed to GitHub Pages
+2. **9 stale worktrees** — assistant-gm, dynasty-timeline-chapters, first-10-minutes, foundation-intelligence, living-league, phase15-broadcast, phase16-war-room, signature-moments-nicknames, sim-core-bug-audit
+3. **24+ merged branches** — Local branches from completed features still exist
+4. **Direct sim-core imports in web UI** — Some feature pages import from @mbd/sim-core directly instead of through worker (documented in audit, not yet fixed)
+5. **MASTER_REFERENCE.md stale** — Test count says 815, actual is 1,294
+6. **MBD_PROJECT_BIBLE.md** — Test count needs update
+7. **.codex/MBD/plan.md** — Stale, references obsolete task codes
+8. **.codex/MBD/open_questions.md** — Stale, all resolved
+9. **.codex/MBD/decisions.md** — Stale, superseded
+10. **Bundle budget tight** — Worker gzip at 113KB vs 120KB budget
+11. **Onboarding wizard untested end-to-end** — Builds but needs smoke test
+12. **Muse Spark creative output not yet saved to REFERENCE/** — Season themes, narrative debt, franchise lore, archetypes, easter eggs from latest session exist only in chat
+
+---
+
+## Cleanup Candidates — Needs Kevin's Review
+
+### Stale Worktrees (safe to remove — all merged)
+- `.worktrees/assistant-gm` — PR #18 merged
+- `.worktrees/first-10-minutes` — PR #17 merged
+- `.worktrees/foundation-intelligence` — PR #14 merged
+- `.worktrees/living-league` — PR #19 merged
+- `.worktrees/phase15-broadcast` — All 6 slices merged
+- `.worktrees/phase16-war-room` — Merged in phase 16
+- `.worktrees/dynasty-timeline-chapters` — Merged
+- `.worktrees/signature-moments-nicknames` — Merged this session
+- `.worktrees/sim-core-bug-audit` — Merged this session
+
+### Stale Local Branches (all merged to main)
+All `codex/phase*`, `feature/*`, `fix/*` branches that correspond to merged PRs.
+
+### Stale .codex Files
+- `.codex/MBD/plan.md` — Can be cleared and repurposed
+- `.codex/MBD/open_questions.md` — All questions resolved
+- `.codex/MBD/decisions.md` — Superseded by design decisions in MASTER_CONTEXT
 
 ---
 
 ## Next Priorities (Ranked)
 
-1. **Onboarding Wizard UI** — The sim-core engine has 14 modules + 232 tests ready. Build the 8-chapter split-screen wizard with AGM character panel. This is the most important UX improvement.
-2. **Living League UI Wiring** — Save schema migration, worker queries, trade negotiation UI with counter-offers, relationship tier icons in trade screen.
-3. **Signature Moments + Nicknames** (Codex sprint) — Next sim-core sprint per Muse Spark's prioritization.
-4. **Season Themes + Narrative Debt** (Codex sprint) — After moments/nicknames.
-5. **Persistent AGM** — Extend Assistant GM beyond onboarding into main game.
-6. **Deploy latest** — Current live build is from PR #12 era. 7 PRs of improvements not yet deployed.
-
----
-
-## Verification Commands
-
-```bash
-export PATH="$HOME/.local/bin:$HOME/.local/node-lts/lib/node_modules/corepack/shims:$PATH"
-cd mr-baseball-dynasty/packages/sim-core && npx vitest run     # 1,172 tests
-cd ../../apps/web && npx vitest run                             # 376 tests
-cd apps/web && npx tsc --noEmit                                 # type check
-cd apps/web && npx vite build                                   # production build
-grep -r 'Math.random' packages/sim-core/src/                    # determinism audit (expect empty)
-export PATH="/opt/homebrew/bin:$PATH"                           # for gh CLI
-```
+1. **Save Muse Spark output** — Season themes, narrative debt, broadcast voice, franchise lore, archetypes, easter eggs → `REFERENCE/MUSE_SPARK_SESSION_2.md`
+2. **Build Season Themes + Narrative Debt** (sim-core) — Muse Spark provided full specs
+3. **Wire Signature Moments into game loop** — Post-game scan + save schema v16
+4. **Wire Living League to UI** — GM relationship tiers, trade negotiation rounds
+5. **Deploy latest to GitHub Pages** — 7+ commits not yet live
+6. **Clean up worktrees and branches** — 9 worktrees, 24+ branches
+7. **Smoke test Onboarding Wizard** — End-to-end in browser
+8. **Update stale docs** — MBD_MASTER_REFERENCE.md, MBD_PROJECT_BIBLE.md test counts
