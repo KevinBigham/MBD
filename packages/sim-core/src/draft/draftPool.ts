@@ -249,26 +249,26 @@ export function generateDraftClass(rng: GameRNG, season: number): DraftClass {
  * within each position group.
  */
 export function rankProspects(prospects: DraftProspect[]): DraftProspect[] {
-  // Sort by scouting grade descending
-  const sorted = [...prospects].sort((a, b) => b.scoutingGrade - a.scoutingGrade);
+  const sorted = [...prospects]
+    .map((prospect) => ({ ...prospect }))
+    .sort((left, right) =>
+      right.scoutingGrade - left.scoutingGrade
+      || left.consensusRank - right.consensusRank
+      || left.player.id.localeCompare(right.player.id),
+    );
 
-  // Assign position ranks
   const positionCounters = new Map<string, number>();
+  return sorted.map((prospect, index) => {
+    const positionRank = (positionCounters.get(prospect.player.position) ?? 0) + 1;
+    positionCounters.set(prospect.player.position, positionRank);
 
-  for (const prospect of sorted) {
-    const pos = prospect.player.position;
-    const rank = (positionCounters.get(pos) ?? 0) + 1;
-    positionCounters.set(pos, rank);
-    prospect.positionRank = rank;
-  }
-
-  // Re-assign projected round based on overall ranking
-  for (let i = 0; i < sorted.length; i++) {
-    sorted[i]!.draftRound = projectedRound(i);
-    sorted[i]!.consensusRank = i + 1;
-  }
-
-  return sorted;
+    return {
+      ...prospect,
+      positionRank,
+      draftRound: projectedRound(index),
+      consensusRank: index + 1,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

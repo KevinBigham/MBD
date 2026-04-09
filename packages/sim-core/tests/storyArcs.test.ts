@@ -217,4 +217,39 @@ describe('story arcs', () => {
 
     expect(first).toEqual(second);
   });
+
+  it('orders tied new-arc candidates deterministically regardless of player input order', () => {
+    const first = makePlayer(51, {
+      id: 'player-b',
+      firstName: 'Bruno',
+      lastName: 'Bright',
+      age: 27,
+      serviceTimeDays: 450,
+      overallRating: 330,
+    }, 'RF', 'lax', 'MLB');
+    const second = makePlayer(52, {
+      id: 'player-a',
+      firstName: 'Aaron',
+      lastName: 'Amber',
+      age: 27,
+      serviceTimeDays: 450,
+      overallRating: 330,
+    }, 'RF', 'lax', 'MLB');
+    const seasonStats = new Map([
+      [first.id, { pa: 180, ab: 150, hits: 52, hr: 17, rbi: 68 }],
+      [second.id, { pa: 180, ab: 150, hits: 52, hr: 17, rbi: 68 }],
+    ]);
+
+    const forward = detectNewStoryArcs(new GameRNG(42), buildSnapshot({
+      players: [first, second],
+      seasonStats,
+    }));
+    const reversed = detectNewStoryArcs(new GameRNG(42), buildSnapshot({
+      players: [second, first],
+      seasonStats,
+    }));
+
+    expect(forward.map((arc) => arc.playerId)).toEqual(['player-a', 'player-b']);
+    expect(reversed.map((arc) => arc.playerId)).toEqual(['player-a', 'player-b']);
+  });
 });

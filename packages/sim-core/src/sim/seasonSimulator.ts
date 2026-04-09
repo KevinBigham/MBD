@@ -36,6 +36,18 @@ export interface SeasonSimulationOptions {
   readonly teamModifiers?: Map<string, number>;
 }
 
+function clonePlayerGameStats(stats: PlayerGameStats): PlayerGameStats {
+  return { ...stats };
+}
+
+function clonePlayerSeasonStats(
+  stats: Map<string, PlayerGameStats>,
+): Map<string, PlayerGameStats> {
+  return new Map(
+    Array.from(stats.entries(), ([playerId, playerStats]) => [playerId, clonePlayerGameStats(playerStats)]),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Lineup builder
 // ---------------------------------------------------------------------------
@@ -111,6 +123,8 @@ export function simulateDay(
   const dayGames = schedule.filter(g => g.day === state.currentDay);
 
   const boxScores: GameBoxScore[] = [];
+  const nextStandings = StandingsTracker.deserialize(state.standings.serialize());
+  const nextPlayerSeasonStats = clonePlayerSeasonStats(state.playerSeasonStats);
 
   for (const game of dayGames) {
     const homeTeam = buildGameTeam(game.homeTeamId, allPlayers);
@@ -149,7 +163,7 @@ export function simulateDay(
     const winnerScore = Math.max(boxScore.homeScore, boxScore.awayScore);
     const loserScore = Math.min(boxScore.homeScore, boxScore.awayScore);
 
-    state.standings.recordGame(
+    nextStandings.recordGame(
       winnerId,
       loserId,
       winnerScore,
@@ -159,7 +173,7 @@ export function simulateDay(
 
     // Accumulate player season stats
     for (const [playerId, gameStats] of playerStats) {
-      const existing = state.playerSeasonStats.get(playerId);
+      const existing = nextPlayerSeasonStats.get(playerId);
       if (existing) {
         existing.pa += gameStats.pa;
         existing.ab += gameStats.ab;
@@ -184,7 +198,7 @@ export function simulateDay(
         existing.wins += gameStats.wins;
         existing.losses += gameStats.losses;
       } else {
-        state.playerSeasonStats.set(playerId, { ...gameStats });
+        nextPlayerSeasonStats.set(playerId, clonePlayerGameStats(gameStats));
       }
     }
   }
@@ -199,6 +213,8 @@ export function simulateDay(
   const newState: SeasonState = {
     ...state,
     currentDay: nextDay,
+    standings: nextStandings,
+    playerSeasonStats: nextPlayerSeasonStats,
     gameLog: [...state.gameLog, ...boxScores],
     completed: seasonComplete,
   };

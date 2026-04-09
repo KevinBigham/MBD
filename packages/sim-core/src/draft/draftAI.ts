@@ -267,19 +267,25 @@ export function simulateFullDraft(
         }
       }
 
-      // Assign the prospect to the drafting team
-      (selectedProspect.player as { teamId: string }).teamId = teamId;
+      // Preserve the original draft pool entry; the drafted copy carries team assignment.
+      const draftedProspect: DraftProspect = {
+        ...selectedProspect,
+        player: {
+          ...selectedProspect.player,
+          teamId,
+        },
+      };
 
       // Add to team's roster for future need calculations
       const teamRoster = rosters.get(teamId) ?? [];
-      teamRoster.push(selectedProspect.player);
+      teamRoster.push(draftedProspect.player);
       rosters.set(teamId, teamRoster);
 
       picks.push({
         round,
         pickNumber: overallPickNumber,
         teamId,
-        prospect: selectedProspect,
+        prospect: draftedProspect,
       });
     }
 

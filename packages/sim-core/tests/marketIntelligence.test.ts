@@ -6,6 +6,7 @@ import {
   generateMarketSummary,
   predictSigning,
   type ComparableContract,
+  type MarketReport,
   type MarketReportContext,
 } from '../src/finance/marketIntelligence.js';
 
@@ -184,5 +185,39 @@ describe('generateMarketSummary', () => {
 
     expect(summary.topFreeAgents[0]!.projectedAAV).toBeGreaterThanOrEqual(summary.topFreeAgents[1]!.projectedAAV);
     expect(summary.topFreeAgents[1]!.projectedAAV).toBeGreaterThanOrEqual(summary.topFreeAgents[2]!.projectedAAV);
+  });
+
+  it('breaks summary ties deterministically for equal demand and projected AAV', () => {
+    const reports: MarketReport[] = [
+      {
+        playerId: 'fa-10',
+        playerName: 'Zane Ace',
+        position: 'RF',
+        age: 29,
+        projectedValue: 18,
+        demandLevel: 'hot',
+        interestedTeamCount: 2,
+        comparableContracts: [],
+        signingPrediction: { likelyTeamId: 'bos', projectedYears: 4, projectedAAV: 22, confidence: 'medium' },
+      },
+      {
+        playerId: 'fa-11',
+        playerName: 'Aaron Ace',
+        position: 'SP',
+        age: 29,
+        projectedValue: 18,
+        demandLevel: 'hot',
+        interestedTeamCount: 2,
+        comparableContracts: [],
+        signingPrediction: { likelyTeamId: 'nym', projectedYears: 4, projectedAAV: 22, confidence: 'medium' },
+      },
+    ];
+
+    const forward = generateMarketSummary(reports);
+    const reversed = generateMarketSummary([...reports].reverse());
+
+    expect(forward).toEqual(reversed);
+    expect(forward.hottestPosition).toBe('RF');
+    expect(forward.topFreeAgents.map((entry) => entry.name)).toEqual(['Aaron Ace', 'Zane Ace']);
   });
 });

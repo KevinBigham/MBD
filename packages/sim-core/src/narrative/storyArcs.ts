@@ -243,7 +243,11 @@ function candidateSort(snapshot: StoryArcSnapshot, left: PlayerStoryArc, right: 
   if (priorityDelta !== 0) {
     return priorityDelta;
   }
-  return (rightPlayer?.overallRating ?? 0) - (leftPlayer?.overallRating ?? 0);
+  const ratingDelta = (rightPlayer?.overallRating ?? 0) - (leftPlayer?.overallRating ?? 0);
+  if (ratingDelta !== 0) {
+    return ratingDelta;
+  }
+  return left.playerId.localeCompare(right.playerId);
 }
 
 export function detectNewStoryArcs(

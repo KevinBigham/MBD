@@ -292,7 +292,8 @@ export function buildLeagueAdvancedContext(
   const leagueOps = calculateOps(battingTotals);
   const leagueEra = calculateLeagueEra(pitchingTotals);
   const rawLeagueFip = calculateFip(pitchingTotals, 0);
-  const fipConstant = roundTo(leagueEra - rawLeagueFip, 3) || DEFAULT_FIP_CONSTANT;
+  const computedFipConstant = roundTo(leagueEra - rawLeagueFip, 3);
+  const fipConstant = Number.isFinite(computedFipConstant) ? computedFipConstant : DEFAULT_FIP_CONSTANT;
   const leagueFip = calculateFip(pitchingTotals, fipConstant);
   const leagueHrPerFlyBall = pitchingTotals.flyBallsAllowed > 0
     ? pitchingTotals.homeRunsAllowed / pitchingTotals.flyBallsAllowed

@@ -5,6 +5,7 @@ import {
   generateNews,
   generateNewsId,
   checkMilestones,
+  generateSeasonRecap,
   getUnreadNews,
   markAsRead,
   deduplicateNews,
@@ -391,6 +392,36 @@ describe('getUnreadNews', () => {
       expect(unread[i - 1]!.priority).toBeLessThanOrEqual(unread[i]!.priority);
     }
   });
+
+  it('orders equal-priority unread items deterministically across input order', () => {
+    const items: NewsItem[] = [
+      {
+        id: 'news-b',
+        headline: 'Older tie',
+        body: 'Body',
+        priority: 2,
+        category: 'trade',
+        timestamp: 'S1D9',
+        relatedPlayerIds: [],
+        relatedTeamIds: ['NYT'],
+        read: false,
+      },
+      {
+        id: 'news-a',
+        headline: 'Newer tie',
+        body: 'Body',
+        priority: 2,
+        category: 'trade',
+        timestamp: 'S1D10',
+        relatedPlayerIds: [],
+        relatedTeamIds: ['NYT'],
+        read: false,
+      },
+    ];
+
+    expect(getUnreadNews(items).map((item) => item.id)).toEqual(['news-a', 'news-b']);
+    expect(getUnreadNews([...items].reverse()).map((item) => item.id)).toEqual(['news-a', 'news-b']);
+  });
 });
 
 describe('markAsRead', () => {
@@ -452,5 +483,54 @@ describe('deduplicateNews', () => {
     expect(injuryItems[0]!.priority).toBe(2);
     // Trade item should remain
     expect(deduped.filter((n) => n.category === 'trade').length).toBe(1);
+  });
+
+  it('keeps the same duplicate winner for equal-priority ties regardless of input order', () => {
+    const items: NewsItem[] = [
+      {
+        id: 'news-b',
+        headline: 'Later lexical id',
+        body: 'Body 1',
+        priority: 2,
+        category: 'injury',
+        timestamp: 'S1D10',
+        relatedPlayerIds: ['p1'],
+        relatedTeamIds: ['NYT'],
+        read: false,
+      },
+      {
+        id: 'news-a',
+        headline: 'Earlier lexical id',
+        body: 'Body 2',
+        priority: 2,
+        category: 'injury',
+        timestamp: 'S1D10',
+        relatedPlayerIds: ['p1'],
+        relatedTeamIds: ['NYT'],
+        read: false,
+      },
+    ];
+
+    expect(deduplicateNews(items)[0]?.id).toBe('news-a');
+    expect(deduplicateNews([...items].reverse())[0]?.id).toBe('news-a');
+  });
+});
+
+describe('generateSeasonRecap', () => {
+  it('chooses the tied best-record club deterministically regardless of standings order', () => {
+    const standings = [
+      { teamId: 'nym', wins: 95, losses: 67 },
+      { teamId: 'bos', wins: 95, losses: 67 },
+      { teamId: 'orl', wins: 88, losses: 74 },
+    ];
+
+    const forward = generateSeasonRecap(new GameRNG(800), standings, null, 5);
+    const reversed = generateSeasonRecap(new GameRNG(800), [...standings].reverse(), null, 5);
+
+    const forwardBest = forward.find((item) => item.category === 'standings');
+    const reversedBest = reversed.find((item) => item.category === 'standings');
+
+    expect(forwardBest?.headline).toBe('bos finishes Season 5 with league-best 95-67 record');
+    expect(reversedBest?.headline).toBe('bos finishes Season 5 with league-best 95-67 record');
   });
 });

@@ -177,6 +177,48 @@ describe('simulateFullFreeAgency', () => {
     expect(first.signedPlayers[0]?.signedWith).toBe('bos');
     expect(first.signedPlayers[0]?.contract).toBeTruthy();
   });
+
+  it('does not mutate the supplied payroll map when user offers are applied', () => {
+    const player = { ...makeExpiringPlayer(203), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    const freeAgent = market.freeAgents[0]!;
+    const budgets = new Map([
+      ['nym', 220],
+      ['bos', 200],
+    ]);
+    const payrolls = new Map([
+      ['nym', 20],
+      ['bos', 25],
+    ]);
+    const needs = new Map([
+      ['nym', new Map([[player.position, 90]])],
+      ['bos', new Map([[player.position, 80]])],
+    ]);
+    const payrollSnapshot = Array.from(payrolls.entries());
+    const offer = {
+      teamId: 'nym',
+      playerId: freeAgent.player.id,
+      years: 4,
+      annualSalary: Number((freeAgent.marketValue + 2).toFixed(2)),
+      totalValue: Number(((freeAgent.marketValue + 2) * 4).toFixed(2)),
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+      signingBonus: 0,
+    };
+
+    simulateFullFreeAgency(
+      new GameRNG(1001),
+      market,
+      budgets,
+      payrolls,
+      needs,
+      'nym',
+      [offer],
+    );
+
+    expect(Array.from(payrolls.entries())).toEqual(payrollSnapshot);
+  });
 });
 
 describe('makeUserOffer', () => {

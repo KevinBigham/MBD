@@ -21,6 +21,10 @@ function timestamp(snapshot: GameSnapshot): string {
   return `S${snapshot.season}D${snapshot.day}`;
 }
 
+function userTeamId(snapshot: GameSnapshot): string {
+  return snapshot.userTeamId ?? snapshot.franchise.teamId;
+}
+
 function teamLabel(teamId: string | null | undefined): string {
   if (!teamId) {
     return 'Unknown Club';
@@ -31,15 +35,16 @@ function teamLabel(teamId: string | null | undefined): string {
 
 function currentRecord(snapshot: GameSnapshot): string {
   const serialized = snapshot.seasonState.standings as Array<{ teamId: string; wins: number; losses: number }> | Array<[string, { wins: number; losses: number }]>;
+  const currentTeamId = userTeamId(snapshot);
   for (const entry of serialized) {
     if (Array.isArray(entry)) {
-      if (entry[0] === snapshot.userTeamId) {
+      if (entry[0] === currentTeamId) {
         return `${entry[1].wins}-${entry[1].losses}`;
       }
       continue;
     }
 
-    if (entry.teamId === snapshot.userTeamId) {
+    if (entry.teamId === currentTeamId) {
       return `${entry.wins}-${entry.losses}`;
     }
   }
@@ -77,7 +82,7 @@ function buildCard(
   subtitle: string,
   stats: DynastyCard['stats'],
   highlights: string[],
-  teamId: string | null = snapshot.userTeamId,
+  teamId: string | null = userTeamId(snapshot),
   season: number | null = snapshot.season,
   summaryLead?: string | null,
 ): DynastyCard {
@@ -100,10 +105,11 @@ function buildCard(
 }
 
 export function generateSeasonRecapCard(snapshot: GameSnapshot, season: number = snapshot.season): DynastyCard {
+  const currentTeamId = userTeamId(snapshot);
   return buildCard(
     snapshot,
     'season_recap',
-    `${teamLabel(snapshot.userTeamId)} Season ${season}`,
+    `${teamLabel(currentTeamId)} Season ${season}`,
     `Regular-season recap for ${snapshot.franchise.gmName}`,
     [
       { label: 'Record', value: currentRecord(snapshot) },
@@ -114,22 +120,23 @@ export function generateSeasonRecapCard(snapshot: GameSnapshot, season: number =
       snapshot.narrative.fanSentiment.summary,
       `Dynasty pulse: ${snapshot.narrative.franchiseTimeline.at(-1)?.dynastyScore ?? 0}`,
     ],
-    snapshot.userTeamId,
+    currentTeamId,
     season,
     seasonRecapHeadline(snapshot, season),
   );
 }
 
 export function generateChampionshipCard(snapshot: GameSnapshot, season: number = snapshot.season): DynastyCard {
+  const currentTeamId = userTeamId(snapshot);
   return buildCard(
     snapshot,
     'championship_run',
-    `${teamLabel(snapshot.userTeamId)} Championship Run`,
+    `${teamLabel(currentTeamId)} Championship Run`,
     `Season ${season}`,
     [
       { label: 'Record', value: currentRecord(snapshot) },
       { label: 'GM', value: snapshot.franchise.gmName },
-      { label: 'Team', value: teamLabel(snapshot.userTeamId) },
+      { label: 'Team', value: teamLabel(currentTeamId) },
     ],
     [
       'Finished the climb on top.',
@@ -170,7 +177,7 @@ export function generateDynastyCard(snapshot: GameSnapshot, cardType: DynastyCar
   return buildCard(
     snapshot,
     cardType,
-    `${teamLabel(snapshot.userTeamId)} Legacy Snapshot`,
+    `${teamLabel(userTeamId(snapshot))} Legacy Snapshot`,
     `Season ${snapshot.season}`,
     [
       { label: 'GM', value: snapshot.franchise.gmName },

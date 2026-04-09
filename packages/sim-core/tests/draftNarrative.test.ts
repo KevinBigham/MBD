@@ -178,4 +178,49 @@ describe('draft narrative builders', () => {
     expect(grades[0]?.grade).toBe('C');
     expect(grades[0]?.summary).toContain('New York Tycoons');
   });
+
+  it('selects the same recent position run when counts tie regardless of pick order', () => {
+    const tiedVisiblePicks: DraftNarrativePick[] = [
+      {
+        round: 1,
+        pickNumber: 1,
+        teamId: 'bos',
+        teamName: 'Boston Noreasters',
+        teamAbbreviation: 'BOS',
+        playerId: 'bos-1',
+        playerName: 'Arm One',
+        position: 'SP',
+        scoutingGrade: 57,
+        origin: 'College',
+        tone: 'division_rival',
+      },
+      {
+        round: 1,
+        pickNumber: 2,
+        teamId: 'nym',
+        teamName: 'New York Tycoons',
+        teamAbbreviation: 'NYT',
+        playerId: 'nym-1',
+        playerName: 'Bat One',
+        position: 'SS',
+        scoutingGrade: 58,
+        origin: 'College',
+        tone: 'user',
+      },
+    ];
+
+    const forward = generateDraftBuzz(new GameRNG(91), {
+      visiblePicks: tiedVisiblePicks,
+      currentPick,
+      availableProspects,
+    });
+    const reversed = generateDraftBuzz(new GameRNG(91), {
+      visiblePicks: [...tiedVisiblePicks].reverse(),
+      currentPick,
+      availableProspects,
+    });
+
+    expect(forward.find((item) => item.id.startsWith('run-'))?.id).toBe('run-bats');
+    expect(reversed.find((item) => item.id.startsWith('run-'))?.id).toBe('run-bats');
+  });
 });

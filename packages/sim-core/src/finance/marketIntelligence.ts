@@ -90,6 +90,10 @@ interface InternalMarketReport extends MarketReport {
   teamSignals: TeamSignal[];
 }
 
+function byString(left: string, right: string): number {
+  return left.localeCompare(right);
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -179,7 +183,7 @@ function buildTeamSignals(context: MarketReportContext, value: number): TeamSign
       };
     })
     .filter((team) => team.fitScore >= 0)
-    .sort((left, right) => right.fitScore - left.fitScore);
+    .sort((left, right) => right.fitScore - left.fitScore || byString(left.teamId, right.teamId));
 }
 
 export function findComparableContracts(
@@ -201,6 +205,8 @@ export function findComparableContracts(
     .sort((left, right) => (
       similarityScore(left, { position, age, projectedValue: targetValue })
       - similarityScore(right, { position, age, projectedValue: targetValue })
+      || left.season - right.season
+      || byString(left.playerName, right.playerName)
     ))
     .slice(0, desiredCount);
 }
@@ -288,7 +294,7 @@ export function generateMarketSummary(reports: MarketReport[]): MarketSummary {
   }
 
   const hottestPosition = Object.entries(positionDemand)
-    .sort((left, right) => right[1] - left[1])[0]?.[0] ?? 'N/A';
+    .sort((left, right) => right[1] - left[1] || byString(left[0], right[0]))[0]?.[0] ?? 'N/A';
 
   return {
     totalProjectedSpending: roundCurrency(
@@ -297,7 +303,10 @@ export function generateMarketSummary(reports: MarketReport[]): MarketSummary {
     hottestPosition,
     topFreeAgents: reports
       .slice()
-      .sort((left, right) => right.signingPrediction.projectedAAV - left.signingPrediction.projectedAAV)
+      .sort((left, right) =>
+        right.signingPrediction.projectedAAV - left.signingPrediction.projectedAAV
+        || byString(left.playerName, right.playerName),
+      )
       .slice(0, MAX_TOP_FREE_AGENTS)
       .map((report) => ({
         name: report.playerName,

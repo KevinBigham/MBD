@@ -41,7 +41,7 @@ const HISTORICAL_RIVALRIES: Array<{
 ];
 
 function rivalryId(teamA: string, teamB: string): string {
-  return [teamA, teamB].sort().join(':');
+  return [teamA, teamB].sort((left, right) => left.localeCompare(right)).join(':');
 }
 
 function clampIntensity(value: number): number {

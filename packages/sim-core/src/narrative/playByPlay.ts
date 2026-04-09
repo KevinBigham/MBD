@@ -102,6 +102,36 @@ function buildBatterLines(paResults: readonly PAResult[]): BatterGameLine[] {
   return [...lines.values()];
 }
 
+function compareHighlights(left: GameHighlight, right: GameHighlight): number {
+  const halfInningDelta = (left.halfInning === 'bottom' ? 1 : 0) - (right.halfInning === 'bottom' ? 1 : 0);
+  if (right.dramaScore !== left.dramaScore) {
+    return right.dramaScore - left.dramaScore;
+  }
+  if (right.inning !== left.inning) {
+    return right.inning - left.inning;
+  }
+  if (halfInningDelta !== 0) {
+    return halfInningDelta;
+  }
+  if (left.playerId !== right.playerId) {
+    return left.playerId.localeCompare(right.playerId);
+  }
+  return left.type.localeCompare(right.type);
+}
+
+function compareBatterLines(left: BatterGameLine, right: BatterGameLine): number {
+  if (right.rbi !== left.rbi) {
+    return right.rbi - left.rbi;
+  }
+  if (right.hr !== left.hr) {
+    return right.hr - left.hr;
+  }
+  if (right.hits !== left.hits) {
+    return right.hits - left.hits;
+  }
+  return left.batterId.localeCompare(right.batterId);
+}
+
 export function generatePlayByPlay(
   pa: PAResult,
   batterName: string,
@@ -298,10 +328,7 @@ export function generateGameHighlights(
   }
 
   return highlights
-    .sort((left, right) =>
-      right.dramaScore - left.dramaScore
-      || right.inning - left.inning
-      || (left.halfInning === 'bottom' ? 1 : 0) - (right.halfInning === 'bottom' ? 1 : 0))
+    .sort(compareHighlights)
     .slice(0, 5);
 }
 
@@ -317,7 +344,7 @@ export function generateGameRecap(
 
   const topHighlight = highlights[0] ? firstSentence(highlights[0].text) : `The game turns on ${scoreSentence}`;
   const batterLines = buildBatterLines(boxScore.paResults)
-    .sort((left, right) => right.rbi - left.rbi || right.hr - left.hr || right.hits - left.hits);
+    .sort(compareBatterLines);
   const topBatter = batterLines[0] ?? null;
   const topBatterName = topBatter ? (playerNames.get(topBatter.batterId) ?? topBatter.batterId) : null;
   const winningPitcherName = boxScore.winningPitcherId ? (playerNames.get(boxScore.winningPitcherId) ?? boxScore.winningPitcherId) : null;

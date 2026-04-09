@@ -261,6 +261,17 @@ describe('buildMultiScoutConsensus', () => {
 
     expect(consensus.outlierScoutIds.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('sorts outlier scout ids deterministically', () => {
+    const consensus = buildMultiScoutConsensus([
+      makeObservation({ scoutId: 'scout-c', observedRating: 60 }),
+      makeObservation({ scoutId: 'scout-b', observedRating: 88 }),
+      makeObservation({ scoutId: 'scout-a', observedRating: 34 }),
+      makeObservation({ scoutId: 'scout-d', observedRating: 59 }),
+    ]);
+
+    expect(consensus.outlierScoutIds).toEqual(['scout-a', 'scout-b']);
+  });
 });
 
 describe('calculateScoutAccuracy', () => {

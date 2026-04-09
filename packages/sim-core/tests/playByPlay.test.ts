@@ -252,6 +252,42 @@ describe('play-by-play narrative engine', () => {
     expect(sentenceCount).toBeLessThanOrEqual(3);
   });
 
+  it('chooses a tied top batter deterministically regardless of plate appearance order', () => {
+    const firstOrder = buildBoxScore([
+      buildPAResult({
+        batterId: 'batter-b',
+        pitcherId: 'pitcher-1',
+        outcome: 'SINGLE',
+        inning: 2,
+        rbiOnPlay: 1,
+      }),
+      buildPAResult({
+        batterId: 'batter-a',
+        pitcherId: 'pitcher-1',
+        outcome: 'SINGLE',
+        inning: 3,
+        rbiOnPlay: 1,
+      }),
+    ]);
+    const secondOrder = buildBoxScore([...firstOrder.paResults].reverse());
+    const playerNames = new Map<string, string>([
+      ['batter-a', 'Aaron Ace'],
+      ['batter-b', 'Bruno Bat'],
+      ['pitcher-1', 'Cal Mound'],
+    ]);
+    const teamNames = new Map<string, string>([
+      ['nym', 'Tycoons'],
+      ['bos', 'Noreasters'],
+    ]);
+
+    const firstRecap = generateGameRecap(firstOrder, [], playerNames, teamNames);
+    const secondRecap = generateGameRecap(secondOrder, [], playerNames, teamNames);
+
+    expect(firstRecap).toContain('Aaron Ace');
+    expect(secondRecap).toContain('Aaron Ace');
+    expect(firstRecap).toBe(secondRecap);
+  });
+
   it('handles extra-inning games', () => {
     const boxScore = buildBoxScore([
       buildPAResult({

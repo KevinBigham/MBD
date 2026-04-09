@@ -64,4 +64,43 @@ describe('StandingsTracker', () => {
     expect(restored.getRecord('nym')!.wins).toBe(1);
     expect(restored.getRecord('bos')!.wins).toBe(1);
   });
+
+  it('returns a serialized snapshot instead of leaking live record references', () => {
+    const tracker = new StandingsTracker(['nym', 'bos']);
+    tracker.recordGame('nym', 'bos', 5, 3, false);
+
+    const serialized = tracker.serialize();
+    serialized[0]!.wins = 99;
+
+    expect(tracker.getRecord(serialized[0]!.teamId)!.wins).toBe(1);
+  });
+
+  it('orders tied division teams deterministically after deserialization', () => {
+    const tracker = StandingsTracker.deserialize([
+      {
+        teamId: 'bos',
+        wins: 10,
+        losses: 10,
+        runsScored: 80,
+        runsAllowed: 80,
+        streak: 1,
+        last10: [5, 5],
+        divisionWins: 4,
+        divisionLosses: 4,
+      },
+      {
+        teamId: 'bal',
+        wins: 10,
+        losses: 10,
+        runsScored: 80,
+        runsAllowed: 80,
+        streak: -1,
+        last10: [5, 5],
+        divisionWins: 4,
+        divisionLosses: 4,
+      },
+    ]);
+
+    expect(tracker.getDivisionStandings('AL_EAST').map((entry) => entry.teamId)).toEqual(['bal', 'bos']);
+  });
 });

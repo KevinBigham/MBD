@@ -302,7 +302,7 @@ function boxScoreRetentionFloor(day: number): number {
 }
 
 function buildDailyMatchups(teamIds: string[], day: number, level: AffiliateLevel): Array<[string, string]> {
-  const ordered = [...teamIds].sort();
+  const ordered = [...teamIds].sort((left, right) => left.localeCompare(right));
   if (ordered.length < 2 || ordered.length % 2 !== 0) {
     return [];
   }
@@ -336,7 +336,7 @@ function ensureAffiliateStates(
 
   const existingKeys = new Set(state.affiliateStates.map((entry) => affiliateStateKey(entry.teamId, entry.level)));
   const nextStates = [...state.affiliateStates];
-  for (const teamId of [...teamIds].sort()) {
+  for (const teamId of [...teamIds].sort((left, right) => left.localeCompare(right))) {
     for (const level of AFFILIATE_LEVELS) {
       const key = affiliateStateKey(teamId, level);
       if (existingKeys.has(key)) continue;
@@ -427,7 +427,7 @@ function simulatePitcherGame(
 
 export function createMinorLeagueState(teamIds: string[], season: number): MinorLeagueState {
   const affiliateStates: AffiliateState[] = [];
-  for (const teamId of [...teamIds].sort()) {
+  for (const teamId of [...teamIds].sort((left, right) => left.localeCompare(right))) {
     for (const level of AFFILIATE_LEVELS) {
       affiliateStates.push({
         teamId,

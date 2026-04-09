@@ -336,4 +336,40 @@ describe('breakouts', () => {
     expect(breakouts[0]?.playerId).toBe(before.id);
     expect(breakouts[0]?.delta).toBeGreaterThanOrEqual(30);
   });
+
+  it('orders tied breakout candidates deterministically regardless of input order', () => {
+    const firstBefore = {
+      ...makePlayer(61, 'nym', 'SS'),
+      id: 'breakout-alpha',
+      developmentPhase: 'Prospect',
+    };
+    const secondBefore = {
+      ...makePlayer(62, 'bos', 'CF'),
+      id: 'breakout-beta',
+      developmentPhase: 'Prospect',
+    };
+    const firstAfter = {
+      ...firstBefore,
+      age: firstBefore.age + 1,
+      overallRating: firstBefore.overallRating + 32,
+    };
+    const secondAfter = {
+      ...secondBefore,
+      age: secondBefore.age + 1,
+      overallRating: secondBefore.overallRating + 32,
+    };
+
+    const forward = detectProspectBreakouts(
+      [firstBefore, secondBefore],
+      [firstAfter, secondAfter],
+      'S2D1',
+    );
+    const reversed = detectProspectBreakouts(
+      [firstBefore, secondBefore],
+      [secondAfter, firstAfter],
+      'S2D1',
+    );
+
+    expect(forward.map((entry) => entry.playerId)).toEqual(reversed.map((entry) => entry.playerId));
+  });
 });

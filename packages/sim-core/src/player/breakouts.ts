@@ -35,5 +35,8 @@ export function detectProspectBreakouts(
     }
   }
 
-  return results.sort((a, b) => b.delta - a.delta);
+  return results.sort((left, right) =>
+    right.delta - left.delta
+    || left.playerId.localeCompare(right.playerId),
+  );
 }

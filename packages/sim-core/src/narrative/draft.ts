@@ -363,7 +363,8 @@ export function generateDraftBuzz(
     const bucket = pick.position === 'SP' || pick.position === 'RP' ? 'pitching' : 'bats';
     positionCounts.set(bucket, (positionCounts.get(bucket) ?? 0) + 1);
   }
-  const recentRun = [...positionCounts.entries()].sort((left, right) => right[1] - left[1])[0] ?? null;
+  const recentRun = [...positionCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0] ?? null;
   if (recentRun) {
     items.push({
       id: `run-${recentRun[0]}`,

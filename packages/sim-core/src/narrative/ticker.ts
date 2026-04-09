@@ -295,6 +295,8 @@ export function pruneTickerFeed(
 ): TickerEntry[] {
   return feed
     .filter((entry) => entry.expiresDay >= currentAbsoluteDay)
-    .sort((left, right) => parseTimestampRank(right.timestamp) - parseTimestampRank(left.timestamp))
+    .sort((left, right) =>
+      parseTimestampRank(right.timestamp) - parseTimestampRank(left.timestamp)
+      || left.id.localeCompare(right.id))
     .slice(0, maxEntries);
 }

@@ -147,6 +147,34 @@ describe('playoff bracket state', () => {
     expect(updatedSeries.status).toBe('in_progress');
   });
 
+  it('awards a depleted-roster forfeit to the team that can still field a lineup', () => {
+    const rng = new GameRNG(29);
+    const players = generateLeaguePlayers(rng.fork(), [
+      'nym', 'bal', 'bos', 'wsh', 'phi',
+      'cle', 'det', 'chi', 'col', 'pit',
+      'kc', 'msp', 'stl', 'ind', 'mil', 'nas',
+      'atl', 'cha', 'orl', 'ral', 'mia',
+      'hou', 'dal', 'sat', 'den', 'aus',
+      'lax', 'sdg', 'phx', 'sea', 'sfb', 'por',
+    ]);
+    const bracket = initializePlayoffBracket(standingsFixture(), rng.fork());
+    const series = bracket.currentRoundSeries[0]!;
+    const strippedPlayers = players.filter((player) =>
+      !(player.teamId === series.higherSeed.teamId
+        && player.rosterStatus === 'MLB'
+        && player.pitcherAttributes == null),
+    );
+
+    const forfeitedSeries = simPlayoffGame(series, strippedPlayers, rng.fork());
+
+    expect(forfeitedSeries.status).toBe('complete');
+    expect(forfeitedSeries.winnerId).toBe(series.lowerSeed.teamId);
+    expect(forfeitedSeries.loserId).toBe(series.higherSeed.teamId);
+    expect(forfeitedSeries.lowerSeedWins).toBe(2);
+    expect(forfeitedSeries.higherSeedWins).toBe(0);
+    expect(forfeitedSeries.leaderSummary).toContain('won 2-0');
+  });
+
   it('advances rounds, preserves completed-series history, and finishes the bracket', () => {
     const rng = new GameRNG(31);
     const players = generateLeaguePlayers(rng.fork(), [

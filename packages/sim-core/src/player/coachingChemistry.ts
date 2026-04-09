@@ -145,11 +145,11 @@ function isHittingRole(role: Coach['role']): boolean {
 }
 
 function pairKey(left: string, right: string): string {
-  return [left, right].sort().join(':');
+  return [left, right].sort((first, second) => first.localeCompare(second)).join(':');
 }
 
 function traitConflictKey(left: string, right: string): string {
-  return [left, right].sort().join(':');
+  return [left, right].sort((first, second) => first.localeCompare(second)).join(':');
 }
 
 function coachTraits(coach: Coach): string[] {
