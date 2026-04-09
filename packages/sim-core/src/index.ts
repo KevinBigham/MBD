@@ -172,6 +172,24 @@ export type {
   MentorshipPairing,
   MentorshipEvent,
 } from './player/index.js';
+export {
+  calculateBreakoutProbability,
+  classifyDevelopmentTrajectory,
+  detectRegressionRisk,
+  generateBreakoutScoutReport,
+  predictProspectCeiling,
+} from './player/breakoutEngine.js';
+export type {
+  BreakoutAssessment,
+  BreakoutDevelopmentTrajectory,
+  BreakoutFactor,
+  BreakoutRiskLevel,
+  BreakoutSeasonHistoryEntry,
+  CeilingConfidenceLevel,
+  CeilingProjection,
+  RegressionAssessment,
+  RegressionRiskLevel,
+} from './player/breakoutEngine.js';
 
 // League
 export {
@@ -341,6 +359,20 @@ export type {
   PlayoffRound,
   PlayoffBracket,
 } from './sim/index.js';
+export {
+  buildPlayoffGameModifiers,
+  calculateHomeFieldAdvantage,
+  calculateMustWinPressure,
+  calculatePitcherFatigue,
+  calculateStreakMomentum,
+  generateMomentumNarrative,
+} from './sim/playoffMomentum.js';
+export type {
+  FatigueResult,
+  GameModifiers,
+  PlayoffGameContext,
+  PressureModifier,
+} from './sim/playoffMomentum.js';
 
 // Player Development
 export {
@@ -450,6 +482,25 @@ export type {
   InternationalScoutingState,
   SignIFAProspectResult,
 } from './scouting/index.js';
+export {
+  buildMultiScoutConsensus,
+  calculateScoutAccuracy,
+  estimateAttributeWithUncertainty,
+  generateScoutLearningEvent,
+  updateScoutConfidence,
+} from './scouting/scoutLearning.js';
+export type {
+  ActualOutcome,
+  AttributeEstimate,
+  ConsensusAgreementLevel,
+  ConsensusReport,
+  ScoutAccuracyProfile,
+  ScoutBiasDirection,
+  ScoutLearningEvent,
+  ScoutObservation,
+  ScoutPrediction,
+  ScoutProfile,
+} from './scouting/scoutLearning.js';
 
 // Draft
 export {
@@ -514,6 +565,28 @@ export type {
   BiddingWar,
   BuzzerBeaterResult,
 } from './trade/index.js';
+export {
+  detectTradeCascades,
+  evaluateCondition,
+  evaluateMultiTeamFairness,
+  generateConditionalClause,
+  generateMultiTeamTradeNarrative,
+  proposeMultiTeamTrade,
+} from './trade/multiTeamTrade.js';
+export type {
+  CascadeEvent,
+  CompletedTrade,
+  ConditionOutcome,
+  ConditionalContext,
+  FairnessAssessment,
+  MultiTeamProposal,
+  MultiTeamTradeResult,
+  PendingTrade,
+  TradeCondition,
+  TradeConditionType,
+  TradeParticipant,
+  TradeParticipantRole,
+} from './trade/multiTeamTrade.js';
 
 // Roster Management
 export {
