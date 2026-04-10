@@ -20,7 +20,37 @@ export const FranchiseOnboardingSchema = z.object({
 });
 export type FranchiseOnboarding = z.infer<typeof FranchiseOnboardingSchema>;
 
-export const FranchiseStateSchema = z.object({
+export const AGMCandidateIdEnum = z.enum([
+  "marcus_chen",
+  "elena_vargas",
+  "walt_kowalski",
+]);
+export type AGMCandidateId = z.infer<typeof AGMCandidateIdEnum>;
+
+export const GMPhilosophySchema = z.object({
+  developmentStyle: z.enum(["aggressive", "patient", "balanced"]),
+  spendingStyle: z.enum(["big_spender", "penny_pincher", "balanced"]),
+  tradeApproach: z.enum(["buyer", "seller", "opportunistic"]),
+  scoutingFocus: z.enum(["draft", "international", "pro_scouting"]),
+  seasonGoal: z.enum(["championship", "playoff", "rebuild", "compete"]),
+  mediaTone: z.enum(["confident", "humble", "measured"]),
+});
+export type GMPhilosophy = z.infer<typeof GMPhilosophySchema>;
+
+export const ScoutingDirectorSnapshotSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  age: z.number().int().min(18).max(90),
+  experience: z.number().int().min(0).max(80),
+  specialty: GMPhilosophySchema.shape.scoutingFocus,
+  networkStrength: z.number().int().min(40).max(80),
+  evaluationAccuracy: z.number().int().min(40).max(80),
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.string()),
+});
+export type ScoutingDirectorSnapshot = z.infer<typeof ScoutingDirectorSnapshotSchema>;
+
+export const FranchiseStateV15Schema = z.object({
   gmName: z.string().min(1),
   difficulty: DifficultyEnum,
   playMode: PlayModeEnum.default("standard"),
@@ -33,6 +63,13 @@ export const FranchiseStateSchema = z.object({
   endedAt: z.string().nullable().optional(),
   endReason: z.string().nullable().optional(),
   onboarding: FranchiseOnboardingSchema,
+});
+export type FranchiseStateV15 = z.infer<typeof FranchiseStateV15Schema>;
+
+export const FranchiseStateSchema = FranchiseStateV15Schema.extend({
+  assistantGMId: AGMCandidateIdEnum.nullable().default(null),
+  gmPhilosophy: GMPhilosophySchema.nullable().default(null),
+  scoutingDirector: ScoutingDirectorSnapshotSchema.nullable().default(null),
 });
 export type FranchiseState = z.infer<typeof FranchiseStateSchema>;
 

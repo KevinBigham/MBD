@@ -333,6 +333,8 @@ describe('PlayerProfilePage', () => {
       promotePlayer: vi.fn().mockResolvedValue({ success: true }),
       demotePlayer: vi.fn().mockResolvedValue({ success: true }),
       designateForAssignment: vi.fn().mockResolvedValue({ success: true }),
+      getSeasonProjections: vi.fn().mockResolvedValue(null),
+      getPlayerSimilarity: vi.fn().mockResolvedValue(null),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {

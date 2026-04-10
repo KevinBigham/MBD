@@ -98,6 +98,12 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
     return 'game-engine-vendor';
   }
 
+  // Onboarding modules are only loaded during the Day 1 flow. Split them
+  // into their own chunk so the engine-core bundle stays under budget.
+  if (includesPath(normalized, '/packages/sim-core/src/onboarding/')) {
+    return 'game-engine-onboarding';
+  }
+
   if (includesPath(normalized, '/packages/sim-core/src/')) {
     return 'game-engine-core';
   }

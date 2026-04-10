@@ -143,10 +143,16 @@ import {
   getAdvancedStatsForPlayer,
 } from './sim.worker.stats.js';
 import {
+  applyScoutingHire,
+  applyStaffHires,
+  completeRevisedOnboarding,
+  getAGMCandidates,
   getOnboardingData,
+  getRevisedOnboardingData,
   completeOnboarding,
 } from './sim.worker.onboarding.js';
 import type { GMPhilosophy } from '@mbd/sim-core';
+import type { AGMCandidateId, OnboardingResult, StaffHireChoices } from '@mbd/sim-core';
 import {
   getActiveDevelopmentSetbackView,
   getMinorLeagueProgressionView,
@@ -2776,5 +2782,25 @@ export const queryApi = {
 
   completeOnboarding(philosophy: GMPhilosophy) {
     completeOnboarding(philosophy);
+  },
+
+  getAGMCandidates() {
+    return getAGMCandidates();
+  },
+
+  getRevisedOnboardingData(agmId: AGMCandidateId) {
+    return getRevisedOnboardingData(agmId);
+  },
+
+  applyStaffHires(hires: StaffHireChoices) {
+    return applyStaffHires(hires);
+  },
+
+  applyScoutingHire(scoutingDirectorId: string) {
+    return applyScoutingHire(scoutingDirectorId);
+  },
+
+  completeRevisedOnboarding(result: OnboardingResult) {
+    return completeRevisedOnboarding(result);
   },
 };

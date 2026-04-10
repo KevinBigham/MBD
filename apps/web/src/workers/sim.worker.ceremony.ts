@@ -54,6 +54,9 @@ export function createDefaultFranchiseState(
       welcomeBriefingSeen: true,
       firstMonthlyPulseSeen: true,
     },
+    assistantGMId: overrides.assistantGMId ?? null,
+    gmPhilosophy: overrides.gmPhilosophy ?? null,
+    scoutingDirector: overrides.scoutingDirector ?? null,
   };
 }
 

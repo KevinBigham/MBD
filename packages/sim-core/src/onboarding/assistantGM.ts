@@ -2,6 +2,8 @@ import type { GameRNG } from '../math/prng.js';
 import type { GMPhilosophy } from './flowEngine.js';
 import { pickTemplate } from './shared.js';
 
+export const ONBOARDING_MODE: 'selection' | 'procedural' = 'selection';
+
 export type AssistantGMBackground =
   | 'former_player'
   | 'career_scout'
