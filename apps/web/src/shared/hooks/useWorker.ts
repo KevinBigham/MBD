@@ -85,6 +85,9 @@ const mutationMethods = new Set<WorkerMethodName>([
   'passRule5Pick',
   'resolveRule5OfferBack',
   'completeOnboarding',
+  'applyStaffHires',
+  'applyScoutingHire',
+  'completeRevisedOnboarding',
 ]);
 
 function notifyListeners() {
@@ -770,11 +773,34 @@ export function useWorker() {
   );
   const getPlayoffMomentum = useCallback(async () => api.getPlayoffMomentum(), [api]);
 
-  // Onboarding
+  // Onboarding (legacy procedural flow)
   const getOnboardingData = useCallback(async () => api.getOnboardingData(), [api]);
   const completeOnboarding = useCallback(
     async (philosophy: Parameters<typeof api.completeOnboarding>[0]) =>
       runMutation(() => api.completeOnboarding(philosophy)),
+    [api, runMutation],
+  );
+
+  // Onboarding (revised "Day 1" flow with fixed AGM candidates)
+  const getAGMCandidates = useCallback(async () => api.getAGMCandidates(), [api]);
+  const getRevisedOnboardingData = useCallback(
+    async (agmId: Parameters<typeof api.getRevisedOnboardingData>[0]) =>
+      api.getRevisedOnboardingData(agmId),
+    [api],
+  );
+  const applyStaffHires = useCallback(
+    async (hires: Parameters<typeof api.applyStaffHires>[0]) =>
+      runMutation(() => api.applyStaffHires(hires)),
+    [api, runMutation],
+  );
+  const applyScoutingHire = useCallback(
+    async (scoutingDirectorId: Parameters<typeof api.applyScoutingHire>[0]) =>
+      runMutation(() => api.applyScoutingHire(scoutingDirectorId)),
+    [api, runMutation],
+  );
+  const completeRevisedOnboarding = useCallback(
+    async (result: Parameters<typeof api.completeRevisedOnboarding>[0]) =>
+      runMutation(() => api.completeRevisedOnboarding(result)),
     [api, runMutation],
   );
 
@@ -807,6 +833,7 @@ export function useWorker() {
     getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
     getBreakoutIntelligence, getProspectBreakoutWatch, getScoutConsensus, getPlayoffMomentum,
     getOnboardingData, completeOnboarding,
+    getAGMCandidates, getRevisedOnboardingData, applyStaffHires, applyScoutingHire, completeRevisedOnboarding,
     subscribeToFlowUpdates,
     restartWorker,
     workerStatus: currentWorkerStatus,

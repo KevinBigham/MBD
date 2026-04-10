@@ -4,26 +4,38 @@
  * the full onboarding script with AGM dialogue.
  */
 import {
+  AGM_CANDIDATES,
   GameRNG,
   LUXURY_TAX_THRESHOLD,
   TEAM_MARKETS,
   TEAMS,
+  applyScoutingHire as applyScoutingHireCore,
+  applyStaffHires as applyStaffHiresCore,
   assessFarmSystem,
   assessRoster,
   evaluateCoachingStaff,
   generateFinancialPlaybook,
   generateFullOnboardingScript,
   generateOnboardingPressConference,
+  generateRevisedOnboardingScript,
+  generateScoutingHiringSlate,
+  generateStaffHiringSlate,
   generateOwnerMeeting,
   generateScoutingBriefing,
   generateSeasonStrategy,
-  getTeamBudget,
   getTeamById,
 } from '@mbd/sim-core';
 import type {
+  AGMCandidate,
+  AGMCandidateId,
   AllChapterData,
   GMPhilosophy,
   OnboardingScript,
+  OnboardingResult,
+  RevisedOnboardingScript,
+  ScoutingHiringSlate,
+  StaffHireChoices,
+  StaffHiringSlate,
 } from '@mbd/sim-core';
 import {
   createStableWorkerRng,
@@ -39,6 +51,28 @@ export interface OnboardingData {
   script: OnboardingScript;
   chapterData: AllChapterData;
 }
+
+export interface RevisedOnboardingData {
+  script: RevisedOnboardingScript;
+  chapterData: AllChapterData;
+  staffSlate: StaffHiringSlate;
+  scoutingSlate: ScoutingHiringSlate;
+}
+
+interface RevisedOnboardingDraft {
+  agmId: AGMCandidateId;
+  staffSlate: StaffHiringSlate;
+  scoutingSlate: ScoutingHiringSlate;
+  stagedStaffHires: StaffHireChoices | null;
+  stagedScoutingHire: string | null;
+}
+
+interface WorkerMutationResult {
+  success: boolean;
+  flowStateChanged: boolean;
+}
+
+let revisedOnboardingDraft: RevisedOnboardingDraft | null = null;
 
 // ---------------------------------------------------------------------------
 // Assessment data assembly
@@ -142,6 +176,37 @@ function buildAllChapterData(rng: GameRNG): AllChapterData {
   return { owner, roster, farm, staff, financial, scouting, strategy, press };
 }
 
+function buildHiringContext() {
+  const s = requireState();
+  const team = getTeamById(s.userTeamId);
+
+  return {
+    teamId: s.userTeamId,
+    teamName: team ? `${team.city} ${team.name}` : s.userTeamId.toUpperCase(),
+    coachingStaff: s.coachingStaffs.get(s.userTeamId) ?? [],
+    scoutingStaff: s.scoutingStaffs.get(s.userTeamId) ?? [],
+  };
+}
+
+function defaultPhilosophy(chapterData: AllChapterData): GMPhilosophy {
+  return {
+    seasonGoal: chapterData.strategy.recommendedSeasonGoal,
+    developmentStyle: 'balanced',
+    spendingStyle: 'balanced',
+    tradeApproach: chapterData.strategy.recommendedTradeApproach,
+    scoutingFocus: 'draft',
+    mediaTone: 'measured',
+  };
+}
+
+function requireRevisedDraft(): RevisedOnboardingDraft {
+  if (revisedOnboardingDraft == null) {
+    throw new Error('Revised onboarding has not been initialized.');
+  }
+
+  return revisedOnboardingDraft;
+}
+
 // ---------------------------------------------------------------------------
 // Public queries
 // ---------------------------------------------------------------------------
@@ -150,18 +215,7 @@ export function getOnboardingData(): OnboardingData {
   const s = requireState();
   const rng = createStableWorkerRng(s, 'onboarding-wizard');
   const chapterData = buildAllChapterData(rng.fork());
-
-  // Build default (balanced) philosophy for script generation.
-  // The actual choices come from the UI; the script pre-generates
-  // reactions for ALL possible choices per chapter.
-  const defaultPhilosophy: GMPhilosophy = {
-    seasonGoal: chapterData.strategy.recommendedSeasonGoal,
-    developmentStyle: 'balanced',
-    spendingStyle: 'balanced',
-    tradeApproach: chapterData.strategy.recommendedTradeApproach,
-    scoutingFocus: 'draft',
-    mediaTone: 'measured',
-  };
+  const scriptPhilosophy = defaultPhilosophy(chapterData);
 
   const team = getTeamById(s.userTeamId);
   const teamName = team ? `${team.city} ${team.name}` : s.userTeamId.toUpperCase();
@@ -171,19 +225,104 @@ export function getOnboardingData(): OnboardingData {
     teamName,
     teamId: s.userTeamId,
     allChapterData: chapterData,
-    philosophy: defaultPhilosophy,
+    philosophy: scriptPhilosophy,
   });
 
   return { script, chapterData };
 }
 
+export function getAGMCandidates(): AGMCandidate[] {
+  return AGM_CANDIDATES.map((candidate) => ({ ...candidate }));
+}
+
+export function getRevisedOnboardingData(agmId: AGMCandidateId): RevisedOnboardingData {
+  const s = requireState();
+  const rng = createStableWorkerRng(s, `onboarding-revised-${agmId}`);
+  const chapterData = buildAllChapterData(rng.fork());
+  const hiringContext = buildHiringContext();
+  const staffSlate = generateStaffHiringSlate(hiringContext, rng.fork());
+  const scoutingSlate = generateScoutingHiringSlate(hiringContext, rng.fork());
+  const team = getTeamById(s.userTeamId);
+  const teamName = team ? `${team.city} ${team.name}` : s.userTeamId.toUpperCase();
+
+  revisedOnboardingDraft = {
+    agmId,
+    staffSlate,
+    scoutingSlate,
+    stagedStaffHires: null,
+    stagedScoutingHire: null,
+  };
+
+  return {
+    script: generateRevisedOnboardingScript(rng.fork(), {
+      selectedAGM: AGM_CANDIDATES.find((candidate) => candidate.id === agmId)!,
+      gmName: s.franchise.gmName,
+      teamName,
+      allChapterData: chapterData,
+      staffSlate,
+      scoutingSlate,
+      philosophy: defaultPhilosophy(chapterData),
+    }),
+    chapterData,
+    staffSlate,
+    scoutingSlate,
+  };
+}
+
+export function applyStaffHires(hires: StaffHireChoices): WorkerMutationResult {
+  const draft = requireRevisedDraft();
+  applyStaffHiresCore(buildHiringContext(), draft.staffSlate, hires);
+  revisedOnboardingDraft = {
+    ...draft,
+    stagedStaffHires: { ...hires },
+  };
+  return { success: true, flowStateChanged: false };
+}
+
+export function applyScoutingHire(scoutingDirectorId: string): WorkerMutationResult {
+  const draft = requireRevisedDraft();
+  applyScoutingHireCore(buildHiringContext(), draft.scoutingSlate, scoutingDirectorId);
+  revisedOnboardingDraft = {
+    ...draft,
+    stagedScoutingHire: scoutingDirectorId,
+  };
+  return { success: true, flowStateChanged: false };
+}
+
 export function completeOnboarding(philosophy: GMPhilosophy): void {
   const s = requireState();
-  // Store philosophy on franchise state for downstream systems
-  (s.franchise as Record<string, unknown>).gmPhilosophy = philosophy;
-  // Mark onboarding as complete
+  s.franchise.gmPhilosophy = philosophy;
   s.franchise.onboarding = {
     ...s.franchise.onboarding,
     welcomeBriefingSeen: true,
   };
+}
+
+export function completeRevisedOnboarding(result: OnboardingResult): WorkerMutationResult {
+  const s = requireState();
+  const draft = requireRevisedDraft();
+  const hires = draft.stagedStaffHires ?? result.staffHires;
+  const scoutingDirectorId = draft.stagedScoutingHire ?? result.scoutingHire;
+
+  if (result.selectedAGMId !== draft.agmId) {
+    throw new Error('Selected AGM does not match the initialized onboarding draft.');
+  }
+
+  const appliedStaff = applyStaffHiresCore(buildHiringContext(), draft.staffSlate, hires);
+  const appliedScouting = applyScoutingHireCore(buildHiringContext(), draft.scoutingSlate, scoutingDirectorId);
+
+  s.coachingStaffs.set(s.userTeamId, appliedStaff.coachingStaff);
+  s.franchise.assistantGMId = result.selectedAGMId;
+  s.franchise.scoutingDirector = appliedScouting.scoutingDirector;
+  s.franchise.gmPhilosophy = {
+    ...result.gmPhilosophy,
+    scoutingFocus: appliedScouting.scoutingFocus,
+  };
+  s.franchise.onboarding = {
+    ...s.franchise.onboarding,
+    welcomeBriefingSeen: true,
+  };
+  revisedOnboardingDraft = null;
+
+  return { success: true, flowStateChanged: true };
 }
