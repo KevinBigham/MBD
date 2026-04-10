@@ -469,7 +469,7 @@ describe('SetupPage', () => {
     });
     expect(mockedSaveGame).toHaveBeenCalledWith(2, expect.stringContaining('Alex Rivera'), expect.any(Object));
     expect(storeMock.initializeGame).toHaveBeenCalled();
-    expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
+    expect(mockedNavigate).toHaveBeenCalledWith('/onboarding');
   });
 
   it('continues and deletes existing saves from the save hub', async () => {
