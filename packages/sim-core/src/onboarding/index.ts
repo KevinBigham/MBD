@@ -1,15 +1,36 @@
 export {
   CHAPTER_ORDER,
   ONBOARDING_CHAPTER_IDS,
+  REVISED_CHAPTER_ORDER,
   advanceChapter,
+  advanceRevisedChapter,
   completeChapter,
   createOnboardingState,
+  createRevisedOnboardingState,
   getChapterProgress,
   getCurrentChapter,
   getGMPhilosophy,
+  getOnboardingResult,
   isOnboardingComplete,
+  selectAGMInFlow,
+  setPhilosophyChoiceInFlow,
+  setScoutingHireInFlow,
+  setStaffHiresInFlow,
 } from './flowEngine.js';
 export {
+  AGM_CANDIDATES,
+  selectAGM,
+  toAssistantGMProfile,
+} from './agmCandidates.js';
+export {
+  applyScoutingHire,
+  applyStaffHires,
+  generateScoutingHiringSlate,
+  generateStaffHiringSlate,
+  getManagerStyleModifier,
+} from './staffHiring.js';
+export {
+  ONBOARDING_MODE,
   generateAssistantGM,
   generateFarewell,
   generateGreeting,
@@ -45,6 +66,7 @@ export {
 export {
   generateChapterScript,
   generateFullOnboardingScript,
+  generateRevisedOnboardingScript,
 } from './scriptOrchestrator.js';
 export {
   generateBudgetOverview,
@@ -89,6 +111,27 @@ export {
   profileKeyCoaches,
 } from './staffEvaluation.js';
 export type {
+  AGMCandidate,
+  AGMCandidateId,
+  AGMBackground,
+  AGMPhilosophy,
+  AGMPersonality,
+  VoiceStyle,
+} from './agmCandidates.js';
+export type {
+  AppliedScoutingHire,
+  AppliedStaffHires,
+  ManagerStyle,
+  ManagerStyleModifier,
+  OnboardingTeamContext,
+  PersistedScoutingDirector,
+  ScoutingDirectorCandidate,
+  ScoutingHiringSlate,
+  StaffCandidate,
+  StaffHireChoices,
+  StaffHiringSlate,
+} from './staffHiring.js';
+export type {
   AssistantGMBackground,
   AssistantGMPersonality,
   AssistantGMProfile,
@@ -112,18 +155,26 @@ export type {
   ChoiceReaction,
 } from './choiceReactions.js';
 export type {
+  AGMStaffOpinion,
   ChapterScript,
   OnboardingScript,
   OnboardingScriptContext,
+  RevisedChapterScript,
+  RevisedOnboardingScript,
+  RevisedOnboardingScriptContext,
 } from './scriptOrchestrator.js';
 export type {
   ChapterChoiceValue,
   ChapterChoices,
   ChapterProgress,
   GMPhilosophy,
+  OnboardingFlowState,
+  OnboardingResult,
   OnboardingChapter,
   OnboardingChapterConfig,
   OnboardingState,
+  RevisedChapterConfig,
+  RevisedChapterId,
 } from './flowEngine.js';
 export type {
   BudgetOverview,

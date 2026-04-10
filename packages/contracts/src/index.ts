@@ -317,7 +317,11 @@ export type {
 export {
   DifficultyEnum,
   PlayModeEnum,
+  AGMCandidateIdEnum,
   FranchiseOnboardingSchema,
+  GMPhilosophySchema,
+  ScoutingDirectorSnapshotSchema,
+  FranchiseStateV15Schema,
   FranchiseStateSchema,
   CeremonySoundEffectEnum,
   CeremonyMomentTypeEnum,
@@ -331,7 +335,11 @@ export {
 export type {
   Difficulty,
   PlayMode,
+  AGMCandidateId,
   FranchiseOnboarding,
+  GMPhilosophy,
+  ScoutingDirectorSnapshot,
+  FranchiseStateV15,
   FranchiseState,
   CeremonySoundEffect,
   CeremonyMomentType,

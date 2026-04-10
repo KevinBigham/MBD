@@ -54,6 +54,7 @@ import { TradeStateSchema } from "./trade.js";
 import {
   AchievementStateSchema,
   CeremonyStateSchema,
+  FranchiseStateV15Schema,
   FranchiseStateSchema,
 } from "./franchise.js";
 import {
@@ -460,7 +461,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 15;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 16;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -520,6 +521,12 @@ export const GameSnapshotV14Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(14),
 });
 export type GameSnapshotV14 = z.infer<typeof GameSnapshotV14Schema>;
+
+export const GameSnapshotV15Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(15),
+  franchise: FranchiseStateV15Schema,
+});
+export type GameSnapshotV15 = z.infer<typeof GameSnapshotV15Schema>;
 
 export const GameSnapshotV11Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(11),
@@ -876,6 +883,9 @@ function createDefaultFranchiseState(userTeamId: string, season: number, day: nu
       welcomeBriefingSeen: true,
       firstMonthlyPulseSeen: true,
     },
+    assistantGMId: null,
+    gmPhilosophy: null,
+    scoutingDirector: null,
   };
 }
 
@@ -2192,6 +2202,27 @@ function migrateGameSnapshotV14(snapshot: GameSnapshotV14): GameSnapshot {
   });
 }
 
+function migrateGameSnapshotV15(snapshot: GameSnapshotV15): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    franchise: {
+      ...snapshot.franchise,
+      assistantGMId: null,
+      gmPhilosophy: null,
+      scoutingDirector: null,
+    },
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -2218,6 +2249,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 15
+  ) {
+    return migrateGameSnapshotV15(GameSnapshotV15Schema.parse(snapshotLike));
   }
 
   if (
