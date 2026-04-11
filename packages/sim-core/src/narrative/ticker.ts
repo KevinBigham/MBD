@@ -97,6 +97,7 @@ function defaultExpiryDay(category: TickerEntry['category'], currentAbsoluteDay:
     case 'trade':
     case 'milestone':
     case 'record':
+    case 'league_event':
       return currentAbsoluteDay + 45;
     case 'prospect':
     case 'standings':
@@ -297,6 +298,7 @@ export function pruneTickerFeed(
     .filter((entry) => entry.expiresDay >= currentAbsoluteDay)
     .sort((left, right) =>
       parseTimestampRank(right.timestamp) - parseTimestampRank(left.timestamp)
+      || right.priority - left.priority
       || left.id.localeCompare(right.id))
     .slice(0, maxEntries);
 }

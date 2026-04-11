@@ -1,8 +1,6 @@
 import { Badge, Card, CardContent, CardHeader, CardTitle, StatLine } from '@mbd/ui';
 import type { PlayerProfileView } from './playerProfileShared';
 import {
-  badgeVariantForStoryPhase,
-  labelize,
   moneyLabel,
 } from './playerProfileShared';
 
@@ -44,60 +42,6 @@ export default function HistoryTab({
               <div className="flex flex-wrap gap-2">
                 {player.historicalSummary.personalityTraits.map((trait) => (
                   <Badge key={trait} variant="outline">{trait}</Badge>
-                ))}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {(player.activeStory || (player.storyHistory?.length ?? 0) > 0) ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Story Arc</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {player.activeStory ? (
-              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={badgeVariantForStoryPhase(player.activeStory.phase)}>
-                    {player.activeStory.phase}
-                  </Badge>
-                  <span className="font-heading text-sm text-dynasty-text">
-                    {labelize(player.activeStory.arcType)}
-                  </span>
-                </div>
-                <div className="mt-3 font-heading text-sm text-dynasty-muted">
-                  {player.activeStory.latestMilestone ?? `${player.firstName} ${player.lastName} is building momentum.`}
-                </div>
-                <div className="mt-2 font-data text-xs text-dynasty-muted">
-                  Began S{player.activeStory.startSeason} · Day {player.activeStory.startDay}
-                </div>
-              </div>
-            ) : null}
-
-            {(player.storyHistory?.length ?? 0) > 0 ? (
-              <div className="space-y-3">
-                {(player.storyHistory ?? []).map((arc) => (
-                  <div key={`${arc.arcType}-${arc.startSeason}-${arc.startDay}`} className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-heading text-sm text-dynasty-text">{labelize(arc.arcType)}</div>
-                      <Badge variant={badgeVariantForStoryPhase(arc.phase)}>{arc.phase}</Badge>
-                    </div>
-                    <div className="mt-2 font-data text-xs text-dynasty-muted">
-                      Started S{arc.startSeason} · Day {arc.startDay}
-                      {arc.resolvedSeason != null ? ` · Resolved S${arc.resolvedSeason}` : ''}
-                    </div>
-                    {arc.milestones.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        {arc.milestones.slice(-2).map((milestone) => (
-                          <div key={milestone} className="font-heading text-sm text-dynasty-muted">
-                            {milestone}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
                 ))}
               </div>
             ) : null}

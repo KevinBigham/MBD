@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { LeagueEvent } from '@mbd/contracts';
 import { Badge } from '@mbd/ui';
-import { Activity, AlertTriangle, ArrowRight, CheckCircle, Clock, TrendingDown, TrendingUp, X } from 'lucide-react';
+import { createGameRNG, generateLeagueEventNarrative, REGULAR_SEASON_MONTHS } from '@mbd/sim-core';
+import { Activity, AlertTriangle, ArrowRight, CheckCircle, Clock, Radio, TrendingDown, TrendingUp, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
@@ -32,6 +34,33 @@ interface DecisionSpotlight {
 interface MonthlyPulseState {
   pendingReport: MonthlyReport | null;
   decisionQueue: DecisionSpotlight[];
+}
+
+const HASH_MULTIPLIER = 31;
+
+function getLeagueEventMonthLabel(month: number): string {
+  return REGULAR_SEASON_MONTHS.find((entry) => entry.month === month)?.label ?? `Month ${month}`;
+}
+
+function hashSeedSegment(seed: number, segment: string): number {
+  let nextSeed = seed;
+  for (const char of segment) {
+    nextSeed = ((nextSeed * HASH_MULTIPLIER) + char.charCodeAt(0)) >>> 0;
+  }
+  return nextSeed;
+}
+
+function createLeagueEventSeed(event: LeagueEvent): number {
+  let seed = ((event.season * 1000) + event.month) >>> 0;
+  seed = hashSeedSegment(seed, event.type);
+  seed = hashSeedSegment(seed, event.headline);
+  for (const teamId of event.teamIds) {
+    seed = hashSeedSegment(seed, teamId);
+  }
+  for (const playerId of event.playerIds) {
+    seed = hashSeedSegment(seed, playerId);
+  }
+  return seed || 1;
 }
 
 function urgencyTone(urgency: string): string {
@@ -195,18 +224,73 @@ function DecisionCard({
   );
 }
 
+function LeagueEventsSection({ events }: { events: LeagueEvent[] }) {
+  if (events.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Radio className="h-4 w-4 text-accent-info" />
+        <h2 className="font-heading text-sm text-dynasty-textBright">
+          League Events
+          <span className="ml-2 font-data text-xs text-dynasty-muted">({events.length})</span>
+        </h2>
+      </div>
+      <div className="space-y-3">
+        {events.map((event) => {
+          const narrative = generateLeagueEventNarrative(
+            createGameRNG(createLeagueEventSeed(event)),
+            event,
+          );
+          return (
+            <article
+              key={`${event.season}-${event.month}-${event.type}-${event.headline}`}
+              className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-heading text-sm text-dynasty-textBright">{event.headline}</h3>
+                  <p className="mt-1 font-data text-xs text-dynasty-muted">
+                    {getLeagueEventMonthLabel(event.month)} {event.season}
+                  </p>
+                </div>
+                <Badge className="border-accent-info/30 bg-accent-info/10 text-accent-info">
+                  {event.type.replaceAll('_', ' ')}
+                </Badge>
+              </div>
+              <p className="mt-3 font-data text-sm text-dynasty-text">{narrative}</p>
+              {event.gameplayEffect && (
+                <div className="mt-3 rounded-md border border-accent-warning/20 bg-accent-warning/5 p-3 font-data text-xs text-accent-warning">
+                  {event.gameplayEffect}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function PulsePage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
   const { isInitialized, season, day, phase } = useGameStore();
   const [pulse, setPulse] = useState<MonthlyPulseState | null>(null);
+  const [leagueEvents, setLeagueEvents] = useState<LeagueEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
     setLoading(true);
-    const data = await worker.getMonthlyPulse();
+    const [data, currentLeagueEvents] = await Promise.all([
+      worker.getMonthlyPulse(),
+      worker.getCurrentLeagueEvents(),
+    ]);
     setPulse((data ?? null) as MonthlyPulseState | null);
+    setLeagueEvents((currentLeagueEvents ?? []) as LeagueEvent[]);
     setLoading(false);
   }, [isInitialized, worker, workerReady]);
 
@@ -225,7 +309,10 @@ export default function PulsePage() {
     void fetchData();
   }, [fetchData, worker]);
 
-  const hasContent = pulse && (pulse.pendingReport || pulse.decisionQueue.length > 0);
+  const hasContent = Boolean(
+    (pulse && (pulse.pendingReport || pulse.decisionQueue.length > 0))
+    || leagueEvents.length > 0,
+  );
   const sortedDecisions = pulse?.decisionQueue
     .slice()
     .sort((a, b) => {
@@ -278,6 +365,8 @@ export default function PulsePage() {
                 ))}
               </div>
             )}
+
+            <LeagueEventsSection events={leagueEvents} />
           </div>
         )}
       </div>

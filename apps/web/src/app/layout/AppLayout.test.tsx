@@ -6,6 +6,7 @@ import { AppLayout } from './AppLayout';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { scheduleAutoSave } from '@/shared/lib/saveSystem';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 vi.mock('./Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
@@ -27,9 +28,22 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   scheduleAutoSave: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/shared/lib/audio', () => ({
+  getAudioEngine: vi.fn(),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
+const mockedGetAudioEngine = vi.mocked(getAudioEngine);
+const audioEngineMock = {
+  playEffect: vi.fn(),
+  setAmbient: vi.fn(),
+  setVolume: vi.fn(),
+  setEffectVolume: vi.fn(),
+  setAmbientVolume: vi.fn(),
+  setMuted: vi.fn(),
+};
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -79,6 +93,13 @@ describe('AppLayout', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    mockedGetAudioEngine.mockReturnValue(audioEngineMock as unknown as ReturnType<typeof getAudioEngine>);
+    audioEngineMock.playEffect.mockReset();
+    audioEngineMock.setAmbient.mockReset();
+    audioEngineMock.setVolume.mockReset();
+    audioEngineMock.setEffectVolume.mockReset();
+    audioEngineMock.setAmbientVolume.mockReset();
+    audioEngineMock.setMuted.mockReset();
   });
 
   afterEach(async () => {
@@ -751,6 +772,180 @@ describe('AppLayout', () => {
 
     expect(worker.newGame).not.toHaveBeenCalled();
     expect(worker.importSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('maps ambient audio to the requested route contexts', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 87,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveId: null,
+      activeSaveSlot: null,
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+    const worker = createWorkerMock({
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 — Day 87/162',
+      detailLabel: 'Regular Season',
+      progress: 0.5,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 20,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/schedule']}>
+          <Routes>
+            <Route path="/schedule" element={<AppLayout />}>
+              <Route index element={<div>Schedule</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(audioEngineMock.setAmbient).toHaveBeenCalledWith('ballpark');
+  });
+
+  it('plays playoff and championship phase transition audio cues', async () => {
+    const flow = {
+      status: 'offseason',
+      season: 3,
+      phaseLabel: 'Offseason',
+      detailLabel: 'World Series complete',
+      progress: 1,
+      canUseRegularSimControls: false,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: null,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: {
+        championTeamId: 'nym',
+        championTeamName: 'New York Tycoons',
+        runnerUpTeamName: 'Boston Noreasters',
+        seriesRecord: '4-2',
+      },
+      offseasonSummary: null,
+    };
+    mockedUseWorker.mockReturnValue(createWorkerMock(flow) as unknown as ReturnType<typeof useWorker>);
+
+    const storeState = {
+      season: 3,
+      day: 162,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveId: null,
+      activeSaveSlot: null,
+      playerCount: 780,
+      gamesPlayed: 162,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    };
+    mockedUseGameStore.mockReturnValue(storeState);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockedUseGameStore.mockReturnValue({
+      ...storeState,
+      phase: 'playoffs',
+      day: 1,
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockedUseGameStore.mockReturnValue({
+      ...storeState,
+      phase: 'offseason',
+      day: 1,
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(audioEngineMock.playEffect).toHaveBeenCalledWith('playoff_clinch');
+    expect(audioEngineMock.playEffect).toHaveBeenCalledWith('world_series_win');
   });
 
   it('auto-saves the active slot after a monthly advance', async () => {

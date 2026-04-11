@@ -219,6 +219,58 @@ function createProfileView(overrides: Partial<PlayerProfileView> = {}): PlayerPr
       },
       pitching: null,
     },
+    moments: [{
+      season: 5,
+      day: 91,
+      timestamp: 'S5D91',
+      type: 'walk_off_hr',
+      description: 'Marco Ascension ended the night with a walk-off blast.',
+      impact: 12,
+      relevance: 0.92,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    }],
+    nicknames: {
+      seasonHistory: [],
+      earnedNicknames: [{
+        id: 'the_kid',
+        displayText: 'The Kid',
+        priority: 2,
+        triggerData: {},
+      }],
+      primaryNickname: {
+        id: 'the_kid',
+        displayText: 'The Kid',
+        priority: 2,
+        triggerData: {},
+      },
+      badgeNicknames: [{
+        id: 'the_kid',
+        displayText: 'The Kid',
+        priority: 2,
+        triggerData: {},
+      }],
+    },
+    storyArcs: [{
+      playerId: 'player-1',
+      arcType: 'prospect_rise',
+      phase: 'rising',
+      startSeason: 5,
+      startDay: 62,
+      milestones: ['Marco Ascension is climbing fast through the system.'],
+      resolvedSeason: null,
+    }],
+    milestoneAlerts: [{
+      playerId: 'player-1',
+      playerName: 'Marco Ascension',
+      milestoneLabel: 'Hits',
+      currentValue: 286,
+      threshold: 300,
+      remaining: 14,
+      urgency: 'close',
+    }],
     scoutConflict: {
       prospectId: 'player-1',
       teamId: 'nym',
@@ -367,6 +419,8 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Career Totals');
     expect(container.textContent).toContain('Split data is not tracked in v15.');
     expect(container.textContent).toContain('Trade Player');
+    expect(container.textContent).toContain('The Kid');
+    expect(container.textContent).toContain('14 Hits to 300');
 
     await renderPage('/players/player-1?tab=development', createProfileView());
 
@@ -381,9 +435,13 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Director and analytics disagree on Marco Ascension.');
     expect(container.textContent).toContain('Director believes the bat is ahead of schedule.');
 
+    await renderPage('/players/player-1', createProfileView());
+
+    expect(container.textContent).toContain('Signature Moments');
+    expect(container.textContent).toContain('Story Arcs');
+
     await renderPage('/players/player-1?tab=history', createProfileView());
 
-    expect(container.textContent).toContain('Story Arc');
     expect(container.textContent).toContain('Extension History');
     expect(container.textContent).toContain('$18.2M');
 
@@ -463,6 +521,8 @@ describe('PlayerProfilePage', () => {
       promotePlayer: vi.fn().mockResolvedValue({ success: true }),
       demotePlayer: vi.fn().mockResolvedValue({ success: true }),
       designateForAssignment: vi.fn().mockResolvedValue({ success: true }),
+      getSeasonProjections: vi.fn().mockResolvedValue(null),
+      getPlayerSimilarity: vi.fn().mockResolvedValue(null),
     };
 
     mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);

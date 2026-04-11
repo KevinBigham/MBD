@@ -1,6 +1,10 @@
 import {
   buildLeagueAdvancedContext,
   calculateAdvancedStatLine,
+  deduplicateNews,
+  evaluateEventRippleEffects,
+  generateLeagueEventNarrative,
+  generateMonthlyLeagueEvents,
   getDaysUntilTradeDeadline,
   getPromotionCandidates,
   getRegularSeasonMonthForDay,
@@ -8,6 +12,7 @@ import {
   getRosterComplianceIssues,
   getTeamById,
   getNextMonthStartDay,
+  pruneTickerFeed,
   type PlayerGameStats,
   type RegularSeasonMonth,
 } from '@mbd/sim-core';
@@ -37,6 +42,10 @@ const DECISION_PRIORITY: Record<DecisionSpotlightItem['urgency'], number> = {
   yellow: 1,
   blue: 2,
 };
+
+function absoluteDay(season: number, day: number): number {
+  return (season * 1000) + day;
+}
 
 function clonePlayerStatsMap(
   stats: Map<string, PlayerGameStats>,
@@ -70,6 +79,116 @@ function formatRecord(record: TeamRecordSnapshot): string {
 function formatPlayerName(s: FullGameState, playerId: string): string {
   const player = s.players.find((candidate) => candidate.id === playerId);
   return player ? `${player.firstName} ${player.lastName}` : playerId;
+}
+
+function buildLeagueEventTeamSnapshots(s: FullGameState) {
+  return Array.from(
+    new Set(s.players.map((player) => player.teamId).filter((teamId): teamId is string => Boolean(teamId))),
+  ).sort((left, right) => left.localeCompare(right)).map((teamId) => {
+    const teamPlayers = s.players.filter((player) => player.teamId === teamId);
+    const mlbPlayers = teamPlayers.filter((player) => player.rosterStatus === 'MLB');
+    const avgRating = mlbPlayers.length === 0
+      ? 0
+      : Math.round(mlbPlayers.reduce((sum, player) => sum + player.overallRating, 0) / mlbPlayers.length);
+    const rankedStars = mlbPlayers
+      .slice()
+      .sort((left, right) => right.overallRating - left.overallRating || left.id.localeCompare(right.id));
+    const rankedProspects = teamPlayers
+      .filter((player) => player.rosterStatus !== 'MLB')
+      .slice()
+      .sort((left, right) => {
+        const leftPotential = left.potentialRating ?? left.ceiling ?? left.overallRating;
+        const rightPotential = right.potentialRating ?? right.ceiling ?? right.overallRating;
+        return rightPotential - leftPotential || left.id.localeCompare(right.id);
+      });
+
+    const record = s.seasonState.standings.getRecord(teamId);
+    return {
+      teamId,
+      wins: record?.wins ?? 0,
+      losses: record?.losses ?? 0,
+      avgRating,
+      starPlayerIds: rankedStars.slice(0, 3).map((player) => player.id),
+      prospectPlayerIds: rankedProspects.slice(0, 3).map((player) => player.id),
+      agingStarPlayerIds: rankedStars.filter((player) => player.age >= 33).slice(0, 3).map((player) => player.id),
+    };
+  });
+}
+
+function applyLeagueEventRippleEffect(s: FullGameState, event: FullGameState['leagueEvents'][number]) {
+  for (const ripple of evaluateEventRippleEffects(event, s.userTeamId)) {
+    if (ripple.type !== 'gm_reset') {
+      continue;
+    }
+
+    s.gmPersonalities.set(ripple.teamId, ripple.newPersonality);
+    if (s.gmRelationships.has(ripple.teamId)) {
+      s.gmRelationships.set(ripple.teamId, {
+        targetTeamId: ripple.teamId,
+        score: ripple.resetRelationshipScore,
+        tradeHistory: [],
+        lastInteractionSeason: s.season,
+      });
+    }
+  }
+}
+
+function publishLeagueEvent(s: FullGameState, event: FullGameState['leagueEvents'][number], index: number) {
+  const narrative = generateLeagueEventNarrative(s.rng.fork(), event);
+  const timestamp = `S${event.season}D${s.day}`;
+  s.news = deduplicateNews([{
+    id: `league-event-${event.season}-${event.month}-${index}-${event.type}`,
+    headline: event.headline,
+    body: narrative,
+    priority: event.type === 'blockbuster_trade' || event.type === 'gm_firing' || event.type === 'scandal' ? 1 : 2,
+    category: 'league_event',
+    timestamp,
+    relatedPlayerIds: [...event.playerIds],
+    relatedTeamIds: [...event.teamIds],
+    read: false,
+  }, ...s.news]);
+
+  s.tickerFeed = pruneTickerFeed([{
+    id: `ticker-league-event-${event.season}-${event.month}-${index}-${event.type}`,
+    timestamp,
+    category: 'league_event',
+    text: narrative,
+    priority: event.type === 'blockbuster_trade' || event.type === 'gm_firing' ? 1 : 2,
+    relatedTeamIds: [...event.teamIds],
+    relatedPlayerIds: [...event.playerIds],
+    expiresDay: s.day + 45,
+  }, ...s.tickerFeed], 200, absoluteDay(s.season, s.day));
+}
+
+export function applyMonthlyLeagueEvents(
+  s: FullGameState,
+  month: RegularSeasonMonth,
+) {
+  const events = generateMonthlyLeagueEvents(
+    s.rng.fork(),
+    {
+      season: s.season,
+      month: month.month,
+      allTeams: buildLeagueEventTeamSnapshots(s),
+      playerPool: s.players,
+      userTeamId: s.userTeamId,
+      currentRelationships: s.gmRelationships,
+    },
+  );
+  if (events.length === 0) {
+    return;
+  }
+
+  s.leagueEvents = [...s.leagueEvents, ...events].sort((left, right) =>
+    left.season - right.season
+    || left.month - right.month
+    || left.headline.localeCompare(right.headline),
+  );
+
+  events.forEach((event, index) => {
+    applyLeagueEventRippleEffect(s, event);
+    publishLeagueEvent(s, event, index);
+  });
 }
 
 function buildScheduleDifficulty(s: FullGameState): MonthlyReport['upcomingScheduleDifficulty'] {
@@ -319,6 +438,21 @@ export function getMonthlyPulse(s: FullGameState): MonthlyPulseState {
       ? 'Monthly Pulse is your checkpoint. Read the report, scan injuries and returns, then use the decision spotlight to jump straight to the biggest issue.'
       : null,
   } as MonthlyPulseState;
+}
+
+export function getCurrentLeagueEvents(s: FullGameState) {
+  const currentMonth = getRegularSeasonMonthForDay(Math.max(1, s.day)).month;
+  return s.leagueEvents.filter((event) => event.season === s.season && event.month === currentMonth);
+}
+
+export function getLeagueEventHistory(s: FullGameState) {
+  return s.leagueEvents
+    .slice()
+    .sort((left, right) =>
+      right.season - left.season
+      || right.month - left.month
+      || left.headline.localeCompare(right.headline),
+    );
 }
 
 export function acknowledgeMonthlyReport(s: FullGameState, reportId: string): { success: boolean } {

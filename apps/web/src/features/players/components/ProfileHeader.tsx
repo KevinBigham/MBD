@@ -1,6 +1,9 @@
-import { estimateProjectedWarRange } from '@mbd/sim-core';
+import { useEffect, useRef } from 'react';
+import { estimateProjectedWarRange, type MilestoneAlert } from '@mbd/sim-core';
 import { Badge, Card, CardContent, GradeBar, StatLine } from '@mbd/ui';
+import { Award, Quote } from 'lucide-react';
 import { TeamLogo } from '@/shared/components/TeamLogo';
+import { getAudioEngine } from '@/shared/lib/audio';
 import {
   badgeVariantForStoryPhase,
   badgeVariantForTrajectory,
@@ -8,21 +11,42 @@ import {
   gradeColor,
   isPitcherProfile,
   labelize,
+  type PlayerProfileView,
   type PlayerProfilePlayerView,
 } from './playerProfileShared';
 
 export default function ProfileHeader({
   player,
+  nicknames,
+  milestoneAlerts,
 }: {
   player: PlayerProfilePlayerView;
+  nicknames: PlayerProfileView['nicknames'];
+  milestoneAlerts: MilestoneAlert[];
 }) {
   const isPitcher = isPitcherProfile(player);
+  const primaryNickname = nicknames?.primaryNickname?.displayText ?? null;
+  const previousNicknameRef = useRef<string | null>(null);
+  const hasMountedRef = useRef(false);
   const projectedWar = estimateProjectedWarRange({
     overall: player.displayRating,
     floor: displayBand(player.floor),
     ceiling: displayBand(player.ceiling),
     isPitcher,
   });
+
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      previousNicknameRef.current = primaryNickname;
+      return;
+    }
+
+    if (primaryNickname && previousNicknameRef.current !== primaryNickname) {
+      getAudioEngine().playEffect('achievement_unlock');
+    }
+    previousNicknameRef.current = primaryNickname;
+  }, [primaryNickname]);
 
   return (
     <Card>
@@ -33,6 +57,12 @@ export default function ProfileHeader({
               <TeamLogo teamId={player.teamId} size="xs" />
               {player.teamId.toUpperCase()} · {player.rosterStatus}
             </div>
+            {primaryNickname ? (
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-accent-warning/30 bg-accent-warning/10 px-3 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">
+                <Quote className="h-3.5 w-3.5" />
+                {primaryNickname}
+              </div>
+            ) : null}
             <h1 className="mt-2 font-brand text-4xl tracking-wide text-dynasty-textBright">
               {player.firstName} {player.lastName}
             </h1>
@@ -55,6 +85,20 @@ export default function ProfileHeader({
               <p className="mt-4 max-w-3xl rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3 font-heading text-sm text-dynasty-text">
                 {player.activeStory.latestMilestone}
               </p>
+            ) : null}
+            {milestoneAlerts.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {milestoneAlerts.slice(0, 3).map((alert) => (
+                  <Badge
+                    key={`${alert.playerId}-${alert.milestoneLabel}-${alert.threshold}`}
+                    variant={alert.urgency === 'imminent' ? 'warning' : alert.urgency === 'close' ? 'info' : 'outline'}
+                    className="gap-1.5 font-data text-[11px] uppercase tracking-[0.14em]"
+                  >
+                    <Award className="h-3.5 w-3.5" />
+                    {alert.remaining} {alert.milestoneLabel} to {alert.threshold}
+                  </Badge>
+                ))}
+              </div>
             ) : null}
           </div>
 

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import BoxScorePage from './BoxScorePage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -14,8 +15,16 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/lib/audio', () => ({
+  getAudioEngine: vi.fn(),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedGetAudioEngine = vi.mocked(getAudioEngine);
+const audioEngineMock = {
+  playEffect: vi.fn(),
+};
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -29,6 +38,14 @@ function renderWithRoute(gameIndex: number) {
       </Routes>
     </MemoryRouter>
   );
+}
+
+function createWorkerMock(playByPlay: unknown) {
+  return {
+    isReady: true,
+    getGamePlayByPlay: vi.fn().mockResolvedValue(playByPlay),
+    getEnhancedGamePlayByPlay: vi.fn().mockResolvedValue(null),
+  } as unknown as ReturnType<typeof useWorker>;
 }
 
 describe('BoxScorePage', () => {
@@ -59,6 +76,8 @@ describe('BoxScorePage', () => {
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
+    mockedGetAudioEngine.mockReturnValue(audioEngineMock as unknown as ReturnType<typeof getAudioEngine>);
+    audioEngineMock.playEffect.mockReset();
   });
 
   afterEach(async () => {
@@ -70,26 +89,23 @@ describe('BoxScorePage', () => {
   });
 
   it('renders team names and score', async () => {
-    mockedUseWorker.mockReturnValue({
-      isReady: true,
-      getGamePlayByPlay: vi.fn().mockResolvedValue({
-        gameIndex: 0,
-        recap: 'A great game between NYT and BOS.',
-        highlights: [],
-        plays: [
-          { inning: 1, halfInning: 'top', text: 'Batter grounds out.', isHighlight: false },
-        ],
-        boxScore: {
-          homeTeamId: 'nym',
-          awayTeamId: 'bos',
-          homeScore: 5,
-          awayScore: 3,
-          innings: 9,
-          homeHits: 10,
-          awayHits: 7,
-        },
-      }),
-    } as unknown as ReturnType<typeof useWorker>);
+    mockedUseWorker.mockReturnValue(createWorkerMock({
+      gameIndex: 0,
+      recap: 'A great game between NYT and BOS.',
+      highlights: [],
+      plays: [
+        { inning: 1, halfInning: 'top', text: 'Batter grounds out.', isHighlight: false },
+      ],
+      boxScore: {
+        homeTeamId: 'nym',
+        awayTeamId: 'bos',
+        homeScore: 5,
+        awayScore: 3,
+        innings: 9,
+        homeHits: 10,
+        awayHits: 7,
+      },
+    }));
 
     await act(async () => {
       root.render(renderWithRoute(0));
@@ -104,27 +120,24 @@ describe('BoxScorePage', () => {
   });
 
   it('shows play-by-play text', async () => {
-    mockedUseWorker.mockReturnValue({
-      isReady: true,
-      getGamePlayByPlay: vi.fn().mockResolvedValue({
-        gameIndex: 0,
-        recap: 'Great game.',
-        highlights: [],
-        plays: [
-          { inning: 1, halfInning: 'top', text: 'Smith singles to center.', isHighlight: false },
-          { inning: 1, halfInning: 'top', text: 'Jones homers to left.', isHighlight: true },
-        ],
-        boxScore: {
-          homeTeamId: 'nym',
-          awayTeamId: 'bos',
-          homeScore: 2,
-          awayScore: 1,
-          innings: 9,
-          homeHits: 6,
-          awayHits: 4,
-        },
-      }),
-    } as unknown as ReturnType<typeof useWorker>);
+    mockedUseWorker.mockReturnValue(createWorkerMock({
+      gameIndex: 0,
+      recap: 'Great game.',
+      highlights: [],
+      plays: [
+        { inning: 1, halfInning: 'top', text: 'Smith singles to center.', isHighlight: false },
+        { inning: 1, halfInning: 'top', text: 'Jones homers to left.', isHighlight: true },
+      ],
+      boxScore: {
+        homeTeamId: 'nym',
+        awayTeamId: 'bos',
+        homeScore: 2,
+        awayScore: 1,
+        innings: 9,
+        homeHits: 6,
+        awayHits: 4,
+      },
+    }));
 
     await act(async () => {
       root.render(renderWithRoute(0));
@@ -137,10 +150,7 @@ describe('BoxScorePage', () => {
   });
 
   it('shows game not found for missing data', async () => {
-    mockedUseWorker.mockReturnValue({
-      isReady: true,
-      getGamePlayByPlay: vi.fn().mockResolvedValue(null),
-    } as unknown as ReturnType<typeof useWorker>);
+    mockedUseWorker.mockReturnValue(createWorkerMock(null));
 
     await act(async () => {
       root.render(renderWithRoute(999));
@@ -149,5 +159,33 @@ describe('BoxScorePage', () => {
     });
 
     expect(container.textContent).toContain('Game not found');
+  });
+
+  it('plays the walk-off effect when the recap includes a walk-off finish', async () => {
+    mockedUseWorker.mockReturnValue(createWorkerMock({
+      gameIndex: 0,
+      recap: 'Jones delivers a walk-off blast in the ninth.',
+      highlights: [],
+      plays: [
+        { inning: 9, halfInning: 'bottom', text: 'Jones hits a walk-off homer.', isHighlight: true },
+      ],
+      boxScore: {
+        homeTeamId: 'nym',
+        awayTeamId: 'bos',
+        homeScore: 4,
+        awayScore: 3,
+        innings: 9,
+        homeHits: 8,
+        awayHits: 6,
+      },
+    }));
+
+    await act(async () => {
+      root.render(renderWithRoute(0));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(audioEngineMock.playEffect).toHaveBeenCalledWith('walk_off');
   });
 });

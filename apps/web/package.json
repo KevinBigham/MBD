@@ -17,7 +17,6 @@
     "@mbd/contracts": "workspace:*",
     "@mbd/design-tokens": "workspace:*",
     "@mbd/sim-core": "workspace:*",
-    "@mbd/sim-worker": "workspace:*",
     "@mbd/ui": "workspace:*",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.23",

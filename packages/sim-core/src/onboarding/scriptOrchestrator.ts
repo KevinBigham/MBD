@@ -47,6 +47,7 @@ import {
   type OnboardingChapter,
   type OnboardingChapterConfig,
 } from './flowEngine.js';
+import { ROUND_THREE_DIALOGUE } from './roundThreeDialogue.js';
 import type {
   ScoutingHiringSlate,
   StaffHiringSlate,
@@ -569,6 +570,11 @@ function revisedIntro(
   chapter: RevisedChapterId,
   teamName: string,
 ): DialogueLine[] {
+  const roundThreeDialogue = ROUND_THREE_DIALOGUE[agm.id][chapter];
+  if (roundThreeDialogue.length > 0) {
+    return roundThreeDialogue.map((entry) => ({ ...entry }));
+  }
+
   switch (chapter) {
     case 'agm_selection':
       return [

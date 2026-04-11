@@ -83,7 +83,7 @@ describe('revised onboarding worker API', () => {
     expect(manager?.id).toBe(hires.managerId);
   });
 
-  it('exports revised onboarding state through schema version 16 snapshots', async () => {
+  it('exports revised onboarding state through schema version 17 snapshots', async () => {
     startGame(503);
 
     const onboarding = await api.getRevisedOnboardingData('elena_vargas');
@@ -112,7 +112,7 @@ describe('revised onboarding worker API', () => {
 
     const snapshot = await api.exportSnapshot();
 
-    expect(snapshot.schemaVersion).toBe(16);
+    expect(snapshot.schemaVersion).toBe(17);
     expect(snapshot.franchise.assistantGMId).toBe('elena_vargas');
     expect(snapshot.franchise.scoutingDirector?.specialty).toBe('international');
   });

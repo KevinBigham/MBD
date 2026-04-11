@@ -63,6 +63,10 @@ const mutationMethods = new Set<WorkerMethodName>([
   'signDraftPick',
   'simulateRemainingDraft',
   'proposeTrade',
+  'startNegotiation',
+  'advanceNegotiation',
+  'resolveNegotiation',
+  'executeMultiTeamTrade',
   'respondToTradeOffer',
   'markNewsRead',
   'promotePlayer',
@@ -396,6 +400,34 @@ export function useWorker() {
     async (playerId: string) => api.getPlayerProfileView(playerId),
     [api],
   );
+  const getPlayerMoments = useCallback(
+    async (playerId: string) => api.getPlayerMoments(playerId),
+    [api],
+  );
+  const getRecentLeagueMoments = useCallback(
+    async (sinceDay: number) => api.getRecentLeagueMoments(sinceDay),
+    [api],
+  );
+  const getNicknamesForPlayer = useCallback(
+    async (playerId: string) => api.getNicknamesForPlayer(playerId),
+    [api],
+  );
+  const getRelationships = useCallback(
+    async () => api.getRelationships(),
+    [api],
+  );
+  const getRelationshipWith = useCallback(
+    async (teamId: string) => api.getRelationshipWith(teamId),
+    [api],
+  );
+  const getPlayerStoryArcs = useCallback(
+    async (playerId: string) => api.getPlayerStoryArcs(playerId),
+    [api],
+  );
+  const getMilestoneAlerts = useCallback(
+    async (playerId?: string) => api.getMilestoneAlerts(playerId),
+    [api],
+  );
   const getAdvancedStats = useCallback(
     async (playerId: string) => api.getAdvancedStats(playerId),
     [api],
@@ -423,6 +455,8 @@ export function useWorker() {
   const getSeasonRecap = useCallback(async (season?: number) => api.getSeasonRecap(season), [api]);
   const getOffseasonHeadline = useCallback(async (season?: number) => api.getOffseasonHeadline(season), [api]);
   const getMonthlyPulse = useCallback(async () => api.getMonthlyPulse(), [api]);
+  const getCurrentLeagueEvents = useCallback(async () => api.getCurrentLeagueEvents(), [api]);
+  const getLeagueEventHistory = useCallback(async () => api.getLeagueEventHistory(), [api]);
   const getCeremonyState = useCallback(async () => api.getCeremonyState(), [api]);
   const getTickerFeed = useCallback(async (limit?: number) => api.getTickerFeed(limit), [api]);
   const getSeasonFlowState = useCallback(async () => api.getSeasonFlowState(), [api]);
@@ -491,10 +525,47 @@ export function useWorker() {
     [api],
   );
   const getTradeAssetInventory = useCallback(async (teamId: string) => api.getTradeAssetInventory(teamId), [api]);
+  const getNegotiation = useCallback(async (negotiationId: string) => api.getNegotiation(negotiationId), [api]);
+  const getOpenNegotiations = useCallback(async () => api.getOpenNegotiations(), [api]);
+  const evaluateMultiTeamFairness = useCallback(
+    async (proposal: Parameters<typeof api.evaluateMultiTeamFairness>[0]) =>
+      api.evaluateMultiTeamFairness(proposal),
+    [api],
+  );
+  const generateConditionalClause = useCallback(
+    async (playerId: string) => api.generateConditionalClause(playerId),
+    [api],
+  );
   const proposeTrade = useCallback(
     async (offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) =>
       api.proposeTrade(offeringAssets, requestingAssets, toTeamId),
     [api],
+  );
+  const startNegotiation = useCallback(
+    async (offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) =>
+      runMutation(() => api.startNegotiation(offeringAssets, requestingAssets, toTeamId)),
+    [api, runMutation],
+  );
+  const advanceNegotiation = useCallback(
+    async (
+      negotiationId: string,
+      counterPackage: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
+    ) => runMutation(() => api.advanceNegotiation(negotiationId, counterPackage)),
+    [api, runMutation],
+  );
+  const resolveNegotiation = useCallback(
+    async (negotiationId: string, action: 'accept' | 'reject') =>
+      runMutation(() => api.resolveNegotiation(negotiationId, action)),
+    [api, runMutation],
+  );
+  const proposeMultiTeam = useCallback(
+    async (proposal: Parameters<typeof api.proposeMultiTeam>[0]) => api.proposeMultiTeam(proposal),
+    [api],
+  );
+  const executeMultiTeamTrade = useCallback(
+    async (proposal: Parameters<typeof api.executeMultiTeamTrade>[0]) =>
+      runMutation(() => api.executeMultiTeamTrade(proposal)),
+    [api, runMutation],
   );
   const respondToTradeOffer = useCallback(
     async (
@@ -809,11 +880,11 @@ export function useWorker() {
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,
-    getStandings, getScheduleView, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getAdvancedStats,
-    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getSeasonRecap, getOffseasonHeadline, getMonthlyPulse, getCeremonyState, getTickerFeed, getSeasonFlowState,
+    getStandings, getScheduleView, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getPlayerMoments, getRecentLeagueMoments, getNicknamesForPlayer, getRelationships, getRelationshipWith, getPlayerStoryArcs, getMilestoneAlerts, getAdvancedStats,
+    getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getSeasonRecap, getOffseasonHeadline, getMonthlyPulse, getCurrentLeagueEvents, getLeagueEventHistory, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
-    getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
+    getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, getNegotiation, getOpenNegotiations, evaluateMultiTeamFairness, generateConditionalClause, proposeTrade, startNegotiation, advanceNegotiation, resolveNegotiation, proposeMultiTeam, executeMultiTeamTrade, respondToTradeOffer,
     getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, makeContractOffer,
     getPromotionCandidates, getProspectPipeline, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,

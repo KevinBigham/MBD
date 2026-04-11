@@ -1,6 +1,6 @@
 # MASTER_CONTEXT.md — Complete Project State for Session Handoff
 
-> Generated: 2026-04-10 | Main: `21f2a87` | Active branch: `feature/round2-onboarding-rebuild` (+4 commits) | 1,314 sim-core tests | 379/381 web tests | Schema v16 (branch) / v15 (main) | LIVE
+> Generated: 2026-04-10 | Main baseline: `28a3b77` | Active branch: `feature/wire-everything-sweep` | 1,314 sim-core tests | 396/396 web tests | Schema v17 | LIVE (main) + verified branch
 
 ---
 
@@ -28,10 +28,10 @@
 │   │   ├── src/workers/                           # 25+ worker modules + onboarding tests
 │   │   └── src/build/                             # bundleConfig, bundleBudget, PWA
 │   ├── packages/sim-core/                         # Pure TS deterministic engine (116+ files)
-│   ├── packages/contracts/                        # Zod schemas, save v16 migration chain
+│   ├── packages/contracts/                        # Zod schemas, save v17 migration chain
 │   ├── packages/ui/                               # 13 Radix-based components
 │   ├── packages/design-tokens/                    # Bloomberg dark theme tokens
-│   ├── packages/sim-worker/                       # DEAD CODE (see Known Issues)
+│   ├── packages/test-utils/                       # Shared test helpers
 │   └── packages/test-utils/                       # Shared test fixtures
 ├── .codex/MBD/                                    # Durable cross-agent memory (8 files)
 ├── REFERENCE/                                     # Design docs + Muse Spark creative content
@@ -59,11 +59,10 @@
 ├── @mbd/contracts
 ├── @mbd/design-tokens
 ├── @mbd/sim-core → @mbd/contracts
-├── @mbd/sim-worker → @mbd/contracts, @mbd/sim-core  (DEAD — not imported by web)
 └── @mbd/ui → @mbd/design-tokens
 ```
 
-The real worker lives at `apps/web/src/workers/sim.worker.ts`, not in `@mbd/sim-worker`.
+The real worker lives at `apps/web/src/workers/sim.worker.ts`. `@mbd/sim-worker` was removed during the wire-everything sweep.
 
 ---
 
@@ -102,12 +101,12 @@ The real worker lives at `apps/web/src/workers/sim.worker.ts`, not in `@mbd/sim-
 | **Draft** | `draft/` (6 files) — class gen, AI picks, scouting | Active (audit-fixed) |
 | **Free Agency** | `roster/freeAgency.ts` — multi-day bidding | Active (audit-fixed) |
 | **Trade AI** | `trade/tradeAI.ts`, `valuation.ts`, `multiTeamTrade.ts` | Active |
-| **Trade Negotiation** | `trade/tradeNegotiation.ts` — state machine | Built, NOT WIRED to UI |
-| **GM Relationships** | `league/gmRelationships.ts` — scores, trade memory, decay | Built, NOT WIRED |
-| **Relationship Effects** | `league/relationshipEffects.ts` | Built, NOT WIRED |
-| **League Events** | `narrative/leagueEvents.ts` — 10 monthly event types | Built, NOT WIRED |
-| **Signature Moments** | `moments/momentDetector.ts` — 12 types, FIFO 8/player | Built, NOT WIRED |
-| **Earned Nicknames** | `moments/nicknames.ts` — 20 triggers | Built, NOT WIRED |
+| **Trade Negotiation** | `trade/tradeNegotiation.ts` — state machine | Active (worker + Trade UI wired) |
+| **GM Relationships** | `league/gmRelationships.ts` — scores, trade memory, decay | Active (setup, worker, UI wired) |
+| **Relationship Effects** | `league/relationshipEffects.ts` | Active (FA, waivers, draft-pick valuation, Rule 5 wired) |
+| **League Events** | `narrative/leagueEvents.ts` — 10 monthly event types | Active (worker, Pulse, news, ticker wired) |
+| **Signature Moments** | `moments/momentDetector.ts` — 12 types, FIFO 8/player | Active (post-game detection + UI wired) |
+| **Earned Nicknames** | `moments/nicknames.ts` — 20 triggers | Active (offseason eval + UI wired) |
 | **Onboarding (revised)** | `onboarding/` (16 files) — Day 1 flow, 3 AGMs, hiring | Active (branch only) |
 | **Narrative** | `narrative/` (13 files) — news, PBP, press, ticker, arcs | Active (audit-fixed) |
 | **Scouting** | `scouting/` (5 files) — IFA, scout learning, conflicts | Active (audit-fixed) |
@@ -129,7 +128,7 @@ All 27 features are **shipped** and playable:
 | Feature | Route(s) | Page component |
 |---------|----------|----------------|
 | Setup | `/` | SetupPage.tsx (787 LOC) |
-| Onboarding | `/onboarding` (default), `/onboarding-legacy` | RevisedOnboardingPage.tsx (branch), OnboardingPage.tsx (legacy) |
+| Onboarding | `/onboarding` | RevisedOnboardingPage.tsx |
 | Dashboard | `/dashboard` | DashboardPage.tsx (895 LOC) |
 | Roster | `/roster` | RosterPage.tsx (1079 LOC) — DnD depth chart + lineup builder |
 | Players | `/players`, `/players/:id`, `/players/compare` | PlayersPage, PlayerProfilePage, PlayerComparisonPage |
@@ -176,10 +175,10 @@ All 27 features are **shipped** and playable:
 
 ### 5.4 Support Packages
 
-- **@mbd/contracts** — 17 schema files, ~1,599 Zod schemas, 4,180 LOC. Largest: `save.ts` at 2,354 LOC with v2-v16 migration chain. Current: `CURRENT_GAME_SNAPSHOT_VERSION = 16`.
+- **@mbd/contracts** — 17 schema files, ~1,599 Zod schemas, 4,180 LOC. Largest: `save.ts` at 2,354 LOC with v2-v17 migration chain. Current: `CURRENT_GAME_SNAPSHOT_VERSION = 17`.
 - **@mbd/ui** — 13 active components: Button, Card, Badge, Skeleton, Container, Stack, Tabs, StatLine, GradeBar, TrendArrow, Toast, index, lib/utils
 - **@mbd/design-tokens** — 7 token files: colors (dynasty navy + orange accents), spacing, density, shadows, typography (JetBrains Mono + Space Grotesk + Bebas Neue), tailwind-preset
-- **@mbd/sim-worker** — **DEAD CODE.** 49-line Comlink wrapper at `packages/sim-worker/src/worker.ts`. Zero references from `apps/web/src`. Still listed in package.json, still in tsconfig paths, but never imported. Safe to archive or remove.
+- **@mbd/test-utils** — shared worker/save fixtures for integration and persistence tests. `@mbd/sim-worker` was deleted on 2026-04-10.
 
 ---
 
@@ -201,9 +200,9 @@ All 27 features are **shipped** and playable:
 14. Scout consensus panel, prospect breakout tracker, playoff momentum
 15. Award ceremony modal, enhanced play-by-play
 16. Bloomberg Terminal dark UI, command palette, keyboard shortcuts, PWA, offline mode
-17. Save/load with v2-v16 migration chain, what-if branches (up to 3 parallel)
+17. Save/load with v2-v17 migration chain, what-if branches (up to 3 parallel)
 18. Dynasty timeline chapters, season recap modal, timeline comparison
-19. **Day 1 Onboarding (branch only, not merged to main):** 3 fixed AGMs (Marcus Chen / Walt Kowalski / Elena Vargas), 9-chapter flow, interactive staff hiring, scouting director hiring, AGM opinion pills on every candidate
+19. Day 1 onboarding with 3 fixed AGMs (Marcus Chen / Walt Kowalski / Elena Vargas), 9-chapter flow, interactive staff/scouting hires, and round-three voice differentiation
 
 ---
 
@@ -211,10 +210,7 @@ All 27 features are **shipped** and playable:
 
 | Feature | Location | Status | Next Step |
 |---------|----------|--------|-----------|
-| **Day 1 Onboarding Rebuild** | `feature/round2-onboarding-rebuild` (4 commits) | Complete on branch, not merged | Smoke test in browser, merge to main, deploy |
-| **Signature Moments wiring** | `moments/momentDetector.ts` | sim-core done (96 tests) + schema v16 ready | Wire `detectMoment()` into post-game scan in `sim.worker.actions.ts` |
-| **Earned Nicknames wiring** | `moments/nicknames.ts` | sim-core done + schema v16 ready | Wire `evaluateNicknames()` into offseason processing |
-| **Living League UI** | `league/gmRelationships.ts`, `trade/tradeNegotiation.ts`, `narrative/leagueEvents.ts` | sim-core done (161 tests) + schema v16 ready | Build relationship tier indicators, negotiation UI, event cards |
+| **Wire Everything Sweep** | `feature/wire-everything-sweep` | Complete on branch, verified | Review, commit, push, and open PR |
 | **Narrative Debt system** | Muse Spark specs in REFERENCE/ | Design complete (10 debt types with resolutions), no code | New sim-core module `narrative/narrativeDebt.ts` |
 | **Press Memory system** | Muse Spark specs | 8 patterns designed, no code | New sim-core module `narrative/pressMemory.ts` |
 | **Persistent AGM commentary** | Muse Spark specs | 15 triggers designed, no code | New sim-core module `onboarding/persistentAGM.ts` |
@@ -275,116 +271,97 @@ From Muse Spark sessions, onboarding specs, and design discussions:
 | Feature-sliced React architecture | Each feature owns its routes, components, hooks, types. Prevents circular dependencies. |
 | 3 FIXED AGM candidates (not procedural) | Better character investment. Each AGM is a real person with a voice, not a dice roll. |
 | Staff hiring during onboarding (not just assessment) | Teaches the coaching system while making meaningful first decisions. "You just got hired, hire your staff" framing. |
-| Additive save schema bumps (v15 -> v16 via default-value migration) | Old saves continue to load. New fields default to empty arrays / null. |
-| Legacy onboarding kept alongside revised | `/onboarding` = new, `/onboarding-legacy` = old. Both work. Safe fallback. |
+| Additive save schema bumps (latest: v16 -> v17) | Old saves continue to load. New fields default to empty arrays / null. |
+| Revised onboarding is now canonical | `/onboarding` is the supported route; `/onboarding-legacy` was removed after the revised flow verified cleanly. |
 
 ---
 
 ## 10. Known Issues / Tech Debt
 
 ### High priority
-1. **Day 1 onboarding not merged or deployed** — `feature/round2-onboarding-rebuild` is 4 commits ahead of main, has not been smoke-tested end-to-end, not deployed to GitHub Pages.
-2. **Live deploy behind main** — Main has 3+ commits (signature moments, onboarding UI, useWorker wiring) that never deployed. The feature branch adds 4 more on top.
-3. **2 pre-existing narrative worker test failures** — `sim.worker.test.ts > sim worker narrative APIs`: `emits retirement consequences before offseason rollover removes players`, `publishes monthly history, scenario, and anniversary ticker hooks`. Pre-date all onboarding work.
+1. **`feature/wire-everything-sweep` is verified but still uncommitted/unpushed** — the branch is ready for review, but commit slicing / PR publication has not happened in this session.
+2. **Worker build still emits one circular chunk warning** — `game-engine-onboarding -> game-engine-core -> game-engine-onboarding`; build succeeds, but chunk layout could be cleaner.
+3. **Direct sim-core runtime imports remain in some feature files** — several web feature modules still import runtime helpers from `@mbd/sim-core` instead of going through the worker bridge.
 
 ### Medium priority
-4. **@mbd/sim-worker is dead code** — Package exists, aliased in vite config, but nothing imports from it. Real worker lives at `apps/web/src/workers/sim.worker.ts`. Confirmed zero references from `apps/web/src`.
-5. **Direct sim-core runtime imports in feature code** — ~13 files in `apps/web/src/features/` import runtime helpers (`getTeamById`, `TEAMS`, `estimateProjectedWarRange`, `toDisplayRating`, `CHAPTER_ORDER`, `calculateDynastyLeaderboardScore`) directly from `@mbd/sim-core` instead of going through the worker bridge. Low perf risk but normalizes the boundary violation.
-6. **App code bypasses contracts package boundary** — `apps/web/src/shared/lib/saveSystem.ts` and `apps/web/src/workers/snapshot.ts` reach into `packages/contracts/src/schemas/save` directly instead of using the public barrel export.
-7. **Circular chunk warning** — `game-engine-onboarding <-> game-engine-core` warning on build (cosmetic; build still succeeds).
+4. **App code still bypasses the contracts barrel in a few save paths** — `saveSystem.ts` / `snapshot.ts` still reach into contracts source paths directly.
+5. **A few tests emit benign React/Recharts warnings** — no failures remain, but the warnings add noise to long verify output.
 
-### Low priority / Stale docs
-8. **MBD_MASTER_REFERENCE.md** — Test count stale (says 815, actual 1,314)
-9. **MBD_PROJECT_BIBLE.md** — Test count stale
-10. **README.md** — Test count stale ("700+", actual 1,314 sim-core + 379 web)
-11. **.codex/MBD/plan.md, open_questions.md, decisions.md** — Stale; superseded by this doc
-12. **9 stale worktrees** (all merged or obsolete, see Cleanup Candidates below)
-13. **24+ merged local branches** — From completed features
+### Low priority / stale docs
+6. **MBD master docs outside this file still have stale counts** — `MBD_MASTER_REFERENCE.md`, `MBD_PROJECT_BIBLE.md`, and some README copy lag behind the current 1,314 + 396 test totals.
+7. **Historical worktrees and merged local branches can be cleaned up** — see the cleanup candidates below after this branch is reviewed.
 
-### Resolved since last MASTER_CONTEXT (2026-04-09)
-- Muse Spark creative output HAS been saved to `REFERENCE/` (5 files total)
-- sim-core bug audit merged (25 fixes, 27 regression tests)
-- Onboarding wizard UI shipped
-- Signature Moments + Nicknames engine code shipped to main
+### Resolved in the wire-everything sweep
+- `@mbd/sim-worker` deleted from the workspace, aliases, and web dependencies
+- `/onboarding-legacy` removed after revised onboarding verified cleanly
+- Signature moments, nicknames, GM relationships/effects, negotiations, multi-team trades, league events, story arcs, milestone alerts, nav gaps, audio hooks, and round-three dialogue all wired
+- Previously failing narrative worker tests fixed
+- Root `npx pnpm verify` now passes on the branch
 
 ---
 
 ## 11. Cleanup Candidates — Needs Kevin's Review
 
-### Stale worktrees (safe to remove — all merged or superseded)
+### Stale worktrees (safe candidates after this branch is reviewed)
 Located at `mr-baseball-dynasty/.worktrees/`:
-- `assistant-gm` — PR #18 merged
-- `dynasty-timeline-chapters` — merged
-- `first-10-minutes` — PR #17 merged
-- `foundation-intelligence` — PR #14 merged
-- `living-league` — PR #19 merged
-- `phase15-broadcast` — all 6 slices merged
-- `phase16-war-room` — phase 16 merged
-- `signature-moments-nicknames` — merged to main
-- `sim-core-bug-audit` — merged to main
-- `round1-onboarding-engine-rebuild` — Codex's failed hallucinated worktree (has only 3 unstaged edits, never committed)
-- `round2-implementation` — obsolete round 2 prototype
+- `assistant-gm`
+- `dynasty-timeline-chapters`
+- `first-10-minutes`
+- `foundation-intelligence`
+- `living-league`
+- `phase15-broadcast`
+- `phase16-war-room`
+- `signature-moments-nicknames`
+- `sim-core-bug-audit`
+- `round1-onboarding-engine-rebuild`
+- `round2-implementation`
 
-### Stale .codex/MBD/ files
-- `plan.md` — can be cleared and repurposed
-- `open_questions.md` — all questions resolved
-- `decisions.md` — superseded by Section 9 of this doc
+### Stale `.codex/MBD/` files
+- `plan.md`
+- `open_questions.md`
+- `decisions.md`
 
-### Potentially archivable packages
-- `@mbd/sim-worker` — DEAD. Nothing imports from it. Kevin confirm before removing.
-
-### Empty/orphaned directories
-- `packages/sim-core/src/persistence/` — empty directory, no code ever shipped
-
-**No files were moved during this audit.** Kevin must confirm before any archival.
+### Already removed in this sweep
+- `packages/sim-worker/`
+- `/onboarding-legacy`
 
 ---
 
 ## 12. Next Priorities (Ranked)
 
-1. **Smoke test Day 1 onboarding** — Fresh dynasty at `/onboarding` -> pick each of 3 AGMs -> walk all 9 chapters -> reach dashboard. Verify no console errors.
-2. **Merge `feature/round2-onboarding-rebuild` to main** — 4 clean commits, 1,314/1,314 sim-core + 38/38 critical web tests passing.
-3. **Deploy to GitHub Pages** — Multiple commits behind live site.
-4. **Wire Signature Moments into game loop** — Post-game scan in `sim.worker.actions.ts`, store in `narrative.playerMoments` (schema v16 field already exists).
-5. **Wire Earned Nicknames into offseason** — Call `evaluateNicknames()` in end-of-season processing.
-6. **Wire Living League to UI** — GM relationship tier indicators on trade UI, negotiation round state machine, monthly league events on news feed.
-7. **Round 3 onboarding polish** — Wire Muse Spark `MUSE_SPARK_ONBOARDING_DIALOGUE.md` (~470 lines) into `scriptOrchestrator.ts` for richer character voice across all chapters.
-8. **Fix 2 pre-existing narrative worker test failures** — Separate investigation sprint.
-9. **Clean up worktrees and merged branches** — 11 worktrees, 24+ branches.
-10. **Build Narrative Debt engine** (new sim-core module) — 10 debt types from R2 specs.
-11. **Build Press Memory system** (new sim-core module) — 8 patterns from R2 specs.
-12. **Build Persistent AGM commentary** — 15 triggers from R2 specs.
-13. **Update stale docs** — MBD_MASTER_REFERENCE, MBD_PROJECT_BIBLE, README test counts.
+1. **Review and commit `feature/wire-everything-sweep`** — the code is verified; next step is commit slicing / PR prep.
+2. **Browser-smoke the branch interactively** — especially Trade Center negotiation/multi-team flow, Pulse league events, player profile moments/arcs, and onboarding.
+3. **Push the branch and open the PR** — after review and any commit hygiene cleanup Kevin wants.
+4. **Team logo SVG asset pass** — still out of scope for this sweep and still missing in `public/logos/`.
+5. **Narrative Debt engine** — 10 debt types from Muse Spark specs.
+6. **Press Memory system** — 8 memory/callback patterns from Muse Spark specs.
+7. **Persistent AGM commentary** — 15 follow-on triggers beyond onboarding.
+8. **Season themes, city modifiers, and ballpark DNA** — data/model follow-up from R2 specs.
 
 ---
 
 ## 13. Verification Snapshot (2026-04-10)
 
-### Branch: `feature/round2-onboarding-rebuild`
+### Branch: `feature/wire-everything-sweep`
 ```
-packages/sim-core: 95 files / 1,314 tests passing
-apps/web:          tsc --noEmit clean
-apps/web:          vitest 379/381 passing
-                   (2 pre-existing narrative worker failures)
-apps/web:          vite build clean
-apps/web:          bundle budget met (game-engine-core 333KB raw)
-Determinism audit: zero Math.random, zero as any, zero bare .sort()
+packages/sim-core:   95 files / 1,314 tests passing
+packages/contracts:  save migration tests passing
+packages/ui:         1/1 smoke test passing
+apps/web:            tsc --noEmit clean
+apps/web:            vitest 396/396 passing
+apps/web:            vite build clean
+root:                npx pnpm verify clean
+Determinism audit:   zero Math.random in sim paths
 ```
 
-### Test Distribution
-- sim-core: 95 test files, 1,314 tests (all passing)
-- web: 73 test files, ~381 tests (2 pre-existing failures)
-- contracts: migration fixtures + tests
-- ui, design-tokens: tested via web app
-
-### Bundle Chunks (post-build)
+### Bundle snapshot (post-sweep branch build)
 - game-engine-vendor: 13 KB raw
-- game-engine-onboarding: 78 KB raw (lazy)
-- game-engine-contracts: 115 KB raw
-- game-engine-core: 333 KB raw
-- game-engine-story: 384 KB raw
+- game-engine-onboarding: 87 KB raw
+- game-engine-contracts: 121 KB raw
+- game-engine-core: 376 KB raw
+- game-engine-story: 415 KB raw
 - vendor-charts: 426 KB raw / 122 KB gzip
-- Main bundle: 296 KB raw / 78 KB gzip
+- Main bundle: 306 KB raw / 81 KB gzip
 
 ---
 

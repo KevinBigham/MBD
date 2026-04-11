@@ -26,13 +26,16 @@ import {
   FrontOfficeStateSchema,
   FranchiseTimelineEntrySchema,
   GMCareerSchema,
+  GMRelationshipSchema,
   HallOfFameBallotEntrySchema,
   HallOfFameEntrySchema,
   HistoricalPlayerSchema,
   JobMarketSchema,
+  LeagueEventSchema,
   MentorRelationshipSchema,
   NewsItemSchema,
   OwnerStateSchema,
+  PlayerNicknameStateSchema,
   PlayerOriginSchema,
   PlayerMoraleSchema,
   PlayerStoryArcSchema,
@@ -47,10 +50,15 @@ import {
   WhatIfBranchMetaSchema,
   WinLossRecordSchema,
   SeasonHistoryEntrySchema,
+  SignatureMomentSchema,
   type NewsTag,
 } from "./narrative.js";
 import { MonthlyPulseStateSchema } from "./monthlyPulse.js";
-import { TradeStateSchema } from "./trade.js";
+import {
+  PendingTradeSchema,
+  PersistentNegotiationStateSchema,
+  TradeStateSchema,
+} from "./trade.js";
 import {
   AchievementStateSchema,
   CeremonyStateSchema,
@@ -280,6 +288,9 @@ const TeamChemistryEntrySchema = z.tuple([z.string(), TeamChemistrySchema]);
 const OwnerStateEntrySchema = z.tuple([z.string(), OwnerStateSchema]);
 const RivalryEntrySchema = z.tuple([z.string(), RivalrySchema]);
 const PlayerOriginEntrySchema = z.tuple([z.string(), PlayerOriginSchema]);
+const PlayerMomentEntrySchema = z.tuple([z.string(), z.array(SignatureMomentSchema)]);
+const PlayerNicknameEntrySchema = z.tuple([z.string(), PlayerNicknameStateSchema]);
+const GMRelationshipEntrySchema = z.tuple([z.string(), GMRelationshipSchema]);
 
 export const NarrativeSnapshotSchema = z.object({
   playerMorale: z.array(PlayerMoraleEntrySchema),
@@ -289,8 +300,12 @@ export const NarrativeSnapshotSchema = z.object({
   storyFlags: z.array(StoryFlagEntrySchema),
   rivalries: z.array(RivalryEntrySchema),
   tickerFeed: z.array(TickerEntrySchema).default([]),
+  playerMoments: z.array(PlayerMomentEntrySchema).default([]),
+  playerNicknames: z.array(PlayerNicknameEntrySchema).default([]),
   playerStoryArcs: z.array(PlayerStoryArcSchema).default([]),
   prospectBonds: z.array(ProspectBondSchema).default([]),
+  gmRelationships: z.array(GMRelationshipEntrySchema).default([]),
+  leagueEvents: z.array(LeagueEventSchema).default([]),
   playerOrigins: z.array(PlayerOriginEntrySchema).default([]),
   debutFlashbacks: z.array(DebutFlashbackSchema).default([]),
   awardHistory: z.array(AwardHistoryEntrySchema),
@@ -323,6 +338,13 @@ export const NarrativeSnapshotSchema = z.object({
   seasonHistory: z.array(SeasonHistoryEntrySchema),
 });
 export type NarrativeSnapshot = z.infer<typeof NarrativeSnapshotSchema>;
+
+const NarrativeSnapshotV16Schema = NarrativeSnapshotSchema.omit({
+  playerMoments: true,
+  playerNicknames: true,
+  gmRelationships: true,
+  leagueEvents: true,
+});
 
 const LegacyAwardHistoryEntrySchema = z.object({
   season: z.number().int().min(1),
@@ -461,7 +483,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 16;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 17;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -507,6 +529,21 @@ export const GameSnapshotSchema = z.object({
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
 
+const TradeStateV16Schema = TradeStateSchema.omit({
+  negotiations: true,
+  multiTeamPendingTrades: true,
+}).extend({
+  negotiations: z.array(PersistentNegotiationStateSchema).default([]),
+  multiTeamPendingTrades: z.array(PendingTradeSchema).default([]),
+});
+
+export const GameSnapshotV16Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(16),
+  narrative: NarrativeSnapshotV16Schema,
+  tradeState: TradeStateV16Schema,
+});
+export type GameSnapshotV16 = z.infer<typeof GameSnapshotV16Schema>;
+
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
 });
@@ -524,6 +561,8 @@ export type GameSnapshotV14 = z.infer<typeof GameSnapshotV14Schema>;
 
 export const GameSnapshotV15Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(15),
+  narrative: NarrativeSnapshotV16Schema,
+  tradeState: TradeStateV16Schema,
   franchise: FranchiseStateV15Schema,
 });
 export type GameSnapshotV15 = z.infer<typeof GameSnapshotV15Schema>;
@@ -862,6 +901,8 @@ function createEmptyTradeState() {
   return {
     pendingOffers: [],
     tradeHistory: [],
+    negotiations: [],
+    multiTeamPendingTrades: [],
   };
 }
 
@@ -2212,6 +2253,45 @@ function migrateGameSnapshotV15(snapshot: GameSnapshotV15): GameSnapshot {
       gmPhilosophy: null,
       scoutingDirector: null,
     },
+    narrative: {
+      ...snapshot.narrative,
+      playerMoments: [],
+      playerNicknames: [],
+      gmRelationships: [],
+      leagueEvents: [],
+    },
+    tradeState: {
+      ...snapshot.tradeState,
+      negotiations: [],
+      multiTeamPendingTrades: [],
+    },
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
+function migrateGameSnapshotV16(snapshot: GameSnapshotV16): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      playerMoments: [],
+      playerNicknames: [],
+      gmRelationships: [],
+      leagueEvents: [],
+    },
+    tradeState: {
+      ...snapshot.tradeState,
+      negotiations: [],
+      multiTeamPendingTrades: [],
+    },
   });
 
   return GameSnapshotSchema.parse({
@@ -2249,6 +2329,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 16
+  ) {
+    return migrateGameSnapshotV16(GameSnapshotV16Schema.parse(snapshotLike));
   }
 
   if (

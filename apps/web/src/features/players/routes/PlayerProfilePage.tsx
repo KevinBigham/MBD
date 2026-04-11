@@ -12,7 +12,9 @@ import {
   GitCompareArrows,
   History,
   LineChart,
+  ScrollText,
   ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
@@ -28,6 +30,8 @@ const ProfileHeader = lazy(() => import('../components/ProfileHeader'));
 const StatsTab = lazy(() => import('../components/StatsTab'));
 const DevelopmentTab = lazy(() => import('../components/DevelopmentTab'));
 const ScoutingTab = lazy(() => import('../components/ScoutingTab'));
+const MomentsTab = lazy(() => import('../components/MomentsTab'));
+const StoryArcsTab = lazy(() => import('../components/StoryArcsTab'));
 const HistoryTab = lazy(() => import('../components/HistoryTab'));
 const PersonalityTab = lazy(() => import('../components/PersonalityTab'));
 
@@ -67,6 +71,8 @@ const TAB_LABELS: Record<PlayerProfileTab, string> = {
   stats: 'Stats',
   development: 'Development',
   scouting: 'Scouting',
+  moments: 'Signature Moments',
+  storyArcs: 'Story Arcs',
   history: 'History',
   personality: 'Personality',
 };
@@ -75,6 +81,8 @@ const TAB_ICONS: Record<PlayerProfileTab, JSX.Element> = {
   stats: <LineChart className="h-4 w-4" />,
   development: <ArrowUpCircle className="h-4 w-4" />,
   scouting: <ShieldAlert className="h-4 w-4" />,
+  moments: <Sparkles className="h-4 w-4" />,
+  storyArcs: <ScrollText className="h-4 w-4" />,
   history: <History className="h-4 w-4" />,
   personality: <BrainCircuit className="h-4 w-4" />,
 };
@@ -83,6 +91,8 @@ const TAB_COMPONENTS = {
   stats: StatsTab,
   development: DevelopmentTab,
   scouting: ScoutingTab,
+  moments: MomentsTab,
+  storyArcs: StoryArcsTab,
   history: HistoryTab,
   personality: PersonalityTab,
 } satisfies Record<PlayerProfileTab, typeof StatsTab>;
@@ -310,7 +320,11 @@ export default function PlayerProfilePage() {
           </Link>
 
           <Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
-            <ProfileHeader player={player} />
+            <ProfileHeader
+              player={player}
+              nicknames={view?.nicknames ?? null}
+              milestoneAlerts={view?.milestoneAlerts ?? []}
+            />
           </Suspense>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">

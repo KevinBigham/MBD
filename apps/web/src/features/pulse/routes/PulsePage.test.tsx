@@ -53,6 +53,24 @@ const MOCK_PULSE_WITH_REPORT = {
   ],
 };
 
+const MOCK_LEAGUE_EVENTS = [
+  {
+    type: 'gm_firing',
+    season: 5,
+    month: 6,
+    teamIds: ['nym'],
+    playerIds: [],
+    headline: 'Tycoons dismiss veteran GM',
+    description: 'Ownership opted for a midseason reset after a flat June.',
+    gameplayEffect: 'Front-office relationships around the league just became less predictable.',
+    effectData: {
+      kind: 'gm_reset',
+      magnitude: 25,
+      newPersonality: 'aggressive',
+    },
+  },
+];
+
 describe('PulsePage', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -96,6 +114,7 @@ describe('PulsePage', () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       getMonthlyPulse: vi.fn().mockResolvedValue(MOCK_PULSE_WITH_REPORT),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue(MOCK_LEAGUE_EVENTS),
       acknowledgeMonthlyReport: vi.fn().mockResolvedValue({ success: true }),
       dismissDecisionSpotlight: vi.fn().mockResolvedValue({ success: true }),
     } as unknown as ReturnType<typeof useWorker>);
@@ -121,6 +140,8 @@ describe('PulsePage', () => {
     expect(container.textContent).toContain('28d');
     expect(container.textContent).toContain('Call up top prospect?');
     expect(container.textContent).toContain('Extension offer expiring');
+    expect(container.textContent).toContain('League Events');
+    expect(container.textContent).toContain('Tycoons dismiss veteran GM');
     expect(container.textContent).toContain('Mark as Read');
   });
 
@@ -128,6 +149,7 @@ describe('PulsePage', () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       getMonthlyPulse: vi.fn().mockResolvedValue({ pendingReport: null, decisionQueue: [] }),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue([]),
       acknowledgeMonthlyReport: vi.fn(),
       dismissDecisionSpotlight: vi.fn(),
     } as unknown as ReturnType<typeof useWorker>);
@@ -152,6 +174,7 @@ describe('PulsePage', () => {
         pendingReport: null,
         decisionQueue: MOCK_PULSE_WITH_REPORT.decisionQueue,
       }),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue([]),
       acknowledgeMonthlyReport: vi.fn(),
       dismissDecisionSpotlight: vi.fn(),
     } as unknown as ReturnType<typeof useWorker>);
@@ -169,5 +192,29 @@ describe('PulsePage', () => {
     expect(container.textContent).toContain('Decision Spotlights');
     expect(container.textContent).toContain('Call up top prospect?');
     expect(container.textContent).not.toContain('June Report');
+  });
+
+  it('shows league events when no report is pending', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getMonthlyPulse: vi.fn().mockResolvedValue({ pendingReport: null, decisionQueue: [] }),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue(MOCK_LEAGUE_EVENTS),
+      acknowledgeMonthlyReport: vi.fn(),
+      dismissDecisionSpotlight: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <PulsePage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('League Events');
+    expect(container.textContent).toContain('Tycoons dismiss veteran GM');
+    expect(container.textContent).not.toContain('No pending reports');
   });
 });

@@ -13,6 +13,8 @@ import { PITCHER_POSITIONS } from '../player/generation.js';
 import { hitterOverall, pitcherOverall, toDisplayRating } from '../player/attributes.js';
 import { RATING_MAX } from '../player/attributes.js';
 import { serviceDaysToYears } from '../finance/contracts.js';
+import { adjustFABidForRelationship, type GMRelationship } from '../league/index.js';
+import type { GMPersonality } from '../trade/tradeAI.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -79,6 +81,7 @@ const MINOR_LEAGUE_DEAL_YEARS = 1;
 
 /** Minimum number of interested teams to trigger competition inflation. */
 const COMPETITION_TEAM_THRESHOLD = 3;
+const USER_TARGET_NEED_THRESHOLD = 55;
 
 /** AI offer jitter range (percentage of base salary). */
 const OFFER_JITTER_MIN = -10;
@@ -129,6 +132,11 @@ export interface ContractOffer {
   playerOption: boolean;
   teamOption: boolean;
   signingBonus: number;
+}
+
+export interface RelationshipBidContext {
+  relationship: GMRelationship;
+  personality: GMPersonality;
 }
 
 export interface FreeAgencyMarket {
@@ -492,6 +500,11 @@ export function generateAIOffer(
   teamBudget: number,
   currentPayroll: number,
   teamNeed: number,
+  relationshipContext?: {
+    relationship: GMRelationship;
+    personality: GMPersonality;
+    isTargetedByUser: boolean;
+  },
 ): ContractOffer | null {
   const baseValue = calculateMarketValue(player);
   const availableBudget = teamBudget * spendingComfortFactor(teamBudget) - currentPayroll;
@@ -516,10 +529,19 @@ export function generateAIOffer(
 
   // Jitter: each team's valuation varies slightly
   const jitterPct = rng.nextInt(OFFER_JITTER_MIN, OFFER_JITTER_MAX) / 100;
-  const offeredAAV = Math.max(
+  let offeredAAV = Math.max(
     MINOR_LEAGUE_DEAL_AAV,
     Math.round(baseValue * needMultiplier * budgetMultiplier * (1 + jitterPct) * 100) / 100,
   );
+
+  if (relationshipContext) {
+    offeredAAV = adjustFABidForRelationship(
+      offeredAAV,
+      relationshipContext.relationship,
+      relationshipContext.personality,
+      relationshipContext.isTargetedByUser,
+    );
+  }
 
   // If offered AAV exceeds what team can spend, reduce or bail
   if (offeredAAV > availableBudget) return null;
@@ -558,6 +580,8 @@ export function simulateFADay(
   teamPayrolls: Map<string, number>,
   teamNeeds: Map<string, Map<string, number>>,
   teamAttractiveness: FreeAgencyAttractiveness = new Map(),
+  relationshipContexts: Map<string, RelationshipBidContext> = new Map(),
+  userTeamNeeds: Map<string, number> = new Map(),
 ): FreeAgencyMarket {
   const nextDay = market.day + 1;
   const stillAvailable: FreeAgent[] = [];
@@ -611,8 +635,22 @@ export function simulateFADay(
       const payroll = dayPayrolls.get(teamId) ?? 0;
       const posNeeds = teamNeeds.get(teamId);
       const need = posNeeds?.get(fa.player.position) ?? 50; // default moderate need
+      const relationshipContext = relationshipContexts.get(teamId);
 
-      const offer = generateAIOffer(rng, teamId, fa.player, budget, payroll, need);
+      const offer = generateAIOffer(
+        rng,
+        teamId,
+        fa.player,
+        budget,
+        payroll,
+        need,
+        relationshipContext
+          ? {
+            ...relationshipContext,
+            isTargetedByUser: (userTeamNeeds.get(fa.player.position) ?? 0) >= USER_TARGET_NEED_THRESHOLD,
+          }
+          : undefined,
+      );
       if (offer !== null) {
         offers.push(offer);
       }

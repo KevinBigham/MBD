@@ -64,6 +64,9 @@ export {
   reactToTradeApproach,
 } from './choiceReactions.js';
 export {
+  ROUND_THREE_DIALOGUE,
+} from './roundThreeDialogue.js';
+export {
   generateChapterScript,
   generateFullOnboardingScript,
   generateRevisedOnboardingScript,

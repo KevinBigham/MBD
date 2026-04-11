@@ -48,6 +48,7 @@ import {
   processInjuries,
   checkMilestones,
   generateNews,
+  getRelationship,
   deduplicateNews,
   createOffseasonState,
   createRule5Session,
@@ -71,6 +72,8 @@ import {
   getRosterComplianceIssues as getRosterComplianceIssuesCore,
   getInternationalScoutAccuracy,
   getRemainingIFABudget,
+  getRule5TargetingBonus,
+  shouldPassOnWaiverClaim,
   getTeamBudget,
   hireCoach as hireCoachCore,
   issueQualifyingOffer as issueQualifyingOfferCore,
@@ -105,6 +108,7 @@ import {
   type InternationalProspect,
   type InternationalScoutingReport,
   type PromotionCandidate,
+  type RelationshipBidContext,
   type RetirementResult,
   type RosterComplianceIssue,
   type Rule5EligiblePlayer,
@@ -147,11 +151,13 @@ import type {
   DraftPickOwnership,
   FranchiseState,
   FranchiseTimelineEntry,
+  GMRelationship,
   GMCareer,
   HallOfFameBallotEntry,
   HallOfFameEntry,
   HistoricalPlayer,
   JobMarket,
+  LeagueEvent,
   DraftSignability,
   MentorRelationship,
   DraftState as PersistentDraftState,
@@ -159,6 +165,7 @@ import type {
   MonthlyPulseState,
   OwnerState,
   PerformanceDiagnostics,
+  PlayerNicknameState,
   PlayerOrigin,
   PlayerMorale,
   PlayerStoryArc,
@@ -169,6 +176,7 @@ import type {
   ScoutConflict,
   SeasonArchiveEntry,
   SeasonHistoryEntry,
+  SignatureMoment,
   TeamChemistry,
   TickerEntry,
   TradeState,
@@ -225,8 +233,12 @@ export interface FullGameState {
   storyFlags: Map<string, string[]>;
   rivalries: Map<string, Rivalry>;
   tickerFeed: TickerEntry[];
+  playerMoments: Map<string, SignatureMoment[]>;
+  playerNicknames: Map<string, PlayerNicknameState>;
   playerStoryArcs: PlayerStoryArc[];
   prospectBonds: ProspectBond[];
+  gmRelationships: Map<string, GMRelationship>;
+  leagueEvents: LeagueEvent[];
   playerOrigins: Map<string, PlayerOrigin>;
   debutFlashbacks: DebutFlashback[];
   awardHistory: AwardHistoryEntry[];
@@ -718,6 +730,8 @@ export function createEmptyTradeState(): TradeState {
   return {
     pendingOffers: [],
     tradeHistory: [],
+    negotiations: [],
+    multiTeamPendingTrades: [],
   };
 }
 
@@ -1246,6 +1260,8 @@ export function claimPlayerOffWaivers(
   playerId: string,
   claimingTeamId: string,
 ) {
+  maybeAdvanceWaiverPriorityForClaim(s, playerId, claimingTeamId);
+
   const result = claimOffWaiversCore(s.players, s.minorLeagueState, playerId, claimingTeamId);
   if (!result.success) {
     return result;
@@ -1265,6 +1281,78 @@ export function claimPlayerOffWaivers(
   }
 
   return result;
+}
+
+function maybeAdvanceWaiverPriorityForClaim(
+  s: FullGameState,
+  playerId: string,
+  claimingTeamId: string,
+): void {
+  const pendingClaim = s.minorLeagueState.waiverClaims.find((claim) =>
+    claim.playerId === playerId && claim.status === 'pending',
+  );
+  if (!pendingClaim) {
+    return;
+  }
+
+  const claimingPriorityIndex = pendingClaim.priorityTeamIds.indexOf(claimingTeamId);
+  if (claimingPriorityIndex <= 0) {
+    return;
+  }
+
+  const player = s.players.find((candidate) => candidate.id === playerId);
+  if (!player) {
+    return;
+  }
+
+  const nextPriorityTeamIds: string[] = [];
+  let blockingTeamId: string | null = null;
+  const teamsAheadOfClaimant = pendingClaim.priorityTeamIds.slice(0, claimingPriorityIndex);
+  for (const teamId of teamsAheadOfClaimant) {
+    if (teamId === pendingClaim.fromTeamId) {
+      continue;
+    }
+
+    const relationship = getRelationship(s.gmRelationships, teamId);
+    const passRng = createStableWorkerRng(
+      s,
+      `waiver-pass:${pendingClaim.season}:${pendingClaim.day}:${playerId}:${claimingTeamId}:${teamId}`,
+    );
+    const shouldPass = shouldPassOnWaiverClaim(
+      passRng,
+      relationship,
+      player.overallRating,
+      claimingTeamId === s.userTeamId,
+    );
+    if (shouldPass) {
+      continue;
+    }
+
+    blockingTeamId = teamId;
+    nextPriorityTeamIds.push(teamId);
+    break;
+  }
+
+  const suffixStartIndex = blockingTeamId == null
+    ? claimingPriorityIndex
+    : pendingClaim.priorityTeamIds.indexOf(blockingTeamId) + 1;
+  nextPriorityTeamIds.push(...pendingClaim.priorityTeamIds.slice(suffixStartIndex));
+
+  if (nextPriorityTeamIds.length === pendingClaim.priorityTeamIds.length) {
+    return;
+  }
+
+  s.minorLeagueState = {
+    ...s.minorLeagueState,
+    waiverClaims: s.minorLeagueState.waiverClaims.map((claim) =>
+      claim.playerId === playerId && claim.status === 'pending'
+        ? {
+          ...claim,
+          priorityTeamIds: nextPriorityTeamIds,
+        }
+        : claim,
+    ),
+  };
 }
 
 export function placePlayerOnWaivers(
@@ -3544,7 +3632,15 @@ function chooseRule5TargetForTeam(
     .filter((player) => player.teamId !== teamId)
     .map((player) => ({
       player,
-      score: player.overallRating + (needs.get(player.position) ?? 0) * 2 - Math.max(0, player.age - 26) * 4,
+      score:
+        player.overallRating
+        + (needs.get(player.position) ?? 0) * 2
+        - Math.max(0, player.age - 26) * 4
+        + (
+          player.teamId === s.userTeamId
+            ? getRule5TargetingBonus(getRelationship(s.gmRelationships, teamId)) * 550
+            : 0
+        ),
     }))
     .sort((left, right) => right.score - left.score || left.player.playerId.localeCompare(right.player.playerId));
 
@@ -4052,6 +4148,27 @@ function simulateFreeAgencyDays(
       playerId,
       getTeamFreeAgencyAppealScore(s, teamId),
     );
+  const userTeamNeeds = evaluateTeamNeeds(
+    s.players.filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB'),
+  );
+  const relationshipContexts = new Map<string, RelationshipBidContext>(
+    TEAMS
+      .filter((team) => team.id !== s.userTeamId)
+      .map((team) => {
+        const relationship = s.gmRelationships.get(team.id);
+        if (!relationship) {
+          return null;
+        }
+        return [
+          team.id,
+          {
+            relationship,
+            personality: s.gmPersonalities.get(team.id) ?? 'analytical',
+          },
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, RelationshipBidContext] => entry !== null),
+  );
 
   for (let day = 0; day < daysToSimulate; day++) {
     if (!s.freeAgencyMarket) break;
@@ -4070,6 +4187,8 @@ function simulateFreeAgencyDays(
       teamPayrolls,
       teamNeeds,
       teamAttractiveness,
+      relationshipContexts,
+      userTeamNeeds,
     );
     aiSignings.push(...applyNewFreeAgencySignings(s, previousSignedIds));
   }

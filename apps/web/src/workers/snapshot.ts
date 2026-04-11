@@ -14,14 +14,17 @@ import {
   type FranchiseTimelineEntry,
   type FranchiseState,
   type GameSnapshot,
+  type GMRelationship,
   type GMCareer,
   type HallOfFameBallotEntry,
   type HallOfFameEntry,
   type HistoricalPlayer,
   type JobMarket,
+  type LeagueEvent,
   type MentorRelationship,
   type OwnerState,
   type PerformanceDiagnostics,
+  type PlayerNicknameState,
   type PlayerOrigin,
   type PlayerMorale,
   type PlayerStoryArc,
@@ -32,16 +35,16 @@ import {
   type ScoutConflict,
   type SeasonArchiveEntry,
   type SeasonHistoryEntry,
+  type SignatureMoment,
   type TeamChemistry,
   type TickerEntry,
   type WhatIfBranchMeta,
-} from '@mbd/contracts';
-import {
   CURRENT_GAME_SNAPSHOT_VERSION,
   parseGameSnapshot,
-} from '../../../../packages/contracts/src/schemas/save';
+} from '@mbd/contracts';
 import {
   GameRNG,
+  TEAMS,
   type IFAScoutingHistoryEntry,
   type IFATeamBudget,
   type InternationalScoutingState,
@@ -60,6 +63,7 @@ import {
   type TeamRecord,
   type GameBoxScore,
   type NewsItem,
+  createRelationshipMap,
   getTeamById,
 } from '@mbd/sim-core';
 import {
@@ -170,6 +174,20 @@ function toEntries<T>(map: Map<string, T>): [string, T][] {
 
 function fromEntries<T>(entries: [string, T][]): Map<string, T> {
   return new Map(entries);
+}
+
+function deserializeGMRelationships(
+  entries: [string, GMRelationship][] | undefined,
+  userTeamId: string,
+): Map<string, GMRelationship> {
+  if (entries != null && entries.length > 0) {
+    return new Map(entries);
+  }
+
+  return createRelationshipMap(
+    TEAMS.map((team) => team.id),
+    userTeamId,
+  );
 }
 
 function serializeInternationalScoutingState(
@@ -296,6 +314,8 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 12 &&
     snapshot.schemaVersion !== 13 &&
     snapshot.schemaVersion !== 14 &&
+    snapshot.schemaVersion !== 15 &&
+    snapshot.schemaVersion !== 16 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -345,8 +365,12 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       storyFlags: toEntries(state.storyFlags),
       rivalries: toEntries(state.rivalries),
       tickerFeed: state.tickerFeed,
+      playerMoments: toEntries(state.playerMoments),
+      playerNicknames: toEntries(state.playerNicknames),
       playerStoryArcs: state.playerStoryArcs,
       prospectBonds: state.prospectBonds,
+      gmRelationships: toEntries(state.gmRelationships),
+      leagueEvents: state.leagueEvents,
       playerOrigins: toEntries(state.playerOrigins),
       debutFlashbacks: state.debutFlashbacks,
       awardHistory: state.awardHistory,
@@ -458,8 +482,15 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     storyFlags: fromEntries(snapshot.narrative.storyFlags),
     rivalries: fromEntries(snapshot.narrative.rivalries as [string, Rivalry][]),
     tickerFeed: (snapshot.narrative.tickerFeed as TickerEntry[] | undefined) ?? [],
+    playerMoments: fromEntries((snapshot.narrative.playerMoments as [string, SignatureMoment[]][] | undefined) ?? []),
+    playerNicknames: fromEntries((snapshot.narrative.playerNicknames as [string, PlayerNicknameState][] | undefined) ?? []),
     playerStoryArcs: (snapshot.narrative.playerStoryArcs as PlayerStoryArc[] | undefined) ?? [],
     prospectBonds: (snapshot.narrative.prospectBonds as ProspectBond[] | undefined) ?? [],
+    gmRelationships: deserializeGMRelationships(
+      snapshot.narrative.gmRelationships as [string, GMRelationship][] | undefined,
+      snapshot.userTeamId,
+    ),
+    leagueEvents: (snapshot.narrative.leagueEvents as LeagueEvent[] | undefined) ?? [],
     playerOrigins: fromEntries((snapshot.narrative.playerOrigins as [string, PlayerOrigin][] | undefined) ?? []),
     debutFlashbacks: (snapshot.narrative.debutFlashbacks as DebutFlashback[] | undefined) ?? [],
     awardHistory: snapshot.narrative.awardHistory as AwardHistoryEntry[],

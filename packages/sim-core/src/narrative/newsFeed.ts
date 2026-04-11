@@ -34,7 +34,8 @@ export type NewsCategory =
   | 'award'
   | 'record'
   | 'playoff'
-  | 'press_conference';
+  | 'press_conference'
+  | 'league_event';
 
 export interface NewsItem {
   id: string;
@@ -1276,7 +1277,7 @@ export function generateRetirementNews(
     id: generateNewsId(rng),
     headline: `${player.firstName} ${player.lastName} calls it a career.`,
     body: `${player.firstName} ${player.lastName} has retired from baseball after closing out his run with ${club}.`,
-    priority: 2,
+    priority: 1,
     category: 'roster_move',
     timestamp: formatTimestamp(season, day),
     relatedPlayerIds: [player.id],

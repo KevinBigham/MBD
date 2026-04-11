@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { TradeAsset } from '@mbd/contracts';
+import type { TradeAsset, TradeCondition } from '@mbd/contracts';
 import { TEAMS } from '@mbd/sim-core';
 import {
   AlertTriangle,
@@ -11,7 +11,7 @@ import {
   Scale,
   X,
 } from 'lucide-react';
-import { Skeleton } from '@mbd/ui';
+import { Badge, Skeleton } from '@mbd/ui';
 import { useSearchParams } from 'react-router-dom';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
@@ -149,12 +149,192 @@ interface TradeResult {
   message: string;
 }
 
+interface RelationshipView {
+  teamId: string;
+  teamName: string;
+  teamAbbreviation: string;
+  score: number;
+  tier: 'hostile' | 'strained' | 'neutral' | 'friendly' | 'trusted';
+  tooltip: string;
+  lastInteractionSeason: number;
+  lastEventLabel: string;
+  latestMemoryDescription: string | null;
+}
+
+interface TradeNegotiationView {
+  id: string;
+  teamId: string;
+  teamName: string;
+  teamAbbreviation: string;
+  phase: 'proposed' | 'pending' | 'counter_1' | 'counter_2' | 'counter_3' | 'accepted' | 'rejected' | 'dead';
+  roundsCompleted: number;
+  expiresAtDay: number;
+  dialogue: Array<{ speaker: 'rival_gm' | 'agm_advisor'; text: string; tone: string }>;
+  proposal: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] };
+  counterOffer: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] } | null;
+  isComplete: boolean;
+  canAccept: boolean;
+  canCounter: boolean;
+  canReject: boolean;
+}
+
+interface TradeNegotiationActionResult {
+  success: boolean;
+  decision: 'accepted' | 'rejected' | 'countered' | 'pending' | 'dead';
+  message: string;
+  negotiation: TradeNegotiationView | null;
+  tradeExecuted: boolean;
+}
+
+type MultiTeamRole = 'initiator' | 'partner' | 'facilitator';
+
+interface MultiTeamLaneState {
+  laneId: string;
+  teamId: string;
+  role: MultiTeamRole;
+  outgoing: Array<{
+    playerId: string;
+    destinationTeamId: string;
+  }>;
+}
+
+interface MultiTeamFairnessView {
+  isBalanced: boolean;
+  maxImbalance: number;
+  mostDisadvantagedTeam: string;
+  fairnessScore: number;
+  netValueByTeam: Array<{
+    teamId: string;
+    teamName: string;
+    teamAbbreviation: string;
+    netValue: number;
+  }>;
+}
+
+interface MultiTeamProposalPayload {
+  teams: Array<{
+    teamId: string;
+    role: MultiTeamRole;
+    sendingPlayerIds: string[];
+    receivingPlayerIds: string[];
+  }>;
+  conditions: TradeCondition[];
+}
+
+interface MultiTeamTradeProposalResult {
+  success: boolean;
+  accepted: boolean;
+  message: string;
+  narrative: string;
+  fairness: MultiTeamFairnessView | null;
+  blockingTeamId?: string;
+  blockReason?: string;
+}
+
+interface MultiTeamTradeExecutionResult {
+  success: boolean;
+  accepted: boolean;
+  message: string;
+  narrative: string;
+  fairness: MultiTeamFairnessView | null;
+  cascadeEvents: Array<{
+    triggeredTradeId: string;
+    reason: string;
+    affectedTeamIds: string[];
+  }>;
+  pendingTrades: Array<{
+    id: string;
+    requiredPlayerId?: string;
+    triggerCondition: string;
+  }>;
+}
+
+interface ConditionalClauseResult {
+  success: boolean;
+  message: string;
+  condition: TradeCondition | null;
+}
+
 const EMPTY_TRADE_ASSET_INVENTORY: TradeAssetInventoryView = {
   draftPicks: [],
   ifaRemaining: 0,
 };
 
 const ALL_TEAMS = TEAMS.map((t) => ({ id: t.id, name: t.name, abbr: t.abbreviation }));
+const MULTI_TEAM_ROLE_ORDER: MultiTeamRole[] = ['initiator', 'partner', 'facilitator', 'facilitator'];
+
+function normalizeMultiTeamRoles(lanes: MultiTeamLaneState[]): MultiTeamLaneState[] {
+  return lanes.map((lane, index) => ({
+    ...lane,
+    role: MULTI_TEAM_ROLE_ORDER[index] ?? 'facilitator',
+  }));
+}
+
+function buildInitialMultiTeamLanes(
+  userTeamId: string,
+  selectedTeam: string,
+): MultiTeamLaneState[] {
+  const candidateTeamIds = ALL_TEAMS
+    .map((team) => team.id)
+    .filter((teamId) => teamId !== userTeamId);
+  const secondTeamId = selectedTeam || candidateTeamIds[0] || '';
+  const thirdTeamId = candidateTeamIds.find((teamId) => teamId !== secondTeamId) ?? '';
+
+  return normalizeMultiTeamRoles([
+    { laneId: 'lane-1', teamId: userTeamId, role: 'initiator', outgoing: [] },
+    { laneId: 'lane-2', teamId: secondTeamId, role: 'partner', outgoing: [] },
+    { laneId: 'lane-3', teamId: thirdTeamId, role: 'facilitator', outgoing: [] },
+  ]);
+}
+
+function sortPlayerList(players: PlayerDTO[]): PlayerDTO[] {
+  return [...players].sort((left, right) =>
+    right.displayRating - left.displayRating
+    || left.lastName.localeCompare(right.lastName)
+    || left.firstName.localeCompare(right.firstName)
+    || left.id.localeCompare(right.id),
+  );
+}
+
+function teamDisplayName(teamId: string): string {
+  const team = ALL_TEAMS.find((candidate) => candidate.id === teamId);
+  return team ? `${team.abbr} - ${team.name}` : teamId.toUpperCase();
+}
+
+function multiTeamRoleLabel(role: MultiTeamRole): string {
+  switch (role) {
+    case 'initiator':
+      return 'Initiator';
+    case 'partner':
+      return 'Partner';
+    case 'facilitator':
+    default:
+      return 'Facilitator';
+  }
+}
+
+function multiTeamProposalFromLanes(
+  lanes: MultiTeamLaneState[],
+  conditions: TradeCondition[],
+): MultiTeamProposalPayload {
+  return {
+    teams: lanes
+      .filter((lane) => lane.teamId)
+      .map((lane) => ({
+        teamId: lane.teamId,
+        role: lane.role,
+        sendingPlayerIds: [...new Set(lane.outgoing.map((assignment) => assignment.playerId))].sort(),
+        receivingPlayerIds: [...new Set(
+          lanes.flatMap((candidate) =>
+            candidate.outgoing
+              .filter((assignment) => assignment.destinationTeamId === lane.teamId)
+              .map((assignment) => assignment.playerId),
+          ),
+        )].sort(),
+      })),
+    conditions: [...conditions],
+  };
+}
 
 function gradeColor(grade: string): string {
   switch (grade) {
@@ -188,6 +368,38 @@ function fairnessLabel(ratio: number): { text: string; color: string } {
 function fairnessText(score: number, fromTeam: string, toTeam: string): string {
   if (Math.abs(score) <= 10) return 'Balanced';
   return score > 0 ? `Favored ${fromTeam}` : `Favored ${toTeam}`;
+}
+
+function relationshipTone(tier: RelationshipView['tier']): string {
+  switch (tier) {
+    case 'hostile':
+      return 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger';
+    case 'strained':
+      return 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
+    case 'friendly':
+      return 'border-accent-info/40 bg-accent-info/10 text-accent-info';
+    case 'trusted':
+      return 'border-accent-success/40 bg-accent-success/10 text-accent-success';
+    case 'neutral':
+    default:
+      return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
+  }
+}
+
+function relationshipLabel(tier: RelationshipView['tier']): string {
+  switch (tier) {
+    case 'hostile':
+      return 'Hostile';
+    case 'strained':
+      return 'Strained';
+    case 'friendly':
+      return 'Friendly';
+    case 'trusted':
+      return 'Trusted';
+    case 'neutral':
+    default:
+      return 'Neutral';
+  }
 }
 
 function modeBadgeClass(mode: TradeDialogueView['mode'] | TradeChatterItem['mode']): string {
@@ -317,6 +529,22 @@ function ifaAmountFromViews(assets: TradeAssetView[]): string {
   return amount > 0 ? amount.toFixed(2) : '';
 }
 
+function playerIdsFromAssets(assets: TradeAsset[]): string[] {
+  return assets.flatMap((asset) => asset.type === 'player' ? [asset.playerId] : []);
+}
+
+function draftPickAssetsFromAssets(assets: TradeAsset[]): DraftPickAsset[] {
+  return assets.flatMap((asset) => asset.type === 'draft_pick' ? [asset] : []);
+}
+
+function ifaAmountFromAssets(assets: TradeAsset[]): string {
+  const amount = assets.reduce(
+    (sum, asset) => sum + (asset.type === 'ifa_pool_space' ? asset.amount : 0),
+    0,
+  );
+  return amount > 0 ? amount.toFixed(2) : '';
+}
+
 function PlayerRow({
   player,
   selected,
@@ -349,6 +577,116 @@ function PlayerRow({
       </td>
       <td className="px-2 py-1.5 text-right font-data text-dynasty-muted">{player.age}</td>
     </tr>
+  );
+}
+
+function MultiTeamLaneCard({
+  lane,
+  roster,
+  teamOptions,
+  destinationOptions,
+  teamSelectionLocked,
+  disabled,
+  onChangeTeam,
+  onTogglePlayer,
+  onChangeDestination,
+}: {
+  lane: MultiTeamLaneState;
+  roster: PlayerDTO[];
+  teamOptions: Array<{ id: string; label: string; disabled: boolean }>;
+  destinationOptions: Array<{ id: string; label: string }>;
+  teamSelectionLocked: boolean;
+  disabled: boolean;
+  onChangeTeam: (teamId: string) => void;
+  onTogglePlayer: (playerId: string) => void;
+  onChangeDestination: (playerId: string, destinationTeamId: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="font-heading text-sm font-semibold text-dynasty-textBright">
+            {multiTeamRoleLabel(lane.role)}
+          </div>
+          <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            Build outgoing assignments for this lane
+          </div>
+        </div>
+        <select
+          value={lane.teamId}
+          onChange={(event) => onChangeTeam(event.target.value)}
+          disabled={disabled || teamSelectionLocked}
+          className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2 font-heading text-xs text-dynasty-text focus:border-accent-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {teamOptions.map((team) => (
+            <option key={team.id} value={team.id} disabled={team.disabled}>
+              {team.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+        {roster.length === 0 ? (
+          <div className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-4 font-heading text-xs text-dynasty-muted">
+            No roster loaded for this lane yet.
+          </div>
+        ) : (
+          roster.map((player) => {
+            const assignment = lane.outgoing.find((candidate) => candidate.playerId === player.id) ?? null;
+            return (
+              <div
+                key={player.id}
+                className={`rounded border px-3 py-2 ${
+                  assignment
+                    ? 'border-accent-primary/40 bg-accent-primary/10'
+                    : 'border-dynasty-border bg-dynasty-surface'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => onTogglePlayer(player.id)}
+                    disabled={disabled}
+                    className="focus-ring flex-1 text-left"
+                  >
+                    <div className="font-heading text-sm text-dynasty-text">
+                      {player.firstName} {player.lastName}
+                    </div>
+                    <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                      {player.position} · {player.displayRating} OVR · Age {player.age}
+                    </div>
+                  </button>
+                  <Badge className={assignment ? 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary' : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted'}>
+                    {assignment ? 'In Framework' : 'Available'}
+                  </Badge>
+                </div>
+
+                {assignment ? (
+                  <div className="mt-3">
+                    <label className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                      Destination Club
+                    </label>
+                    <select
+                      value={assignment.destinationTeamId}
+                      onChange={(event) => onChangeDestination(player.id, event.target.value)}
+                      disabled={disabled}
+                      className="mt-2 w-full rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-xs text-dynasty-text focus:border-accent-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {destinationOptions.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -551,6 +889,14 @@ export default function TradePage() {
     getTradeDeadlineState,
     getTradeDialogue,
     getTradeAssetInventory,
+    getRelationships,
+    evaluateMultiTeamFairness,
+    generateConditionalClause,
+    startNegotiation,
+    advanceNegotiation,
+    resolveNegotiation,
+    proposeMultiTeam,
+    executeMultiTeamTrade,
     proposeTrade,
     respondToTradeOffer,
   } = worker;
@@ -570,8 +916,20 @@ export default function TradePage() {
   const [incomingOffers, setIncomingOffers] = useState<HotTradeOfferView[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryView[]>([]);
   const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
+  const [relationships, setRelationships] = useState<RelationshipView[]>([]);
   const [gmDialogue, setGmDialogue] = useState<TradeDialogueView | null>(null);
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
+  const [activeNegotiation, setActiveNegotiation] = useState<TradeNegotiationView | null>(null);
+  const [multiTeamOpen, setMultiTeamOpen] = useState(false);
+  const [multiTeamLanes, setMultiTeamLanes] = useState<MultiTeamLaneState[]>([]);
+  const [multiTeamRosters, setMultiTeamRosters] = useState<Record<string, PlayerDTO[]>>({});
+  const [multiTeamConditions, setMultiTeamConditions] = useState<TradeCondition[]>([]);
+  const [multiTeamConditionPlayerId, setMultiTeamConditionPlayerId] = useState('');
+  const [multiTeamFairness, setMultiTeamFairness] = useState<MultiTeamFairnessView | null>(null);
+  const [multiTeamProposalResult, setMultiTeamProposalResult] = useState<MultiTeamTradeProposalResult | null>(null);
+  const [multiTeamExecutionResult, setMultiTeamExecutionResult] = useState<MultiTeamTradeExecutionResult | null>(null);
+  const [multiTeamMessage, setMultiTeamMessage] = useState<string | null>(null);
+  const [multiTeamSubmitting, setMultiTeamSubmitting] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [activeCounterOfferId, setActiveCounterOfferId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -581,6 +939,33 @@ export default function TradePage() {
   const otherTeams = ALL_TEAMS.filter((team) => team.id !== userTeamId);
   const tradeMarketOpen = phase === 'regular' && (
     (deadlineState?.deadlineMode ?? false) || ((deadlineState?.daysUntilDeadline ?? -1) > 0)
+  );
+  const relationshipsByTeamId = useMemo(
+    () => new Map(relationships.map((relationship) => [relationship.teamId, relationship])),
+    [relationships],
+  );
+  const selectedRelationship = selectedTeam ? (relationshipsByTeamId.get(selectedTeam) ?? null) : null;
+  const multiTeamProposal = useMemo(
+    () => multiTeamProposalFromLanes(multiTeamLanes, multiTeamConditions),
+    [multiTeamConditions, multiTeamLanes],
+  );
+  const multiTeamMovedPlayers = useMemo(
+    () => {
+      const byPlayerId = new Map<string, { playerId: string; label: string }>();
+      for (const lane of multiTeamLanes) {
+        for (const assignment of lane.outgoing) {
+          const player = multiTeamRosters[lane.teamId]?.find((candidate) => candidate.id === assignment.playerId);
+          byPlayerId.set(assignment.playerId, {
+            playerId: assignment.playerId,
+            label: player
+              ? `${player.firstName} ${player.lastName} (${teamDisplayName(lane.teamId)})`
+              : assignment.playerId,
+          });
+        }
+      }
+      return [...byPlayerId.values()];
+    },
+    [multiTeamLanes, multiTeamRosters],
   );
 
   const loadUserRoster = useCallback(async () => {
@@ -629,6 +1014,12 @@ export default function TradePage() {
     }
   }, [getTradeDeadlineState, getTradeHistory, isInitialized, workerReady]);
 
+  const loadRelationshipData = useCallback(async () => {
+    if (!isInitialized || !workerReady) return;
+    const data = await getRelationships();
+    setRelationships((data as RelationshipView[]) ?? []);
+  }, [getRelationships, isInitialized, workerReady]);
+
   useEffect(() => {
     void loadUserRoster();
   }, [loadUserRoster, day, season, phase]);
@@ -648,6 +1039,281 @@ export default function TradePage() {
   useEffect(() => {
     void loadTradeActivity();
   }, [loadTradeActivity, day, season, phase]);
+
+  useEffect(() => {
+    void loadRelationshipData();
+  }, [loadRelationshipData, day, season, phase]);
+
+  useEffect(() => {
+    if (!multiTeamOpen || !isInitialized || !workerReady) {
+      return;
+    }
+
+    const distinctTeamIds = [...new Set(multiTeamLanes.map((lane) => lane.teamId).filter(Boolean))];
+    const missingTeamIds = distinctTeamIds.filter((teamId) => multiTeamRosters[teamId] == null);
+    if (missingTeamIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadRosters = async () => {
+      const entries = await Promise.all(
+        missingTeamIds.map(async (teamId) => {
+          const roster = await getTeamRoster(teamId);
+          return [teamId, sortPlayerList((roster as PlayerDTO[]) ?? [])] as const;
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      setMultiTeamRosters((current) => {
+        const next = { ...current };
+        for (const [teamId, roster] of entries) {
+          next[teamId] = roster;
+        }
+        return next;
+      });
+    };
+
+    void loadRosters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getTeamRoster, isInitialized, multiTeamLanes, multiTeamOpen, multiTeamRosters, workerReady]);
+
+  const resetMultiTeamBuilder = useCallback(() => {
+    setMultiTeamOpen(false);
+    setMultiTeamConditions([]);
+    setMultiTeamConditionPlayerId('');
+    setMultiTeamFairness(null);
+    setMultiTeamProposalResult(null);
+    setMultiTeamExecutionResult(null);
+    setMultiTeamMessage(null);
+    setMultiTeamSubmitting(false);
+    setMultiTeamLanes([]);
+    setMultiTeamRosters({});
+  }, []);
+
+  const openMultiTeamBuilder = useCallback(() => {
+    const nextLanes = buildInitialMultiTeamLanes(userTeamId, selectedTeam);
+    const nextRosters: Record<string, PlayerDTO[]> = {};
+    nextRosters[userTeamId] = sortPlayerList(yourRoster);
+    if (selectedTeam) {
+      nextRosters[selectedTeam] = sortPlayerList(targetRoster);
+    }
+
+    setMultiTeamLanes(nextLanes);
+    setMultiTeamRosters(nextRosters);
+    setMultiTeamConditions([]);
+    setMultiTeamConditionPlayerId('');
+    setMultiTeamFairness(null);
+    setMultiTeamProposalResult(null);
+    setMultiTeamExecutionResult(null);
+    setMultiTeamMessage(null);
+    setMultiTeamOpen(true);
+  }, [selectedTeam, targetRoster, userTeamId, yourRoster]);
+
+  const setMultiTeamLaneTeam = useCallback((laneId: string, teamId: string) => {
+    setMultiTeamFairness(null);
+    setMultiTeamProposalResult(null);
+    setMultiTeamExecutionResult(null);
+    setMultiTeamMessage(null);
+    setMultiTeamLanes((current) => {
+      const replacedTeamId = current.find((entry) => entry.laneId === laneId)?.teamId ?? '';
+      return normalizeMultiTeamRoles(current.map((lane) => (
+        lane.laneId === laneId
+          ? {
+            ...lane,
+            teamId,
+            outgoing: [],
+          }
+          : {
+            ...lane,
+            outgoing: lane.outgoing.filter((assignment) => assignment.destinationTeamId !== replacedTeamId),
+          }
+      )));
+    });
+  }, []);
+
+  const toggleMultiTeamPlayer = useCallback((laneId: string, playerId: string) => {
+    setMultiTeamFairness(null);
+    setMultiTeamProposalResult(null);
+    setMultiTeamExecutionResult(null);
+    setMultiTeamMessage(null);
+    setMultiTeamLanes((current) => current.map((lane) => {
+      if (lane.laneId !== laneId) {
+        return lane;
+      }
+
+      const existing = lane.outgoing.find((assignment) => assignment.playerId === playerId);
+      if (existing) {
+        return {
+          ...lane,
+          outgoing: lane.outgoing.filter((assignment) => assignment.playerId !== playerId),
+        };
+      }
+
+      const destinationTeamId = current
+        .map((candidate) => candidate.teamId)
+        .find((teamId) => teamId && teamId !== lane.teamId) ?? '';
+
+      return {
+        ...lane,
+        outgoing: [...lane.outgoing, { playerId, destinationTeamId }],
+      };
+    }));
+  }, []);
+
+  const updateMultiTeamDestination = useCallback((laneId: string, playerId: string, destinationTeamId: string) => {
+    setMultiTeamFairness(null);
+    setMultiTeamProposalResult(null);
+    setMultiTeamExecutionResult(null);
+    setMultiTeamMessage(null);
+    setMultiTeamLanes((current) => current.map((lane) => (
+      lane.laneId === laneId
+        ? {
+          ...lane,
+          outgoing: lane.outgoing.map((assignment) => (
+            assignment.playerId === playerId
+              ? { ...assignment, destinationTeamId }
+              : assignment
+          )),
+        }
+        : lane
+    )));
+  }, []);
+
+  const addMultiTeamLane = useCallback(() => {
+    setMultiTeamFairness(null);
+    setMultiTeamProposalResult(null);
+    setMultiTeamExecutionResult(null);
+    setMultiTeamMessage(null);
+    setMultiTeamLanes((current) => {
+      if (current.length >= 4) {
+        return current;
+      }
+      const usedTeamIds = new Set(current.map((lane) => lane.teamId));
+      const nextTeamId = ALL_TEAMS
+        .map((team) => team.id)
+        .find((teamId) => !usedTeamIds.has(teamId) && teamId !== userTeamId) ?? '';
+      return normalizeMultiTeamRoles([
+        ...current,
+        {
+          laneId: `lane-${current.length + 1}`,
+          teamId: nextTeamId,
+          role: 'facilitator',
+          outgoing: [],
+        },
+      ]);
+    });
+  }, [userTeamId]);
+
+  const removeMultiTeamLane = useCallback((laneId: string) => {
+    setMultiTeamFairness(null);
+    setMultiTeamProposalResult(null);
+    setMultiTeamExecutionResult(null);
+    setMultiTeamMessage(null);
+    setMultiTeamLanes((current) => {
+      const removedTeamId = current.find((lane) => lane.laneId === laneId)?.teamId;
+      return normalizeMultiTeamRoles(
+        current
+          .filter((lane) => lane.laneId !== laneId)
+          .map((lane) => ({
+            ...lane,
+            outgoing: lane.outgoing.filter((assignment) => assignment.destinationTeamId !== removedTeamId),
+          })),
+      );
+    });
+  }, []);
+
+  const evaluateCurrentMultiTeamFramework = useCallback(async () => {
+    setMultiTeamSubmitting(true);
+    try {
+      const result = await evaluateMultiTeamFairness(multiTeamProposal) as {
+        success: boolean;
+        message: string;
+        fairness: MultiTeamFairnessView | null;
+      };
+      setMultiTeamFairness(result.fairness ?? null);
+      setMultiTeamMessage(result.message);
+    } finally {
+      setMultiTeamSubmitting(false);
+    }
+  }, [evaluateMultiTeamFairness, multiTeamProposal]);
+
+  const handleAddConditionalClause = useCallback(async () => {
+    const targetPlayerId = multiTeamConditionPlayerId || multiTeamMovedPlayers[0]?.playerId;
+    if (!targetPlayerId) {
+      setMultiTeamMessage('Select at least one moved player before adding a condition.');
+      return;
+    }
+
+    setMultiTeamSubmitting(true);
+    try {
+      const result = await generateConditionalClause(targetPlayerId) as ConditionalClauseResult;
+      setMultiTeamMessage(result.message);
+      if (result.success && result.condition) {
+        setMultiTeamConditions((current) => [...current, result.condition!]);
+        setMultiTeamConditionPlayerId(result.condition.playerId);
+      }
+    } finally {
+      setMultiTeamSubmitting(false);
+    }
+  }, [generateConditionalClause, multiTeamConditionPlayerId, multiTeamMovedPlayers]);
+
+  const handleProposeMultiTeamFramework = useCallback(async () => {
+    setMultiTeamSubmitting(true);
+    try {
+      const result = await proposeMultiTeam(multiTeamProposal) as MultiTeamTradeProposalResult;
+      setMultiTeamProposalResult(result);
+      setMultiTeamFairness(result.fairness ?? null);
+      setMultiTeamMessage(result.message);
+    } finally {
+      setMultiTeamSubmitting(false);
+    }
+  }, [multiTeamProposal, proposeMultiTeam]);
+
+  const handleExecuteMultiTeamFramework = useCallback(async () => {
+    setMultiTeamSubmitting(true);
+    try {
+      const result = await executeMultiTeamTrade(multiTeamProposal) as MultiTeamTradeExecutionResult;
+      setMultiTeamExecutionResult(result);
+      setMultiTeamFairness(result.fairness ?? null);
+      setMultiTeamMessage(result.message);
+      setTradeResult({
+        status: result.accepted ? 'accepted' : 'rejected',
+        message: result.message,
+      });
+
+      await Promise.all([
+        loadUserRoster(),
+        loadTargetRoster(),
+        loadUserInventory(),
+        loadTargetInventory(),
+        loadTradeActivity(),
+        loadRelationshipData(),
+      ]);
+
+      if (result.accepted) {
+        setMultiTeamOpen(false);
+      }
+    } finally {
+      setMultiTeamSubmitting(false);
+    }
+  }, [
+    executeMultiTeamTrade,
+    loadRelationshipData,
+    loadTargetInventory,
+    loadTargetRoster,
+    loadTradeActivity,
+    loadUserInventory,
+    loadUserRoster,
+    multiTeamProposal,
+  ]);
 
   useEffect(() => {
     if (!preselectedPlayerId) {
@@ -679,6 +1345,7 @@ export default function TradePage() {
     setOfferingIFAAmount('');
     setRequestingIFAAmount('');
     setActiveCounterOfferId(null);
+    setActiveNegotiation(null);
   };
 
   const clearTrade = () => {
@@ -690,6 +1357,18 @@ export default function TradePage() {
     (id: string) => yourRoster.find((player) => player.id === id) ?? targetRoster.find((player) => player.id === id),
     [targetRoster, yourRoster],
   );
+
+  const applyNegotiationToBuilder = useCallback((negotiation: TradeNegotiationView | null) => {
+    if (!negotiation) {
+      return;
+    }
+    setOffering(playerIdsFromAssets(negotiation.proposal.offeringAssets));
+    setRequesting(playerIdsFromAssets(negotiation.proposal.requestingAssets));
+    setOfferingPicks(draftPickAssetsFromAssets(negotiation.proposal.offeringAssets));
+    setRequestingPicks(draftPickAssetsFromAssets(negotiation.proposal.requestingAssets));
+    setOfferingIFAAmount(ifaAmountFromAssets(negotiation.proposal.offeringAssets));
+    setRequestingIFAAmount(ifaAmountFromAssets(negotiation.proposal.requestingAssets));
+  }, []);
 
   const offeringAssets = useMemo(() => {
     const assets: TradeAsset[] = [...offering.map(playerAsset), ...offeringPicks];
@@ -784,6 +1463,11 @@ export default function TradePage() {
     workerReady,
   ]);
 
+  const multiTeamConditionTargets = useMemo(
+    () => [...multiTeamMovedPlayers].sort((left, right) => left.label.localeCompare(right.label) || left.playerId.localeCompare(right.playerId)),
+    [multiTeamMovedPlayers],
+  );
+
   const submitTrade = async () => {
     if (!selectedTeam || offeringAssets.length === 0 || requestingAssets.length === 0 || !tradeMarketOpen) return;
     const offeredPoolAmount = parsePoolAmount(offeringIFAAmount);
@@ -807,6 +1491,7 @@ export default function TradePage() {
           requestingAssets,
         });
         const response = result as { decision: 'accepted' | 'rejected' | 'countered' | 'declined'; message: string };
+        setActiveNegotiation(null);
         setTradeResult({
           status: response.decision === 'accepted'
             ? 'accepted'
@@ -816,22 +1501,45 @@ export default function TradePage() {
           message: response.message,
         });
         resetBuilder();
+      } else if (activeNegotiation) {
+        const result = await advanceNegotiation(activeNegotiation.id, {
+          offeringAssets,
+          requestingAssets,
+        }) as TradeNegotiationActionResult;
+        setTradeResult({
+          status: result.decision === 'accepted'
+            ? 'accepted'
+            : result.decision === 'countered'
+              ? 'counter'
+              : result.decision === 'pending'
+                ? 'counter'
+                : 'rejected',
+          message: result.message,
+        });
+        setActiveNegotiation(result.negotiation);
+        applyNegotiationToBuilder(result.negotiation);
+        if (result.tradeExecuted) {
+          resetBuilder();
+        }
       } else {
-        const result = await proposeTrade(
+        const result = await startNegotiation(
           offeringAssets,
           requestingAssets,
           selectedTeam,
-        );
-        const response = result as { decision: 'accepted' | 'rejected' | 'countered'; reason: string };
+        ) as TradeNegotiationActionResult;
         setTradeResult({
-          status: response.decision === 'accepted'
+          status: result.decision === 'accepted'
             ? 'accepted'
-            : response.decision === 'countered'
+            : result.decision === 'countered'
               ? 'counter'
+              : result.decision === 'pending'
+                ? 'counter'
               : 'rejected',
-          message: response.reason,
+          message: result.message,
         });
-        if (response.decision === 'accepted') {
+        setActiveNegotiation(result.negotiation);
+        applyNegotiationToBuilder(result.negotiation);
+        if (result.tradeExecuted) {
           resetBuilder();
         }
       }
@@ -847,6 +1555,41 @@ export default function TradePage() {
       setProposing(false);
     }
   };
+
+  const handleResolveNegotiation = useCallback(async (action: 'accept' | 'reject') => {
+    if (!activeNegotiation) {
+      return;
+    }
+    setProposing(true);
+    try {
+      const result = await resolveNegotiation(activeNegotiation.id, action) as TradeNegotiationActionResult;
+      setTradeResult({
+        status: result.decision === 'accepted' ? 'accepted' : 'rejected',
+        message: result.message,
+      });
+      setActiveNegotiation(result.negotiation);
+      if (result.tradeExecuted || action === 'reject') {
+        resetBuilder();
+      }
+      await Promise.all([
+        loadUserRoster(),
+        loadTargetRoster(),
+        loadUserInventory(),
+        loadTargetInventory(),
+        loadTradeActivity(),
+      ]);
+    } finally {
+      setProposing(false);
+    }
+  }, [
+    activeNegotiation,
+    loadTargetInventory,
+    loadTargetRoster,
+    loadTradeActivity,
+    loadUserInventory,
+    loadUserRoster,
+    resolveNegotiation,
+  ]);
 
   const handleAcceptOffer = async (offerId: string) => {
     setProposing(true);
@@ -1075,23 +1818,82 @@ export default function TradePage() {
                 <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
                   {activeCounterOfferId ? 'Loaded from trade inbox' : 'Direct proposal to another front office'}
                 </p>
+                {selectedRelationship ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                      {selectedRelationship.teamAbbreviation}
+                    </span>
+                    <Badge className={relationshipTone(selectedRelationship.tier)} title={selectedRelationship.tooltip}>
+                      {relationshipLabel(selectedRelationship.tier)}
+                    </Badge>
+                  </div>
+                ) : null}
               </div>
-              <select
-                value={selectedTeam}
-                onChange={(event) => {
-                  resetBuilder();
-                  setSelectedTeam(event.target.value);
-                  setTradeResult(null);
-                }}
-                className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-sm text-dynasty-text focus:border-accent-primary focus:outline-none"
-              >
-                <option value="">Select a team...</option>
-                {otherTeams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.abbr} - {team.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col gap-2 sm:items-end">
+                <button
+                  type="button"
+                  onClick={openMultiTeamBuilder}
+                  disabled={!tradeMarketOpen}
+                  className="focus-ring inline-flex items-center gap-2 rounded-md border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs font-semibold uppercase tracking-[0.18em] text-accent-info transition-colors hover:bg-accent-info/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                  3+ Team Trade
+                </button>
+                <select
+                  value={selectedTeam}
+                  onChange={(event) => {
+                    resetBuilder();
+                    setSelectedTeam(event.target.value);
+                    setTradeResult(null);
+                  }}
+                  className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-sm text-dynasty-text focus:border-accent-primary focus:outline-none"
+                >
+                  <option value="">Select a team...</option>
+                  {otherTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.abbr} - {team.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mb-4 grid gap-2 lg:grid-cols-2">
+              {otherTeams.map((team) => {
+                const relationship = relationshipsByTeamId.get(team.id) ?? null;
+                const active = selectedTeam === team.id;
+
+                return (
+                  <button
+                    key={team.id}
+                    type="button"
+                    onClick={() => {
+                      resetBuilder();
+                      setSelectedTeam(team.id);
+                      setTradeResult(null);
+                    }}
+                    className={[
+                      'focus-ring flex items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors',
+                      active
+                        ? 'border-accent-primary/40 bg-accent-primary/10'
+                        : 'border-dynasty-border bg-dynasty-elevated hover:border-accent-primary/30 hover:bg-dynasty-surface',
+                    ].join(' ')}
+                    title={relationship?.tooltip ?? `${team.abbr} - ${team.name}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="font-heading text-sm text-dynasty-textBright">
+                        {team.abbr} · {team.name}
+                      </div>
+                      <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                        {relationship?.latestMemoryDescription ?? 'No trade memory logged'}
+                      </div>
+                    </div>
+                    <Badge className={relationshipTone(relationship?.tier ?? 'neutral')}>
+                      {relationshipLabel(relationship?.tier ?? 'neutral')}
+                    </Badge>
+                  </button>
+                );
+              })}
             </div>
 
             {gmDialogue ? (
@@ -1109,6 +1911,89 @@ export default function TradePage() {
                       {line}
                     </p>
                   ))}
+                </div>
+              </div>
+            ) : null}
+
+            {activeNegotiation ? (
+              <div className="mb-4 rounded-lg border border-accent-info/30 bg-accent-info/5 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">
+                    Negotiation Round
+                  </span>
+                  <Badge className="border-accent-info/40 bg-accent-info/10 text-accent-info">
+                    {Math.max(1, activeNegotiation.roundsCompleted)}
+                  </Badge>
+                  <Badge className={modeBadgeClass(gmDialogue?.mode ?? 'buyer')}>
+                    {activeNegotiation.phase.replace(/_/g, ' ')}
+                  </Badge>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {activeNegotiation.dialogue.map((entry, index) => (
+                    <div
+                      key={`${entry.speaker}-${index}`}
+                      className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2"
+                    >
+                      <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                        {entry.speaker === 'rival_gm' ? activeNegotiation.teamAbbreviation : 'AGM Advisor'}
+                      </div>
+                      <p className="mt-1 font-heading text-xs text-dynasty-text">{entry.text}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-3">
+                    <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">You Send</div>
+                    <div className="mt-2 space-y-1">
+                      {activeNegotiation.proposal.offeringAssets.map((asset) => (
+                        <div key={`offer-${buildTradeAssetLabel(asset, playerById)}`} className="font-heading text-xs text-dynasty-text">
+                          {buildTradeAssetLabel(asset, playerById)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-3">
+                    <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">You Receive</div>
+                    <div className="mt-2 space-y-1">
+                      {activeNegotiation.proposal.requestingAssets.map((asset) => (
+                        <div key={`request-${buildTradeAssetLabel(asset, playerById)}`} className="font-heading text-xs text-dynasty-text">
+                          {buildTradeAssetLabel(asset, playerById)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleResolveNegotiation('accept')}
+                    disabled={proposing || !activeNegotiation.canAccept}
+                    className="focus-ring rounded-md border border-accent-success/40 bg-accent-success/10 px-3 py-2 font-heading text-xs text-accent-success transition-colors hover:bg-accent-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleResolveNegotiation('reject')}
+                    disabled={proposing || !activeNegotiation.canReject}
+                    className="focus-ring rounded-md border border-accent-danger/40 bg-accent-danger/10 px-3 py-2 font-heading text-xs text-accent-danger transition-colors hover:bg-accent-danger/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTradeResult({
+                      status: 'counter',
+                      message: 'Adjust the package below, then send the counter back through the room.',
+                    })}
+                    disabled={proposing || !activeNegotiation.canCounter}
+                    className="focus-ring rounded-md border border-accent-warning/40 bg-accent-warning/10 px-3 py-2 font-heading text-xs text-accent-warning transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Counter
+                  </button>
                 </div>
               </div>
             ) : null}
@@ -1367,9 +2252,13 @@ export default function TradePage() {
                   className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ArrowRight className="h-4 w-4" />
-                  {activeCounterOfferId ? 'Send Counter Offer' : 'Propose Trade'}
+                  {activeCounterOfferId
+                    ? 'Send Counter Offer'
+                    : activeNegotiation
+                      ? 'Send Negotiation Counter'
+                      : 'Start Negotiation'}
                 </button>
-                {(offeringAssets.length > 0 || requestingAssets.length > 0 || activeCounterOfferId) && (
+                {(offeringAssets.length > 0 || requestingAssets.length > 0 || activeCounterOfferId || activeNegotiation) && (
                   <button
                     onClick={clearTrade}
                     className="inline-flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm text-dynasty-muted transition-colors hover:text-dynasty-text"
@@ -1404,6 +2293,298 @@ export default function TradePage() {
               <p className="mt-2 font-heading text-sm text-dynasty-text">{tradeResult.message}</p>
             </div>
           )}
+
+          {multiTeamOpen ? (
+            <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 px-4 py-8">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="3+ Team Trade"
+                className="max-h-[90vh] w-full max-w-7xl overflow-y-auto rounded-xl border border-dynasty-border bg-dynasty-surface p-5 shadow-2xl"
+              >
+                <div className="flex flex-col gap-3 border-b border-dynasty-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="font-heading text-lg font-semibold text-dynasty-textBright">3+ Team Trade</h2>
+                    <p className="mt-1 font-heading text-sm text-dynasty-muted">
+                      Build a three- or four-club framework, add a condition, then route it through the room.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {multiTeamLanes.length < 4 ? (
+                      <button
+                        type="button"
+                        onClick={addMultiTeamLane}
+                        disabled={multiTeamSubmitting}
+                        className="focus-ring rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-text transition-colors hover:border-accent-info hover:text-accent-info disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Add Fourth Team
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={resetMultiTeamBuilder}
+                      disabled={multiTeamSubmitting}
+                      className="focus-ring rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted transition-colors hover:border-accent-danger hover:text-accent-danger disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                  {multiTeamLanes.map((lane, index) => {
+                    const teamOptions = ALL_TEAMS
+                      .map((team) => ({
+                        id: team.id,
+                        label: `${team.abbr} - ${team.name}`,
+                        disabled:
+                          team.id !== lane.teamId
+                          && multiTeamLanes.some((candidate) => candidate.laneId !== lane.laneId && candidate.teamId === team.id),
+                      }));
+                    const destinationOptions = multiTeamLanes
+                      .filter((candidate) => candidate.laneId !== lane.laneId && candidate.teamId)
+                      .map((candidate) => ({
+                        id: candidate.teamId,
+                        label: teamDisplayName(candidate.teamId),
+                      }));
+
+                    return (
+                      <div key={lane.laneId} className="space-y-2">
+                        <MultiTeamLaneCard
+                          lane={lane}
+                          roster={multiTeamRosters[lane.teamId] ?? []}
+                          teamOptions={teamOptions}
+                          destinationOptions={destinationOptions}
+                          teamSelectionLocked={index === 0}
+                          disabled={multiTeamSubmitting}
+                          onChangeTeam={(teamId) => setMultiTeamLaneTeam(lane.laneId, teamId)}
+                          onTogglePlayer={(playerId) => toggleMultiTeamPlayer(lane.laneId, playerId)}
+                          onChangeDestination={(playerId, destinationTeamId) =>
+                            updateMultiTeamDestination(lane.laneId, playerId, destinationTeamId)
+                          }
+                        />
+                        {index >= 2 ? (
+                          <button
+                            type="button"
+                            onClick={() => removeMultiTeamLane(lane.laneId)}
+                            disabled={multiTeamSubmitting}
+                            className="focus-ring rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted transition-colors hover:border-accent-danger hover:text-accent-danger disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Remove Lane
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                  <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+                    <div className="flex items-center gap-2">
+                      <Scale className="h-4 w-4 text-dynasty-muted" />
+                      <h3 className="font-heading text-sm font-semibold text-dynasty-text">Framework Summary</h3>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {multiTeamProposal.teams.map((team) => (
+                        <div key={team.teamId} className="rounded border border-dynasty-border bg-dynasty-surface p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-heading text-sm text-dynasty-textBright">{teamDisplayName(team.teamId)}</div>
+                            <Badge className="border-dynasty-border bg-dynasty-elevated text-dynasty-muted">
+                              {multiTeamRoleLabel(team.role)}
+                            </Badge>
+                          </div>
+                          <div className="mt-3">
+                            <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-primary">Sending</div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {team.sendingPlayerIds.length === 0 ? (
+                                <span className="font-heading text-xs text-dynasty-muted">No players assigned.</span>
+                              ) : (
+                                team.sendingPlayerIds.map((playerId) => {
+                                  const player = multiTeamRosters[team.teamId]?.find((candidate) => candidate.id === playerId);
+                                  return (
+                                    <span key={`${team.teamId}-send-${playerId}`} className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-xs text-dynasty-text">
+                                      {player ? `${player.firstName} ${player.lastName}` : playerId}
+                                    </span>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Receiving</div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {team.receivingPlayerIds.length === 0 ? (
+                                <span className="font-heading text-xs text-dynasty-muted">No inbound players yet.</span>
+                              ) : (
+                                team.receivingPlayerIds.map((playerId) => (
+                                  <span key={`${team.teamId}-receive-${playerId}`} className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-xs text-dynasty-text">
+                                    {multiTeamMovedPlayers.find((candidate) => candidate.playerId === playerId)?.label ?? playerId}
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-heading text-sm font-semibold text-dynasty-text">Conditional Clauses</h3>
+                          <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                            Add scaffolding from the moved-player pool
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleAddConditionalClause()}
+                          disabled={multiTeamSubmitting || multiTeamConditionTargets.length === 0}
+                          className="focus-ring rounded-md border border-accent-warning/40 bg-accent-warning/10 px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-accent-warning transition-colors hover:bg-accent-warning/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Add Condition
+                        </button>
+                      </div>
+                      <select
+                        value={multiTeamConditionPlayerId}
+                        onChange={(event) => setMultiTeamConditionPlayerId(event.target.value)}
+                        disabled={multiTeamSubmitting || multiTeamConditionTargets.length === 0}
+                        className="mt-3 w-full rounded border border-dynasty-border bg-dynasty-surface px-3 py-2 font-heading text-sm text-dynasty-text focus:border-accent-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="">Choose a moved player...</option>
+                        {multiTeamConditionTargets.map((player) => (
+                          <option key={player.playerId} value={player.playerId}>
+                            {player.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="mt-3 space-y-2">
+                        {multiTeamConditions.length === 0 ? (
+                          <p className="font-heading text-xs text-dynasty-muted">No conditional clauses attached yet.</p>
+                        ) : (
+                          multiTeamConditions.map((condition, index) => (
+                            <div key={`${condition.playerId}-${condition.type}-${index}`} className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+                              <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                                {condition.type.replace('_', ' ')} · Deadline {condition.deadline}
+                              </div>
+                              <p className="mt-1 font-heading text-xs text-dynasty-text">{condition.description}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-heading text-sm font-semibold text-dynasty-text">Room Read</h3>
+                        <button
+                          type="button"
+                          onClick={() => void evaluateCurrentMultiTeamFramework()}
+                          disabled={multiTeamSubmitting}
+                          className="focus-ring rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-[0.18em] text-dynasty-text transition-colors hover:border-accent-info hover:text-accent-info disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Evaluate
+                        </button>
+                      </div>
+                      {multiTeamFairness ? (
+                        <div className="mt-3 space-y-3">
+                          <div className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+                            <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Fairness Score</div>
+                            <div className="mt-1 font-heading text-lg text-dynasty-textBright">{multiTeamFairness.fairnessScore}</div>
+                            <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                              {multiTeamFairness.isBalanced
+                                ? 'Framework is inside tolerance.'
+                                : `${teamDisplayName(multiTeamFairness.mostDisadvantagedTeam)} is outside the current tolerance.`}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            {multiTeamFairness.netValueByTeam.map((team) => (
+                              <div key={team.teamId} className="flex items-center justify-between rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+                                <div>
+                                  <div className="font-heading text-sm text-dynasty-text">{team.teamName}</div>
+                                  <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">{team.teamAbbreviation}</div>
+                                </div>
+                                <div className={`font-data text-sm ${team.netValue >= 0 ? 'text-accent-success' : 'text-accent-danger'}`}>
+                                  {team.netValue >= 0 ? '+' : ''}{team.netValue.toFixed(1)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-3 font-heading text-xs text-dynasty-muted">
+                          Run an evaluation to see balance score, net value by club, and which team is resisting the shape.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {multiTeamMessage ? (
+                  <div className="mt-4 rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3 font-heading text-sm text-dynasty-text">
+                    {multiTeamMessage}
+                  </div>
+                ) : null}
+
+                {multiTeamProposalResult ? (
+                  <div className={`mt-4 rounded-lg border px-4 py-3 ${
+                    multiTeamProposalResult.accepted
+                      ? 'border-accent-success/40 bg-accent-success/10'
+                      : 'border-accent-warning/40 bg-accent-warning/10'
+                  }`}>
+                    <div className="font-heading text-sm font-semibold text-dynasty-textBright">Proposal Response</div>
+                    <p className="mt-2 font-heading text-sm text-dynasty-text">{multiTeamProposalResult.narrative}</p>
+                    {multiTeamProposalResult.blockReason ? (
+                      <p className="mt-2 font-heading text-xs text-dynasty-muted">
+                        {multiTeamProposalResult.blockReason}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {multiTeamExecutionResult ? (
+                  <div className={`mt-4 rounded-lg border px-4 py-3 ${
+                    multiTeamExecutionResult.accepted
+                      ? 'border-accent-success/40 bg-accent-success/10'
+                      : 'border-accent-danger/40 bg-accent-danger/10'
+                  }`}>
+                    <div className="font-heading text-sm font-semibold text-dynasty-textBright">Execution Result</div>
+                    <p className="mt-2 font-heading text-sm text-dynasty-text">{multiTeamExecutionResult.narrative}</p>
+                    {multiTeamExecutionResult.cascadeEvents.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        {multiTeamExecutionResult.cascadeEvents.map((event) => (
+                          <div key={event.triggeredTradeId} className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2 font-heading text-xs text-dynasty-text">
+                            {event.reason}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-dynasty-border pt-4">
+                  <button
+                    type="button"
+                    onClick={() => void handleProposeMultiTeamFramework()}
+                    disabled={multiTeamSubmitting}
+                    className="focus-ring rounded-md border border-accent-info/40 bg-accent-info/10 px-4 py-2 font-heading text-xs uppercase tracking-[0.18em] text-accent-info transition-colors hover:bg-accent-info/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Propose Framework
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleExecuteMultiTeamFramework()}
+                    disabled={multiTeamSubmitting || !multiTeamProposalResult?.accepted}
+                    className="focus-ring rounded-md bg-accent-primary px-4 py-2 font-heading text-xs uppercase tracking-[0.18em] text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Execute 3+ Team Trade
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
       </div>

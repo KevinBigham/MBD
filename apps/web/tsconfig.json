@@ -8,7 +8,6 @@
       "@mbd/contracts": ["../../packages/contracts/src/index.ts"],
       "@mbd/design-tokens": ["../../packages/design-tokens/src/index.ts"],
       "@mbd/sim-core": ["../../packages/sim-core/src/index.ts"],
-      "@mbd/sim-worker": ["../../packages/sim-worker/src/index.ts"],
       "@mbd/ui": ["../../packages/ui/src/index.ts"]
     }
   },

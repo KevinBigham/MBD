@@ -112,6 +112,7 @@ export type {
   ContractOffer,
   FreeAgencyMarket,
   FreeAgencyAttractiveness,
+  RelationshipBidContext,
   QualifyingOfferResolution,
 } from './freeAgency.js';
 

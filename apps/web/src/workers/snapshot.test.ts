@@ -14,22 +14,27 @@ import {
   initializeGMCareer,
   simulateDay,
 } from '@mbd/sim-core';
-import type {
-  ArchivedSeason,
-  BriefingItem,
-  DebutFlashback,
-  GameSnapshot,
-  OwnerState,
-  PlayerOrigin,
-  PlayerStoryArc,
-  PlayerMorale,
-  ProspectBond,
-  RecordBookEntry,
-  RecordWatchEntry,
-  Rivalry,
-  TickerEntry,
-  WhatIfBranchMeta,
-  TeamChemistry,
+import {
+  CURRENT_GAME_SNAPSHOT_VERSION,
+  type ArchivedSeason,
+  type BriefingItem,
+  type GMRelationship,
+  type LeagueEvent,
+  type PlayerNicknameState,
+  type DebutFlashback,
+  type GameSnapshot,
+  type OwnerState,
+  type PlayerOrigin,
+  type PlayerStoryArc,
+  type PlayerMorale,
+  type ProspectBond,
+  type RecordBookEntry,
+  type RecordWatchEntry,
+  type Rivalry,
+  type SignatureMoment,
+  type TickerEntry,
+  type WhatIfBranchMeta,
+  type TeamChemistry,
 } from '@mbd/contracts';
 import type { FullGameState } from './sim.worker.helpers';
 import {
@@ -101,6 +106,87 @@ function createNarrativeSample(userTeamId: string) {
 
   storyFlags.set(userTeamId, ['owner_hot_seat', 'wild_card_race']);
 
+  const playerMoments = new Map<string, SignatureMoment[]>();
+  playerMoments.set('player-1', [{
+    season: 1,
+    type: 'walk_off_hr',
+    description: 'Player One ended the game with one swing.',
+    impact: 65,
+    relevance: 65,
+    isPlayoff: false,
+    isEliminationGame: false,
+    worldSeriesClincher: false,
+    round: null,
+  }]);
+
+  const playerNicknames = new Map<string, PlayerNicknameState>();
+  playerNicknames.set('player-1', {
+    seasonHistory: [{
+      season: 1,
+      age: 22,
+      teamId: userTeamId,
+      gamesPlayed: 158,
+      pa: 690,
+      hits: 205,
+      hr: 24,
+      battingWalks: 58,
+      battingStrikeouts: 102,
+      stolenBases: 33,
+      saves: 0,
+      blownSaves: 0,
+      wins: 0,
+      era: 0,
+      pitchingStrikeouts: 0,
+      injuryCount: 0,
+      overallStart: 60,
+      overallEnd: 67,
+      wasOnMlbRoster: true,
+      ledLeagueInStolenBases: true,
+    }],
+    earnedNicknames: [{
+      id: 'the_flash',
+      displayText: 'The Flash',
+      priority: 7,
+      triggerData: { seasonsMatched: 3 },
+    }],
+    primaryNickname: {
+      id: 'the_flash',
+      displayText: 'The Flash',
+      priority: 7,
+      triggerData: { seasonsMatched: 3 },
+    },
+    badgeNicknames: [],
+  });
+
+  const gmRelationships = new Map<string, GMRelationship>();
+  gmRelationships.set('bos', {
+    targetTeamId: 'bos',
+    score: 12,
+    tradeHistory: [{
+      season: 1,
+      surplusValue: 2.5,
+      permanentMemory: false,
+      description: 'Moved complementary pieces.',
+    }],
+    lastInteractionSeason: 1,
+  });
+
+  const leagueEvents: LeagueEvent[] = [{
+    type: 'gm_firing',
+    season: 1,
+    month: 4,
+    teamIds: ['bos'],
+    playerIds: [],
+    headline: 'Boston shakes up the front office',
+    description: 'Boston moved on from its GM after a slow April.',
+    gameplayEffect: 'Boston now has a reset trade baseline.',
+    effectData: {
+      kind: 'gm_reset',
+      magnitude: 10,
+      newPersonality: 'analytical',
+    },
+  }];
+
   return {
     playerMorale,
     teamChemistry,
@@ -109,8 +195,12 @@ function createNarrativeSample(userTeamId: string) {
     storyFlags,
     rivalries,
     tickerFeed: [] as TickerEntry[],
+    playerMoments,
+    playerNicknames,
     playerStoryArcs: [] as PlayerStoryArc[],
     prospectBonds: [] as ProspectBond[],
+    gmRelationships,
+    leagueEvents,
     playerOrigins: new Map<string, PlayerOrigin>(),
     debutFlashbacks: [] as DebutFlashback[],
     awardHistory: [],
@@ -215,6 +305,8 @@ function createState(): FullGameState {
     tradeState: {
       pendingOffers: [],
       tradeHistory: [],
+      negotiations: [],
+      multiTeamPendingTrades: [],
     },
     hallOfFame: [],
     hallOfFameBallot: [],
@@ -360,7 +452,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(16);
+    expect(snapshot.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect((snapshot as GameSnapshot & {
       monthlyPulse?: { pendingReport: null; decisionQueue: unknown[] };
     }).monthlyPulse).toEqual({
@@ -374,6 +466,10 @@ describe('snapshot helpers', () => {
     expect(snapshot.narrative.briefingQueue).toHaveLength(1);
     expect(snapshot.narrative.storyFlags).toHaveLength(1);
     expect(snapshot.narrative.rivalries).toHaveLength(1);
+    expect(snapshot.narrative.playerMoments).toHaveLength(1);
+    expect(snapshot.narrative.playerNicknames).toHaveLength(1);
+    expect(snapshot.narrative.gmRelationships).toHaveLength(1);
+    expect(snapshot.narrative.leagueEvents).toHaveLength(1);
     expect(snapshot.narrative.recordBook).toEqual([]);
     expect(snapshot.narrative.recordWatch).toEqual([]);
     expect(snapshot.narrative.seasonArchive).toEqual([]);
@@ -393,6 +489,10 @@ describe('snapshot helpers', () => {
     expect(restored.briefingQueue[0]?.headline).toContain('Ownership');
     expect(restored.storyFlags.get('nym')).toContain('owner_hot_seat');
     expect(restored.rivalries.get('nym:bos')?.intensity).toBe(63);
+    expect(restored.playerMoments.get('player-1')?.[0]?.type).toBe('walk_off_hr');
+    expect(restored.playerNicknames.get('player-1')?.primaryNickname?.id).toBe('the_flash');
+    expect(restored.gmRelationships.get('bos')?.score).toBe(12);
+    expect(restored.leagueEvents[0]?.type).toBe('gm_firing');
     expect(restored.recordBook).toEqual([]);
     expect(restored.recordWatch).toEqual([]);
     expect(restored.seasonArchive).toEqual([]);
@@ -401,6 +501,8 @@ describe('snapshot helpers', () => {
     expect(restored.frontOfficeState.size).toBe(0);
     expect(restored.tradeState.pendingOffers).toEqual([]);
     expect(restored.tradeState.tradeHistory).toEqual([]);
+    expect(restored.tradeState.negotiations).toEqual([]);
+    expect(restored.tradeState.multiTeamPendingTrades).toEqual([]);
     expect((restored as FullGameState & {
       monthlyPulse: { pendingReport: null; decisionQueue: unknown[] };
     }).monthlyPulse).toEqual({
@@ -417,6 +519,46 @@ describe('snapshot helpers', () => {
     expect(restored.debutFlashbacks[0]?.playerId).toBe(candidate.id);
     expect(restored.minorLeagueState.minorLeagueStatHistory[0]?.[0]).toBe(candidate.id);
     expect(restored.minorLeagueState.activeDevelopmentSetbacks[0]?.playerId).toBe(candidate.id);
+  });
+
+  it('migrates v16 snapshots into the v17 narrative and trade extension shape', () => {
+    const exported = exportGameSnapshot(createState()) as GameSnapshot & {
+      schemaVersion: number;
+      narrative: Omit<GameSnapshot['narrative'], 'playerMoments' | 'playerNicknames' | 'gmRelationships' | 'leagueEvents'> & {
+        playerMoments?: unknown;
+        playerNicknames?: unknown;
+        gmRelationships?: unknown;
+        leagueEvents?: unknown;
+      };
+      tradeState: Omit<GameSnapshot['tradeState'], 'negotiations' | 'multiTeamPendingTrades'> & {
+        negotiations?: unknown;
+        multiTeamPendingTrades?: unknown;
+      };
+    };
+
+    const restored = importGameSnapshot({
+      ...exported,
+      schemaVersion: 16,
+      narrative: {
+        ...exported.narrative,
+        playerMoments: undefined,
+        playerNicknames: undefined,
+        gmRelationships: undefined,
+        leagueEvents: undefined,
+      },
+      tradeState: {
+        ...exported.tradeState,
+        negotiations: undefined,
+        multiTeamPendingTrades: undefined,
+      },
+    });
+
+    expect(restored.playerMoments).toEqual(new Map());
+    expect(restored.playerNicknames).toEqual(new Map());
+    expect(restored.gmRelationships.size).toBe(TEAMS.length - 1);
+    expect(restored.leagueEvents).toEqual([]);
+    expect(restored.tradeState.negotiations).toEqual([]);
+    expect(restored.tradeState.multiTeamPendingTrades).toEqual([]);
   });
 
   it('migrates v14 snapshots into the v15 archive and diagnostics shape', () => {
