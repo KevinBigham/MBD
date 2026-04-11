@@ -24,34 +24,67 @@ const mockedUseGameStore = vi.mocked(useGameStore);
 const MOCK_PULSE_WITH_REPORT = {
   pendingReport: {
     id: 'report-june',
+    season: 5,
+    month: 6,
     monthLabel: 'June',
-    monthRecord: { wins: 18, losses: 10 },
-    overallRecord: { wins: 45, losses: 30 },
+    startDay: 61,
+    endDay: 90,
+    teamRecord: '18-10',
+    overallRecord: '45-30',
     divisionRank: 2,
     divisionMovement: 1,
-    playerOfMonth: { name: 'Mike Trout', stat: '.345 / 8 HR / 22 RBI' },
+    playerOfTheMonth: {
+      playerId: 'p-trout',
+      playerName: 'Mike Trout',
+      position: 'CF',
+      war: 5.8,
+    },
     keyInjuries: ['Aaron Judge - hamstring (15-day IL)'],
     keyReturns: ['Gerrit Cole - returned from elbow'],
     tradeDeadlineCountdown: 28,
-    scheduleDifficulty: 'Above Average',
+    upcomingScheduleDifficulty: {
+      score: 62,
+      label: 'Above Average',
+      summary: 'Three division leaders on deck, two series on the road.',
+    },
   },
   decisionQueue: [
     {
       id: 'dec-1',
       title: 'Call up top prospect?',
       body: 'Rodriguez is crushing AAA. Ready for the show?',
-      urgency: 'high' as const,
+      urgency: 'red' as const,
       route: '/minors',
+      actionLabel: 'Review Call-Up',
     },
     {
       id: 'dec-2',
       title: 'Extension offer expiring',
       body: 'Contract deadline approaching for your ace.',
-      urgency: 'medium' as const,
+      urgency: 'yellow' as const,
       route: '/finance',
+      actionLabel: 'Open Finance',
     },
   ],
 };
+
+const MOCK_LEAGUE_EVENTS = [
+  {
+    type: 'gm_firing',
+    season: 5,
+    month: 6,
+    teamIds: ['nym'],
+    playerIds: [],
+    headline: 'Tycoons dismiss veteran GM',
+    description: 'Ownership opted for a midseason reset after a flat June.',
+    gameplayEffect: 'Front-office relationships around the league just became less predictable.',
+    effectData: {
+      kind: 'gm_reset',
+      magnitude: 25,
+      newPersonality: 'aggressive',
+    },
+  },
+];
 
 describe('PulsePage', () => {
   let container: HTMLDivElement;
@@ -96,6 +129,7 @@ describe('PulsePage', () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       getMonthlyPulse: vi.fn().mockResolvedValue(MOCK_PULSE_WITH_REPORT),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue(MOCK_LEAGUE_EVENTS),
       acknowledgeMonthlyReport: vi.fn().mockResolvedValue({ success: true }),
       dismissDecisionSpotlight: vi.fn().mockResolvedValue({ success: true }),
     } as unknown as ReturnType<typeof useWorker>);
@@ -121,6 +155,8 @@ describe('PulsePage', () => {
     expect(container.textContent).toContain('28d');
     expect(container.textContent).toContain('Call up top prospect?');
     expect(container.textContent).toContain('Extension offer expiring');
+    expect(container.textContent).toContain('League Events');
+    expect(container.textContent).toContain('Tycoons dismiss veteran GM');
     expect(container.textContent).toContain('Mark as Read');
   });
 
@@ -128,6 +164,7 @@ describe('PulsePage', () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       getMonthlyPulse: vi.fn().mockResolvedValue({ pendingReport: null, decisionQueue: [] }),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue([]),
       acknowledgeMonthlyReport: vi.fn(),
       dismissDecisionSpotlight: vi.fn(),
     } as unknown as ReturnType<typeof useWorker>);
@@ -152,6 +189,7 @@ describe('PulsePage', () => {
         pendingReport: null,
         decisionQueue: MOCK_PULSE_WITH_REPORT.decisionQueue,
       }),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue([]),
       acknowledgeMonthlyReport: vi.fn(),
       dismissDecisionSpotlight: vi.fn(),
     } as unknown as ReturnType<typeof useWorker>);
@@ -169,5 +207,29 @@ describe('PulsePage', () => {
     expect(container.textContent).toContain('Decision Spotlights');
     expect(container.textContent).toContain('Call up top prospect?');
     expect(container.textContent).not.toContain('June Report');
+  });
+
+  it('shows league events when no report is pending', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getMonthlyPulse: vi.fn().mockResolvedValue({ pendingReport: null, decisionQueue: [] }),
+      getCurrentLeagueEvents: vi.fn().mockResolvedValue(MOCK_LEAGUE_EVENTS),
+      acknowledgeMonthlyReport: vi.fn(),
+      dismissDecisionSpotlight: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <PulsePage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('League Events');
+    expect(container.textContent).toContain('Tycoons dismiss veteran GM');
+    expect(container.textContent).not.toContain('No pending reports');
   });
 });

@@ -599,6 +599,7 @@ export {
   generateOnboardingPressConference,
   generateOnboardingHighlights,
   generateRevisedOnboardingScript,
+  ROUND_THREE_DIALOGUE,
   generateScoutingHiringSlate,
   generateBudgetOverview,
   generateOwnerReaction,
@@ -976,6 +977,7 @@ export type {
   ContractOffer,
   FreeAgencyMarket,
   FreeAgencyAttractiveness,
+  RelationshipBidContext,
   QualifyingOfferResolution,
 } from './roster/index.js';
 export {

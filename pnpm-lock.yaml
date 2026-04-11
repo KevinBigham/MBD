@@ -35,9 +35,6 @@ importers:
       '@mbd/sim-core':
         specifier: workspace:*
         version: link:../../packages/sim-core
-      '@mbd/sim-worker':
-        specifier: workspace:*
-        version: link:../../packages/sim-worker
       '@mbd/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -146,28 +143,6 @@ importers:
       fast-check:
         specifier: ^4.6.0
         version: 4.6.0
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(jiti@1.21.7)(jsdom@29.0.1)(terser@5.46.1)
-
-  packages/sim-worker:
-    dependencies:
-      '@mbd/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@mbd/sim-core':
-        specifier: workspace:*
-        version: link:../sim-core
-      comlink:
-        specifier: ^4.4.2
-        version: 4.4.2
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
-    devDependencies:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

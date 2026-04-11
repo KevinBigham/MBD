@@ -131,10 +131,10 @@ function createV15Snapshot() {
 }
 
 describe('snapshot onboarding migration', () => {
-  it('migrates v15 saves to v16 with null onboarding persistence fields', () => {
+  it('migrates v15 saves to v17 with null onboarding persistence fields', () => {
     const migrated = parseGameSnapshot(createV15Snapshot());
 
-    expect(migrated.schemaVersion).toBe(16);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.franchise.assistantGMId).toBeNull();
     expect(migrated.franchise.gmPhilosophy).toBeNull();
     expect(migrated.franchise.scoutingDirector).toBeNull();

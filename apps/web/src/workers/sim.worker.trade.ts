@@ -1,11 +1,14 @@
 import type {
   BriefingItem,
+  PersistentNegotiationState,
   PersistentTradeOffer,
   TradeAsset,
   TradeHistoryEntry,
 } from '@mbd/contracts';
 import {
+  addTradeMemory,
   applyMoraleEvent,
+  adjustDraftPickTradeValue,
   buildRosterState,
   calculateTeamChemistry,
   comparePackages,
@@ -14,29 +17,49 @@ import {
   deduplicateNews,
   deriveTradeDeadlineMode,
   evaluateTradeProposal,
+  evaluateMultiTeamFairness as evaluateMultiTeamFairnessCore,
   executeTrade,
+  generateConditionalClause as generateConditionalClauseCore,
+  initiateNegotiation,
+  isNegotiationComplete,
+  generateRelationshipEffectNarrative,
   generateAITradeOffers,
   generateTradeChatter,
   generateTradeDialogue,
   generateNews,
   generateNewsId,
+  getRelationship,
   getDaysUntilTradeDeadline,
   getTradeDeadlineDay,
   getRemainingIFABudget,
   getTeamById,
   isTradeDeadlineModeDay,
+  detectTradeCascades,
+  modifyRelationship,
+  proposeMultiTeamTrade,
+  resolveNegotiation as resolveTradeNegotiation,
   recordBlockbusterTradeRivalry,
   rivalryTradePenalty,
   tradeDraftPickOwnership as tradeDraftPickOwnershipCore,
   tradeIFABonusPool as tradeIFABonusPoolCore,
+  advanceNegotiation as advanceTradeNegotiation,
 } from '@mbd/sim-core';
 import type {
+  NegotiationDialogue,
+  NegotiationPhase,
+  NegotiationProposal as CoreNegotiationProposal,
+  NegotiationState,
+  NegotiationContext,
+  GMPersonality,
   TradeChatterItem,
   TradeDeadlineMode,
   TradeDialogue,
+  TradeCondition,
   TradeNegotiationType,
   TradeProposal,
+  TradeParticipantRole,
 } from '@mbd/sim-core';
+import type { CascadeEvent, PendingTrade } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
 import { createStableWorkerRng, getTeamPlayers, timestamp } from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
@@ -151,7 +174,109 @@ export interface TradeOfferResponseResult {
   message: string;
 }
 
+export interface TradeNegotiationView {
+  id: string;
+  teamId: string;
+  teamName: string;
+  teamAbbreviation: string;
+  phase: NegotiationPhase;
+  roundsCompleted: number;
+  expiresAtDay: number;
+  dialogue: NegotiationDialogue[];
+  proposal: TradeCounterPackage;
+  counterOffer: TradeCounterPackage | null;
+  isComplete: boolean;
+  canAccept: boolean;
+  canCounter: boolean;
+  canReject: boolean;
+}
+
+export interface TradeNegotiationActionResult {
+  success: boolean;
+  decision: 'accepted' | 'rejected' | 'countered' | 'pending' | 'dead';
+  message: string;
+  negotiation: TradeNegotiationView | null;
+  tradeExecuted: boolean;
+}
+
+export interface MultiTeamTradeParticipantInput {
+  teamId: string;
+  role: TradeParticipantRole;
+  sendingPlayerIds: string[];
+  receivingPlayerIds: string[];
+}
+
+export interface MultiTeamTradeProposalInput {
+  teams: MultiTeamTradeParticipantInput[];
+  conditions: TradeCondition[];
+}
+
+export interface MultiTeamTeamNetValueView {
+  teamId: string;
+  teamName: string;
+  teamAbbreviation: string;
+  netValue: number;
+}
+
+export interface MultiTeamFairnessView {
+  isBalanced: boolean;
+  maxImbalance: number;
+  mostDisadvantagedTeam: string;
+  fairnessScore: number;
+  netValueByTeam: MultiTeamTeamNetValueView[];
+}
+
+export interface MultiTeamFairnessResult {
+  success: boolean;
+  message: string;
+  fairness: MultiTeamFairnessView | null;
+}
+
+export interface ConditionalClauseResult {
+  success: boolean;
+  message: string;
+  condition: TradeCondition | null;
+}
+
+export interface MultiTeamTradeProposalResult {
+  success: boolean;
+  accepted: boolean;
+  message: string;
+  narrative: string;
+  fairness: MultiTeamFairnessView | null;
+  blockingTeamId?: string;
+  blockReason?: string;
+}
+
+export interface MultiTeamTradeExecutionResult {
+  success: boolean;
+  accepted: boolean;
+  message: string;
+  narrative: string;
+  fairness: MultiTeamFairnessView | null;
+  cascadeEvents: CascadeEvent[];
+  pendingTrades: PendingTrade[];
+}
+
 let tradeDeadlineRecapCache: TradeDeadlineRecapView | null = null;
+const RELATIONSHIP_PERSONALITY_MULTIPLIER: Record<GMPersonality, number> = {
+  aggressive: 1.2,
+  win_now: 1.15,
+  conservative: 1,
+  prospect_hugger: 0.9,
+  analytical: 0.95,
+};
+const MULTI_TEAM_ROLE_PRIORITY: Record<TradeParticipantRole, number> = {
+  initiator: 0,
+  partner: 1,
+  facilitator: 2,
+};
+
+interface UserRelationshipTradeContext {
+  counterpartTeamId: string;
+  personality: GMPersonality;
+  relationship: ReturnType<typeof getRelationship>;
+}
 
 function teamName(teamId: string): string {
   const team = getTeamById(teamId);
@@ -160,6 +285,646 @@ function teamName(teamId: string): string {
 
 function teamAbbreviation(teamId: string): string {
   return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
+}
+
+function getUserRelationshipTradeContext(
+  state: FullGameState,
+  fromTeamId: string,
+  toTeamId: string,
+): UserRelationshipTradeContext | null {
+  if (fromTeamId === state.userTeamId && toTeamId !== state.userTeamId) {
+    return {
+      counterpartTeamId: toTeamId,
+      personality: state.gmPersonalities.get(toTeamId) ?? 'analytical',
+      relationship: getRelationship(state.gmRelationships, toTeamId),
+    };
+  }
+
+  if (toTeamId === state.userTeamId && fromTeamId !== state.userTeamId) {
+    return {
+      counterpartTeamId: fromTeamId,
+      personality: state.gmPersonalities.get(fromTeamId) ?? 'analytical',
+      relationship: getRelationship(state.gmRelationships, fromTeamId),
+    };
+  }
+
+  return null;
+}
+
+function relationshipTradeMargin(
+  state: FullGameState,
+  proposal: { fromTeamId: string; toTeamId: string },
+  fairnessScore: number,
+): number {
+  return proposal.fromTeamId === state.userTeamId ? fairnessScore : -fairnessScore;
+}
+
+function buildTradeMemoryDescription(margin: number): string {
+  if (margin >= 18) {
+    return 'a trade you clearly won';
+  }
+  if (margin <= -18) {
+    return 'a trade they felt they won';
+  }
+  return 'a trade both sides could justify';
+}
+
+function buildRelationshipDelta(
+  personality: GMPersonality,
+  userMargin: number,
+): number {
+  const multiplier = RELATIONSHIP_PERSONALITY_MULTIPLIER[personality] ?? 1;
+  if (userMargin >= 18) {
+    return -Math.max(4, Math.round(Math.min(20, userMargin * 0.35) * multiplier));
+  }
+  if (userMargin <= -18) {
+    return Math.max(3, Math.round(Math.min(14, Math.abs(userMargin) * 0.22) * multiplier));
+  }
+  return 4;
+}
+
+function applyAcceptedTradeRelationshipUpdate(
+  state: FullGameState,
+  proposal: { fromTeamId: string; toTeamId: string },
+  fairnessScore: number,
+) {
+  const context = getUserRelationshipTradeContext(state, proposal.fromTeamId, proposal.toTeamId);
+  if (!context) {
+    return;
+  }
+
+  const userMargin = relationshipTradeMargin(state, proposal, fairnessScore);
+  let relationship = addTradeMemory(context.relationship, {
+    season: state.season,
+    surplusValue: Number(userMargin.toFixed(2)),
+    permanentMemory: Math.abs(userMargin) >= 25,
+    description: buildTradeMemoryDescription(userMargin),
+  });
+  relationship = modifyRelationship(relationship, {
+    type: userMargin >= 18 ? 'trade_won' : userMargin <= -18 ? 'trade_lost' : 'trade_fair',
+    magnitude: buildRelationshipDelta(context.personality, userMargin),
+    permanent: Math.abs(userMargin) >= 25,
+    description: buildTradeMemoryDescription(userMargin),
+    season: state.season,
+  });
+  state.gmRelationships.set(context.counterpartTeamId, relationship);
+}
+
+function buildTradeRelationshipNarrative(
+  state: FullGameState,
+  proposal: {
+    fromTeamId: string;
+    toTeamId: string;
+    offeringAssets: TradeAsset[];
+    requestingAssets: TradeAsset[];
+  },
+): string | null {
+  const context = getUserRelationshipTradeContext(state, proposal.fromTeamId, proposal.toTeamId);
+  if (!context) {
+    return null;
+  }
+
+  const includesDraftPick = [...proposal.offeringAssets, ...proposal.requestingAssets]
+    .some((asset) => asset.type === 'draft_pick');
+  if (!includesDraftPick) {
+    return null;
+  }
+
+  return generateRelationshipEffectNarrative(
+    createStableWorkerRng(
+      state,
+      `trade:relationship:${proposal.fromTeamId}:${proposal.toTeamId}:${state.season}:${state.day}`,
+    ),
+    {
+      type: 'draft_premium',
+      teamId: context.counterpartTeamId,
+      magnitude: context.relationship.score,
+      description: 'Prior history changed how the draft-pick pieces were priced in the room.',
+    },
+  );
+}
+
+function buildNegotiationPackage(playerIds: string[], counterpartIds: string[]): TradeCounterPackage {
+  return {
+    offeringAssets: playerAssets(playerIds),
+    requestingAssets: playerAssets(counterpartIds),
+  };
+}
+
+function toPersistentNegotiationState(state: NegotiationState): PersistentNegotiationState {
+  return {
+    id: state.id,
+    phase: state.phase,
+    proposal: {
+      fromTeamId: state.proposal.fromTeamId,
+      toTeamId: state.proposal.toTeamId,
+      offering: [...state.proposal.offering],
+      requesting: [...state.proposal.requesting],
+      valuationGap: state.proposal.valuationGap,
+    },
+    context: {
+      currentDay: state.context.currentDay,
+      fromTeamId: state.proposal.fromTeamId,
+      toTeamId: state.proposal.toTeamId,
+      protectedPlayerIds: [...(state.context.protectedPlayerIds ?? [])],
+      unavailablePlayerIds: [...(state.context.unavailablePlayerIds ?? [])],
+    },
+    counterOffers: state.counterOffers.map((counter) => ({
+      round: counter.round,
+      addedByAI: [...counter.addedByAI],
+      removedByAI: [...counter.removedByAI],
+      adjustedValuationGap: counter.adjustedValuationGap,
+    })),
+    roundsCompleted: state.roundsCompleted,
+    expiresAtDay: state.expiresAtDay,
+    dialogue: state.dialogue.map((entry) => ({ ...entry })),
+    relationshipChange: state.relationshipChange,
+  };
+}
+
+function hydrateNegotiationContext(
+  state: FullGameState,
+  persistent: PersistentNegotiationState,
+): NegotiationContext {
+  return {
+    currentDay: state.day,
+    fromTeamPlayers: getTeamPlayers(persistent.proposal.fromTeamId),
+    toTeamPlayers: getTeamPlayers(persistent.proposal.toTeamId),
+    protectedPlayerIds: [...persistent.context.protectedPlayerIds],
+    unavailablePlayerIds: [...persistent.context.unavailablePlayerIds],
+  };
+}
+
+function hydrateNegotiationState(
+  state: FullGameState,
+  persistent: PersistentNegotiationState,
+): NegotiationState {
+  return {
+    id: persistent.id,
+    phase: persistent.phase,
+    proposal: {
+      fromTeamId: persistent.proposal.fromTeamId,
+      toTeamId: persistent.proposal.toTeamId,
+      offering: [...persistent.proposal.offering],
+      requesting: [...persistent.proposal.requesting],
+      valuationGap: persistent.proposal.valuationGap,
+    },
+    context: hydrateNegotiationContext(state, persistent),
+    counterOffers: persistent.counterOffers.map((counter) => ({
+      round: counter.round,
+      addedByAI: [...counter.addedByAI],
+      removedByAI: [...counter.removedByAI],
+      adjustedValuationGap: counter.adjustedValuationGap,
+    })),
+    roundsCompleted: persistent.roundsCompleted,
+    expiresAtDay: persistent.expiresAtDay,
+    dialogue: persistent.dialogue.map((entry) => ({ ...entry })),
+    relationshipChange: persistent.relationshipChange,
+  };
+}
+
+function upsertNegotiation(state: FullGameState, negotiation: NegotiationState) {
+  const persistent = toPersistentNegotiationState(negotiation);
+  const next = state.tradeState.negotiations.filter((entry) => entry.id !== persistent.id);
+  state.tradeState = {
+    ...state.tradeState,
+    negotiations: [...next, persistent].sort((left, right) =>
+      left.expiresAtDay - right.expiresAtDay || left.id.localeCompare(right.id),
+    ),
+  };
+}
+
+function removeNegotiation(state: FullGameState, negotiationId: string) {
+  state.tradeState = {
+    ...state.tradeState,
+    negotiations: state.tradeState.negotiations.filter((entry) => entry.id !== negotiationId),
+  };
+}
+
+export function pruneExpiredNegotiations(state: FullGameState) {
+  const active = state.tradeState.negotiations.filter((entry) => entry.expiresAtDay >= state.day);
+  if (active.length === state.tradeState.negotiations.length) {
+    return;
+  }
+  state.tradeState = {
+    ...state.tradeState,
+    negotiations: active,
+  };
+}
+
+function buildNegotiationView(
+  state: FullGameState,
+  negotiation: NegotiationState,
+): TradeNegotiationView {
+  const counterpartTeamId = negotiation.proposal.toTeamId;
+  const counterOffer = negotiation.phase.startsWith('counter')
+    ? buildNegotiationPackage(negotiation.proposal.offering, negotiation.proposal.requesting)
+    : null;
+
+  return {
+    id: negotiation.id,
+    teamId: counterpartTeamId,
+    teamName: teamName(counterpartTeamId),
+    teamAbbreviation: teamAbbreviation(counterpartTeamId),
+    phase: negotiation.phase,
+    roundsCompleted: negotiation.roundsCompleted,
+    expiresAtDay: negotiation.expiresAtDay,
+    dialogue: negotiation.dialogue.map((entry) => ({ ...entry })),
+    proposal: buildNegotiationPackage(negotiation.proposal.offering, negotiation.proposal.requesting),
+    counterOffer,
+    isComplete: isNegotiationComplete(negotiation),
+    canAccept: !isNegotiationComplete(negotiation),
+    canCounter: !isNegotiationComplete(negotiation),
+    canReject: !isNegotiationComplete(negotiation),
+  };
+}
+
+interface MultiTeamAssignment {
+  playerId: string;
+  fromTeamId: string;
+  toTeamId: string;
+}
+
+function sortStringList(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeMultiTeamProposal(
+  proposal: MultiTeamTradeProposalInput,
+): MultiTeamTradeProposalInput {
+  return {
+    teams: proposal.teams.map((team) => ({
+      ...team,
+      sendingPlayerIds: sortStringList(team.sendingPlayerIds),
+      receivingPlayerIds: sortStringList(team.receivingPlayerIds),
+    })),
+    conditions: [...proposal.conditions].sort((left, right) =>
+      left.playerId.localeCompare(right.playerId)
+      || left.deadline - right.deadline
+      || left.type.localeCompare(right.type),
+    ),
+  };
+}
+
+function multiTeamTeamIds(proposal: MultiTeamTradeProposalInput): string[] {
+  return proposal.teams.map((team) => team.teamId);
+}
+
+function buildMultiTeamAssignments(
+  proposal: MultiTeamTradeProposalInput,
+): MultiTeamAssignment[] {
+  const senderByPlayerId = new Map<string, string>();
+  const receiverByPlayerId = new Map<string, string>();
+
+  for (const team of proposal.teams) {
+    for (const playerId of team.sendingPlayerIds) {
+      senderByPlayerId.set(playerId, team.teamId);
+    }
+    for (const playerId of team.receivingPlayerIds) {
+      receiverByPlayerId.set(playerId, team.teamId);
+    }
+  }
+
+  return [...senderByPlayerId.entries()]
+    .map(([playerId, fromTeamId]) => ({
+      playerId,
+      fromTeamId,
+      toTeamId: receiverByPlayerId.get(playerId) ?? '',
+    }))
+    .sort((left, right) =>
+      left.fromTeamId.localeCompare(right.fromTeamId)
+      || left.toTeamId.localeCompare(right.toTeamId)
+      || left.playerId.localeCompare(right.playerId),
+    );
+}
+
+function validateMultiTeamProposal(
+  state: FullGameState,
+  proposal: MultiTeamTradeProposalInput,
+): string | null {
+  if (proposal.teams.length < 3) {
+    return 'A multi-team framework needs at least three teams.';
+  }
+  if (proposal.teams.length > 4) {
+    return 'Multi-team trade builder supports up to four teams.';
+  }
+
+  const distinctTeamIds = new Set(multiTeamTeamIds(proposal));
+  if (distinctTeamIds.size !== proposal.teams.length) {
+    return 'Each multi-team lane needs a distinct club.';
+  }
+
+  const sentPlayerIds = proposal.teams.flatMap((team) => team.sendingPlayerIds);
+  const receivedPlayerIds = proposal.teams.flatMap((team) => team.receivingPlayerIds);
+  if (sentPlayerIds.length === 0) {
+    return 'Pick at least one outgoing player to build a three-team framework.';
+  }
+  if (new Set(sentPlayerIds).size !== sentPlayerIds.length) {
+    return 'A player cannot be sent by multiple teams in the same framework.';
+  }
+  if (new Set(receivedPlayerIds).size !== receivedPlayerIds.length) {
+    return 'A player cannot be received by multiple teams in the same framework.';
+  }
+
+  const sentSet = new Set(sentPlayerIds);
+  const receivedSet = new Set(receivedPlayerIds);
+  if (sentSet.size !== receivedSet.size || [...sentSet].some((playerId) => !receivedSet.has(playerId))) {
+    return 'Every outgoing player must have exactly one destination team.';
+  }
+
+  for (const team of proposal.teams) {
+    for (const playerId of team.sendingPlayerIds) {
+      const player = state.players.find((candidate) => candidate.id === playerId);
+      if (!player || player.teamId !== team.teamId) {
+        return 'Multi-team framework includes a player on the wrong roster.';
+      }
+    }
+
+    if (team.sendingPlayerIds.some((playerId) => team.receivingPlayerIds.includes(playerId))) {
+      return 'A club cannot send and receive the same player in one framework.';
+    }
+  }
+
+  for (const assignment of buildMultiTeamAssignments(proposal)) {
+    if (!assignment.toTeamId) {
+      return 'Each outgoing player needs a destination club.';
+    }
+    if (assignment.fromTeamId === assignment.toTeamId) {
+      return 'A club cannot receive its own outgoing player.';
+    }
+  }
+
+  return null;
+}
+
+function toCoreMultiTeamProposal(proposal: MultiTeamTradeProposalInput) {
+  return {
+    teams: proposal.teams.map((team) => ({
+      teamId: team.teamId,
+      role: team.role,
+      sending: [...team.sendingPlayerIds],
+      receiving: [...team.receivingPlayerIds],
+    })),
+    conditions: proposal.conditions.map((condition) => ({ ...condition })),
+  };
+}
+
+function buildMultiTeamValuations(
+  state: FullGameState,
+  proposal: MultiTeamTradeProposalInput,
+): Map<string, number> {
+  const valuations = new Map<string, number>();
+
+  for (const playerId of sortStringList(proposal.teams.flatMap((team) => team.sendingPlayerIds))) {
+    valuations.set(playerId, assetValue(state, { type: 'player', playerId }));
+  }
+
+  return valuations;
+}
+
+function buildMultiTeamFairnessView(
+  proposal: MultiTeamTradeProposalInput,
+  fairness: ReturnType<typeof evaluateMultiTeamFairnessCore>,
+  netValueByTeam: Map<string, number>,
+): MultiTeamFairnessView {
+  const netValues = proposal.teams
+    .map((team) => ({
+      teamId: team.teamId,
+      teamName: teamName(team.teamId),
+      teamAbbreviation: teamAbbreviation(team.teamId),
+      netValue: Number((netValueByTeam.get(team.teamId) ?? 0).toFixed(1)),
+    }))
+    .sort((left, right) =>
+      MULTI_TEAM_ROLE_PRIORITY[
+        proposal.teams.find((team) => team.teamId === left.teamId)?.role ?? 'facilitator'
+      ] - MULTI_TEAM_ROLE_PRIORITY[
+        proposal.teams.find((team) => team.teamId === right.teamId)?.role ?? 'facilitator'
+      ]
+      || left.teamAbbreviation.localeCompare(right.teamAbbreviation)
+      || left.teamId.localeCompare(right.teamId),
+    );
+
+  return {
+    isBalanced: fairness.isBalanced,
+    maxImbalance: fairness.maxImbalance,
+    mostDisadvantagedTeam: fairness.mostDisadvantagedTeam,
+    fairnessScore: fairness.fairnessScore,
+    netValueByTeam: netValues,
+  };
+}
+
+function evaluateMultiTeamTradeInternals(
+  state: FullGameState,
+  proposal: MultiTeamTradeProposalInput,
+): {
+  normalized: MultiTeamTradeProposalInput;
+  fairness: MultiTeamFairnessView;
+  netValueByTeam: Map<string, number>;
+} | { error: string } {
+  const normalized = normalizeMultiTeamProposal(proposal);
+  const validationError = validateMultiTeamProposal(state, normalized);
+  if (validationError) {
+    return { error: validationError };
+  }
+
+  const coreProposal = toCoreMultiTeamProposal(normalized);
+  const valuations = buildMultiTeamValuations(state, normalized);
+  const fairness = evaluateMultiTeamFairnessCore(coreProposal, valuations);
+  const proposalPreview = proposeMultiTeamTrade(
+    createStableWorkerRng(
+      state,
+      `trade:multi-team:preview:${normalized.teams.map((team) => team.teamId).join(':')}:${normalized.conditions.length}`,
+    ),
+    coreProposal,
+    valuations,
+    new Map(normalized.teams.map((team) => [
+      team.teamId,
+      state.gmPersonalities.get(team.teamId) ?? 'analytical',
+    ])),
+  );
+
+  return {
+    normalized,
+    fairness: buildMultiTeamFairnessView(normalized, fairness, proposalPreview.netValueByTeam),
+    netValueByTeam: proposalPreview.netValueByTeam,
+  };
+}
+
+function appendMultiTeamNews(
+  state: FullGameState,
+  headline: string,
+  body: string,
+  relatedPlayerIds: string[],
+  relatedTeamIds: string[],
+) {
+  pushNewsAndBriefing(
+    state,
+    headline,
+    body,
+    sortStringList(relatedPlayerIds),
+    sortStringList(relatedTeamIds),
+  );
+}
+
+function recordMultiTeamTradeHistory(
+  state: FullGameState,
+  tradeId: string,
+  proposal: MultiTeamTradeProposalInput,
+) {
+  const pairMap = new Map<string, {
+    leftTeamId: string;
+    rightTeamId: string;
+    leftToRight: string[];
+    rightToLeft: string[];
+  }>();
+
+  for (const assignment of buildMultiTeamAssignments(proposal)) {
+    const [leftTeamId, rightTeamId] = assignment.fromTeamId.localeCompare(assignment.toTeamId) <= 0
+      ? [assignment.fromTeamId, assignment.toTeamId]
+      : [assignment.toTeamId, assignment.fromTeamId];
+    const key = `${leftTeamId}|${rightTeamId}`;
+    const current = pairMap.get(key) ?? {
+      leftTeamId,
+      rightTeamId,
+      leftToRight: [],
+      rightToLeft: [],
+    };
+
+    if (assignment.fromTeamId === leftTeamId) {
+      current.leftToRight.push(assignment.playerId);
+    } else {
+      current.rightToLeft.push(assignment.playerId);
+    }
+
+    pairMap.set(key, current);
+  }
+
+  for (const [pairKey, pair] of [...pairMap.entries()].sort((left, right) => left[0].localeCompare(right[0]))) {
+    addTradeHistoryEntry(
+      state,
+      buildTradeHistoryEntry(
+        state,
+        {
+          id: `${tradeId}:${pairKey}`,
+          fromTeamId: pair.leftTeamId,
+          toTeamId: pair.rightTeamId,
+          offeringAssets: playerAssets(sortStringList(pair.leftToRight)),
+          requestingAssets: playerAssets(sortStringList(pair.rightToLeft)),
+        },
+        compareAssetPackages(
+          state,
+          playerAssets(pair.leftToRight),
+          playerAssets(pair.rightToLeft),
+          pair.leftTeamId,
+          pair.rightTeamId,
+        ).fairness,
+      ),
+    );
+  }
+}
+
+function buildMultiTeamPairAssets(
+  proposal: MultiTeamTradeProposalInput,
+  teamAId: string,
+  teamBId: string,
+): { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] } {
+  const assignments = buildMultiTeamAssignments(proposal);
+  const teamAToTeamB = assignments
+    .filter((assignment) => assignment.fromTeamId === teamAId && assignment.toTeamId === teamBId)
+    .map((assignment) => assignment.playerId);
+  const teamBToTeamA = assignments
+    .filter((assignment) => assignment.fromTeamId === teamBId && assignment.toTeamId === teamAId)
+    .map((assignment) => assignment.playerId);
+
+  return {
+    offeringAssets: playerAssets(sortStringList(teamAToTeamB)),
+    requestingAssets: playerAssets(sortStringList(teamBToTeamA)),
+  };
+}
+
+function moveMultiTeamPlayers(
+  state: FullGameState,
+  proposal: MultiTeamTradeProposalInput,
+) {
+  for (const assignment of buildMultiTeamAssignments(proposal)) {
+    const player = state.players.find((candidate) => candidate.id === assignment.playerId);
+    if (!player) {
+      continue;
+    }
+    player.teamId = assignment.toTeamId;
+  }
+
+  for (const teamId of sortStringList(multiTeamTeamIds(proposal))) {
+    state.rosterStates.set(teamId, buildRosterState(teamId, state.players));
+  }
+}
+
+function appendMultiTeamConditions(
+  state: FullGameState,
+  tradeId: string,
+  conditions: TradeCondition[],
+): PendingTrade[] {
+  const pendingTrades = conditions.map((condition, index) => ({
+    id: `${tradeId}:condition:${index + 1}`,
+    requiredPlayerId: condition.playerId,
+    triggerCondition: condition.description,
+  }));
+
+  state.tradeState = {
+    ...state.tradeState,
+    multiTeamPendingTrades: [
+      ...state.tradeState.multiTeamPendingTrades,
+      ...pendingTrades,
+    ].sort((left, right) => left.id.localeCompare(right.id)),
+  };
+
+  return pendingTrades;
+}
+
+function finalizeNegotiatedTrade(
+  state: FullGameState,
+  negotiation: NegotiationState,
+): string | null {
+  const offeringAssets = playerAssets(negotiation.proposal.offering);
+  const requestingAssets = playerAssets(negotiation.proposal.requesting);
+  const fairnessScore = compareAssetPackages(
+    state,
+    offeringAssets,
+    requestingAssets,
+    negotiation.proposal.fromTeamId,
+    negotiation.proposal.toTeamId,
+  ).fairness;
+  const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
+  const preTradePartnerPlayers = getTeamPlayers(negotiation.proposal.toTeamId);
+  const execution = executeAcceptedTrade(state, {
+    id: negotiation.id,
+    fromTeamId: negotiation.proposal.fromTeamId,
+    toTeamId: negotiation.proposal.toTeamId,
+    offeringAssets,
+    requestingAssets,
+  }, fairnessScore);
+  advanceTradeSagaClimax(
+    state,
+    [...negotiation.proposal.offering, ...negotiation.proposal.requesting],
+  );
+  applyTradeConsequences(
+    state,
+    negotiation.proposal.offering,
+    negotiation.proposal.requesting,
+    negotiation.proposal.toTeamId,
+    preTradeUserPlayers,
+    preTradePartnerPlayers,
+  );
+  recordLeagueTradeNews(state, {
+    id: negotiation.id,
+    fromTeamId: negotiation.proposal.fromTeamId,
+    toTeamId: negotiation.proposal.toTeamId,
+    playersOffered: [...negotiation.proposal.offering],
+    playersRequested: [...negotiation.proposal.requesting],
+    status: 'accepted',
+    reason: 'negotiation accepted',
+  }, execution.relationshipNarrative);
+  return execution.relationshipNarrative;
 }
 
 function tradeSignature(
@@ -242,7 +1007,11 @@ function assetViewFor(state: FullGameState, asset: TradeAsset): TradeAssetView {
   }
 }
 
-function assetValue(state: FullGameState, asset: TradeAsset): number {
+function assetValue(
+  state: FullGameState,
+  asset: TradeAsset,
+  relationshipContext: UserRelationshipTradeContext | null = null,
+): number {
   switch (asset.type) {
     case 'player': {
       const player = state.players.find((candidate) => candidate.id === asset.playerId);
@@ -253,7 +1022,10 @@ function assetValue(state: FullGameState, asset: TradeAsset): number {
     case 'draft_pick': {
       const roundWeight = Math.max(1, 22 - asset.round);
       const seasonDiscount = asset.season === state.season ? 1 : 0.85;
-      return roundWeight * 3 * seasonDiscount;
+      const baseValue = roundWeight * 3 * seasonDiscount;
+      return relationshipContext
+        ? adjustDraftPickTradeValue(baseValue, relationshipContext.relationship, relationshipContext.personality)
+        : baseValue;
     }
     case 'ifa_pool_space':
       return asset.amount * 8;
@@ -274,8 +1046,9 @@ function compareAssetPackages(
   fromTeamId: string = state.userTeamId,
   toTeamId: string = '',
 ) {
-  const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
-  const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
+  const relationshipContext = getUserRelationshipTradeContext(state, fromTeamId, toTeamId);
+  const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset, relationshipContext), 0);
+  const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset, relationshipContext), 0);
   const maxValue = Math.max(offerValue, requestValue, 1);
   const rivalryPenalty = rivalryTradePenalty(
     state.rivalries,
@@ -805,6 +1578,260 @@ export function buildTradeHistoryView(state: FullGameState): TradeHistoryView[] 
   return buildTradeViews(state, state.tradeState.tradeHistory) as TradeHistoryView[];
 }
 
+export function getNegotiationView(state: FullGameState, negotiationId: string): TradeNegotiationView | null {
+  const persistent = state.tradeState.negotiations.find((entry) => entry.id === negotiationId);
+  if (!persistent) {
+    return null;
+  }
+  return buildNegotiationView(state, hydrateNegotiationState(state, persistent));
+}
+
+export function getOpenNegotiationViews(state: FullGameState): TradeNegotiationView[] {
+  return state.tradeState.negotiations
+    .map((entry) => buildNegotiationView(state, hydrateNegotiationState(state, entry)))
+    .sort((left, right) =>
+      left.expiresAtDay - right.expiresAtDay
+      || left.teamName.localeCompare(right.teamName)
+      || left.id.localeCompare(right.id),
+    );
+}
+
+export function evaluateMultiTeamTradeFairness(
+  state: FullGameState,
+  proposal: MultiTeamTradeProposalInput,
+): MultiTeamFairnessResult {
+  const evaluation = evaluateMultiTeamTradeInternals(state, proposal);
+  if ('error' in evaluation) {
+    return {
+      success: false,
+      message: evaluation.error,
+      fairness: null,
+    };
+  }
+
+  return {
+    success: true,
+    message: evaluation.fairness.isBalanced
+      ? 'The three-team framework stays inside the current balance thresholds.'
+      : `${teamName(evaluation.fairness.mostDisadvantagedTeam)} is carrying too much of the value gap.`,
+    fairness: evaluation.fairness,
+  };
+}
+
+export function generateMultiTeamConditionalClause(
+  state: FullGameState,
+  playerId: string,
+): ConditionalClauseResult {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player) {
+    return {
+      success: false,
+      message: 'Conditional clause target is no longer on an active roster.',
+      condition: null,
+    };
+  }
+
+  return {
+    success: true,
+    message: 'Conditional clause added to the framework.',
+    condition: generateConditionalClauseCore(
+      createStableWorkerRng(
+        state,
+        `trade:multi-team:condition:${playerId}:${state.tradeState.multiTeamPendingTrades.length}:${state.tradeState.tradeHistory.length}`,
+      ),
+      {
+        playerId,
+        playerAge: player.age,
+        playerRating: player.overallRating,
+        contractYearsRemaining: Math.max(1, player.contract.years),
+      },
+    ),
+  };
+}
+
+export function proposeMultiTeamFramework(
+  state: FullGameState,
+  proposal: MultiTeamTradeProposalInput,
+): MultiTeamTradeProposalResult {
+  const evaluation = evaluateMultiTeamTradeInternals(state, proposal);
+  if ('error' in evaluation) {
+    return {
+      success: false,
+      accepted: false,
+      message: evaluation.error,
+      narrative: evaluation.error,
+      fairness: null,
+    };
+  }
+
+  const personalities = new Map(evaluation.normalized.teams.map((team) => [
+    team.teamId,
+    state.gmPersonalities.get(team.teamId) ?? 'analytical',
+  ]));
+  const coreResult = proposeMultiTeamTrade(
+    createStableWorkerRng(
+      state,
+      `trade:multi-team:proposal:${evaluation.normalized.teams.map((team) => team.teamId).join(':')}:${evaluation.normalized.conditions.length}`,
+    ),
+    toCoreMultiTeamProposal(evaluation.normalized),
+    buildMultiTeamValuations(state, evaluation.normalized),
+    personalities,
+  );
+
+  return {
+    success: true,
+    accepted: coreResult.accepted,
+    message: coreResult.accepted
+      ? 'All clubs signed off on the current framework.'
+      : coreResult.blockReason ?? 'The room could not get every club over the line.',
+    narrative: coreResult.narrative,
+    fairness: buildMultiTeamFairnessView(
+      evaluation.normalized,
+      evaluateMultiTeamFairnessCore(
+        toCoreMultiTeamProposal(evaluation.normalized),
+        buildMultiTeamValuations(state, evaluation.normalized),
+      ),
+      coreResult.netValueByTeam,
+    ),
+    blockingTeamId: coreResult.blockingTeamId,
+    blockReason: coreResult.blockReason,
+  };
+}
+
+export function executeMultiTeamTradeFramework(
+  state: FullGameState,
+  proposal: MultiTeamTradeProposalInput,
+): MultiTeamTradeExecutionResult {
+  const proposed = proposeMultiTeamFramework(state, proposal);
+  if (!proposed.success || !proposed.accepted || proposed.fairness == null) {
+    return {
+      success: false,
+      accepted: false,
+      message: proposed.message,
+      narrative: proposed.narrative,
+      fairness: proposed.fairness,
+      cascadeEvents: [],
+      pendingTrades: [],
+    };
+  }
+
+  const normalized = normalizeMultiTeamProposal(proposal);
+  const tradeId = `multi-team-${state.season}-${state.day}-${normalized.teams.map((team) => team.teamId).join('-')}`;
+  const relatedPlayerIds = sortStringList(normalized.teams.flatMap((team) => team.sendingPlayerIds));
+  const relatedTeamIds = sortStringList(multiTeamTeamIds(normalized));
+  const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
+  const preTradeCounterpartRosters = new Map(
+    relatedTeamIds
+      .filter((teamId) => teamId !== state.userTeamId)
+      .map((teamId) => [teamId, getTeamPlayers(teamId)]),
+  );
+  const cascadeEvents = buildMultiTeamAssignments(normalized)
+    .flatMap((assignment) => detectTradeCascades(
+      {
+        playerIds: [assignment.playerId],
+        fromTeamId: assignment.fromTeamId,
+        toTeamId: assignment.toTeamId,
+        season: state.season,
+      },
+      state.tradeState.multiTeamPendingTrades,
+    ))
+    .filter((event, index, events) =>
+      events.findIndex((candidate) => candidate.triggeredTradeId === event.triggeredTradeId) === index,
+    )
+    .sort((left, right) => left.triggeredTradeId.localeCompare(right.triggeredTradeId));
+  const triggeredCascadeIds = new Set(cascadeEvents.map((event) => event.triggeredTradeId));
+
+  state.tradeState = {
+    ...state.tradeState,
+    multiTeamPendingTrades: state.tradeState.multiTeamPendingTrades.filter((entry) => !triggeredCascadeIds.has(entry.id)),
+  };
+
+  moveMultiTeamPlayers(state, normalized);
+  recordMultiTeamTradeHistory(state, tradeId, normalized);
+
+  const relationshipNarratives = relatedTeamIds
+    .filter((teamId) => teamId !== state.userTeamId)
+    .flatMap((teamId) => {
+      const pairAssets = buildMultiTeamPairAssets(normalized, state.userTeamId, teamId);
+      if (pairAssets.offeringAssets.length === 0 && pairAssets.requestingAssets.length === 0) {
+        return [];
+      }
+
+      const fairnessScore = compareAssetPackages(
+        state,
+        pairAssets.offeringAssets,
+        pairAssets.requestingAssets,
+        state.userTeamId,
+        teamId,
+      ).fairness;
+      applyAcceptedTradeRelationshipUpdate(state, {
+        fromTeamId: state.userTeamId,
+        toTeamId: teamId,
+      }, fairnessScore);
+
+      const narrative = buildTradeRelationshipNarrative(state, {
+        fromTeamId: state.userTeamId,
+        toTeamId: teamId,
+        offeringAssets: pairAssets.offeringAssets,
+        requestingAssets: pairAssets.requestingAssets,
+      });
+      return narrative ? [narrative] : [];
+    });
+
+  for (const teamId of relatedTeamIds) {
+    state.rosterStates.set(teamId, buildRosterState(teamId, state.players));
+  }
+
+  for (const teamId of relatedTeamIds) {
+    if (teamId === state.userTeamId) {
+      continue;
+    }
+    const pairAssets = buildMultiTeamPairAssets(normalized, state.userTeamId, teamId);
+    if (pairAssets.offeringAssets.length === 0 && pairAssets.requestingAssets.length === 0) {
+      continue;
+    }
+    applyTradeConsequences(
+      state,
+      assetPlayerIds(pairAssets.offeringAssets),
+      assetPlayerIds(pairAssets.requestingAssets),
+      teamId,
+      preTradeUserPlayers,
+      preTradeCounterpartRosters.get(teamId) ?? [],
+    );
+  }
+
+  advanceTradeSagaClimax(state, relatedPlayerIds);
+
+  const pendingTrades = appendMultiTeamConditions(state, tradeId, normalized.conditions);
+  const cascadeSummary = cascadeEvents.length > 0
+    ? ` Cascade watch: ${cascadeEvents.map((event) => event.reason).join(' ')}`
+    : '';
+  const conditionSummary = pendingTrades.length > 0
+    ? ` ${pendingTrades.length} conditional clause${pendingTrades.length === 1 ? '' : 's'} will stay on the watch list.`
+    : '';
+  const relationshipSummary = relationshipNarratives.length > 0
+    ? ` ${relationshipNarratives.join(' ')}`
+    : '';
+
+  appendMultiTeamNews(
+    state,
+    `${normalized.teams.length}-team trade completed`,
+    `${proposed.narrative}${relationshipSummary}${cascadeSummary}${conditionSummary}`.trim(),
+    relatedPlayerIds,
+    relatedTeamIds,
+  );
+
+  return {
+    success: true,
+    accepted: true,
+    message: 'Three-team framework executed.',
+    narrative: proposed.narrative,
+    fairness: proposed.fairness,
+    cascadeEvents,
+    pendingTrades,
+  };
+}
+
 function buildHotTradeOfferView(state: FullGameState, offer: PersistentTradeOffer): HotTradeOfferView {
   const bidderCount = offerBidderCount(state, offer);
   const offerValue = offer.offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
@@ -978,7 +2005,11 @@ export function resetTradeDeadlineState() {
   tradeDeadlineRecapCache = null;
 }
 
-function recordLeagueTradeNews(state: FullGameState, proposal: TradeProposal) {
+function recordLeagueTradeNews(
+  state: FullGameState,
+  proposal: TradeProposal,
+  relationshipNarrative: string | null = null,
+) {
   const players = state.players.filter((player) =>
     proposal.playersOffered.includes(player.id) || proposal.playersRequested.includes(player.id),
   );
@@ -1004,12 +2035,19 @@ function recordLeagueTradeNews(state: FullGameState, proposal: TradeProposal) {
 
   if (items.length === 0) return;
 
-  const taggedItems = isTradeDeadlineModeDay(state.day)
+  const itemsWithNarrative = relationshipNarrative
     ? items.map((item) => ({
+      ...item,
+      body: `${item.body} ${relationshipNarrative}`,
+    }))
+    : items;
+
+  const taggedItems = isTradeDeadlineModeDay(state.day)
+    ? itemsWithNarrative.map((item) => ({
       ...item,
       tag: 'BREAKING' as const,
     }))
-    : items;
+    : itemsWithNarrative;
 
   state.news = deduplicateNews([...taggedItems, ...state.news]);
   const userDivision = getTeamById(state.userTeamId)?.division;
@@ -1050,6 +2088,10 @@ function executeAcceptedTrade(
     impactScore: tradeImpactScore,
     summary: 'Blockbuster trade changed the tone of the matchup',
   });
+  applyAcceptedTradeRelationshipUpdate(state, proposal, fairnessScore);
+  return {
+    relationshipNarrative: buildTradeRelationshipNarrative(state, proposal),
+  };
 }
 
 function buildMonthlyTradeCandidates(state: FullGameState) {
@@ -1234,7 +2276,7 @@ function createFallbackLeagueDeadlineTrade(state: FullGameState): boolean {
         continue;
       }
 
-      executeAcceptedTrade(state, {
+      const execution = executeAcceptedTrade(state, {
         id: `deadline-fallback-trade-${state.season}-${state.day}-${fromTeamId}-${toTeamId}`,
         fromTeamId,
         toTeamId,
@@ -1253,7 +2295,7 @@ function createFallbackLeagueDeadlineTrade(state: FullGameState): boolean {
         playersRequested: assetPlayerIds(fallback.requestingAssets),
         status: 'accepted',
         reason: 'deadline fallback',
-      });
+      }, execution.relationshipNarrative);
       return true;
     }
   }
@@ -1305,7 +2347,7 @@ function generateMonthlyTradeActivity(
     if (result.decision !== 'accepted') continue;
 
     const fairnessScore = fairValueForProposal(state, proposal);
-    executeAcceptedTrade(state, {
+    const execution = executeAcceptedTrade(state, {
       ...proposal,
       offeringAssets: playerAssets(proposal.playersOffered),
       requestingAssets: playerAssets(proposal.playersRequested),
@@ -1314,7 +2356,7 @@ function generateMonthlyTradeActivity(
       state,
       [...proposal.playersOffered, ...proposal.playersRequested],
     );
-    recordLeagueTradeNews(state, proposal);
+    recordLeagueTradeNews(state, proposal, execution.relationshipNarrative);
   }
 }
 
@@ -1348,6 +2390,7 @@ export function processTradeMarketActivity(
   previousDay: number,
   currentDay: number,
 ) {
+  pruneExpiredNegotiations(state);
   if (state.phase !== 'regular' || currentDay <= previousDay) {
     return;
   }
@@ -1490,7 +2533,7 @@ export function proposeTradePackage(
   const result = applyUserFrontOfficeTradeOverride(evaluation, fairnessScore);
 
   if (result.decision === 'accepted') {
-    executeAcceptedTrade(state, {
+    const execution = executeAcceptedTrade(state, {
       id: playerOnlyProposal.id,
       fromTeamId: state.userTeamId,
       toTeamId,
@@ -1509,6 +2552,11 @@ export function proposeTradePackage(
       preTradeUserPlayers,
       preTradePartnerPlayers,
     );
+    recordLeagueTradeNews(state, {
+      ...playerOnlyProposal,
+      status: 'accepted',
+      reason: result.reason,
+    }, execution.relationshipNarrative);
   }
 
   return {
@@ -1521,6 +2569,223 @@ export function proposeTradePackage(
         requestingAssets: playerAssets(result.counter.playersRequested),
       }
       : undefined,
+  };
+}
+
+export function startNegotiation(
+  state: FullGameState,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+  toTeamId: string,
+): TradeNegotiationActionResult {
+  if (!isTradeMarketOpen(state)) {
+    return {
+      success: false,
+      decision: 'rejected',
+      message: 'Trade market closed — reopens in offseason',
+      negotiation: null,
+      tradeExecuted: false,
+    };
+  }
+
+  const gm = state.gmPersonalities.get(toTeamId);
+  if (!gm) {
+    return {
+      success: false,
+      decision: 'rejected',
+      message: 'Unknown team',
+      negotiation: null,
+      tradeExecuted: false,
+    };
+  }
+
+  const offeredValidation = validateTradeAssetsForTeam(state, state.userTeamId, offeringAssets);
+  if (offeredValidation) {
+    return {
+      success: false,
+      decision: 'rejected',
+      message: offeredValidation,
+      negotiation: null,
+      tradeExecuted: false,
+    };
+  }
+
+  const requestedValidation = validateTradeAssetsForTeam(state, toTeamId, requestingAssets);
+  if (requestedValidation) {
+    return {
+      success: false,
+      decision: 'rejected',
+      message: requestedValidation,
+      negotiation: null,
+      tradeExecuted: false,
+    };
+  }
+
+  if (hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets)) {
+    const directResult = proposeTradePackage(state, offeringAssets, requestingAssets, toTeamId);
+    return {
+      success: directResult.decision !== 'rejected',
+      decision: directResult.decision === 'countered'
+        ? 'countered'
+        : directResult.decision === 'accepted'
+          ? 'accepted'
+          : 'rejected',
+      message: directResult.reason,
+      negotiation: null,
+      tradeExecuted: directResult.decision === 'accepted',
+    };
+  }
+
+  const liveState = initiateNegotiation(
+    state.rng.fork(),
+    {
+      fromTeamId: state.userTeamId,
+      toTeamId,
+      offering: assetPlayerIds(offeringAssets),
+      requesting: assetPlayerIds(requestingAssets),
+      valuationGap: 0,
+    },
+    {
+      currentDay: state.day,
+      fromTeamPlayers: getTeamPlayers(state.userTeamId),
+      toTeamPlayers: getTeamPlayers(toTeamId),
+    },
+    getRelationship(state.gmRelationships, toTeamId),
+    gm,
+  );
+
+  if (!isNegotiationComplete(liveState) || liveState.phase === 'accepted') {
+    upsertNegotiation(state, liveState);
+  }
+
+  return {
+    success: liveState.phase !== 'rejected',
+    decision:
+      liveState.phase === 'accepted'
+        ? 'accepted'
+        : liveState.phase === 'rejected'
+          ? 'rejected'
+          : liveState.phase.startsWith('counter')
+            ? 'countered'
+            : 'pending',
+    message: liveState.dialogue[liveState.dialogue.length - 1]?.text ?? 'Negotiation opened.',
+    negotiation: buildNegotiationView(state, liveState),
+    tradeExecuted: false,
+  };
+}
+
+export function advanceNegotiationSession(
+  state: FullGameState,
+  negotiationId: string,
+  counterPackage: TradeCounterPackage,
+): TradeNegotiationActionResult {
+  const persistent = state.tradeState.negotiations.find((entry) => entry.id === negotiationId);
+  if (!persistent) {
+    return {
+      success: false,
+      decision: 'dead',
+      message: 'Negotiation no longer exists.',
+      negotiation: null,
+      tradeExecuted: false,
+    };
+  }
+
+  const gm = state.gmPersonalities.get(persistent.proposal.toTeamId) ?? 'analytical';
+  const liveState = hydrateNegotiationState(state, persistent);
+  const nextState = advanceTradeNegotiation(
+    state.rng.fork(),
+    liveState,
+    {
+      action: 'counter',
+      proposal: {
+        fromTeamId: state.userTeamId,
+        toTeamId: persistent.proposal.toTeamId,
+        offering: assetPlayerIds(counterPackage.offeringAssets),
+        requesting: assetPlayerIds(counterPackage.requestingAssets),
+        valuationGap: 0,
+      },
+      context: {
+        currentDay: state.day,
+        fromTeamPlayers: getTeamPlayers(state.userTeamId),
+        toTeamPlayers: getTeamPlayers(persistent.proposal.toTeamId),
+        protectedPlayerIds: [...persistent.context.protectedPlayerIds],
+        unavailablePlayerIds: [...persistent.context.unavailablePlayerIds],
+      },
+    },
+    getRelationship(state.gmRelationships, persistent.proposal.toTeamId),
+    gm,
+  );
+
+  if (isNegotiationComplete(nextState) && nextState.phase !== 'accepted') {
+    removeNegotiation(state, negotiationId);
+  } else {
+    upsertNegotiation(state, nextState);
+  }
+
+  return {
+    success: nextState.phase !== 'rejected' && nextState.phase !== 'dead',
+    decision:
+      nextState.phase === 'accepted'
+        ? 'accepted'
+        : nextState.phase === 'rejected'
+          ? 'rejected'
+          : nextState.phase === 'dead'
+            ? 'dead'
+            : nextState.phase.startsWith('counter')
+              ? 'countered'
+              : 'pending',
+    message: nextState.dialogue[nextState.dialogue.length - 1]?.text ?? 'Negotiation updated.',
+    negotiation: isNegotiationComplete(nextState) && nextState.phase !== 'accepted'
+      ? null
+      : buildNegotiationView(state, nextState),
+    tradeExecuted: false,
+  };
+}
+
+export function resolveNegotiationSession(
+  state: FullGameState,
+  negotiationId: string,
+  action: 'accept' | 'reject',
+): TradeNegotiationActionResult {
+  const persistent = state.tradeState.negotiations.find((entry) => entry.id === negotiationId);
+  if (!persistent) {
+    return {
+      success: false,
+      decision: 'dead',
+      message: 'Negotiation no longer exists.',
+      negotiation: null,
+      tradeExecuted: false,
+    };
+  }
+
+  const gm = state.gmPersonalities.get(persistent.proposal.toTeamId) ?? 'analytical';
+  let liveState = hydrateNegotiationState(state, persistent);
+  if (!isNegotiationComplete(liveState)) {
+    liveState = advanceTradeNegotiation(
+      state.rng.fork(),
+      liveState,
+      {
+        action,
+        context: hydrateNegotiationContext(state, persistent),
+      },
+      getRelationship(state.gmRelationships, persistent.proposal.toTeamId),
+      gm,
+    );
+  }
+
+  const outcome = resolveTradeNegotiation(liveState);
+  removeNegotiation(state, negotiationId);
+
+  if (outcome.accepted) {
+    finalizeNegotiatedTrade(state, liveState);
+  }
+
+  return {
+    success: outcome.accepted,
+    decision: outcome.accepted ? 'accepted' : liveState.phase === 'dead' ? 'dead' : 'rejected',
+    message: outcome.narrative,
+    negotiation: null,
+    tradeExecuted: outcome.accepted,
   };
 }
 
@@ -1576,7 +2841,7 @@ export function respondToTradeOffer(
 
     const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
     const preTradePartnerPlayers = getTeamPlayers(offer.fromTeamId);
-    executeAcceptedTrade(state, {
+    const execution = executeAcceptedTrade(state, {
       id: proposal.id,
       fromTeamId: proposal.fromTeamId,
       toTeamId: proposal.toTeamId,
@@ -1596,6 +2861,11 @@ export function respondToTradeOffer(
       preTradeUserPlayers,
       preTradePartnerPlayers,
     );
+    recordLeagueTradeNews(state, {
+      ...proposal,
+      status: 'accepted',
+      reason: 'offer accepted',
+    }, execution.relationshipNarrative);
     return {
       success: true,
       decision: 'accepted',
@@ -1664,7 +2934,7 @@ export function respondToTradeOffer(
       state.userTeamId,
       offer.fromTeamId,
     ).fairness;
-    executeAcceptedTrade(state, {
+    const execution = executeAcceptedTrade(state, {
       id: counterProposal.id,
       fromTeamId: counterProposal.fromTeamId,
       toTeamId: counterProposal.toTeamId,
@@ -1683,6 +2953,11 @@ export function respondToTradeOffer(
       preTradeUserPlayers,
       preTradePartnerPlayers,
     );
+    recordLeagueTradeNews(state, {
+      ...counterProposal,
+      status: 'accepted',
+      reason: 'counter accepted',
+    }, execution.relationshipNarrative);
     return {
       success: true,
       decision: 'accepted',

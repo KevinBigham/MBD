@@ -14,8 +14,11 @@ import {
   generateGameRecap,
   generatePlayByPlay,
   generateAITradeOffers,
+  generateRelationshipTooltip,
   getScenarioById,
   getActiveRosterLimit,
+  getRelationship,
+  getRelationshipTier,
   getTeamById,
   getTopFreeAgents,
   getUnreadNews,
@@ -70,7 +73,16 @@ import {
   buildPlayoffGameModifiers,
   generateMomentumNarrative,
 } from '@mbd/sim-core';
-import type { CareerStatsLedger, HistoricalPlayer, ScoutConflict } from '@mbd/contracts';
+import type { MilestoneAlert } from '@mbd/sim-core';
+import type {
+  CareerStatsLedger,
+  GMRelationship,
+  HistoricalPlayer,
+  PlayerNicknameState,
+  PlayerStoryArc,
+  ScoutConflict,
+  SignatureMoment,
+} from '@mbd/contracts';
 import type {
   FreeAgent,
   GameBoxScore,
@@ -104,7 +116,7 @@ import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
 import { buildPerformanceDiagnosticsView, estimateSnapshotSizeBytes } from './sim.worker.diagnostics.js';
 import { buildAchievementView } from './sim.worker.achievements.js';
 import { getCeremonyStateView } from './sim.worker.ceremony.js';
-import { getMonthlyPulse } from './sim.worker.monthlyPulse.js';
+import { getCurrentLeagueEvents, getLeagueEventHistory, getMonthlyPulse } from './sim.worker.monthlyPulse.js';
 import { getDynastyScoreSummary } from './sim.worker.legacy.js';
 import { buildSetupPreview, getDifficultyAdjustedBudget, getTeamStaffBudget } from './sim.worker.setup.js';
 import {
@@ -124,6 +136,10 @@ import {
   buildTradeDialogueView,
   buildTradeHistoryView,
   buildTradeOffersView,
+  evaluateMultiTeamTradeFairness,
+  generateMultiTeamConditionalClause,
+  getNegotiationView,
+  getOpenNegotiationViews,
 } from './sim.worker.trade.js';
 import {
   buildSeasonRecapView,
@@ -185,6 +201,23 @@ function calculateEra(stats: PlayerGameStats): number {
     return 99;
   }
   return (stats.earnedRuns / (stats.ip / 3)) * 9;
+}
+
+function buildRelationshipView(relationship: GMRelationship) {
+  const team = getTeamById(relationship.targetTeamId);
+  const latestMemory = relationship.tradeHistory[0] ?? null;
+
+  return {
+    teamId: relationship.targetTeamId,
+    teamName: team ? `${team.city} ${team.name}` : relationship.targetTeamId.toUpperCase(),
+    teamAbbreviation: team?.abbreviation ?? relationship.targetTeamId.toUpperCase(),
+    score: relationship.score,
+    tier: getRelationshipTier(relationship.score),
+    tooltip: generateRelationshipTooltip(relationship, relationship.targetTeamId),
+    lastInteractionSeason: relationship.lastInteractionSeason,
+    lastEventLabel: latestMemory ? `S${latestMemory.season}` : 'No history',
+    latestMemoryDescription: latestMemory?.description ?? null,
+  };
 }
 
 function buildDevelopmentReportsView(
@@ -278,6 +311,112 @@ function getScoutConflictForPlayer(
   playerId: string,
 ): ScoutConflict | null {
   return s.scoutConflicts.find((entry) => entry.prospectId === playerId) ?? null;
+}
+
+function momentDayFromTimestamp(timestampValue: string | undefined): number | null {
+  if (!timestampValue) {
+    return null;
+  }
+
+  const match = /D(\d+)$/.exec(timestampValue);
+  return match ? Number(match[1]) : null;
+}
+
+function absoluteMomentDay(moment: Pick<SignatureMoment, 'season' | 'day' | 'timestamp'>): number {
+  return (moment.season * 1000) + (moment.day ?? momentDayFromTimestamp(moment.timestamp) ?? 0);
+}
+
+function getPlayerStoryArcsForQuery(
+  s: NonNullable<typeof state>,
+  playerId: string,
+): PlayerStoryArc[] {
+  return s.playerStoryArcs
+    .filter((arc) => arc.playerId === playerId)
+    .sort((left, right) =>
+      Number(right.resolvedSeason == null) - Number(left.resolvedSeason == null)
+      || (right.resolvedSeason ?? 0) - (left.resolvedSeason ?? 0)
+      || right.startSeason - left.startSeason
+      || right.startDay - left.startDay
+      || left.arcType.localeCompare(right.arcType),
+    );
+}
+
+function buildMilestoneAlertInputs(
+  s: NonNullable<typeof state>,
+  players: GeneratedPlayer[],
+): Array<{
+  id: string;
+  name: string;
+  careerStats: {
+    hits: number;
+    hr: number;
+    rbi: number;
+    sb: number;
+    strikeouts: number;
+    wins: number;
+    saves: number;
+    isPitcher: boolean;
+    seasonsPlayed: number;
+  };
+  seasonsPlayed: number;
+}> {
+  return players.map((player) => {
+    const career = s.careerStats.find((entry) => entry.playerId === player.id);
+    const seasonsPlayed = Math.max(1, career?.seasonsPlayed ?? Math.floor(player.serviceTimeDays / 180));
+    const isPitcher = player.position === 'SP' || player.position === 'RP' || player.position === 'CL';
+
+    return {
+      id: player.id,
+      name: `${player.firstName} ${player.lastName}`,
+      careerStats: {
+        hits: career?.batting?.hits ?? 0,
+        hr: career?.batting?.hr ?? 0,
+        rbi: career?.batting?.rbi ?? 0,
+        sb: 0,
+        strikeouts: career?.pitching?.strikeouts ?? 0,
+        wins: career?.pitching?.wins ?? 0,
+        saves: career?.saves ?? 0,
+        isPitcher,
+        seasonsPlayed,
+      },
+      seasonsPlayed,
+    };
+  });
+}
+
+function buildMilestoneAlertsForPlayers(
+  s: NonNullable<typeof state>,
+  players: GeneratedPlayer[],
+): MilestoneAlert[] {
+  if (players.length === 0) {
+    return [];
+  }
+
+  return getMilestoneAlerts(buildMilestoneAlertInputs(s, players));
+}
+
+function nicknameSearchTerms(nicknameState: PlayerNicknameState | null | undefined): string[] {
+  if (!nicknameState) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const values = [
+    nicknameState.primaryNickname?.displayText ?? null,
+    ...nicknameState.badgeNicknames.map((nickname) => nickname.displayText),
+    ...nicknameState.earnedNicknames.map((nickname) => nickname.displayText),
+  ];
+
+  return values
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase())
+    .filter((value) => {
+      if (seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    });
 }
 
 function buildFatigueWarnings(
@@ -832,6 +971,15 @@ function matchesPlayerQuery(
     || player.fullName.toLowerCase().includes(normalizedQuery);
 }
 
+function matchesNicknameQuery(
+  s: NonNullable<typeof state>,
+  playerId: string,
+  normalizedQuery: string,
+): boolean {
+  return nicknameSearchTerms(s.playerNicknames.get(playerId))
+    .some((nickname) => nickname.includes(normalizedQuery));
+}
+
 function formatMinorLevel(level: string): string {
   switch (level) {
     case 'A_PLUS':
@@ -1185,6 +1333,72 @@ export const queryApi = {
     return historicalPlayer ? buildHistoricalPlayerDTO(historicalPlayer) : null;
   },
 
+  getPlayerMoments(playerId: string) {
+    const s = requireState();
+    return [...(s.playerMoments.get(playerId) ?? [])]
+      .sort((left, right) =>
+        absoluteMomentDay(right) - absoluteMomentDay(left)
+        || right.relevance - left.relevance
+        || left.type.localeCompare(right.type),
+      );
+  },
+
+  getRecentLeagueMoments(sinceDay: number) {
+    const s = requireState();
+    const threshold = (s.season * 1000) + Math.max(1, sinceDay);
+
+    return [...s.playerMoments.entries()]
+      .flatMap(([playerId, moments]) => moments.map((moment) => ({ playerId, moment })))
+      .filter(({ moment }) => absoluteMomentDay(moment) >= threshold)
+      .sort((left, right) =>
+        absoluteMomentDay(right.moment) - absoluteMomentDay(left.moment)
+        || right.moment.relevance - left.moment.relevance
+        || left.playerId.localeCompare(right.playerId)
+        || left.moment.type.localeCompare(right.moment.type),
+      )
+      .map(({ playerId, moment }) => {
+        const livePlayer = s.players.find((candidate) => candidate.id === playerId) ?? null;
+        const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
+        const playerName = livePlayer
+          ? `${livePlayer.firstName} ${livePlayer.lastName}`
+          : historicalPlayer?.fullName ?? playerId;
+        const teamId = livePlayer?.teamId ?? historicalPlayer?.lastKnownTeamId ?? '';
+
+        return {
+          playerId,
+          playerName,
+          teamId,
+          moment,
+        };
+      });
+  },
+
+  getNicknamesForPlayer(playerId: string) {
+    const s = requireState();
+    return s.playerNicknames.get(playerId) ?? null;
+  },
+
+  getRelationships() {
+    const s = requireState();
+    return Array.from(s.gmRelationships.values())
+      .map(buildRelationshipView)
+      .sort((left, right) =>
+        right.score - left.score
+        || left.teamName.localeCompare(right.teamName)
+        || left.teamId.localeCompare(right.teamId),
+      );
+  },
+
+  getRelationshipWith(teamId: string) {
+    const s = requireState();
+    return buildRelationshipView(getRelationship(s.gmRelationships, teamId));
+  },
+
+  getPlayerStoryArcs(playerId: string) {
+    const s = requireState();
+    return getPlayerStoryArcsForQuery(s, playerId);
+  },
+
   getPlayerProfileView(playerId: string) {
     const s = requireState();
     const player = s.players.find((candidate) => candidate.id === playerId) ?? null;
@@ -1200,12 +1414,18 @@ export const queryApi = {
     }
 
     const scoutConflict = getScoutConflictForPlayer(s, playerId);
+    const storyArcs = getPlayerStoryArcsForQuery(s, playerId);
+    const milestoneAlerts = player ? buildMilestoneAlertsForPlayers(s, [player]) : [];
 
     return {
       player: playerView,
       personalityProfile: playerView.historical ? null : getPersonalityProfileForPlayer(s, playerId),
       developmentReports: playerView.historical ? null : buildDevelopmentReportsView(s, playerId),
       careerStats: getCareerStatsForPlayer(s, playerId),
+      moments: queryApi.getPlayerMoments(playerId),
+      nicknames: queryApi.getNicknamesForPlayer(playerId),
+      storyArcs,
+      milestoneAlerts,
       scoutConflict,
       scoutingReport: player && !playerView.historical && !scoutConflict
         ? buildStableScoutReportView(s, player, `player-profile:${player.id}`)
@@ -1361,6 +1581,14 @@ export const queryApi = {
     return state ? getMonthlyPulse(state) : null;
   },
 
+  getCurrentLeagueEvents() {
+    return state ? getCurrentLeagueEvents(state) : [];
+  },
+
+  getLeagueEventHistory() {
+    return state ? getLeagueEventHistory(state) : [];
+  },
+
   getCeremonyState() {
     return state ? getCeremonyStateView(state) : { activeMoment: null, queueLength: 0 };
   },
@@ -1384,7 +1612,8 @@ export const queryApi = {
       .filter((player) =>
         player.firstName.toLowerCase().includes(normalized)
         || player.lastName.toLowerCase().includes(normalized)
-        || `${player.firstName} ${player.lastName}`.toLowerCase().includes(normalized),
+        || `${player.firstName} ${player.lastName}`.toLowerCase().includes(normalized)
+        || matchesNicknameQuery(s, player.id, normalized),
       )
       .map((player) => {
         const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === player.id) ?? null;
@@ -1393,7 +1622,9 @@ export const queryApi = {
 
     const seenIds = new Set(liveResults.map((player) => player.id));
     const historicalResults = s.historicalPlayers
-      .filter((player) => !seenIds.has(player.playerId) && matchesPlayerQuery(player, normalized))
+      .filter((player) =>
+        !seenIds.has(player.playerId)
+        && (matchesPlayerQuery(player, normalized) || matchesNicknameQuery(s, player.playerId, normalized)))
       .map(buildHistoricalPlayerDTO);
 
     return [...liveResults, ...historicalResults].slice(0, limit);
@@ -1585,6 +1816,22 @@ export const queryApi = {
 
   getTradeAssetInventory(teamId: string) {
     return buildTradeAssetInventoryView(requireState(), teamId);
+  },
+
+  getNegotiation(negotiationId: string) {
+    return getNegotiationView(requireState(), negotiationId);
+  },
+
+  getOpenNegotiations() {
+    return getOpenNegotiationViews(requireState());
+  },
+
+  evaluateMultiTeamFairness(proposal: Parameters<typeof evaluateMultiTeamTradeFairness>[1]) {
+    return evaluateMultiTeamTradeFairness(requireState(), proposal);
+  },
+
+  generateConditionalClause(playerId: string) {
+    return generateMultiTeamConditionalClause(requireState(), playerId);
   },
 
   getRosterState(teamId: string): RosterState | null {
@@ -2285,35 +2532,17 @@ export const queryApi = {
     };
   },
 
-  getMilestoneTrackerAlerts() {
+  getMilestoneAlerts(playerId?: string) {
     const s = requireState();
-    const teamPlayers = getTeamPlayers(s.userTeamId).filter(p => p.rosterStatus === 'MLB');
+    const selectedPlayers = playerId
+      ? s.players.filter((player) => player.id === playerId)
+      : getTeamPlayers(s.userTeamId).filter((player) => player.rosterStatus === 'MLB');
 
-    // Build career stat totals from careerStats ledger
-    const playerData = teamPlayers.map(p => {
-      const career = s.careerStats.find(
-        (cs: { playerId: string }) => cs.playerId === p.id,
-      );
-      const isPitcher = p.position === 'SP' || p.position === 'RP' || p.position === 'CL';
-      return {
-        id: p.id,
-        name: `${p.firstName} ${p.lastName}`,
-        careerStats: {
-          hits: career?.batting?.hits ?? 0,
-          hr: career?.batting?.hr ?? 0,
-          rbi: career?.batting?.rbi ?? 0,
-          sb: 0,
-          strikeouts: career?.pitching?.strikeouts ?? 0,
-          wins: career?.pitching?.wins ?? 0,
-          saves: career?.saves ?? 0,
-          isPitcher,
-          seasonsPlayed: Math.max(1, Math.floor(p.serviceTimeDays / 180)),
-        },
-        seasonsPlayed: Math.max(1, Math.floor(p.serviceTimeDays / 180)),
-      };
-    });
+    return buildMilestoneAlertsForPlayers(s, selectedPlayers);
+  },
 
-    return getMilestoneAlerts(playerData);
+  getMilestoneTrackerAlerts() {
+    return queryApi.getMilestoneAlerts();
   },
 
   // ---------------------------------------------------------------------------

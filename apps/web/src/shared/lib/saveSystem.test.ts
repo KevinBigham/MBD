@@ -1,7 +1,10 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { GameSnapshot } from '@mbd/contracts';
+import {
+  CURRENT_GAME_SNAPSHOT_VERSION,
+  type GameSnapshot,
+} from '@mbd/contracts';
 import {
   buildSaveRecord,
   clearAllSaves,
@@ -30,8 +33,8 @@ import {
 } from './performance';
 
 function createSnapshot(): GameSnapshot {
-    return {
-    schemaVersion: 16,
+  return {
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     rng: { seed: 7, callCount: 14 },
     season: 3,
     day: 97,
@@ -70,8 +73,12 @@ function createSnapshot(): GameSnapshot {
       storyFlags: [],
       rivalries: [],
       tickerFeed: [],
+      playerMoments: [],
+      playerNicknames: [],
       playerStoryArcs: [],
       prospectBonds: [],
+      gmRelationships: [],
+      leagueEvents: [],
       playerOrigins: [],
       debutFlashbacks: [],
       awardHistory: [],
@@ -87,11 +94,6 @@ function createSnapshot(): GameSnapshot {
       mentorRelationships: [],
       frontOfficeState: [],
       whatIfBranches: [],
-      // v16 additions
-      playerMoments: [],
-      playerNicknames: [],
-      gmRelationships: [],
-      leagueEventHistory: [],
       seasonHistory: [
         {
           season: 2,
@@ -118,8 +120,8 @@ function createSnapshot(): GameSnapshot {
     tradeState: {
       pendingOffers: [],
       tradeHistory: [],
-      // v16 addition
       negotiations: [],
+      multiTeamPendingTrades: [],
     },
     internationalScoutingState: {
       season: 3,
@@ -166,7 +168,6 @@ function createSnapshot(): GameSnapshot {
         welcomeBriefingSeen: true,
         firstMonthlyPulseSeen: true,
       },
-      // v16 additions (nullable fields with defaults)
       assistantGMId: null,
       gmPhilosophy: null,
       scoutingDirector: null,
@@ -194,7 +195,7 @@ describe('saveSystem helpers', () => {
     clearPerformanceMetrics();
   });
 
-  it('builds a v16 save record from a canonical snapshot', () => {
+  it('builds a v17 save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
     const record = buildSaveRecord(2, 'Dynasty Slot', snapshot);
@@ -204,21 +205,27 @@ describe('saveSystem helpers', () => {
     expect(record.season).toBe(3);
     expect(record.day).toBe(97);
     expect(record.phase).toBe('regular');
-    expect(record.schemaVersion).toBe(16);
+    expect(record.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(record.hasSnapshot).toBe(true);
     expect(record.snapshot?.rng.callCount).toBe(14);
-    expect(record.snapshot?.schemaVersion).toBe(16);
+    expect(record.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(record.parentSaveId).toBeNull();
     expect(record.isRootSave).toBe(true);
     expect(record.branchMeta).toBeNull();
     expect(record.snapshot?.narrative.seasonHistory[0]?.worldSeriesRecord).toBe('4-2');
     expect(record.snapshot?.narrative.archivedSeasons).toEqual([]);
     expect(record.snapshot?.narrative.whatIfBranches).toEqual([]);
+    expect(record.snapshot?.narrative.playerMoments).toEqual([]);
+    expect(record.snapshot?.narrative.playerNicknames).toEqual([]);
+    expect(record.snapshot?.narrative.gmRelationships).toEqual([]);
+    expect(record.snapshot?.narrative.leagueEvents).toEqual([]);
     expect(record.snapshot?.performanceDiagnostics).toEqual({
       totalSeasons: 3,
       snapshotSizeBytes: 512,
     });
     expect(record.snapshot?.tradeState.pendingOffers).toEqual([]);
+    expect(record.snapshot?.tradeState.negotiations).toEqual([]);
+    expect(record.snapshot?.tradeState.multiTeamPendingTrades).toEqual([]);
     expect(record.snapshot?.rule5Session).toBeNull();
     expect(record.snapshot?.rule5Obligations).toEqual([]);
     expect(record.snapshot?.rule5OfferBackStates).toEqual([]);
@@ -239,7 +246,7 @@ describe('saveSystem helpers', () => {
     const imported = importSnapshotFromJson(serialized);
 
     expect(imported.name).toBe('Dynasty Export');
-    expect(imported.snapshot.schemaVersion).toBe(16);
+    expect(imported.snapshot.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(imported.snapshot.franchise.gmName).toBe('General Manager');
   });
 
@@ -346,7 +353,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.legacyState).toBe('{"old":true}');
   });
 
-  it('migrates v2 snapshots to v16 on load', () => {
+  it('migrates v2 snapshots to v17 on load', () => {
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-3',
       slotNumber: 3,
@@ -429,8 +436,8 @@ describe('saveSystem helpers', () => {
       // This fixture intentionally uses the legacy v2 shape.
     } as any);
 
-    expect(normalized.schemaVersion).toBe(16);
-    expect(normalized.snapshot?.schemaVersion).toBe(16);
+    expect(normalized.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(normalized.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].wins).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].losses).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].hbp).toBe(0);
@@ -453,7 +460,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('migrates v3 snapshots to v16 on load', () => {
+  it('migrates v3 snapshots to v17 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-5',
@@ -467,8 +474,8 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(16);
-    expect(normalized.snapshot?.schemaVersion).toBe(16);
+    expect(normalized.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(normalized.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(normalized.snapshot?.tradeState.tradeHistory).toEqual([]);
     expect(normalized.snapshot?.rule5Obligations).toEqual([]);
     expect(normalized.snapshot?.monthlyPulse).toEqual({
@@ -477,7 +484,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('migrates v4 snapshots to v16 on load', () => {
+  it('migrates v4 snapshots to v17 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-6',
@@ -501,8 +508,8 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(16);
-    expect(normalized.snapshot?.schemaVersion).toBe(16);
+    expect(normalized.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(normalized.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(normalized.snapshot?.narrative.hallOfFame).toEqual([]);
     expect(normalized.snapshot?.narrative.hallOfFameBallot).toEqual([]);
     expect(normalized.snapshot?.narrative.franchiseTimeline).toEqual([]);
@@ -619,7 +626,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('repairs a legacy snapshot payload and promotes it into the canonical v16 save shape', async () => {
+  it('repairs a legacy snapshot payload and promotes it into the canonical v17 save shape', async () => {
     const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-3' as never);
     vi.spyOn(db.saves, 'get').mockResolvedValue({
       id: 'save-slot-3',
@@ -642,7 +649,7 @@ describe('saveSystem helpers', () => {
       status: 'ok',
       save: expect.objectContaining({
         slotNumber: 3,
-        schemaVersion: 16,
+        schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
         hasSnapshot: true,
       }),
     });

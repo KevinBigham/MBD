@@ -57,10 +57,31 @@ function createWorkerMock() {
     teamId: 'bos',
     stats: null,
   };
+  const thirdTeamPlayer = {
+    id: 'sea-1',
+    firstName: 'Cole',
+    lastName: 'Young',
+    age: 23,
+    position: '2B',
+    overallRating: 69,
+    displayRating: 69,
+    letterGrade: 'B',
+    rosterStatus: 'MLB',
+    teamId: 'sea',
+    stats: null,
+  };
 
   return {
     isReady: true,
-    getTeamRoster: vi.fn().mockImplementation(async (teamId: string) => (teamId === 'nym' ? [userPlayer] : [partnerPlayer])),
+    getTeamRoster: vi.fn().mockImplementation(async (teamId: string) => {
+      if (teamId === 'nym') {
+        return [userPlayer];
+      }
+      if (teamId === 'sea') {
+        return [thirdTeamPlayer];
+      }
+      return [partnerPlayer];
+    }),
     getTradeOffers: vi.fn().mockResolvedValue([
       {
         id: 'offer-1',
@@ -241,6 +262,143 @@ function createWorkerMock() {
       },
     }),
     getTradeDialogue: vi.fn().mockResolvedValue(gmDialogue),
+    getRelationships: vi.fn().mockResolvedValue([
+      {
+        teamId: 'bos',
+        teamName: 'Boston Noreasters',
+        teamAbbreviation: 'BOS',
+        score: 32,
+        tier: 'friendly',
+        tooltip: 'Boston Noreasters view you as a friendly trade partner.',
+        lastInteractionSeason: 4,
+        lastEventLabel: 'S4',
+        latestMemoryDescription: 'a trade both sides could justify',
+      },
+      {
+        teamId: 'sea',
+        teamName: 'Seattle Drizzle',
+        teamAbbreviation: 'SEA',
+        score: -28,
+        tier: 'strained',
+        tooltip: 'Seattle Drizzle are carrying a strained read on your front office.',
+        lastInteractionSeason: 3,
+        lastEventLabel: 'S3',
+        latestMemoryDescription: 'a trade you clearly won',
+      },
+    ]),
+    evaluateMultiTeamFairness: vi.fn().mockResolvedValue({
+      success: true,
+      message: 'The three-team framework stays inside the current balance thresholds.',
+      fairness: {
+        isBalanced: true,
+        maxImbalance: 7.5,
+        mostDisadvantagedTeam: 'sea',
+        fairnessScore: 82,
+        netValueByTeam: [
+          { teamId: 'nym', teamName: 'New York Tycoons', teamAbbreviation: 'NYT', netValue: 2.5 },
+          { teamId: 'bos', teamName: 'Boston Noreasters', teamAbbreviation: 'BOS', netValue: 1.5 },
+          { teamId: 'sea', teamName: 'Seattle Drizzle', teamAbbreviation: 'SEA', netValue: -4.0 },
+        ],
+      },
+    }),
+    generateConditionalClause: vi.fn().mockResolvedValue({
+      success: true,
+      message: 'Conditional clause added to the framework.',
+      condition: {
+        type: 'performance',
+        threshold: 4,
+        playerId: 'nyy-1',
+        deadline: 2,
+        description: 'nyy-1 must hit the agreed performance bar before the deadline.',
+      },
+    }),
+    startNegotiation: vi.fn().mockResolvedValue({
+      success: true,
+      decision: 'countered',
+      message: 'Boston kicked back a firmer counter and asked for a cleaner fit.',
+      tradeExecuted: false,
+      negotiation: {
+        id: 'neg-1',
+        teamId: 'bos',
+        teamName: 'Boston Noreasters',
+        teamAbbreviation: 'BOS',
+        phase: 'counter_1',
+        roundsCompleted: 1,
+        expiresAtDay: 97,
+        dialogue: [
+          { speaker: 'rival_gm', text: 'Boston kicked back a firmer counter and asked for a cleaner fit.', tone: 'firm' },
+          { speaker: 'agm_advisor', text: 'Our AGM thinks the friendly relationship bought us a little patience, but not real leverage.', tone: 'firm' },
+        ],
+        proposal: {
+          offeringAssets: [{ type: 'player', playerId: 'nyy-1' }],
+          requestingAssets: [{ type: 'player', playerId: 'bos-1' }],
+        },
+        counterOffer: {
+          offeringAssets: [{ type: 'player', playerId: 'nyy-1' }],
+          requestingAssets: [{ type: 'player', playerId: 'bos-1' }],
+        },
+        isComplete: false,
+        canAccept: true,
+        canCounter: true,
+        canReject: true,
+      },
+    }),
+    advanceNegotiation: vi.fn().mockResolvedValue({
+      success: true,
+      decision: 'countered',
+      message: 'Boston kicked back a firmer counter and asked for a cleaner fit.',
+      tradeExecuted: false,
+      negotiation: null,
+    }),
+    resolveNegotiation: vi.fn().mockResolvedValue({
+      success: true,
+      decision: 'accepted',
+      message: 'Boston accepted the final trade framework.',
+      tradeExecuted: true,
+      negotiation: null,
+    }),
+    proposeMultiTeam: vi.fn().mockResolvedValue({
+      success: true,
+      accepted: true,
+      message: 'All clubs signed off on the current framework.',
+      narrative: 'Three front offices finally found common ground. BOS via Roman Anthony, NYT via Anthony Volpe, SEA via Cole Young.',
+      fairness: {
+        isBalanced: true,
+        maxImbalance: 7.5,
+        mostDisadvantagedTeam: 'sea',
+        fairnessScore: 82,
+        netValueByTeam: [
+          { teamId: 'nym', teamName: 'New York Tycoons', teamAbbreviation: 'NYT', netValue: 2.5 },
+          { teamId: 'bos', teamName: 'Boston Noreasters', teamAbbreviation: 'BOS', netValue: 1.5 },
+          { teamId: 'sea', teamName: 'Seattle Drizzle', teamAbbreviation: 'SEA', netValue: -4.0 },
+        ],
+      },
+    }),
+    executeMultiTeamTrade: vi.fn().mockResolvedValue({
+      success: true,
+      accepted: true,
+      message: 'Three-team framework executed.',
+      narrative: 'Three front offices finally found common ground. BOS via Roman Anthony, NYT via Anthony Volpe, SEA via Cole Young.',
+      fairness: {
+        isBalanced: true,
+        maxImbalance: 7.5,
+        mostDisadvantagedTeam: 'sea',
+        fairnessScore: 82,
+        netValueByTeam: [
+          { teamId: 'nym', teamName: 'New York Tycoons', teamAbbreviation: 'NYT', netValue: 2.5 },
+          { teamId: 'bos', teamName: 'Boston Noreasters', teamAbbreviation: 'BOS', netValue: 1.5 },
+          { teamId: 'sea', teamName: 'Seattle Drizzle', teamAbbreviation: 'SEA', netValue: -4.0 },
+        ],
+      },
+      cascadeEvents: [],
+      pendingTrades: [
+        {
+          id: 'multi-team-4-95-nym-bos-sea:condition:1',
+          requiredPlayerId: 'nyy-1',
+          triggerCondition: 'nyy-1 must hit the agreed performance bar before the deadline.',
+        },
+      ],
+    }),
     proposeTrade: vi.fn().mockResolvedValue({ decision: 'accepted', reason: 'Deal works.' }),
     respondToTradeOffer: vi.fn().mockResolvedValue({ decision: 'accepted', message: 'Accepted.' }),
   };
@@ -309,6 +467,8 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('Buyer');
     expect(container.textContent).toContain('Hot Offers');
     expect(container.textContent).toContain('Boston Noreasters');
+    expect(container.textContent).toContain('Friendly');
+    expect(container.textContent).toContain('a trade both sides could justify');
     expect(container.textContent).toContain('Roman Anthony');
     expect(container.textContent).toContain('EXPIRING SOON');
     expect(container.textContent).toContain('3 clubs are in on Anthony Volpe.');
@@ -424,6 +584,71 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('No ticker moves are active right now');
   });
 
+  it('opens the negotiation response pane after starting a trade negotiation', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage();
+
+    const teamSelect = container.querySelector('select');
+    expect(teamSelect).toBeTruthy();
+
+    await act(async () => {
+      if (teamSelect instanceof HTMLSelectElement) {
+        teamSelect.value = 'bos';
+        teamSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const playerRows = Array.from(container.querySelectorAll('tbody tr'));
+    const userRow = playerRows.find((row) => row.textContent?.includes('Anthony Volpe'));
+    const partnerRow = playerRows.find((row) => row.textContent?.includes('Roman Anthony'));
+    expect(userRow).toBeTruthy();
+    expect(partnerRow).toBeTruthy();
+
+    await act(async () => {
+      userRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      partnerRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const startButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Start Negotiation'));
+    expect(startButton).toBeTruthy();
+
+    await act(async () => {
+      startButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Negotiation Round');
+    expect(container.textContent).toContain('Boston kicked back a firmer counter and asked for a cleaner fit.');
+    expect(worker.startNegotiation).toHaveBeenCalled();
+  });
+
   it('includes draft picks and IFA pool space when proposing an asset-based trade', async () => {
     mockedUseGameStore.mockReturnValue({
       season: 4,
@@ -503,7 +728,7 @@ describe('TradePage', () => {
     });
 
     const proposeButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Propose Trade'),
+      (button) => button.textContent?.includes('Start Negotiation'),
     );
     expect(proposeButton).toBeTruthy();
 
@@ -513,7 +738,7 @@ describe('TradePage', () => {
       await Promise.resolve();
     });
 
-    expect(worker.proposeTrade).toHaveBeenCalledWith(
+    expect(worker.startNegotiation).toHaveBeenCalledWith(
       [
         { type: 'player', playerId: 'nyy-1' },
         { type: 'draft_pick', season: 4, round: 1, originalTeamId: 'nym' },
@@ -526,6 +751,100 @@ describe('TradePage', () => {
       ],
       'bos',
     );
+  });
+
+  it('opens the multi-team trade modal, adds a condition, and routes the proposal through the worker', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage();
+
+    const openMultiTeamButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('3+ Team Trade'));
+    expect(openMultiTeamButton).toBeTruthy();
+
+    await act(async () => {
+      openMultiTeamButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('3+ Team Trade');
+    expect(container.textContent).toContain('Conditional Clauses');
+
+    const laneCards = Array.from(container.querySelectorAll('button')).filter((button) =>
+      button.textContent?.includes('Anthony Volpe')
+      || button.textContent?.includes('Roman Anthony')
+      || button.textContent?.includes('Cole Young'));
+
+    expect(laneCards.length).toBeGreaterThanOrEqual(3);
+
+    await act(async () => {
+      laneCards[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      laneCards[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      laneCards[2]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const playerSelect = Array.from(container.querySelectorAll('select')).find((select) =>
+      Array.from(select.options).some((option) => option.textContent?.includes('Anthony Volpe')));
+    expect(playerSelect).toBeTruthy();
+
+    await act(async () => {
+      if (playerSelect instanceof HTMLSelectElement) {
+        playerSelect.value = 'nyy-1';
+        playerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await Promise.resolve();
+    });
+
+    const addConditionButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Add Condition'));
+    expect(addConditionButton).toBeTruthy();
+
+    await act(async () => {
+      addConditionButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.generateConditionalClause).toHaveBeenCalledWith('nyy-1');
+    expect(container.textContent).toContain('must hit the agreed performance bar');
+
+    const proposeFrameworkButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Propose Framework'));
+    expect(proposeFrameworkButton).toBeTruthy();
+
+    await act(async () => {
+      proposeFrameworkButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.proposeMultiTeam).toHaveBeenCalled();
+    expect(container.textContent).toContain('Proposal Response');
+    expect(container.textContent).toContain('Three front offices finally found common ground.');
   });
 
   it('preselects a player from the query string into the outgoing package', async () => {

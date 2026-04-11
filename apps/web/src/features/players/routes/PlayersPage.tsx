@@ -134,7 +134,7 @@ export default function PlayersPage() {
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search players by name..."
+          placeholder="Search players or nicknames..."
           className="w-full rounded-lg border border-dynasty-border bg-dynasty-surface py-2.5 pl-10 pr-4 font-heading text-sm text-dynasty-text placeholder:text-dynasty-muted focus:border-accent-primary focus:outline-none"
         />
       </div>

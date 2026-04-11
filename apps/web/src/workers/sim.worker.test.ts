@@ -697,6 +697,359 @@ describe('sim worker narrative APIs', () => {
     });
   });
 
+  it('surfaces nicknames, signature moments, story arcs, and milestone alerts through player queries', () => {
+    startGame(4455, 'nym');
+    const state = requireState();
+    const player = state.players.find((candidate) =>
+      candidate.teamId === 'nym'
+      && candidate.rosterStatus === 'MLB'
+      && candidate.pitcherAttributes == null);
+    if (!player) {
+      throw new Error('Expected a user-team MLB hitter for profile query wiring test.');
+    }
+
+    state.careerStats.push({
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      seasonsPlayed: 9,
+      teamIds: ['nym'],
+      peakOverall: player.overallRating,
+      championshipRings: 1,
+      allStarSelections: 3,
+      gamesPlayed: 1180,
+      saves: 0,
+      war: 39.4,
+      batting: {
+        hits: 2986,
+        hr: 244,
+        rbi: 1211,
+      },
+      pitching: null,
+    });
+    state.playerNicknames.set(player.id, {
+      seasonHistory: [],
+      earnedNicknames: [{
+        id: 'the_kid',
+        displayText: 'The Kid',
+        priority: 2,
+        triggerData: {},
+      }],
+      primaryNickname: {
+        id: 'the_kid',
+        displayText: 'The Kid',
+        priority: 2,
+        triggerData: {},
+      },
+      badgeNicknames: [{
+        id: 'the_kid',
+        displayText: 'The Kid',
+        priority: 2,
+        triggerData: {},
+      }],
+    });
+    state.playerMoments.set(player.id, [{
+      season: state.season,
+      day: 1,
+      timestamp: `S${state.season}D1`,
+      type: 'walk_off_hr',
+      description: `${player.firstName} ${player.lastName} delivered a walk-off blast.`,
+      impact: 12,
+      relevance: 0.96,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    }]);
+    state.playerStoryArcs = [{
+      playerId: player.id,
+      arcType: 'breakout_campaign',
+      startSeason: state.season,
+      startDay: 1,
+      phase: 'rising',
+      milestones: ['Breakout campaign momentum is building.'],
+      resolvedSeason: null,
+    }];
+
+    const profile = (api as typeof api & {
+      getPlayerProfileView: (playerId: string) => {
+        nicknames: { primaryNickname: { displayText: string } | null } | null;
+        moments: Array<{ type: string }>;
+        storyArcs: Array<{ arcType: string }>;
+        milestoneAlerts: Array<{ remaining: number; threshold: number }>;
+      } | null;
+      getRecentLeagueMoments: (sinceDay: number) => Array<{
+        playerId: string;
+        moment: { type: string };
+      }>;
+    }).getPlayerProfileView(player.id);
+    const searchResults = api.searchPlayers('kid', 10);
+    const recentMoments = (api as typeof api & {
+      getRecentLeagueMoments: (sinceDay: number) => Array<{
+        playerId: string;
+        moment: { type: string };
+      }>;
+    }).getRecentLeagueMoments(1);
+
+    expect(profile?.nicknames?.primaryNickname?.displayText).toBe('The Kid');
+    expect(profile?.moments[0]).toMatchObject({ type: 'walk_off_hr' });
+    expect(profile?.storyArcs[0]).toMatchObject({ arcType: 'breakout_campaign' });
+    expect(profile?.milestoneAlerts[0]).toMatchObject({ remaining: 14, threshold: 3000 });
+    expect(searchResults.some((entry) => entry.id === player.id)).toBe(true);
+    expect(recentMoments[0]).toMatchObject({
+      playerId: player.id,
+      moment: { type: 'walk_off_hr' },
+    });
+  });
+
+  it('surfaces GM relationship tiers and tooltip text through worker queries', () => {
+    startGame(806, 'nym');
+    const state = requireState();
+
+    state.gmRelationships.set('bos', {
+      targetTeamId: 'bos',
+      score: 36,
+      tradeHistory: [{
+        season: state.season,
+        surplusValue: 8,
+        permanentMemory: false,
+        description: 'a trade both sides could justify',
+      }],
+      lastInteractionSeason: state.season,
+    });
+
+    const relationships = (api as typeof api & {
+      getRelationships: () => Array<{
+        teamId: string;
+        tier: string;
+        tooltip: string;
+      }>;
+      getRelationshipWith: (teamId: string) => {
+        teamId: string;
+        tier: string;
+        latestMemoryDescription: string | null;
+      };
+    }).getRelationships();
+    const relationship = (api as typeof api & {
+      getRelationshipWith: (teamId: string) => {
+        teamId: string;
+        tier: string;
+        latestMemoryDescription: string | null;
+      };
+    }).getRelationshipWith('bos');
+
+    expect(relationships.find((entry) => entry.teamId === 'bos')).toMatchObject({
+      teamId: 'bos',
+      tier: 'friendly',
+    });
+    expect(relationships.find((entry) => entry.teamId === 'bos')?.tooltip).toContain('Current relationship is friendly');
+    expect(relationship).toMatchObject({
+      teamId: 'bos',
+      tier: 'friendly',
+      latestMemoryDescription: 'a trade both sides could justify',
+    });
+  });
+
+  it('opens and resolves a persisted trade negotiation session', () => {
+    startGame(1806, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 75;
+    const userPlayers = state.players
+      .filter((player) => player.teamId === state.userTeamId && player.rosterStatus === 'MLB')
+      .sort((left, right) =>
+        evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall
+        || left.id.localeCompare(right.id),
+      );
+    const counterpartPlayers = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')
+      .sort((left, right) =>
+        evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall
+        || left.id.localeCompare(right.id),
+      );
+
+    const viablePair = userPlayers.flatMap((offered) =>
+      counterpartPlayers.map((requested) => {
+        const offerValue = evaluatePlayerTradeValue(offered).overall;
+        const requestValue = evaluatePlayerTradeValue(requested).overall;
+        return {
+          offered,
+          requested,
+          ratio: offerValue / Math.max(1, requestValue),
+        };
+      }),
+    ).find((candidate) => candidate.ratio >= 0.7 && candidate.ratio <= 1.35);
+
+    expect(viablePair).toBeTruthy();
+
+    const startResult = (api as typeof api & {
+      startNegotiation: (
+        offeringAssets: Array<{ type: 'player'; playerId: string }>,
+        requestingAssets: Array<{ type: 'player'; playerId: string }>,
+        toTeamId: string,
+      ) => {
+        decision: string;
+        negotiation: { id: string } | null;
+      };
+      resolveNegotiation: (negotiationId: string, action: 'accept' | 'reject') => {
+        success: boolean;
+        decision: string;
+        tradeExecuted: boolean;
+      };
+    }).startNegotiation(
+      [{ type: 'player', playerId: viablePair!.offered.id }],
+      [{ type: 'player', playerId: viablePair!.requested.id }],
+      'bos',
+    );
+
+    expect(startResult.negotiation).not.toBeNull();
+    expect(['accepted', 'countered', 'pending']).toContain(startResult.decision);
+    expect(requireState().tradeState.negotiations).toHaveLength(1);
+
+    const resolveResult = (api as typeof api & {
+      resolveNegotiation: (negotiationId: string, action: 'accept' | 'reject') => {
+        success: boolean;
+        decision: string;
+        tradeExecuted: boolean;
+      };
+    }).resolveNegotiation(startResult.negotiation!.id, 'accept');
+
+    expect(resolveResult).toMatchObject({
+      success: true,
+      decision: 'accepted',
+      tradeExecuted: true,
+    });
+    expect(requireState().tradeState.negotiations).toHaveLength(0);
+    expect(requireState().tradeState.tradeHistory.length).toBeGreaterThan(0);
+  });
+
+  it('evaluates and executes a multi-team framework with a persisted conditional clause', () => {
+    startGame(1906, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 95;
+
+    const selectPlayer = (teamId: string) =>
+      state.players
+        .filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB')
+        .sort((left, right) =>
+          Math.abs(evaluatePlayerTradeValue(left).overall - 70) - Math.abs(evaluatePlayerTradeValue(right).overall - 70)
+          || left.id.localeCompare(right.id),
+        )[0];
+
+    const userPlayer = selectPlayer('nym');
+    const bosPlayer = selectPlayer('bos');
+    const seaPlayer = selectPlayer('sea');
+
+    expect(userPlayer).toBeTruthy();
+    expect(bosPlayer).toBeTruthy();
+    expect(seaPlayer).toBeTruthy();
+
+    const conditionResult = (api as typeof api & {
+      generateConditionalClause: (playerId: string) => {
+        success: boolean;
+        condition: { playerId: string; description: string } | null;
+      };
+      evaluateMultiTeamFairness: (proposal: {
+        teams: Array<{
+          teamId: string;
+          role: 'initiator' | 'partner' | 'facilitator';
+          sendingPlayerIds: string[];
+          receivingPlayerIds: string[];
+        }>;
+        conditions: Array<{ playerId: string; description: string }>;
+      }) => { success: boolean; fairness: { fairnessScore: number } | null };
+      proposeMultiTeam: (proposal: {
+        teams: Array<{
+          teamId: string;
+          role: 'initiator' | 'partner' | 'facilitator';
+          sendingPlayerIds: string[];
+          receivingPlayerIds: string[];
+        }>;
+        conditions: Array<{ playerId: string; description: string }>;
+      }) => { accepted: boolean; fairness: { fairnessScore: number } | null };
+      executeMultiTeamTrade: (proposal: {
+        teams: Array<{
+          teamId: string;
+          role: 'initiator' | 'partner' | 'facilitator';
+          sendingPlayerIds: string[];
+          receivingPlayerIds: string[];
+        }>;
+        conditions: Array<{ playerId: string; description: string }>;
+      }) => {
+        success: boolean;
+        accepted: boolean;
+        pendingTrades: Array<{ requiredPlayerId?: string }>;
+      };
+    }).generateConditionalClause(userPlayer!.id);
+
+    expect(conditionResult.success).toBe(true);
+    expect(conditionResult.condition?.playerId).toBe(userPlayer!.id);
+
+    const proposal = {
+      teams: [
+        {
+          teamId: 'nym',
+          role: 'initiator' as const,
+          sendingPlayerIds: [userPlayer!.id],
+          receivingPlayerIds: [seaPlayer!.id],
+        },
+        {
+          teamId: 'bos',
+          role: 'partner' as const,
+          sendingPlayerIds: [bosPlayer!.id],
+          receivingPlayerIds: [userPlayer!.id],
+        },
+        {
+          teamId: 'sea',
+          role: 'facilitator' as const,
+          sendingPlayerIds: [seaPlayer!.id],
+          receivingPlayerIds: [bosPlayer!.id],
+        },
+      ],
+      conditions: [conditionResult.condition!],
+    };
+    type MultiTeamTestProposal = typeof proposal;
+
+    const fairnessResult = (api as typeof api & {
+      evaluateMultiTeamFairness: (proposal: MultiTeamTestProposal) => {
+        success: boolean;
+        fairness: { fairnessScore: number } | null;
+      };
+    }).evaluateMultiTeamFairness(proposal);
+    expect(fairnessResult.success).toBe(true);
+    expect(fairnessResult.fairness?.fairnessScore).toBeGreaterThan(0);
+
+    const proposalResult = (api as typeof api & {
+      proposeMultiTeam: (proposal: MultiTeamTestProposal) => {
+        accepted: boolean;
+        fairness: { fairnessScore: number } | null;
+      };
+    }).proposeMultiTeam(proposal);
+    expect(proposalResult.accepted).toBe(true);
+    expect(proposalResult.fairness?.fairnessScore).toBeGreaterThan(0);
+
+    const executionResult = (api as typeof api & {
+      executeMultiTeamTrade: (proposal: MultiTeamTestProposal) => {
+        success: boolean;
+        accepted: boolean;
+        pendingTrades: Array<{ requiredPlayerId?: string }>;
+      };
+    }).executeMultiTeamTrade(proposal);
+
+    expect(executionResult).toMatchObject({
+      success: true,
+      accepted: true,
+    });
+    expect(requireState().players.find((player) => player.id === userPlayer!.id)?.teamId).toBe('bos');
+    expect(requireState().players.find((player) => player.id === bosPlayer!.id)?.teamId).toBe('sea');
+    expect(requireState().players.find((player) => player.id === seaPlayer!.id)?.teamId).toBe('nym');
+    expect(executionResult.pendingTrades).toHaveLength(1);
+    expect(executionResult.pendingTrades[0]?.requiredPlayerId).toBe(userPlayer!.id);
+    expect(requireState().tradeState.multiTeamPendingTrades).toHaveLength(1);
+    expect(requireState().tradeState.tradeHistory.length).toBeGreaterThan(0);
+  });
+
   it('accepts object-based new game options and persists franchise identity settings', () => {
     const result = startGameWithOptions({
       seed: 123,
@@ -722,6 +1075,51 @@ describe('sim worker narrative APIs', () => {
         firstMonthlyPulseSeen: false,
       },
     });
+  });
+
+  it('uses round-three dialogue so AGM voices diverge for the same revised onboarding chapter', () => {
+    startGameWithOptions({
+      seed: 2244,
+      userTeamId: 'nym',
+      gmName: 'Alex Rivera',
+    });
+
+    const marcus = (api as typeof api & {
+      getRevisedOnboardingData: (agmId: 'marcus_chen' | 'elena_vargas' | 'walt_kowalski') => {
+        script: {
+          chapters: Record<'owners_office', {
+            intro: Array<{ text: string }>;
+          }>;
+        };
+      };
+    }).getRevisedOnboardingData('marcus_chen');
+    const elena = (api as typeof api & {
+      getRevisedOnboardingData: (agmId: 'marcus_chen' | 'elena_vargas' | 'walt_kowalski') => {
+        script: {
+          chapters: Record<'owners_office', {
+            intro: Array<{ text: string }>;
+          }>;
+        };
+      };
+    }).getRevisedOnboardingData('elena_vargas');
+    const walt = (api as typeof api & {
+      getRevisedOnboardingData: (agmId: 'marcus_chen' | 'elena_vargas' | 'walt_kowalski') => {
+        script: {
+          chapters: Record<'owners_office', {
+            intro: Array<{ text: string }>;
+          }>;
+        };
+      };
+    }).getRevisedOnboardingData('walt_kowalski');
+
+    const marcusIntro = marcus.script.chapters.owners_office.intro.map((line) => line.text).join(' ');
+    const elenaIntro = elena.script.chapters.owners_office.intro.map((line) => line.text).join(' ');
+    const waltIntro = walt.script.chapters.owners_office.intro.map((line) => line.text).join(' ');
+
+    expect(marcusIntro).toContain("Spending pattern: payroll correlates");
+    expect(elenaIntro).toContain("He asks about your family before he asks about baseball.");
+    expect(waltIntro).toContain("Doesn't know much about baseball, knows a lot about winning.");
+    expect(new Set([marcusIntro, elenaIntro, waltIntro]).size).toBe(3);
   });
 
   it('builds deterministic setup previews from the same seeded options', () => {
@@ -1598,6 +1996,89 @@ describe('sim worker narrative APIs', () => {
     expect(claimedPlayer.teamId).toBe('phx');
     expect(claimedPlayer.rosterStatus).toBe('AAA');
     expect(overviewAfterClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'claimed')).toBe(true);
+  });
+
+  it('lets a friendly higher-priority team pass on a marginal waiver claim so the user can claim the player', () => {
+    startGame(112, 'phx');
+    const state = requireState();
+    for (const team of TEAMS) {
+      const record = state.seasonState.standings.getRecord(team.id);
+      if (!record) {
+        continue;
+      }
+      if (team.id === 'nym') {
+        record.wins = 0;
+        record.losses = 20;
+      } else if (team.id === 'phx') {
+        record.wins = 5;
+        record.losses = 15;
+      } else {
+        record.wins = 10;
+        record.losses = 10;
+      }
+    }
+
+    const relationship = state.gmRelationships.get('nym');
+    if (relationship) {
+      relationship.score = 70;
+    }
+
+    const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+    player.optionYearsUsed = 3;
+    player.isOutOfOptions = true;
+    player.overallRating = 150;
+
+    const demotionResult = api.demotePlayer(player.id);
+    const claimResult = api.claimOffWaivers(player.id);
+    const claimedPlayer = api.getPlayer(player.id) as unknown as WorkerPlayerView;
+    const pendingClaim = requireState().minorLeagueState.waiverClaims.find((claim) => claim.playerId === player.id);
+
+    expect(demotionResult.success).toBe(true);
+    expect(claimResult.success).toBe(true);
+    expect(claimedPlayer.teamId).toBe('phx');
+    expect(pendingClaim?.status).toBe('claimed');
+    expect(pendingClaim?.toTeamId).toBe('phx');
+  });
+
+  it('does not let friendly teams pass on premium waiver claims', () => {
+    startGame(112, 'phx');
+    const state = requireState();
+    for (const team of TEAMS) {
+      const record = state.seasonState.standings.getRecord(team.id);
+      if (!record) {
+        continue;
+      }
+      if (team.id === 'nym') {
+        record.wins = 0;
+        record.losses = 20;
+      } else if (team.id === 'phx') {
+        record.wins = 5;
+        record.losses = 15;
+      } else {
+        record.wins = 10;
+        record.losses = 10;
+      }
+    }
+
+    const relationship = state.gmRelationships.get('nym');
+    if (relationship) {
+      relationship.score = 70;
+    }
+
+    const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+    player.optionYearsUsed = 3;
+    player.isOutOfOptions = true;
+    player.overallRating = 240;
+
+    const demotionResult = api.demotePlayer(player.id);
+    const claimResult = api.claimOffWaivers(player.id);
+    const pendingClaim = requireState().minorLeagueState.waiverClaims.find((claim) => claim.playerId === player.id);
+
+    expect(demotionResult.success).toBe(true);
+    expect(claimResult.success).toBe(false);
+    expect(claimResult.error).toContain('priority');
+    expect(pendingClaim?.status).toBe('pending');
+    expect(pendingClaim?.toTeamId).toBeNull();
   });
 
   it('adds trade consequences after an accepted user trade', () => {

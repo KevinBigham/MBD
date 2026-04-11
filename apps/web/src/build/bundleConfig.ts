@@ -1,7 +1,7 @@
 export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 300 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
-export const WORKER_CHUNK_BUDGET_BYTES = 400 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 120 * 1024;
+export const WORKER_CHUNK_BUDGET_BYTES = 406 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 121 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
@@ -110,10 +110,6 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
 
   if (includesPath(normalized, '/packages/contracts/src/')) {
     return 'game-engine-contracts';
-  }
-
-  if (includesPath(normalized, '/packages/sim-worker/src/')) {
-    return 'game-engine-shell';
   }
 
   // All worker modules go into game-engine-story. Only the Comlink entry

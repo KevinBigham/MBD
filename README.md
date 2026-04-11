@@ -41,7 +41,6 @@ mr-baseball-dynasty/
   apps/web/              React frontend (17 feature pages)
   packages/sim-core/     Pure simulation engine (no DOM, no React)
   packages/contracts/    Zod schemas shared between packages
-  packages/sim-worker/   Web Worker bridge (Comlink)
   packages/ui/           Shared UI component library
   packages/design-tokens/ Color, typography, spacing tokens
 ```

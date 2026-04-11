@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
+import { getAudioEngine } from '@/shared/lib/audio';
 
 const EnhancedPlayByPlay = lazy(() => import('../components/EnhancedPlayByPlay'));
 
@@ -49,6 +50,18 @@ export default function BoxScorePage() {
       setLoading(false);
     })();
   }, [isInitialized, worker.isReady, gameIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    const walkOff = [data.recap, ...data.plays.map((play) => play.text)]
+      .some((entry) => /walk[- ]off/i.test(entry));
+    if (walkOff) {
+      getAudioEngine().playEffect('walk_off');
+    }
+  }, [data]);
 
   if (loading) {
     return (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar } from '@mbd/ui';
 import { Building2, Clock, Coins, TrendingUp, Users, Zap } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
@@ -40,6 +40,18 @@ interface TeamChemistry {
   reasons: string[];
 }
 
+interface RelationshipView {
+  teamId: string;
+  teamName: string;
+  teamAbbreviation: string;
+  score: number;
+  tier: 'hostile' | 'strained' | 'neutral' | 'friendly' | 'trusted';
+  tooltip: string;
+  lastInteractionSeason: number;
+  lastEventLabel: string;
+  latestMemoryDescription: string | null;
+}
+
 function archetypeIcon(archetype: string) {
   switch (archetype) {
     case 'win_now': return <TrendingUp className="h-4 w-4" />;
@@ -67,6 +79,38 @@ function chemTierTone(tier: string): string {
 function scoreToGrade(score: number): number {
   // Map -40..+40 -> 0..100
   return Math.round(((score + 40) / 80) * 100);
+}
+
+function relationshipTone(tier: RelationshipView['tier']): string {
+  switch (tier) {
+    case 'hostile':
+      return 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger';
+    case 'strained':
+      return 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
+    case 'friendly':
+      return 'border-accent-info/40 bg-accent-info/10 text-accent-info';
+    case 'trusted':
+      return 'border-accent-success/40 bg-accent-success/10 text-accent-success';
+    case 'neutral':
+    default:
+      return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
+  }
+}
+
+function relationshipLabel(tier: RelationshipView['tier']): string {
+  switch (tier) {
+    case 'hostile':
+      return 'Hostile';
+    case 'strained':
+      return 'Strained';
+    case 'friendly':
+      return 'Friendly';
+    case 'trusted':
+      return 'Trusted';
+    case 'neutral':
+    default:
+      return 'Neutral';
+  }
 }
 
 function formatMoney(n: number): string {
@@ -260,6 +304,96 @@ function BudgetCard({ owner }: { owner: OwnerState }) {
   );
 }
 
+function LeagueStandingCard({
+  relationships,
+}: {
+  relationships: RelationshipView[];
+}) {
+  const [sortKey, setSortKey] = useState<'score' | 'team' | 'season'>('score');
+  const sorted = useMemo(
+    () => relationships
+      .slice()
+      .sort((left, right) => {
+        if (sortKey === 'team') {
+          return left.teamName.localeCompare(right.teamName) || left.teamId.localeCompare(right.teamId);
+        }
+        if (sortKey === 'season') {
+          return right.lastInteractionSeason - left.lastInteractionSeason
+            || right.score - left.score
+            || left.teamName.localeCompare(right.teamName);
+        }
+        return right.score - left.score
+          || left.teamName.localeCompare(right.teamName)
+          || left.teamId.localeCompare(right.teamId);
+      }),
+    [relationships, sortKey],
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Zap className="h-4 w-4" />
+          League Standing
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          {[
+            ['score', 'Score'],
+            ['team', 'Team'],
+            ['season', 'Last Event'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setSortKey(value as 'score' | 'team' | 'season')}
+              className={[
+                'focus-ring rounded border px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.18em] transition-colors',
+                sortKey === value
+                  ? 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary'
+                  : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted hover:text-dynasty-text',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-2">
+          {sorted.map((relationship) => (
+            <div
+              key={relationship.teamId}
+              className="rounded-md border border-dynasty-border bg-dynasty-base p-3"
+              title={relationship.tooltip}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-heading text-sm text-dynasty-textBright">
+                    {relationship.teamAbbreviation} · {relationship.teamName}
+                  </div>
+                  <div className="mt-1 font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                    Last event {relationship.lastEventLabel}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className={relationshipTone(relationship.tier)}>
+                    {relationshipLabel(relationship.tier)}
+                  </Badge>
+                  <span className="font-data text-xs text-dynasty-textBright">{relationship.score}</span>
+                </div>
+              </div>
+              <p className="mt-2 font-data text-xs text-dynasty-muted">
+                {relationship.latestMemoryDescription ?? 'No memorable front-office friction or goodwill logged yet.'}
+              </p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function FrontOfficePage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -267,19 +401,22 @@ export default function FrontOfficePage() {
   const [owner, setOwner] = useState<OwnerState | null>(null);
   const [fo, setFO] = useState<FrontOfficeState | null>(null);
   const [chem, setChem] = useState<TeamChemistry | null>(null);
+  const [relationships, setRelationships] = useState<RelationshipView[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
     setLoading(true);
-    const [ownerData, foData, chemData] = await Promise.all([
+    const [ownerData, foData, chemData, relationshipData] = await Promise.all([
       worker.getOwnerState(),
       worker.getFrontOfficeState(),
       worker.getTeamChemistry(),
+      worker.getRelationships(),
     ]);
     setOwner((ownerData ?? null) as OwnerState | null);
     setFO((foData ?? null) as FrontOfficeState | null);
     setChem((chemData ?? null) as TeamChemistry | null);
+    setRelationships((relationshipData as RelationshipView[]) ?? []);
     setLoading(false);
   }, [isInitialized, worker, workerReady]);
 
@@ -309,6 +446,8 @@ export default function FrontOfficePage() {
             {owner && <BudgetCard owner={owner} />}
           </div>
         </div>
+
+        {relationships.length > 0 ? <LeagueStandingCard relationships={relationships} /> : null}
       </div>
     </PageShell>
   );

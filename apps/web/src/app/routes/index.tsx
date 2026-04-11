@@ -10,9 +10,6 @@ const DashboardPage = lazy(
 const SetupPage = lazy(
   () => import('@/features/setup/routes/SetupPage')
 );
-const OnboardingPage = lazy(
-  () => import('@/features/onboarding/routes/OnboardingPage')
-);
 const RevisedOnboardingPage = lazy(
   () => import('@/features/onboarding/routes/RevisedOnboardingPage')
 );
@@ -131,7 +128,6 @@ export function AppRoutes() {
       <Routes>
         <Route path="/" element={withRouteBoundary('Save Hub', <SetupPage />)} />
         <Route path="onboarding" element={withRouteBoundary('Onboarding', <RevisedOnboardingPage />)} />
-        <Route path="onboarding-legacy" element={withRouteBoundary('Onboarding (Legacy)', <OnboardingPage />)} />
         <Route element={<AppLayout />}>
           <Route path="dashboard" element={withRouteBoundary('Dashboard', <DashboardPage />)} />
           <Route path="roster" element={withRouteBoundary('Roster', <RosterPage />)} />

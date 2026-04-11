@@ -56,6 +56,31 @@ const MOCK_CHEMISTRY = {
   reasons: ['Strong veteran leadership', 'Winning streak boosts morale'],
 };
 
+const MOCK_RELATIONSHIPS = [
+  {
+    teamId: 'bos',
+    teamName: 'Boston Noreasters',
+    teamAbbreviation: 'BOS',
+    score: 38,
+    tier: 'friendly',
+    tooltip: 'Boston Noreasters view you as a friendly trade partner.',
+    lastInteractionSeason: 5,
+    lastEventLabel: 'S5',
+    latestMemoryDescription: 'a trade both sides could justify',
+  },
+  {
+    teamId: 'sea',
+    teamName: 'Seattle Drizzle',
+    teamAbbreviation: 'SEA',
+    score: -22,
+    tier: 'neutral',
+    tooltip: 'Seattle Drizzle hold a neutral stance toward your front office.',
+    lastInteractionSeason: 4,
+    lastEventLabel: 'S4',
+    latestMemoryDescription: 'a trade you clearly won',
+  },
+];
+
 describe('FrontOfficePage', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -101,6 +126,7 @@ describe('FrontOfficePage', () => {
       getOwnerState: vi.fn().mockResolvedValue(MOCK_OWNER),
       getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
+      getRelationships: vi.fn().mockResolvedValue(MOCK_RELATIONSHIPS),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -135,6 +161,9 @@ describe('FrontOfficePage', () => {
     // Budget
     expect(container.textContent).toContain('$200.0M');
     expect(container.textContent).toContain('$180.0M');
+    expect(container.textContent).toContain('League Standing');
+    expect(container.textContent).toContain('Boston Noreasters');
+    expect(container.textContent).toContain('Friendly');
   });
 
   it('renders without hot seat when not on hot seat', async () => {
@@ -145,6 +174,7 @@ describe('FrontOfficePage', () => {
       getOwnerState: vi.fn().mockResolvedValue(calmOwner),
       getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
+      getRelationships: vi.fn().mockResolvedValue(MOCK_RELATIONSHIPS),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {

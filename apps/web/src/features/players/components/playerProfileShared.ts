@@ -1,12 +1,20 @@
-import type { CareerStatsLedger, ScoutConflict } from '@mbd/contracts';
-import { toDisplayRating } from '@mbd/sim-core';
+import type {
+  CareerStatsLedger,
+  PlayerNicknameState,
+  PlayerStoryArc,
+  ScoutConflict,
+  SignatureMoment,
+} from '@mbd/contracts';
+import { toDisplayRating, type MilestoneAlert } from '@mbd/sim-core';
 
-export type PlayerProfileTab = 'stats' | 'development' | 'scouting' | 'history' | 'personality';
+export type PlayerProfileTab = 'stats' | 'development' | 'scouting' | 'moments' | 'storyArcs' | 'history' | 'personality';
 
 export const PLAYER_PROFILE_TABS: PlayerProfileTab[] = [
   'stats',
   'development',
   'scouting',
+  'moments',
+  'storyArcs',
   'history',
   'personality',
 ];
@@ -226,6 +234,10 @@ export interface PlayerProfileView {
   personalityProfile: PersonalityProfileView | null;
   developmentReports: DevelopmentReportsView | null;
   careerStats: CareerStatsLedger | null;
+  moments: SignatureMoment[];
+  nicknames: PlayerNicknameState | null;
+  storyArcs: PlayerStoryArc[];
+  milestoneAlerts: MilestoneAlert[];
   scoutConflict: ScoutConflict | null;
   scoutingReport: PlayerScoutingReportView | null;
   scoutingHistoryNote: string;
@@ -294,6 +306,21 @@ export function badgeVariantForStoryPhase(
       return 'success';
     default:
       return 'outline';
+  }
+}
+
+export function storyPhaseProgress(
+  phase: PlayerStoryArc['phase'],
+): number {
+  switch (phase) {
+    case 'setup':
+      return 25;
+    case 'rising':
+      return 50;
+    case 'climax':
+      return 80;
+    case 'resolution':
+      return 100;
   }
 }
 

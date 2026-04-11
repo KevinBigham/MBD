@@ -39,7 +39,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 function resolveAmbientMode(
   pathname: string,
-  phase: string,
   initialized: boolean,
   overlayVisible: boolean,
   celebrationVisible: boolean,
@@ -64,16 +63,18 @@ function resolveAmbientMode(
     return 'press-room';
   }
 
+  if (pathname.startsWith('/schedule') || pathname.startsWith('/playoffs')) {
+    return 'ballpark';
+  }
+
   if (
-    pathname.startsWith('/settings')
+    pathname.startsWith('/dashboard')
+    || pathname.startsWith('/finance')
+    || pathname.startsWith('/settings')
     || pathname.startsWith('/offseason')
     || pathname.startsWith('/free-agency')
   ) {
     return 'office';
-  }
-
-  if (phase === 'regular' || phase === 'playoffs') {
-    return 'ballpark';
   }
 
   return 'office';
@@ -102,6 +103,7 @@ export function AppLayout() {
     phase,
     season,
     day,
+    userTeamId,
     teamName,
     gmName,
     activeSaveId,
@@ -116,6 +118,8 @@ export function AppLayout() {
   const effectVolume = useAudioPreferencesStore((state) => state.effectVolume);
   const ambientVolume = useAudioPreferencesStore((state) => state.ambientVolume);
   const commandPaletteOpenRef = useRef<boolean | null>(null);
+  const previousPhaseRef = useRef(phase);
+  const pendingWorldSeriesWinRef = useRef(false);
 
   const persistActiveSave = useCallback(async (targetSeason: number) => {
     if (activeSaveId == null) {
@@ -226,7 +230,6 @@ export function AppLayout() {
   const activeDecision = activeReport ? null : (monthlyPulse?.decisionQueue[0] ?? null);
   const ambientMode = resolveAmbientMode(
     location.pathname,
-    phase,
     isInitialized,
     activeReport != null || activeDecision != null,
     activeMoment != null,
@@ -251,6 +254,33 @@ export function AppLayout() {
   useEffect(() => {
     getAudioEngine().setAmbient(ambientMode);
   }, [ambientMode]);
+
+  useEffect(() => {
+    if (previousPhaseRef.current === phase) {
+      return;
+    }
+
+    const previousPhase = previousPhaseRef.current;
+    previousPhaseRef.current = phase;
+
+    if (phase === 'playoffs') {
+      getAudioEngine().playEffect('playoff_clinch');
+    }
+
+    pendingWorldSeriesWinRef.current = previousPhase === 'playoffs' && phase === 'offseason';
+  }, [phase]);
+
+  useEffect(() => {
+    if (!pendingWorldSeriesWinRef.current || phase !== 'offseason') {
+      return;
+    }
+
+    if (seasonFlow?.championSummary?.championTeamId === userTeamId) {
+      getAudioEngine().playEffect('world_series_win');
+    }
+
+    pendingWorldSeriesWinRef.current = false;
+  }, [phase, seasonFlow?.championSummary?.championTeamId, userTeamId]);
 
   useEffect(() => {
     if (commandPaletteOpenRef.current == null) {
