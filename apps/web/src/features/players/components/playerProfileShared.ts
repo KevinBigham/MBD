@@ -13,6 +13,8 @@ export const PLAYER_PROFILE_TABS: PlayerProfileTab[] = [
   'stats',
   'development',
   'scouting',
+  'moments',
+  'storyArcs',
   'history',
   'personality',
 ];

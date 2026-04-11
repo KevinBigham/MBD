@@ -875,7 +875,16 @@ export function useWorker() {
     [api, runMutation],
   );
 
-  return {
+  // Stabilize the return object so consumers can safely include `worker` in
+  // useCallback / useEffect dep arrays. Every method above is a useCallback
+  // with stable deps (`[api]` or `[api, runMutation]`, both of which are
+  // initialized once with `[]` deps), so the only dynamic values are
+  // `isReady` and `currentWorkerStatus`. Without this memo, useWorker()
+  // returns a fresh object literal on every render and any consumer that
+  // depends on `worker` infinite-loops when that consumer also calls
+  // setState in a useEffect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => ({
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
@@ -909,5 +918,5 @@ export function useWorker() {
     restartWorker,
     workerStatus: currentWorkerStatus,
     isReady,
-  };
+  }), [isReady, currentWorkerStatus]);
 }

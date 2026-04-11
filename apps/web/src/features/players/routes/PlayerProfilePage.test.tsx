@@ -435,10 +435,18 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Director and analytics disagree on Marco Ascension.');
     expect(container.textContent).toContain('Director believes the bat is ahead of schedule.');
 
-    await renderPage('/players/player-1', createProfileView());
+    await renderPage('/players/player-1?tab=moments', createProfileView());
 
     expect(container.textContent).toContain('Signature Moments');
+    expect(container.textContent).toContain('Marco Ascension ended the night with a walk-off blast.');
+    expect(container.textContent).toContain('Impact +12');
+    expect(container.textContent).toContain('Day 91');
+
+    await renderPage('/players/player-1?tab=storyArcs', createProfileView());
+
     expect(container.textContent).toContain('Story Arcs');
+    expect(container.textContent).toContain('Marco Ascension is climbing fast through the system.');
+    expect(container.textContent).toContain('Started S5');
 
     await renderPage('/players/player-1?tab=history', createProfileView());
 
