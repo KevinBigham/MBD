@@ -37,6 +37,85 @@ export const GMPhilosophySchema = z.object({
 });
 export type GMPhilosophy = z.infer<typeof GMPhilosophySchema>;
 
+export const DayOneExperienceEnum = z.enum([
+  "full",
+  "quick",
+]);
+export type DayOneExperience = z.infer<typeof DayOneExperienceEnum>;
+
+export const DayOneStatusEnum = z.enum([
+  "pending",
+  "in_progress",
+  "complete",
+]);
+export type DayOneStatus = z.infer<typeof DayOneStatusEnum>;
+
+export const DayOneCurrentStepEnum = z.enum([
+  "owner_intro",
+  "agm_select",
+  "org_review",
+  "season_goal",
+  "budget",
+  "opening_day_plan",
+  "development",
+  "crisis",
+  "recap",
+  "complete",
+]);
+export type DayOneCurrentStep = z.infer<typeof DayOneCurrentStepEnum>;
+
+export const DayOneBudgetAllocationEnum = z.enum([
+  "spend_now",
+  "balanced",
+  "future_flex",
+]);
+export type DayOneBudgetAllocation = z.infer<typeof DayOneBudgetAllocationEnum>;
+
+export const DayOnePromotionStanceEnum = z.enum([
+  "aggressive",
+  "measured",
+  "patient",
+]);
+export type DayOnePromotionStance = z.infer<typeof DayOnePromotionStanceEnum>;
+
+export const DayOneCrisisTypeEnum = z.enum([
+  "injury_shock",
+  "prospect_pressure",
+  "bullpen_instability",
+  "rotation_hole",
+]);
+export type DayOneCrisisType = z.infer<typeof DayOneCrisisTypeEnum>;
+
+export const DayOneBullpenPlanSchema = z.object({
+  closerId: z.string().nullable().default(null),
+  setupIds: z.array(z.string()).default([]),
+  longReliefId: z.string().nullable().default(null),
+});
+export type DayOneBullpenPlan = z.infer<typeof DayOneBullpenPlanSchema>;
+
+export const DayOneOpeningPlanSchema = z.object({
+  lineupPlayerIds: z.array(z.string()).default([]),
+  rotationPlayerIds: z.array(z.string()).default([]),
+  bullpen: DayOneBullpenPlanSchema.nullable().default(null),
+});
+export type DayOneOpeningPlan = z.infer<typeof DayOneOpeningPlanSchema>;
+
+export const DayOneStateSchema = z.object({
+  experience: DayOneExperienceEnum.default("quick"),
+  status: DayOneStatusEnum.default("complete"),
+  currentStep: DayOneCurrentStepEnum.default("complete"),
+  selectedAGMId: AGMCandidateIdEnum.nullable().default(null),
+  seasonGoal: GMPhilosophySchema.shape.seasonGoal.nullable().default(null),
+  budgetAllocation: DayOneBudgetAllocationEnum.nullable().default(null),
+  developmentStyle: GMPhilosophySchema.shape.developmentStyle.nullable().default(null),
+  promotionStance: DayOnePromotionStanceEnum.nullable().default(null),
+  openingDayPlan: DayOneOpeningPlanSchema.nullable().default(null),
+  crisisType: DayOneCrisisTypeEnum.nullable().default(null),
+  crisisResponseId: z.string().nullable().default(null),
+  quickStartRecapSeen: z.boolean().default(true),
+});
+export type DayOneState = z.infer<typeof DayOneStateSchema>;
+
 export const ScoutingDirectorSnapshotSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
@@ -66,10 +145,28 @@ export const FranchiseStateV15Schema = z.object({
 });
 export type FranchiseStateV15 = z.infer<typeof FranchiseStateV15Schema>;
 
-export const FranchiseStateSchema = FranchiseStateV15Schema.extend({
+export const FranchiseStateV17Schema = FranchiseStateV15Schema.extend({
   assistantGMId: AGMCandidateIdEnum.nullable().default(null),
   gmPhilosophy: GMPhilosophySchema.nullable().default(null),
   scoutingDirector: ScoutingDirectorSnapshotSchema.nullable().default(null),
+});
+export type FranchiseStateV17 = z.infer<typeof FranchiseStateV17Schema>;
+
+export const FranchiseStateSchema = FranchiseStateV17Schema.extend({
+  dayOne: DayOneStateSchema.default({
+    experience: "quick",
+    status: "complete",
+    currentStep: "complete",
+    selectedAGMId: null,
+    seasonGoal: null,
+    budgetAllocation: null,
+    developmentStyle: null,
+    promotionStance: null,
+    openingDayPlan: null,
+    crisisType: null,
+    crisisResponseId: null,
+    quickStartRecapSeen: true,
+  }),
 });
 export type FranchiseState = z.infer<typeof FranchiseStateSchema>;
 

@@ -1,4 +1,14 @@
 export {
+  buildDayOneDefaults,
+  buildDayOneImpacts,
+  buildDayOneNarrativePack,
+  buildDayOneOrgReview,
+  buildDayOneTeamCard,
+  buildDayOneTeaser,
+  buildOpeningDayPlan,
+  pickDayOneCrisis,
+} from './dayOne.js';
+export {
   CHAPTER_ORDER,
   ONBOARDING_CHAPTER_IDS,
   REVISED_CHAPTER_ORDER,
@@ -113,6 +123,24 @@ export {
   evaluateCoachingStaff,
   profileKeyCoaches,
 } from './staffEvaluation.js';
+export type {
+  DayOneBudgetAllocation,
+  DayOneCrisis,
+  DayOneCrisisResponseOption,
+  DayOneCrisisType,
+  DayOneDefaults,
+  DayOneNarrativeContext,
+  DayOneNarrativePack,
+  DayOneOpeningBullpenPlan,
+  DayOneOpeningPlan,
+  DayOneOrgReview,
+  DayOneOrgTier,
+  DayOneProjectedImpact,
+  DayOnePromotionStance,
+  DayOneTeamCard,
+  DayOneTeamCardInput,
+  DayOneTeaser,
+} from './dayOne.js';
 export type {
   AGMCandidate,
   AGMCandidateId,

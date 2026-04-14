@@ -28,8 +28,15 @@ interface SetupPreview {
   teamId: string;
   teamName: string;
   division: string;
+  archetype: string;
+  franchiseHook: string;
+  whyNow: string;
+  marketSize: 'large' | 'medium' | 'small';
+  timeline: string;
   payrollTier: string;
   farmSystemRating: string;
+  strengths: string[];
+  weaknesses: string[];
   teamIdentityBlurb: string;
   projectedRecord: string;
   topPlayers: Array<{
@@ -127,9 +134,10 @@ export default function SetupPage() {
   const [teamId, setTeamId] = useState<string>('nym');
   const [difficulty, setDifficulty] = useState<SetupDifficulty>('standard');
   const [playMode, setPlayMode] = useState<SetupPlayMode>('standard');
+  const [dayOneExperience, setDayOneExperience] = useState<'full' | 'quick'>('full');
   const [wizardMode, setWizardMode] = useState<SetupWizardMode>('dynasty');
   const [gmName, setGmName] = useState<string>(() => generateDefaultGMName(Date.now()));
-  const [preview, setPreview] = useState<SetupPreview | null>(null);
+  const [previewMap, setPreviewMap] = useState<Record<string, SetupPreview>>({});
   const [scenarioCatalog, setScenarioCatalog] = useState<ScenarioCatalogEntry[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [recoveryState, setRecoveryState] = useState<{
@@ -137,6 +145,10 @@ export default function SetupPage() {
     message: string;
   } | null>(null);
   const selectedScenario = scenarioCatalog.find((entry) => entry.id === selectedScenarioId) ?? null;
+  const preview = previewMap[teamId] ?? null;
+  const activePreview = wizardMode === 'scenario'
+    ? (previewMap[selectedScenario?.startingTeamId ?? teamId] ?? null)
+    : preview;
 
   const refreshSaves = useCallback(async () => {
     const nextSaveTree = await listSaveTree();
@@ -155,19 +167,38 @@ export default function SetupPage() {
       return;
     }
 
-    const previewTeamId = wizardMode === 'scenario'
-      ? (selectedScenario?.startingTeamId ?? teamId)
-      : teamId;
+    if (wizardMode === 'scenario') {
+      const previewTeamId = selectedScenario?.startingTeamId ?? teamId;
+      void worker.getSetupPreview({
+        seed,
+        userTeamId: previewTeamId,
+        difficulty,
+      }).then((nextPreview) => {
+        setPreviewMap((current) => ({
+          ...current,
+          [previewTeamId]: nextPreview as SetupPreview,
+        }));
+      }).catch((error) => {
+        logger.error('Failed to build scenario preview:', error);
+        setStatus('Failed to build the scenario preview.');
+      });
+      return;
+    }
 
-    void worker.getSetupPreview({
-      seed,
-      userTeamId: previewTeamId,
-      difficulty,
-    }).then((nextPreview) => {
-      setPreview((nextPreview ?? null) as SetupPreview | null);
+    void Promise.all(
+      TEAM_OPTIONS.map(async (entry) => {
+        const teamPreview = await worker.getSetupPreview({
+          seed,
+          userTeamId: entry.id,
+          difficulty,
+        });
+        return [entry.id, teamPreview as SetupPreview] as const;
+      }),
+    ).then((entries) => {
+      setPreviewMap(Object.fromEntries(entries));
     }).catch((error) => {
-      logger.error('Failed to build dynasty preview:', error);
-      setStatus('Failed to build the dynasty preview.');
+      logger.error('Failed to build dynasty previews:', error);
+      setStatus('Failed to build the dynasty previews.');
     });
   }, [difficulty, seed, selectedScenario?.startingTeamId, teamId, worker, wizardMode, wizardOpen]);
 
@@ -295,7 +326,9 @@ export default function SetupPage() {
     setSeed(nextSeed);
     setGmName(generateDefaultGMName(nextSeed));
     setPlayMode('standard');
+    setDayOneExperience('full');
     setWizardMode('dynasty');
+    setPreviewMap({});
     setWizardOpen(true);
     setStatus('');
   }
@@ -321,6 +354,7 @@ export default function SetupPage() {
           ? (selectedScenario?.requiresCareerMode ? 'career' : 'standard')
           : playMode,
         scenarioId: wizardMode === 'scenario' ? (selectedScenarioId ?? undefined) : undefined,
+        dayOneExperience: wizardMode === 'dynasty' ? dayOneExperience : undefined,
       });
       const snapshot = await worker.exportSnapshot();
       await saveGame(selectedSlot, `${finalGmName} • ${result.teamName}`, snapshot);
@@ -612,19 +646,76 @@ export default function SetupPage() {
                     </div>
                   </div>
                 ) : (
-                <label className="block">
-                  <span className="font-heading text-sm text-dynasty-textBright">Team</span>
-                  <select
-                    id="setup-team"
-                    value={teamId}
-                    onChange={(event) => setTeamId(event.target.value)}
-                    className="mt-2 w-full rounded-md border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-text"
-                  >
-                    {TEAM_OPTIONS.map((team) => (
-                      <option key={team.id} value={team.id}>{team.label}</option>
-                    ))}
-                  </select>
-                </label>
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-heading text-sm text-dynasty-textBright">Team</span>
+                      <span className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                        Full League View
+                      </span>
+                    </div>
+                    <div className="mt-3 grid max-h-[34rem] gap-3 overflow-y-auto pr-1">
+                      {TEAM_OPTIONS.map((option) => {
+                        const teamPreview = previewMap[option.id];
+                        const selected = option.id === teamId;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setTeamId(option.id)}
+                            className={`rounded-xl border px-4 py-4 text-left transition-colors ${
+                              selected
+                                ? 'border-accent-primary bg-accent-primary/10'
+                                : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3">
+                                <TeamLogo teamId={option.id} size="lg" />
+                                <div>
+                                  <div className="font-heading text-sm text-dynasty-textBright">
+                                    {teamPreview?.teamName ?? option.label}
+                                  </div>
+                                  <div className="mt-1 font-data text-[10px] uppercase tracking-[0.18em] text-accent-warning">
+                                    {teamPreview?.archetype ?? 'Loading Franchise'}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-brand text-2xl text-dynasty-textBright">
+                                  {teamPreview?.projectedRecord ?? '--'}
+                                </div>
+                                <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                                  {teamPreview?.timeline ?? 'Calculating'}
+                                </div>
+                              </div>
+                            </div>
+                            <p className="mt-3 font-heading text-xs leading-5 text-dynasty-muted">
+                              {teamPreview?.franchiseHook ?? 'Building front-office dossier...'}
+                            </p>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <div>
+                                <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Strengths</div>
+                                <div className="mt-1 font-heading text-xs text-dynasty-text">
+                                  {(teamPreview?.strengths ?? ['Loading']).join(' · ')}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Weaknesses</div>
+                                <div className="mt-1 font-heading text-xs text-dynasty-text">
+                                  {(teamPreview?.weaknesses ?? ['Loading']).join(' · ')}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+                              <span>{teamPreview?.marketSize ?? '--'} market</span>
+                              <span>{teamPreview?.payrollTier ?? '--'} payroll</span>
+                              <span>{teamPreview?.farmSystemRating ?? '--'} farm</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
 
                 <label className="block">
@@ -683,6 +774,42 @@ export default function SetupPage() {
                   </div>
                 )}
 
+                {wizardMode === 'dynasty' ? (
+                  <div>
+                    <span className="font-heading text-sm text-dynasty-textBright">Day One Experience</span>
+                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setDayOneExperience('full')}
+                        className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                          dayOneExperience === 'full'
+                            ? 'border-accent-success bg-accent-success/10'
+                            : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                        }`}
+                      >
+                        <div className="font-heading text-sm text-dynasty-textBright">Full Day One</div>
+                        <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                          Owner intro, AGM selection, org diagnosis, real Season 1 decisions, then a roster crisis.
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDayOneExperience('quick')}
+                        className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                          dayOneExperience === 'quick'
+                            ? 'border-accent-success bg-accent-success/10'
+                            : 'border-dynasty-border bg-dynasty-base hover:bg-dynasty-elevated'
+                        }`}
+                      >
+                        <div className="font-heading text-sm text-dynasty-textBright">Quick Start</div>
+                        <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                          Choose the team and AGM, then let the game auto-resolve the Day One setup with a recap.
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <label className="block">
                   <span className="font-heading text-sm text-dynasty-textBright">GM Name</span>
                   <input
@@ -725,30 +852,44 @@ export default function SetupPage() {
             <div className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-warning">Season Preview</div>
               <div className="mt-3 flex items-center gap-3">
-                <TeamLogo teamId={teamId} size="xl" />
+                <TeamLogo teamId={activePreview?.teamId ?? selectedScenario?.startingTeamId ?? teamId} size="xl" />
                 <h2 className="font-brand text-3xl text-dynasty-textBright">
                   {wizardMode === 'scenario'
                     ? (selectedScenario?.name ?? 'Preparing Scenario')
-                    : (preview?.teamName ?? 'Preparing Preview')}
+                    : (activePreview?.teamName ?? 'Preparing Preview')}
                 </h2>
               </div>
               <p className="mt-3 font-heading text-sm leading-6 text-dynasty-muted">
                 {wizardMode === 'scenario'
                   ? (selectedScenario?.description ?? 'Loading the scenario framing and opening roster context.')
-                  : (preview?.teamIdentityBlurb ?? 'Running the numbers on your opening roster and division outlook.')}
+                  : (activePreview?.teamIdentityBlurb ?? 'Running the numbers on your opening roster and division outlook.')}
               </p>
 
+              {wizardMode === 'dynasty' && activePreview ? (
+                <div className="mt-4 rounded-lg border border-dynasty-border bg-dynasty-base/40 p-4">
+                  <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">
+                    {activePreview.archetype}
+                  </div>
+                  <div className="mt-2 font-heading text-sm leading-6 text-dynasty-text">
+                    {activePreview.franchiseHook}
+                  </div>
+                  <div className="mt-2 font-heading text-xs leading-5 text-dynasty-muted">
+                    {activePreview.whyNow}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-5 grid gap-4 md:grid-cols-3">
-                <PreviewStat label="Projected Record" value={preview?.projectedRecord ?? '--'} />
-                <PreviewStat label="Payroll Tier" value={preview?.payrollTier ?? '--'} />
-                <PreviewStat label="Farm System" value={preview?.farmSystemRating ?? '--'} />
+                <PreviewStat label="Projected Record" value={activePreview?.projectedRecord ?? '--'} />
+                <PreviewStat label="Payroll Tier" value={activePreview?.payrollTier ?? '--'} />
+                <PreviewStat label="Farm System" value={activePreview?.farmSystemRating ?? '--'} />
               </div>
 
               <div className="mt-6 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-lg border border-dynasty-border bg-dynasty-base/40 p-4">
                   <div className="font-heading text-sm font-semibold text-dynasty-textBright">Key Players</div>
                   <div className="mt-3 space-y-2">
-                    {(preview?.topPlayers ?? []).map((player) => (
+                    {(activePreview?.topPlayers ?? []).map((player) => (
                       <div key={player.playerId} className="rounded border border-dynasty-border/60 px-3 py-2">
                         <div className="font-heading text-sm text-dynasty-text">{player.name}</div>
                         <div className="font-data text-xs text-dynasty-muted">{player.position} · {player.overall} OVR</div>
@@ -760,7 +901,7 @@ export default function SetupPage() {
                 <div className="rounded-lg border border-dynasty-border bg-dynasty-base/40 p-4">
                   <div className="font-heading text-sm font-semibold text-dynasty-textBright">Division Rivals</div>
                   <div className="mt-3 space-y-2">
-                    {(preview?.divisionRivals ?? []).map((rival) => (
+                    {(activePreview?.divisionRivals ?? []).map((rival) => (
                       <div key={rival.teamId} className="rounded border border-dynasty-border/60 px-3 py-2 font-heading text-sm text-dynasty-text">
                         {rival.teamName}
                       </div>
@@ -768,6 +909,31 @@ export default function SetupPage() {
                   </div>
                 </div>
               </div>
+
+              {wizardMode === 'dynasty' && activePreview ? (
+                <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-lg border border-dynasty-border bg-dynasty-base/40 p-4">
+                    <div className="font-heading text-sm font-semibold text-dynasty-textBright">Core Strengths</div>
+                    <div className="mt-3 space-y-2">
+                      {(activePreview.strengths ?? []).map((strength) => (
+                        <div key={strength} className="rounded border border-dynasty-border/60 px-3 py-2 font-heading text-sm text-dynasty-text">
+                          {strength}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-dynasty-border bg-dynasty-base/40 p-4">
+                    <div className="font-heading text-sm font-semibold text-dynasty-textBright">Pressure Points</div>
+                    <div className="mt-3 space-y-2">
+                      {(activePreview.weaknesses ?? []).map((weakness) => (
+                        <div key={weakness} className="rounded border border-dynasty-border/60 px-3 py-2 font-heading text-sm text-dynasty-text">
+                          {weakness}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}

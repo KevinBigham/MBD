@@ -63,6 +63,7 @@ import {
   AchievementStateSchema,
   CeremonyStateSchema,
   FranchiseStateV15Schema,
+  FranchiseStateV17Schema,
   FranchiseStateSchema,
 } from "./franchise.js";
 import {
@@ -483,7 +484,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 17;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 18;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -543,6 +544,12 @@ export const GameSnapshotV16Schema = GameSnapshotSchema.extend({
   tradeState: TradeStateV16Schema,
 });
 export type GameSnapshotV16 = z.infer<typeof GameSnapshotV16Schema>;
+
+export const GameSnapshotV17Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(17),
+  franchise: FranchiseStateV17Schema,
+});
+export type GameSnapshotV17 = z.infer<typeof GameSnapshotV17Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -897,6 +904,48 @@ function createEmptyStatLeaders() {
   };
 }
 
+function spendingStyleToBudgetAllocation(spendingStyle: "big_spender" | "balanced" | "penny_pincher" | null | undefined) {
+  if (spendingStyle === "big_spender") {
+    return "spend_now" as const;
+  }
+  if (spendingStyle === "penny_pincher") {
+    return "future_flex" as const;
+  }
+  return spendingStyle === "balanced" ? "balanced" as const : null;
+}
+
+function developmentStyleToPromotionStance(developmentStyle: "aggressive" | "balanced" | "patient" | null | undefined) {
+  if (developmentStyle === "aggressive") {
+    return "aggressive" as const;
+  }
+  if (developmentStyle === "patient") {
+    return "patient" as const;
+  }
+  return developmentStyle === "balanced" ? "measured" as const : null;
+}
+
+function migrateLegacyDayOneState(
+  franchise: {
+    assistantGMId?: z.infer<typeof FranchiseStateV17Schema>["assistantGMId"];
+    gmPhilosophy?: z.infer<typeof FranchiseStateV17Schema>["gmPhilosophy"];
+  },
+) {
+  return {
+    experience: "quick" as const,
+    status: "complete" as const,
+    currentStep: "complete" as const,
+    selectedAGMId: franchise.assistantGMId ?? null,
+    seasonGoal: franchise.gmPhilosophy?.seasonGoal ?? null,
+    budgetAllocation: spendingStyleToBudgetAllocation(franchise.gmPhilosophy?.spendingStyle ?? null),
+    developmentStyle: franchise.gmPhilosophy?.developmentStyle ?? null,
+    promotionStance: developmentStyleToPromotionStance(franchise.gmPhilosophy?.developmentStyle ?? null),
+    openingDayPlan: null,
+    crisisType: null,
+    crisisResponseId: null,
+    quickStartRecapSeen: true,
+  };
+}
+
 function createEmptyTradeState() {
   return {
     pendingOffers: [],
@@ -927,6 +976,20 @@ function createDefaultFranchiseState(userTeamId: string, season: number, day: nu
     assistantGMId: null,
     gmPhilosophy: null,
     scoutingDirector: null,
+    dayOne: {
+      experience: "quick" as const,
+      status: "complete" as const,
+      currentStep: "complete" as const,
+      selectedAGMId: null,
+      seasonGoal: null,
+      budgetAllocation: null,
+      developmentStyle: null,
+      promotionStance: null,
+      openingDayPlan: null,
+      crisisType: null,
+      crisisResponseId: null,
+      quickStartRecapSeen: true,
+    },
   };
 }
 
@@ -2252,6 +2315,7 @@ function migrateGameSnapshotV15(snapshot: GameSnapshotV15): GameSnapshot {
       assistantGMId: null,
       gmPhilosophy: null,
       scoutingDirector: null,
+      dayOne: migrateLegacyDayOneState({}),
     },
     narrative: {
       ...snapshot.narrative,
@@ -2280,6 +2344,10 @@ function migrateGameSnapshotV16(snapshot: GameSnapshotV16): GameSnapshot {
   const migrated = GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    franchise: {
+      ...snapshot.franchise,
+      dayOne: migrateLegacyDayOneState(snapshot.franchise),
+    },
     narrative: {
       ...snapshot.narrative,
       playerMoments: [],
@@ -2291,6 +2359,25 @@ function migrateGameSnapshotV16(snapshot: GameSnapshotV16): GameSnapshot {
       ...snapshot.tradeState,
       negotiations: [],
       multiTeamPendingTrades: [],
+    },
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
+function migrateGameSnapshotV17(snapshot: GameSnapshotV17): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    franchise: {
+      ...snapshot.franchise,
+      dayOne: migrateLegacyDayOneState(snapshot.franchise),
     },
   });
 
@@ -2329,6 +2416,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 17
+  ) {
+    return migrateGameSnapshotV17(GameSnapshotV17Schema.parse(snapshotLike));
   }
 
   if (

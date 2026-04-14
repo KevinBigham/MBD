@@ -17,13 +17,14 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
 import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
 
-function startGame(seed: number = 123) {
+function startGame(seed: number, dayOneExperience: 'full' | 'quick' = 'full') {
   return api.newGame({
     seed,
     userTeamId: 'nym',
     gmName: 'General Manager',
     difficulty: 'standard',
     saveSlot: 1,
+    dayOneExperience,
   });
 }
 
@@ -32,88 +33,102 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('revised onboarding worker API', () => {
-  it('returns the fixed AGM candidates and a revised onboarding bundle for a selected AGM', async () => {
-    startGame(501);
+describe('day one worker API', () => {
+  it('initializes the full Day One session with owner-first framing and team-card metadata', async () => {
+    startGame(701, 'full');
 
-    const candidates = await api.getAGMCandidates();
-    const onboarding = await api.getRevisedOnboardingData('marcus_chen');
+    const session = await api.getDayOneSession();
 
-    expect(candidates).toHaveLength(3);
-    expect(candidates.map((candidate) => candidate.id)).toEqual(['marcus_chen', 'walt_kowalski', 'elena_vargas']);
-    expect(onboarding.script.agm.id).toBe('marcus_chen');
-    expect(onboarding.staffSlate.managerCandidates).toHaveLength(3);
-    expect(onboarding.scoutingSlate.candidates).toHaveLength(3);
+    expect(session.mode).toBe('full');
+    expect(session.currentStep).toBe('owner_intro');
+    expect(session.teamCard.teamId).toBe('nym');
+    expect(session.teamCard.archetype).toBeTruthy();
+    expect(session.ownerScene.title).toBeTruthy();
+    expect(session.stepCopy.headline).toBeTruthy();
+    expect(session.stepCopy.body).toBeTruthy();
+    expect(session.agmCandidates).toHaveLength(3);
+    expect(session.selectedAGM).toBeNull();
   });
 
-  it('stages revised onboarding hires and persists them on completion', async () => {
-    startGame(502);
+  it('persists Day One decisions, roster plan, and crisis response through completion', async () => {
+    startGame(702, 'full');
 
-    const onboarding = await api.getRevisedOnboardingData('walt_kowalski');
-    const hires = {
-      managerId: onboarding.staffSlate.managerCandidates[1].id,
-      pitchingCoachId: onboarding.staffSlate.pitchingCoachCandidates[0].id,
-      hittingCoachId: onboarding.staffSlate.hittingCoachCandidates[1].id,
-    };
-    const scoutingDirectorId = onboarding.scoutingSlate.candidates[2].id;
-
-    await api.applyStaffHires(hires);
-    await api.applyScoutingHire(scoutingDirectorId);
-    await api.completeRevisedOnboarding({
-      selectedAGMId: 'walt_kowalski',
-      staffHires: hires,
-      scoutingHire: scoutingDirectorId,
-      gmPhilosophy: {
-        seasonGoal: 'playoff',
-        developmentStyle: 'patient',
-        spendingStyle: 'balanced',
-        tradeApproach: 'opportunistic',
-        scoutingFocus: 'pro_scouting',
-        mediaTone: 'measured',
+    await api.advanceDayOneIntro();
+    await api.chooseDayOneAGM('walt_kowalski');
+    await api.advanceDayOneOrgReview();
+    await api.setDayOneSeasonGoal('playoff');
+    await api.setDayOneBudgetAllocation('future_flex');
+    await api.setDayOneOpeningPlan({
+      lineupPlayerIds: ['p1', 'p2', 'p3'],
+      rotationPlayerIds: ['sp1', 'sp2', 'sp3', 'sp4', 'sp5'],
+      bullpen: {
+        closerId: 'rp1',
+        setupIds: ['rp2', 'rp3'],
+        longReliefId: 'rp4',
       },
     });
+    await api.setDayOneDevelopmentPlan({
+      developmentStyle: 'patient',
+      promotionStance: 'measured',
+    });
+
+    const beforeCrisis = await api.getDayOneSession();
+    expect(beforeCrisis.currentStep).toBe('crisis');
+    expect(beforeCrisis.crisis).not.toBeNull();
+    expect(beforeCrisis.projectedImpacts.length).toBeGreaterThan(0);
+    expect(beforeCrisis.stepCopy.headline).toBeTruthy();
+
+    await api.resolveDayOneCrisis(beforeCrisis.crisis!.responseOptions[0]!.id);
+    const recapSession = await api.getDayOneSession();
+    expect(recapSession.currentStep).toBe('recap');
+    expect(recapSession.teaser).not.toBeNull();
+    expect(recapSession.teaser?.aprilWatchItems).toHaveLength(3);
+    expect(recapSession.stepCopy.headline).toBeTruthy();
+
+    await api.finishDayOne();
 
     const state = requireState();
-    const manager = (state.coachingStaffs.get(state.userTeamId) ?? []).find((coach) => coach.role === 'manager');
-
     expect(state.franchise.assistantGMId).toBe('walt_kowalski');
-    expect(state.franchise.scoutingDirector?.id).toBe(scoutingDirectorId);
-    expect(state.franchise.gmPhilosophy?.scoutingFocus).toBe('pro_scouting');
+    expect(state.franchise.gmPhilosophy?.seasonGoal).toBe('playoff');
+    expect(state.franchise.dayOne.status).toBe('complete');
+    expect(state.franchise.dayOne.budgetAllocation).toBe('future_flex');
+    expect(state.franchise.dayOne.promotionStance).toBe('measured');
+    expect(state.franchise.dayOne.openingDayPlan?.bullpen?.closerId).toBe('rp1');
+    expect(state.franchise.dayOne.crisisResponseId).toBeTruthy();
     expect(state.franchise.onboarding.welcomeBriefingSeen).toBe(true);
-    expect(manager?.id).toBe(hires.managerId);
   });
 
-  it('exports revised onboarding state through schema version 17 snapshots', async () => {
-    startGame(503);
+  it('keeps Quick Start to team selection plus AGM, then auto-resolves the rest with a recap', async () => {
+    startGame(703, 'quick');
 
-    const onboarding = await api.getRevisedOnboardingData('elena_vargas');
-    const hires = {
-      managerId: onboarding.staffSlate.managerCandidates[0].id,
-      pitchingCoachId: onboarding.staffSlate.pitchingCoachCandidates[0].id,
-      hittingCoachId: onboarding.staffSlate.hittingCoachCandidates[0].id,
-    };
-    const scoutingDirectorId = onboarding.scoutingSlate.candidates[1].id;
+    let session = await api.getDayOneSession();
+    expect(session.mode).toBe('quick');
+    expect(session.currentStep).toBe('agm_select');
 
-    await api.applyStaffHires(hires);
-    await api.applyScoutingHire(scoutingDirectorId);
-    await api.completeRevisedOnboarding({
-      selectedAGMId: 'elena_vargas',
-      staffHires: hires,
-      scoutingHire: scoutingDirectorId,
-      gmPhilosophy: {
-        seasonGoal: 'championship',
-        developmentStyle: 'aggressive',
-        spendingStyle: 'big_spender',
-        tradeApproach: 'buyer',
-        scoutingFocus: 'international',
-        mediaTone: 'confident',
-      },
-    });
+    await api.chooseDayOneAGM('marcus_chen');
+
+    session = await api.getDayOneSession();
+    expect(session.currentStep).toBe('complete');
+    expect(session.recap).not.toBeNull();
+    expect(session.teaser).not.toBeNull();
+    expect(session.teaser?.aprilWatchItems).toHaveLength(3);
+    expect(session.selectedAGM?.id).toBe('marcus_chen');
+    expect(session.choices.seasonGoal).toBeTruthy();
+    expect(session.choices.budgetAllocation).toBeTruthy();
+    expect(session.choices.openingDayPlan).not.toBeNull();
+  });
+
+  it('exports Day One state through schema version 18 snapshots', async () => {
+    startGame(704, 'quick');
+
+    await api.chooseDayOneAGM('elena_vargas');
+    await api.finishDayOne();
 
     const snapshot = await api.exportSnapshot();
 
-    expect(snapshot.schemaVersion).toBe(17);
-    expect(snapshot.franchise.assistantGMId).toBe('elena_vargas');
-    expect(snapshot.franchise.scoutingDirector?.specialty).toBe('international');
+    expect(snapshot.schemaVersion).toBe(18);
+    expect(snapshot.franchise.dayOne.experience).toBe('quick');
+    expect(snapshot.franchise.dayOne.selectedAGMId).toBe('elena_vargas');
+    expect(snapshot.franchise.dayOne.status).toBe('complete');
   });
 });

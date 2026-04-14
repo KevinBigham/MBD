@@ -88,6 +88,15 @@ const mutationMethods = new Set<WorkerMethodName>([
   'makeRule5Pick',
   'passRule5Pick',
   'resolveRule5OfferBack',
+  'advanceDayOneIntro',
+  'chooseDayOneAGM',
+  'advanceDayOneOrgReview',
+  'setDayOneSeasonGoal',
+  'setDayOneBudgetAllocation',
+  'setDayOneOpeningPlan',
+  'setDayOneDevelopmentPlan',
+  'resolveDayOneCrisis',
+  'finishDayOne',
   'completeOnboarding',
   'applyStaffHires',
   'applyScoutingHire',
@@ -289,15 +298,7 @@ export function useWorker() {
   }, []);
 
   const newGame = useCallback(
-    async (options: {
-      seed: number;
-      userTeamId: string;
-      gmName: string;
-      difficulty: 'easy' | 'standard' | 'hard';
-      saveSlot: number;
-      playMode?: PlayMode;
-      scenarioId?: string;
-    }) => runMutation(() => api.newGame(options)),
+    async (options: Parameters<typeof api.newGame>[0]) => runMutation(() => api.newGame(options)),
     [api, runMutation],
   );
   const getSetupPreview = useCallback(
@@ -350,7 +351,8 @@ export function useWorker() {
   const getState = useCallback(async () => api.getState(), [api]);
   const exportSnapshot = useCallback(
     async () => measureAsyncOperation('worker.exportSnapshot', () => api.exportSnapshot(), {
-      budgetMs: SAVE_IO_BUDGET_MS,
+      // Full snapshot export serializes the entire worker state before any save write occurs.
+      budgetMs: Math.max(SAVE_IO_BUDGET_MS, 1000),
     }),
     [api],
   );
@@ -844,6 +846,51 @@ export function useWorker() {
   );
   const getPlayoffMomentum = useCallback(async () => api.getPlayoffMomentum(), [api]);
 
+  // Day One front-office hook
+  const getDayOneSession = useCallback(async () => api.getDayOneSession(), [api]);
+  const advanceDayOneIntro = useCallback(
+    async () => runMutation(() => api.advanceDayOneIntro()),
+    [api, runMutation],
+  );
+  const chooseDayOneAGM = useCallback(
+    async (agmId: Parameters<typeof api.chooseDayOneAGM>[0]) =>
+      runMutation(() => api.chooseDayOneAGM(agmId)),
+    [api, runMutation],
+  );
+  const advanceDayOneOrgReview = useCallback(
+    async () => runMutation(() => api.advanceDayOneOrgReview()),
+    [api, runMutation],
+  );
+  const setDayOneSeasonGoal = useCallback(
+    async (seasonGoal: Parameters<typeof api.setDayOneSeasonGoal>[0]) =>
+      runMutation(() => api.setDayOneSeasonGoal(seasonGoal)),
+    [api, runMutation],
+  );
+  const setDayOneBudgetAllocation = useCallback(
+    async (budgetAllocation: Parameters<typeof api.setDayOneBudgetAllocation>[0]) =>
+      runMutation(() => api.setDayOneBudgetAllocation(budgetAllocation)),
+    [api, runMutation],
+  );
+  const setDayOneOpeningPlan = useCallback(
+    async (plan: Parameters<typeof api.setDayOneOpeningPlan>[0]) =>
+      runMutation(() => api.setDayOneOpeningPlan(plan)),
+    [api, runMutation],
+  );
+  const setDayOneDevelopmentPlan = useCallback(
+    async (plan: Parameters<typeof api.setDayOneDevelopmentPlan>[0]) =>
+      runMutation(() => api.setDayOneDevelopmentPlan(plan)),
+    [api, runMutation],
+  );
+  const resolveDayOneCrisis = useCallback(
+    async (responseId: Parameters<typeof api.resolveDayOneCrisis>[0]) =>
+      runMutation(() => api.resolveDayOneCrisis(responseId)),
+    [api, runMutation],
+  );
+  const finishDayOne = useCallback(
+    async () => runMutation(() => api.finishDayOne()),
+    [api, runMutation],
+  );
+
   // Onboarding (legacy procedural flow)
   const getOnboardingData = useCallback(async () => api.getOnboardingData(), [api]);
   const completeOnboarding = useCallback(
@@ -912,6 +959,7 @@ export function useWorker() {
     getTradeDeadlineDrama, getMilestoneTrackerAlerts, getFreeAgencyMarketIntelligence,
     getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
     getBreakoutIntelligence, getProspectBreakoutWatch, getScoutConsensus, getPlayoffMomentum,
+    getDayOneSession, advanceDayOneIntro, chooseDayOneAGM, advanceDayOneOrgReview, setDayOneSeasonGoal, setDayOneBudgetAllocation, setDayOneOpeningPlan, setDayOneDevelopmentPlan, resolveDayOneCrisis, finishDayOne,
     getOnboardingData, completeOnboarding,
     getAGMCandidates, getRevisedOnboardingData, applyStaffHires, applyScoutingHire, completeRevisedOnboarding,
     subscribeToFlowUpdates,
