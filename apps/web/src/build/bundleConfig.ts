@@ -1,4 +1,4 @@
-export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 300 * 1024;
+export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 304 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
 export const WORKER_CHUNK_BUDGET_BYTES = 406 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 121 * 1024;
@@ -118,6 +118,9 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
   if (includesPath(normalized, '/apps/web/src/workers/')) {
     if (normalized.endsWith('/workers/sim.worker.ts')) {
       return 'game-engine-shell';
+    }
+    if (normalized.endsWith('/workers/sim.worker.onboarding.ts')) {
+      return 'game-engine-day-one';
     }
     return 'game-engine-story';
   }

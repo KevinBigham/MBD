@@ -159,16 +159,33 @@ import {
   getAdvancedStatsForPlayer,
 } from './sim.worker.stats.js';
 import {
+  advanceDayOneIntro,
   applyScoutingHire,
   applyStaffHires,
+  chooseDayOneAGM,
   completeRevisedOnboarding,
   getAGMCandidates,
+  getDayOneSession,
   getOnboardingData,
   getRevisedOnboardingData,
   completeOnboarding,
+  advanceDayOneOrgReview,
+  setDayOneSeasonGoal,
+  setDayOneBudgetAllocation,
+  setDayOneOpeningPlan,
+  setDayOneDevelopmentPlan,
+  resolveDayOneCrisis,
+  finishDayOne,
 } from './sim.worker.onboarding.js';
 import type { GMPhilosophy } from '@mbd/sim-core';
-import type { AGMCandidateId, OnboardingResult, StaffHireChoices } from '@mbd/sim-core';
+import type {
+  AGMCandidateId,
+  DayOneBudgetAllocation,
+  DayOneOpeningPlan,
+  DayOnePromotionStance,
+  OnboardingResult,
+  StaffHireChoices,
+} from '@mbd/sim-core';
 import {
   getActiveDevelopmentSetbackView,
   getMinorLeagueProgressionView,
@@ -3005,6 +3022,49 @@ export const queryApi = {
   },
 
   // Onboarding Wizard
+  getDayOneSession() {
+    return getDayOneSession();
+  },
+
+  advanceDayOneIntro() {
+    return advanceDayOneIntro();
+  },
+
+  chooseDayOneAGM(agmId: AGMCandidateId) {
+    return chooseDayOneAGM(agmId);
+  },
+
+  advanceDayOneOrgReview() {
+    return advanceDayOneOrgReview();
+  },
+
+  setDayOneSeasonGoal(seasonGoal: GMPhilosophy['seasonGoal']) {
+    return setDayOneSeasonGoal(seasonGoal);
+  },
+
+  setDayOneBudgetAllocation(budgetAllocation: DayOneBudgetAllocation) {
+    return setDayOneBudgetAllocation(budgetAllocation);
+  },
+
+  setDayOneOpeningPlan(plan: DayOneOpeningPlan) {
+    return setDayOneOpeningPlan(plan);
+  },
+
+  setDayOneDevelopmentPlan(plan: {
+    developmentStyle: GMPhilosophy['developmentStyle'];
+    promotionStance: DayOnePromotionStance;
+  }) {
+    return setDayOneDevelopmentPlan(plan);
+  },
+
+  resolveDayOneCrisis(responseId: string) {
+    return resolveDayOneCrisis(responseId);
+  },
+
+  finishDayOne() {
+    return finishDayOne();
+  },
+
   getOnboardingData() {
     return getOnboardingData();
   },

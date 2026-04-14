@@ -4,6 +4,8 @@ import {
   TEAMS,
   assignGMPersonality,
   backfillLegacyRecordBook,
+  buildDayOneOrgReview,
+  buildDayOneTeamCard,
   buildRosterState,
   createRelationshipMap,
   createSeasonState,
@@ -46,14 +48,22 @@ export interface NewGameOptions {
   saveSlot: number;
   playMode?: PlayMode;
   scenarioId?: string;
+  dayOneExperience?: 'full' | 'quick';
 }
 
 export interface SetupPreview {
   teamId: string;
   teamName: string;
   division: string;
+  archetype: string;
+  franchiseHook: string;
+  whyNow: string;
+  marketSize: 'large' | 'medium' | 'small';
+  timeline: string;
   payrollTier: string;
   farmSystemRating: string;
+  strengths: string[];
+  weaknesses: string[];
   teamIdentityBlurb: string;
   projectedRecord: string;
   topPlayers: Array<{
@@ -272,6 +282,43 @@ function createDefaultFanSentiment(season: number, day: number) {
   };
 }
 
+function createInitialDayOneState(
+  experience: 'full' | 'quick',
+  bypassDayOne: boolean,
+) {
+  if (bypassDayOne) {
+    return {
+      experience: 'quick' as const,
+      status: 'complete' as const,
+      currentStep: 'complete' as const,
+      selectedAGMId: null,
+      seasonGoal: null,
+      budgetAllocation: null,
+      developmentStyle: null,
+      promotionStance: null,
+      openingDayPlan: null,
+      crisisType: null,
+      crisisResponseId: null,
+      quickStartRecapSeen: true,
+    };
+  }
+
+  return {
+    experience,
+    status: 'in_progress' as const,
+    currentStep: experience === 'full' ? 'owner_intro' as const : 'agm_select' as const,
+    selectedAGMId: null,
+    seasonGoal: null,
+    budgetAllocation: null,
+    developmentStyle: null,
+    promotionStance: null,
+    openingDayPlan: null,
+    crisisType: null,
+    crisisResponseId: null,
+    quickStartRecapSeen: false,
+  };
+}
+
 export function buildNewGameState(options: NewGameOptions): FullGameState {
   const rng = new GameRNG(options.seed);
   const teamIds = TEAMS.map((team) => team.id);
@@ -316,6 +363,8 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     careerStats: [],
   });
   const playMode = options.playMode ?? 'standard';
+  const bypassDayOne = playMode === 'scenario' || options.scenarioId != null;
+  const dayOneExperience = options.dayOneExperience ?? 'full';
   const gmCareer = initializeGMCareer(new GameRNG(options.seed + 40_001), options.userTeamId, options.gmName, 1);
 
   return {
@@ -389,9 +438,10 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
       difficulty: options.difficulty,
       playMode,
       onboarding: {
-        welcomeBriefingSeen: false,
+        welcomeBriefingSeen: bypassDayOne,
         firstMonthlyPulseSeen: false,
       },
+      dayOne: createInitialDayOneState(dayOneExperience, bypassDayOne),
     }),
     ceremony: createEmptyCeremonyState(),
     achievements: createEmptyAchievementState(),
@@ -409,10 +459,10 @@ export function buildSetupPreview(options: Pick<NewGameOptions, 'seed' | 'userTe
     saveSlot: 1,
   });
   const team = getTeamById(options.userTeamId);
-  const teamName = team ? `${team.city} ${team.name}` : options.userTeamId.toUpperCase();
   const payrollTier = payrollTierForBudget(getTeamBudget(options.userTeamId));
+  const orgReview = buildDayOneOrgReview(seededState.players, options.userTeamId);
   const farmSystemRating = farmSystemRatingForPlayers(seededState.players, options.userTeamId);
-  const projectedWins = projectedWinsForPlayers(seededState.players, options.userTeamId);
+  const projectedWins = orgReview.projectedWins || projectedWinsForPlayers(seededState.players, options.userTeamId);
   const topPlayers = seededState.players
     .filter((player) => player.teamId === options.userTeamId && player.rosterStatus === 'MLB')
     .sort((left, right) => right.overallRating - left.overallRating)
@@ -423,15 +473,16 @@ export function buildSetupPreview(options: Pick<NewGameOptions, 'seed' | 'userTe
       position: player.position,
       overall: toDisplayRating(player.overallRating),
     }));
-
-  return {
+  const teamCard = buildDayOneTeamCard({
     teamId: options.userTeamId,
-    teamName,
+    teamName: team ? `${team.city} ${team.name}` : options.userTeamId.toUpperCase(),
     division: team?.division ?? 'UNKNOWN',
     payrollTier,
     farmSystemRating,
-    teamIdentityBlurb: teamIdentityBlurb(options.userTeamId, payrollTier, farmSystemRating),
     projectedRecord: `${projectedWins}-${162 - projectedWins}`,
+    strengths: orgReview.strengths,
+    weaknesses: orgReview.weaknesses,
+    teamIdentityBlurb: teamIdentityBlurb(options.userTeamId, payrollTier, farmSystemRating),
     topPlayers,
     divisionRivals: TEAMS
       .filter((entry) => entry.division === team?.division && entry.id !== options.userTeamId)
@@ -439,5 +490,9 @@ export function buildSetupPreview(options: Pick<NewGameOptions, 'seed' | 'userTe
         teamId: entry.id,
         teamName: `${entry.city} ${entry.name}`,
       })),
+  });
+
+  return {
+    ...teamCard,
   };
 }
