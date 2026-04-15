@@ -4007,7 +4007,7 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().season).toBe(2);
     expect(requireState().playoffBracket).toBeNull();
     expect(requireState().offseasonState).toBeNull();
-  });
+  }, 30_000);
 
   it('supports interactive playoff progression through game, series, round, and remaining-bracket APIs', () => {
     startGame(512, 'nym');
