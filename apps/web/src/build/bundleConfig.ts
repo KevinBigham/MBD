@@ -78,13 +78,6 @@ export function resolveAppManualChunk(id: string): string | undefined {
     return 'vendor-data';
   }
 
-  if (
-    includesPackage(normalized, '@tanstack/react-table')
-    || includesPackage(normalized, '@tanstack/react-virtual')
-  ) {
-    return 'vendor-table';
-  }
-
   return undefined;
 }
 
