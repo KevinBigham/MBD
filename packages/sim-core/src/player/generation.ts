@@ -9,6 +9,8 @@ import { clampRating } from './attributes.js';
 import type { HitterAttributes, PitcherAttributes } from './attributes.js';
 import { calculateRule5EligibleAfterSeason } from '../roster/rule5.js';
 import { assignPersonalityTraits } from './personalityTraits.js';
+import { PITCHER_POSITIONS, ROSTER_LEVELS } from './enums.js';
+import type { RosterLevel } from './enums.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -16,14 +18,14 @@ import { assignPersonalityTraits } from './personalityTraits.js';
 
 /** Positions by category */
 export const HITTER_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'] as const;
-export const PITCHER_POSITIONS = ['SP', 'RP', 'CL'] as const;
 export const ALL_POSITIONS = [...HITTER_POSITIONS, ...PITCHER_POSITIONS] as const;
 
 export type Position = (typeof ALL_POSITIONS)[number];
 
-/** Roster level definitions */
-export const ROSTER_LEVELS = ['MLB', 'AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE', 'INTERNATIONAL'] as const;
-export type RosterLevel = (typeof ROSTER_LEVELS)[number];
+// Re-exported from ./enums.js to break runtime cycle with ../roster/.
+// Public surface unchanged — consumers can still import these from generation.ts.
+export { PITCHER_POSITIONS, ROSTER_LEVELS };
+export type { RosterLevel };
 
 /** Development phases */
 export const DEV_PHASES = ['Prospect', 'Ascent', 'Prime', 'Decline', 'Retirement'] as const;
