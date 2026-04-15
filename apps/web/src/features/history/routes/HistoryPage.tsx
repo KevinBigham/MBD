@@ -30,6 +30,7 @@ import {
   buildDynastyTimelineChapters,
   type DynastyTimelineEntryLike,
 } from '../lib/buildDynastyTimelineChapters';
+import type { HistorySeasonView } from '@/workers/sim.worker.narrative';
 
 interface HistoryDisplayNames {
   players: Record<string, string>;
@@ -80,8 +81,6 @@ interface SeasonComparisonView {
     budget: number | null;
   };
 }
-
-type HistorySeasonView = SeasonArchiveEntry | ArchivedSeason;
 
 interface AchievementView {
   id: string;

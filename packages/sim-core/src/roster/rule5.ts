@@ -4,7 +4,7 @@
  * Pure engine code — no React, no DOM, no ambient randomness.
  */
 
-import { FORTY_MAN_LIMIT } from './rosterManager.js';
+import { FORTY_MAN_LIMIT } from '../player/enums.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { RosterState } from './rosterManager.js';
 

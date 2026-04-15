@@ -2,70 +2,16 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, Skeleton, StatLine, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
 import { Clock3, DollarSign, FileSignature, GripVertical, ShieldCheck } from 'lucide-react';
+import { PITCHER_POSITIONS } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { PageHelp } from '@/shared/components/PageHelp';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { gradeBadgeColor } from '@/shared/lib/grade';
+import type { PlayerDTO } from '@/workers/sim.worker.helpers';
+import type { TeamChemistry } from '@mbd/contracts';
 
 const LineupBuilder = lazy(() => import('../components/LineupBuilder'));
 const DepthChartDnD = lazy(() => import('../components/DepthChartDnD'));
-
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  displayRating: number;
-  letterGrade: string;
-  rosterStatus: string;
-  teamId: string;
-  serviceTimeDays: number;
-  optionYearsUsed: number;
-  isOutOfOptions: boolean;
-  minorLeagueLevel: string | null;
-  contract: {
-    years: number;
-    annualSalary: number;
-    totalValue: number;
-    noTradeClause: boolean;
-    noTradeClauseType: string;
-    playerOption: boolean;
-    teamOption: boolean;
-    optOutYears: number[];
-    signingBonus: number;
-    buyoutAmount: number;
-    deferredMoney: Array<{ yearOffset: number; amount: number }>;
-  };
-  stats: {
-    pa: number;
-    ab: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    bb: number;
-    k: number;
-    avg: string;
-    ip: number;
-    earnedRuns: number;
-    strikeouts: number;
-    walks: number;
-    era: string;
-  } | null;
-  advanced: {
-    war: number;
-    fip: number | null;
-    xfip: number | null;
-  } | null;
-}
-
-interface TeamChemistry {
-  score: number;
-  tier: string;
-  trend: string;
-  summary: string;
-  reasons: string[];
-}
 
 interface PromotionCandidateView {
   playerId: string;
@@ -166,16 +112,6 @@ interface ExtensionResponseView {
   counterOffer?: ExtensionOfferView;
 }
 
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default: return 'bg-dynasty-border text-dynasty-muted';
-  }
-}
-
 function chemistryTone(tier: string): string {
   switch (tier) {
     case 'electric': return 'text-accent-success';
@@ -225,8 +161,10 @@ function gradeFromValue(value: number, floor: number, ceiling: number): number {
   return Math.round(20 + (clamped * 60));
 }
 
-const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
+const PITCHER_POSITIONS_SET = new Set<string>(PITCHER_POSITIONS);
 
+// UI depth chart order — intentionally different from sim-core ALL_POSITIONS
+// (SS/3B swapped) to match baseball scorecard visual layout.
 const ALL_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'] as const;
 
 function buildDepthChartGroups(roster: PlayerDTO[]) {
@@ -324,8 +262,8 @@ export default function RosterPage() {
     }
   }, [fetchRoster]);
 
-  const hitters = mlbRoster.filter((player) => !PITCHER_POSITIONS.has(player.position));
-  const pitchers = mlbRoster.filter((player) => PITCHER_POSITIONS.has(player.position));
+  const hitters = mlbRoster.filter((player) => !PITCHER_POSITIONS_SET.has(player.position));
+  const pitchers = mlbRoster.filter((player) => PITCHER_POSITIONS_SET.has(player.position));
 
   const openNegotiation = useCallback(async (candidate: ExtensionCandidateView) => {
     const offer = await worker.getExtensionOffer(candidate.playerId, 5);
@@ -541,7 +479,7 @@ export default function RosterPage() {
                       <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
                       <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
                       <td className="px-2 py-2 text-center">
-                        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeColor(player.letterGrade)}`}>
+                        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
                           {player.letterGrade}
                         </span>
                       </td>
@@ -612,7 +550,7 @@ export default function RosterPage() {
                       <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
                       <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
                       <td className="px-2 py-2 text-center">
-                        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeColor(player.letterGrade)}`}>
+                        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
                           {player.letterGrade}
                         </span>
                       </td>
@@ -816,7 +754,7 @@ export default function RosterPage() {
                           <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
                           <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
                           <td className="px-2 py-2 text-center">
-                            <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeColor(player.letterGrade)}`}>
+                            <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
                               {player.letterGrade}
                             </span>
                           </td>
@@ -1045,7 +983,7 @@ export default function RosterPage() {
               <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
                 <LineupBuilder
                   players={(mlbRoster ?? [])
-                    .filter((p) => !PITCHER_POSITIONS.has(p.position))
+                    .filter((p) => !PITCHER_POSITIONS_SET.has(p.position))
                     .slice(0, 9)
                     .map((p) => ({
                       id: p.id,

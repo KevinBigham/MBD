@@ -4,11 +4,11 @@ import { Badge, Card, CardContent, GradeBar, StatLine } from '@mbd/ui';
 import { Award, Quote } from 'lucide-react';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { gradeBadgeColor } from '@/shared/lib/grade';
 import {
   badgeVariantForStoryPhase,
   badgeVariantForTrajectory,
   displayBand,
-  gradeColor,
   isPitcherProfile,
   labelize,
   type PlayerProfileView,
@@ -109,7 +109,7 @@ export default function ProfileHeader({
             <div className="mt-2 font-data text-5xl font-bold text-dynasty-textBright">
               {player.displayRating}
             </div>
-            <div className={`mt-2 inline-flex rounded px-3 py-1 font-data text-xl font-bold ${gradeColor(player.letterGrade)}`}>
+            <div className={`mt-2 inline-flex rounded px-3 py-1 font-data text-xl font-bold ${gradeBadgeColor(player.letterGrade)}`}>
               {player.letterGrade}
             </div>
           </div>

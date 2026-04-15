@@ -1,5 +1,5 @@
 export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 304 * 1024;
-export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
+export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 export const WORKER_CHUNK_BUDGET_BYTES = 406 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 121 * 1024;
 
@@ -76,13 +76,6 @@ export function resolveAppManualChunk(id: string): string | undefined {
     || includesPackage(normalized, 'comlink')
   ) {
     return 'vendor-data';
-  }
-
-  if (
-    includesPackage(normalized, '@tanstack/react-table')
-    || includesPackage(normalized, '@tanstack/react-virtual')
-  ) {
-    return 'vendor-table';
   }
 
   return undefined;

@@ -1,10 +1,11 @@
 import { RATING_MAX, toDisplayRating } from './attributes.js';
 import type { GeneratedPlayer } from './generation.js';
-
-interface AttributeDescriptor {
-  readonly attribute: string;
-  readonly label: string;
-}
+import {
+  type AttributeDescriptor,
+  getAttributeDescriptors,
+  getAttributeValue,
+  isPitcher,
+} from './attributeDescriptors.js';
 
 export interface SimilarPlayer {
   playerId: string;
@@ -26,41 +27,8 @@ export interface PlayerArchetype {
 
 const DEFAULT_MAX_RESULTS = 5;
 
-const HITTER_ATTRIBUTE_DESCRIPTORS: readonly AttributeDescriptor[] = [
-  { attribute: 'contact', label: 'Contact' },
-  { attribute: 'power', label: 'Power' },
-  { attribute: 'eye', label: 'Eye' },
-  { attribute: 'speed', label: 'Speed' },
-  { attribute: 'defense', label: 'Defense' },
-  { attribute: 'durability', label: 'Durability' },
-] as const;
-
-const PITCHER_ATTRIBUTE_DESCRIPTORS: readonly AttributeDescriptor[] = [
-  { attribute: 'stuff', label: 'Stuff' },
-  { attribute: 'control', label: 'Control' },
-  { attribute: 'stamina', label: 'Stamina' },
-  { attribute: 'velocity', label: 'Velocity' },
-  { attribute: 'movement', label: 'Movement' },
-] as const;
-
-function isPitcher(player: GeneratedPlayer): boolean {
-  return player.pitcherAttributes !== null;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function getAttributeDescriptors(player: GeneratedPlayer): readonly AttributeDescriptor[] {
-  return isPitcher(player) ? PITCHER_ATTRIBUTE_DESCRIPTORS : HITTER_ATTRIBUTE_DESCRIPTORS;
-}
-
-function getAttributeValue(player: GeneratedPlayer, descriptor: AttributeDescriptor): number {
-  if (isPitcher(player)) {
-    return player.pitcherAttributes?.[descriptor.attribute as keyof NonNullable<GeneratedPlayer['pitcherAttributes']>] ?? 0;
-  }
-
-  return player.hitterAttributes[descriptor.attribute as keyof GeneratedPlayer['hitterAttributes']];
 }
 
 function getPlayerName(player: GeneratedPlayer): string {

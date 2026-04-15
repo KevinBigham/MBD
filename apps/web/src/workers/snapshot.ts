@@ -82,7 +82,11 @@ import {
   createEmptyAchievementState,
   createEmptyCeremonyState,
 } from './sim.worker.ceremony.js';
-import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
+import {
+  createDefaultFanSentiment,
+  createEmptyJobMarket,
+  createEmptyMonthlyPulseState,
+} from './sim.worker.state.js';
 
 function serializeSeasonState(seasonState: SeasonState): GameSnapshot['seasonState'] {
   return {
@@ -209,22 +213,6 @@ function deserializeInternationalScoutingState(
     ifaPool: serialized.ifaPool,
     budgets: new Map(serialized.budgets as [string, IFATeamBudget][]),
     scoutingHistory: new Map(serialized.scoutingHistory as [string, IFAScoutingHistoryEntry[]][]),
-  };
-}
-
-function createEmptyJobMarket(): JobMarket {
-  return {
-    availableJobs: [],
-    applicationDeadlineSeason: null,
-  };
-}
-
-function createDefaultFanSentiment(season: number, day: number): FanSentiment {
-  return {
-    score: 50,
-    trend: 'stable',
-    summary: 'Fan sentiment is stable.',
-    updatedAt: `S${season}D${day}`,
   };
 }
 

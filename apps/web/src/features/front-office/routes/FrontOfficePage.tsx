@@ -4,6 +4,7 @@ import { Building2, Clock, Coins, TrendingUp, Users, Zap } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
+import type { TeamChemistry } from '@mbd/contracts';
 
 interface OwnerState {
   archetype: string;
@@ -30,14 +31,6 @@ interface FrontOfficeState {
   freeAgencyScore: number;
   playoffScore: number;
   summary: string;
-}
-
-interface TeamChemistry {
-  score: number;
-  tier: string;
-  trend: string;
-  summary: string;
-  reasons: string[];
 }
 
 interface RelationshipView {
@@ -238,7 +231,7 @@ function ChemistryCard({ chem }: { chem: TeamChemistry }) {
           <div>
             <Badge className={chemTierTone(chem.tier)}>{chem.tier}</Badge>
             <div className="mt-0.5 font-data text-[10px] text-dynasty-muted">
-              Trend: {chem.trend === 'improving' ? 'Improving' : chem.trend === 'declining' ? 'Declining' : 'Stable'}
+              Trend: {chem.trend === 'rising' ? 'Improving' : chem.trend === 'falling' ? 'Declining' : 'Stable'}
             </div>
           </div>
         </div>

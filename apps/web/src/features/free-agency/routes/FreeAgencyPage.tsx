@@ -5,6 +5,7 @@ import {
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { gradeTextColor } from '@/shared/lib/grade';
 
 const MarketIntelPanel = lazy(() => import('../components/MarketIntelPanel'));
 
@@ -23,16 +24,6 @@ interface FreeAgentRow {
 type PositionFilter = 'all' | 'hitters' | 'pitchers';
 
 const HITTER_POS = new Set(['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']);
-
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'text-accent-success';
-    case 'B': return 'text-accent-info';
-    case 'C': return 'text-accent-warning';
-    case 'D': return 'text-accent-danger';
-    default:  return 'text-dynasty-muted';
-  }
-}
 
 function demandColor(level: string): string {
   switch (level) {
@@ -192,7 +183,7 @@ export default function FreeAgencyPage() {
                       {agent.firstName} {agent.lastName}
                     </td>
                     <td className="px-2 py-2 font-data text-dynasty-muted">{agent.position}</td>
-                    <td className={`px-2 py-2 text-right font-data font-bold ${gradeColor(agent.letterGrade)}`}>
+                    <td className={`px-2 py-2 text-right font-data font-bold ${gradeTextColor(agent.letterGrade)}`}>
                       {agent.displayRating}
                     </td>
                     <td className="px-2 py-2 text-right font-data text-dynasty-muted">{agent.age}</td>

@@ -25,19 +25,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck all packages
-        run: |
-          npx tsc -p packages/contracts/tsconfig.json --noEmit
-          npx tsc -p packages/design-tokens/tsconfig.json --noEmit
-          npx tsc -p packages/sim-core/tsconfig.json --noEmit
-          npx tsc -p packages/sim-worker/tsconfig.json --noEmit
-          npx tsc -p packages/ui/tsconfig.json --noEmit
-          npx tsc -p apps/web/tsconfig.json --noEmit
+      - name: Verify workspace
+        run: npx pnpm verify
 
-      - name: Run tests
-        run: |
-          cd packages/sim-core && npx vitest run && cd ../..
-          cd packages/sim-worker && npx vitest run && cd ../..
-
-      - name: Build
-        run: cd apps/web && npx vite build
+      - name: Verify sim-core determinism snapshot
+        run: cd packages/sim-core && node ./node_modules/vitest/vitest.mjs run tests/determinism.snapshot.test.ts

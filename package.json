@@ -16,6 +16,8 @@
     "verify": "turbo typecheck && turbo test && turbo build"
   },
   "devDependencies": {
+    "knip": "^6.4.1",
+    "madge": "^8.0.0",
     "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   }

@@ -1,32 +1,6 @@
-export interface ProspectPipelineView {
-  health: {
-    score: number;
-    label: string;
-    readyNow: number;
-    nextWave: number;
-    longTerm: number;
-    summary: string;
-  };
-  prospects: Array<{
-    playerId: string;
-    playerName: string;
-    position: string;
-    level: string;
-    levelLabel: string;
-    age: number;
-    overallRating: number;
-    ceiling: number;
-    bondStrength: number;
-    eta: string;
-    trend: 'surging' | 'steady' | 'setback';
-    latestLineSummary: string | null;
-    activeSetback: {
-      type: string;
-      summary: string;
-    } | null;
-    milestones: string[];
-  }>;
-}
+import type { ProspectPipelineView } from '@/workers/sim.worker.pipeline';
+
+export type { ProspectPipelineView } from '@/workers/sim.worker.pipeline';
 
 function trendTone(trend: ProspectPipelineView['prospects'][number]['trend']): string {
   switch (trend) {

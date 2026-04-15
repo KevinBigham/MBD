@@ -617,7 +617,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
     return {
       teamId: entry.teamId,
       teamName: team ? `${team.city} ${team.name}` : entry.teamId.toUpperCase(),
+      city: team?.city ?? '',
       abbreviation: team?.abbreviation ?? entry.teamId.toUpperCase(),
+      division: team?.division ?? userDivision,
       wins: entry.wins,
       losses: entry.losses,
       pct: entry.pct.toFixed(3).replace(/^0/, ''),

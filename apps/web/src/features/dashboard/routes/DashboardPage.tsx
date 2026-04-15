@@ -20,6 +20,7 @@ import { logger } from '@/shared/lib/logger';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 import type { GamePlayByPlayView, GameRecapView } from '../components/gameDayBroadcast';
+import type { SeasonRecapView, OffseasonHeadlineView } from '@/workers/sim.worker.seasonNarrative';
 
 const StandingsCard = lazy(() => import('../components/StandingsCard'));
 const RosterHealthCard = lazy(() => import('../components/RosterHealthCard'));
@@ -166,7 +167,9 @@ interface DashboardSummary {
   divisionStandings: Array<{
     teamId: string;
     teamName: string;
+    city: string;
     abbreviation: string;
+    division: string;
     wins: number;
     losses: number;
     pct: string;
@@ -206,17 +209,6 @@ interface JobMarketView {
     difficulty: string;
     attractiveness: number;
   }>;
-}
-
-interface SeasonRecapView {
-  season: number;
-  recap: string;
-  storylines: string[];
-}
-
-interface OffseasonHeadlineView {
-  season: number;
-  headline: string;
 }
 
 type SimAction = 'day' | 'week' | 'month' | null;

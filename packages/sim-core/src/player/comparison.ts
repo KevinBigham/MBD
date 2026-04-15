@@ -7,6 +7,12 @@ import {
 import type { LetterGrade } from './attributes.js';
 import type { GeneratedPlayer } from './generation.js';
 import {
+  type AttributeDescriptor,
+  getAttributeDescriptors,
+  getAttributeValue as getInternalAttributeValue,
+  isPitcher,
+} from './attributeDescriptors.js';
+import {
   calculateBattingAverage,
   calculateObp,
   calculateOps,
@@ -15,11 +21,6 @@ import {
 import type { PlayerGameStats } from '../sim/gameSimulator.js';
 
 type ComparisonAdvantage = 'playerA' | 'playerB' | 'even';
-
-interface AttributeDescriptor {
-  readonly attribute: string;
-  readonly label: string;
-}
 
 export interface AttributeComparison {
   attribute: string;
@@ -59,27 +60,6 @@ export interface RankedAttribute {
 const DISPLAY_RANGE = DISPLAY_MAX - DISPLAY_MIN;
 const SIGNIFICANT_GAP_THRESHOLD = 10;
 
-const HITTER_ATTRIBUTE_DESCRIPTORS: readonly AttributeDescriptor[] = [
-  { attribute: 'contact', label: 'Contact' },
-  { attribute: 'power', label: 'Power' },
-  { attribute: 'eye', label: 'Eye' },
-  { attribute: 'speed', label: 'Speed' },
-  { attribute: 'defense', label: 'Defense' },
-  { attribute: 'durability', label: 'Durability' },
-] as const;
-
-const PITCHER_ATTRIBUTE_DESCRIPTORS: readonly AttributeDescriptor[] = [
-  { attribute: 'stuff', label: 'Stuff' },
-  { attribute: 'control', label: 'Control' },
-  { attribute: 'stamina', label: 'Stamina' },
-  { attribute: 'velocity', label: 'Velocity' },
-  { attribute: 'movement', label: 'Movement' },
-] as const;
-
-function isPitcher(player: GeneratedPlayer): boolean {
-  return player.pitcherAttributes !== null;
-}
-
 function getPlayerName(player: GeneratedPlayer): string {
   return `${player.firstName} ${player.lastName}`;
 }
@@ -112,17 +92,6 @@ function compareNumericValues(
   }
 
   return playerAValue > playerBValue ? 'playerA' : 'playerB';
-}
-
-function getAttributeDescriptors(player: GeneratedPlayer): readonly AttributeDescriptor[] {
-  return isPitcher(player) ? PITCHER_ATTRIBUTE_DESCRIPTORS : HITTER_ATTRIBUTE_DESCRIPTORS;
-}
-
-function getInternalAttributeValue(player: GeneratedPlayer, descriptor: AttributeDescriptor): number {
-  if (isPitcher(player)) {
-    return player.pitcherAttributes?.[descriptor.attribute as keyof NonNullable<GeneratedPlayer['pitcherAttributes']>] ?? 0;
-  }
-  return player.hitterAttributes[descriptor.attribute as keyof GeneratedPlayer['hitterAttributes']];
 }
 
 function formatBattingRate(value: number): string {

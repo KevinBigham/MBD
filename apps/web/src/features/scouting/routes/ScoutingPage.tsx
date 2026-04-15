@@ -19,6 +19,8 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
 import { ScoutConflictsTab } from '../components/ScoutConflictsTab';
+import type { PlayerDTO } from '@/workers/sim.worker.helpers';
+import type { TeamChemistry } from '@mbd/contracts';
 
 interface Scout {
   id: string;
@@ -28,7 +30,7 @@ interface Scout {
   bias: string;
 }
 
-interface ScoutReport {
+interface ScoutReportView {
   playerId: string;
   playerName: string;
   position: string;
@@ -44,22 +46,6 @@ interface ScoutReport {
   scoutName: string;
   date: string;
   reliability: number;
-}
-
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  teamId: string;
-}
-
-interface TeamChemistry {
-  score: number;
-  tier: string;
-  summary: string;
 }
 
 interface OwnerState {
@@ -212,8 +198,8 @@ export default function ScoutingPage() {
   const [scouts, setScouts] = useState<Scout[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PlayerDTO[]>([]);
-  const [scoutReport, setScoutReport] = useState<ScoutReport | null>(null);
-  const [recentReports, setRecentReports] = useState<ScoutReport[]>([]);
+  const [scoutReport, setScoutReport] = useState<ScoutReportView | null>(null);
+  const [recentReports, setRecentReports] = useState<ScoutReportView[]>([]);
   const [ifaPool, setIFAPool] = useState<IFAPoolView | null>(null);
   const [ifaReport, setIFAReport] = useState<IFAReport | null>(null);
   const [ifaBonus, setIFABonus] = useState('');
@@ -273,8 +259,8 @@ export default function ScoutingPage() {
     try {
       const report = await worker.scoutPlayerReport(player.id);
       if (report) {
-        setScoutReport(report as ScoutReport);
-        setRecentReports((prev) => [report as ScoutReport, ...prev].slice(0, 20));
+        setScoutReport(report as ScoutReportView);
+        setRecentReports((prev) => [report as ScoutReportView, ...prev].slice(0, 20));
       }
     } catch (err) {
       logger.error('Failed to scout player:', err);

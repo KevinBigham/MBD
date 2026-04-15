@@ -5,7 +5,11 @@ import type {
   ScoutConflict,
   SignatureMoment,
 } from '@mbd/contracts';
-import { toDisplayRating, type MilestoneAlert } from '@mbd/sim-core';
+import { PITCHER_POSITIONS, toDisplayRating, type MilestoneAlert } from '@mbd/sim-core';
+import type { PlayerAdvancedStatsDTO as PlayerAdvancedStatsView } from '@/workers/sim.worker.stats';
+import type { PersonalityProfileDTO as PersonalityProfileView } from '@/workers/sim.worker.narrative';
+
+export type { PlayerAdvancedStatsView, PersonalityProfileView };
 
 export type PlayerProfileTab = 'stats' | 'development' | 'scouting' | 'moments' | 'storyArcs' | 'history' | 'personality';
 
@@ -18,20 +22,6 @@ export const PLAYER_PROFILE_TABS: PlayerProfileTab[] = [
   'history',
   'personality',
 ];
-
-export interface PlayerAdvancedStatsView {
-  war: number;
-  woba: number | null;
-  wrcPlus: number | null;
-  opsPlus: number | null;
-  iso: number | null;
-  fip: number | null;
-  xfip: number | null;
-  whip: number | null;
-  kPer9: number | null;
-  bbPer9: number | null;
-  kBb: number | null;
-}
 
 export interface PlayerSeasonStatsView {
   pa: number;
@@ -131,24 +121,6 @@ export interface PlayerProfilePlayerView {
   }>;
 }
 
-export interface PersonalityProfileView {
-  playerId: string;
-  archetype: string;
-  morale: {
-    score: number;
-    trend: string;
-    summary: string;
-    lastUpdated: string;
-  };
-  personality: {
-    workEthic: number;
-    mentalToughness: number;
-    leadership: number;
-    competitiveness: number;
-  };
-  summary: string;
-}
-
 export interface DevelopmentReportsView {
   playerId: string;
   history: Array<{
@@ -243,7 +215,7 @@ export interface PlayerProfileView {
   scoutingHistoryNote: string;
 }
 
-export const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
+const PITCHER_POSITIONS_SET = new Set<string>(PITCHER_POSITIONS);
 
 export function normalizePlayerProfileTab(value: string | null): PlayerProfileTab {
   return PLAYER_PROFILE_TABS.includes(value as PlayerProfileTab) ? value as PlayerProfileTab : 'stats';
@@ -260,16 +232,6 @@ export function moneyLabel(value: number): string {
 export function displayBand(value: number | null): number {
   if (value == null) return 0;
   return value > 100 ? toDisplayRating(value) : value;
-}
-
-export function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default: return 'bg-dynasty-border text-dynasty-muted';
-  }
 }
 
 export function moraleTone(score: number): string {
@@ -351,5 +313,5 @@ export function formatInnings(outs: number): string {
 }
 
 export function isPitcherProfile(player: Pick<PlayerProfilePlayerView, 'position'>): boolean {
-  return PITCHER_POSITIONS.has(player.position);
+  return PITCHER_POSITIONS_SET.has(player.position);
 }
