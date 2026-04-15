@@ -24,7 +24,11 @@ import {
   seedHistoricalRivalries,
   toDisplayRating,
 } from '@mbd/sim-core';
-import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
+import {
+  createDefaultFanSentiment,
+  createEmptyJobMarket,
+  createEmptyMonthlyPulseState,
+} from './sim.worker.state.js';
 import {
   createEmptyDraftState,
   createEmptyInternationalScoutingState,
@@ -208,22 +212,6 @@ function teamIdentityBlurb(teamId: string, payrollTier: string, farmSystemRating
       ? 'There is enough prospect depth to support a balanced build.'
       : 'The system needs work, so every development win matters.';
   return `${team?.city ?? teamId.toUpperCase()} enters with ${marketLine}. ${pipelineLine}`;
-}
-
-function createEmptyJobMarket() {
-  return {
-    availableJobs: [],
-    applicationDeadlineSeason: null,
-  };
-}
-
-function createDefaultFanSentiment(season: number, day: number) {
-  return {
-    score: 50,
-    trend: 'stable' as const,
-    summary: 'Fan sentiment is stable.',
-    updatedAt: `S${season}D${day}`,
-  };
 }
 
 function createInitialDayOneState(

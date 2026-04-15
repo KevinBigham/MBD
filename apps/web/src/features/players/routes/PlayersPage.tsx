@@ -5,17 +5,8 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { ResponsiveTable, type ColumnDef } from '@/shared/components/ResponsiveTable';
+import { gradeBadgeColor } from '@/shared/lib/grade';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
-
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default:  return 'bg-dynasty-border text-dynasty-muted';
-  }
-}
 
 export default function PlayersPage() {
   const worker = useWorker();
@@ -82,7 +73,7 @@ export default function PlayersPage() {
       label: 'GRD',
       className: 'text-center',
       render: (p) => (
-        <span className={`inline-block w-6 rounded text-center text-xs font-bold ${gradeColor(p.letterGrade)}`}>
+        <span className={`inline-block w-6 rounded text-center text-xs font-bold ${gradeBadgeColor(p.letterGrade)}`}>
           {p.letterGrade}
         </span>
       ),

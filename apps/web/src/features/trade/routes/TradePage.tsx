@@ -21,6 +21,7 @@ import { PageHelp } from '@/shared/components/PageHelp';
 import DeadlineDramaPanel from '../components/DeadlineDramaPanel';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
+import { gradeBadgeColor } from '@/shared/lib/grade';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 import type {
   TradeAssetView,
@@ -223,16 +224,6 @@ function multiTeamProposalFromLanes(
       })),
     conditions: [...conditions],
   };
-}
-
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default: return 'bg-dynasty-border text-dynasty-muted';
-  }
 }
 
 function estimateValue(player: PlayerDTO): number {
@@ -460,7 +451,7 @@ function PlayerRow({
       <td className="px-2 py-1.5 font-data text-dynasty-muted">{player.position}</td>
       <td className="px-2 py-1.5 text-right font-data text-dynasty-text">{player.displayRating}</td>
       <td className="px-2 py-1.5 text-center">
-        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeColor(player.letterGrade)}`}>
+        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
           {player.letterGrade}
         </span>
       </td>

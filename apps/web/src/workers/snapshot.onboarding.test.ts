@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { parseGameSnapshot } from '../../../../packages/contracts/src/schemas/save';
+import { parseGameSnapshot } from '@mbd/contracts';
 
 function createV17Snapshot() {
   return {
