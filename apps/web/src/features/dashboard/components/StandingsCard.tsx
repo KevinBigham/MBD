@@ -1,19 +1,9 @@
 import { Trophy } from 'lucide-react';
 import { TeamLogo } from '@/shared/components/TeamLogo';
-
-interface StandingsEntryView {
-  teamId: string;
-  teamName: string;
-  abbreviation: string;
-  wins: number;
-  losses: number;
-  pct: string;
-  gamesBack: number;
-  streak: string;
-}
+import type { TeamStandingsDTO } from '@/workers/sim.worker.helpers';
 
 interface StandingsCardProps {
-  standings: StandingsEntryView[];
+  standings: TeamStandingsDTO[];
   userTeamId: string;
 }
 

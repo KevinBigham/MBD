@@ -93,10 +93,14 @@ function createProfileView(overrides: Partial<PlayerProfileView> = {}): PlayerPr
       },
       advanced: {
         war: 4.8,
+        avg: 0.322,
+        obp: 0.388,
+        slg: 0.546,
+        ops: 0.934,
+        iso: 0.224,
         woba: 0.378,
         wrcPlus: 142,
         opsPlus: 137,
-        iso: 0.224,
         fip: null,
         xfip: null,
         whip: null,
@@ -126,6 +130,7 @@ function createProfileView(overrides: Partial<PlayerProfileView> = {}): PlayerPr
       playerId: 'player-1',
       archetype: 'clubhouse_engine',
       morale: {
+        playerId: 'player-1',
         score: 66,
         trend: 'rising',
         summary: 'Responding well to the current program.',

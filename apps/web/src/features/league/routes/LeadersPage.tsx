@@ -4,36 +4,7 @@ import type { LeaderboardStatKey } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
-
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  position: string;
-  teamId: string;
-  displayRating: number;
-  stats: {
-    avg: string;
-    hr: number;
-    rbi: number;
-    hits: number;
-    strikeouts: number;
-    era: string;
-  } | null;
-  advanced: {
-    war: number;
-    woba: number | null;
-    wrcPlus: number | null;
-    opsPlus: number | null;
-    iso: number | null;
-    fip: number | null;
-    xfip: number | null;
-    whip: number | null;
-    kPer9: number | null;
-    bbPer9: number | null;
-    kBb: number | null;
-  } | null;
-}
+import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 
 const FEATURED_CATS: { key: LeaderboardStatKey; label: string }[] = [
   { key: 'war', label: 'WAR' },

@@ -22,6 +22,7 @@ import {
   type SaveData,
   type SaveInspectionResult,
 } from '@/shared/lib/saveSystem';
+import type { PerformanceDiagnosticsView } from '@/workers/sim.worker.diagnostics';
 
 const WHAT_IF_BRANCH_LIMIT = 3;
 
@@ -31,29 +32,6 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 type SettingsSectionKey = 'audio' | 'simulation' | 'display' | 'accessibility' | 'data' | 'diagnostics' | 'about';
-
-interface PerformanceDiagnosticsView {
-  totals: {
-    totalSeasons: number;
-    snapshotSizeBytes: number;
-    liveArchiveSeasons: number;
-    archivedSeasons: number;
-  };
-  queues: {
-    newsItems: number;
-    briefingItems: number;
-    tickerEntries: number;
-    staleTickerEntries: number;
-    activeWatchers: number;
-    resolvedWatchers: number;
-    scoutConflicts: number;
-  };
-  runtime: {
-    lastSimDayMs: number | null;
-    lastSaveMs: number | null;
-    lastLoadMs: number | null;
-  };
-}
 
 const DEFAULT_OPEN_SECTIONS: Record<SettingsSectionKey, boolean> = {
   audio: true,

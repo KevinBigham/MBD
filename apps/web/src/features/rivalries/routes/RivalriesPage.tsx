@@ -7,30 +7,7 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { TeamLogo } from '@/shared/components/TeamLogo';
-
-interface RivalryEvent {
-  season: number;
-  type: string;
-  summary: string;
-}
-
-interface Rivalry {
-  id: string;
-  teamA: string;
-  teamB: string;
-  intensity: number;
-  summary: string;
-  reasons: string[];
-  origin: string;
-  active: boolean;
-  currentSeasonWinsA: number;
-  currentSeasonWinsB: number;
-  historicalWinsA: number;
-  historicalWinsB: number;
-  eventHistory: RivalryEvent[];
-  closeRaceStreak: number;
-  playoffSeriesStreak: number;
-}
+import type { Rivalry } from '@mbd/contracts';
 
 function teamAbbr(teamId: string): string {
   return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase().slice(0, 3);
@@ -121,18 +98,18 @@ function RivalryCard({ r }: { r: Rivalry }) {
 
       {/* Origin + Streaks */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Badge className={originTone(r.origin)}>{r.origin.replace('_', ' ')}</Badge>
-        {r.closeRaceStreak >= 3 && (
+        <Badge className={originTone(r.origin ?? 'historical')}>{(r.origin ?? 'historical').replace('_', ' ')}</Badge>
+        {(r.closeRaceStreak ?? 0) >= 3 && (
           <Badge className="border-accent-warning/40 bg-accent-warning/10 text-accent-warning">
             <Flame className="mr-0.5 inline h-3 w-3" />{r.closeRaceStreak}-season race
           </Badge>
         )}
-        {r.playoffSeriesStreak >= 2 && (
+        {(r.playoffSeriesStreak ?? 0) >= 2 && (
           <Badge className="border-accent-primary/40 bg-accent-primary/10 text-accent-primary">
             {r.playoffSeriesStreak} playoff meetings
           </Badge>
         )}
-        {!r.active && (
+        {r.active === false && (
           <Badge className="border-dynasty-muted/40 bg-dynasty-muted/10 text-dynasty-muted">DORMANT</Badge>
         )}
       </div>
@@ -140,19 +117,19 @@ function RivalryCard({ r }: { r: Rivalry }) {
       {/* Head-to-head */}
       <div className="mt-3 space-y-1">
         <div className="flex justify-between font-data text-[10px] text-dynasty-muted">
-          <span>{teamAbbr(r.teamA)} {r.historicalWinsA}W</span>
+          <span>{teamAbbr(r.teamA)} {r.historicalWinsA ?? 0}W</span>
           <span>All-Time</span>
-          <span>{r.historicalWinsB}W {teamAbbr(r.teamB)}</span>
+          <span>{r.historicalWinsB ?? 0}W {teamAbbr(r.teamB)}</span>
         </div>
-        <HeadToHeadBar winsA={r.historicalWinsA} winsB={r.historicalWinsB} />
-        {(r.currentSeasonWinsA > 0 || r.currentSeasonWinsB > 0) && (
+        <HeadToHeadBar winsA={r.historicalWinsA ?? 0} winsB={r.historicalWinsB ?? 0} />
+        {((r.currentSeasonWinsA ?? 0) > 0 || (r.currentSeasonWinsB ?? 0) > 0) && (
           <>
             <div className="flex justify-between font-data text-[10px] text-dynasty-muted">
-              <span>{r.currentSeasonWinsA}W</span>
+              <span>{r.currentSeasonWinsA ?? 0}W</span>
               <span>This Season</span>
-              <span>{r.currentSeasonWinsB}W</span>
+              <span>{r.currentSeasonWinsB ?? 0}W</span>
             </div>
-            <HeadToHeadBar winsA={r.currentSeasonWinsA} winsB={r.currentSeasonWinsB} />
+            <HeadToHeadBar winsA={r.currentSeasonWinsA ?? 0} winsB={r.currentSeasonWinsB ?? 0} />
           </>
         )}
       </div>
@@ -174,9 +151,9 @@ function RivalryCard({ r }: { r: Rivalry }) {
       )}
 
       {/* Event Timeline */}
-      {r.eventHistory.length > 0 && (
+      {(r.eventHistory?.length ?? 0) > 0 && (
         <div className="mt-3 space-y-1 border-t border-dynasty-border pt-2">
-          {r.eventHistory.slice(0, 3).map((ev, i) => (
+          {(r.eventHistory ?? []).slice(0, 3).map((ev, i) => (
             <div key={i} className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-dynasty-muted" />
               <span className="font-data text-[10px] text-dynasty-muted">
@@ -209,7 +186,7 @@ export default function RivalriesPage() {
     void fetchData();
   }, [fetchData, season, day, phase]);
 
-  const activeCount = rivalries.filter((r) => r.active).length;
+  const activeCount = rivalries.filter((r) => r.active !== false).length;
 
   return (
     <PageShell loading={loading}>

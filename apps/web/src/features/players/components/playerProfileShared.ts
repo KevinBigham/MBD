@@ -6,6 +6,10 @@ import type {
   SignatureMoment,
 } from '@mbd/contracts';
 import { toDisplayRating, type MilestoneAlert } from '@mbd/sim-core';
+import type { PlayerAdvancedStatsDTO as PlayerAdvancedStatsView } from '@/workers/sim.worker.stats';
+import type { PersonalityProfileDTO as PersonalityProfileView } from '@/workers/sim.worker.narrative';
+
+export type { PlayerAdvancedStatsView, PersonalityProfileView };
 
 export type PlayerProfileTab = 'stats' | 'development' | 'scouting' | 'moments' | 'storyArcs' | 'history' | 'personality';
 
@@ -18,20 +22,6 @@ export const PLAYER_PROFILE_TABS: PlayerProfileTab[] = [
   'history',
   'personality',
 ];
-
-export interface PlayerAdvancedStatsView {
-  war: number;
-  woba: number | null;
-  wrcPlus: number | null;
-  opsPlus: number | null;
-  iso: number | null;
-  fip: number | null;
-  xfip: number | null;
-  whip: number | null;
-  kPer9: number | null;
-  bbPer9: number | null;
-  kBb: number | null;
-}
 
 export interface PlayerSeasonStatsView {
   pa: number;
@@ -129,24 +119,6 @@ export interface PlayerProfilePlayerView {
     resolvedSeason: number | null;
     milestones: string[];
   }>;
-}
-
-export interface PersonalityProfileView {
-  playerId: string;
-  archetype: string;
-  morale: {
-    score: number;
-    trend: string;
-    summary: string;
-    lastUpdated: string;
-  };
-  personality: {
-    workEthic: number;
-    mentalToughness: number;
-    leadership: number;
-    competitiveness: number;
-  };
-  summary: string;
 }
 
 export interface DevelopmentReportsView {

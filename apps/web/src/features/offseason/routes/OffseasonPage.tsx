@@ -25,6 +25,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
+import type { SeasonRecapView, OffseasonHeadlineView } from '@/workers/sim.worker.seasonNarrative';
 
 const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; description: string }> = {
   season_review: {
@@ -218,17 +219,6 @@ interface OffseasonData {
     }>;
   }>;
   rule5?: Rule5View;
-}
-
-interface SeasonRecapView {
-  season: number;
-  recap: string;
-  storylines: string[];
-}
-
-interface OffseasonHeadlineView {
-  season: number;
-  headline: string;
 }
 
 function isOffseasonData(value: unknown): value is OffseasonData {

@@ -7,7 +7,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 
-interface PlayerDTO {
+interface ComparisonPlayerRef {
   id: string;
   name: string;
   position: string;
@@ -50,8 +50,8 @@ interface ComparisonData {
   summary: string;
   rankedA: RankedAttribute[];
   rankedB: RankedAttribute[];
-  playerA: PlayerDTO;
-  playerB: PlayerDTO;
+  playerA: ComparisonPlayerRef;
+  playerB: ComparisonPlayerRef;
 }
 
 interface SearchResult {
@@ -106,7 +106,7 @@ function PlayerSearchPicker({
   onSelect,
 }: {
   label: string;
-  selected: PlayerDTO | null;
+  selected: ComparisonPlayerRef | null;
   onSelect: (id: string) => void;
 }) {
   const worker = useWorker();

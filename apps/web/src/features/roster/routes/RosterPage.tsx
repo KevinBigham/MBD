@@ -5,67 +5,11 @@ import { Clock3, DollarSign, FileSignature, GripVertical, ShieldCheck } from 'lu
 import { useWorker } from '@/shared/hooks/useWorker';
 import { PageHelp } from '@/shared/components/PageHelp';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import type { PlayerDTO } from '@/workers/sim.worker.helpers';
+import type { TeamChemistry } from '@mbd/contracts';
 
 const LineupBuilder = lazy(() => import('../components/LineupBuilder'));
 const DepthChartDnD = lazy(() => import('../components/DepthChartDnD'));
-
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  displayRating: number;
-  letterGrade: string;
-  rosterStatus: string;
-  teamId: string;
-  serviceTimeDays: number;
-  optionYearsUsed: number;
-  isOutOfOptions: boolean;
-  minorLeagueLevel: string | null;
-  contract: {
-    years: number;
-    annualSalary: number;
-    totalValue: number;
-    noTradeClause: boolean;
-    noTradeClauseType: string;
-    playerOption: boolean;
-    teamOption: boolean;
-    optOutYears: number[];
-    signingBonus: number;
-    buyoutAmount: number;
-    deferredMoney: Array<{ yearOffset: number; amount: number }>;
-  };
-  stats: {
-    pa: number;
-    ab: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    bb: number;
-    k: number;
-    avg: string;
-    ip: number;
-    earnedRuns: number;
-    strikeouts: number;
-    walks: number;
-    era: string;
-  } | null;
-  advanced: {
-    war: number;
-    fip: number | null;
-    xfip: number | null;
-  } | null;
-}
-
-interface TeamChemistry {
-  score: number;
-  tier: string;
-  trend: string;
-  summary: string;
-  reasons: string[];
-}
 
 interface PromotionCandidateView {
   playerId: string;

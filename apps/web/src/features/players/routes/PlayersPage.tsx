@@ -5,34 +5,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { ResponsiveTable, type ColumnDef } from '@/shared/components/ResponsiveTable';
-
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  displayRating: number;
-  letterGrade: string;
-  rosterStatus: string;
-  teamId: string;
-  stats: {
-    pa: number;
-    ab: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    bb: number;
-    k: number;
-    avg: string;
-    ip: number;
-    earnedRuns: number;
-    strikeouts: number;
-    walks: number;
-    era: string;
-  } | null;
-}
+import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 
 function gradeColor(grade: string): string {
   switch (grade) {
