@@ -31,6 +31,20 @@ describe('rivalry engine', () => {
     expect(getRivalry(rivalries, 'nym', 'bos')).toEqual(getRivalry(rivalries, 'bos', 'nym'));
   });
 
+  it('preserves saved rivalry intensity when historical rivals are re-seeded', () => {
+    const existing = new Map<string, Rivalry>([[
+      'bos:nym',
+      {
+        ...getRivalry(baseRivalries(), 'nym', 'bos')!,
+        intensity: 76,
+      },
+    ]]);
+
+    const reseeded = seedHistoricalRivalries(existing);
+
+    expect(getRivalry(reseeded, 'nym', 'bos')?.intensity).toBe(76);
+  });
+
   it('tracks head-to-head records for active rivalry games', () => {
     const rivalries = recordRivalryGame(baseRivalries(), {
       homeTeamId: 'nym',

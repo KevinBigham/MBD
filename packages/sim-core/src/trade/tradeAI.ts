@@ -46,6 +46,7 @@ const COUNTER_IMPROVEMENT_MAX = 20;
 
 /** Maximum number of trade proposals an AI generates per evaluation cycle. */
 const MAX_AI_PROPOSALS = 3;
+const DEADLINE_MAX_AI_PROPOSALS = 7;
 
 /** Minimum overall trade value to be considered "tradeable" by AI. */
 const MIN_TRADEABLE_VALUE = 15;
@@ -56,6 +57,10 @@ const TOP_PROSPECT_POTENTIAL_THRESHOLD = 320;
 const TOP_PROSPECT_AGE_THRESHOLD = 24;
 const MAX_PROPOSAL_FAIRNESS_ABS = 22;
 const RENTAL_PLAYER_AGE_THRESHOLD = 28;
+const DEADLINE_UPGRADE_MARGIN = 0;
+const STANDARD_UPGRADE_MARGIN = 10;
+const DEADLINE_BALANCED_PROPOSAL_ABS = 35;
+const DEADLINE_ACCEPTANCE_BONUS = 8;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,12 +130,16 @@ function isRentalPlayer(player: GeneratedPlayer): boolean {
     && player.age >= RENTAL_PLAYER_AGE_THRESHOLD;
 }
 
-function isBalancedProposal(fairness: number): boolean {
-  return Math.abs(fairness) <= MAX_PROPOSAL_FAIRNESS_ABS;
+function isBalancedProposal(fairness: number, atDeadline: boolean = false): boolean {
+  return Math.abs(fairness) <= (atDeadline ? DEADLINE_BALANCED_PROPOSAL_ABS : MAX_PROPOSAL_FAIRNESS_ABS);
 }
 
 function proposalFairnessCap(atDeadline: boolean, isContender: boolean): number {
   return atDeadline && isContender ? 35 : MAX_PROPOSAL_FAIRNESS_ABS;
+}
+
+function isDeadlineBuyerProposal(reason: string): boolean {
+  return reason.startsWith('Deadline buyer mode:');
 }
 
 /**
@@ -253,6 +262,9 @@ export function evaluateTradeProposal(
   if (fillsNeed) {
     effective += NEED_BONUS;
   }
+  if (isDeadlineBuyerProposal(proposal.reason)) {
+    effective += DEADLINE_ACCEPTANCE_BONUS;
+  }
 
   const threshold = ACCEPTANCE_THRESHOLDS[gmPersonality];
 
@@ -315,6 +327,8 @@ export function generateAITradeOffers(
   }
 
   const proposals: TradeProposal[] = [];
+  const proposalLimit = deadlineMode ? DEADLINE_MAX_AI_PROPOSALS : MAX_AI_PROPOSALS;
+  const upgradeMargin = deadlineMode ? DEADLINE_UPGRADE_MARGIN : STANDARD_UPGRADE_MARGIN;
 
   // Identify team weaknesses: positions with lowest-rated MLB starters
   const mlbPlayers = teamPlayers.filter((p) => p.rosterStatus === 'MLB');
@@ -359,7 +373,7 @@ export function generateAITradeOffers(
   }
 
   for (const [weakPos, weakInfo] of weakPositions) {
-    if (proposals.length >= MAX_AI_PROPOSALS) break;
+    if (proposals.length >= proposalLimit) break;
 
     // Find targets at this position on other teams that would be upgrades
     const targets = otherTeamPlayers
@@ -371,7 +385,7 @@ export function generateAITradeOffers(
           if (!isRentalPlayer(p) && p.contract.years > 2) return false;
         }
         const val = evaluatePlayerTradeValue(p);
-        return val.overall > weakInfo.value + 10; // meaningful upgrade
+        return val.overall > weakInfo.value + upgradeMargin; // meaningful upgrade
       })
       .sort((a, b) => evaluatePlayerTradeValue(b).overall - evaluatePlayerTradeValue(a).overall);
 
@@ -454,10 +468,10 @@ function generateSellerTradeOffers(
       evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall
       || left.id.localeCompare(right.id),
     )
-    .slice(0, 3);
+    .slice(0, DEADLINE_MAX_AI_PROPOSALS);
 
   for (const rental of rentals) {
-    if (proposals.length >= MAX_AI_PROPOSALS) break;
+    if (proposals.length >= DEADLINE_MAX_AI_PROPOSALS) break;
 
     for (const contenderTeamId of contenderTeamIds) {
       if (contenderTeamId === teamId) continue;
@@ -470,7 +484,7 @@ function generateSellerTradeOffers(
           || left.id.localeCompare(right.id),
         );
       const returnPiece = futureValueCandidates.find((candidate) =>
-        isBalancedProposal(comparePackages([rental], [candidate]).fairness),
+        isBalancedProposal(comparePackages([rental], [candidate]).fairness, true),
       );
 
       if (!returnPiece) {

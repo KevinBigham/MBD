@@ -48,7 +48,7 @@ const LEAGUE_AVG = {
   bb: 0.085,
   hbp: 0.008,
   k: 0.220,
-  hr: 0.0245,
+  hr: 0.0314,
   single: 0.16,
   double: 0.045,
   triple: 0.005,
