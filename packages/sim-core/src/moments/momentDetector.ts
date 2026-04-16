@@ -522,7 +522,10 @@ export function applyMomentEffects(
 export function decayMoments(moments: readonly Moment[]): Moment[] {
   return moments.map((moment) => ({
     ...moment,
-    relevance: roundToThousandth(moment.relevance * MOMENT_RELEVANCE_DECAY_RATE),
+    relevance: Math.min(
+      roundToThousandth(moment.relevance * MOMENT_RELEVANCE_DECAY_RATE),
+      moment.relevance,
+    ),
   }));
 }
 

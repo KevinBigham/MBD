@@ -939,6 +939,13 @@ describe('decayMoments', () => {
     expect(moment?.relevance).toBe(9.876);
   });
 
+  it('does not round tiny decayed relevance above its original value', () => {
+    const originalRelevance = 0.000625;
+    const [moment] = decayMoments([createMoment({ relevance: originalRelevance })]);
+
+    expect(moment?.relevance).toBeLessThanOrEqual(originalRelevance);
+  });
+
   it('does not mutate the input array or records', () => {
     const original = [createMoment({ relevance: 80 })];
     const snapshot = structuredClone(original);
