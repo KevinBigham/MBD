@@ -7,6 +7,7 @@
 
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { REGULAR_SEASON_DAYS } from '../sim/calendar.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1191,7 +1192,7 @@ export function generateSeasonRecap(
   season: number,
 ): NewsItem[] {
   const items: NewsItem[] = [];
-  const timestamp = formatTimestamp(season, 162);
+  const timestamp = formatTimestamp(season, REGULAR_SEASON_DAYS);
 
   // Champion headline
   if (champion) {

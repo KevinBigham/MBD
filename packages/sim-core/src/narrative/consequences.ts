@@ -6,6 +6,7 @@ import { toDisplayRating } from '../player/attributes.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { PlayerGameStats } from '../sim/gameSimulator.js';
 import type { PlayoffBracket } from '../sim/playoffSimulator.js';
+import { REGULAR_SEASON_DAYS } from '../sim/calendar.js';
 import { buildLeagueAdvancedContext, calculateAdvancedStatLine } from '../stats/advanced.js';
 import { generateNews, generateRetirementNews, generateSeasonRecap } from './newsFeed.js';
 import type { NewsItem } from './newsFeed.js';
@@ -427,7 +428,7 @@ export function buildPostseasonConsequenceBundle(
         {
           type: 'season_end',
           season: context.season,
-          day: 162,
+          day: REGULAR_SEASON_DAYS,
           data: {
             championId: context.playoffBracket.champion,
             championName: teamLabel(context.playoffBracket.champion),
@@ -436,7 +437,7 @@ export function buildPostseasonConsequenceBundle(
         },
         [],
         context.season,
-        162,
+        REGULAR_SEASON_DAYS,
       )
     : [];
   const recapNews = generateSeasonRecap(
@@ -459,7 +460,7 @@ export function buildPostseasonConsequenceBundle(
           body: summary.text,
           relatedTeamIds: [context.userTeamId],
           relatedPlayerIds: [],
-          timestamp: `S${context.season}D162`,
+          timestamp: `S${context.season}D${REGULAR_SEASON_DAYS}`,
           acknowledged: false,
         }],
     playerMoraleEvents: summary.moraleImpact === 0
@@ -470,7 +471,7 @@ export function buildPostseasonConsequenceBundle(
             'award',
             summary.moraleImpact,
             summary.text,
-            `S${context.season}D162`,
+            `S${context.season}D${REGULAR_SEASON_DAYS}`,
           ),
         ),
     ownerDecisionDelta: summary.ownerDelta === 0
@@ -547,12 +548,12 @@ export function buildRetirementConsequenceBundle(
 
 function normalizeExpiry(season: number, day: number, offsetDays: number): { season: number; day: number } {
   const targetDay = day + offsetDays;
-  if (targetDay <= 162) {
+  if (targetDay <= REGULAR_SEASON_DAYS) {
     return { season, day: targetDay };
   }
   return {
-    season: season + Math.floor((targetDay - 1) / 162),
-    day: ((targetDay - 1) % 162) + 1,
+    season: season + Math.floor((targetDay - 1) / REGULAR_SEASON_DAYS),
+    day: ((targetDay - 1) % REGULAR_SEASON_DAYS) + 1,
   };
 }
 

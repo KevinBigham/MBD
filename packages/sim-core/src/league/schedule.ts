@@ -1,21 +1,121 @@
 /**
  * @module schedule
  * Season schedule generator: 162-game season for 32 teams.
- * Generates a balanced schedule with more intra-division games.
+ * Generates a deterministic schedule over a 186-day regular-season calendar.
  */
 
 import type { GameRNG } from '../math/prng.js';
-import type { Division } from './teams.js';
-import { TEAMS, getTeamsByDivision, DIVISIONS } from './teams.js';
+import { getRegularSeasonGameDays } from '../sim/calendar.js';
+import { TEAMS } from './teams.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface ScheduledGame {
-  readonly day: number;      // 1–162ish (calendar day of season)
+  readonly day: number;      // regular-season calendar day
   readonly homeTeamId: string;
   readonly awayTeamId: string;
+}
+
+interface ScheduledMatchup {
+  readonly homeTeamId: string;
+  readonly awayTeamId: string;
+}
+
+type Pairing = readonly [string, string];
+type PairingRound = readonly Pairing[];
+
+const FULL_LEAGUE_REPEAT_CYCLES = 3;
+const LEAGUE_REPEAT_CYCLES = 4;
+const PREMIUM_ROUND_COUNT = 9;
+
+function buildCircleMethodRounds(teamIds: readonly string[], rng: GameRNG): PairingRound[] {
+  const rotation = rng.shuffle(teamIds);
+  const rounds: PairingRound[] = [];
+  const halfSize = rotation.length / 2;
+
+  for (let roundIndex = 0; roundIndex < rotation.length - 1; roundIndex += 1) {
+    const round: Pairing[] = [];
+
+    for (let pairIndex = 0; pairIndex < halfSize; pairIndex += 1) {
+      round.push([
+        rotation[pairIndex]!,
+        rotation[rotation.length - 1 - pairIndex]!,
+      ]);
+    }
+
+    rounds.push(round);
+
+    const fixedTeamId = rotation[0]!;
+    const movedTeamId = rotation.pop()!;
+    rotation.splice(1, 0, movedTeamId);
+    rotation[0] = fixedTeamId;
+  }
+
+  return rounds;
+}
+
+function orientRound(
+  round: PairingRound,
+  variantIndex: number,
+  roundIndex: number,
+): ScheduledMatchup[] {
+  return round.map(([leftTeamId, rightTeamId], pairIndex) => {
+    const flipHomeField = (variantIndex + roundIndex + pairIndex) % 2 === 1;
+    return flipHomeField
+      ? { homeTeamId: rightTeamId, awayTeamId: leftTeamId }
+      : { homeTeamId: leftTeamId, awayTeamId: rightTeamId };
+  });
+}
+
+function repeatRounds(baseRounds: readonly PairingRound[], repeatCount: number): ScheduledMatchup[][] {
+  const rounds: ScheduledMatchup[][] = [];
+
+  for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
+    for (let roundIndex = 0; roundIndex < baseRounds.length; roundIndex += 1) {
+      rounds.push(orientRound(baseRounds[roundIndex]!, repeatIndex, roundIndex));
+    }
+  }
+
+  return rounds;
+}
+
+function zipLeagueRounds(leftRounds: readonly PairingRound[], rightRounds: readonly PairingRound[]): PairingRound[] {
+  return leftRounds.map((leftRound, roundIndex) => [
+    ...leftRound,
+    ...rightRounds[roundIndex]!,
+  ]);
+}
+
+function countDivisionGames(round: PairingRound, teamDivisions: ReadonlyMap<string, string>): number {
+  return round.reduce((total, [leftTeamId, rightTeamId]) => (
+    teamDivisions.get(leftTeamId) === teamDivisions.get(rightTeamId)
+      ? total + 1
+      : total
+  ), 0);
+}
+
+function selectPremiumRounds(
+  leagueRounds: readonly PairingRound[],
+  teamDivisions: ReadonlyMap<string, string>,
+): ScheduledMatchup[][] {
+  const rankedRounds = leagueRounds
+    .map((round, roundIndex) => ({
+      round,
+      roundIndex,
+      divisionGames: countDivisionGames(round, teamDivisions),
+    }))
+    .sort((left, right) => (
+      right.divisionGames - left.divisionGames
+      || left.roundIndex - right.roundIndex
+    ))
+    .slice(0, PREMIUM_ROUND_COUNT)
+    .sort((left, right) => left.roundIndex - right.roundIndex);
+
+  return rankedRounds.map(({ round, roundIndex }, premiumIndex) =>
+    orientRound(round, LEAGUE_REPEAT_CYCLES + premiumIndex, roundIndex),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -26,110 +126,38 @@ export interface ScheduledGame {
  * Generate a 162-game schedule for all 32 teams.
  *
  * Distribution approach:
- * - Each team plays ~76 division games (19 vs each of ~4 division opponents)
- * - Remaining ~86 games vs non-division opponents
- * - Games distributed across ~180 calendar days (rest days built in)
- *
- * Uses round-robin with home/away balancing.
+ * - three full-league round-robin cycles for 93 game days
+ * - four league-only round-robin cycles for 60 game days
+ * - nine premium league-only rounds weighted toward division matchups
+ * - game days mapped onto a fixed 186-day calendar with league-wide off-days
  */
 export function generateSchedule(rng: GameRNG): ScheduledGame[] {
-  const games: ScheduledGame[] = [];
+  const allTeamIds = TEAMS.map((team) => team.id);
+  const alTeamIds = TEAMS
+    .filter((team) => team.division.startsWith('AL'))
+    .map((team) => team.id);
+  const nlTeamIds = TEAMS
+    .filter((team) => team.division.startsWith('NL'))
+    .map((team) => team.id);
+  const teamDivisions = new Map(TEAMS.map((team) => [team.id, team.division]));
+  const fullLeagueRounds = buildCircleMethodRounds(allTeamIds, rng.fork());
+  const alRounds = buildCircleMethodRounds(alTeamIds, rng.fork());
+  const nlRounds = buildCircleMethodRounds(nlTeamIds, rng.fork());
+  const uniqueLeagueRounds = zipLeagueRounds(alRounds, nlRounds);
+  const seasonRounds = rng.fork().shuffle([
+    ...repeatRounds(fullLeagueRounds, FULL_LEAGUE_REPEAT_CYCLES),
+    ...repeatRounds(uniqueLeagueRounds, LEAGUE_REPEAT_CYCLES),
+    ...selectPremiumRounds(uniqueLeagueRounds, teamDivisions),
+  ]);
+  const gameDays = getRegularSeasonGameDays();
 
-  // Build matchup list: each pair plays a number of games
-  const matchups: Array<{ home: string; away: string }> = [];
-
-  for (const div of DIVISIONS) {
-    const divTeams = getTeamsByDivision(div);
-
-    // Intra-division: each pair plays 19 games (alternating home/away)
-    for (let i = 0; i < divTeams.length; i++) {
-      for (let j = i + 1; j < divTeams.length; j++) {
-        const teamA = divTeams[i]!;
-        const teamB = divTeams[j]!;
-        for (let g = 0; g < 19; g++) {
-          if (g % 2 === 0) {
-            matchups.push({ home: teamA.id, away: teamB.id });
-          } else {
-            matchups.push({ home: teamB.id, away: teamA.id });
-          }
-        }
-      }
-    }
-  }
-
-  // Inter-division: each team plays ~6 games vs every non-division team
-  for (let i = 0; i < TEAMS.length; i++) {
-    for (let j = i + 1; j < TEAMS.length; j++) {
-      const teamA = TEAMS[i]!;
-      const teamB = TEAMS[j]!;
-
-      // Skip division opponents (already scheduled)
-      if (teamA.division === teamB.division) continue;
-
-      // Same league (AL vs AL or NL vs NL): 7 games each
-      // Cross-league: 4 games each
-      const sameLeague = teamA.division.startsWith('AL') === teamB.division.startsWith('AL');
-      const gamesPerPair = sameLeague ? 7 : 4;
-
-      for (let g = 0; g < gamesPerPair; g++) {
-        if (g % 2 === 0) {
-          matchups.push({ home: teamA.id, away: teamB.id });
-        } else {
-          matchups.push({ home: teamB.id, away: teamA.id });
-        }
-      }
-    }
-  }
-
-  // Shuffle all matchups to create randomized schedule
-  const shuffled = rng.shuffle(matchups);
-
-  // Distribute games across calendar days (max 16 games per day for 32 teams)
-  const MAX_GAMES_PER_DAY = 16;
-  const teamGamesPerDay = new Map<string, Set<number>>();
-
-  for (const teamDef of TEAMS) {
-    teamGamesPerDay.set(teamDef.id, new Set());
-  }
-
-  let currentDay = 1;
-  let gamesOnCurrentDay = 0;
-
-  for (const matchup of shuffled) {
-    const homeGames = teamGamesPerDay.get(matchup.home)!;
-    const awayGames = teamGamesPerDay.get(matchup.away)!;
-
-    // Find a day where neither team is already playing
-    while (
-      homeGames.has(currentDay) ||
-      awayGames.has(currentDay) ||
-      gamesOnCurrentDay >= MAX_GAMES_PER_DAY
-    ) {
-      currentDay++;
-      gamesOnCurrentDay = 0;
-    }
-
-    games.push({
-      day: currentDay,
-      homeTeamId: matchup.home,
-      awayTeamId: matchup.away,
-    });
-
-    homeGames.add(currentDay);
-    awayGames.add(currentDay);
-    gamesOnCurrentDay++;
-
-    // Reset day tracking periodically to avoid infinite growth
-    if (currentDay > 220) {
-      // Wrap — shouldn't happen with proper distribution, but safety valve
-      currentDay = 1;
-    }
-  }
-
-  // Sort by day
-  games.sort((a, b) => a.day - b.day);
-
-  return games;
+  return seasonRounds.flatMap((round, roundIndex) =>
+    round.map((matchup) => ({
+      day: gameDays[roundIndex]!,
+      homeTeamId: matchup.homeTeamId,
+      awayTeamId: matchup.awayTeamId,
+    })),
+  );
 }
 
 /** Get all games for a specific day. */

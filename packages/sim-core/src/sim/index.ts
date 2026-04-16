@@ -28,7 +28,9 @@ export type {
 } from './gameSimulator.js';
 
 export {
+  REGULAR_SEASON_DAYS,
   REGULAR_SEASON_MONTHS,
+  getRegularSeasonGameDays,
   getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,
   getTradeDeadlineDay,
