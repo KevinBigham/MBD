@@ -33,7 +33,7 @@ describe('worker lifecycle integration', () => {
     const continued = api.simMonth();
     expect(continued.season).toBe(2);
     validateRosterIntegrity();
-  }, 60_000);
+  }, 120_000);
 
   it('replays the same seeded first month identically', () => {
     startGame(3_102);

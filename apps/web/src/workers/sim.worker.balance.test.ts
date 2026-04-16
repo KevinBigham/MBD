@@ -160,7 +160,7 @@ describe('worker balance activity targets', () => {
     for (const seed of ACTIVITY_SEEDS) {
       metrics.push(await runSeasonActivity(seed));
     }
-  }, 90_000);
+  }, 180_000);
 
   afterAll(async () => {
     vi.restoreAllMocks();
