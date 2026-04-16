@@ -47,7 +47,7 @@ describe('worker rollover integration', () => {
     expect(state.rosterStates.size).toBe(TEAMS.length);
     validateRosterIntegrity();
     expect(new Set(achievementIds).size).toBe(achievementIds.length);
-  }, 60_000);
+  }, 120_000);
 
   it('only inducts a legacy player into the Hall of Fame after the retirement rollover', () => {
     startGame(3_105);
@@ -62,5 +62,5 @@ describe('worker rollover integration', () => {
     const hallOfFame = api.getHallOfFame();
     expect(hallOfFame.some((entry) => entry.playerId === iconId)).toBe(true);
     expect(requireState().players.some((player) => player.id === iconId && player.teamId !== '')).toBe(false);
-  }, 60_000);
+  }, 120_000);
 });

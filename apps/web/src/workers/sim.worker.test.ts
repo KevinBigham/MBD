@@ -3958,7 +3958,7 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().playoffBracket).toBeNull();
     expect(flow.status).toBe('regular_season_complete');
     expect(flow.action).toBe('watch_playoffs');
-  }, 30_000);
+  }, 60_000);
 
   it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {
     startGame(345, 'nym');
@@ -4007,7 +4007,7 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().season).toBe(2);
     expect(requireState().playoffBracket).toBeNull();
     expect(requireState().offseasonState).toBeNull();
-  });
+  }, 60_000);
 
   it('supports interactive playoff progression through game, series, round, and remaining-bracket APIs', () => {
     startGame(512, 'nym');

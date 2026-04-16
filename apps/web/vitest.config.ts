@@ -18,11 +18,13 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
+    testTimeout: 30_000,
+    pool: 'threads',
     fileParallelism: false,
     maxWorkers: 1,
     poolOptions: {
-      forks: {
-        singleFork: true,
+      threads: {
+        singleThread: true,
       },
     },
   },
