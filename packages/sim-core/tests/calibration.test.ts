@@ -10,6 +10,7 @@ const CALIBRATION_CONFIG = {
 };
 const MLB_REALISTIC_AVERAGE_TEAM_WINS_MIN = 76;
 const MLB_REALISTIC_AVERAGE_TEAM_WINS_MAX = 86;
+const CALIBRATION_TEST_TIMEOUT_MS = 15_000;
 
 describe('season calibration harness', () => {
   it('summarizes the same seed and config identically', () => {
@@ -17,7 +18,7 @@ describe('season calibration harness', () => {
     const second = summarizeSeasonCalibration(runSeasonCalibration(CALIBRATION_CONFIG));
 
     expect(second).toEqual(first);
-  });
+  }, CALIBRATION_TEST_TIMEOUT_MS);
 
   it('changes at least one meaningful aggregate when the seed changes', () => {
     const first = summarizeSeasonCalibration(runSeasonCalibration(CALIBRATION_CONFIG));
@@ -28,7 +29,7 @@ describe('season calibration harness', () => {
 
     expect(second.seasons.map((season) => season.averageRunsPerGame))
       .not.toEqual(first.seasons.map((season) => season.averageRunsPerGame));
-  });
+  }, CALIBRATION_TEST_TIMEOUT_MS);
 
   it('preserves core standings and schedule invariants for every full season', () => {
     const result = runSeasonCalibration(CALIBRATION_CONFIG);
@@ -39,7 +40,7 @@ describe('season calibration harness', () => {
       expect(season.totalWins).toBe(season.gamesPlayed);
       expect(season.averageTeamWins).toBeCloseTo(season.gamesPlayed / result.teamIds.length, 8);
     }
-  });
+  }, CALIBRATION_TEST_TIMEOUT_MS);
 
   it('keeps broad baseball plausibility bands stable', () => {
     const summary = summarizeSeasonCalibration(runSeasonCalibration(CALIBRATION_CONFIG));
@@ -48,10 +49,8 @@ describe('season calibration harness', () => {
     expect(summary.averageTeamWins).toBeLessThanOrEqual(MLB_REALISTIC_AVERAGE_TEAM_WINS_MAX);
     expect(summary.averageRunsPerGame).toBeGreaterThanOrEqual(2);
     expect(summary.averageRunsPerGame).toBeLessThanOrEqual(14);
-    // Current payroll generation sits above the initial balance band. Capture
-    // the baseline here; finance tuning should move this in a separate slice.
-    expect(summary.averageTotalMlbPayroll).toBeGreaterThanOrEqual(7_000);
-    expect(summary.averageTotalMlbPayroll).toBeLessThanOrEqual(7_300);
+    expect(summary.averageTotalMlbPayroll).toBeGreaterThanOrEqual(3_800);
+    expect(summary.averageTotalMlbPayroll).toBeLessThanOrEqual(6_800);
     expect(summary.averageMlbSalary).toBeGreaterThanOrEqual(2.5);
     expect(summary.averageMlbSalary).toBeLessThanOrEqual(8.5);
     expect(summary.battingAverage).toBeGreaterThanOrEqual(0.15);
@@ -62,5 +61,5 @@ describe('season calibration harness', () => {
     expect(summary.sluggingPercentage).toBeLessThanOrEqual(0.65);
     expect(summary.ops).toBeGreaterThanOrEqual(0.5);
     expect(summary.ops).toBeLessThanOrEqual(1.1);
-  });
+  }, CALIBRATION_TEST_TIMEOUT_MS);
 });

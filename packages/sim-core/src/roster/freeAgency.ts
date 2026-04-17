@@ -211,6 +211,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function capAnnualSalary(value: number): number {
+  return roundCurrency(clamp(value, MINOR_LEAGUE_DEAL_AAV, MAX_AAV_MILLIONS));
+}
+
 function playerDurability(player: GeneratedPlayer): number {
   return player.pitcherAttributes?.stamina ?? player.hitterAttributes.durability;
 }
@@ -543,6 +547,8 @@ export function generateAIOffer(
     );
   }
 
+  offeredAAV = capAnnualSalary(offeredAAV);
+
   // If offered AAV exceeds what team can spend, reduce or bail
   if (offeredAAV > availableBudget) return null;
 
@@ -668,7 +674,7 @@ export function simulateFADay(
         COMPETITION_INFLATION_MIN +
         rng.nextFloat() * (COMPETITION_INFLATION_MAX - COMPETITION_INFLATION_MIN);
       for (const offer of offers) {
-        offer.annualSalary = Math.round(offer.annualSalary * (1 + inflationPct) * 100) / 100;
+        offer.annualSalary = capAnnualSalary(offer.annualSalary * (1 + inflationPct));
         offer.totalValue = Math.round(offer.annualSalary * offer.years * 100) / 100;
       }
     }
