@@ -7,10 +7,16 @@
 import type { GameRNG } from '../math/index.js';
 import type { GeneratedPlayer, RosterLevel } from '../player/generation.js';
 import { PITCHER_POSITIONS } from '../player/generation.js';
+import {
+  getRegularSeasonMonthForDay,
+  REGULAR_SEASON_DAYS,
+  REGULAR_SEASON_MONTHS,
+} from '../sim/calendar.js';
 import type { RosterState } from './rosterManager.js';
 
 export const EXPANDED_MLB_ROSTER_LIMIT = 28;
-export const SEPTEMBER_EXPANDED_ROSTER_DAYS = 30;
+const SEPTEMBER_MONTH = REGULAR_SEASON_MONTHS.find((entry) => entry.key === 'SEPTEMBER')!;
+export const SEPTEMBER_EXPANDED_ROSTER_DAYS = SEPTEMBER_MONTH.endDay - SEPTEMBER_MONTH.startDay + 1;
 export const ROOKIE_AFFILIATE_START_DAY = 45;
 
 export const AFFILIATE_LEVELS = ['AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE'] as const;
@@ -591,11 +597,14 @@ export function claimOffWaivers(
   };
 }
 
-export function isExpandedRosterWindow(day: number, regularSeasonDays = 162): boolean {
-  return day > regularSeasonDays - SEPTEMBER_EXPANDED_ROSTER_DAYS;
+export function isExpandedRosterWindow(day: number, regularSeasonDays = REGULAR_SEASON_DAYS): boolean {
+  if (regularSeasonDays !== REGULAR_SEASON_DAYS) {
+    return day > regularSeasonDays - SEPTEMBER_EXPANDED_ROSTER_DAYS;
+  }
+  return getRegularSeasonMonthForDay(day).key === 'SEPTEMBER';
 }
 
-export function getActiveRosterLimit(day: number, regularSeasonDays = 162): number {
+export function getActiveRosterLimit(day: number, regularSeasonDays = REGULAR_SEASON_DAYS): number {
   return isExpandedRosterWindow(day, regularSeasonDays) ? EXPANDED_MLB_ROSTER_LIMIT : 26;
 }
 
@@ -603,7 +612,7 @@ export function getRosterComplianceIssues(
   players: GeneratedPlayer[],
   rosterState: RosterState,
   day: number,
-  regularSeasonDays = 162,
+  regularSeasonDays = REGULAR_SEASON_DAYS,
 ): RosterComplianceIssue[] {
   const issues: RosterComplianceIssue[] = [];
   const activeRosterLimit = getActiveRosterLimit(day, regularSeasonDays);

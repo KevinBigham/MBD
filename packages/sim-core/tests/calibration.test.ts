@@ -8,7 +8,8 @@ const CALIBRATION_CONFIG = {
   seed: 44_001,
   seasonCount: 1,
 };
-const CURRENT_SCHEDULE_AVERAGE_TEAM_WINS = 110.75;
+const MLB_REALISTIC_AVERAGE_TEAM_WINS_MIN = 76;
+const MLB_REALISTIC_AVERAGE_TEAM_WINS_MAX = 86;
 
 describe('season calibration harness', () => {
   it('summarizes the same seed and config identically', () => {
@@ -43,9 +44,8 @@ describe('season calibration harness', () => {
   it('keeps broad baseball plausibility bands stable', () => {
     const summary = summarizeSeasonCalibration(runSeasonCalibration(CALIBRATION_CONFIG));
 
-    // Desired MLB-like target is ~81 wins. Current schedule generation produces
-    // a longer season; keep that as an explicit baseline until schedule tuning.
-    expect(summary.averageTeamWins).toBeCloseTo(CURRENT_SCHEDULE_AVERAGE_TEAM_WINS, 2);
+    expect(summary.averageTeamWins).toBeGreaterThanOrEqual(MLB_REALISTIC_AVERAGE_TEAM_WINS_MIN);
+    expect(summary.averageTeamWins).toBeLessThanOrEqual(MLB_REALISTIC_AVERAGE_TEAM_WINS_MAX);
     expect(summary.averageRunsPerGame).toBeGreaterThanOrEqual(2);
     expect(summary.averageRunsPerGame).toBeLessThanOrEqual(14);
     // Current payroll generation sits above the initial balance band. Capture

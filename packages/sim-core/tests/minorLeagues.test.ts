@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EXPANDED_MLB_ROSTER_LIMIT,
   GameRNG,
   buildRosterState,
   buildWaiverPriority,
@@ -7,6 +8,7 @@ import {
   consumeOptionYear,
   createMinorLeagueState,
   accrueServiceTimeDay,
+  getActiveRosterLimit,
   getPromotionCandidates,
   getRosterComplianceIssues,
   placeOnWaivers,
@@ -122,12 +124,17 @@ describe('minor league waivers and roster compliance', () => {
     const rosterState = buildRosterState('nym', allPlayers);
 
     const regularSeasonIssues = getRosterComplianceIssues(allPlayers, rosterState, 120);
-    const expandedRosterIssues = getRosterComplianceIssues(allPlayers, rosterState, 150);
+    const expandedRosterIssues = getRosterComplianceIssues(allPlayers, rosterState, 154);
 
     expect(regularSeasonIssues.some((issue) => issue.code === 'active_roster_over_limit')).toBe(true);
     expect(regularSeasonIssues.some((issue) => issue.code === 'forty_man_over_limit')).toBe(true);
     expect(expandedRosterIssues.some((issue) => issue.code === 'active_roster_over_limit')).toBe(false);
     expect(expandedRosterIssues.some((issue) => issue.code === 'forty_man_over_limit')).toBe(true);
+  });
+
+  it('opens the expanded roster window at the start of September', () => {
+    expect(getActiveRosterLimit(153)).toBe(26);
+    expect(getActiveRosterLimit(154)).toBe(EXPANDED_MLB_ROSTER_LIMIT);
   });
 });
 

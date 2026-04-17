@@ -440,7 +440,9 @@ export type {
   JobOpening,
 } from './career/index.js';
 export {
+  REGULAR_SEASON_DAYS,
   REGULAR_SEASON_MONTHS,
+  getRegularSeasonGameDays,
   getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,
   getTradeDeadlineDay,

@@ -172,7 +172,7 @@ export function seedHistoricalRivalries(existing: Map<string, Rivalry> = new Map
 
     setRivalry(next, {
       ...current,
-      intensity: Math.max(current.intensity, entry.intensity),
+      intensity: clampIntensity(current.intensity),
       origin: current.origin ?? 'historical',
       active: true,
       reasons: pushReason(current.reasons, entry.reason),

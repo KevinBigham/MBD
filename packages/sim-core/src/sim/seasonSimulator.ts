@@ -12,7 +12,7 @@ import { StandingsTracker } from '../league/standings.js';
 import type { GameBoxScore, PlayerGameStats, GameTeam } from './gameSimulator.js';
 import { simulateGame } from './gameSimulator.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
-import { getNextMonthStartDay } from './calendar.js';
+import { getNextMonthStartDay, REGULAR_SEASON_DAYS } from './calendar.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -258,7 +258,7 @@ export function simulateDay(
   // Check if season is complete
   const maxDay = schedule.length > 0
     ? schedule[schedule.length - 1]!.day
-    : 162;
+    : REGULAR_SEASON_DAYS;
   const nextDay = state.currentDay + 1;
   const seasonComplete = nextDay > maxDay;
 

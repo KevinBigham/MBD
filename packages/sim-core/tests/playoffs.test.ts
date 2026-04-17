@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   GameRNG,
-  generateLeaguePlayers,
   initializePlayoffBracket,
   buildPlayoffPreview,
+  determinePlayoffSeeds,
+  generateLeaguePlayers,
   simPlayoffGame,
   advancePlayoffRound,
   isPlayoffComplete,
@@ -81,6 +82,61 @@ function winnersById(bracket: PlayoffBracket): string[] {
 }
 
 describe('playoff bracket state', () => {
+  it('prioritizes win totals over winning percentage when standings lengths differ', () => {
+    const seeds = determinePlayoffSeeds({
+      AL_EAST: [
+        entry('nym', 140, 1),
+        entry('bos', 1, 140),
+        entry('wsh', 1, 0),
+        entry('bal', 0, 1),
+        entry('phi', 0, 0),
+      ],
+      AL_CENTRAL: [
+        entry('cle', 1, 0),
+        entry('det', 0, 1),
+        entry('chi', 0, 0),
+        entry('col', 0, 0),
+        entry('pit', 0, 0),
+      ],
+      AL_WEST: [
+        entry('kc', 1, 0),
+        entry('msp', 0, 1),
+        entry('stl', 0, 0),
+        entry('ind', 0, 0),
+        entry('mil', 0, 0),
+        entry('nas', 0, 0),
+      ],
+      NL_EAST: [
+        entry('atl', 1, 0),
+        entry('cha', 0, 1),
+        entry('orl', 0, 0),
+        entry('ral', 0, 0),
+        entry('mia', 0, 0),
+      ],
+      NL_CENTRAL: [
+        entry('hou', 1, 0),
+        entry('dal', 0, 1),
+        entry('sat', 0, 0),
+        entry('den', 0, 0),
+        entry('aus', 0, 0),
+      ],
+      NL_WEST: [
+        entry('lax', 1, 0),
+        entry('sdg', 0, 1),
+        entry('phx', 0, 0),
+        entry('sea', 0, 0),
+        entry('sfb', 0, 0),
+        entry('por', 0, 0),
+      ],
+    });
+
+    expect(seeds.find((seed) => seed.teamId === 'nym')).toMatchObject({
+      teamId: 'nym',
+      league: 'AL',
+      divisionWinner: true,
+    });
+  });
+
   it('builds league-local wild card matchups and later-round placeholders', () => {
     const bracket = initializePlayoffBracket(standingsFixture(), new GameRNG(17));
     const preview = buildPlayoffPreview(bracket.seeds);

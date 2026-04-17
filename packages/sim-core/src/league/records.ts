@@ -6,6 +6,7 @@ import type {
   RecordWatchEntry,
   SeasonHistoryEntry,
 } from '@mbd/contracts';
+import { SEASON_GAMES } from '../stats/projections.js';
 
 type RecordScope = 'franchise' | 'league';
 type RecordCategory = 'team_single_season' | 'individual_single_season' | 'career' | 'streak';
@@ -374,6 +375,8 @@ export function updateRecordBook(
 
   for (const standing of args.currentStandings) {
     const franchise = standing.teamId === args.franchiseTeamId;
+    const gamesPlayed = standing.wins + standing.losses;
+    const isCompleteSeasonStanding = gamesPlayed >= SEASON_GAMES;
     const winHolder: RecordBookHolder = {
       playerId: null,
       playerName: null,
@@ -403,14 +406,16 @@ export function updateRecordBook(
       displayValue: String(standing.playoffAppearances),
     };
 
-    maybeUpdate(entryId('league', args.franchiseTeamId, 'team_single_season', 'wins'), winHolder);
-    maybeUpdate(entryId('league', args.franchiseTeamId, 'team_single_season', 'losses'), lossHolder);
-    if (franchise) {
-      maybeUpdate(entryId('franchise', args.franchiseTeamId, 'team_single_season', 'wins'), winHolder);
-      maybeUpdate(entryId('franchise', args.franchiseTeamId, 'team_single_season', 'losses'), lossHolder);
-      maybeUpdate(entryId('franchise', args.franchiseTeamId, 'streak', 'win_streak'), winStreakHolder);
-      maybeUpdate(entryId('franchise', args.franchiseTeamId, 'streak', 'loss_streak'), lossStreakHolder);
-      maybeUpdate(entryId('franchise', args.franchiseTeamId, 'streak', 'playoff_appearances'), playoffHolder);
+    if (isCompleteSeasonStanding) {
+      maybeUpdate(entryId('league', args.franchiseTeamId, 'team_single_season', 'wins'), winHolder);
+      maybeUpdate(entryId('league', args.franchiseTeamId, 'team_single_season', 'losses'), lossHolder);
+      if (franchise) {
+        maybeUpdate(entryId('franchise', args.franchiseTeamId, 'team_single_season', 'wins'), winHolder);
+        maybeUpdate(entryId('franchise', args.franchiseTeamId, 'team_single_season', 'losses'), lossHolder);
+        maybeUpdate(entryId('franchise', args.franchiseTeamId, 'streak', 'win_streak'), winStreakHolder);
+        maybeUpdate(entryId('franchise', args.franchiseTeamId, 'streak', 'loss_streak'), lossStreakHolder);
+        maybeUpdate(entryId('franchise', args.franchiseTeamId, 'streak', 'playoff_appearances'), playoffHolder);
+      }
     }
   }
 
