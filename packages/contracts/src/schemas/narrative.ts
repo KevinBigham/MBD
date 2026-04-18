@@ -406,6 +406,7 @@ export const TickerCategoryEnum = z.enum([
   "rumor",
   "record",
   "league_event",
+  "arbitration",
 ]);
 export type TickerCategory = z.infer<typeof TickerCategoryEnum>;
 

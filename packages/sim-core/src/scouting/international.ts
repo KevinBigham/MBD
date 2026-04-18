@@ -447,6 +447,9 @@ export function convertIFAProspectToPlayer(
     optionYearsUsed: 0,
     isOutOfOptions: false,
     minorLeagueLevel: 'ROOKIE',
+    arbitrationHistory: [],
+    holdoutState: null,
+    superTwoQualified: false,
   };
 }
 

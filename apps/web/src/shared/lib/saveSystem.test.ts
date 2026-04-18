@@ -195,7 +195,7 @@ describe('saveSystem helpers', () => {
     clearPerformanceMetrics();
   });
 
-  it('builds a v17 save record from a canonical snapshot', () => {
+  it('builds a v18 save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
     const record = buildSaveRecord(2, 'Dynasty Slot', snapshot);
@@ -353,7 +353,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.legacyState).toBe('{"old":true}');
   });
 
-  it('migrates v2 snapshots to v17 on load', () => {
+  it('migrates v2 snapshots to v18 on load', () => {
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-3',
       slotNumber: 3,
@@ -460,7 +460,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('migrates v3 snapshots to v17 on load', () => {
+  it('migrates v3 snapshots to v18 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-5',
@@ -484,7 +484,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('migrates v4 snapshots to v17 on load', () => {
+  it('migrates v4 snapshots to v18 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-6',
@@ -626,7 +626,7 @@ describe('saveSystem helpers', () => {
     });
   });
 
-  it('repairs a legacy snapshot payload and promotes it into the canonical v17 save shape', async () => {
+  it('repairs a legacy snapshot payload and promotes it into the canonical v18 save shape', async () => {
     const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-3' as never);
     vi.spyOn(db.saves, 'get').mockResolvedValue({
       id: 'save-slot-3',

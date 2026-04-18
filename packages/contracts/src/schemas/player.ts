@@ -138,6 +138,29 @@ export type ExtensionHistoryEntry = z.infer<
   typeof ExtensionHistoryEntrySchema
 >;
 
+export const ArbitrationHistoryEntrySchema = z.object({
+  season: z.number().int().min(1),
+  teamId: z.string(),
+  yearsOfService: z.number().int().min(0),
+  teamOffer: z.number().min(0),
+  playerAsk: z.number().min(0),
+  projectedSalary: z.number().min(0),
+  awardedSalary: z.number().min(0),
+  teamWon: z.boolean(),
+});
+export type ArbitrationHistoryEntry = z.infer<
+  typeof ArbitrationHistoryEntrySchema
+>;
+
+export const HoldoutStateSchema = z.object({
+  season: z.number().int().min(1),
+  teamId: z.string(),
+  salaryGap: z.number().min(0),
+  holdoutDays: z.number().int().min(0),
+  moraleHit: z.number().int().min(0),
+});
+export type HoldoutState = z.infer<typeof HoldoutStateSchema>;
+
 export const ContractSchema = z.object({
   years: z.number().int().min(0),
   annualSalary: z.number().min(0),
@@ -177,6 +200,9 @@ export const PlayerSchema = z.object({
   developmentProgram: DevelopmentProgramEnum.optional(),
   developmentTrajectory: DevelopmentTrajectoryEnum.optional(),
   extensionHistory: z.array(ExtensionHistoryEntrySchema).optional(),
+  arbitrationHistory: z.array(ArbitrationHistoryEntrySchema).default([]),
+  holdoutState: HoldoutStateSchema.nullable().default(null),
+  superTwoQualified: z.boolean().default(false),
   personalityTraits: z.array(PersonalityTraitSchema).optional(),
 });
 export type Player = z.infer<typeof PlayerSchema>;

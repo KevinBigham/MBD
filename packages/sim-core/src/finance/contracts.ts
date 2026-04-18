@@ -43,6 +43,7 @@ export const ARB_DIVISOR = 550;
 
 /** Arbitration year multipliers (service year -> multiplier) */
 export const ARB_YEAR_MULTIPLIERS: Record<number, number> = {
+  2: 0.4,
   3: 0.4,
   4: 0.6,
   5: 0.8,
@@ -54,6 +55,15 @@ export const ARB_PERFORMANCE_VARIANCE = 0.20;
 
 /** Probability that the team wins an arbitration hearing (0-1) */
 export const ARB_TEAM_WIN_PROBABILITY = 0.60;
+
+/** Portion of the two-year cohort that qualifies for Super Two arbitration. */
+export const SUPER_TWO_COHORT_SHARE = 0.22;
+
+/** Salary inflation applied after each player arbitration win. */
+export const ARB_ESCALATOR_PER_WIN = 0.08;
+
+/** Cap on total year-over-year arbitration inflation. */
+export const ARB_ESCALATOR_CAP = 0.32;
 
 /** Max contract years for free agent offers */
 export const MAX_CONTRACT_YEARS = 10;
@@ -158,6 +168,11 @@ export interface ArbitrationCase {
   playerAsk: number;
   projectedSalary: number;
   yearsOfService: number;
+}
+
+export interface HoldoutEvaluation {
+  holdoutDays: number;
+  moraleHit: number;
 }
 
 export interface TeamPayroll {
@@ -426,6 +441,35 @@ export function serviceDaysToYears(serviceTimeDays: number): number {
   return Math.floor(Math.max(0, serviceTimeDays) / 172);
 }
 
+function priorPlayerArbitrationWins(player: GeneratedPlayer): number {
+  return player.arbitrationHistory.reduce(
+    (count, entry) => count + (entry.teamWon ? 0 : 1),
+    0,
+  );
+}
+
+export function qualifiesForSuperTwo(
+  player: GeneratedPlayer,
+  leaguePlayersWithServiceTime: GeneratedPlayer[],
+): boolean {
+  if (serviceDaysToYears(player.serviceTimeDays) !== PRE_ARB_MAX_YEARS) {
+    return false;
+  }
+
+  const cohort = leaguePlayersWithServiceTime
+    .filter((candidate) => serviceDaysToYears(candidate.serviceTimeDays) === PRE_ARB_MAX_YEARS)
+    .sort((left, right) =>
+      right.serviceTimeDays - left.serviceTimeDays
+      || left.id.localeCompare(right.id));
+
+  if (cohort.length === 0) {
+    return false;
+  }
+
+  const qualifiedCount = Math.max(1, Math.ceil(cohort.length * SUPER_TWO_COHORT_SHARE));
+  return cohort.slice(0, qualifiedCount).some((candidate) => candidate.id === player.id);
+}
+
 // ---------------------------------------------------------------------------
 // Core Functions
 // ---------------------------------------------------------------------------
@@ -479,7 +523,11 @@ export function generateArbitrationCase(
   // Base salary from formula
   const base = (Math.min(overall, ARB_DIVISOR) / ARB_DIVISOR) * ARB_MAX_BASE_SALARY;
   const multiplier = ARB_YEAR_MULTIPLIERS[yearsOfService] ?? 1.0;
-  const scaled = base * multiplier;
+  const escalationMultiplier = 1 + Math.min(
+    priorPlayerArbitrationWins(player) * ARB_ESCALATOR_PER_WIN,
+    ARB_ESCALATOR_CAP,
+  );
+  const scaled = base * multiplier * escalationMultiplier;
 
   // Performance variance: +/- 20% determined by RNG
   const varianceFactor = 1 + (rng.nextFloat() * 2 - 1) * ARB_PERFORMANCE_VARIANCE;
@@ -507,6 +555,31 @@ export function generateArbitrationCase(
 export function resolveArbitration(rng: GameRNG, arbCase: ArbitrationCase): number {
   const roll = rng.nextFloat();
   return roll < ARB_TEAM_WIN_PROBABILITY ? arbCase.teamOffer : arbCase.playerAsk;
+}
+
+export function evaluateHoldout(
+  arbCase: ArbitrationCase,
+  playerMorale: number,
+  rng: GameRNG,
+): HoldoutEvaluation | null {
+  const morale = clamp(playerMorale, 0, 100);
+  const salaryGapRatio = arbCase.teamOffer <= 0
+    ? 0
+    : (arbCase.playerAsk - arbCase.teamOffer) / arbCase.teamOffer;
+
+  if (salaryGapRatio <= 0.18 || morale >= 45) {
+    return null;
+  }
+
+  const triggerThreshold = 0.30 + ((45 - morale) / 100);
+  if (rng.nextFloat() >= triggerThreshold) {
+    return null;
+  }
+
+  return {
+    holdoutDays: rng.nextInt(7, 21),
+    moraleHit: rng.nextInt(8, 15),
+  };
 }
 
 /**
@@ -703,6 +776,9 @@ export function getArbEligiblePlayers(
   return players.filter((p) => {
     if (p.teamId !== teamId) return false;
     const years = serviceTime.get(p.id) ?? serviceDaysToYears(p.serviceTimeDays);
+    if (years === PRE_ARB_MAX_YEARS) {
+      return p.superTwoQualified;
+    }
     return years >= ARB_FIRST_YEAR && years <= ARB_LAST_YEAR;
   });
 }

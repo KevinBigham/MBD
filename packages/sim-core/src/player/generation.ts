@@ -69,6 +69,25 @@ export interface ExtensionHistoryEntry {
   outcome: 'accepted' | 'rejected' | 'countered';
 }
 
+export interface ArbitrationHistoryEntry {
+  season: number;
+  teamId: string;
+  yearsOfService: number;
+  teamOffer: number;
+  playerAsk: number;
+  projectedSalary: number;
+  awardedSalary: number;
+  teamWon: boolean;
+}
+
+export interface HoldoutState {
+  season: number;
+  teamId: string;
+  salaryGap: number;
+  holdoutDays: number;
+  moraleHit: number;
+}
+
 /** Position distribution per team (target counts for a ~40-player active roster) */
 const POSITION_TEMPLATE: Record<string, number> = {
   C: 2, '1B': 2, '2B': 2, '3B': 2, SS: 2,
@@ -213,6 +232,9 @@ export interface GeneratedPlayer {
   developmentProgram?: DevelopmentProgram;
   developmentTrajectory?: DevelopmentTrajectory;
   extensionHistory?: ExtensionHistoryEntry[];
+  arbitrationHistory: ArbitrationHistoryEntry[];
+  holdoutState: HoldoutState | null;
+  superTwoQualified: boolean;
   personalityTraits?: string[];
   potentialRating?: number;
 }
@@ -442,6 +464,9 @@ export function generatePlayer(
     optionYearsUsed: 0,
     isOutOfOptions: false,
     minorLeagueLevel,
+    arbitrationHistory: [],
+    holdoutState: null,
+    superTwoQualified: false,
     personalityTraits,
   };
 }

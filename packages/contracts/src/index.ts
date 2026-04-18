@@ -14,6 +14,8 @@ export {
   InjurySchema,
   DeferredMoneyInstallmentSchema,
   ExtensionHistoryEntrySchema,
+  ArbitrationHistoryEntrySchema,
+  HoldoutStateSchema,
   ContractSchema,
   PlayerSchema,
 } from "./schemas/player.js";
@@ -32,6 +34,8 @@ export type {
   Injury,
   DeferredMoneyInstallment,
   ExtensionHistoryEntry,
+  ArbitrationHistoryEntry,
+  HoldoutState,
   Contract,
   Player,
 } from "./schemas/player.js";

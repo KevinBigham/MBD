@@ -65,6 +65,7 @@ import {
   createFreeAgencyMarket,
   createMinorLeagueState as createMinorLeagueStateCore,
   evaluateTeamNeeds,
+  evaluateHoldout,
   generateArbitrationCase,
   getArbEligiblePlayers,
   getAvailableIFAProspects,
@@ -75,6 +76,7 @@ import {
   getRule5TargetingBonus,
   shouldPassOnWaiverClaim,
   getTeamBudget,
+  qualifiesForSuperTwo,
   hireCoach as hireCoachCore,
   issueQualifyingOffer as issueQualifyingOfferCore,
   negotiateExtension as negotiateExtensionCore,
@@ -94,6 +96,7 @@ import {
   simulateAffiliateDay as simulateAffiliateDayCore,
   simulateFADay,
   processTeamExtensions,
+  pruneTickerFeed,
   tradeIFABonusPool as tradeIFABonusPoolCore,
   accrueServiceTimeDay as accrueServiceTimeDayCore,
   lockRule5ProtectionAudit as lockRule5ProtectionAuditCore,
@@ -769,6 +772,10 @@ function clampValue(value: number, min: number, max: number): number {
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function absoluteDay(season: number, day: number): number {
+  return (season * 1000) + day;
 }
 
 function hashString(value: string): number {
@@ -1601,6 +1608,25 @@ export function transactionToneForTeam(s: FullGameState, teamId: string): Offsea
 
 function formatMoneyPerYear(value: number): string {
   return `$${value.toFixed(1)}M/yr`;
+}
+
+function formatTickerMoney(value: number): string {
+  return `$${roundMoney(value).toFixed(1)}M`;
+}
+
+function appendArbitrationTickerEntries(
+  s: FullGameState,
+  entries: TickerEntry[],
+) {
+  if (entries.length === 0) {
+    return;
+  }
+
+  s.tickerFeed = pruneTickerFeed(
+    [...entries, ...s.tickerFeed],
+    200,
+    absoluteDay(s.season, s.day),
+  );
 }
 
 function formatYears(years: number): string {
@@ -3761,6 +3787,13 @@ function applyArbitrationResultsOnce(s: FullGameState) {
   const resolvedIds = new Set(
     s.offseasonState.phaseResults.arbitrationResolved.map((entry) => entry.playerId),
   );
+  const tickerEntries: TickerEntry[] = [];
+  const timestamp = `S${s.season}D${s.day}`;
+
+  for (const player of s.players) {
+    player.superTwoQualified = qualifiesForSuperTwo(player, s.players);
+    player.holdoutState = null;
+  }
 
   for (const teamId of TEAMS.map((team) => team.id)) {
     const eligiblePlayers = getArbEligiblePlayers(s.players, teamId, s.serviceTime)
@@ -3778,19 +3811,88 @@ function applyArbitrationResultsOnce(s: FullGameState) {
         player.contract.annualSalary,
       );
       const awardedSalary = resolveArbitration(arbitrationRng, arbitrationCase);
+      const teamWon = awardedSalary === arbitrationCase.teamOffer;
+      const playerName = `${player.firstName} ${player.lastName}`;
+      const teamName = getTeamById(teamId)?.name ?? teamId.toUpperCase();
 
       player.contract.annualSalary = awardedSalary;
       player.contract.years = Math.max(1, player.contract.years);
+      player.arbitrationHistory = [
+        ...player.arbitrationHistory,
+        {
+          season: s.season,
+          teamId,
+          yearsOfService,
+          teamOffer: arbitrationCase.teamOffer,
+          playerAsk: arbitrationCase.playerAsk,
+          projectedSalary: arbitrationCase.projectedSalary,
+          awardedSalary,
+          teamWon,
+        },
+      ];
       s.offseasonState = recordArbitration(s.offseasonState, {
         playerId: player.id,
         teamId,
         previousSalary: arbitrationCase.currentSalary,
         newSalary: awardedSalary,
-        teamWon: awardedSalary === arbitrationCase.teamOffer,
+        teamWon,
       });
+
+      tickerEntries.push({
+        id: `ticker-arbitration-${s.season}-${s.day}-${player.id}`,
+        timestamp,
+        category: 'arbitration',
+        text: teamWon
+          ? `${teamName} wins arb hearing — ${playerName} awarded ${formatTickerMoney(awardedSalary)} (asked ${formatTickerMoney(arbitrationCase.playerAsk)})`
+          : `${playerName} wins ${formatTickerMoney(awardedSalary)} arb hearing vs ${teamName}'s ${formatTickerMoney(arbitrationCase.teamOffer)} offer`,
+        priority: 3,
+        relatedTeamIds: [teamId],
+        relatedPlayerIds: [player.id],
+        expiresDay: absoluteDay(s.season, s.day) + 21,
+      });
+
+      const holdout = evaluateHoldout(
+        arbitrationCase,
+        s.playerMorale.get(player.id)?.score ?? 50,
+        arbitrationRng,
+      );
+      if (holdout) {
+        const salaryGap = roundMoney(arbitrationCase.playerAsk - arbitrationCase.teamOffer);
+        player.holdoutState = {
+          season: s.season,
+          teamId,
+          salaryGap,
+          holdoutDays: holdout.holdoutDays,
+          moraleHit: holdout.moraleHit,
+        };
+        player.serviceTimeDays = Math.max(0, player.serviceTimeDays - holdout.holdoutDays);
+        s.serviceTime.set(player.id, serviceDaysToYears(player.serviceTimeDays));
+
+        const currentMorale = s.playerMorale.get(player.id);
+        s.playerMorale.set(player.id, {
+          playerId: player.id,
+          score: Math.max(0, (currentMorale?.score ?? 50) - holdout.moraleHit),
+          trend: 'falling',
+          summary: `Holding out over an arbitration gap with ${teamName}.`,
+          lastUpdated: timestamp,
+        });
+
+        tickerEntries.push({
+          id: `ticker-arbitration-holdout-${s.season}-${s.day}-${player.id}`,
+          timestamp,
+          category: 'arbitration',
+          text: `${playerName} holding out — gap of ${formatTickerMoney(salaryGap)} with ${teamName}`,
+          priority: 4,
+          relatedTeamIds: [teamId],
+          relatedPlayerIds: [player.id],
+          expiresDay: absoluteDay(s.season, s.day) + 21,
+        });
+      }
       resolvedIds.add(player.id);
     }
   }
+
+  appendArbitrationTickerEntries(s, tickerEntries);
 }
 
 function applyTenderDecisionsOnce(s: FullGameState) {

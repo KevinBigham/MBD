@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  ArbitrationHistoryEntrySchema,
   ContractSchema,
   DevelopmentProgramEnum,
   DevelopmentTrajectoryEnum,
+  HoldoutStateSchema,
   HitterAttributesSchema,
   MinorLeagueLevelEnum,
   PersonalitySchema,
@@ -143,13 +145,18 @@ export const SnapshotPlayerV7Schema = SnapshotPlayerV6Schema.extend({
   isOutOfOptions: z.boolean(),
   minorLeagueLevel: MinorLeagueLevelEnum.nullable(),
 });
-export const SnapshotPlayerSchema = SnapshotPlayerV7Schema.extend({
+export const SnapshotPlayerV17Schema = SnapshotPlayerV7Schema.extend({
   ceiling: z.number().int().min(0).max(550).optional(),
   floor: z.number().int().min(0).max(550).optional(),
   developmentProgram: DevelopmentProgramEnum.optional(),
   developmentTrajectory: DevelopmentTrajectoryEnum.optional(),
   extensionHistory: z.array(ExtensionHistoryEntrySchema).optional(),
   personalityTraits: z.array(PersonalityTraitSchema).default([]),
+});
+export const SnapshotPlayerSchema = SnapshotPlayerV17Schema.extend({
+  arbitrationHistory: z.array(ArbitrationHistoryEntrySchema).default([]),
+  holdoutState: HoldoutStateSchema.nullable().default(null),
+  superTwoQualified: z.boolean().default(false),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
 
@@ -483,7 +490,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 17;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 18;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -543,6 +550,12 @@ export const GameSnapshotV16Schema = GameSnapshotSchema.extend({
   tradeState: TradeStateV16Schema,
 });
 export type GameSnapshotV16 = z.infer<typeof GameSnapshotV16Schema>;
+
+export const GameSnapshotV17Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(17),
+  players: z.array(SnapshotPlayerV17Schema),
+});
+export type GameSnapshotV17 = z.infer<typeof GameSnapshotV17Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -1812,6 +1825,9 @@ function migrateSnapshotPlayer(
     isOutOfOptions: false,
     minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
     personalityTraits: [],
+    arbitrationHistory: [],
+    holdoutState: null,
+    superTwoQualified: false,
   };
 }
 
@@ -1848,6 +1864,9 @@ function migrateV6SnapshotPlayer(
   return {
     ...upgradedPlayer,
     personalityTraits: [],
+    arbitrationHistory: [],
+    holdoutState: null,
+    superTwoQualified: false,
     ...backfillDevelopmentProfile(upgradedPlayer),
   };
 }
@@ -2303,6 +2322,27 @@ function migrateGameSnapshotV16(snapshot: GameSnapshotV16): GameSnapshot {
   });
 }
 
+function migrateGameSnapshotV17(snapshot: GameSnapshotV17): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) => ({
+      ...player,
+      arbitrationHistory: [],
+      holdoutState: null,
+      superTwoQualified: false,
+    })),
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -2329,6 +2369,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 17
+  ) {
+    return migrateGameSnapshotV17(GameSnapshotV17Schema.parse(snapshotLike));
   }
 
   if (

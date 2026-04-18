@@ -1,7 +1,7 @@
 export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 300 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
-export const WORKER_CHUNK_BUDGET_BYTES = 406 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 121 * 1024;
+export const WORKER_CHUNK_BUDGET_BYTES = 408 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 122 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;

@@ -2323,13 +2323,90 @@ describe('sim worker narrative APIs', () => {
     );
     const arbitrationGroup = formatted.transactionGroups.find((group) => group.phase === 'arbitration');
     const userRow = arbitrationGroup?.rows.find((row) => row.summary.includes('Juan Soto'));
+    const updatedCandidate = requireState().players.find((player) => player.id === arbCandidate!.id);
+    const arbitrationTicker = requireState().tickerFeed.find((entry) =>
+      entry.category === 'arbitration' && entry.text.includes('Juan Soto'),
+    );
 
     expect(result?.currentPhase).toBe('tender_nontender');
     expect(formatted.phaseResults.arbitrationResolved.length).toBeGreaterThan(0);
     expect(arbitrationResult?.playerId).toBe(arbCandidate!.id);
     expect(arbitrationResult?.newSalary).toBeGreaterThan(0);
+    expect(updatedCandidate?.arbitrationHistory).toHaveLength(1);
+    expect(updatedCandidate?.arbitrationHistory[0]?.awardedSalary).toBe(arbitrationResult?.newSalary);
     expect(userRow?.summary).toContain('Juan Soto');
     expect(userRow?.tone).toBe('user');
+    expect(arbitrationTicker).toBeTruthy();
+    expect(arbitrationTicker?.text).toContain('arb hearing');
+  });
+
+  it('applies holdout service-time, morale, and ticker effects when an arbitration holdout triggers', () => {
+    let observed:
+      | {
+          holdoutDays: number;
+          moraleHit: number;
+          serviceTimeDays: number;
+          mappedServiceTime: number | undefined;
+          moraleScore: number | undefined;
+          holdoutTicker: string | undefined;
+        }
+      | null = null;
+
+    for (let seed = 500; seed < 520; seed += 1) {
+      startGame(seed, 'nym');
+      const state = requireState();
+      const arbCandidate = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB');
+      const baselineMorale = state.playerMorale.get(arbCandidate!.id);
+
+      expect(arbCandidate).toBeTruthy();
+      expect(baselineMorale).toBeTruthy();
+
+      arbCandidate!.firstName = 'Rafael';
+      arbCandidate!.lastName = 'Devers';
+      arbCandidate!.contract.annualSalary = 7.8;
+      arbCandidate!.serviceTimeDays = 690;
+      state.serviceTime.set(arbCandidate!.id, 4);
+      state.playerMorale.set(arbCandidate!.id, {
+        ...baselineMorale!,
+        score: 20,
+        trend: 'falling',
+        summary: 'Contract tension is building.',
+      });
+
+      state.phase = 'offseason';
+      state.offseasonState = {
+        ...createOffseasonState(state.season),
+        currentPhase: 'arbitration',
+        phaseDay: 7,
+        totalDay: 10,
+      };
+
+      api.advanceOffseason();
+
+      const updatedState = requireState();
+      const updatedCandidate = updatedState.players.find((player) => player.id === arbCandidate!.id)!;
+      const holdoutTicker = updatedState.tickerFeed.find((entry) =>
+        entry.category === 'arbitration' && entry.text.includes('holding out') && entry.text.includes('Rafael Devers'),
+      );
+
+      if (updatedCandidate.holdoutState) {
+        observed = {
+          holdoutDays: updatedCandidate.holdoutState.holdoutDays,
+          moraleHit: updatedCandidate.holdoutState.moraleHit,
+          serviceTimeDays: updatedCandidate.serviceTimeDays,
+          mappedServiceTime: updatedState.serviceTime.get(updatedCandidate.id),
+          moraleScore: updatedState.playerMorale.get(updatedCandidate.id)?.score,
+          holdoutTicker: holdoutTicker?.text,
+        };
+        break;
+      }
+    }
+
+    expect(observed).toBeTruthy();
+    expect(observed?.serviceTimeDays).toBe(690 - observed!.holdoutDays);
+    expect(observed?.mappedServiceTime).toBe(3);
+    expect(observed?.moraleScore).toBe(20 - observed!.moraleHit);
+    expect(observed?.holdoutTicker).toContain('Rafael Devers holding out');
   });
 
   it('fast-forwards AI free agency, records rival signings, and emits press coverage', () => {

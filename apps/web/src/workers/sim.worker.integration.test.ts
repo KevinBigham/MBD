@@ -255,7 +255,7 @@ describe('worker lifecycle integration', () => {
   it('simulates setup through season two with a clean save/load round-trip', () => {
     const snapshot = runFullSeasonCycle(3_101);
 
-    expect(snapshot.schemaVersion).toBe(17);
+    expect(snapshot.schemaVersion).toBe(18);
     expect(snapshot.season).toBe(2);
     expect(snapshot.phase).toBe('preseason');
 
@@ -286,7 +286,7 @@ describe('worker lifecycle integration', () => {
     expect(first).toEqual(second);
   }, 30_000);
 
-  it('migrates a v8 snapshot to v17 and continues simming from the repaired state', () => {
+  it('migrates a v8 snapshot to v18 and continues simming from the repaired state', () => {
     const legacySnapshot = createLegacyV8Snapshot(3_103);
     setState(null);
 
@@ -294,7 +294,7 @@ describe('worker lifecycle integration', () => {
     const repaired = api.exportSnapshot();
 
     expect(imported.success).toBe(true);
-    expect(repaired.schemaVersion).toBe(17);
+    expect(repaired.schemaVersion).toBe(18);
     expect(repaired.franchise.gmName).toBe('General Manager');
     expect(repaired.monthlyPulse).toBeDefined();
     expect(repaired.achievements).toBeDefined();
