@@ -10,7 +10,11 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('migrates the v17 fixture into the additive v20 shape', () => {
+  it('tracks the current additive save schema as v21', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(21);
+  });
+
+  it('migrates the v17 fixture into the additive v21 shape', () => {
     const fixture = loadFixture('./fixtures/save/v17/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -23,7 +27,7 @@ describe('save schema migration', () => {
     expect(migrated.franchise.dayOne.quickStartRecapSeen).toBe(true);
   });
 
-  it('migrates the v18 fixture into the additive v20 arbitration shape', () => {
+  it('migrates the v18 fixture into the additive v21 arbitration shape', () => {
     const fixture = loadFixture('./fixtures/save/v18/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -35,8 +39,20 @@ describe('save schema migration', () => {
     expect(player?.superTwoQualified).toBe(false);
   });
 
-  it('migrates the v19 fixture into the additive v20 broadcast shape', () => {
+  it('migrates the v19 fixture into the additive v21 broadcast shape', () => {
     const fixture = loadFixture('./fixtures/save/v19/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+    const [player] = migrated.players;
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(player?.arbitrationHistory).toEqual([]);
+    expect(player?.holdoutState).toBeNull();
+    expect(player?.superTwoQualified).toBe(false);
+  });
+
+  it('migrates the v20 fixture into the additive v21 trade-deadline shape', () => {
+    const fixture = loadFixture('./fixtures/save/v20/core.json');
 
     const migrated = parseGameSnapshot(fixture);
     const [player] = migrated.players;
