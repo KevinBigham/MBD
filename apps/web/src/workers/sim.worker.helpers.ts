@@ -126,7 +126,10 @@ import {
   detectHoldoutResolutions,
 } from '../../../../packages/sim-core/src/moments/arbitrationMoments.js';
 import { generateArbitrationPressConference } from '../../../../packages/sim-core/src/narrative/arbitrationPressConferences.js';
-import { generateHoldoutBriefing } from '../../../../packages/sim-core/src/narrative/holdoutCoverage.js';
+import {
+  generateHoldoutBriefing,
+  generateHoldoutResolutionBriefing,
+} from '../../../../packages/sim-core/src/narrative/holdoutCoverage.js';
 import type {
   GeneratedPlayer,
   PlayoffPreviewSeries as CorePlayoffPreviewSeries,
@@ -3844,6 +3847,34 @@ function applyArbitrationResultsOnce(s: FullGameState) {
   });
   for (const { playerId, moment } of holdoutResolutions) {
     appendArbitrationMoments(s, playerId, [moment]);
+
+    const resolvingPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (!resolvingPlayer || !resolvingPlayer.holdoutState) {
+      continue;
+    }
+
+    const resolutionTeamId = resolvingPlayer.holdoutState.teamId;
+    const resolutionTeamName = getTeamById(resolutionTeamId)?.name ?? resolutionTeamId.toUpperCase();
+    const resolutionBriefing = generateHoldoutResolutionBriefing({
+      player: resolvingPlayer,
+      season: s.season,
+      day: s.day,
+      teamName: resolutionTeamName,
+      moraleScore: s.playerMorale.get(resolvingPlayer.id)?.score ?? 50,
+    });
+    if (resolutionBriefing) {
+      newsEntries.push({
+        id: resolutionBriefing.id,
+        headline: resolutionBriefing.headline,
+        body: resolutionBriefing.body,
+        priority: resolutionBriefing.priority,
+        category: 'holdout',
+        timestamp,
+        relatedPlayerIds: [resolvingPlayer.id],
+        relatedTeamIds: [resolutionTeamId],
+        read: false,
+      });
+    }
   }
 
   for (const player of s.players) {
