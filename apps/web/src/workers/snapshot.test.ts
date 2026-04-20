@@ -119,6 +119,21 @@ function createNarrativeSample(userTeamId: string) {
     round: null,
   }]);
 
+  const teamMoments = new Map<string, SignatureMoment[]>();
+  teamMoments.set(userTeamId, [{
+    season: 1,
+    day: 122,
+    timestamp: 'S1D122',
+    type: 'deadline_buyer',
+    description: 'The front office pushed chips into the middle at the deadline.',
+    impact: 24,
+    relevance: 24,
+    isPlayoff: false,
+    isEliminationGame: false,
+    worldSeriesClincher: false,
+    round: null,
+  }]);
+
   const playerNicknames = new Map<string, PlayerNicknameState>();
   playerNicknames.set('player-1', {
     seasonHistory: [{
@@ -196,6 +211,7 @@ function createNarrativeSample(userTeamId: string) {
     rivalries,
     tickerFeed: [] as TickerEntry[],
     playerMoments,
+    teamMoments,
     playerNicknames,
     playerStoryArcs: [] as PlayerStoryArc[],
     prospectBonds: [] as ProspectBond[],
@@ -467,6 +483,7 @@ describe('snapshot helpers', () => {
     expect(snapshot.narrative.storyFlags).toHaveLength(1);
     expect(snapshot.narrative.rivalries).toHaveLength(1);
     expect(snapshot.narrative.playerMoments).toHaveLength(1);
+    expect(snapshot.narrative.teamMoments).toHaveLength(1);
     expect(snapshot.narrative.playerNicknames).toHaveLength(1);
     expect(snapshot.narrative.gmRelationships).toHaveLength(1);
     expect(snapshot.narrative.leagueEvents).toHaveLength(1);
@@ -490,6 +507,7 @@ describe('snapshot helpers', () => {
     expect(restored.storyFlags.get('nym')).toContain('owner_hot_seat');
     expect(restored.rivalries.get('nym:bos')?.intensity).toBe(63);
     expect(restored.playerMoments.get('player-1')?.[0]?.type).toBe('walk_off_hr');
+    expect(restored.teamMoments.get('nym')?.[0]?.type).toBe('deadline_buyer');
     expect(restored.playerNicknames.get('player-1')?.primaryNickname?.id).toBe('the_flash');
     expect(restored.gmRelationships.get('bos')?.score).toBe(12);
     expect(restored.leagueEvents[0]?.type).toBe('gm_firing');

@@ -62,7 +62,7 @@ import type {
 import type { CascadeEvent, PendingTrade } from '@mbd/sim-core';
 import { buildTradeBroadcastCoverage } from '../../../../packages/sim-core/src/narrative/tradeDeadlinePressConferences.js';
 import type { FullGameState } from './sim.worker.helpers.js';
-import { appendArbitrationMoments, createStableWorkerRng, getTeamPlayers, timestamp } from './sim.worker.helpers.js';
+import { appendArbitrationMoments, appendTeamMoments, createStableWorkerRng, getTeamPlayers, timestamp } from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
 import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
@@ -1104,6 +1104,10 @@ function applyTradeAssets(
 
   for (const { playerId, moment } of coverage.moments) {
     appendArbitrationMoments(state, playerId, [moment]);
+  }
+
+  for (const { teamId, moment } of coverage.identityMoments) {
+    appendTeamMoments(state, teamId, [moment]);
   }
 
   state.news.unshift({

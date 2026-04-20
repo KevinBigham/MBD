@@ -251,6 +251,7 @@ export interface FullGameState {
   rivalries: Map<string, Rivalry>;
   tickerFeed: TickerEntry[];
   playerMoments: Map<string, SignatureMoment[]>;
+  teamMoments: Map<string, SignatureMoment[]>;
   playerNicknames: Map<string, PlayerNicknameState>;
   playerStoryArcs: PlayerStoryArc[];
   prospectBonds: ProspectBond[];
@@ -1677,6 +1678,21 @@ export function appendArbitrationMoments(
     .sort(compareSignatureMomentRecency)
     .slice(0, MAX_MOMENTS_PER_PLAYER);
   s.playerMoments.set(playerId, merged);
+}
+
+export function appendTeamMoments(
+  s: FullGameState,
+  teamId: string,
+  nextMoments: SignatureMoment[],
+) {
+  if (nextMoments.length === 0) {
+    return;
+  }
+
+  const merged = [...(s.teamMoments.get(teamId) ?? []), ...nextMoments]
+    .sort(compareSignatureMomentRecency)
+    .slice(0, MAX_MOMENTS_PER_PLAYER);
+  s.teamMoments.set(teamId, merged);
 }
 
 function formatYears(years: number): string {

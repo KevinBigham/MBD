@@ -19,7 +19,13 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // raw / 125,530 gzip), so the smallest ceiling lift was the safer fix. Raw
 // ceiling already at 410 KB from the holdout briefing slice accommodates the
 // trade deadline worker growth (+613 bytes over the 408 baseline).
-export const WORKER_CHUNK_BUDGET_BYTES = 410 * 1024;
+// WORKER raw: bumped 410 -> 411 KB for the team-moment store slice (v22). Adds
+// appendTeamMoments, the teamMoments Map on FullGameState, the identityMoments
+// seam through buildTradeBroadcastCoverage, and snapshot serialization of
+// teamMoments. Story chunk landed ~206 bytes over the 410 KB ceiling after the
+// wiring; gzip held well under cap (~125 KB actual vs 126 KB ceiling) so only
+// raw moves. No new template copy — just wire-in code.
+export const WORKER_CHUNK_BUDGET_BYTES = 411 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 126 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
