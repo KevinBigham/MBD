@@ -60,8 +60,9 @@ import type {
   TradeParticipantRole,
 } from '@mbd/sim-core';
 import type { CascadeEvent, PendingTrade } from '@mbd/sim-core';
+import { buildTradeBroadcastCoverage } from '../../../../packages/sim-core/src/narrative/tradeDeadlinePressConferences.js';
 import type { FullGameState } from './sim.worker.helpers.js';
-import { createStableWorkerRng, getTeamPlayers, timestamp } from './sim.worker.helpers.js';
+import { appendArbitrationMoments, createStableWorkerRng, getTeamPlayers, timestamp } from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
 import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
@@ -1067,13 +1068,14 @@ function compareAssetPackages(
 
 function applyTradeAssets(
   state: FullGameState,
+  tradeId: string,
   fromTeamId: string,
   toTeamId: string,
   offeringAssets: TradeAsset[],
   requestingAssets: TradeAsset[],
 ) {
   const proposal: TradeProposal = {
-    id: 'asset-trade',
+    id: tradeId,
     fromTeamId,
     toTeamId,
     playersOffered: assetPlayerIds(offeringAssets),
@@ -1082,9 +1084,39 @@ function applyTradeAssets(
     reason: 'asset trade',
   };
 
-  if (proposal.playersOffered.length > 0 || proposal.playersRequested.length > 0) {
-    executeTrade(proposal, state.players);
+  executeTrade(proposal, state.players);
+
+  const movedPlayers = state.players.filter((player) => proposal.playersOffered.includes(player.id));
+  const acquiredPlayers = state.players.filter((player) => proposal.playersRequested.includes(player.id));
+  const coverage = buildTradeBroadcastCoverage({
+    tradeId: proposal.id,
+    season: state.season,
+    day: state.day,
+    sellerTeamId: fromTeamId,
+    sellerTeamName: teamName(fromTeamId),
+    sellerGMPersonality: state.gmPersonalities.get(fromTeamId) ?? 'analytical',
+    buyerTeamId: toTeamId,
+    buyerTeamName: teamName(toTeamId),
+    buyerGMPersonality: state.gmPersonalities.get(toTeamId) ?? 'analytical',
+    movedPlayers,
+    acquiredPlayers,
+  });
+
+  for (const { playerId, moment } of coverage.moments) {
+    appendArbitrationMoments(state, playerId, [moment]);
   }
+
+  state.news.unshift({
+    id: coverage.pressConference.id,
+    headline: coverage.pressConference.headline,
+    body: coverage.pressConference.body,
+    priority: coverage.pressConference.priority,
+    category: 'trade' as const,
+    timestamp: timestamp(),
+    relatedPlayerIds: coverage.relatedPlayerIds,
+    relatedTeamIds: coverage.relatedTeamIds,
+    read: false,
+  });
 
   ensureDraftPickOwnership(state, state.season);
   let pickOwnership = state.draftState.pickOwnership;
@@ -2077,7 +2109,7 @@ function executeAcceptedTrade(
     proposal.toTeamId,
   );
   const tradeImpactScore = Math.max(tradePackageValue.offerValue, tradePackageValue.requestValue);
-  applyTradeAssets(state, proposal.fromTeamId, proposal.toTeamId, proposal.offeringAssets, proposal.requestingAssets);
+  applyTradeAssets(state, proposal.id, proposal.fromTeamId, proposal.toTeamId, proposal.offeringAssets, proposal.requestingAssets);
   state.rosterStates.set(proposal.fromTeamId, buildRosterState(proposal.fromTeamId, state.players));
   state.rosterStates.set(proposal.toTeamId, buildRosterState(proposal.toTeamId, state.players));
   addTradeHistoryEntry(state, buildTradeHistoryEntry(state, proposal, fairnessScore));
