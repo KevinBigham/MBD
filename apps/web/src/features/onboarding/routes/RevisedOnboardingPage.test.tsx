@@ -241,7 +241,7 @@ describe('RevisedOnboardingPage', () => {
       season: 1,
       day: 1,
       phase: 'preseason',
-      schemaVersion: 18,
+      schemaVersion: 19,
       hasSnapshot: true,
       snapshot: null,
       legacyState: null,
@@ -379,7 +379,7 @@ describe('RevisedOnboardingPage', () => {
       getDayOneSession: vi.fn().mockResolvedValue(session),
       finishDayOne: vi.fn().mockResolvedValue(undefined),
       exportSnapshot: vi.fn().mockResolvedValue({
-        schemaVersion: 18,
+        schemaVersion: 19,
         season: 1,
         day: 1,
         phase: 'preseason',
@@ -401,7 +401,7 @@ describe('RevisedOnboardingPage', () => {
       season: 1,
       day: 1,
       phase: 'preseason',
-      schemaVersion: 18,
+      schemaVersion: 19,
       hasSnapshot: true,
       snapshot: null,
       legacyState: null,
@@ -441,7 +441,7 @@ describe('RevisedOnboardingPage', () => {
       'save-slot-1',
       'General Manager • New York Tycoons',
       expect.objectContaining({
-        schemaVersion: 18,
+        schemaVersion: 19,
         franchise: expect.objectContaining({
           dayOne: expect.objectContaining({
             status: 'complete',

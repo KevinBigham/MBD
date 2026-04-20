@@ -22,4 +22,23 @@ describe('save schema migration', () => {
     expect(migrated.franchise.dayOne.seasonGoal).toBe('playoff');
     expect(migrated.franchise.dayOne.quickStartRecapSeen).toBe(true);
   });
+
+  it('migrates the v18 fixture into the additive v19 arbitration shape', () => {
+    const fixture = loadFixture('./fixtures/save/v18/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+    const [player] = migrated.players;
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(player?.arbitrationHistory).toEqual([]);
+    expect(player?.holdoutState).toBeNull();
+    expect(player?.superTwoQualified).toBe(false);
+  });
+
+  it('rejects malformed legacy fixtures during migration', () => {
+    const fixture = loadFixture('./fixtures/save/v18/core.json');
+    fixture.players[0].id = 7;
+
+    expect(() => parseGameSnapshot(fixture)).toThrow();
+  });
 });

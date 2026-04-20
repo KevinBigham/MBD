@@ -118,7 +118,7 @@ describe('day one worker API', () => {
     expect(session.choices.openingDayPlan).not.toBeNull();
   });
 
-  it('exports Day One state through schema version 18 snapshots', async () => {
+  it('exports Day One state through current-schema snapshots', async () => {
     startGame(704, 'quick');
 
     await api.chooseDayOneAGM('elena_vargas');
@@ -126,7 +126,7 @@ describe('day one worker API', () => {
 
     const snapshot = await api.exportSnapshot();
 
-    expect(snapshot.schemaVersion).toBe(18);
+    expect(snapshot.schemaVersion).toBe(19);
     expect(snapshot.franchise.dayOne.experience).toBe('quick');
     expect(snapshot.franchise.dayOne.selectedAGMId).toBe('elena_vargas');
     expect(snapshot.franchise.dayOne.status).toBe('complete');

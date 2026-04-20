@@ -304,6 +304,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 14 &&
     snapshot.schemaVersion !== 15 &&
     snapshot.schemaVersion !== 16 &&
+    snapshot.schemaVersion !== 17 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);

@@ -1,8 +1,10 @@
 export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 304 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
-export const WORKER_CHUNK_BUDGET_BYTES = 406 * 1024;
-// Bumped 121 -> 124 KB: schedule calendar rebuild (circle-method round composition)
-// adds ~0.3 KB gzipped to game-engine-core. Raw bytes still comfortably under budget.
+// WORKER raw: bumped 406 -> 408 KB to cover the arbitration payload (arb history +
+// holdout state on SnapshotPlayer, plus the v18 -> v19 migration body).
+// WORKER gzip: already at 124 KB from PR #24's schedule calendar rebuild
+// (circle-method round composition); arbitration adds ~0.3-1 KB gzipped, still under.
+export const WORKER_CHUNK_BUDGET_BYTES = 408 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 124 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */

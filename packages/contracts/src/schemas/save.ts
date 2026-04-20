@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  ArbitrationHistoryEntrySchema,
   ContractSchema,
   DevelopmentProgramEnum,
   DevelopmentTrajectoryEnum,
+  HoldoutStateSchema,
   HitterAttributesSchema,
   MinorLeagueLevelEnum,
   PersonalitySchema,
@@ -144,13 +146,18 @@ export const SnapshotPlayerV7Schema = SnapshotPlayerV6Schema.extend({
   isOutOfOptions: z.boolean(),
   minorLeagueLevel: MinorLeagueLevelEnum.nullable(),
 });
-export const SnapshotPlayerSchema = SnapshotPlayerV7Schema.extend({
+export const SnapshotPlayerV17Schema = SnapshotPlayerV7Schema.extend({
   ceiling: z.number().int().min(0).max(550).optional(),
   floor: z.number().int().min(0).max(550).optional(),
   developmentProgram: DevelopmentProgramEnum.optional(),
   developmentTrajectory: DevelopmentTrajectoryEnum.optional(),
   extensionHistory: z.array(ExtensionHistoryEntrySchema).optional(),
   personalityTraits: z.array(PersonalityTraitSchema).default([]),
+});
+export const SnapshotPlayerSchema = SnapshotPlayerV17Schema.extend({
+  arbitrationHistory: z.array(ArbitrationHistoryEntrySchema).default([]),
+  holdoutState: HoldoutStateSchema.nullable().default(null),
+  superTwoQualified: z.boolean().default(false),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
 
@@ -484,7 +491,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 18;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 19;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -547,9 +554,19 @@ export type GameSnapshotV16 = z.infer<typeof GameSnapshotV16Schema>;
 
 export const GameSnapshotV17Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(17),
+  players: z.array(SnapshotPlayerV17Schema),
   franchise: FranchiseStateV17Schema,
 });
 export type GameSnapshotV17 = z.infer<typeof GameSnapshotV17Schema>;
+
+// v18: Day One franchise shape landed on main (PR for Day One front office hook).
+// Players were still pre-arbitration at v18 — arbitrationHistory / holdoutState /
+// superTwoQualified arrive at v19 from this slice.
+export const GameSnapshotV18Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(18),
+  players: z.array(SnapshotPlayerV17Schema),
+});
+export type GameSnapshotV18 = z.infer<typeof GameSnapshotV18Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -1875,6 +1892,9 @@ function migrateSnapshotPlayer(
     isOutOfOptions: false,
     minorLeagueLevel: getMinorLeagueLevel(player.rosterStatus),
     personalityTraits: [],
+    arbitrationHistory: [],
+    holdoutState: null,
+    superTwoQualified: false,
   };
 }
 
@@ -1911,6 +1931,9 @@ function migrateV6SnapshotPlayer(
   return {
     ...upgradedPlayer,
     personalityTraits: [],
+    arbitrationHistory: [],
+    holdoutState: null,
+    superTwoQualified: false,
     ...backfillDevelopmentProfile(upgradedPlayer),
   };
 }
@@ -2379,6 +2402,35 @@ function migrateGameSnapshotV17(snapshot: GameSnapshotV17): GameSnapshot {
       ...snapshot.franchise,
       dayOne: migrateLegacyDayOneState(snapshot.franchise),
     },
+    players: snapshot.players.map((player) => ({
+      ...player,
+      arbitrationHistory: [],
+      holdoutState: null,
+      superTwoQualified: false,
+    })),
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
+// v18 -> v19: add arbitration history, holdout state, and super-two flag to every
+// player. Shipped alongside the arbitration escalators + holdouts slice.
+function migrateGameSnapshotV18(snapshot: GameSnapshotV18): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) => ({
+      ...player,
+      arbitrationHistory: [],
+      holdoutState: null,
+      superTwoQualified: false,
+    })),
   });
 
   return GameSnapshotSchema.parse({
@@ -2416,6 +2468,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 18
+  ) {
+    return migrateGameSnapshotV18(GameSnapshotV18Schema.parse(snapshotLike));
   }
 
   if (

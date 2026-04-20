@@ -101,6 +101,7 @@ function defaultExpiryDay(category: TickerEntry['category'], currentAbsoluteDay:
       return currentAbsoluteDay + 45;
     case 'prospect':
     case 'standings':
+    case 'arbitration':
       return currentAbsoluteDay + 21;
     case 'injury':
     case 'rumor':

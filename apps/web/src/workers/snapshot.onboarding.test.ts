@@ -147,10 +147,10 @@ function createV17Snapshot() {
 }
 
 describe('snapshot Day One migration', () => {
-  it('migrates v17 saves to v18 with a completed Day One state', () => {
+  it('migrates v17 saves to current schema with a completed Day One state', () => {
     const migrated = parseGameSnapshot(createV17Snapshot());
 
-    expect(migrated.schemaVersion).toBe(18);
+    expect(migrated.schemaVersion).toBe(19);
     expect(migrated.franchise.dayOne.status).toBe('complete');
     expect(migrated.franchise.dayOne.currentStep).toBe('complete');
     expect(migrated.franchise.dayOne.selectedAGMId).toBe('marcus_chen');
