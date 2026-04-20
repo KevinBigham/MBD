@@ -1,4 +1,7 @@
 export {
+  detectArbitrationMoments,
+} from './arbitrationMoments.js';
+export {
   MOMENT_IMPACT_THRESHOLD,
   MOMENT_RELEVANCE_DECAY_RATE,
   MAX_MOMENTS_PER_PLAYER,
@@ -73,6 +76,10 @@ export {
   evaluateNicknames,
   getNicknameDisplayText,
 } from './nicknames.js';
+export type {
+  ArbitrationMomentDetectionContext,
+  ArbitrationDetectedMoment,
+} from './arbitrationMoments.js';
 export type {
   MomentType,
   MomentRound,

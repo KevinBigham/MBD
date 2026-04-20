@@ -46,7 +46,11 @@ export type MomentType =
   | 'milestone_300w'
   | 'blown_ws_save'
   | 'cycle'
-  | 'twenty_k_game';
+  | 'twenty_k_game'
+  | 'arbitration_win'
+  | 'arbitration_loss'
+  | 'super_two_debut'
+  | 'holdout_resolution';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -117,6 +121,10 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'blown_ws_save',
   'cycle',
   'twenty_k_game',
+  'arbitration_win',
+  'arbitration_loss',
+  'super_two_debut',
+  'holdout_resolution',
 ];
 
 const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -179,6 +187,18 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
     '{player} piled up 20 strikeouts and overwhelmed the entire lineup.',
     '{player} turned the mound into a strikeout factory with a 20-K game.',
     '{player} hit the 20-strikeout mark and dominated from first pitch to last.',
+  ],
+  arbitration_win: [
+    '{player} won the arbitration case.',
+  ],
+  arbitration_loss: [
+    '{player} lost the arbitration case.',
+  ],
+  super_two_debut: [
+    '{player} hit arbitration early as a Super Two.',
+  ],
+  holdout_resolution: [
+    '{player} ended the holdout.',
   ],
 };
 
