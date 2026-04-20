@@ -4,11 +4,13 @@
  * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
-import type { GameRNG } from '../math/prng.js';
+import { GameRNG } from '../math/prng.js';
 import { clampRating } from './attributes.js';
 import type { HitterAttributes, PitcherAttributes } from './attributes.js';
 import { calculateRule5EligibleAfterSeason } from '../roster/rule5.js';
 import { assignPersonalityTraits } from './personalityTraits.js';
+import { PITCHER_POSITIONS, ROSTER_LEVELS } from './enums.js';
+import type { RosterLevel } from './enums.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -16,14 +18,14 @@ import { assignPersonalityTraits } from './personalityTraits.js';
 
 /** Positions by category */
 export const HITTER_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'] as const;
-export const PITCHER_POSITIONS = ['SP', 'RP', 'CL'] as const;
 export const ALL_POSITIONS = [...HITTER_POSITIONS, ...PITCHER_POSITIONS] as const;
 
 export type Position = (typeof ALL_POSITIONS)[number];
 
-/** Roster level definitions */
-export const ROSTER_LEVELS = ['MLB', 'AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE', 'INTERNATIONAL'] as const;
-export type RosterLevel = (typeof ROSTER_LEVELS)[number];
+// Re-exported from ./enums.js to break runtime cycle with ../roster/.
+// Public surface unchanged — consumers can still import these from generation.ts.
+export { PITCHER_POSITIONS, ROSTER_LEVELS };
+export type { RosterLevel };
 
 /** Development phases */
 export const DEV_PHASES = ['Prospect', 'Ascent', 'Prime', 'Decline', 'Retirement'] as const;
@@ -122,6 +124,63 @@ const PITCHER_BASELINES: Record<string, Partial<PitcherAttributes>> = {
   SP: { stuff: 280, control: 280, stamina: 320, velocity: 280, movement: 260 },
   RP: { stuff: 300, control: 260, stamina: 200, velocity: 300, movement: 280 },
   CL: { stuff: 320, control: 280, stamina: 180, velocity: 320, movement: 300 },
+};
+
+const SERVICE_TIME_DAYS_PER_YEAR = 172;
+const PRE_ARB_SERVICE_YEARS_MAX = 2;
+const ARB_SERVICE_YEARS_MAX = 6;
+const PRE_ARB_OPENING_DAY_SALARY_MIN = 0.7;
+const PRE_ARB_OPENING_DAY_SALARY_MAX = 2.0;
+const ARB_OPENING_DAY_SALARY_MIN = 1.8;
+const ARB_OPENING_DAY_SALARY_MAX = 19;
+const FA_OPENING_DAY_SALARY_MIN = 2.7;
+const FA_OPENING_DAY_SALARY_MAX = 34;
+const OPENING_DAY_YOUNG_FA_DISCOUNT = 0.9;
+const OPENING_DAY_ELITE_OVERALL_THRESHOLD = 395;
+const OPENING_DAY_EXTENSION_CANDIDATE_THRESHOLD = 360;
+const OPENING_DAY_WEAK_REGULAR_THRESHOLD = 255;
+const OPENING_DAY_ARB_EXTENSION_CHANCE = 0.2;
+const OPENING_DAY_PARTIAL_NTC_SALARY = 16;
+const OPENING_DAY_FULL_NTC_SALARY = 22;
+const OPENING_DAY_PLAYER_OPTION_SALARY = 18;
+const OPENING_DAY_TEAM_OPTION_SALARY = 10;
+const OPENING_DAY_FA_LONG_DEAL_THRESHOLD = 12;
+const OPENING_DAY_FA_LONG_DEAL_YEARS_MIN = 2;
+const OPENING_DAY_FA_LONG_DEAL_YEARS_MAX = 4;
+const OPENING_DAY_ELITE_DEAL_YEARS_MIN = 5;
+const OPENING_DAY_ELITE_DEAL_YEARS_MAX = 7;
+const OPENING_DAY_CORE_DEAL_YEARS_MIN = 3;
+const OPENING_DAY_CORE_DEAL_YEARS_MAX = 5;
+const OPENING_DAY_SHORT_DEAL_YEARS_MIN = 1;
+const OPENING_DAY_SHORT_DEAL_YEARS_MAX = 3;
+const OPENING_DAY_VETERAN_RENTAL_AGE = 34;
+const OPENING_DAY_VETERAN_RENTAL_YEARS_MIN = 1;
+const OPENING_DAY_VETERAN_RENTAL_YEARS_MAX = 2;
+const OPENING_DAY_AGING_VETERAN_AGE = 32;
+const OPENING_DAY_AGING_VETERAN_YEARS_MIN = 1;
+const OPENING_DAY_AGING_VETERAN_YEARS_MAX = 3;
+
+const OPENING_DAY_ARB_SALARY_MULTIPLIERS: Record<number, number> = {
+  3: 0.43,
+  4: 0.6,
+  5: 0.76,
+  6: 0.92,
+};
+
+const OPENING_DAY_SERVICE_YEAR_RANGES = [
+  { maxAge: 25, minYears: 0, maxYears: 2 },
+  { maxAge: 27, minYears: 1, maxYears: 4 },
+  { maxAge: 30, minYears: 3, maxYears: 7 },
+  { maxAge: 33, minYears: 5, maxYears: 9 },
+  { maxAge: Infinity, minYears: 7, maxYears: 11 },
+] as const;
+
+const OPENING_DAY_POSITION_VALUE_MULTIPLIERS: Partial<Record<Position, number>> = {
+  SP: 1.14,
+  CL: 1.08,
+  C: 1.04,
+  SS: 1.04,
+  DH: 0.93,
 };
 
 // ---------------------------------------------------------------------------
@@ -385,6 +444,213 @@ function generateContract(rng: GameRNG, rosterLevel: RosterLevel, overallRating:
   };
 }
 
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function deriveStableSeed(baseSeed: number, key: string): number {
+  let hash = baseSeed | 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = Math.imul(hash ^ key.charCodeAt(index), 1_664_525) + 1_013_904_223;
+    hash |= 0;
+  }
+
+  if (hash === 0) {
+    return 1;
+  }
+
+  return hash;
+}
+
+function openingDayServiceYearRange(age: number) {
+  return OPENING_DAY_SERVICE_YEAR_RANGES.find((range) => age <= range.maxAge)
+    ?? OPENING_DAY_SERVICE_YEAR_RANGES[OPENING_DAY_SERVICE_YEAR_RANGES.length - 1]!;
+}
+
+function projectOpeningDayServiceYears(rng: GameRNG, player: GeneratedPlayer): number {
+  const range = openingDayServiceYearRange(player.age);
+  let serviceYears = rng.nextInt(range.minYears, range.maxYears);
+
+  if (player.overallRating >= OPENING_DAY_ELITE_OVERALL_THRESHOLD) {
+    serviceYears += 1;
+  } else if (player.overallRating <= OPENING_DAY_WEAK_REGULAR_THRESHOLD) {
+    serviceYears -= 1;
+  }
+
+  return Math.max(0, Math.min(12, serviceYears));
+}
+
+function openingDayAgeValueMultiplier(age: number): number {
+  if (age <= 29) return 1.02;
+  if (age <= 32) return 0.965;
+  if (age <= 35) return 0.83;
+  return 0.7;
+}
+
+function openingDayPositionValueMultiplier(position: Position): number {
+  return OPENING_DAY_POSITION_VALUE_MULTIPLIERS[position] ?? 1;
+}
+
+function calculateOpeningDayFreeAgentAav(player: GeneratedPlayer): number {
+  const ratingBand = Math.max(0, Math.min(1.18, (player.overallRating - 248) / 168));
+  const baseValue = 4.8 + (ratingBand * 28.2);
+
+  return baseValue
+    * openingDayAgeValueMultiplier(player.age)
+    * openingDayPositionValueMultiplier(player.position);
+}
+
+function calculateOpeningDayAnnualSalary(
+  rng: GameRNG,
+  player: GeneratedPlayer,
+  serviceYears: number,
+): number {
+  const jitter = 0.9 + (rng.nextFloat() * 0.2);
+  const freeAgentAav = calculateOpeningDayFreeAgentAav(player);
+
+  if (serviceYears <= PRE_ARB_SERVICE_YEARS_MAX) {
+    const growth = Math.max(0, Math.min(1, (player.overallRating - 248) / 210));
+    return roundCurrency(
+      Math.max(
+        PRE_ARB_OPENING_DAY_SALARY_MIN,
+        Math.min(
+          PRE_ARB_OPENING_DAY_SALARY_MAX,
+          (0.74 + (growth * 1.15)) * jitter,
+        ),
+      ),
+    );
+  }
+
+  if (serviceYears <= ARB_SERVICE_YEARS_MAX) {
+    const arbYear = Math.min(serviceYears, ARB_SERVICE_YEARS_MAX);
+    const fallbackArbMultiplier = OPENING_DAY_ARB_SALARY_MULTIPLIERS[ARB_SERVICE_YEARS_MAX]!;
+    const arbMultiplier = OPENING_DAY_ARB_SALARY_MULTIPLIERS[arbYear] ?? fallbackArbMultiplier;
+    return roundCurrency(
+      Math.max(
+        ARB_OPENING_DAY_SALARY_MIN,
+        Math.min(ARB_OPENING_DAY_SALARY_MAX, freeAgentAav * arbMultiplier * jitter),
+      ),
+    );
+  }
+
+  const discountedAav = player.age <= 29 && player.overallRating >= 350
+    ? freeAgentAav * OPENING_DAY_YOUNG_FA_DISCOUNT
+    : freeAgentAav;
+
+  return roundCurrency(
+    Math.max(
+      FA_OPENING_DAY_SALARY_MIN,
+      Math.min(FA_OPENING_DAY_SALARY_MAX, discountedAav * jitter),
+    ),
+  );
+}
+
+function calculateOpeningDayContractYears(
+  rng: GameRNG,
+  player: GeneratedPlayer,
+  serviceYears: number,
+  annualSalary: number,
+): number {
+  if (serviceYears <= PRE_ARB_SERVICE_YEARS_MAX) {
+    return 1;
+  }
+
+  if (serviceYears <= ARB_SERVICE_YEARS_MAX) {
+    const youngCorePlayer = player.age <= 29
+      && player.overallRating >= OPENING_DAY_EXTENSION_CANDIDATE_THRESHOLD;
+    if (youngCorePlayer && rng.nextFloat() < OPENING_DAY_ARB_EXTENSION_CHANCE) {
+      return rng.nextInt(4, 6);
+    }
+    return 1;
+  }
+
+  if (player.age <= 29 && player.overallRating >= OPENING_DAY_ELITE_OVERALL_THRESHOLD) {
+    return rng.nextInt(OPENING_DAY_ELITE_DEAL_YEARS_MIN, OPENING_DAY_ELITE_DEAL_YEARS_MAX);
+  }
+
+  if (player.age <= 31 && player.overallRating >= 350) {
+    return rng.nextInt(OPENING_DAY_CORE_DEAL_YEARS_MIN, OPENING_DAY_CORE_DEAL_YEARS_MAX);
+  }
+
+  if (player.age >= OPENING_DAY_VETERAN_RENTAL_AGE) {
+    return rng.nextInt(OPENING_DAY_VETERAN_RENTAL_YEARS_MIN, OPENING_DAY_VETERAN_RENTAL_YEARS_MAX);
+  }
+
+  if (player.age >= OPENING_DAY_AGING_VETERAN_AGE) {
+    return rng.nextInt(OPENING_DAY_AGING_VETERAN_YEARS_MIN, OPENING_DAY_AGING_VETERAN_YEARS_MAX);
+  }
+
+  if (annualSalary >= OPENING_DAY_FA_LONG_DEAL_THRESHOLD) {
+    return rng.nextInt(OPENING_DAY_FA_LONG_DEAL_YEARS_MIN, OPENING_DAY_FA_LONG_DEAL_YEARS_MAX);
+  }
+
+  return rng.nextInt(OPENING_DAY_SHORT_DEAL_YEARS_MIN, OPENING_DAY_SHORT_DEAL_YEARS_MAX);
+}
+
+function buildOpeningDayMlbContract(
+  rng: GameRNG,
+  player: GeneratedPlayer,
+): Pick<GeneratedPlayer, 'serviceTimeDays' | 'contract'> {
+  const serviceYears = projectOpeningDayServiceYears(rng, player);
+  const annualSalary = calculateOpeningDayAnnualSalary(rng, player, serviceYears);
+  const years = calculateOpeningDayContractYears(rng, player, serviceYears, annualSalary);
+  const serviceTimeDays = (serviceYears * SERVICE_TIME_DAYS_PER_YEAR) + rng.nextInt(0, SERVICE_TIME_DAYS_PER_YEAR - 1);
+  const noTradeClause = serviceYears > ARB_SERVICE_YEARS_MAX
+    && annualSalary >= OPENING_DAY_PARTIAL_NTC_SALARY
+    && player.overallRating >= 360
+    && rng.nextFloat() > 0.45;
+  const noTradeClauseType: NoTradeClauseType = !noTradeClause
+    ? 'none'
+    : annualSalary >= OPENING_DAY_FULL_NTC_SALARY
+      ? 'full'
+      : 'partial';
+  const playerOption = serviceYears > ARB_SERVICE_YEARS_MAX
+    && annualSalary >= OPENING_DAY_PLAYER_OPTION_SALARY
+    && rng.nextFloat() > 0.72;
+  const teamOption = !playerOption
+    && serviceYears > ARB_SERVICE_YEARS_MAX
+    && annualSalary >= OPENING_DAY_TEAM_OPTION_SALARY
+    && rng.nextFloat() > 0.76;
+
+  return {
+    serviceTimeDays,
+    contract: {
+      years,
+      annualSalary,
+      totalValue: roundCurrency(annualSalary * years),
+      noTradeClause,
+      noTradeClauseType,
+      playerOption,
+      teamOption,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
+    },
+  };
+}
+
+function seedOpeningDayMlbContracts(
+  baseSeed: number,
+  teamId: string,
+  players: GeneratedPlayer[],
+): GeneratedPlayer[] {
+  const contractRng = new GameRNG(deriveStableSeed(baseSeed, `${teamId}:opening-day-contracts`));
+
+  return players.map((player) => {
+    if (player.rosterStatus !== 'MLB') {
+      return player;
+    }
+
+    const contractState = buildOpeningDayMlbContract(contractRng.fork(), player);
+    return {
+      ...player,
+      serviceTimeDays: contractState.serviceTimeDays,
+      contract: contractState.contract,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Talent multiplier by roster level
 // ---------------------------------------------------------------------------
@@ -499,7 +765,7 @@ export function generateTeamRoster(rng: GameRNG, teamId: string): GeneratedPlaye
     applyKCOverrides(players);
   }
 
-  return players;
+  return seedOpeningDayMlbContracts(rng.getSeed(), teamId, players);
 }
 
 // ---------------------------------------------------------------------------

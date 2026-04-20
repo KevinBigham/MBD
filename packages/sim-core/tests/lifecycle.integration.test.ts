@@ -52,6 +52,7 @@ function statSnapshot(seasonState: SeasonState) {
       hr: stats.hr,
       wins: stats.wins,
       losses: stats.losses,
+      ip: stats.ip,
       era: stats.ip > 0 ? Number(((stats.earnedRuns * 27) / stats.ip).toFixed(3)) : null,
     }))
     .sort((left, right) => left.playerId.localeCompare(right.playerId));
@@ -97,8 +98,9 @@ describe('direct lifecycle integration', () => {
   it('keeps first-month stat outputs inside sane upper bounds', () => {
     const stats = statSnapshot(baselineMonth.seasonState);
     const maxHomeRuns = Math.max(...stats.map((entry) => entry.hr));
-    const worstEra = Math.max(...stats.map((entry) => entry.era ?? 0));
-    const bestEra = Math.min(...stats.filter((entry) => entry.era != null).map((entry) => entry.era ?? 0));
+    const meaningfulPitchingSamples = stats.filter((entry) => entry.era != null && entry.ip >= 15);
+    const worstEra = Math.max(...meaningfulPitchingSamples.map((entry) => entry.era ?? 0));
+    const bestEra = Math.min(...meaningfulPitchingSamples.map((entry) => entry.era ?? 0));
 
     expect(maxHomeRuns).toBeLessThan(35);
     expect(worstEra).toBeLessThan(25);

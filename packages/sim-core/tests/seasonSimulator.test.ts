@@ -31,7 +31,8 @@ describe('regular-season calendar helpers', () => {
     expect(getRegularSeasonMonthForDay(62)).toMatchObject({ label: 'June', startDay: 62, endDay: 91 });
     expect(getRegularSeasonMonthForDay(92)).toMatchObject({ label: 'July', startDay: 92, endDay: 122 });
     expect(getRegularSeasonMonthForDay(123)).toMatchObject({ label: 'August', startDay: 123, endDay: 153 });
-    expect(getRegularSeasonMonthForDay(154)).toMatchObject({ label: 'September', startDay: 154, endDay: 162 });
+    expect(getRegularSeasonMonthForDay(154)).toMatchObject({ label: 'September', startDay: 154, endDay: 186 });
+    expect(getRegularSeasonMonthForDay(186)).toMatchObject({ label: 'September', startDay: 154, endDay: 186 });
   });
 
   it('returns the next calendar checkpoint day for simMonth', () => {
@@ -40,7 +41,7 @@ describe('regular-season calendar helpers', () => {
     expect(getNextMonthStartDay(62)).toBe(92);
     expect(getNextMonthStartDay(92)).toBe(123);
     expect(getNextMonthStartDay(123)).toBe(154);
-    expect(getNextMonthStartDay(154)).toBe(163);
+    expect(getNextMonthStartDay(154)).toBe(187);
   });
 });
 
@@ -76,8 +77,9 @@ describe('simulateMonth', () => {
 
     const result = simulateMonth(september.rng, september.seasonState, september.schedule, september.players);
 
-    expect(result.newState.currentDay).toBe(163);
-    expect(result.newState.currentDay).not.toBeGreaterThan(163);
+    expect(result.newState.currentDay).toBe(187);
+    expect(result.newState.currentDay).not.toBeGreaterThan(187);
+    expect(result.newState.completed).toBe(true);
   });
 
   it('skips games cleanly when a team cannot field a pitcher', () => {

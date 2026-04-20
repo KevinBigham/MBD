@@ -32,22 +32,28 @@ describe('StandingsCard', () => {
             {
               teamId: 'nym',
               teamName: 'New York Tycoons',
+              city: 'New York',
               abbreviation: 'NYT',
+              division: 'AL East',
               wins: 50,
               losses: 38,
               pct: '.568',
               gamesBack: 0,
               streak: 'W3',
+              runDifferential: 42,
             },
             {
               teamId: 'bos',
               teamName: 'Boston Noreasters',
+              city: 'Boston',
               abbreviation: 'BOS',
+              division: 'AL East',
               wins: 48,
               losses: 40,
               pct: '.545',
               gamesBack: 2,
               streak: 'L1',
+              runDifferential: 15,
             },
           ]}
           userTeamId="nym"

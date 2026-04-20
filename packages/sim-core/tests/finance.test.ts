@@ -3,6 +3,7 @@ import {
   GameRNG,
   TEAMS,
   generatePlayer,
+  generateLeaguePlayers,
   generateTeamRoster,
   calculatePlayerValue,
   qualifiesForSuperTwo,
@@ -170,6 +171,21 @@ describe('calculateTeamPayroll', () => {
       payroll.mlbPayroll + payroll.minorsPayroll + payroll.deadMoney,
       1,
     );
+  });
+
+  it('generates a mixed MLB service-time structure on opening day', () => {
+    const players = generateLeaguePlayers(new GameRNG(44_001), TEAMS.map((team) => team.id));
+    const serviceYears = players
+      .filter((player) => player.rosterStatus === 'MLB')
+      .map((player) => serviceDaysToYears(player.serviceTimeDays));
+
+    const preArbShare = serviceYears.filter((years) => years <= 2).length / serviceYears.length;
+    const arbShare = serviceYears.filter((years) => years >= 3 && years <= 6).length / serviceYears.length;
+    const veteranShare = serviceYears.filter((years) => years >= 7).length / serviceYears.length;
+
+    expect(preArbShare).toBeGreaterThanOrEqual(0.15);
+    expect(arbShare).toBeGreaterThanOrEqual(0.2);
+    expect(veteranShare).toBeGreaterThanOrEqual(0.2);
   });
 });
 

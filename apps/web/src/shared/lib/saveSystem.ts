@@ -1,14 +1,12 @@
 import Dexie, { type Table } from 'dexie';
 import {
+  GameSnapshotSchema,
+  parseGameSnapshot,
   type GameSnapshot,
   type SimPhase,
   type WhatIfBranchMeta,
 } from '@mbd/contracts';
 import { calculateDynastyLeaderboardScore } from '@mbd/sim-core';
-import {
-  GameSnapshotSchema,
-  parseGameSnapshot,
-} from '../../../../../packages/contracts/src/schemas/save';
 import {
   SAVE_IO_BUDGET_MS,
   measureAsyncOperation,

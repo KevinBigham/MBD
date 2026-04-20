@@ -521,7 +521,7 @@ describe('snapshot helpers', () => {
     expect(restored.minorLeagueState.activeDevelopmentSetbacks[0]?.playerId).toBe(candidate.id);
   });
 
-  it('migrates v16 snapshots into the v18 narrative, trade, and arbitration shape', () => {
+  it('migrates v16 snapshots into the current narrative, trade, and arbitration shape', () => {
     const exported = exportGameSnapshot(createState()) as GameSnapshot & {
       schemaVersion: number;
       narrative: Omit<GameSnapshot['narrative'], 'playerMoments' | 'playerNicknames' | 'gmRelationships' | 'leagueEvents'> & {

@@ -187,7 +187,11 @@ import type {
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
-import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool, getTeamPayrollCap } from './sim.worker.setup.js';
+// Imported directly from ./sim.worker.budget.js (rather than ./sim.worker.setup.js,
+// which re-exports them) so loading helpers.ts does not statically pull in
+// setup.ts. setup.ts imports `createEmpty*` factories back from helpers.ts; the
+// previous `helpers → setup` edge closed a runtime cycle.
+import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool, getTeamPayrollCap } from './sim.worker.budget.js';
 import {
   getLoyaltyAdjustedAppeal,
   registerDraftedProspectAcquisition,

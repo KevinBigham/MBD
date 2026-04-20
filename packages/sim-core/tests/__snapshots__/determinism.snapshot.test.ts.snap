@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`sim-core determinism snapshot > matches baseline hash for seed=42, 30 days (regression guard) 1`] = `"31c5ddfc73ede88aa20d5117f711f0101ecbb2b2e0f5c6815b4cff9ab7cf93d1"`;

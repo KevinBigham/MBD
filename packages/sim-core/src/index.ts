@@ -17,6 +17,19 @@ export {
 } from './performance/index.js';
 export { compareTimelines } from './timeline/index.js';
 export {
+  runSeasonCalibration,
+  summarizeSeasonCalibration,
+} from './calibration/index.js';
+export type {
+  SeasonCalibrationBattingTotals,
+  SeasonCalibrationConfig,
+  SeasonCalibrationResult,
+  SeasonCalibrationSeason,
+  SeasonCalibrationSeasonSummary,
+  SeasonCalibrationSummary,
+  SeasonCalibrationTeamRecord,
+} from './calibration/index.js';
+export {
   buildLeagueAdvancedContext,
   calculateAdvancedStatLine,
   calculateBattingAverage,
@@ -427,7 +440,9 @@ export type {
   JobOpening,
 } from './career/index.js';
 export {
+  REGULAR_SEASON_DAYS,
   REGULAR_SEASON_MONTHS,
+  getRegularSeasonGameDays,
   getDaysUntilTradeDeadline,
   getRegularSeasonMonthForDay,
   getTradeDeadlineDay,
@@ -570,9 +585,17 @@ export type {
 export {
   AGM_CANDIDATES,
   analyzePayrollBreakdown,
+  buildDayOneDefaults,
+  buildDayOneImpacts,
+  buildDayOneNarrativePack,
+  buildDayOneOrgReview,
+  buildDayOneTeamCard,
+  buildDayOneTeaser,
+  buildOpeningDayPlan,
   CHAPTER_ORDER,
   ONBOARDING_MODE,
   ONBOARDING_CHAPTER_IDS,
+  pickDayOneCrisis,
   REVISED_CHAPTER_ORDER,
   analyzeLineupStrengths,
   advanceChapter,
@@ -665,6 +688,22 @@ export type {
   AssistantGMProfile,
   BaseballPhilosophy,
   BudgetOverview,
+  DayOneBudgetAllocation,
+  DayOneCrisis,
+  DayOneCrisisResponseOption,
+  DayOneCrisisType,
+  DayOneDefaults,
+  DayOneNarrativeContext,
+  DayOneNarrativePack,
+  DayOneOpeningBullpenPlan,
+  DayOneOpeningPlan,
+  DayOneOrgReview,
+  DayOneOrgTier,
+  DayOneProjectedImpact,
+  DayOnePromotionStance,
+  DayOneTeamCard,
+  DayOneTeamCardInput,
+  DayOneTeaser,
   ChapterAssessmentData,
   ChapterChoiceValue,
   ChapterChoices,

@@ -3,20 +3,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { PageHelp } from '@/shared/components/PageHelp';
-
-interface TeamStandings {
-  teamId: string;
-  teamName: string;
-  city: string;
-  abbreviation: string;
-  division: string;
-  wins: number;
-  losses: number;
-  pct: string;
-  gamesBack: number;
-  streak: string;
-  runDifferential: number;
-}
+import type { TeamStandingsDTO } from '@/workers/sim.worker.helpers';
 
 const DIVISION_LABELS: Record<string, string> = {
   AL_EAST: 'AL East',
@@ -29,7 +16,7 @@ const DIVISION_LABELS: Record<string, string> = {
 
 function DivisionCard({ divKey, teams, userTeamId }: {
   divKey: string;
-  teams: TeamStandings[];
+  teams: TeamStandingsDTO[];
   userTeamId: string;
 }) {
   return (
@@ -146,12 +133,12 @@ export default function StandingsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
   const { day, season, phase, userTeamId, isInitialized } = useGameStore();
-  const [standings, setStandings] = useState<Record<string, TeamStandings[]>>({});
+  const [standings, setStandings] = useState<Record<string, TeamStandingsDTO[]>>({});
 
   const fetchStandings = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
     const data = await worker.getStandings();
-    if (data) setStandings(data.divisions as Record<string, TeamStandings[]>);
+    if (data) setStandings(data.divisions as Record<string, TeamStandingsDTO[]>);
   }, [isInitialized, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

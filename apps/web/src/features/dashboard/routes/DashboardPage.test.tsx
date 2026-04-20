@@ -306,7 +306,9 @@ describe('DashboardPage', () => {
           {
             teamId: 'nym',
             teamName: 'New York Tycoons',
+            city: 'New York',
             abbreviation: 'NYT',
+            division: 'AL East',
             wins: 50,
             losses: 38,
             pct: '.568',

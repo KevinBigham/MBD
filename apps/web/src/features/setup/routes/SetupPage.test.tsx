@@ -86,8 +86,15 @@ describe('SetupPage', () => {
         teamId: 'nym',
         teamName: 'New York Tycoons',
         division: 'AL_EAST',
+        archetype: 'Empire Under Pressure',
+        franchiseHook: 'The sport’s loudest market wants October immediately.',
+        whyNow: 'The roster can win now if the room is aligned.',
+        marketSize: 'large',
+        timeline: 'Win now',
         payrollTier: 'Premier',
         farmSystemRating: 'B+',
+        strengths: ['middle-of-order thump', 'rotation depth'],
+        weaknesses: ['bullpen stability', 'prospect pipeline'],
         teamIdentityBlurb: 'Big-market expectations with enough prospects to support a push.',
         projectedRecord: '88-74',
         topPlayers: [
@@ -430,15 +437,12 @@ describe('SetupPage', () => {
     });
 
     const gmNameInput = container.querySelector('#setup-gm-name') as HTMLInputElement | null;
-    const teamSelect = container.querySelector('#setup-team') as HTMLSelectElement | null;
     const difficultySelect = container.querySelector('#setup-difficulty') as HTMLSelectElement | null;
 
     await act(async () => {
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
       setValue?.call(gmNameInput, 'Alex Rivera');
       gmNameInput?.dispatchEvent(new Event('input', { bubbles: true }));
-      teamSelect!.value = 'nym';
-      teamSelect?.dispatchEvent(new Event('change', { bubbles: true }));
       difficultySelect!.value = 'hard';
       difficultySelect?.dispatchEvent(new Event('change', { bubbles: true }));
       await Promise.resolve();
@@ -466,6 +470,7 @@ describe('SetupPage', () => {
       gmName: 'Alex Rivera',
       difficulty: 'hard',
       saveSlot: 2,
+      dayOneExperience: 'full',
     });
     expect(mockedSaveGame).toHaveBeenCalledWith(2, expect.stringContaining('Alex Rivera'), expect.any(Object));
     expect(storeMock.initializeGame).toHaveBeenCalled();

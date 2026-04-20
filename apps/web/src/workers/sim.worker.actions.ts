@@ -1230,7 +1230,7 @@ function simWeekInternal(): SimResultDTO {
     s.seasonState,
     s.schedule,
     s.players,
-    { teamModifiers: buildTeamPerformanceModifiers(s) },
+    buildSeasonSimulationOptions(s),
   );
   s.seasonState = newState;
   s.day = newState.currentDay;
@@ -1278,6 +1278,15 @@ function buildTeamPerformanceModifiers(s: FullGameState): Map<string, number> {
   }
 
   return modifiers;
+}
+
+function buildSeasonSimulationOptions(s: FullGameState) {
+  return {
+    teamModifiers: buildTeamPerformanceModifiers(s),
+    openingDayPlans: s.franchise.dayOne.openingDayPlan == null
+      ? undefined
+      : new Map([[s.userTeamId, s.franchise.dayOne.openingDayPlan]]),
+  };
 }
 
 function normalizeLeagueActiveRosters(s: FullGameState) {
@@ -1339,7 +1348,7 @@ function simMonthInternal(): SimResultDTO {
     s.seasonState,
     s.schedule,
     s.players,
-    { teamModifiers: buildTeamPerformanceModifiers(s) },
+    buildSeasonSimulationOptions(s),
   );
   s.seasonState = newState;
   s.day = newState.currentDay;
@@ -1482,7 +1491,7 @@ function simDayInternal(): SimResultDTO {
         s.seasonState,
         s.schedule,
         s.players,
-        { teamModifiers: buildTeamPerformanceModifiers(s) },
+        buildSeasonSimulationOptions(s),
       );
       s.seasonState = newState;
       s.day = newState.currentDay;

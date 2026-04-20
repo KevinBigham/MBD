@@ -5,49 +5,7 @@
   "day": 97,
   "phase": "regular",
   "userTeamId": "nym",
-  "players": [
-    {
-      "id": "11111111-1111-4111-8111-111111111111",
-      "firstName": "Alex",
-      "lastName": "Ramirez",
-      "age": 27,
-      "position": "SS",
-      "hitterAttributes": {
-        "contact": 330,
-        "power": 285,
-        "eye": 295,
-        "speed": 310,
-        "defense": 300,
-        "durability": 320
-      },
-      "pitcherAttributes": null,
-      "personality": {
-        "workEthic": 68,
-        "mentalToughness": 59,
-        "leadership": 52,
-        "competitiveness": 74
-      },
-      "contract": {
-        "years": 1,
-        "annualSalary": 4.2,
-        "totalValue": 4.2,
-        "noTradeClause": false,
-        "playerOption": false,
-        "teamOption": false
-      },
-      "rosterStatus": "MLB",
-      "developmentPhase": "Prime",
-      "teamId": "nym",
-      "nationality": "latin",
-      "overallRating": 312,
-      "rule5EligibleAfterSeason": 4,
-      "serviceTimeDays": 344,
-      "optionYearsUsed": 1,
-      "isOutOfOptions": false,
-      "minorLeagueLevel": null,
-      "personalityTraits": ["sparkplug"]
-    }
-  ],
+  "players": [],
   "schedule": [],
   "seasonState": {
     "season": 3,
@@ -59,7 +17,7 @@
   },
   "playoffBracket": null,
   "injuries": [],
-  "serviceTime": [["11111111-1111-4111-8111-111111111111", 2]],
+  "serviceTime": [],
   "scoutingStaffs": [],
   "gmPersonalities": [],
   "offseasonState": null,
@@ -101,28 +59,7 @@
     "mentorRelationships": [],
     "frontOfficeState": [],
     "whatIfBranches": [],
-    "seasonHistory": [
-      {
-        "season": 2,
-        "championTeamId": "nym",
-        "runnerUpTeamId": "lax",
-        "worldSeriesRecord": "4-2",
-        "summary": "New York finished the job.",
-        "awards": [],
-        "keyMoments": ["Won the World Series in six games."],
-        "statLeaders": {
-          "hr": [],
-          "rbi": [],
-          "avg": [],
-          "era": [],
-          "k": [],
-          "w": []
-        },
-        "notableRetirements": [],
-        "blockbusterTrades": [],
-        "userSeason": null
-      }
-    ]
+    "seasonHistory": []
   },
   "tradeState": {
     "pendingOffers": [],
@@ -175,8 +112,15 @@
       "welcomeBriefingSeen": true,
       "firstMonthlyPulseSeen": true
     },
-    "assistantGMId": null,
-    "gmPhilosophy": null,
+    "assistantGMId": "marcus_chen",
+    "gmPhilosophy": {
+      "seasonGoal": "playoff",
+      "developmentStyle": "balanced",
+      "spendingStyle": "balanced",
+      "tradeApproach": "opportunistic",
+      "scoutingFocus": "draft",
+      "mediaTone": "measured"
+    },
     "scoutingDirector": null
   },
   "ceremony": {

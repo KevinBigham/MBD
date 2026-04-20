@@ -4,6 +4,7 @@
  */
 
 import type { GameRNG } from '../math/prng.js';
+import type { DayOneOpeningPlan } from '../onboarding/dayOne.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { ScheduledGame } from '../league/schedule.js';
 import { isDivisionGame } from '../league/schedule.js';
@@ -11,7 +12,7 @@ import { StandingsTracker } from '../league/standings.js';
 import type { GameBoxScore, PlayerGameStats, GameTeam } from './gameSimulator.js';
 import { simulateGame } from './gameSimulator.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
-import { getNextMonthStartDay } from './calendar.js';
+import { getNextMonthStartDay, REGULAR_SEASON_DAYS } from './calendar.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +35,7 @@ export interface DaySimResult {
 
 export interface SeasonSimulationOptions {
   readonly teamModifiers?: Map<string, number>;
+  readonly openingDayPlans?: Map<string, DayOneOpeningPlan>;
 }
 
 function clonePlayerGameStats(stats: PlayerGameStats): PlayerGameStats {
@@ -53,8 +55,14 @@ function clonePlayerSeasonStats(
 // ---------------------------------------------------------------------------
 
 /** Build a GameTeam from a team's player list. Uses MLB-level players. */
-function buildGameTeam(teamId: string, players: GeneratedPlayer[]): GameTeam {
+function buildGameTeam(
+  teamId: string,
+  players: GeneratedPlayer[],
+  currentDay: number,
+  openingPlan?: DayOneOpeningPlan,
+): GameTeam {
   const mlbPlayers = players.filter(p => p.teamId === teamId && p.rosterStatus === 'MLB');
+  const playerById = new Map(mlbPlayers.map((player) => [player.id, player]));
 
   const hitters = mlbPlayers
     .filter(p => (HITTER_POSITIONS as readonly string[]).includes(p.position))
@@ -64,8 +72,20 @@ function buildGameTeam(teamId: string, players: GeneratedPlayer[]): GameTeam {
     .filter(p => (PITCHER_POSITIONS as readonly string[]).includes(p.position))
     .sort((a, b) => b.overallRating - a.overallRating);
 
-  // Build 9-player lineup (fill with best available)
-  const lineup = hitters.slice(0, 9);
+  const plannedLineup = openingPlan?.lineupPlayerIds
+    .map((playerId) => playerById.get(playerId))
+    .filter((player): player is GeneratedPlayer => player != null && (HITTER_POSITIONS as readonly string[]).includes(player.position));
+  const lineup = Array.from(new Map((plannedLineup ?? []).map((player) => [player.id, player])).values());
+
+  for (const hitter of hitters) {
+    if (lineup.length >= 9) {
+      break;
+    }
+    if (lineup.some((player) => player.id === hitter.id)) {
+      continue;
+    }
+    lineup.push(hitter);
+  }
 
   // If we don't have 9 hitters, fill from pitchers (they bat too in NL-style)
   while (lineup.length < 9 && pitchers.length > lineup.length - 9 + pitchers.length) {
@@ -79,8 +99,40 @@ function buildGameTeam(teamId: string, players: GeneratedPlayer[]): GameTeam {
     lineup.push(lineup[0]!);
   }
 
-  const starter = pitchers.find(p => p.position === 'SP') ?? pitchers[0];
-  const bullpen = pitchers.filter(p => p !== starter);
+  let starter = pitchers.find(p => p.position === 'SP') ?? pitchers[0];
+  let bullpen = pitchers.filter((pitcher) => pitcher !== starter);
+
+  if (openingPlan) {
+    const plannedRotation = openingPlan.rotationPlayerIds
+      .map((playerId) => playerById.get(playerId))
+      .filter((player): player is GeneratedPlayer => player != null && player.position === 'SP');
+    if (plannedRotation.length > 0) {
+      const starterIndex = (Math.max(1, currentDay) - 1) % plannedRotation.length;
+      starter = plannedRotation[starterIndex] ?? starter;
+    }
+
+    const plannedBullpenIds = openingPlan.bullpen == null
+      ? []
+      : [
+        openingPlan.bullpen.longReliefId,
+        ...openingPlan.bullpen.setupIds,
+        openingPlan.bullpen.closerId,
+      ].filter((playerId): playerId is string => Boolean(playerId));
+    bullpen = [];
+    for (const playerId of plannedBullpenIds) {
+      const player = playerById.get(playerId);
+      if (!player || player.id === starter?.id || bullpen.some((entry) => entry.id === player.id)) {
+        continue;
+      }
+      bullpen.push(player);
+    }
+    for (const pitcher of pitchers) {
+      if (pitcher.id === starter?.id || bullpen.some((entry) => entry.id === pitcher.id)) {
+        continue;
+      }
+      bullpen.push(pitcher);
+    }
+  }
 
   return {
     teamId,
@@ -127,8 +179,8 @@ export function simulateDay(
   const nextPlayerSeasonStats = clonePlayerSeasonStats(state.playerSeasonStats);
 
   for (const game of dayGames) {
-    const homeTeam = buildGameTeam(game.homeTeamId, allPlayers);
-    const awayTeam = buildGameTeam(game.awayTeamId, allPlayers);
+    const homeTeam = buildGameTeam(game.homeTeamId, allPlayers, state.currentDay, options.openingDayPlans?.get(game.homeTeamId));
+    const awayTeam = buildGameTeam(game.awayTeamId, allPlayers, state.currentDay, options.openingDayPlans?.get(game.awayTeamId));
 
     // Skip if either team can't field a lineup
     if (
@@ -206,7 +258,7 @@ export function simulateDay(
   // Check if season is complete
   const maxDay = schedule.length > 0
     ? schedule[schedule.length - 1]!.day
-    : 162;
+    : REGULAR_SEASON_DAYS;
   const nextDay = state.currentDay + 1;
   const seasonComplete = nextDay > maxDay;
 

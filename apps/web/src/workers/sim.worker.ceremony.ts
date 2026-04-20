@@ -57,6 +57,20 @@ export function createDefaultFranchiseState(
     assistantGMId: overrides.assistantGMId ?? null,
     gmPhilosophy: overrides.gmPhilosophy ?? null,
     scoutingDirector: overrides.scoutingDirector ?? null,
+    dayOne: overrides.dayOne ?? {
+      experience: 'quick',
+      status: 'complete',
+      currentStep: 'complete',
+      selectedAGMId: null,
+      seasonGoal: null,
+      budgetAllocation: null,
+      developmentStyle: null,
+      promotionStance: null,
+      openingDayPlan: null,
+      crisisType: null,
+      crisisResponseId: null,
+      quickStartRecapSeen: true,
+    },
   };
 }
 

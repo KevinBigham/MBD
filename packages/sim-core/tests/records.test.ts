@@ -127,6 +127,44 @@ describe('records', () => {
     expect(brokenRecords.some((record) => record.entryId === 'franchise:nym:individual_single_season:hr')).toBe(true);
   });
 
+  it('waits for full-season standings before updating team and streak records', () => {
+    const { recordBook, brokenRecords } = updateRecordBook(backfillLegacyRecordBook({
+      currentSeason: 5,
+      franchiseTeamId: 'nym',
+      franchiseTimeline: [
+        {
+          season: 4,
+          teamId: 'nym',
+          record: '99-63',
+          winTotal: 99,
+          playoffResult: 'Division',
+          championship: false,
+          worldSeriesAppearance: false,
+          playoffAppearance: true,
+          divisionTitle: true,
+          awardWinnerCount: 0,
+          keyAcquisitions: [],
+          keyDepartures: [],
+          dynastyScore: 120,
+        },
+      ],
+      seasonHistory: [],
+      careerStats: [],
+    }), {
+      currentSeason: 5,
+      franchiseTeamId: 'nym',
+      currentStandings: [
+        { teamId: 'nym', wins: 120, losses: 20, streak: 14, playoffAppearances: 3 },
+      ],
+      playerSeasons: [],
+      careerStats: [],
+    });
+
+    expect(recordBook.find((entry) => entry.id === 'franchise:nym:team_single_season:wins')?.holders[0]?.value).toBe(99);
+    expect(recordBook.find((entry) => entry.id === 'franchise:nym:streak:win_streak')?.holders).toEqual([]);
+    expect(brokenRecords).toEqual([]);
+  });
+
   it('creates record watches for players above the 85 percent pace threshold', () => {
     const recordBook = updateRecordBook(backfillLegacyRecordBook({
       currentSeason: 6,

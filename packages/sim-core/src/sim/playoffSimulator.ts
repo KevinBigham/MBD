@@ -113,9 +113,9 @@ function leagueFromDivision(division: string): LeagueId {
 }
 
 function standingsSort(left: StandingsEntry, right: StandingsEntry): number {
-  if (right.pct !== left.pct) return right.pct - left.pct;
   if (right.wins !== left.wins) return right.wins - left.wins;
   if (left.losses !== right.losses) return left.losses - right.losses;
+  if (right.pct !== left.pct) return right.pct - left.pct;
   return left.teamId.localeCompare(right.teamId);
 }
 

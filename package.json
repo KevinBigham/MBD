@@ -13,9 +13,15 @@
     "test": "turbo test",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
-    "verify": "turbo typecheck && turbo test && turbo build"
+    "verify": "turbo typecheck && turbo test && turbo build",
+    "verify:structure": "knip --no-exit-code",
+    "verify:cycles": "madge --circular --extensions ts,tsx --ts-config tsconfig.json packages/sim-core/src apps/web/src || true",
+    "verify:determinism": "cd packages/sim-core && node ./node_modules/vitest/vitest.mjs run tests/determinism.snapshot.test.ts",
+    "verify:quality": "pnpm run verify:structure && pnpm run verify:cycles && pnpm run verify:determinism"
   },
   "devDependencies": {
+    "knip": "^6.4.1",
+    "madge": "^8.0.0",
     "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   }

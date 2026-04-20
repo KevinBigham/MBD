@@ -1,0 +1,46 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [],
+      "project": []
+    },
+    "apps/web": {
+      "entry": [
+        "index.html",
+        "src/workers/sim.worker.ts",
+        "src/**/*.test.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/contracts": {
+      "entry": [
+        "src/index.ts",
+        "tests/**/*.test.ts"
+      ],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/design-tokens": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/sim-core": {
+      "entry": [
+        "src/index.ts",
+        "tests/**/*.test.ts"
+      ],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/test-utils": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/ui": {
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}"]
+    }
+  }
+}

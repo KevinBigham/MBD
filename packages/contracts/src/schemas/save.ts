@@ -65,6 +65,7 @@ import {
   AchievementStateSchema,
   CeremonyStateSchema,
   FranchiseStateV15Schema,
+  FranchiseStateV17Schema,
   FranchiseStateSchema,
 } from "./franchise.js";
 import {
@@ -490,7 +491,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 18;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 19;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -554,8 +555,18 @@ export type GameSnapshotV16 = z.infer<typeof GameSnapshotV16Schema>;
 export const GameSnapshotV17Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(17),
   players: z.array(SnapshotPlayerV17Schema),
+  franchise: FranchiseStateV17Schema,
 });
 export type GameSnapshotV17 = z.infer<typeof GameSnapshotV17Schema>;
+
+// v18: Day One franchise shape landed on main (PR for Day One front office hook).
+// Players were still pre-arbitration at v18 — arbitrationHistory / holdoutState /
+// superTwoQualified arrive at v19 from this slice.
+export const GameSnapshotV18Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(18),
+  players: z.array(SnapshotPlayerV17Schema),
+});
+export type GameSnapshotV18 = z.infer<typeof GameSnapshotV18Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -910,6 +921,48 @@ function createEmptyStatLeaders() {
   };
 }
 
+function spendingStyleToBudgetAllocation(spendingStyle: "big_spender" | "balanced" | "penny_pincher" | null | undefined) {
+  if (spendingStyle === "big_spender") {
+    return "spend_now" as const;
+  }
+  if (spendingStyle === "penny_pincher") {
+    return "future_flex" as const;
+  }
+  return spendingStyle === "balanced" ? "balanced" as const : null;
+}
+
+function developmentStyleToPromotionStance(developmentStyle: "aggressive" | "balanced" | "patient" | null | undefined) {
+  if (developmentStyle === "aggressive") {
+    return "aggressive" as const;
+  }
+  if (developmentStyle === "patient") {
+    return "patient" as const;
+  }
+  return developmentStyle === "balanced" ? "measured" as const : null;
+}
+
+function migrateLegacyDayOneState(
+  franchise: {
+    assistantGMId?: z.infer<typeof FranchiseStateV17Schema>["assistantGMId"];
+    gmPhilosophy?: z.infer<typeof FranchiseStateV17Schema>["gmPhilosophy"];
+  },
+) {
+  return {
+    experience: "quick" as const,
+    status: "complete" as const,
+    currentStep: "complete" as const,
+    selectedAGMId: franchise.assistantGMId ?? null,
+    seasonGoal: franchise.gmPhilosophy?.seasonGoal ?? null,
+    budgetAllocation: spendingStyleToBudgetAllocation(franchise.gmPhilosophy?.spendingStyle ?? null),
+    developmentStyle: franchise.gmPhilosophy?.developmentStyle ?? null,
+    promotionStance: developmentStyleToPromotionStance(franchise.gmPhilosophy?.developmentStyle ?? null),
+    openingDayPlan: null,
+    crisisType: null,
+    crisisResponseId: null,
+    quickStartRecapSeen: true,
+  };
+}
+
 function createEmptyTradeState() {
   return {
     pendingOffers: [],
@@ -940,6 +993,20 @@ function createDefaultFranchiseState(userTeamId: string, season: number, day: nu
     assistantGMId: null,
     gmPhilosophy: null,
     scoutingDirector: null,
+    dayOne: {
+      experience: "quick" as const,
+      status: "complete" as const,
+      currentStep: "complete" as const,
+      selectedAGMId: null,
+      seasonGoal: null,
+      budgetAllocation: null,
+      developmentStyle: null,
+      promotionStance: null,
+      openingDayPlan: null,
+      crisisType: null,
+      crisisResponseId: null,
+      quickStartRecapSeen: true,
+    },
   };
 }
 
@@ -2271,6 +2338,7 @@ function migrateGameSnapshotV15(snapshot: GameSnapshotV15): GameSnapshot {
       assistantGMId: null,
       gmPhilosophy: null,
       scoutingDirector: null,
+      dayOne: migrateLegacyDayOneState({}),
     },
     narrative: {
       ...snapshot.narrative,
@@ -2299,6 +2367,10 @@ function migrateGameSnapshotV16(snapshot: GameSnapshotV16): GameSnapshot {
   const migrated = GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    franchise: {
+      ...snapshot.franchise,
+      dayOne: migrateLegacyDayOneState(snapshot.franchise),
+    },
     narrative: {
       ...snapshot.narrative,
       playerMoments: [],
@@ -2323,6 +2395,33 @@ function migrateGameSnapshotV16(snapshot: GameSnapshotV16): GameSnapshot {
 }
 
 function migrateGameSnapshotV17(snapshot: GameSnapshotV17): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    franchise: {
+      ...snapshot.franchise,
+      dayOne: migrateLegacyDayOneState(snapshot.franchise),
+    },
+    players: snapshot.players.map((player) => ({
+      ...player,
+      arbitrationHistory: [],
+      holdoutState: null,
+      superTwoQualified: false,
+    })),
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
+// v18 -> v19: add arbitration history, holdout state, and super-two flag to every
+// player. Shipped alongside the arbitration escalators + holdouts slice.
+function migrateGameSnapshotV18(snapshot: GameSnapshotV18): GameSnapshot {
   const migrated = GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
@@ -2369,6 +2468,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 18
+  ) {
+    return migrateGameSnapshotV18(GameSnapshotV18Schema.parse(snapshotLike));
   }
 
   if (

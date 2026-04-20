@@ -4,12 +4,13 @@ import {
   TEAMS,
   assignGMPersonality,
   backfillLegacyRecordBook,
+  buildDayOneOrgReview,
+  buildDayOneTeamCard,
   buildRosterState,
   createRelationshipMap,
   createSeasonState,
   createFrontOfficeState,
   createOwnerState,
-  frontOfficeFreeAgencyAppeal,
   frontOfficeTradeModifier,
   generateCoachFreeAgents,
   generateCoachingStaff,
@@ -23,7 +24,11 @@ import {
   seedHistoricalRivalries,
   toDisplayRating,
 } from '@mbd/sim-core';
-import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
+import {
+  createDefaultFanSentiment,
+  createEmptyJobMarket,
+  createEmptyMonthlyPulseState,
+} from './sim.worker.state.js';
 import {
   createEmptyDraftState,
   createEmptyInternationalScoutingState,
@@ -37,6 +42,24 @@ import {
   createEmptyAchievementState,
   createEmptyCeremonyState,
 } from './sim.worker.ceremony.js';
+import {
+  difficultyAdjustValue,
+  getDifficultyAdjustedBudget,
+  getDifficultyProfileForState,
+} from './sim.worker.budget.js';
+
+// Re-exported from ./sim.worker.budget.js so existing consumers
+// (actions, narrative, onboarding, queries) keep importing from setup.ts
+// while helpers.ts can pull these directly from budget.ts to break the
+// helpers ↔ setup runtime cycle.
+export {
+  DIFFICULTY_PROFILES,
+  getDifficultyAdjustedBudget,
+  getDifficultyProfileForState,
+  getTeamFreeAgencyAppealScore,
+  getTeamIFABonusPool,
+  getTeamPayrollCap,
+} from './sim.worker.budget.js';
 
 export interface NewGameOptions {
   seed: number;
@@ -46,14 +69,22 @@ export interface NewGameOptions {
   saveSlot: number;
   playMode?: PlayMode;
   scenarioId?: string;
+  dayOneExperience?: 'full' | 'quick';
 }
 
 export interface SetupPreview {
   teamId: string;
   teamName: string;
   division: string;
+  archetype: string;
+  franchiseHook: string;
+  whyNow: string;
+  marketSize: 'large' | 'medium' | 'small';
+  timeline: string;
   payrollTier: string;
   farmSystemRating: string;
+  strengths: string[];
+  weaknesses: string[];
   teamIdentityBlurb: string;
   projectedRecord: string;
   topPlayers: Array<{
@@ -66,51 +97,6 @@ export interface SetupPreview {
     teamId: string;
     teamName: string;
   }>;
-}
-
-export const DIFFICULTY_PROFILES: Record<Difficulty, {
-  budgetMultiplier: number;
-  tradeBias: number;
-  aiCompetitiveBidMultiplier: number;
-}> = {
-  easy: {
-    budgetMultiplier: 1.1,
-    tradeBias: 8,
-    aiCompetitiveBidMultiplier: 0.92,
-  },
-  standard: {
-    budgetMultiplier: 1,
-    tradeBias: 0,
-    aiCompetitiveBidMultiplier: 1,
-  },
-  hard: {
-    budgetMultiplier: 0.9,
-    tradeBias: -8,
-    aiCompetitiveBidMultiplier: 1.08,
-  },
-};
-
-export function getDifficultyProfileForState(state: Pick<FullGameState, 'franchise'>) {
-  return DIFFICULTY_PROFILES[state.franchise.difficulty];
-}
-
-function difficultyAdjustValue(
-  state: Pick<FullGameState, 'franchise' | 'userTeamId'>,
-  teamId: string,
-  value: number,
-): number {
-  if (teamId !== state.userTeamId) {
-    return Math.round(value * 100) / 100;
-  }
-  return Math.round(value * getDifficultyProfileForState(state).budgetMultiplier * 100) / 100;
-}
-
-export function getDifficultyAdjustedBudget(
-  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
-  teamId: string,
-): number {
-  const baseBudget = state.ownerState?.get(teamId)?.annualBudget ?? getTeamBudget(teamId);
-  return difficultyAdjustValue(state, teamId, baseBudget);
 }
 
 export function getDifficultyAdjustedTradeFairness(
@@ -141,22 +127,6 @@ export function getDifficultyAdjustedCompetitiveAav(
   return Math.round(annualSalary * getDifficultyProfileForState(state).aiCompetitiveBidMultiplier * 100) / 100;
 }
 
-export function getTeamPayrollCap(
-  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
-  teamId: string,
-): number {
-  const value = state.ownerState?.get(teamId)?.payrollCap ?? (getDifficultyAdjustedBudget(state, teamId) * 0.92);
-  return difficultyAdjustValue(state, teamId, value);
-}
-
-export function getTeamIFABonusPool(
-  state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
-  teamId: string,
-): number {
-  const value = state.ownerState?.get(teamId)?.ifaBonusPool ?? Math.max(3.5, getDifficultyAdjustedBudget(state, teamId) * 0.0225);
-  return difficultyAdjustValue(state, teamId, value);
-}
-
 export function getTeamStaffBudget(
   state: Pick<FullGameState, 'franchise' | 'userTeamId'> & Partial<Pick<FullGameState, 'ownerState'>>,
   teamId: string,
@@ -170,18 +140,6 @@ export function getTeamTradeReputationModifier(
   teamId: string,
 ): number {
   return frontOfficeTradeModifier(state.frontOfficeState?.get(teamId)?.reputation ?? 50);
-}
-
-export function getTeamFreeAgencyAppealScore(
-  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState' | 'fanSentiment' | 'userTeamId'>>,
-  teamId: string,
-): number {
-  const chemistryScore = state.teamChemistry.get(teamId)?.score ?? 50;
-  const reputationAppeal = frontOfficeFreeAgencyAppeal(state.frontOfficeState?.get(teamId)?.reputation ?? 50);
-  const fanModifier = state.userTeamId === teamId && state.fanSentiment
-    ? Math.max(-3, Math.min(3, Math.round((state.fanSentiment.score - 50) / 16)))
-    : 0;
-  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3) + fanModifier)));
 }
 
 function payrollTierForBudget(budget: number): string {
@@ -256,19 +214,40 @@ function teamIdentityBlurb(teamId: string, payrollTier: string, farmSystemRating
   return `${team?.city ?? teamId.toUpperCase()} enters with ${marketLine}. ${pipelineLine}`;
 }
 
-function createEmptyJobMarket() {
-  return {
-    availableJobs: [],
-    applicationDeadlineSeason: null,
-  };
-}
+function createInitialDayOneState(
+  experience: 'full' | 'quick',
+  bypassDayOne: boolean,
+) {
+  if (bypassDayOne) {
+    return {
+      experience: 'quick' as const,
+      status: 'complete' as const,
+      currentStep: 'complete' as const,
+      selectedAGMId: null,
+      seasonGoal: null,
+      budgetAllocation: null,
+      developmentStyle: null,
+      promotionStance: null,
+      openingDayPlan: null,
+      crisisType: null,
+      crisisResponseId: null,
+      quickStartRecapSeen: true,
+    };
+  }
 
-function createDefaultFanSentiment(season: number, day: number) {
   return {
-    score: 50,
-    trend: 'stable' as const,
-    summary: 'Fan sentiment is stable.',
-    updatedAt: `S${season}D${day}`,
+    experience,
+    status: 'in_progress' as const,
+    currentStep: experience === 'full' ? 'owner_intro' as const : 'agm_select' as const,
+    selectedAGMId: null,
+    seasonGoal: null,
+    budgetAllocation: null,
+    developmentStyle: null,
+    promotionStance: null,
+    openingDayPlan: null,
+    crisisType: null,
+    crisisResponseId: null,
+    quickStartRecapSeen: false,
   };
 }
 
@@ -316,6 +295,8 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     careerStats: [],
   });
   const playMode = options.playMode ?? 'standard';
+  const bypassDayOne = playMode === 'scenario' || options.scenarioId != null;
+  const dayOneExperience = options.dayOneExperience ?? 'full';
   const gmCareer = initializeGMCareer(new GameRNG(options.seed + 40_001), options.userTeamId, options.gmName, 1);
 
   return {
@@ -389,9 +370,10 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
       difficulty: options.difficulty,
       playMode,
       onboarding: {
-        welcomeBriefingSeen: false,
+        welcomeBriefingSeen: bypassDayOne,
         firstMonthlyPulseSeen: false,
       },
+      dayOne: createInitialDayOneState(dayOneExperience, bypassDayOne),
     }),
     ceremony: createEmptyCeremonyState(),
     achievements: createEmptyAchievementState(),
@@ -409,10 +391,10 @@ export function buildSetupPreview(options: Pick<NewGameOptions, 'seed' | 'userTe
     saveSlot: 1,
   });
   const team = getTeamById(options.userTeamId);
-  const teamName = team ? `${team.city} ${team.name}` : options.userTeamId.toUpperCase();
   const payrollTier = payrollTierForBudget(getTeamBudget(options.userTeamId));
+  const orgReview = buildDayOneOrgReview(seededState.players, options.userTeamId);
   const farmSystemRating = farmSystemRatingForPlayers(seededState.players, options.userTeamId);
-  const projectedWins = projectedWinsForPlayers(seededState.players, options.userTeamId);
+  const projectedWins = orgReview.projectedWins || projectedWinsForPlayers(seededState.players, options.userTeamId);
   const topPlayers = seededState.players
     .filter((player) => player.teamId === options.userTeamId && player.rosterStatus === 'MLB')
     .sort((left, right) => right.overallRating - left.overallRating)
@@ -423,15 +405,16 @@ export function buildSetupPreview(options: Pick<NewGameOptions, 'seed' | 'userTe
       position: player.position,
       overall: toDisplayRating(player.overallRating),
     }));
-
-  return {
+  const teamCard = buildDayOneTeamCard({
     teamId: options.userTeamId,
-    teamName,
+    teamName: team ? `${team.city} ${team.name}` : options.userTeamId.toUpperCase(),
     division: team?.division ?? 'UNKNOWN',
     payrollTier,
     farmSystemRating,
-    teamIdentityBlurb: teamIdentityBlurb(options.userTeamId, payrollTier, farmSystemRating),
     projectedRecord: `${projectedWins}-${162 - projectedWins}`,
+    strengths: orgReview.strengths,
+    weaknesses: orgReview.weaknesses,
+    teamIdentityBlurb: teamIdentityBlurb(options.userTeamId, payrollTier, farmSystemRating),
     topPlayers,
     divisionRivals: TEAMS
       .filter((entry) => entry.division === team?.division && entry.id !== options.userTeamId)
@@ -439,5 +422,9 @@ export function buildSetupPreview(options: Pick<NewGameOptions, 'seed' | 'userTe
         teamId: entry.id,
         teamName: `${entry.city} ${entry.name}`,
       })),
+  });
+
+  return {
+    ...teamCard,
   };
 }

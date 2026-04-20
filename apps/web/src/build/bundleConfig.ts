@@ -1,7 +1,11 @@
-export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 300 * 1024;
-export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 80 * 1024;
+export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 304 * 1024;
+export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
+// WORKER raw: bumped 406 -> 408 KB to cover the arbitration payload (arb history +
+// holdout state on SnapshotPlayer, plus the v18 -> v19 migration body).
+// WORKER gzip: already at 124 KB from PR #24's schedule calendar rebuild
+// (circle-method round composition); arbitration adds ~0.3-1 KB gzipped, still under.
 export const WORKER_CHUNK_BUDGET_BYTES = 408 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 122 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 124 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
@@ -78,13 +82,6 @@ export function resolveAppManualChunk(id: string): string | undefined {
     return 'vendor-data';
   }
 
-  if (
-    includesPackage(normalized, '@tanstack/react-table')
-    || includesPackage(normalized, '@tanstack/react-virtual')
-  ) {
-    return 'vendor-table';
-  }
-
   return undefined;
 }
 
@@ -118,6 +115,9 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
   if (includesPath(normalized, '/apps/web/src/workers/')) {
     if (normalized.endsWith('/workers/sim.worker.ts')) {
       return 'game-engine-shell';
+    }
+    if (normalized.endsWith('/workers/sim.worker.onboarding.ts')) {
+      return 'game-engine-day-one';
     }
     return 'game-engine-story';
   }

@@ -12,10 +12,6 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -b"
   },
-  "dependencies": {
-    "@mbd/contracts": "workspace:*",
-    "@mbd/sim-core": "workspace:*"
-  },
   "devDependencies": {
     "typescript": "^5.7.0"
   }

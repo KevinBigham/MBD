@@ -10,22 +10,21 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('migrates the v16 fixture into the additive v18 shape', () => {
-    const fixture = loadFixture('./fixtures/save/v16/core.json');
+  it('migrates the v17 fixture into the additive v18 Day One shape', () => {
+    const fixture = loadFixture('./fixtures/save/v17/core.json');
 
     const migrated = parseGameSnapshot(fixture);
 
     expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
-    expect(migrated.narrative.playerMoments).toEqual([]);
-    expect(migrated.narrative.playerNicknames).toEqual([]);
-    expect(migrated.narrative.gmRelationships).toEqual([]);
-    expect(migrated.narrative.leagueEvents).toEqual([]);
-    expect(migrated.tradeState.negotiations).toEqual([]);
-    expect(migrated.tradeState.multiTeamPendingTrades).toEqual([]);
+    expect(migrated.franchise.dayOne.status).toBe('complete');
+    expect(migrated.franchise.dayOne.currentStep).toBe('complete');
+    expect(migrated.franchise.dayOne.selectedAGMId).toBe('marcus_chen');
+    expect(migrated.franchise.dayOne.seasonGoal).toBe('playoff');
+    expect(migrated.franchise.dayOne.quickStartRecapSeen).toBe(true);
   });
 
-  it('migrates the v17 fixture into the additive v18 shape', () => {
-    const fixture = loadFixture('./fixtures/save/v17/core.json');
+  it('migrates the v18 fixture into the additive v19 arbitration shape', () => {
+    const fixture = loadFixture('./fixtures/save/v18/core.json');
 
     const migrated = parseGameSnapshot(fixture);
     const [player] = migrated.players;
@@ -37,7 +36,7 @@ describe('save schema migration', () => {
   });
 
   it('rejects malformed legacy fixtures during migration', () => {
-    const fixture = loadFixture('./fixtures/save/v17/core.json');
+    const fixture = loadFixture('./fixtures/save/v18/core.json');
     fixture.players[0].id = 7;
 
     expect(() => parseGameSnapshot(fixture)).toThrow();
