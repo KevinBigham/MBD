@@ -12,8 +12,15 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // arbitration press-conference templates + moment descriptions compressed less
 // than projected (actual ~+0.4 KB over prior ceiling), so lift the gzip roof by
 // one KB to restore headroom. Holdout briefings already live in the story chunk.
+// WORKER gzip: bumped 125 -> 126 KB for the trade deadline broadcast slice after
+// the new trade press-conference copy left game-engine-core 471 bytes over the
+// prior gzip cap. Attempted routing tradeDeadlinePressConferences.ts into
+// game-engine-story first, but that pushed story far higher overall (421,762
+// raw / 125,530 gzip), so the smallest ceiling lift was the safer fix. Raw
+// ceiling already at 410 KB from the holdout briefing slice accommodates the
+// trade deadline worker growth (+613 bytes over the 408 baseline).
 export const WORKER_CHUNK_BUDGET_BYTES = 410 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 125 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 126 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;

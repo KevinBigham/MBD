@@ -3496,6 +3496,71 @@ describe('sim worker narrative APIs', () => {
     )).toBe(true);
   });
 
+  it('emits deadline blockbuster trade moments and press coverage when a trade is accepted', () => {
+    startGame(34215, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 122;
+    state.news = [];
+
+    const { offer, requested, offered } = buildIncomingOffer('accept-deadline-blockbuster');
+    offered.firstName = 'Juan';
+    offered.lastName = 'Soto';
+    offered.overallRating = 405;
+    offered.contract.totalValue = 28;
+    requested.firstName = 'Leo';
+    requested.lastName = 'De Vries';
+    requested.overallRating = 286;
+    requested.contract.totalValue = 12;
+    state.tradeState.pendingOffers = [offer];
+
+    const result = api.respondToTradeOffer(offer.id, 'accept');
+    const updatedState = requireState();
+    const outgoingMoments = updatedState.playerMoments.get(offered.id) ?? [];
+    const incomingMoments = updatedState.playerMoments.get(requested.id) ?? [];
+    const pressConference = updatedState.news.find((item) =>
+      item.id.startsWith('press-conference-trade-deadline-')
+      && item.category === 'trade'
+      && item.relatedPlayerIds.includes(offered.id),
+    );
+
+    expect(result.success).toBe(true);
+    expect(outgoingMoments.some((moment) => moment.type === 'blockbuster_trade_moved')).toBe(true);
+    expect(incomingMoments.some((moment) => moment.type === 'blockbuster_trade_acquired')).toBe(true);
+    expect(pressConference?.headline).toContain('Juan Soto');
+    expect(pressConference?.priority).toBe(1);
+  });
+
+  it('emits a routine trade press conference without blockbuster moments for moderate swaps', () => {
+    startGame(34216, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+    state.news = [];
+
+    const { offer, requested, offered } = buildIncomingOffer('accept-routine-swap');
+    offered.overallRating = 274;
+    offered.contract.totalValue = 16;
+    requested.overallRating = 276;
+    requested.contract.totalValue = 15;
+    state.tradeState.pendingOffers = [offer];
+
+    const result = api.respondToTradeOffer(offer.id, 'accept');
+    const updatedState = requireState();
+    const outgoingMoments = updatedState.playerMoments.get(offered.id) ?? [];
+    const incomingMoments = updatedState.playerMoments.get(requested.id) ?? [];
+    const pressConference = updatedState.news.find((item) =>
+      item.id.startsWith('press-conference-trade-deadline-')
+      && item.category === 'trade'
+      && item.relatedPlayerIds.includes(offered.id),
+    );
+
+    expect(result.success).toBe(true);
+    expect(outgoingMoments.some((moment) => moment.type === 'blockbuster_trade_moved')).toBe(false);
+    expect(incomingMoments.some((moment) => moment.type === 'blockbuster_trade_acquired')).toBe(false);
+    expect(pressConference?.priority).toBe(3);
+  });
+
   it('advances trade sagas and annotates homegrown aftermath when a bonded player is moved', () => {
     startGame(3422, 'nym');
     const state = requireState();

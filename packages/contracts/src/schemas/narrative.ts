@@ -107,6 +107,10 @@ export const SignatureMomentTypeEnum = z.enum([
   "arbitration_loss",
   "super_two_debut",
   "holdout_resolution",
+  "blockbuster_trade_moved",
+  "blockbuster_trade_acquired",
+  "deadline_seller",
+  "deadline_buyer",
 ]);
 export type SignatureMomentType = z.infer<typeof SignatureMomentTypeEnum>;
 

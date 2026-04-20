@@ -1664,7 +1664,7 @@ function compareSignatureMomentRecency(left: SignatureMoment, right: SignatureMo
     || left.type.localeCompare(right.type);
 }
 
-function appendArbitrationMoments(
+export function appendArbitrationMoments(
   s: FullGameState,
   playerId: string,
   nextMoments: SignatureMoment[],
