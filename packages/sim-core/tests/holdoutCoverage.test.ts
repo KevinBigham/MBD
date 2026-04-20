@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GeneratedPlayer } from '../src/player/generation.js';
-import { generateHoldoutBriefing } from '../src/narrative/holdoutCoverage.js';
+import {
+  generateHoldoutBriefing,
+  generateHoldoutResolutionBriefing,
+} from '../src/narrative/holdoutCoverage.js';
 
 function createPlayer(overrides: Partial<GeneratedPlayer> = {}): GeneratedPlayer {
   return {
@@ -167,5 +170,187 @@ describe('generateHoldoutBriefing', () => {
     });
 
     expect(briefing).toBeNull();
+  });
+});
+
+describe('generateHoldoutResolutionBriefing', () => {
+  it('returns null when there is no active holdout state', () => {
+    const briefing = generateHoldoutResolutionBriefing({
+      player: createPlayer({ holdoutState: null }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 60,
+    });
+
+    expect(briefing).toBeNull();
+  });
+
+  it('returns null for short (shock-tier) holdouts', () => {
+    const briefing = generateHoldoutResolutionBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 1.2,
+          holdoutDays: 2,
+          moraleHit: 6,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 60,
+    });
+
+    expect(briefing).toBeNull();
+  });
+
+  it('returns null for posturing-tier holdouts (6 days)', () => {
+    const briefing = generateHoldoutResolutionBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 2.0,
+          holdoutDays: 6,
+          moraleHit: 10,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 55,
+    });
+
+    expect(briefing).toBeNull();
+  });
+
+  it('fires priority-2 resolution for pressure-tier holdouts (7-13 days)', () => {
+    const briefing = generateHoldoutResolutionBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 2.4,
+          holdoutDays: 9,
+          moraleHit: 12,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 55,
+    });
+
+    expect(briefing).toEqual(expect.objectContaining({
+      topicId: 'holdout_resolution',
+      topicCategory: 'HOLDOUT',
+      priority: 2,
+    }));
+    expect(briefing?.id).toBe('briefing-holdout-resolution-player-1-6-3');
+    expect(briefing?.headline).toContain('9-day holdout');
+    expect(briefing?.headline).toContain('Boston');
+    expect(briefing?.body).toContain('$2.4M');
+  });
+
+  it('fires priority-1 resolution for crisis-tier holdouts (>=14 days)', () => {
+    const briefing = generateHoldoutResolutionBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 4.1,
+          holdoutDays: 18,
+          moraleHit: 18,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 32,
+    });
+
+    expect(briefing).toEqual(expect.objectContaining({
+      topicId: 'holdout_resolution',
+      topicCategory: 'HOLDOUT',
+      priority: 1,
+    }));
+    expect(briefing?.headline).toContain('18-day holdout');
+  });
+
+  it('reflects morale tone in the resolution body', () => {
+    const terseBriefing = generateHoldoutResolutionBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 3.0,
+          holdoutDays: 10,
+          moraleHit: 15,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 28,
+    });
+
+    const cordialBriefing = generateHoldoutResolutionBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 3.0,
+          holdoutDays: 10,
+          moraleHit: 15,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 72,
+    });
+
+    expect(terseBriefing?.body).toContain('terse');
+    expect(cordialBriefing?.body).toContain('cordial');
+  });
+
+  it('uses a distinct ID prefix from the opening-holdout briefing', () => {
+    const openingId = generateHoldoutBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 2.5,
+          holdoutDays: 10,
+          moraleHit: 14,
+        },
+      }),
+      season: 5,
+      day: 12,
+      teamName: 'Boston',
+      moraleScore: 50,
+    })?.id;
+
+    const resolutionId = generateHoldoutResolutionBriefing({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 2.5,
+          holdoutDays: 10,
+          moraleHit: 14,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 50,
+    })?.id;
+
+    expect(openingId).toBe('briefing-holdout-player-1-5-12');
+    expect(resolutionId).toBe('briefing-holdout-resolution-player-1-6-3');
+    expect(openingId).not.toBe(resolutionId);
   });
 });
