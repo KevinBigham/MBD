@@ -10,7 +10,7 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('migrates the v17 fixture into the additive v18 Day One shape', () => {
+  it('migrates the v17 fixture into the additive v20 shape', () => {
     const fixture = loadFixture('./fixtures/save/v17/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -23,8 +23,20 @@ describe('save schema migration', () => {
     expect(migrated.franchise.dayOne.quickStartRecapSeen).toBe(true);
   });
 
-  it('migrates the v18 fixture into the additive v19 arbitration shape', () => {
+  it('migrates the v18 fixture into the additive v20 arbitration shape', () => {
     const fixture = loadFixture('./fixtures/save/v18/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+    const [player] = migrated.players;
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(player?.arbitrationHistory).toEqual([]);
+    expect(player?.holdoutState).toBeNull();
+    expect(player?.superTwoQualified).toBe(false);
+  });
+
+  it('migrates the v19 fixture into the additive v20 broadcast shape', () => {
+    const fixture = loadFixture('./fixtures/save/v19/core.json');
 
     const migrated = parseGameSnapshot(fixture);
     const [player] = migrated.players;

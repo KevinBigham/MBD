@@ -38,6 +38,8 @@ export const NewsCategoryEnum = z.enum([
   "award",
   "record",
   "playoff",
+  "arbitration",
+  "holdout",
   "press_conference",
   "league_event",
 ]);
@@ -101,6 +103,10 @@ export const SignatureMomentTypeEnum = z.enum([
   "blown_ws_save",
   "cycle",
   "twenty_k_game",
+  "arbitration_win",
+  "arbitration_loss",
+  "super_two_debut",
+  "holdout_resolution",
 ]);
 export type SignatureMomentType = z.infer<typeof SignatureMomentTypeEnum>;
 
