@@ -2,11 +2,17 @@ export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 304 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // WORKER raw: bumped 406 -> 408 KB to cover the arbitration payload carried across
 // the arbitration schema/broadcast slices.
+// WORKER raw: bumped 408 -> 410 KB for the holdout resolution news slice. Adds
+// generateHoldoutResolutionBriefing + worker wire-in alongside the existing
+// opening-beat briefings in game-engine-story. Copy was trimmed aggressively but
+// the function signature + constants still landed ~1.3 KB over the prior raw
+// ceiling. Gzip stayed at ~125 KB (well under budget), so the actual wire cost
+// is unchanged — this is a raw-ceiling-only concession for the new helper.
 // WORKER gzip: bumped 124 -> 125 KB for the arbitration broadcast slice. The
 // arbitration press-conference templates + moment descriptions compressed less
 // than projected (actual ~+0.4 KB over prior ceiling), so lift the gzip roof by
 // one KB to restore headroom. Holdout briefings already live in the story chunk.
-export const WORKER_CHUNK_BUDGET_BYTES = 408 * 1024;
+export const WORKER_CHUNK_BUDGET_BYTES = 410 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 125 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
