@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GeneratedPlayer } from '../src/player/generation.js';
-import { detectArbitrationMoments } from '../src/moments/arbitrationMoments.js';
+import {
+  detectArbitrationMoments,
+  detectHoldoutResolutions,
+} from '../src/moments/arbitrationMoments.js';
 
 function createPlayer(overrides: Partial<GeneratedPlayer> = {}): GeneratedPlayer {
   return {
@@ -211,5 +214,117 @@ describe('detectArbitrationMoments', () => {
       'player-z:arbitration_win',
       'player-z:super_two_debut',
     ]);
+  });
+});
+
+describe('detectHoldoutResolutions', () => {
+  it('returns empty when no players carry an active holdout', () => {
+    const moments = detectHoldoutResolutions([createPlayer()], {
+      season: 6,
+      day: 3,
+    });
+
+    expect(moments).toEqual([]);
+  });
+
+  it('emits a holdout_resolution moment for each player with holdoutState', () => {
+    const moments = detectHoldoutResolutions([
+      createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'nym',
+          salaryGap: 1.5,
+          holdoutDays: 7,
+          moraleHit: 12,
+        },
+      }),
+    ], {
+      season: 6,
+      day: 3,
+    });
+
+    expect(moments).toHaveLength(1);
+    expect(moments[0]).toEqual(expect.objectContaining({
+      playerId: 'player-1',
+      moment: expect.objectContaining({
+        type: 'holdout_resolution',
+        season: 6,
+        day: 3,
+        timestamp: 'S6D3',
+      }),
+    }));
+    expect(moments[0].moment.description).toContain('7 days');
+    expect(moments[0].moment.description).toContain('$1.5M');
+  });
+
+  it('singularizes "1 day" in the resolution description', () => {
+    const [resolution] = detectHoldoutResolutions([
+      createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 0.8,
+          holdoutDays: 1,
+          moraleHit: 4,
+        },
+      }),
+    ], {
+      season: 6,
+      day: 3,
+    });
+
+    expect(resolution.moment.description).toContain('1 day ');
+    expect(resolution.moment.description).not.toContain('1 days');
+  });
+
+  it('skips players without a holdoutState', () => {
+    const moments = detectHoldoutResolutions([
+      createPlayer({ id: 'player-clear', holdoutState: null }),
+      createPlayer({
+        id: 'player-held',
+        holdoutState: {
+          season: 5,
+          teamId: 'sea',
+          salaryGap: 2.1,
+          holdoutDays: 14,
+          moraleHit: 18,
+        },
+      }),
+    ], {
+      season: 6,
+      day: 3,
+    });
+
+    expect(moments.map(({ playerId }) => playerId)).toEqual(['player-held']);
+  });
+
+  it('sorts resolutions deterministically by player id', () => {
+    const moments = detectHoldoutResolutions([
+      createPlayer({
+        id: 'player-z',
+        holdoutState: {
+          season: 5,
+          teamId: 'nym',
+          salaryGap: 1.2,
+          holdoutDays: 9,
+          moraleHit: 11,
+        },
+      }),
+      createPlayer({
+        id: 'player-a',
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 2.0,
+          holdoutDays: 5,
+          moraleHit: 8,
+        },
+      }),
+    ], {
+      season: 6,
+      day: 3,
+    });
+
+    expect(moments.map(({ playerId }) => playerId)).toEqual(['player-a', 'player-z']);
   });
 });
