@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CURRENT_GAME_SNAPSHOT_VERSION } from '@mbd/contracts';
 
 vi.mock('comlink', () => ({
   expose: () => {},
@@ -126,7 +127,7 @@ describe('day one worker API', () => {
 
     const snapshot = await api.exportSnapshot();
 
-    expect(snapshot.schemaVersion).toBe(19);
+    expect(snapshot.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(snapshot.franchise.dayOne.experience).toBe('quick');
     expect(snapshot.franchise.dayOne.selectedAGMId).toBe('elena_vargas');
     expect(snapshot.franchise.dayOne.status).toBe('complete');

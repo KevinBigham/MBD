@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { GameSnapshot } from '@mbd/contracts';
+import { CURRENT_GAME_SNAPSHOT_VERSION, type GameSnapshot } from '@mbd/contracts';
 
 vi.mock('comlink', () => ({
   expose: () => {},
@@ -26,7 +26,7 @@ describe('worker lifecycle integration', () => {
   it('simulates setup through season two with a clean save/load round-trip', () => {
     const snapshot = runFullSeasonCycle(3_101);
 
-    expect(snapshot.schemaVersion).toBe(19);
+    expect(snapshot.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(snapshot.season).toBe(2);
     expect(snapshot.phase).toBe('preseason');
 
@@ -65,7 +65,7 @@ describe('worker lifecycle integration', () => {
     const repaired = api.exportSnapshot();
 
     expect(imported.success).toBe(true);
-    expect(repaired.schemaVersion).toBe(19);
+    expect(repaired.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(repaired.franchise.gmName).toBe('General Manager');
     expect(repaired.monthlyPulse).toBeDefined();
     expect(repaired.achievements).toBeDefined();

@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
+import { CURRENT_GAME_SNAPSHOT_VERSION } from '@mbd/contracts';
 import type { AGMCandidate } from '@mbd/sim-core';
 import type { DayOneSession } from '@/workers/sim.worker.onboarding';
 import RevisedOnboardingPage from './RevisedOnboardingPage';
@@ -241,7 +242,7 @@ describe('RevisedOnboardingPage', () => {
       season: 1,
       day: 1,
       phase: 'preseason',
-      schemaVersion: 19,
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
       hasSnapshot: true,
       snapshot: null,
       legacyState: null,
@@ -379,7 +380,7 @@ describe('RevisedOnboardingPage', () => {
       getDayOneSession: vi.fn().mockResolvedValue(session),
       finishDayOne: vi.fn().mockResolvedValue(undefined),
       exportSnapshot: vi.fn().mockResolvedValue({
-        schemaVersion: 19,
+        schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
         season: 1,
         day: 1,
         phase: 'preseason',
@@ -401,7 +402,7 @@ describe('RevisedOnboardingPage', () => {
       season: 1,
       day: 1,
       phase: 'preseason',
-      schemaVersion: 19,
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
       hasSnapshot: true,
       snapshot: null,
       legacyState: null,
@@ -441,7 +442,7 @@ describe('RevisedOnboardingPage', () => {
       'save-slot-1',
       'General Manager • New York Tycoons',
       expect.objectContaining({
-        schemaVersion: 19,
+        schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
         franchise: expect.objectContaining({
           dayOne: expect.objectContaining({
             status: 'complete',

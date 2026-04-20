@@ -491,7 +491,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 19;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 20;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -560,13 +560,18 @@ export const GameSnapshotV17Schema = GameSnapshotSchema.extend({
 export type GameSnapshotV17 = z.infer<typeof GameSnapshotV17Schema>;
 
 // v18: Day One franchise shape landed on main (PR for Day One front office hook).
-// Players were still pre-arbitration at v18 — arbitrationHistory / holdoutState /
-// superTwoQualified arrive at v19 from this slice.
+// Players were still pre-arbitration at v18. SnapshotPlayer arbitration fields
+// landed in v19, and the broadcast/news enum additions for this slice land in v20.
 export const GameSnapshotV18Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(18),
   players: z.array(SnapshotPlayerV17Schema),
 });
 export type GameSnapshotV18 = z.infer<typeof GameSnapshotV18Schema>;
+
+export const GameSnapshotV19Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(19),
+});
+export type GameSnapshotV19 = z.infer<typeof GameSnapshotV19Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -2419,8 +2424,9 @@ function migrateGameSnapshotV17(snapshot: GameSnapshotV17): GameSnapshot {
   });
 }
 
-// v18 -> v19: add arbitration history, holdout state, and super-two flag to every
-// player. Shipped alongside the arbitration escalators + holdouts slice.
+// v18 -> v20: add arbitration history, holdout state, and super-two flag to every
+// player, then carry the additive arbitration-broadcast enums through to the
+// latest schema version.
 function migrateGameSnapshotV18(snapshot: GameSnapshotV18): GameSnapshot {
   const migrated = GameSnapshotSchema.parse({
     ...snapshot,
@@ -2431,6 +2437,21 @@ function migrateGameSnapshotV18(snapshot: GameSnapshotV18): GameSnapshot {
       holdoutState: null,
       superTwoQualified: false,
     })),
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
+function migrateGameSnapshotV19(snapshot: GameSnapshotV19): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
   });
 
   return GameSnapshotSchema.parse({
@@ -2468,6 +2489,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 19
+  ) {
+    return migrateGameSnapshotV19(GameSnapshotV19Schema.parse(snapshotLike));
   }
 
   if (

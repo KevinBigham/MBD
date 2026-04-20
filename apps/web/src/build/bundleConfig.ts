@@ -1,11 +1,13 @@
 export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 304 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
-// WORKER raw: bumped 406 -> 408 KB to cover the arbitration payload (arb history +
-// holdout state on SnapshotPlayer, plus the v18 -> v19 migration body).
-// WORKER gzip: already at 124 KB from PR #24's schedule calendar rebuild
-// (circle-method round composition); arbitration adds ~0.3-1 KB gzipped, still under.
+// WORKER raw: bumped 406 -> 408 KB to cover the arbitration payload carried across
+// the arbitration schema/broadcast slices.
+// WORKER gzip: bumped 124 -> 125 KB for the arbitration broadcast slice. The
+// arbitration press-conference templates + moment descriptions compressed less
+// than projected (actual ~+0.4 KB over prior ceiling), so lift the gzip roof by
+// one KB to restore headroom. Holdout briefings already live in the story chunk.
 export const WORKER_CHUNK_BUDGET_BYTES = 408 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 124 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 125 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
@@ -78,6 +80,7 @@ export function resolveAppManualChunk(id: string): string | undefined {
     || includesPackage(normalized, 'pako')
     || includesPackage(normalized, 'zustand')
     || includesPackage(normalized, 'comlink')
+    || includesPath(normalized, '/packages/contracts/src/')
   ) {
     return 'vendor-data';
   }
@@ -99,6 +102,14 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
   // into their own chunk so the engine-core bundle stays under budget.
   if (includesPath(normalized, '/packages/sim-core/src/onboarding/')) {
     return 'game-engine-onboarding';
+  }
+
+  // Holdout briefings are worker-side story payload only. Keep them out of
+  // the engine-core chunk so the deterministic simulation core retains headroom.
+  if (
+    includesPath(normalized, '/packages/sim-core/src/narrative/holdoutCoverage.')
+  ) {
+    return 'game-engine-story';
   }
 
   if (includesPath(normalized, '/packages/sim-core/src/')) {

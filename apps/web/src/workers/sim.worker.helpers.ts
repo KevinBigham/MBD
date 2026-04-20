@@ -97,6 +97,7 @@ import {
   simulateFADay,
   processTeamExtensions,
   pruneTickerFeed,
+  MAX_MOMENTS_PER_PLAYER,
   tradeIFABonusPool as tradeIFABonusPoolCore,
   accrueServiceTimeDay as accrueServiceTimeDayCore,
   lockRule5ProtectionAudit as lockRule5ProtectionAuditCore,
@@ -120,6 +121,9 @@ import {
   type Rule5Selection,
   type Rule5SessionState,
 } from '@mbd/sim-core';
+import { detectArbitrationMoments } from '../../../../packages/sim-core/src/moments/arbitrationMoments.js';
+import { generateArbitrationPressConference } from '../../../../packages/sim-core/src/narrative/arbitrationPressConferences.js';
+import { generateHoldoutBriefing } from '../../../../packages/sim-core/src/narrative/holdoutCoverage.js';
 import type {
   GeneratedPlayer,
   PlayoffPreviewSeries as CorePlayoffPreviewSeries,
@@ -1631,6 +1635,42 @@ function appendArbitrationTickerEntries(
     200,
     absoluteDay(s.season, s.day),
   );
+}
+
+function absoluteMomentDay(moment: Pick<SignatureMoment, 'season' | 'day' | 'timestamp'>): number {
+  if (typeof moment.day === 'number') {
+    return (moment.season * 1000) + moment.day;
+  }
+
+  if (typeof moment.timestamp === 'string') {
+    const match = /^S(\d+)D(\d+)$/.exec(moment.timestamp);
+    if (match) {
+      return (Number(match[1]) * 1000) + Number(match[2]);
+    }
+  }
+
+  return moment.season * 1000;
+}
+
+function compareSignatureMomentRecency(left: SignatureMoment, right: SignatureMoment): number {
+  return absoluteMomentDay(right) - absoluteMomentDay(left)
+    || right.relevance - left.relevance
+    || left.type.localeCompare(right.type);
+}
+
+function appendArbitrationMoments(
+  s: FullGameState,
+  playerId: string,
+  nextMoments: SignatureMoment[],
+) {
+  if (nextMoments.length === 0) {
+    return;
+  }
+
+  const merged = [...(s.playerMoments.get(playerId) ?? []), ...nextMoments]
+    .sort(compareSignatureMomentRecency)
+    .slice(0, MAX_MOMENTS_PER_PLAYER);
+  s.playerMoments.set(playerId, merged);
 }
 
 function formatYears(years: number): string {
@@ -3792,6 +3832,7 @@ function applyArbitrationResultsOnce(s: FullGameState) {
     s.offseasonState.phaseResults.arbitrationResolved.map((entry) => entry.playerId),
   );
   const tickerEntries: TickerEntry[] = [];
+  const newsEntries: NewsItem[] = [];
   const timestamp = `S${s.season}D${s.day}`;
 
   for (const player of s.players) {
@@ -3855,6 +3896,35 @@ function applyArbitrationResultsOnce(s: FullGameState) {
         expiresDay: absoluteDay(s.season, s.day) + 21,
       });
 
+      appendArbitrationMoments(
+        s,
+        player.id,
+        detectArbitrationMoments([player], {
+          season: s.season,
+          day: s.day,
+        }).map(({ moment }) => moment),
+      );
+
+      const pressConference = generateArbitrationPressConference({
+        player,
+        season: s.season,
+        teamId,
+        teamName,
+        gmPersonality: s.gmPersonalities.get(teamId) ?? 'analytical',
+        moraleScore: s.playerMorale.get(player.id)?.score ?? 50,
+      });
+      newsEntries.push({
+        id: pressConference.id,
+        headline: pressConference.headline,
+        body: pressConference.body,
+        priority: pressConference.priority,
+        category: 'arbitration',
+        timestamp,
+        relatedPlayerIds: [player.id],
+        relatedTeamIds: [teamId],
+        read: false,
+      });
+
       const holdout = evaluateHoldout(
         arbitrationCase,
         s.playerMorale.get(player.id)?.score ?? 50,
@@ -3891,12 +3961,36 @@ function applyArbitrationResultsOnce(s: FullGameState) {
           relatedPlayerIds: [player.id],
           expiresDay: absoluteDay(s.season, s.day) + 21,
         });
+
+        const holdoutBriefing = generateHoldoutBriefing({
+          player,
+          season: s.season,
+          day: s.day,
+          teamName,
+          moraleScore: s.playerMorale.get(player.id)?.score ?? 50,
+        });
+        if (holdoutBriefing) {
+          newsEntries.push({
+            id: holdoutBriefing.id,
+            headline: holdoutBriefing.headline,
+            body: holdoutBriefing.body,
+            priority: holdoutBriefing.priority,
+            category: 'holdout',
+            timestamp,
+            relatedPlayerIds: [player.id],
+            relatedTeamIds: [teamId],
+            read: false,
+          });
+        }
       }
       resolvedIds.add(player.id);
     }
   }
 
   appendArbitrationTickerEntries(s, tickerEntries);
+  if (newsEntries.length > 0) {
+    s.news = deduplicateNews([...newsEntries, ...s.news]);
+  }
 }
 
 function applyTenderDecisionsOnce(s: FullGameState) {

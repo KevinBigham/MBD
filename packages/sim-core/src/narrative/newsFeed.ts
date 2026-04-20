@@ -35,6 +35,8 @@ export type NewsCategory =
   | 'award'
   | 'record'
   | 'playoff'
+  | 'arbitration'
+  | 'holdout'
   | 'press_conference'
   | 'league_event';
 
