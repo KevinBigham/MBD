@@ -1,6 +1,11 @@
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { GMPersonality } from '../trade/tradeAI.js';
-import { detectTradeMoments, type TradeDetectedMoment } from '../moments/tradeMoments.js';
+import {
+  detectTradeMoments,
+  detectDeadlineIdentityMoments,
+  type DeadlineIdentityDetectedMoment,
+  type TradeDetectedMoment,
+} from '../moments/tradeMoments.js';
 import { isTradeDeadlineModeDay } from '../sim/calendar.js';
 import type { PressConferenceTopicCategory } from './pressConferences.js';
 
@@ -39,6 +44,7 @@ export interface TradeDeadlinePressConference {
 
 export interface TradeBroadcastCoverage {
   moments: TradeDetectedMoment[];
+  identityMoments: DeadlineIdentityDetectedMoment[];
   pressConference: TradeDeadlinePressConference;
   relatedPlayerIds: string[];
   relatedTeamIds: string[];
@@ -176,12 +182,21 @@ export function buildTradeBroadcastCoverage(
     .map((player) => player.id)
     .sort((left, right) => left.localeCompare(right));
 
+  const hasBlockbusterPlayers = isBlockbusterTrade(context);
+
   return {
     moments: detectTradeMoments({
       season: context.season,
       day: context.day,
       movedPlayers: context.movedPlayers,
       acquiredPlayers: context.acquiredPlayers,
+    }),
+    identityMoments: detectDeadlineIdentityMoments({
+      season: context.season,
+      day: context.day,
+      sellerTeamId: context.sellerTeamId,
+      buyerTeamId: context.buyerTeamId,
+      hasBlockbusterPlayers,
     }),
     pressConference: generateTradeDeadlinePressConference(context),
     relatedPlayerIds,

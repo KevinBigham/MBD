@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { GeneratedPlayer } from '../src/player/generation.js';
 import type { GMPersonality } from '../src/trade/tradeAI.js';
-import { generateTradeDeadlinePressConference } from '../src/narrative/tradeDeadlinePressConferences.js';
+import {
+  buildTradeBroadcastCoverage,
+  generateTradeDeadlinePressConference,
+} from '../src/narrative/tradeDeadlinePressConferences.js';
 
 function createPlayer(overrides: Partial<GeneratedPlayer> = {}): GeneratedPlayer {
   return {
@@ -184,5 +187,60 @@ describe('generateTradeDeadlinePressConference', () => {
       expect(conference.body).not.toContain('undefined');
       expect(generateTradeDeadlinePressConference(context)).toEqual(conference);
     }
+  });
+});
+
+describe('buildTradeBroadcastCoverage', () => {
+  it('emits paired deadline_seller and deadline_buyer team moments for a July blockbuster', () => {
+    const coverage = buildTradeBroadcastCoverage(createContext());
+
+    expect(coverage.identityMoments).toHaveLength(2);
+    const byTeam = new Map(coverage.identityMoments.map((entry) => [entry.teamId, entry.moment]));
+    expect(byTeam.get('sd')?.type).toBe('deadline_seller');
+    expect(byTeam.get('lad')?.type).toBe('deadline_buyer');
+    expect(byTeam.get('sd')?.impact).toBeGreaterThan(0);
+    expect(byTeam.get('lad')?.impact).toBeGreaterThan(0);
+  });
+
+  it('omits deadline identity moments for routine swaps that never cross the blockbuster bar', () => {
+    const coverage = buildTradeBroadcastCoverage(createContext({
+      movedPlayers: [createPlayer({
+        id: 'player-moderate-out',
+        overallRating: 274,
+        contract: {
+          years: 2,
+          annualSalary: 8,
+          totalValue: 16,
+          noTradeClause: false,
+          playerOption: false,
+          teamOption: false,
+        },
+      })],
+      acquiredPlayers: [createPlayer({
+        id: 'player-moderate-in',
+        overallRating: 276,
+        contract: {
+          years: 3,
+          annualSalary: 5,
+          totalValue: 15,
+          noTradeClause: false,
+          playerOption: false,
+          teamOption: false,
+        },
+      })],
+    }));
+
+    expect(coverage.identityMoments).toEqual([]);
+  });
+
+  it('omits deadline identity moments outside the July trade deadline window', () => {
+    const coverage = buildTradeBroadcastCoverage(createContext({ day: 45 }));
+
+    expect(coverage.identityMoments).toEqual([]);
+  });
+
+  it('stays deterministic for repeated calls with the same context', () => {
+    const context = createContext();
+    expect(buildTradeBroadcastCoverage(context)).toEqual(buildTradeBroadcastCoverage(context));
   });
 });

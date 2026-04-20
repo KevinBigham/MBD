@@ -336,6 +336,7 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     rivalries: seedHistoricalRivalries(new Map()),
     tickerFeed: [],
     playerMoments: new Map(),
+    teamMoments: new Map(),
     playerNicknames: new Map(),
     playerStoryArcs: [],
     prospectBonds: [],

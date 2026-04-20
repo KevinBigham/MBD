@@ -297,6 +297,7 @@ const OwnerStateEntrySchema = z.tuple([z.string(), OwnerStateSchema]);
 const RivalryEntrySchema = z.tuple([z.string(), RivalrySchema]);
 const PlayerOriginEntrySchema = z.tuple([z.string(), PlayerOriginSchema]);
 const PlayerMomentEntrySchema = z.tuple([z.string(), z.array(SignatureMomentSchema)]);
+const TeamMomentEntrySchema = z.tuple([z.string(), z.array(SignatureMomentSchema)]);
 const PlayerNicknameEntrySchema = z.tuple([z.string(), PlayerNicknameStateSchema]);
 const GMRelationshipEntrySchema = z.tuple([z.string(), GMRelationshipSchema]);
 
@@ -309,6 +310,7 @@ export const NarrativeSnapshotSchema = z.object({
   rivalries: z.array(RivalryEntrySchema),
   tickerFeed: z.array(TickerEntrySchema).default([]),
   playerMoments: z.array(PlayerMomentEntrySchema).default([]),
+  teamMoments: z.array(TeamMomentEntrySchema).default([]),
   playerNicknames: z.array(PlayerNicknameEntrySchema).default([]),
   playerStoryArcs: z.array(PlayerStoryArcSchema).default([]),
   prospectBonds: z.array(ProspectBondSchema).default([]),
@@ -349,9 +351,14 @@ export type NarrativeSnapshot = z.infer<typeof NarrativeSnapshotSchema>;
 
 const NarrativeSnapshotV16Schema = NarrativeSnapshotSchema.omit({
   playerMoments: true,
+  teamMoments: true,
   playerNicknames: true,
   gmRelationships: true,
   leagueEvents: true,
+});
+
+const NarrativeSnapshotV21Schema = NarrativeSnapshotSchema.omit({
+  teamMoments: true,
 });
 
 const LegacyAwardHistoryEntrySchema = z.object({
@@ -491,7 +498,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 21;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 22;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -561,8 +568,9 @@ export type GameSnapshotV17 = z.infer<typeof GameSnapshotV17Schema>;
 
 // v18: Day One franchise shape landed on main (PR for Day One front office hook).
 // Players were still pre-arbitration at v18. SnapshotPlayer arbitration fields
-// landed in v19, arbitration broadcast enum additions landed in v20, and the
-// trade deadline broadcast enum additions land in v21.
+// landed in v19, arbitration broadcast enum additions landed in v20, the trade
+// deadline broadcast enum additions landed in v21, and the team-identity moment
+// store landed in v22.
 export const GameSnapshotV18Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(18),
   players: z.array(SnapshotPlayerV17Schema),
@@ -578,6 +586,12 @@ export const GameSnapshotV20Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(20),
 });
 export type GameSnapshotV20 = z.infer<typeof GameSnapshotV20Schema>;
+
+export const GameSnapshotV21Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(21),
+  narrative: NarrativeSnapshotV21Schema,
+});
+export type GameSnapshotV21 = z.infer<typeof GameSnapshotV21Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -2354,6 +2368,7 @@ function migrateGameSnapshotV15(snapshot: GameSnapshotV15): GameSnapshot {
     narrative: {
       ...snapshot.narrative,
       playerMoments: [],
+      teamMoments: [],
       playerNicknames: [],
       gmRelationships: [],
       leagueEvents: [],
@@ -2385,6 +2400,7 @@ function migrateGameSnapshotV16(snapshot: GameSnapshotV16): GameSnapshot {
     narrative: {
       ...snapshot.narrative,
       playerMoments: [],
+      teamMoments: [],
       playerNicknames: [],
       gmRelationships: [],
       leagueEvents: [],
@@ -2430,9 +2446,9 @@ function migrateGameSnapshotV17(snapshot: GameSnapshotV17): GameSnapshot {
   });
 }
 
-// v18 -> v21: add arbitration history, holdout state, and super-two flag to every
-// player, then carry the additive arbitration/trade-deadline enums through to the
-// latest schema version.
+// v18 -> v22: add arbitration history, holdout state, and super-two flag to every
+// player, then carry the additive arbitration/trade-deadline enums and the
+// team-identity moment store through to the latest schema version.
 function migrateGameSnapshotV18(snapshot: GameSnapshotV18): GameSnapshot {
   const migrated = GameSnapshotSchema.parse({
     ...snapshot,
@@ -2473,6 +2489,32 @@ function migrateGameSnapshotV20(snapshot: GameSnapshotV20): GameSnapshot {
   const migrated = GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      teamMoments: [],
+    },
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
+// v21 -> v22: add the team-identity moment store (empty by default). Used to
+// persist deadline_seller / deadline_buyer moments emitted from the trade
+// deadline broadcast slice, parallel to the existing playerMoments map.
+function migrateGameSnapshotV21(snapshot: GameSnapshotV21): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      teamMoments: [],
+    },
   });
 
   return GameSnapshotSchema.parse({
@@ -2510,6 +2552,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 21
+  ) {
+    return migrateGameSnapshotV21(GameSnapshotV21Schema.parse(snapshotLike));
   }
 
   if (
