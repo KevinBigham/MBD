@@ -20,6 +20,16 @@ function compareSource(left: PressRoomSource, right: PressRoomSource): number {
   return priority[left] - priority[right];
 }
 
+function inferNewsSource(item: FullGameState['news'][number]): PressRoomSource {
+  if (item.category === 'press_conference' || item.id.startsWith('press-conference-')) {
+    return 'press_conference';
+  }
+  if (item.id.startsWith('briefing-')) {
+    return 'briefing';
+  }
+  return 'league_wire';
+}
+
 function deriveTag(entry: {
   category: string;
   priority: number;
@@ -188,7 +198,7 @@ export function buildPressRoomFeed(
 
   const newsEntries: PressRoomEntry[] = state.news.map((item) => ({
     id: item.id,
-    source: item.category === 'press_conference' ? 'press_conference' : 'league_wire',
+    source: inferNewsSource(item),
     category: item.category,
     tag: deriveTag({
       category: item.category,

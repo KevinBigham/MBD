@@ -2409,6 +2409,43 @@ describe('sim worker narrative APIs', () => {
     expect(observed?.holdoutTicker).toContain('Rafael Devers holding out');
   });
 
+  it('publishes arbitration broadcast news and signature moments when hearings resolve', () => {
+    startGame(433, 'nym');
+    const state = requireState();
+    const arbCandidate = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB');
+
+    expect(arbCandidate).toBeTruthy();
+
+    arbCandidate!.firstName = 'Juan';
+    arbCandidate!.lastName = 'Soto';
+    arbCandidate!.contract.annualSalary = 7.8;
+    arbCandidate!.serviceTimeDays = 690;
+    state.serviceTime.set(arbCandidate!.id, 4);
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'arbitration',
+      phaseDay: 7,
+      totalDay: 10,
+    };
+    state.news = [];
+
+    api.advanceOffseason();
+
+    const updatedState = requireState();
+    const moments = updatedState.playerMoments.get(arbCandidate!.id) ?? [];
+    const pressConference = updatedState.news.find((item) =>
+      item.id.startsWith(`press-conference-arbitration-${arbCandidate!.id}-`)
+      && item.category === 'arbitration',
+    );
+
+    expect(moments.some((moment) =>
+      ['arbitration_win', 'arbitration_loss'].includes(moment.type),
+    )).toBe(true);
+    expect(pressConference).toBeTruthy();
+    expect(pressConference?.headline).toContain('Juan Soto');
+  });
+
   it('fast-forwards AI free agency, records rival signings, and emits press coverage', () => {
     startGame(334, 'nym');
     const state = requireState();
@@ -4360,6 +4397,49 @@ describe('sim worker narrative APIs', () => {
       }),
     ]);
     expect(feed.some((entry) => entry.id === 'brief-news-breaker')).toBe(false);
+  });
+
+  it('projects arbitration pressers and holdout briefings into the correct press room desks', () => {
+    startGame(7811, 'nym');
+    const state = requireState();
+    state.news = [
+      {
+        id: 'press-conference-arbitration-player-1-5-12',
+        headline: 'Juan Soto arbitration fallout sets the room on edge',
+        body: 'The GM defended the filing while the agent pushed back on the public framing.',
+        priority: 2,
+        category: 'arbitration',
+        timestamp: 'S5D12',
+        relatedPlayerIds: ['player-1'],
+        relatedTeamIds: ['nym'],
+        read: false,
+      },
+      {
+        id: 'briefing-holdout-player-2-5-12',
+        headline: 'Rafael Devers holdout pressure is climbing in Boston',
+        body: 'Clubhouse frustration is starting to leak into the daily briefings.',
+        priority: 2,
+        category: 'holdout',
+        timestamp: 'S5D12',
+        relatedPlayerIds: ['player-2'],
+        relatedTeamIds: ['bos'],
+        read: false,
+      },
+    ];
+    state.briefingQueue = [];
+
+    const feed = api.getPressRoomFeed();
+
+    expect(feed).toContainEqual(expect.objectContaining({
+      id: 'press-conference-arbitration-player-1-5-12',
+      source: 'press_conference',
+      category: 'arbitration',
+    }));
+    expect(feed).toContainEqual(expect.objectContaining({
+      id: 'briefing-holdout-player-2-5-12',
+      source: 'briefing',
+      category: 'holdout',
+    }));
   });
 
   it('defaults press room feed to the newest 100 entries', () => {

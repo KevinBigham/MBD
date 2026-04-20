@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { parseGameSnapshot } from '@mbd/contracts';
+import { CURRENT_GAME_SNAPSHOT_VERSION, parseGameSnapshot } from '@mbd/contracts';
 
 function createV17Snapshot() {
   return {
@@ -150,7 +150,7 @@ describe('snapshot Day One migration', () => {
   it('migrates v17 saves to current schema with a completed Day One state', () => {
     const migrated = parseGameSnapshot(createV17Snapshot());
 
-    expect(migrated.schemaVersion).toBe(19);
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(migrated.franchise.dayOne.status).toBe('complete');
     expect(migrated.franchise.dayOne.currentStep).toBe('complete');
     expect(migrated.franchise.dayOne.selectedAGMId).toBe('marcus_chen');
