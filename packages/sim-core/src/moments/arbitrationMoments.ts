@@ -4,8 +4,14 @@ import type { Moment, MomentRound } from './momentDetector.js';
 const ARBITRATION_WIN_IMPACT = 28;
 const ARBITRATION_LOSS_IMPACT = -20;
 const SUPER_TWO_DEBUT_IMPACT = 18;
+const HOLDOUT_RESOLUTION_IMPACT = 16;
 
 export interface ArbitrationMomentDetectionContext {
+  season: number;
+  day: number;
+}
+
+export interface HoldoutResolutionDetectionContext {
   season: number;
   day: number;
 }
@@ -105,6 +111,45 @@ export function detectArbitrationMoments(
         ),
       });
     }
+  }
+
+  return detected;
+}
+
+function formatDays(days: number): string {
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
+/**
+ * Detect holdout_resolution moments for players who carry an active holdoutState
+ * into a new arbitration cycle. Emit this BEFORE the cycle clears holdoutState
+ * so the resolution beat captures last offseason's dispute.
+ *
+ * Output is sorted by playerId for determinism.
+ */
+export function detectHoldoutResolutions(
+  players: readonly GeneratedPlayer[],
+  context: HoldoutResolutionDetectionContext,
+): ArbitrationDetectedMoment[] {
+  const detected: ArbitrationDetectedMoment[] = [];
+
+  for (const player of [...players].sort((left, right) => left.id.localeCompare(right.id))) {
+    const holdout = player.holdoutState;
+    if (!holdout) {
+      continue;
+    }
+
+    const name = playerName(player);
+    detected.push({
+      playerId: player.id,
+      moment: createMoment(
+        'holdout_resolution',
+        `${name} closed a ${formatDays(holdout.holdoutDays)} holdout (${formatMoney(holdout.salaryGap)} gap) and reported back to camp.`,
+        HOLDOUT_RESOLUTION_IMPACT,
+        context.season,
+        context.day,
+      ),
+    });
   }
 
   return detected;
