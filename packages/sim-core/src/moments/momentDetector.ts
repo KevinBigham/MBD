@@ -50,7 +50,11 @@ export type MomentType =
   | 'arbitration_win'
   | 'arbitration_loss'
   | 'super_two_debut'
-  | 'holdout_resolution';
+  | 'holdout_resolution'
+  | 'blockbuster_trade_moved'
+  | 'blockbuster_trade_acquired'
+  | 'deadline_seller'
+  | 'deadline_buyer';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -125,6 +129,10 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'arbitration_loss',
   'super_two_debut',
   'holdout_resolution',
+  'blockbuster_trade_moved',
+  'blockbuster_trade_acquired',
+  'deadline_seller',
+  'deadline_buyer',
 ];
 
 const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -199,6 +207,18 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   ],
   holdout_resolution: [
     '{player} ended the holdout.',
+  ],
+  blockbuster_trade_moved: [
+    '{player} was moved in a blockbuster trade.',
+  ],
+  blockbuster_trade_acquired: [
+    '{player} arrived in a blockbuster return.',
+  ],
+  deadline_seller: [
+    '{player} became the face of a deadline sell signal.',
+  ],
+  deadline_buyer: [
+    '{player} became the face of a deadline buy signal.',
   ],
 };
 
