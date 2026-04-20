@@ -22,6 +22,8 @@ export const PRESS_CONFERENCE_TOPIC_CATEGORIES = [
   'COACHING_CHANGE',
   'ALL_STAR_BREAK',
   'CONTROVERSY',
+  'ARBITRATION',
+  'HOLDOUT',
 ] as const;
 
 export type PressConferenceTopicCategory = (typeof PRESS_CONFERENCE_TOPIC_CATEGORIES)[number];
@@ -158,6 +160,8 @@ const TOPIC_ID_BY_CATEGORY: Record<PressConferenceTopicCategory, string> = {
   COACHING_CHANGE: 'coaching-change',
   ALL_STAR_BREAK: 'all-star-break',
   CONTROVERSY: 'controversy',
+  ARBITRATION: 'arbitration',
+  HOLDOUT: 'holdout',
 };
 
 const ROLE_COMPETITION_WEIGHT = 3;

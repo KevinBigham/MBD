@@ -66,6 +66,12 @@ export {
   selectPressConferenceTopic,
 } from './pressConferences.js';
 export {
+  generateArbitrationPressConference,
+} from './arbitrationPressConferences.js';
+export {
+  generateHoldoutBriefing,
+} from './holdoutCoverage.js';
+export {
   generateOffseasonHeadline,
   generateSeasonRecapNarrative,
 } from './offseasonRecap.js';
@@ -157,6 +163,14 @@ export type {
   EnhancedPressConference,
   PressConferenceOutcome,
 } from './pressConferences.js';
+export type {
+  ArbitrationPressConferenceContext,
+  ArbitrationPressConference,
+} from './arbitrationPressConferences.js';
+export type {
+  HoldoutCoverageContext,
+  HoldoutBriefing,
+} from './holdoutCoverage.js';
 export type {
   LeagueEventType,
   LeagueEventTeamSnapshot,
