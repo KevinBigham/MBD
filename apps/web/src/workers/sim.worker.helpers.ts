@@ -121,7 +121,10 @@ import {
   type Rule5Selection,
   type Rule5SessionState,
 } from '@mbd/sim-core';
-import { detectArbitrationMoments } from '../../../../packages/sim-core/src/moments/arbitrationMoments.js';
+import {
+  detectArbitrationMoments,
+  detectHoldoutResolutions,
+} from '../../../../packages/sim-core/src/moments/arbitrationMoments.js';
 import { generateArbitrationPressConference } from '../../../../packages/sim-core/src/narrative/arbitrationPressConferences.js';
 import { generateHoldoutBriefing } from '../../../../packages/sim-core/src/narrative/holdoutCoverage.js';
 import type {
@@ -3834,6 +3837,14 @@ function applyArbitrationResultsOnce(s: FullGameState) {
   const tickerEntries: TickerEntry[] = [];
   const newsEntries: NewsItem[] = [];
   const timestamp = `S${s.season}D${s.day}`;
+
+  const holdoutResolutions = detectHoldoutResolutions(s.players, {
+    season: s.season,
+    day: s.day,
+  });
+  for (const { playerId, moment } of holdoutResolutions) {
+    appendArbitrationMoments(s, playerId, [moment]);
+  }
 
   for (const player of s.players) {
     player.superTwoQualified = qualifiesForSuperTwo(player, s.players);
