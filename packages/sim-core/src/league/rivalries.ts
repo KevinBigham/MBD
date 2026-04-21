@@ -29,6 +29,12 @@ export interface RivalryDefectionContext {
   starScore: number;
 }
 
+export interface ComputedRivalryIntensityContext {
+  readonly rivalry: Rivalry | null;
+  readonly currentSeasonTeamMomentCount?: number;
+  readonly currentSeasonPlayerMomentCount?: number;
+}
+
 const HISTORICAL_RIVALRIES: Array<{
   teamA: string;
   teamB: string;
@@ -470,4 +476,36 @@ export function rivalryGameModifier(
 
   const chemistryTilt = (Math.max(0, Math.min(100, chemistryScore)) - 50) / 50;
   return Number((chemistryTilt * (rivalry.intensity / 100) * 0.012).toFixed(4));
+}
+
+export function computeRivalryIntensityScore(
+  context: ComputedRivalryIntensityContext,
+): number {
+  const rivalry = context.rivalry;
+  if (!rivalry) {
+    return 0;
+  }
+
+  const currentSeasonWinsA = rivalry.currentSeasonWinsA ?? 0;
+  const currentSeasonWinsB = rivalry.currentSeasonWinsB ?? 0;
+  const gamesPlayed = currentSeasonWinsA + currentSeasonWinsB;
+  const headToHeadGap = Math.abs(currentSeasonWinsA - currentSeasonWinsB);
+  const tightnessBonus = gamesPlayed === 0
+    ? 0
+    : Math.max(0, Math.min(18, gamesPlayed * 2.5) - (headToHeadGap * 3));
+  const playoffBonus = Math.min(20, (rivalry.playoffSeriesStreak ?? 0) * 6);
+  const closeRaceBonus = Math.min(15, (rivalry.closeRaceStreak ?? 0) * 4);
+  const eventHistoryBonus = Math.min(10, (rivalry.eventHistory?.length ?? 0) * 1.5);
+  const teamMomentBonus = Math.min(12, (context.currentSeasonTeamMomentCount ?? 0) * 3);
+  const playerMomentBonus = Math.min(12, (context.currentSeasonPlayerMomentCount ?? 0) * 2);
+
+  return clampIntensity(
+    (rivalry.intensity * 0.55)
+    + tightnessBonus
+    + playoffBonus
+    + closeRaceBonus
+    + eventHistoryBonus
+    + teamMomentBonus
+    + playerMomentBonus,
+  );
 }

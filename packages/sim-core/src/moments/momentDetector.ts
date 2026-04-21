@@ -21,6 +21,7 @@ export const MILESTONE_300_WIN_IMPACT = 95;
 export const BLOWN_WS_SAVE_IMPACT = -85;
 export const CYCLE_IMPACT = 70;
 export const TWENTY_K_GAME_IMPACT = 88;
+export const BENCH_CLEARING_BRAWL_IMPACT = 40;
 export const PLAYOFF_WALK_OFF_BONUS = 15;
 export const WORLD_SERIES_CLINCHER_BONUS = 10;
 export const PRESSURE_CLUTCH_BONUS = 10;
@@ -35,6 +36,10 @@ export const MILESTONE_3000_HIT_THRESHOLD = 3000;
 export const MILESTONE_300_WIN_THRESHOLD = 300;
 export const WORLD_SERIES_CLUTCH_DURATION_SEASONS = 2;
 export const SCARRED_DURATION_SEASONS = 1;
+export const BENCH_CLEARING_BRAWL_INTENSITY_THRESHOLD = 70;
+export const BENCH_CLEARING_BRAWL_HBP_THRESHOLD = 2;
+export const BENCH_CLEARING_BRAWL_MIN_INNING = 7;
+export const BENCH_CLEARING_BRAWL_MAX_SCORE_MARGIN = 2;
 
 export type MomentType =
   | 'walk_off_hr'
@@ -102,6 +107,7 @@ export interface MomentDetectionContext {
   blownSavePitcherId: string | null;
   playerNameById?: ReadonlyMap<string, string>;
   awardHistory?: readonly AwardHistoryEntry[];
+  rivalryIntensity?: number;
 }
 
 export interface DetectedMoment {
@@ -362,6 +368,21 @@ function pickDescriptionTemplate(
   return templates[rng.nextInt(0, templates.length - 1)]!;
 }
 
+function ordinalInning(inning: number): string {
+  const remainder10 = inning % 10;
+  const remainder100 = inning % 100;
+  if (remainder10 === 1 && remainder100 !== 11) {
+    return `${inning}st`;
+  }
+  if (remainder10 === 2 && remainder100 !== 12) {
+    return `${inning}nd`;
+  }
+  if (remainder10 === 3 && remainder100 !== 13) {
+    return `${inning}rd`;
+  }
+  return `${inning}th`;
+}
+
 function assignDescriptions(
   pendingMoments: PendingMoment[],
   context: MomentDetectionContext,
@@ -373,6 +394,9 @@ function assignDescriptions(
   ));
 
   for (const pending of sorted) {
+    if (pending.moment.description.length > 0) {
+      continue;
+    }
     const playerName = context.playerNameById?.get(pending.playerId) ?? pending.playerId;
     pending.moment.description = formatMomentDescription(pending.moment, playerName, rng.fork());
   }
@@ -483,6 +507,42 @@ function detectAwardMoments(
       createMomentRecord('first_all_star', FIRST_ALL_STAR_IMPACT, context),
     );
   }
+}
+
+function detectBenchClearingBrawl(
+  gameResult: GameBoxScore,
+  context: MomentDetectionContext,
+  pendingMoments: PendingMoment[],
+  rng: GameRNG,
+): void {
+  if ((context.rivalryIntensity ?? 0) < BENCH_CLEARING_BRAWL_INTENSITY_THRESHOLD) {
+    return;
+  }
+
+  const hitByPitchResults = gameResult.paResults.filter((result) => result.outcome === 'HBP');
+  if (hitByPitchResults.length < BENCH_CLEARING_BRAWL_HBP_THRESHOLD) {
+    return;
+  }
+
+  const lateCloseResult = [...gameResult.paResults]
+    .reverse()
+    .find((result) => (
+      result.inning >= BENCH_CLEARING_BRAWL_MIN_INNING
+      && Math.abs(result.scoreBefore[0] - result.scoreBefore[1]) <= BENCH_CLEARING_BRAWL_MAX_SCORE_MARGIN
+    ));
+  if (!lateCloseResult) {
+    return;
+  }
+
+  const probability = Math.min(0.18, 0.06 + (((context.rivalryIntensity ?? 0) - BENCH_CLEARING_BRAWL_INTENSITY_THRESHOLD) * 0.003));
+  if (rng.nextFloat() >= probability) {
+    return;
+  }
+
+  const instigator = hitByPitchResults[hitByPitchResults.length - 1]!;
+  const moment = createMomentRecord('bench_clearing_brawl', BENCH_CLEARING_BRAWL_IMPACT, context);
+  moment.description = `Benches empty in ${gameResult.homeTeamId.toUpperCase()}: the ${gameResult.awayTeamId.toUpperCase()}-${gameResult.homeTeamId.toUpperCase()} rivalry boils over in the ${ordinalInning(lateCloseResult.inning)}.`;
+  addPendingMoment(pendingMoments, instigator.batterId, moment);
 }
 
 function detectStatMoments(
@@ -612,6 +672,7 @@ export function detectMoment(
   detectStatMoments(gameResult, playerStats, context, pendingMoments);
   detectContextMoments(context, pendingMoments);
   detectAwardMoments(context, pendingMoments);
+  detectBenchClearingBrawl(gameResult, context, pendingMoments, rng.fork());
   assignDescriptions(pendingMoments, context, rng);
 
   const momentsByPlayer = new Map<string, Moment[]>();
