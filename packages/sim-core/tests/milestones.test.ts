@@ -36,6 +36,20 @@ describe('calculateMilestoneProgress', () => {
     });
   });
 
+  it('adds the 2500-hit checkpoint between 2000 and 3000', () => {
+    const progress = calculateMilestoneProgress(
+      createCareerStats({ hits: 2475, hr: 210, rbi: 980, sb: 45, seasonsPlayed: 11 }),
+      11,
+    );
+    const hitsProgress = progress.find((entry) => entry.milestoneId === 'hits');
+
+    expect(hitsProgress).toMatchObject({
+      nextThreshold: 2500,
+      remainingToNext: 25,
+      isApproaching: true,
+    });
+  });
+
   it('excludes stolen-base milestones for pitchers', () => {
     const progress = calculateMilestoneProgress(
       createCareerStats({
@@ -99,6 +113,20 @@ describe('calculateMilestoneProgress', () => {
     expect(progress.map((entry) => entry.milestoneId)).toEqual(['hits', 'hr', 'rbi', 'sb']);
   });
 
+  it('adds the 500-stolen-base checkpoint as the top speed milestone', () => {
+    const progress = calculateMilestoneProgress(
+      createCareerStats({ hits: 1500, hr: 90, rbi: 540, sb: 470, seasonsPlayed: 12 }),
+      12,
+    );
+    const stolenBases = progress.find((entry) => entry.milestoneId === 'sb');
+
+    expect(stolenBases).toMatchObject({
+      nextThreshold: 500,
+      remainingToNext: 30,
+      isApproaching: true,
+    });
+  });
+
   it('keeps pitcher output ordering stable', () => {
     const progress = calculateMilestoneProgress(
       createCareerStats({ isPitcher: true, strikeouts: 900, wins: 75, saves: 120, seasonsPlayed: 5 }),
@@ -158,6 +186,32 @@ describe('getMilestoneAlerts', () => {
     expect(alerts.find((alert) => alert.playerId === 'p1' && alert.threshold === 3000)?.urgency).toBe('imminent');
     expect(alerts.find((alert) => alert.playerId === 'p2' && alert.threshold === 100)?.urgency).toBe('close');
     expect(alerts.find((alert) => alert.playerId === 'p3' && alert.threshold === 300)?.urgency).toBe('approaching');
+  });
+
+  it('emits alerts for the new 2500-hit and 500-stolen-base thresholds', () => {
+    const alerts = getMilestoneAlerts([
+      {
+        id: 'p1',
+        name: 'Table Setter',
+        careerStats: createCareerStats({ hits: 2488, hr: 120, rbi: 640, sb: 120, seasonsPlayed: 11 }),
+        seasonsPlayed: 11,
+      },
+      {
+        id: 'p2',
+        name: 'Speed Demon',
+        careerStats: createCareerStats({ hits: 1600, hr: 80, rbi: 500, sb: 492, seasonsPlayed: 12 }),
+        seasonsPlayed: 12,
+      },
+    ]);
+
+    expect(alerts.find((alert) => alert.playerId === 'p1' && alert.threshold === 2500)).toMatchObject({
+      milestoneLabel: 'Hits',
+      urgency: 'imminent',
+    });
+    expect(alerts.find((alert) => alert.playerId === 'p2' && alert.threshold === 500)).toMatchObject({
+      milestoneLabel: 'Stolen Bases',
+      urgency: 'imminent',
+    });
   });
 
   it('does not emit alerts for already-cleared top thresholds', () => {
