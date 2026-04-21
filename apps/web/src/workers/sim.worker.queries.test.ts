@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SignatureMoment } from '@mbd/contracts';
+import { SEASON_GAMES } from '@mbd/sim-core';
 
 vi.mock('comlink', () => ({
   expose: () => {},
@@ -271,5 +272,172 @@ describe('worker chase watch query', () => {
     expect(chase?.remaining).toBe(50);
     // 50 / 3000 = 1.67% — below the 2% IMMINENT_THRESHOLD_FRACTION floor.
     expect(chase?.urgency).toBe('imminent');
+  });
+});
+
+describe('worker pennant races query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  interface PennantRaceView {
+    season: number;
+    day: number;
+    gamesRemaining: number;
+    divisionRaces: Array<{
+      division: string;
+      divisionLabel: string;
+      leader: { teamId: string; abbreviation: string; name: string; wins: number; losses: number; streak: string };
+      chaser: { teamId: string; abbreviation: string; name: string; wins: number; losses: number; streak: string } | null;
+      gamesBack: number;
+      magicNumber: number | null;
+      heat: 'tight' | 'close' | 'comfortable';
+    }>;
+    wildcardRaces: Array<{
+      league: 'AL' | 'NL';
+      leagueLabel: string;
+      teams: Array<{
+        teamId: string;
+        abbreviation: string;
+        name: string;
+        wins: number;
+        losses: number;
+        gamesBack: number;
+        streak: string;
+        inWildcard: boolean;
+      }>;
+    }>;
+  }
+
+  // Plant a controlled W-L record directly into the standings tracker's private
+  // map. Much cleaner than calling recordGame repeatedly (which inflates both
+  // the winner and the chosen loser, making multi-team scenarios noisy).
+  function plantTeamRecord(
+    state: ReturnType<typeof requireState>,
+    teamId: string,
+    wins: number,
+    losses: number,
+    streak: number = 0,
+  ): void {
+    const tracker = state.seasonState.standings as unknown as {
+      records: Map<string, {
+        teamId: string;
+        wins: number;
+        losses: number;
+        runsScored: number;
+        runsAllowed: number;
+        streak: number;
+        last10: [number, number];
+        divisionWins: number;
+        divisionLosses: number;
+      }>;
+    };
+    tracker.records.set(teamId, {
+      teamId,
+      wins,
+      losses,
+      runsScored: 0,
+      runsAllowed: 0,
+      streak,
+      last10: [0, 0],
+      divisionWins: 0,
+      divisionLosses: 0,
+    });
+  }
+
+  it('returns a pennant race view with season/day plus division + wildcard arrays', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 60, 30);
+    plantTeamRecord(state, 'phi', 55, 35);
+
+    const workerApi = api as typeof api & { getPennantRaces: () => PennantRaceView };
+    const view = workerApi.getPennantRaces();
+
+    expect(view.season).toBe(state.season);
+    expect(view.day).toBe(state.day);
+    expect(typeof view.gamesRemaining).toBe('number');
+    expect(Array.isArray(view.divisionRaces)).toBe(true);
+    expect(Array.isArray(view.wildcardRaces)).toBe(true);
+  });
+
+  it('is deterministic — two calls against the same state return the same view', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 60, 30);
+    plantTeamRecord(state, 'phi', 58, 32);
+
+    const workerApi = api as typeof api & { getPennantRaces: () => PennantRaceView };
+    const first = workerApi.getPennantRaces();
+    const second = workerApi.getPennantRaces();
+
+    expect(second).toEqual(first);
+  });
+
+  it('drops comfortable blowouts and keeps only tight/close divisional races', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    // AL_EAST: nym 60-30 vs phi 58-32 — 2 GB (tight)
+    plantTeamRecord(state, 'nym', 60, 30);
+    plantTeamRecord(state, 'phi', 58, 32);
+    // AL_CENTRAL: chi 60-30 vs det 40-50 — 20 GB (comfortable blowout)
+    plantTeamRecord(state, 'chi', 60, 30);
+    plantTeamRecord(state, 'det', 40, 50);
+
+    const workerApi = api as typeof api & { getPennantRaces: () => PennantRaceView };
+    const view = workerApi.getPennantRaces();
+
+    const divisions = view.divisionRaces.map((race) => race.division);
+    expect(divisions).toContain('AL_EAST');
+    expect(divisions).not.toContain('AL_CENTRAL');
+  });
+
+  it('computes magic number from the standard MLB formula (season - leaderWins - chaserLosses + 1)', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 80, 40);
+    plantTeamRecord(state, 'phi', 78, 42);
+
+    const workerApi = api as typeof api & { getPennantRaces: () => PennantRaceView };
+    const view = workerApi.getPennantRaces();
+
+    const alEast = view.divisionRaces.find((race) => race.division === 'AL_EAST');
+    expect(alEast).toBeDefined();
+    expect(alEast?.leader.teamId).toBe('nym');
+    expect(alEast?.chaser?.teamId).toBe('phi');
+    expect(alEast?.magicNumber).toBe(SEASON_GAMES - 80 - 42 + 1);
+  });
+
+  it('gates early-season output with empty races when no team has reached 10 games played', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 5, 3);
+    plantTeamRecord(state, 'phi', 3, 5);
+
+    const workerApi = api as typeof api & { getPennantRaces: () => PennantRaceView };
+    const view = workerApi.getPennantRaces();
+
+    expect(view.divisionRaces).toEqual([]);
+    expect(view.wildcardRaces).toEqual([]);
+  });
+
+  it('surfaces league-wide coverage across both AL and NL division races', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    // AL_EAST tight
+    plantTeamRecord(state, 'nym', 55, 35);
+    plantTeamRecord(state, 'phi', 54, 36);
+    // NL_WEST tight
+    plantTeamRecord(state, 'lax', 55, 35);
+    plantTeamRecord(state, 'sfb', 54, 36);
+
+    const workerApi = api as typeof api & { getPennantRaces: () => PennantRaceView };
+    const view = workerApi.getPennantRaces();
+
+    const divisions = view.divisionRaces.map((race) => race.division);
+    const leagues = new Set(divisions.map((div) => div.split('_')[0]));
+    expect(leagues.has('AL')).toBe(true);
+    expect(leagues.has('NL')).toBe(true);
   });
 });

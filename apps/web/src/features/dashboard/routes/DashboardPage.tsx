@@ -34,6 +34,7 @@ const Sparkline = lazy(() => import('@/shared/components/charts/Sparkline'));
 const GameAdvisor = lazy(() => import('../components/GameAdvisor'));
 const MilestoneTrackerCard = lazy(() => import('../components/MilestoneTrackerCard'));
 const ChaseWatchCard = lazy(() => import('../components/ChaseWatchCard'));
+const PennantRaceCard = lazy(() => import('../components/PennantRaceCard'));
 const RecentMomentsCard = lazy(() => import('../components/RecentMomentsCard'));
 const FranchiseLegacyCard = lazy(() => import('../components/FranchiseLegacyCard'));
 
@@ -739,6 +740,9 @@ export default function DashboardPage() {
           </Suspense>
           <Suspense fallback={<CardFallback title="Chase Watch" />}>
             <ChaseWatchCard />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Pennant Race Heat" />}>
+            <PennantRaceCard />
           </Suspense>
           <Suspense fallback={<CardFallback title="Signature Moments" />}>
             <RecentMomentsCard />

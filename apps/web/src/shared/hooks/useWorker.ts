@@ -819,6 +819,7 @@ export function useWorker() {
   const getTradeDeadlineDrama = useCallback(async () => api.getTradeDeadlineDrama(), [api]);
   const getMilestoneTrackerAlerts = useCallback(async () => api.getMilestoneTrackerAlerts(), [api]);
   const getChaseWatch = useCallback(async () => api.getChaseWatch(), [api]);
+  const getPennantRaces = useCallback(async () => api.getPennantRaces(), [api]);
   const getFreeAgencyMarketIntelligence = useCallback(async () => api.getFreeAgencyMarketIntelligence(), [api]);
 
   // Round 3 API integration
@@ -965,7 +966,7 @@ export function useWorker() {
     getSpringTrainingView,
     toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
     getEnhancedPressConference, respondToEnhancedPressConference, getCoachingChemistry, getMentorships, getScenarioObjectivesView,
-    getTradeDeadlineDrama, getMilestoneTrackerAlerts, getChaseWatch, getFreeAgencyMarketIntelligence,
+    getTradeDeadlineDrama, getMilestoneTrackerAlerts, getChaseWatch, getPennantRaces, getFreeAgencyMarketIntelligence,
     getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
     getBreakoutIntelligence, getProspectBreakoutWatch, getScoutConsensus, getPlayoffMomentum,
     getDayOneSession, advanceDayOneIntro, chooseDayOneAGM, advanceDayOneOrgReview, setDayOneSeasonGoal, setDayOneBudgetAllocation, setDayOneOpeningPlan, setDayOneDevelopmentPlan, resolveDayOneCrisis, finishDayOne,

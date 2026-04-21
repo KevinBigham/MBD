@@ -32,7 +32,13 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // a single dashboard payload. Pure wiring of existing helpers, no new sim
 // logic. Story chunk landed 547 bytes over the 411 KB ceiling; gzip held
 // under cap (~125 KB actual vs 126 KB ceiling) so only raw moves.
-export const WORKER_CHUNK_BUDGET_BYTES = 412 * 1024;
+// WORKER raw: bumped 412 -> 414 KB for the pennant-race-heat query slice.
+// Adds getPennantRaces with division race + wildcard bubble computations
+// plus inline DivisionRace/WildcardRace types. Story chunk landed ~1 KB
+// over the 413 KB stack when combined with Chase Watch growth; gzip held
+// well under cap (~126 KB actual) — wire cost unchanged, raw ceiling only.
+// No new sim-core changes.
+export const WORKER_CHUNK_BUDGET_BYTES = 414 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 126 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
