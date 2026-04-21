@@ -38,6 +38,11 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // over the 413 KB stack when combined with Chase Watch growth; gzip held
 // well under cap (~126 KB actual) — wire cost unchanged, raw ceiling only.
 // No new sim-core changes.
+// WORKER raw: award race boards slice — adds getAwardRaceBoards
+// (league-split + sample-size-filtered enrichment around the existing
+// calculateAwardRaces scorer) into the story chunk. Absorbed within the
+// current 414 KB ceiling from the pennant-race stack; gzip held well under
+// cap (~126 KB actual vs 126 KB ceiling) — no new sim-core changes.
 export const WORKER_CHUNK_BUDGET_BYTES = 414 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 126 * 1024;
 
