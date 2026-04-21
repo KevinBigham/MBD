@@ -884,6 +884,159 @@ function teamNameFromId(teamId: string): string {
   return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
 }
 
+const AWARD_CATEGORY_KEYS = ['MVP', 'CY_YOUNG', 'ROY', 'GOLD_GLOVE', 'SILVER_SLUGGER', 'All-Star'] as const;
+
+function buildCareerRetrospective(s: NonNullable<typeof state>) {
+  const gm = s.gmCareer;
+  const userTeam = getTeamById(s.userTeamId);
+  const yearsServed = Math.max(1, s.season - gm.hiredSeason + 1);
+  const totalGames = gm.overallRecord.wins + gm.overallRecord.losses;
+  const winPct = totalGames > 0 ? gm.overallRecord.wins / totalGames : 0;
+
+  let pennants = 0;
+  let divisionTitles = 0;
+  let playoffAppearances = 0;
+  const countedDivisionSeasons = new Set<number>();
+
+  for (const entry of s.seasonArchive) {
+    const userStanding = entry.standings.find((standing) => standing.teamId === s.userTeamId);
+    if (userStanding?.divisionRank === 1) {
+      divisionTitles += 1;
+      countedDivisionSeasons.add(entry.season);
+    }
+    const inAnyPlayoff = entry.playoffSeries.some(
+      (series) => series.winnerTeamId === s.userTeamId || series.loserTeamId === s.userTeamId,
+    );
+    if (inAnyPlayoff) {
+      playoffAppearances += 1;
+    }
+    const wsSeries = entry.playoffSeries.find((series) => series.round === 'WORLD_SERIES');
+    if (wsSeries && (wsSeries.winnerTeamId === s.userTeamId || wsSeries.loserTeamId === s.userTeamId)) {
+      pennants += 1;
+    }
+  }
+
+  const archivedSeasonNumbers = new Set(s.seasonArchive.map((entry) => entry.season));
+  for (const entry of s.archivedSeasons) {
+    if (archivedSeasonNumbers.has(entry.season)) continue;
+    const userStanding = entry.standings.find((standing) => standing.teamId === s.userTeamId);
+    if (userStanding?.divisionRank === 1 && !countedDivisionSeasons.has(entry.season)) {
+      divisionTitles += 1;
+    }
+    const result = (entry.playoffResult ?? '').toLowerCase();
+    const madePlayoffs = entry.championshipWon
+      || entry.championTeamId === s.userTeamId
+      || (result !== '' && !result.includes('missed'));
+    if (madePlayoffs) {
+      playoffAppearances += 1;
+    }
+    if (entry.championTeamId === s.userTeamId) {
+      pennants += 1;
+    }
+  }
+
+  const teamMoments = [...(s.teamMoments.get(s.userTeamId) ?? [])]
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || (right.season * 1000 + (right.day ?? 0)) - (left.season * 1000 + (left.day ?? 0))
+      || left.type.localeCompare(right.type),
+    )
+    .slice(0, 5)
+    .map((moment) => ({
+      type: moment.type,
+      description: moment.description,
+      season: moment.season,
+      day: moment.day ?? null,
+      impact: moment.impact,
+      relevance: moment.relevance,
+    }));
+
+  const legendArcs = s.playerStoryArcs
+    .filter((arc) => arc.resolvedSeason != null)
+    .map((arc) => {
+      const livePlayer = s.players.find((candidate) => candidate.id === arc.playerId);
+      const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === arc.playerId);
+      const playerName = livePlayer
+        ? `${livePlayer.firstName} ${livePlayer.lastName}`
+        : historicalPlayer?.fullName ?? arc.playerId;
+      return {
+        playerId: arc.playerId,
+        playerName,
+        arcType: arc.arcType,
+        resolvedSeason: arc.resolvedSeason!,
+        milestoneHeadline: arc.milestones.at(-1) ?? null,
+      };
+    })
+    .sort((left, right) =>
+      right.resolvedSeason - left.resolvedSeason
+      || left.playerName.localeCompare(right.playerName),
+    )
+    .slice(0, 5);
+
+  const userAwards = s.awardHistory.filter((entry) => entry.teamId === s.userTeamId);
+  const awardsShelf = {
+    mvp: userAwards.filter((entry) => entry.award === 'MVP').length,
+    cyYoung: userAwards.filter((entry) => entry.award === 'CY_YOUNG').length,
+    rookieOfTheYear: userAwards.filter((entry) => entry.award === 'ROY').length,
+    goldGlove: userAwards.filter((entry) => entry.award === 'GOLD_GLOVE').length,
+    silverSlugger: userAwards.filter((entry) => entry.award === 'SILVER_SLUGGER').length,
+    allStar: userAwards.filter((entry) => entry.award === 'All-Star').length,
+    other: userAwards.filter((entry) => !AWARD_CATEGORY_KEYS.includes(entry.award as typeof AWARD_CATEGORY_KEYS[number])).length,
+    total: userAwards.length,
+  };
+
+  const rivalries = Array.from(getRivalriesForTeam(s, s.userTeamId).values())
+    .sort((left, right) => right.intensity - left.intensity);
+  const topRivalryRaw = rivalries[0] ?? null;
+  const topRivalry = topRivalryRaw
+    ? (() => {
+        const opponentTeamId = topRivalryRaw.teamA === s.userTeamId ? topRivalryRaw.teamB : topRivalryRaw.teamA;
+        const opponent = getTeamById(opponentTeamId);
+        const userIsA = topRivalryRaw.teamA === s.userTeamId;
+        const userWinsSeason = userIsA ? (topRivalryRaw.currentSeasonWinsA ?? 0) : (topRivalryRaw.currentSeasonWinsB ?? 0);
+        const oppWinsSeason = userIsA ? (topRivalryRaw.currentSeasonWinsB ?? 0) : (topRivalryRaw.currentSeasonWinsA ?? 0);
+        const userWinsLife = userIsA ? (topRivalryRaw.historicalWinsA ?? 0) : (topRivalryRaw.historicalWinsB ?? 0);
+        const oppWinsLife = userIsA ? (topRivalryRaw.historicalWinsB ?? 0) : (topRivalryRaw.historicalWinsA ?? 0);
+        return {
+          opponentTeamId,
+          opponentTeamName: opponent ? `${opponent.city} ${opponent.name}` : opponentTeamId.toUpperCase(),
+          opponentAbbreviation: opponent?.abbreviation ?? opponentTeamId.toUpperCase(),
+          intensity: topRivalryRaw.intensity,
+          summary: topRivalryRaw.summary,
+          currentSeasonRecord: `${userWinsSeason}-${oppWinsSeason}`,
+          historicalRecord: `${userWinsLife}-${oppWinsLife}`,
+        };
+      })()
+    : null;
+
+  return {
+    franchise: {
+      gmName: s.franchise.gmName,
+      teamId: s.userTeamId,
+      teamName: teamNameFromId(s.userTeamId),
+      abbreviation: userTeam?.abbreviation ?? s.userTeamId.toUpperCase(),
+      hiredSeason: gm.hiredSeason,
+      currentSeason: s.season,
+    },
+    tenure: {
+      yearsServed,
+      overallRecord: gm.overallRecord,
+      winPct,
+      reputation: gm.reputation,
+    },
+    titles: {
+      worldSeries: gm.championships,
+      pennants,
+      divisionTitles,
+      playoffAppearances,
+    },
+    teamMoments,
+    legendArcs,
+    awardsShelf,
+    topRivalry,
+  };
+}
+
 function buildHistoricalSummary(player: HistoricalPlayer) {
   return {
     playerId: player.playerId,
@@ -2009,6 +2162,10 @@ export const queryApi = {
 
   getGMCareer() {
     return requireState().gmCareer;
+  },
+
+  getCareerRetrospective() {
+    return buildCareerRetrospective(requireState());
   },
 
   getJobMarket() {
