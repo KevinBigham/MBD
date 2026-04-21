@@ -25,7 +25,14 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // teamMoments. Story chunk landed ~206 bytes over the 410 KB ceiling after the
 // wiring; gzip held well under cap (~125 KB actual vs 126 KB ceiling) so only
 // raw moves. No new template copy — just wire-in code.
-export const WORKER_CHUNK_BUDGET_BYTES = 411 * 1024;
+// WORKER raw: bumped 411 -> 412 KB for the Chase Watch query slice. Adds
+// getChaseWatch() to sim.worker.queries.ts — a league-wide view assembling
+// career milestone alerts (via existing buildMilestoneAlertsForPlayers) and
+// pace chases (via existing projectSeasonStats + findNotableProjections) into
+// a single dashboard payload. Pure wiring of existing helpers, no new sim
+// logic. Story chunk landed 547 bytes over the 411 KB ceiling; gzip held
+// under cap (~125 KB actual vs 126 KB ceiling) so only raw moves.
+export const WORKER_CHUNK_BUDGET_BYTES = 412 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 126 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
