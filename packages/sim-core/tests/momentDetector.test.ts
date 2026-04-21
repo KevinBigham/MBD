@@ -1,3 +1,4 @@
+import { SignatureMomentTypeEnum } from '@mbd/contracts';
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
@@ -14,16 +15,20 @@ import {
 import {
   type Moment,
   type MomentDetectionContext,
+  BENCH_CLEARING_BRAWL_IMPACT,
   BLOWN_WS_SAVE_IMPACT,
   CYCLE_IMPACT,
   FIRST_CAREER_HR_IMPACT,
+  FIRST_ALL_STAR_IMPACT,
   FOUR_HR_GAME_IMPACT,
   MAX_MOMENTS_PER_PLAYER,
   MILESTONE_3000_HIT_IMPACT,
   MILESTONE_300_WIN_IMPACT,
   MILESTONE_500_HR_IMPACT,
+  MOMENT_DESCRIPTION_TEMPLATES,
   MOMENT_IMPACT_THRESHOLD,
   MOMENT_RELEVANCE_DECAY_RATE,
+  MOMENT_TYPE_ORDER,
   NO_HITTER_ATTRIBUTE_BONUS,
   NO_HITTER_IMPACT,
   PERFECT_GAME_IMPACT,
@@ -145,6 +150,66 @@ function createStatsMap(entries: PlayerGameStats[]): Map<string, PlayerGameStats
 
 function findMoment(updates: ReturnType<typeof detectMoment>, type: Moment['type']): Moment | undefined {
   return updates.flatMap((update) => update.newMoments).find((moment) => moment.type === type);
+}
+
+function createBrawlBoxScore(): GameBoxScore {
+  return createBoxScore({
+    homeTeamId: 'bos',
+    awayTeamId: 'nym',
+    homeScore: 4,
+    awayScore: 3,
+    paResults: [
+      {
+        outcome: 'HBP',
+        batterId: 'sparkplug',
+        pitcherId: 'starter-away',
+        inning: 4,
+        halfInning: 'bottom',
+        outs: 1,
+        runnersOn: 0,
+        scoreBefore: [1, 1],
+        scoreAfter: [1, 1],
+        rbiOnPlay: 0,
+        isWalkOff: false,
+      },
+      {
+        outcome: 'HBP',
+        batterId: 'instigator',
+        pitcherId: 'setup-away',
+        inning: 7,
+        halfInning: 'bottom',
+        outs: 0,
+        runnersOn: 1,
+        scoreBefore: [3, 2],
+        scoreAfter: [3, 2],
+        rbiOnPlay: 0,
+        isWalkOff: false,
+      },
+      {
+        outcome: 'FB_OUT',
+        batterId: 'cleanup',
+        pitcherId: 'setup-away',
+        inning: 8,
+        halfInning: 'bottom',
+        outs: 1,
+        runnersOn: 2,
+        scoreBefore: [3, 4],
+        scoreAfter: [3, 4],
+        rbiOnPlay: 0,
+        isWalkOff: false,
+      },
+    ],
+  });
+}
+
+function findBenchClearingBrawlSeed(boxScore: GameBoxScore, context: MomentDetectionContext): number {
+  for (let seed = 1; seed <= 500; seed += 1) {
+    const updates = detectMoment(boxScore, createStatsMap([]), context, new GameRNG(seed));
+    if (findMoment(updates, 'bench_clearing_brawl')) {
+      return seed;
+    }
+  }
+  throw new Error('Expected to find a deterministic brawl seed');
 }
 
 describe('detectMoment', () => {
@@ -880,6 +945,141 @@ describe('detectMoment', () => {
     expect(updates).toEqual([]);
   });
 
+  it('emits bench_clearing_brawl when a hot rivalry game crosses the HBP and leverage gates', () => {
+    const boxScore = createBrawlBoxScore();
+    const context = createContext({
+      rivalryIntensity: 88,
+    });
+    const seed = findBenchClearingBrawlSeed(boxScore, context);
+
+    const updates = detectMoment(
+      boxScore,
+      createStatsMap([]),
+      context,
+      new GameRNG(seed),
+    );
+
+    expect(findMoment(updates, 'bench_clearing_brawl')).toMatchObject({
+      type: 'bench_clearing_brawl',
+      impact: BENCH_CLEARING_BRAWL_IMPACT,
+    });
+    expect(findMoment(updates, 'bench_clearing_brawl')?.description).toContain('8th');
+  });
+
+  it('does not emit bench_clearing_brawl below the rivalry intensity threshold', () => {
+    const updates = detectMoment(
+      createBrawlBoxScore(),
+      createStatsMap([]),
+      createContext({
+        rivalryIntensity: 48,
+      }),
+      new GameRNG(41),
+    );
+
+    expect(findMoment(updates, 'bench_clearing_brawl')).toBeUndefined();
+  });
+
+  it('emits first_all_star when the current season contains a player first-time All-Star selection', () => {
+    const updates = detectMoment(
+      createBoxScore(),
+      createStatsMap([]),
+      createContext({
+        awardHistory: [
+          {
+            season: 5,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'First All-Star selection.',
+          },
+        ],
+      }),
+      new GameRNG(38),
+    );
+
+    expect(findMoment(updates, 'first_all_star')).toMatchObject({
+      type: 'first_all_star',
+      impact: FIRST_ALL_STAR_IMPACT,
+    });
+  });
+
+  it('does not emit first_all_star when the player already made a prior All-Star team', () => {
+    const updates = detectMoment(
+      createBoxScore(),
+      createStatsMap([]),
+      createContext({
+        awardHistory: [
+          {
+            season: 4,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'Repeat All-Star selection.',
+          },
+          {
+            season: 5,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'Another All-Star selection.',
+          },
+        ],
+      }),
+      new GameRNG(39),
+    );
+
+    expect(findMoment(updates, 'first_all_star')).toBeUndefined();
+  });
+
+  it('does not duplicate first_all_star when the moment already exists for the player', () => {
+    const updates = detectMoment(
+      createBoxScore(),
+      createStatsMap([]),
+      createContext({
+        awardHistory: [
+          {
+            season: 5,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'First All-Star selection.',
+          },
+        ],
+        existingMomentsByPlayer: new Map([
+          ['slugger', [
+            createMoment({
+              season: 5,
+              type: 'first_all_star',
+              description: 'Existing All-Star moment.',
+              impact: FIRST_ALL_STAR_IMPACT,
+              relevance: FIRST_ALL_STAR_IMPACT,
+            }),
+          ]],
+        ]),
+      }),
+      new GameRNG(40),
+    );
+
+    expect(findMoment(updates, 'first_all_star')).toBeUndefined();
+  });
+
+  it('keeps bench_clearing_brawl deterministic for the same seed and game context', () => {
+    const boxScore = createBrawlBoxScore();
+    const context = createContext({
+      rivalryIntensity: 88,
+    });
+    const seed = findBenchClearingBrawlSeed(boxScore, context);
+
+    const first = detectMoment(boxScore, createStatsMap([]), context, new GameRNG(seed));
+    const second = detectMoment(boxScore, createStatsMap([]), context, new GameRNG(seed));
+
+    expect(first).toEqual(second);
+  });
+
   it('supports a simulateGame-backed walk-off scan', () => {
     const rng = new GameRNG(500);
     const away = buildTeam('nym', rng.fork());
@@ -1107,25 +1307,12 @@ describe('applyMomentEffects', () => {
 });
 
 describe('formatMomentDescription', () => {
-  it('includes the player name for every moment type', () => {
-    const types: Moment['type'][] = [
-      'walk_off_hr',
-      'no_hitter',
-      'perfect_game',
-      'four_hr_game',
-      'playoff_error',
-      'first_career_hr',
-      'milestone_500hr',
-      'milestone_3000h',
-      'milestone_300w',
-      'blown_ws_save',
-      'cycle',
-      'twenty_k_game',
-    ];
+  it('includes the player name for every persisted signature moment type', () => {
+    const types = SignatureMomentTypeEnum.options;
 
     for (const type of types) {
       const description = formatMomentDescription(
-        createMoment({ type }),
+        createMoment({ type: type as Moment['type'] }),
         'Pat Legend',
         new GameRNG(700 + types.indexOf(type)),
       );
@@ -1141,6 +1328,16 @@ describe('formatMomentDescription', () => {
     const second = formatMomentDescription(moment, 'Pat Legend', new GameRNG(801));
 
     expect(first).toBe(second);
+  });
+
+  it('keeps the local moment registry aligned with the persisted signature moment enum and templates', () => {
+    expect(MOMENT_TYPE_ORDER).toEqual(SignatureMomentTypeEnum.options);
+    expect(Object.keys(MOMENT_DESCRIPTION_TEMPLATES)).toEqual(SignatureMomentTypeEnum.options);
+
+    for (const type of SignatureMomentTypeEnum.options) {
+      expect(MOMENT_DESCRIPTION_TEMPLATES[type as Moment['type']]?.length ?? 0).toBeGreaterThan(0);
+      expect(MOMENT_DESCRIPTION_TEMPLATES[type as Moment['type']]?.every((template) => template.includes('{player}'))).toBe(true);
+    }
   });
 });
 

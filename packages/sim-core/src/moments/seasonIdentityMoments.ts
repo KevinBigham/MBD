@@ -1,3 +1,11 @@
+import type {
+  ArchivedSeason,
+  CareerStatsLedger,
+  SeasonArchiveEntry,
+  TradeHistoryEntry,
+} from '@mbd/contracts';
+import { isTradeDeadlineModeDay } from '../sim/calendar.js';
+import type { GMPersonality } from '../trade/tradeAI.js';
 import { compareMomentType, type Moment, type MomentRound } from './momentDetector.js';
 
 export const CHAMPIONSHIP_RUN_IMPACT = 50;
@@ -15,6 +23,16 @@ export const BREAKOUT_SEASON_IMPACT = 45;
 export const BREAKOUT_SEASON_RELEVANCE = 0.90;
 export const CONTENTION_WINDOW_OPENS_IMPACT = 30;
 export const CONTENTION_WINDOW_OPENS_RELEVANCE = 0.75;
+export const FIRE_SALE_IMPACT = -55;
+export const FIRE_SALE_RELEVANCE = 0.90;
+export const DYNASTY_END_IMPACT = -65;
+export const DYNASTY_END_RELEVANCE = 0.95;
+export const CURSED_FRANCHISE_IMPACT = -45;
+export const CURSED_FRANCHISE_RELEVANCE = 0.85;
+
+const FIRE_SALE_VETERAN_THRESHOLD = 3;
+const FIRE_SALE_WIN_PCT_THRESHOLD = 0.45;
+const CURSED_FRANCHISE_MILESTONES = [10, 15, 20] as const;
 
 export interface PriorSeasonSummary {
   readonly season: number;
@@ -25,6 +43,7 @@ export interface PriorSeasonSummary {
 
 export interface TeamSeasonSummary {
   readonly teamId: string;
+  readonly teamName?: string;
   readonly wins: number;
   readonly losses: number;
   readonly madePlayoffs: boolean;
@@ -37,6 +56,14 @@ export interface SeasonIdentityMomentDetectionContext {
   readonly season: number;
   readonly day: number;
   readonly teams: readonly TeamSeasonSummary[];
+  readonly tradeHistory?: readonly TradeHistoryEntry[];
+  readonly playerContractYearsById?: ReadonlyMap<string, number>;
+  readonly seasonArchive?: readonly SeasonArchiveEntry[];
+  readonly archivedSeasons?: readonly ArchivedSeason[];
+  readonly teamMoments?: ReadonlyMap<string, readonly Moment[]>;
+  readonly careerStats?: readonly CareerStatsLedger[];
+  readonly gmPersonalities?: ReadonlyMap<string, GMPersonality>;
+  readonly offseasonRetirementsByTeamId?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface SeasonIdentityDetectedMoment {
@@ -49,6 +76,100 @@ function getPriorSeason(
   season: number,
 ): PriorSeasonSummary | null {
   return summary.priorSeasonsSummary?.find((entry) => entry.season === season) ?? null;
+}
+
+function teamLabel(summary: Pick<TeamSeasonSummary, 'teamId' | 'teamName'>): string {
+  return summary.teamName ?? summary.teamId.toUpperCase();
+}
+
+function winPct(wins: number, losses: number): number {
+  const totalGames = wins + losses;
+  if (totalGames <= 0) {
+    return 0;
+  }
+  return wins / totalGames;
+}
+
+function parseTimestamp(timestamp: string | undefined): { season: number; day: number } | null {
+  if (!timestamp) {
+    return null;
+  }
+
+  const match = /^S(?<season>\d+)D(?<day>\d+)$/.exec(timestamp);
+  if (!match?.groups) {
+    return null;
+  }
+
+  return {
+    season: Number(match.groups.season),
+    day: Number(match.groups.day),
+  };
+}
+
+function momentAlreadyRecorded(
+  context: SeasonIdentityMomentDetectionContext,
+  teamId: string,
+  type: Moment['type'],
+): boolean {
+  return context.teamMoments?.get(teamId)?.some((moment) =>
+    moment.type === type && moment.season === context.season
+  ) ?? false;
+}
+
+function buildHistoricalSummaries(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): PriorSeasonSummary[] {
+  const historical = new Map<number, PriorSeasonSummary>();
+
+  for (const archivedSeason of context.archivedSeasons ?? []) {
+    const standing = archivedSeason.standings.find((entry) => entry.teamId === summary.teamId);
+    if (!standing) {
+      continue;
+    }
+
+    historical.set(archivedSeason.season, {
+      season: archivedSeason.season,
+      divisionRank: standing.divisionRank,
+      wins: standing.wins,
+      losses: standing.losses,
+    });
+  }
+
+  for (const archivedSeason of context.seasonArchive ?? []) {
+    const standing = archivedSeason.standings.find((entry) => entry.teamId === summary.teamId);
+    if (!standing) {
+      continue;
+    }
+
+    historical.set(archivedSeason.season, {
+      season: archivedSeason.season,
+      divisionRank: standing.divisionRank,
+      wins: standing.wins,
+      losses: standing.losses,
+    });
+  }
+
+  for (const priorSeason of summary.priorSeasonsSummary ?? []) {
+    historical.set(priorSeason.season, priorSeason);
+  }
+
+  return Array.from(historical.values()).sort((left, right) => left.season - right.season);
+}
+
+function ordinal(value: number): string {
+  const remainder10 = value % 10;
+  const remainder100 = value % 100;
+  if (remainder10 === 1 && remainder100 !== 11) {
+    return `${value}st`;
+  }
+  if (remainder10 === 2 && remainder100 !== 12) {
+    return `${value}nd`;
+  }
+  if (remainder10 === 3 && remainder100 !== 13) {
+    return `${value}rd`;
+  }
+  return `${value}th`;
 }
 
 function createMoment(
@@ -297,12 +418,154 @@ export function detectContentionWindowOpens(
   };
 }
 
+export function detectFireSale(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'fire_sale')) {
+    return null;
+  }
+  if (winPct(summary.wins, summary.losses) >= FIRE_SALE_WIN_PCT_THRESHOLD) {
+    return null;
+  }
+  if (!context.tradeHistory || !context.playerContractYearsById) {
+    return null;
+  }
+
+  const veteranDepartures = new Set<string>();
+  for (const trade of context.tradeHistory) {
+    if (trade.fromTeamId !== summary.teamId) {
+      continue;
+    }
+
+    const parsedTimestamp = parseTimestamp(trade.timestamp);
+    if (!parsedTimestamp || parsedTimestamp.season !== context.season || !isTradeDeadlineModeDay(parsedTimestamp.day)) {
+      continue;
+    }
+
+    for (const asset of trade.offeringAssets) {
+      if (asset.type !== 'player') {
+        continue;
+      }
+      if ((context.playerContractYearsById.get(asset.playerId) ?? 0) > 1) {
+        veteranDepartures.add(asset.playerId);
+      }
+    }
+  }
+
+  if (veteranDepartures.size < FIRE_SALE_VETERAN_THRESHOLD) {
+    return null;
+  }
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'fire_sale',
+      `With ${veteranDepartures.size} veterans shipped out before the deadline, the ${teamLabel(summary)} signaled a hard reset to ownership.`,
+      FIRE_SALE_IMPACT,
+      FIRE_SALE_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
+export function detectDynastyEnd(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'dynasty_end')) {
+    return null;
+  }
+  if (summary.wins >= summary.losses) {
+    return null;
+  }
+
+  const historicalSummaries = buildHistoricalSummaries(summary, context);
+  const priorWindow: PriorSeasonSummary[] = [];
+  for (let season = context.season - 4; season < context.season; season += 1) {
+    const entry = historicalSummaries.find((candidate) => candidate.season === season);
+    if (!entry) {
+      return null;
+    }
+    priorWindow.push(entry);
+  }
+
+  if (priorWindow[priorWindow.length - 1]?.divisionRank !== 1) {
+    return null;
+  }
+
+  const dominantSeasons = priorWindow.filter((entry) => entry.divisionRank === 1);
+  if (dominantSeasons.length < 3) {
+    return null;
+  }
+
+  const startYear = dominantSeasons[0]!.season;
+  const endYear = dominantSeasons[dominantSeasons.length - 1]!.season;
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'dynasty_end',
+      `The ${teamLabel(summary)} dynasty that ruled the division is over - a sub-.500 season closes the book on the ${startYear}-${endYear} run.`,
+      DYNASTY_END_IMPACT,
+      DYNASTY_END_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
+export function detectCursedFranchise(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'cursed_franchise')) {
+    return null;
+  }
+  if (summary.losses <= summary.wins) {
+    return null;
+  }
+
+  const historicalBySeason = new Map(
+    buildHistoricalSummaries(summary, context).map((entry) => [entry.season, entry] as const),
+  );
+
+  let streakLength = 1;
+  for (let season = context.season - 1; season >= 1; season -= 1) {
+    const priorSeason = historicalBySeason.get(season);
+    if (!priorSeason || priorSeason.losses <= priorSeason.wins) {
+      break;
+    }
+    streakLength += 1;
+  }
+
+  if (!CURSED_FRANCHISE_MILESTONES.includes(streakLength as typeof CURSED_FRANCHISE_MILESTONES[number])) {
+    return null;
+  }
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'cursed_franchise',
+      `Decade of darkness: the ${teamLabel(summary)} close out their ${ordinal(streakLength)} straight losing season.`,
+      CURSED_FRANCHISE_IMPACT,
+      CURSED_FRANCHISE_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
 export function detectSeasonIdentityMoments(
   context: SeasonIdentityMomentDetectionContext,
 ): SeasonIdentityDetectedMoment[] {
   const moments: SeasonIdentityDetectedMoment[] = [];
   const breakoutTeamIds = new Set<string>();
   for (const summary of context.teams) {
+    const fireSale = detectFireSale(summary, context);
+    if (fireSale) {
+      moments.push(fireSale);
+    }
     const championship = detectChampionshipRun(summary, context.season, context.day);
     if (championship) {
       moments.push(championship);
@@ -315,9 +578,17 @@ export function detectSeasonIdentityMoments(
     if (dynastyPeak) {
       moments.push(dynastyPeak);
     }
+    const dynastyEnd = detectDynastyEnd(summary, context);
+    if (dynastyEnd) {
+      moments.push(dynastyEnd);
+    }
     const losingStreak = detectLosingSeasonStreak(summary, context.season, context.day);
     if (losingStreak) {
       moments.push(losingStreak);
+    }
+    const cursedFranchise = detectCursedFranchise(summary, context);
+    if (cursedFranchise) {
+      moments.push(cursedFranchise);
     }
     const rebuildBegun = detectRebuildBegun(summary, context.season, context.day);
     if (rebuildBegun) {

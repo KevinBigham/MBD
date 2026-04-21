@@ -44,10 +44,10 @@ const IMMINENT_THRESHOLD_FRACTION = 0.02;
 const CLOSE_THRESHOLD_FRACTION = 0.05;
 
 export const CAREER_MILESTONES: CareerMilestoneDefinition[] = [
-  { id: 'hits', label: 'Hits', category: 'batting', statKey: 'hits', thresholds: [1000, 2000, 3000] },
+  { id: 'hits', label: 'Hits', category: 'batting', statKey: 'hits', thresholds: [1000, 2000, 2500, 3000] },
   { id: 'hr', label: 'Home Runs', category: 'batting', statKey: 'hr', thresholds: [100, 300, 500, 600, 700] },
   { id: 'rbi', label: 'RBI', category: 'batting', statKey: 'rbi', thresholds: [500, 1000, 1500, 2000] },
-  { id: 'sb', label: 'Stolen Bases', category: 'batting', statKey: 'sb', thresholds: [100, 200, 300] },
+  { id: 'sb', label: 'Stolen Bases', category: 'batting', statKey: 'sb', thresholds: [100, 200, 300, 500] },
   { id: 'strikeouts', label: 'Pitcher Strikeouts', category: 'pitching', statKey: 'strikeouts', thresholds: [1000, 2000, 3000] },
   { id: 'wins', label: 'Pitcher Wins', category: 'pitching', statKey: 'wins', thresholds: [100, 200, 300] },
   { id: 'saves', label: 'Saves', category: 'pitching', statKey: 'saves', thresholds: [100, 200, 300, 400] },

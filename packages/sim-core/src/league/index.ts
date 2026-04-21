@@ -89,8 +89,10 @@ export {
   recordStarDefectionRivalry,
   rivalryTradePenalty,
   rivalryGameModifier,
+  computeRivalryIntensityScore,
 } from './rivalries.js';
 export type {
+  ComputedRivalryIntensityContext,
   RivalrySeasonReviewContext,
   RivalryTradeContext,
   RivalryDefectionContext,

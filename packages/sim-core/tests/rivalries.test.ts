@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Rivalry } from '@mbd/contracts';
 import {
+  computeRivalryIntensityScore,
   deriveRivalriesFromStandings,
   finalizeSeasonRivalries,
   getRivalry,
@@ -172,5 +173,73 @@ describe('rivalry engine', () => {
 
     expect(boost).toBeGreaterThan(0);
     expect(drag).toBeLessThan(0);
+  });
+
+  it('computes a high rivalry intensity score for close, eventful feud states', () => {
+    const rivalry = {
+      ...getRivalry(baseRivalries(), 'nym', 'bos')!,
+      currentSeasonWinsA: 7,
+      currentSeasonWinsB: 6,
+      closeRaceStreak: 3,
+      playoffSeriesStreak: 2,
+      eventHistory: [
+        { season: 7, type: 'playoff', summary: 'Met again in October.' },
+        { season: 7, type: 'division_race', summary: 'The race stayed tight all summer.' },
+        { season: 6, type: 'trade', summary: 'A rivalry trade reopened wounds.' },
+        { season: 5, type: 'historical', summary: 'Old tension still lingers.' },
+      ],
+    };
+
+    const score = computeRivalryIntensityScore({
+      rivalry,
+      currentSeasonTeamMomentCount: 3,
+      currentSeasonPlayerMomentCount: 2,
+    });
+
+    expect(score).toBeGreaterThanOrEqual(70);
+  });
+
+  it('keeps middling rivalry states in the middle band', () => {
+    const rivalry = {
+      ...getRivalry(baseRivalries(), 'nym', 'bos')!,
+      intensity: 44,
+      currentSeasonWinsA: 5,
+      currentSeasonWinsB: 4,
+      closeRaceStreak: 1,
+      playoffSeriesStreak: 0,
+      eventHistory: [
+        { season: 7, type: 'division_race', summary: 'The race stayed interesting.' },
+        { season: 6, type: 'series_result', summary: 'A close series kept the heat alive.' },
+      ],
+    };
+
+    const score = computeRivalryIntensityScore({
+      rivalry,
+      currentSeasonTeamMomentCount: 1,
+      currentSeasonPlayerMomentCount: 1,
+    });
+
+    expect(score).toBeGreaterThanOrEqual(40);
+    expect(score).toBeLessThan(70);
+  });
+
+  it('keeps cold rivalry states below the brawl threshold', () => {
+    const rivalry = {
+      ...getRivalry(baseRivalries(), 'nym', 'bos')!,
+      intensity: 18,
+      currentSeasonWinsA: 8,
+      currentSeasonWinsB: 1,
+      closeRaceStreak: 0,
+      playoffSeriesStreak: 0,
+      eventHistory: [],
+    };
+
+    const score = computeRivalryIntensityScore({
+      rivalry,
+      currentSeasonTeamMomentCount: 0,
+      currentSeasonPlayerMomentCount: 0,
+    });
+
+    expect(score).toBeLessThan(40);
   });
 });

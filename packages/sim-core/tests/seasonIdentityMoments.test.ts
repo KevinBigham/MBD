@@ -1,21 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
   BREAKOUT_SEASON_IMPACT,
+  CURSED_FRANCHISE_IMPACT,
   CHAMPIONSHIP_RUN_IMPACT,
   CONTENTION_COLLAPSE_IMPACT,
   CONTENTION_COLLAPSE_WINS_THRESHOLD,
   CONTENTION_WINDOW_OPENS_IMPACT,
+  DYNASTY_END_IMPACT,
+  FIRE_SALE_IMPACT,
   FIRST_DYNASTY_PEAK_IMPACT,
   LOSING_SEASON_STREAK_IMPACT,
   REBUILD_BEGUN_IMPACT,
+  detectCursedFranchise,
   detectBreakoutSeason,
   detectChampionshipRun,
   detectContentionWindowOpens,
   detectContentionCollapse,
+  detectDynastyEnd,
+  detectFireSale,
   detectFirstDynastyPeak,
   detectLosingSeasonStreak,
   detectRebuildBegun,
   detectSeasonIdentityMoments,
+  type SeasonIdentityMomentDetectionContext,
   type TeamSeasonSummary,
 } from '../src/moments/seasonIdentityMoments.js';
 
@@ -26,6 +33,39 @@ function summary(overrides: Partial<TeamSeasonSummary> & { teamId: string }): Te
     madePlayoffs: false,
     isChampion: false,
     ...overrides,
+  };
+}
+
+function context(
+  overrides: Partial<SeasonIdentityMomentDetectionContext> & { teams: readonly TeamSeasonSummary[] },
+): SeasonIdentityMomentDetectionContext {
+  return {
+    season: 7,
+    day: 182,
+    ...overrides,
+  };
+}
+
+function tradeHistoryEntry(
+  id: string,
+  fromTeamId: string,
+  toTeamId: string,
+  playerIds: readonly string[],
+  day: number,
+  season: number = 7,
+) {
+  return {
+    id,
+    fromTeamId,
+    toTeamId,
+    offeringAssets: playerIds.map((playerId) => ({
+      type: 'player' as const,
+      playerId,
+    })),
+    requestingAssets: [],
+    fairnessScore: 0,
+    summary: `${fromTeamId} moved ${playerIds.join(', ')}`,
+    timestamp: `S${season}D${day}`,
   };
 }
 
@@ -487,6 +527,280 @@ describe('detectContentionWindowOpens', () => {
   });
 });
 
+describe('detectFireSale', () => {
+  it('emits a fire_sale moment when a sub-.450 club ships out three veterans in the deadline window', () => {
+    const detectionContext = context({
+      teams: [
+        summary({ teamId: 'oak', teamName: 'Oakland Comets', wins: 68, losses: 94 }),
+      ],
+      tradeHistory: [
+        tradeHistoryEntry('trade-1', 'oak', 'lad', ['p1'], 94),
+        tradeHistoryEntry('trade-2', 'oak', 'bos', ['p2'], 99),
+        tradeHistoryEntry('trade-3', 'oak', 'nym', ['p3'], 104),
+      ],
+      playerContractYearsById: new Map([
+        ['p1', 2],
+        ['p2', 3],
+        ['p3', 2],
+      ]),
+    });
+
+    const result = detectFireSale(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('fire_sale');
+    expect(result?.moment.impact).toBe(FIRE_SALE_IMPACT);
+    expect(result?.moment.description).toContain('Oakland Comets');
+    expect(result?.moment.description).toContain('3 veterans');
+  });
+
+  it('returns null when fewer than three veterans with term are moved', () => {
+    const detectionContext = context({
+      teams: [
+        summary({ teamId: 'oak', teamName: 'Oakland Comets', wins: 65, losses: 97 }),
+      ],
+      tradeHistory: [
+        tradeHistoryEntry('trade-1', 'oak', 'lad', ['p1'], 94, 11),
+        tradeHistoryEntry('trade-2', 'oak', 'bos', ['p2'], 99, 11),
+        tradeHistoryEntry('trade-3', 'oak', 'nym', ['p3'], 104, 11),
+      ],
+      playerContractYearsById: new Map([
+        ['p1', 2],
+        ['p2', 1],
+        ['p3', 1],
+      ]),
+    });
+
+    const result = detectFireSale(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the team sits exactly at a .450 win percentage proxy', () => {
+    const detectionContext = context({
+      teams: [
+        summary({ teamId: 'oak', teamName: 'Oakland Comets', wins: 45, losses: 55 }),
+      ],
+      tradeHistory: [
+        tradeHistoryEntry('trade-1', 'oak', 'lad', ['p1'], 94),
+        tradeHistoryEntry('trade-2', 'oak', 'bos', ['p2'], 99),
+        tradeHistoryEntry('trade-3', 'oak', 'nym', ['p3'], 104),
+      ],
+      playerContractYearsById: new Map([
+        ['p1', 2],
+        ['p2', 2],
+        ['p3', 2],
+      ]),
+    });
+
+    const result = detectFireSale(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('detectDynastyEnd', () => {
+  it('emits a dynasty_end moment when three of the prior four seasons were division titles before a losing crash', () => {
+    const detectionContext = context({
+      season: 11,
+      teams: [
+        summary({
+          teamId: 'nym',
+          teamName: 'New York Tycoons',
+          wins: 78,
+          losses: 84,
+          priorSeasonsSummary: [
+            { season: 7, wins: 96, losses: 66, divisionRank: 1 },
+            { season: 8, wins: 101, losses: 61, divisionRank: 1 },
+            { season: 9, wins: 87, losses: 75, divisionRank: 2 },
+            { season: 10, wins: 94, losses: 68, divisionRank: 1 },
+          ],
+        }),
+      ],
+    });
+
+    const result = detectDynastyEnd(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('dynasty_end');
+    expect(result?.moment.impact).toBe(DYNASTY_END_IMPACT);
+    expect(result?.moment.description).toContain('New York Tycoons');
+    expect(result?.moment.description).toContain('7');
+    expect(result?.moment.description).toContain('10');
+  });
+
+  it('returns null when the prior four-year window includes only two division titles', () => {
+    const detectionContext = context({
+      season: 11,
+      teams: [
+        summary({
+          teamId: 'nym',
+          teamName: 'New York Tycoons',
+          wins: 76,
+          losses: 86,
+          priorSeasonsSummary: [
+            { season: 7, wins: 88, losses: 74, divisionRank: 2 },
+            { season: 8, wins: 96, losses: 66, divisionRank: 1 },
+            { season: 9, wins: 84, losses: 78, divisionRank: 2 },
+            { season: 10, wins: 93, losses: 69, divisionRank: 1 },
+          ],
+        }),
+      ],
+    });
+
+    const result = detectDynastyEnd(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the current club finishes exactly .500', () => {
+    const detectionContext = context({
+      season: 11,
+      teams: [
+        summary({
+          teamId: 'nym',
+          teamName: 'New York Tycoons',
+          wins: 81,
+          losses: 81,
+          priorSeasonsSummary: [
+            { season: 7, wins: 96, losses: 66, divisionRank: 1 },
+            { season: 8, wins: 101, losses: 61, divisionRank: 1 },
+            { season: 9, wins: 87, losses: 75, divisionRank: 2 },
+            { season: 10, wins: 94, losses: 68, divisionRank: 1 },
+          ],
+        }),
+      ],
+    });
+
+    const result = detectDynastyEnd(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('detectCursedFranchise', () => {
+  it('emits a cursed_franchise moment on the tenth straight losing season', () => {
+    const detectionContext = context({
+      season: 10,
+      teams: [
+        summary({ teamId: 'pit', teamName: 'Pittsburgh Ironmen', wins: 67, losses: 95 }),
+      ],
+      archivedSeasons: Array.from({ length: 9 }, (_, index) => ({
+        season: index + 1,
+        standings: [
+          {
+            teamId: 'pit',
+            wins: 70,
+            losses: 92,
+            divisionRank: 4,
+          },
+        ],
+        userRecord: null,
+        playoffResult: null,
+        championshipWon: false,
+        championTeamId: null,
+        mvpName: null,
+        cyYoungName: null,
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        dynastyScore: null,
+      })),
+    });
+
+    const result = detectCursedFranchise(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('cursed_franchise');
+    expect(result?.moment.impact).toBe(CURSED_FRANCHISE_IMPACT);
+    expect(result?.moment.description).toContain('Pittsburgh Ironmen');
+    expect(result?.moment.description).toContain('10th');
+  });
+
+  it('returns null when the franchise has only nine straight losing seasons', () => {
+    const detectionContext = context({
+      season: 9,
+      teams: [
+        summary({ teamId: 'pit', teamName: 'Pittsburgh Ironmen', wins: 71, losses: 91 }),
+      ],
+      archivedSeasons: Array.from({ length: 8 }, (_, index) => ({
+        season: index + 1,
+        standings: [
+          {
+            teamId: 'pit',
+            wins: 70,
+            losses: 92,
+            divisionRank: 4,
+          },
+        ],
+        userRecord: null,
+        playoffResult: null,
+        championshipWon: false,
+        championTeamId: null,
+        mvpName: null,
+        cyYoungName: null,
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        dynastyScore: null,
+      })),
+    });
+
+    const result = detectCursedFranchise(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null on non-milestone streak lengths', () => {
+    const detectionContext = context({
+      season: 11,
+      teams: [
+        summary({ teamId: 'pit', teamName: 'Pittsburgh Ironmen', wins: 63, losses: 99 }),
+      ],
+      archivedSeasons: Array.from({ length: 10 }, (_, index) => ({
+        season: index + 1,
+        standings: [
+          {
+            teamId: 'pit',
+            wins: 70,
+            losses: 92,
+            divisionRank: 4,
+          },
+        ],
+        userRecord: null,
+        playoffResult: null,
+        championshipWon: false,
+        championTeamId: null,
+        mvpName: null,
+        cyYoungName: null,
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        dynastyScore: null,
+      })),
+    });
+
+    const result = detectCursedFranchise(detectionContext.teams[0]!, detectionContext);
+
+    expect(result).toBeNull();
+  });
+});
+
 describe('detectSeasonIdentityMoments', () => {
   it('emits moments deterministically sorted by teamId + canonical type order', () => {
     const result = detectSeasonIdentityMoments({
@@ -591,5 +905,81 @@ describe('detectSeasonIdentityMoments', () => {
       ],
     });
     expect(result).toEqual([]);
+  });
+
+  it('emits only the supported wave-3 team moments and omits skipped detector types', () => {
+    const result = detectSeasonIdentityMoments(context({
+      season: 11,
+      teams: [
+        summary({
+          teamId: 'oak',
+          teamName: 'Oakland Comets',
+          wins: 68,
+          losses: 94,
+        }),
+        summary({
+          teamId: 'nym',
+          teamName: 'New York Tycoons',
+          wins: 78,
+          losses: 84,
+          priorSeasonsSummary: [
+            { season: 7, wins: 96, losses: 66, divisionRank: 1 },
+            { season: 8, wins: 101, losses: 61, divisionRank: 1 },
+            { season: 9, wins: 87, losses: 75, divisionRank: 2 },
+            { season: 10, wins: 94, losses: 68, divisionRank: 1 },
+          ],
+        }),
+        summary({
+          teamId: 'pit',
+          teamName: 'Pittsburgh Ironmen',
+          wins: 63,
+          losses: 99,
+        }),
+      ],
+      tradeHistory: [
+        tradeHistoryEntry('trade-1', 'oak', 'lad', ['p1'], 94, 11),
+        tradeHistoryEntry('trade-2', 'oak', 'bos', ['p2'], 99, 11),
+        tradeHistoryEntry('trade-3', 'oak', 'nym', ['p3'], 104, 11),
+      ],
+      playerContractYearsById: new Map([
+        ['p1', 2],
+        ['p2', 3],
+        ['p3', 2],
+      ]),
+      archivedSeasons: Array.from({ length: 9 }, (_, index) => ({
+        season: index + 2,
+        standings: [
+          {
+            teamId: 'pit',
+            wins: 70,
+            losses: 92,
+            divisionRank: 4,
+          },
+        ],
+        userRecord: null,
+        playoffResult: null,
+        championshipWon: false,
+        championTeamId: null,
+        mvpName: null,
+        cyYoungName: null,
+        statLeaders: {
+          hr: [],
+          rbi: [],
+          avg: [],
+          era: [],
+          k: [],
+          w: [],
+        },
+        dynastyScore: null,
+      })),
+    }));
+
+    const emittedTypes = result.map((entry) => entry.moment.type);
+
+    expect(emittedTypes).toContain('fire_sale');
+    expect(emittedTypes).toContain('dynasty_end');
+    expect(emittedTypes).toContain('cursed_franchise');
+    expect(emittedTypes).not.toContain('playoff_gauntlet');
+    expect(emittedTypes).not.toContain('veteran_core_retires');
   });
 });

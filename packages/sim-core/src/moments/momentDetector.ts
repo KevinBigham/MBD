@@ -1,3 +1,4 @@
+import type { AwardHistoryEntry } from '@mbd/contracts';
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { GameBoxScore, PlayerGameStats } from '../sim/gameSimulator.js';
@@ -13,12 +14,14 @@ export const PERFECT_GAME_IMPACT = 100;
 export const FOUR_HR_GAME_IMPACT = 90;
 export const PLAYOFF_ERROR_IMPACT = -80;
 export const FIRST_CAREER_HR_IMPACT = 62;
+export const FIRST_ALL_STAR_IMPACT = 45;
 export const MILESTONE_500_HR_IMPACT = 95;
 export const MILESTONE_3000_HIT_IMPACT = 95;
 export const MILESTONE_300_WIN_IMPACT = 95;
 export const BLOWN_WS_SAVE_IMPACT = -85;
 export const CYCLE_IMPACT = 70;
 export const TWENTY_K_GAME_IMPACT = 88;
+export const BENCH_CLEARING_BRAWL_IMPACT = 40;
 export const PLAYOFF_WALK_OFF_BONUS = 15;
 export const WORLD_SERIES_CLINCHER_BONUS = 10;
 export const PRESSURE_CLUTCH_BONUS = 10;
@@ -33,6 +36,10 @@ export const MILESTONE_3000_HIT_THRESHOLD = 3000;
 export const MILESTONE_300_WIN_THRESHOLD = 300;
 export const WORLD_SERIES_CLUTCH_DURATION_SEASONS = 2;
 export const SCARRED_DURATION_SEASONS = 1;
+export const BENCH_CLEARING_BRAWL_INTENSITY_THRESHOLD = 70;
+export const BENCH_CLEARING_BRAWL_HBP_THRESHOLD = 2;
+export const BENCH_CLEARING_BRAWL_MIN_INNING = 7;
+export const BENCH_CLEARING_BRAWL_MAX_SCORE_MARGIN = 2;
 
 export type MomentType =
   | 'walk_off_hr'
@@ -41,12 +48,14 @@ export type MomentType =
   | 'four_hr_game'
   | 'playoff_error'
   | 'first_career_hr'
+  | 'first_all_star'
   | 'milestone_500hr'
   | 'milestone_3000h'
   | 'milestone_300w'
   | 'blown_ws_save'
   | 'cycle'
   | 'twenty_k_game'
+  | 'bench_clearing_brawl'
   | 'arbitration_win'
   | 'arbitration_loss'
   | 'super_two_debut'
@@ -61,7 +70,10 @@ export type MomentType =
   | 'losing_season_streak'
   | 'rebuild_begun'
   | 'breakout_season'
-  | 'contention_window_opens';
+  | 'contention_window_opens'
+  | 'fire_sale'
+  | 'dynasty_end'
+  | 'cursed_franchise';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -94,6 +106,8 @@ export interface MomentDetectionContext {
   decisiveErrorPlayerId: string | null;
   blownSavePitcherId: string | null;
   playerNameById?: ReadonlyMap<string, string>;
+  awardHistory?: readonly AwardHistoryEntry[];
+  rivalryIntensity?: number;
 }
 
 export interface DetectedMoment {
@@ -119,19 +133,21 @@ interface PendingMoment extends DetectedMoment {
   sequence: number;
 }
 
-const MOMENT_TYPE_ORDER: MomentType[] = [
+export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'walk_off_hr',
   'no_hitter',
   'perfect_game',
   'four_hr_game',
   'playoff_error',
   'first_career_hr',
+  'first_all_star',
   'milestone_500hr',
   'milestone_3000h',
   'milestone_300w',
   'blown_ws_save',
   'cycle',
   'twenty_k_game',
+  'bench_clearing_brawl',
   'arbitration_win',
   'arbitration_loss',
   'super_two_debut',
@@ -147,9 +163,12 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'rebuild_begun',
   'breakout_season',
   'contention_window_opens',
+  'fire_sale',
+  'dynasty_end',
+  'cursed_franchise',
 ];
 
-const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
+export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   walk_off_hr: [
     '{player} ended the night with one violent swing and a walk-off blast.',
     '{player} turned the final pitch into a walk-off home run and instant legend.',
@@ -180,6 +199,11 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
     '{player} broke through with the first home run of the career arc.',
     '{player} got the first career homer out of the way and the dugout felt it.',
   ],
+  first_all_star: [
+    '{player} broke through with a first All-Star selection.',
+    '{player} made the first All-Star team of the career climb.',
+    '{player} turned steady production into a first trip to the All-Star stage.',
+  ],
   milestone_500hr: [
     '{player} reached 500 home runs and moved into rare company.',
     '{player} crossed the 500-homer line and stamped the power legacy.',
@@ -209,6 +233,11 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
     '{player} piled up 20 strikeouts and overwhelmed the entire lineup.',
     '{player} turned the mound into a strikeout factory with a 20-K game.',
     '{player} hit the 20-strikeout mark and dominated from first pitch to last.',
+  ],
+  bench_clearing_brawl: [
+    '{player} was in the middle of a rivalry flashpoint when both benches emptied.',
+    '{player} got dragged into a late-inning brawl as the rivalry spilled over.',
+    '{player} stood in the middle of a bench-clearing scene that changed the temperature.',
   ],
   arbitration_win: [
     '{player} won the arbitration case.',
@@ -254,6 +283,15 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   ],
   contention_window_opens: [
     '{player} helped crack open a fresh contention window after lean seasons.',
+  ],
+  fire_sale: [
+    '{player} became part of a franchise fire sale before the deadline slammed shut.',
+  ],
+  dynasty_end: [
+    '{player} saw a once-dominant division run finally crack apart.',
+  ],
+  cursed_franchise: [
+    '{player} remained stuck in a franchise losing streak that reached another bleak milestone.',
   ],
 };
 
@@ -330,6 +368,21 @@ function pickDescriptionTemplate(
   return templates[rng.nextInt(0, templates.length - 1)]!;
 }
 
+function ordinalInning(inning: number): string {
+  const remainder10 = inning % 10;
+  const remainder100 = inning % 100;
+  if (remainder10 === 1 && remainder100 !== 11) {
+    return `${inning}st`;
+  }
+  if (remainder10 === 2 && remainder100 !== 12) {
+    return `${inning}nd`;
+  }
+  if (remainder10 === 3 && remainder100 !== 13) {
+    return `${inning}rd`;
+  }
+  return `${inning}th`;
+}
+
 function assignDescriptions(
   pendingMoments: PendingMoment[],
   context: MomentDetectionContext,
@@ -341,6 +394,9 @@ function assignDescriptions(
   ));
 
   for (const pending of sorted) {
+    if (pending.moment.description.length > 0) {
+      continue;
+    }
     const playerName = context.playerNameById?.get(pending.playerId) ?? pending.playerId;
     pending.moment.description = formatMomentDescription(pending.moment, playerName, rng.fork());
   }
@@ -406,6 +462,87 @@ function detectContextMoments(
       createMomentRecord('blown_ws_save', BLOWN_WS_SAVE_IMPACT, context),
     );
   }
+}
+
+function playerAlreadyHasMomentType(
+  context: MomentDetectionContext,
+  playerId: string,
+  type: MomentType,
+): boolean {
+  return (context.existingMomentsByPlayer.get(playerId) ?? []).some((moment) => moment.type === type);
+}
+
+function detectAwardMoments(
+  context: MomentDetectionContext,
+  pendingMoments: PendingMoment[],
+): void {
+  const seenPlayers = new Set<string>();
+  const awardHistory = [...(context.awardHistory ?? [])].sort((left, right) => (
+    left.playerId.localeCompare(right.playerId)
+    || left.season - right.season
+    || left.award.localeCompare(right.award)
+  ));
+
+  for (const award of awardHistory) {
+    if (award.season !== context.currentSeason || award.award !== 'All-Star') {
+      continue;
+    }
+    if (seenPlayers.has(award.playerId) || playerAlreadyHasMomentType(context, award.playerId, 'first_all_star')) {
+      continue;
+    }
+
+    const priorAllStarSelection = awardHistory.some((candidate) => (
+      candidate.playerId === award.playerId
+      && candidate.award === 'All-Star'
+      && candidate.season < context.currentSeason
+    ));
+    if (priorAllStarSelection) {
+      continue;
+    }
+
+    seenPlayers.add(award.playerId);
+    addPendingMoment(
+      pendingMoments,
+      award.playerId,
+      createMomentRecord('first_all_star', FIRST_ALL_STAR_IMPACT, context),
+    );
+  }
+}
+
+function detectBenchClearingBrawl(
+  gameResult: GameBoxScore,
+  context: MomentDetectionContext,
+  pendingMoments: PendingMoment[],
+  rng: GameRNG,
+): void {
+  if ((context.rivalryIntensity ?? 0) < BENCH_CLEARING_BRAWL_INTENSITY_THRESHOLD) {
+    return;
+  }
+
+  const hitByPitchResults = gameResult.paResults.filter((result) => result.outcome === 'HBP');
+  if (hitByPitchResults.length < BENCH_CLEARING_BRAWL_HBP_THRESHOLD) {
+    return;
+  }
+
+  const lateCloseResult = [...gameResult.paResults]
+    .reverse()
+    .find((result) => (
+      result.inning >= BENCH_CLEARING_BRAWL_MIN_INNING
+      && Math.abs(result.scoreBefore[0] - result.scoreBefore[1]) <= BENCH_CLEARING_BRAWL_MAX_SCORE_MARGIN
+    ));
+  if (!lateCloseResult) {
+    return;
+  }
+
+  const probability = Math.min(0.18, 0.06 + (((context.rivalryIntensity ?? 0) - BENCH_CLEARING_BRAWL_INTENSITY_THRESHOLD) * 0.003));
+  if (rng.nextFloat() >= probability) {
+    return;
+  }
+
+  const instigator = hitByPitchResults[hitByPitchResults.length - 1]!;
+  const moment = createMomentRecord('bench_clearing_brawl', BENCH_CLEARING_BRAWL_IMPACT, context);
+  moment.description = `Benches empty in ${gameResult.homeTeamId.toUpperCase()}: the ${gameResult.awayTeamId.toUpperCase()}-${gameResult.homeTeamId.toUpperCase()} rivalry boils over in the ${ordinalInning(lateCloseResult.inning)}.`;
+  addPendingMoment(pendingMoments, instigator.batterId, moment);
 }
 
 function detectStatMoments(
@@ -534,6 +671,8 @@ export function detectMoment(
   detectWalkOffHomeRun(gameResult, context, pendingMoments);
   detectStatMoments(gameResult, playerStats, context, pendingMoments);
   detectContextMoments(context, pendingMoments);
+  detectAwardMoments(context, pendingMoments);
+  detectBenchClearingBrawl(gameResult, context, pendingMoments, rng.fork());
   assignDescriptions(pendingMoments, context, rng);
 
   const momentsByPlayer = new Map<string, Moment[]>();
