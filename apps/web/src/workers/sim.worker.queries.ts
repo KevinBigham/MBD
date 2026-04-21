@@ -21,6 +21,7 @@ import {
   getRelationshipTier,
   getTeamById,
   getTopFreeAgents,
+  DIVISIONS,
   getUnreadNews,
   generateInteractivePressConference,
   SCENARIO_LIBRARY,
@@ -84,6 +85,7 @@ import type {
   SignatureMoment,
 } from '@mbd/contracts';
 import type {
+  Division,
   FreeAgent,
   GameBoxScore,
   GeneratedPlayer,
@@ -2693,6 +2695,186 @@ export const queryApi = {
       day: s.day,
       careerChases,
       paceChases: paceChases.slice(0, 5),
+    };
+  },
+
+  getPennantRaces() {
+    const s = requireState();
+    const fullStandings = s.seasonState.standings.getFullStandings();
+
+    // Pennant race heat — league-wide:
+    // 1. Division races: leader vs nearest chaser for each of the 6 divisions,
+    //    filtered to the tight/close ones (drops blowouts at 5+ GB).
+    // 2. Wildcard races: non-division-leaders per league ranked by pct,
+    //    shown only when the bubble (4th/5th non-leader) sits within 5 GB
+    //    of the 3rd WC spot. Mirrors modern MLB's 3-WC format.
+    //
+    // Early-season gate: nothing meaningful until the top team clears 10 GP.
+
+    const PENNANT_HEAT_WINDOW_GB = 5;
+    const WILDCARD_SPOTS = 3;
+    const WILDCARD_BUBBLE_DEPTH = 2; // extra chasers shown beyond the cutoff
+    const MIN_GAMES_FOR_RACES = 10;
+
+    const divisionLeaders: StandingsEntry[] = [];
+    for (const div of DIVISIONS) {
+      const leader = fullStandings[div]?.[0];
+      if (leader) divisionLeaders.push(leader);
+    }
+    const maxLeaderGames = divisionLeaders.reduce(
+      (max, entry) => Math.max(max, entry.wins + entry.losses),
+      0,
+    );
+    const gamesRemaining = Math.max(SEASON_GAMES - maxLeaderGames, 0);
+
+    if (maxLeaderGames < MIN_GAMES_FOR_RACES) {
+      return {
+        season: s.season,
+        day: s.day,
+        gamesRemaining,
+        divisionRaces: [],
+        wildcardRaces: [],
+      };
+    }
+
+    const streakLabel = (streak: number): string => {
+      if (streak > 0) return `W${streak}`;
+      if (streak < 0) return `L${Math.abs(streak)}`;
+      return '-';
+    };
+    const raceTeam = (entry: StandingsEntry) => {
+      const team = getTeamById(entry.teamId);
+      const record = s.seasonState.standings.getRecord(entry.teamId);
+      return {
+        teamId: entry.teamId,
+        abbreviation: team?.abbreviation ?? entry.teamId.toUpperCase(),
+        name: team?.name ?? entry.teamId,
+        wins: entry.wins,
+        losses: entry.losses,
+        streak: streakLabel(record?.streak ?? 0),
+      };
+    };
+    const divisionLabel = (div: Division): string => {
+      const [league, region] = div.split('_');
+      const regionTitle = region ? region.charAt(0) + region.slice(1).toLowerCase() : '';
+      return `${league} ${regionTitle}`.trim();
+    };
+    const heatOf = (gb: number): 'tight' | 'close' | 'comfortable' => {
+      if (gb <= 2) return 'tight';
+      if (gb <= PENNANT_HEAT_WINDOW_GB) return 'close';
+      return 'comfortable';
+    };
+
+    type DivisionRace = {
+      division: Division;
+      divisionLabel: string;
+      leader: ReturnType<typeof raceTeam>;
+      chaser: ReturnType<typeof raceTeam> | null;
+      gamesBack: number;
+      magicNumber: number | null;
+      heat: 'tight' | 'close' | 'comfortable';
+    };
+
+    const allDivisionRaces: DivisionRace[] = [];
+    for (const div of DIVISIONS) {
+      const entries = fullStandings[div];
+      if (!entries || entries.length === 0) continue;
+      const leader = entries[0]!;
+      // Skip dormant divisions — otherwise a 0-0 vs 0-0 pair reads as a
+      // perfectly "tight" 0 GB race and crowds out real ones.
+      if (leader.wins + leader.losses < MIN_GAMES_FOR_RACES) continue;
+      const chaser = entries[1] ?? null;
+      const gamesBack = chaser?.gamesBack ?? 0;
+
+      let magicNumber: number | null = null;
+      if (chaser) {
+        const raw = SEASON_GAMES - leader.wins - chaser.losses + 1;
+        if (raw > 0) magicNumber = raw;
+      }
+
+      allDivisionRaces.push({
+        division: div,
+        divisionLabel: divisionLabel(div),
+        leader: raceTeam(leader),
+        chaser: chaser ? raceTeam(chaser) : null,
+        gamesBack,
+        magicNumber,
+        heat: heatOf(gamesBack),
+      });
+    }
+
+    const heatRank: Record<DivisionRace['heat'], number> = { tight: 0, close: 1, comfortable: 2 };
+    allDivisionRaces.sort((left, right) => {
+      if (left.heat !== right.heat) return heatRank[left.heat] - heatRank[right.heat];
+      if (left.gamesBack !== right.gamesBack) return left.gamesBack - right.gamesBack;
+      return left.division.localeCompare(right.division);
+    });
+
+    const divisionRaces = allDivisionRaces
+      .filter((race) => race.heat !== 'comfortable')
+      .slice(0, 5);
+
+    type WildcardRace = {
+      league: 'AL' | 'NL';
+      leagueLabel: string;
+      teams: Array<
+        ReturnType<typeof raceTeam> & { gamesBack: number; inWildcard: boolean }
+      >;
+    };
+
+    const wildcardRaces: WildcardRace[] = [];
+    for (const league of ['AL', 'NL'] as const) {
+      const leagueDivs = DIVISIONS.filter((d) => d.startsWith(`${league}_`));
+      const nonLeaders: StandingsEntry[] = [];
+      for (const div of leagueDivs) {
+        const entries = fullStandings[div];
+        if (entries && entries.length > 1) {
+          nonLeaders.push(...entries.slice(1));
+        }
+      }
+
+      nonLeaders.sort((left, right) => {
+        if (right.pct !== left.pct) return right.pct - left.pct;
+        if (right.wins !== left.wins) return right.wins - left.wins;
+        if (left.losses !== right.losses) return left.losses - right.losses;
+        return left.teamId.localeCompare(right.teamId);
+      });
+
+      if (nonLeaders.length < WILDCARD_SPOTS) continue;
+      const cutoff = nonLeaders[WILDCARD_SPOTS - 1];
+      if (!cutoff) continue;
+
+      const slicedCount = Math.min(
+        nonLeaders.length,
+        WILDCARD_SPOTS + WILDCARD_BUBBLE_DEPTH,
+      );
+      const teams = nonLeaders.slice(0, slicedCount).map((entry, idx) => {
+        const gb = ((cutoff.wins - entry.wins) + (entry.losses - cutoff.losses)) / 2;
+        return {
+          ...raceTeam(entry),
+          gamesBack: gb,
+          inWildcard: idx < WILDCARD_SPOTS,
+        };
+      });
+
+      const chasersClose = teams
+        .filter((team) => !team.inWildcard)
+        .some((team) => team.gamesBack <= PENNANT_HEAT_WINDOW_GB);
+      if (!chasersClose) continue;
+
+      wildcardRaces.push({
+        league,
+        leagueLabel: league === 'AL' ? 'American' : 'National',
+        teams,
+      });
+    }
+
+    return {
+      season: s.season,
+      day: s.day,
+      gamesRemaining,
+      divisionRaces,
+      wildcardRaces,
     };
   },
 
