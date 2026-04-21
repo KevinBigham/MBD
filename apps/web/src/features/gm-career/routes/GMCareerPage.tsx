@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { SignatureMoment } from '@mbd/contracts';
 import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
 import { Award, Briefcase, Clock, MapPin, Trophy } from 'lucide-react';
 import { getTeamById } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
+import TeamIdentityCard from '../components/TeamIdentityCard';
 
 interface CareerEntry {
   teamId: string;
@@ -66,6 +68,7 @@ export default function GMCareerPage() {
   const { isInitialized, season, day, phase, gmName } = useGameStore();
   const [career, setCareer] = useState<GMCareerData | null>(null);
   const [jobMarket, setJobMarket] = useState<JobMarketData | null>(null);
+  const [teamMoments, setTeamMoments] = useState<SignatureMoment[]>([]);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -73,8 +76,13 @@ export default function GMCareerPage() {
       worker.getGMCareer(),
       worker.getJobMarket(),
     ]);
+    const nextTeamMoments = careerData?.currentTeamId
+      ? await worker.getTeamMoments(careerData.currentTeamId)
+      : [];
+
     setCareer((careerData ?? null) as GMCareerData | null);
     setJobMarket((jobData ?? null) as JobMarketData | null);
+    setTeamMoments((nextTeamMoments ?? []) as SignatureMoment[]);
   }, [isInitialized, worker, workerReady]);
 
   useEffect(() => {
@@ -321,6 +329,16 @@ export default function GMCareerPage() {
           </CardContent>
         </Card>
       )}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="font-heading text-xl font-semibold text-dynasty-text">Team Identity</h2>
+          <p className="font-data text-sm text-dynasty-muted">
+            Deadline turns and franchise posture shifts accumulate here across your tenure.
+          </p>
+        </div>
+        <TeamIdentityCard teamId={career.currentTeamId} moments={teamMoments} />
+      </section>
     </div>
   );
 }
