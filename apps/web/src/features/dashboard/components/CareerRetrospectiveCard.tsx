@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -14,6 +14,8 @@ import {
   Trophy,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+
+const SeasonStoryReelModal = lazy(() => import('./SeasonStoryReelModal'));
 
 interface TeamMomentEntry {
   type: string;
@@ -95,6 +97,7 @@ export default function CareerRetrospectiveCard() {
   const { getCareerRetrospective, isReady } = useWorker();
   const [view, setView] = useState<CareerRetrospectiveView | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
 
   const fetchRetrospective = useCallback(async () => {
     if (!isReady || typeof getCareerRetrospective !== 'function') {
@@ -158,11 +161,27 @@ export default function CareerRetrospectiveCard() {
           <TenureStrip view={view} />
           <TitlesRow titles={view.titles} />
           {view.awardsShelf.total > 0 ? <AwardsShelf shelf={view.awardsShelf} /> : null}
-          {view.teamMoments.length > 0 ? <SignatureBeats moments={view.teamMoments.slice(0, 3)} /> : null}
-          {view.legendArcs.length > 0 ? <LegendArcs arcs={view.legendArcs.slice(0, 3)} /> : null}
+          {view.teamMoments.length > 0 ? (
+            <SignatureBeats
+              moments={view.teamMoments.slice(0, 3)}
+              onSelectSeason={setSelectedSeason}
+            />
+          ) : null}
+          {view.legendArcs.length > 0 ? (
+            <LegendArcs arcs={view.legendArcs.slice(0, 3)} onSelectSeason={setSelectedSeason} />
+          ) : null}
           {view.topRivalry ? <TopRivalry rivalry={view.topRivalry} /> : null}
         </div>
       )}
+
+      {selectedSeason != null ? (
+        <Suspense fallback={null}>
+          <SeasonStoryReelModal
+            seasonYear={selectedSeason}
+            onDismiss={() => setSelectedSeason(null)}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 }
@@ -287,7 +306,13 @@ function AwardsShelf({ shelf }: { shelf: AwardsShelfView }) {
   );
 }
 
-function SignatureBeats({ moments }: { moments: TeamMomentEntry[] }) {
+function SignatureBeats({
+  moments,
+  onSelectSeason,
+}: {
+  moments: TeamMomentEntry[];
+  onSelectSeason: (season: number) => void;
+}) {
   return (
     <div className="rounded-lg border border-dynasty-border/70 bg-dynasty-surface/70 p-3">
       <div className="flex items-center gap-1.5">
@@ -300,16 +325,24 @@ function SignatureBeats({ moments }: { moments: TeamMomentEntry[] }) {
           const Icon = positive ? Sparkles : AlertTriangle;
           const iconClass = positive ? 'text-accent-success' : 'text-accent-danger';
           return (
-            <li key={`${moment.type}-${moment.season}-${moment.day ?? idx}`} className="flex items-start gap-2">
-              <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${iconClass}`} />
-              <div className="min-w-0">
-                <div className="font-heading text-xs text-dynasty-textBright">{humanizeLabel(moment.type)}</div>
-                <div className="mt-0.5 font-heading text-xs text-dynasty-text">{moment.description}</div>
-                <div className="mt-0.5 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
-                  Season {moment.season}
-                  {moment.day != null ? ` · Day ${moment.day}` : ''}
+            <li key={`${moment.type}-${moment.season}-${moment.day ?? idx}`}>
+              <button
+                type="button"
+                onClick={() => onSelectSeason(moment.season)}
+                aria-label={`Open season ${moment.season} story reel`}
+                className="flex w-full items-start gap-2 rounded-md px-1 py-1 text-left transition hover:bg-dynasty-elevated/70 focus:bg-dynasty-elevated/70 focus:outline-none focus:ring-1 focus:ring-accent-info/60"
+              >
+                <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${iconClass}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-heading text-xs text-dynasty-textBright">{humanizeLabel(moment.type)}</div>
+                  <div className="mt-0.5 font-heading text-xs text-dynasty-text">{moment.description}</div>
+                  <div className="mt-0.5 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+                    Season {moment.season}
+                    {moment.day != null ? ` · Day ${moment.day}` : ''}
+                  </div>
                 </div>
-              </div>
+                <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-dynasty-muted" />
+              </button>
             </li>
           );
         })}
@@ -318,7 +351,13 @@ function SignatureBeats({ moments }: { moments: TeamMomentEntry[] }) {
   );
 }
 
-function LegendArcs({ arcs }: { arcs: LegendArcEntry[] }) {
+function LegendArcs({
+  arcs,
+  onSelectSeason,
+}: {
+  arcs: LegendArcEntry[];
+  onSelectSeason: (season: number) => void;
+}) {
   return (
     <div className="rounded-lg border border-dynasty-border/70 bg-dynasty-surface/70 p-3">
       <div className="flex items-center gap-1.5">
@@ -338,9 +377,14 @@ function LegendArcs({ arcs }: { arcs: LegendArcEntry[] }) {
               <span className="shrink-0 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
                 {humanizeLabel(arc.arcType)}
               </span>
-              <span className="ml-auto shrink-0 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+              <button
+                type="button"
+                onClick={() => onSelectSeason(arc.resolvedSeason)}
+                aria-label={`Open season ${arc.resolvedSeason} story reel`}
+                className="ml-auto shrink-0 rounded-full border border-dynasty-border/60 bg-dynasty-elevated/70 px-2 py-0.5 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted transition hover:border-accent-info/60 hover:text-accent-info focus:outline-none focus:ring-1 focus:ring-accent-info/60"
+              >
                 S{arc.resolvedSeason}
-              </span>
+              </button>
             </div>
             {arc.milestoneHeadline ? (
               <div className="mt-0.5 font-heading text-xs text-dynasty-text">{arc.milestoneHeadline}</div>

@@ -1037,6 +1037,144 @@ function buildCareerRetrospective(s: NonNullable<typeof state>) {
   };
 }
 
+const STAT_LEADER_CATEGORIES: ReadonlyArray<{ key: 'hr' | 'rbi' | 'avg' | 'era' | 'k' | 'w'; label: string }> = [
+  { key: 'hr', label: 'HR' },
+  { key: 'avg', label: 'AVG' },
+  { key: 'era', label: 'ERA' },
+  { key: 'k', label: 'K' },
+];
+
+function buildSeasonStoryReel(s: NonNullable<typeof state>, seasonYear: number) {
+  const userTeam = getTeamById(s.userTeamId);
+  const userTeamName = teamNameFromId(s.userTeamId);
+  const userTeamAbbreviation = userTeam?.abbreviation ?? s.userTeamId.toUpperCase();
+
+  const archiveEntry = s.seasonArchive.find((entry) => entry.season === seasonYear) ?? null;
+  const legacyEntry = s.archivedSeasons.find((entry) => entry.season === seasonYear) ?? null;
+  if (!archiveEntry && !legacyEntry) {
+    return null;
+  }
+
+  const userStanding = archiveEntry?.standings.find((row) => row.teamId === s.userTeamId)
+    ?? legacyEntry?.standings.find((row) => row.teamId === s.userTeamId)
+    ?? null;
+  const record = userStanding
+    ? { wins: userStanding.wins, losses: userStanding.losses }
+    : legacyEntry?.userRecord
+      ? { wins: legacyEntry.userRecord.wins, losses: legacyEntry.userRecord.losses }
+      : null;
+  const divisionRank = userStanding?.divisionRank ?? null;
+
+  const userPlayoffSeries = (archiveEntry?.playoffSeries ?? []).filter(
+    (series) => series.winnerTeamId === s.userTeamId || series.loserTeamId === s.userTeamId,
+  );
+  const playoffPath = userPlayoffSeries.map((series) => {
+    const didWin = series.winnerTeamId === s.userTeamId;
+    const opponentTeamId = didWin ? series.loserTeamId : series.winnerTeamId;
+    return {
+      round: series.round,
+      result: series.result,
+      opponentTeamId,
+      opponentTeamName: opponentTeamId ? teamNameFromId(opponentTeamId) : null,
+      didWin,
+    };
+  });
+  const playoffResult = archiveEntry?.userSummary?.playoffResult ?? legacyEntry?.playoffResult ?? null;
+
+  const storylines = archiveEntry?.userSummary?.storylines ?? [];
+  const timelineEvents = archiveEntry?.timelineEvents ?? [];
+
+  const signatureBeats = [...(s.teamMoments.get(s.userTeamId) ?? [])]
+    .filter((moment) => moment.season === seasonYear)
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || Math.abs(right.impact) - Math.abs(left.impact)
+      || (right.day ?? 0) - (left.day ?? 0)
+      || left.type.localeCompare(right.type),
+    )
+    .slice(0, 5)
+    .map((moment) => ({
+      type: moment.type,
+      description: moment.description,
+      day: moment.day ?? null,
+      impact: moment.impact,
+      relevance: moment.relevance,
+    }));
+
+  const keyTransactions = [...(archiveEntry?.transactions ?? [])]
+    .sort((left, right) => right.impactScore - left.impactScore)
+    .slice(0, 3)
+    .map((entry) => ({
+      headline: entry.headline,
+      summary: entry.summary,
+      impactScore: entry.impactScore,
+    }));
+
+  const awards = (archiveEntry?.awards ?? [])
+    .filter((entry) => entry.teamId === s.userTeamId)
+    .map((entry) => {
+      const livePlayer = s.players.find((candidate) => candidate.id === entry.playerId);
+      const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === entry.playerId);
+      const playerName = livePlayer
+        ? `${livePlayer.firstName} ${livePlayer.lastName}`
+        : historicalPlayer?.fullName ?? entry.playerId;
+      return {
+        award: entry.award,
+        playerId: entry.playerId,
+        playerName,
+        league: entry.league,
+        summary: entry.summary,
+      };
+    });
+
+  const rawStatLeaders = archiveEntry?.statLeaders ?? legacyEntry?.statLeaders ?? null;
+  const statLeaderHighlights: Array<{
+    category: string;
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    teamAbbreviation: string;
+    value: string;
+  }> = [];
+  if (rawStatLeaders) {
+    for (const { key, label } of STAT_LEADER_CATEGORIES) {
+      const leader = rawStatLeaders[key]?.[0];
+      if (!leader) continue;
+      const livePlayer = s.players.find((candidate) => candidate.id === leader.playerId);
+      const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === leader.playerId);
+      const playerName = livePlayer
+        ? `${livePlayer.firstName} ${livePlayer.lastName}`
+        : historicalPlayer?.fullName ?? leader.playerId;
+      const leaderTeam = getTeamById(leader.teamId);
+      statLeaderHighlights.push({
+        category: label,
+        playerId: leader.playerId,
+        playerName,
+        teamId: leader.teamId,
+        teamAbbreviation: leaderTeam?.abbreviation ?? leader.teamId.toUpperCase(),
+        value: leader.value,
+      });
+    }
+  }
+
+  return {
+    season: seasonYear,
+    userTeamId: s.userTeamId,
+    userTeamName,
+    userTeamAbbreviation,
+    record,
+    divisionRank,
+    playoffResult,
+    storylines,
+    timelineEvents,
+    signatureBeats,
+    keyTransactions,
+    playoffPath,
+    awards,
+    statLeaderHighlights,
+  };
+}
+
 function buildHistoricalSummary(player: HistoricalPlayer) {
   return {
     playerId: player.playerId,
@@ -2166,6 +2304,10 @@ export const queryApi = {
 
   getCareerRetrospective() {
     return buildCareerRetrospective(requireState());
+  },
+
+  getSeasonStoryReel(seasonYear: number) {
+    return buildSeasonStoryReel(requireState(), seasonYear);
   },
 
   getJobMarket() {

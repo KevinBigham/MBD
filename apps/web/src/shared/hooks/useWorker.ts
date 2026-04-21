@@ -721,6 +721,10 @@ export function useWorker() {
   );
   const getGMCareer = useCallback(async () => api.getGMCareer(), [api]);
   const getCareerRetrospective = useCallback(async () => api.getCareerRetrospective(), [api]);
+  const getSeasonStoryReel = useCallback(
+    async (seasonYear: number) => api.getSeasonStoryReel(seasonYear),
+    [api],
+  );
   const getJobMarket = useCallback(async () => api.getJobMarket(), [api]);
   const getScoutConflicts = useCallback(
     async (teamId?: string) => api.getScoutConflicts(teamId),
@@ -960,7 +964,7 @@ export function useWorker() {
     getCoachingStaff, getCoachFreeAgents, getCoachMarket, hireCoach, fireCoach,
     getDevelopmentReport, getDevelopmentReports, getCoachingImpact, getStaffBudget, getDevelopmentPipeline,
     proceedToOffseason, startNextSeason,
-    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getFrontOfficeState, getGMCareer, getCareerRetrospective, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
+    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getFrontOfficeState, getGMCareer, getCareerRetrospective, getSeasonStoryReel, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
     getPersonalityProfile, getAwardRaces, getAwardRaceBoards, getRivalries,
     getAwardHistory, getSeasonHistory, getSeasonArchive, compareSeasons, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames, getAllTimeLeaders,
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,

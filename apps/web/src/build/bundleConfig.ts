@@ -57,7 +57,14 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // counts, and top rivalry into one dashboard payload. Story chunk landed
 // ~2.5 KB over the 417 KB ceiling; gzip held under cap (~125 KB actual vs
 // 127 KB ceiling).
-export const WORKER_CHUNK_BUDGET_BYTES = 420 * 1024;
+// WORKER raw: bumped 420 -> 423 KB for the Season Story Reel query slice.
+// Adds buildSeasonStoryReel + getSeasonStoryReel — per-season deep-dive
+// assembling record/rank, playoff path, storylines, timeline events, signature
+// beats filtered by season, key transactions, awards, and stat-leader
+// highlights from seasonArchive + archivedSeasons. Story chunk landed ~2.2 KB
+// over the 420 KB ceiling; gzip held under cap (~125.8 KB actual vs 127 KB
+// ceiling). Raw-only lift.
+export const WORKER_CHUNK_BUDGET_BYTES = 423 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 127 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
