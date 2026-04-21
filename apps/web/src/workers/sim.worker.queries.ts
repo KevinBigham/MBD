@@ -2589,6 +2589,113 @@ export const queryApi = {
     return queryApi.getMilestoneAlerts();
   },
 
+  getChaseWatch() {
+    const s = requireState();
+
+    // Dashboard "chase watch" — league-wide anticipation layer:
+    // 1. Career chases: players within 10% of the next career milestone
+    //    (delegates to getMilestoneAlerts which already filters + sorts deterministically)
+    // 2. Pace chases: players projected to reach historic season benchmarks
+    //    (delegates to findNotableProjections which reuses the same 40 HR/.300 AVG/20 W rules
+    //     the rest of the app uses)
+    const mlbPlayers = s.players.filter((player) => player.rosterStatus === 'MLB');
+    const playerLookup = new Map(mlbPlayers.map((player) => [player.id, player] as const));
+
+    const careerAlerts = buildMilestoneAlertsForPlayers(s, mlbPlayers);
+    const careerChases = careerAlerts.slice(0, 5).map((alert) => {
+      const player = playerLookup.get(alert.playerId) ?? null;
+      return {
+        playerId: alert.playerId,
+        playerName: alert.playerName,
+        teamId: player?.teamId ?? '',
+        milestoneLabel: alert.milestoneLabel,
+        currentValue: alert.currentValue,
+        threshold: alert.threshold,
+        remaining: alert.remaining,
+        urgency: alert.urgency,
+      };
+    });
+
+    // Team games-played cache — teamId → (W + L)
+    const teamGamesPlayed = new Map<string, number>();
+    const teamGamesPlayedFor = (teamId: string): number => {
+      const cached = teamGamesPlayed.get(teamId);
+      if (cached != null) {
+        return cached;
+      }
+      const record = s.seasonState.standings.getRecord(teamId);
+      const games = record ? record.wins + record.losses : 0;
+      teamGamesPlayed.set(teamId, games);
+      return games;
+    };
+
+    // 20+ games played for pace to be meaningful (small-sample guard)
+    const MIN_GAMES_FOR_PACE = 20;
+
+    const paceChases: Array<{
+      playerId: string;
+      playerName: string;
+      teamId: string;
+      category: string;
+      projectedValue: string;
+      benchmark: string;
+      paceDescription: string;
+      confidenceLevel: 'high' | 'medium' | 'low';
+    }> = [];
+
+    for (const player of mlbPlayers) {
+      const stats = s.seasonState.playerSeasonStats.get(player.id);
+      if (!stats) {
+        continue;
+      }
+      const isPitcher = player.pitcherAttributes != null;
+      const qualified = isPitcher ? stats.ip > 0 : stats.pa > 0;
+      if (!qualified) {
+        continue;
+      }
+
+      const gamesPlayed = teamGamesPlayedFor(player.teamId);
+      if (gamesPlayed < MIN_GAMES_FOR_PACE) {
+        continue;
+      }
+
+      const projection = projectSeasonStats(stats, gamesPlayed, SEASON_GAMES);
+      if (!projection) {
+        continue;
+      }
+
+      const notables = findNotableProjections([projection]);
+      const playerName = `${player.firstName} ${player.lastName}`;
+      for (const notable of notables) {
+        paceChases.push({
+          playerId: player.id,
+          playerName,
+          teamId: player.teamId,
+          category: notable.category,
+          projectedValue: notable.projectedValue,
+          benchmark: notable.benchmark,
+          paceDescription: notable.paceDescription,
+          confidenceLevel: projection.confidenceLevel,
+        });
+      }
+    }
+
+    // Deterministic sort: category alpha → confidence (high→low) → playerId alpha
+    const confidenceRank = { high: 0, medium: 1, low: 2 } as const;
+    paceChases.sort((left, right) =>
+      left.category.localeCompare(right.category)
+      || confidenceRank[left.confidenceLevel] - confidenceRank[right.confidenceLevel]
+      || left.playerId.localeCompare(right.playerId),
+    );
+
+    return {
+      season: s.season,
+      day: s.day,
+      careerChases,
+      paceChases: paceChases.slice(0, 5),
+    };
+  },
+
   // ---------------------------------------------------------------------------
   // Round 3 API Integration: Comparison, Projections, Similarity, Enhanced PBP, Awards
   // ---------------------------------------------------------------------------
