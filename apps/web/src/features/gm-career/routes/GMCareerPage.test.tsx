@@ -112,6 +112,7 @@ describe('GMCareerPage', () => {
       isReady: true,
       getGMCareer: vi.fn().mockResolvedValue(MOCK_GM_CAREER),
       getJobMarket: vi.fn().mockResolvedValue(MOCK_JOB_MARKET),
+      getTeamMoments: vi.fn().mockResolvedValue([]),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -120,6 +121,7 @@ describe('GMCareerPage', () => {
           <GMCareerPage />
         </MemoryRouter>,
       );
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -168,6 +170,7 @@ describe('GMCareerPage', () => {
       isReady: true,
       getGMCareer: vi.fn().mockResolvedValue(activeCareer),
       getJobMarket: vi.fn().mockResolvedValue(activeJobMarket),
+      getTeamMoments: vi.fn().mockResolvedValue([]),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -176,6 +179,7 @@ describe('GMCareerPage', () => {
           <GMCareerPage />
         </MemoryRouter>,
       );
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
