@@ -2077,6 +2077,123 @@ export const queryApi = {
     return calculateAwardRaces(s.players, s.seasonState.playerSeasonStats);
   },
 
+  getAwardRaceBoards() {
+    const s = requireState();
+    const fullStandings = s.seasonState.standings.getFullStandings();
+
+    // Award race boards — split AL / NL, enriched for dashboard display.
+    // Sample-size gate drops players below a meaningful workload so mid-season
+    // leaders aren't crowded out by small-sample spikes.
+    //
+    // Early-season gate: nothing until the top team clears MIN_LEADER_GAMES.
+
+    const MIN_LEADER_GAMES = 30;
+    const MIN_HITTER_PA = 100;
+    const MIN_PITCHER_IP_THIRDS = 60; // 20 IP (ip is stored in outs/thirds)
+    const TOP_N = 3;
+
+    let maxGamesPlayed = 0;
+    for (const entries of Object.values(fullStandings)) {
+      for (const entry of entries) {
+        maxGamesPlayed = Math.max(maxGamesPlayed, entry.wins + entry.losses);
+      }
+    }
+    const gamesRemaining = Math.max(SEASON_GAMES - maxGamesPlayed, 0);
+
+    const emptyBoard = { mvp: [], cyYoung: [], roy: [] };
+    if (maxGamesPlayed < MIN_LEADER_GAMES) {
+      return {
+        season: s.season,
+        day: s.day,
+        gamesRemaining,
+        al: emptyBoard,
+        nl: emptyBoard,
+      };
+    }
+
+    const leagueOf = (teamId: string): 'AL' | 'NL' | null => {
+      const division = getTeamById(teamId)?.division;
+      if (!division) return null;
+      if (division.startsWith('AL')) return 'AL';
+      if (division.startsWith('NL')) return 'NL';
+      return null;
+    };
+
+    const qualifies = (player: GeneratedPlayer, stats: PlayerGameStats): boolean => {
+      if (player.pitcherAttributes != null) {
+        return stats.ip >= MIN_PITCHER_IP_THIRDS;
+      }
+      return stats.pa >= MIN_HITTER_PA;
+    };
+
+    const alPlayers: GeneratedPlayer[] = [];
+    const nlPlayers: GeneratedPlayer[] = [];
+    for (const player of s.players) {
+      const stats = s.seasonState.playerSeasonStats.get(player.id);
+      if (!stats || !qualifies(player, stats)) continue;
+      const league = leagueOf(player.teamId);
+      if (league === 'AL') alPlayers.push(player);
+      else if (league === 'NL') nlPlayers.push(player);
+    }
+
+    const alRaces = calculateAwardRaces(alPlayers, s.seasonState.playerSeasonStats);
+    const nlRaces = calculateAwardRaces(nlPlayers, s.seasonState.playerSeasonStats);
+
+    const playerById = new Map(s.players.map((player) => [player.id, player]));
+
+    const formatHitterCallout = (stats: PlayerGameStats): string => {
+      const avg = stats.ab > 0 ? (stats.hits / stats.ab).toFixed(3).replace(/^0/, '') : '.000';
+      return `${avg} / ${stats.hr} HR / ${stats.rbi} RBI`;
+    };
+
+    const formatPitcherCallout = (stats: PlayerGameStats): string => {
+      const era = stats.ip > 0 ? ((stats.earnedRuns / (stats.ip / 3)) * 9).toFixed(2) : '0.00';
+      return `${era} ERA / ${stats.strikeouts} K / ${stats.wins}-${stats.losses}`;
+    };
+
+    const enrich = (entry: { playerId: string; teamId: string; score: number; summary: string }) => {
+      const player = playerById.get(entry.playerId);
+      const team = getTeamById(entry.teamId);
+      const stats = s.seasonState.playerSeasonStats.get(entry.playerId);
+      const isPitcher = player?.pitcherAttributes != null;
+      const statCallout = !stats
+        ? ''
+        : isPitcher
+          ? formatPitcherCallout(stats)
+          : formatHitterCallout(stats);
+      return {
+        playerId: entry.playerId,
+        playerName: player ? `${player.firstName} ${player.lastName}` : entry.playerId,
+        teamId: entry.teamId,
+        teamAbbreviation: team?.abbreviation ?? entry.teamId.toUpperCase(),
+        teamName: team?.name ?? entry.teamId,
+        score: Math.round(entry.score * 10) / 10,
+        statCallout,
+      };
+    };
+
+    // calculateAwardRaces falls back to mvp list when no qualifying rookies
+    // exist. Detect the fallback so we don't duplicate MVP entries under ROY.
+    const royIsFallback = (races: ReturnType<typeof calculateAwardRaces>): boolean => {
+      if (races.roy.length === 0 || races.mvp.length === 0) return true;
+      return races.roy[0]!.playerId === races.mvp[0]!.playerId;
+    };
+
+    const enrichBoard = (races: ReturnType<typeof calculateAwardRaces>) => ({
+      mvp: races.mvp.slice(0, TOP_N).map(enrich),
+      cyYoung: races.cyYoung.slice(0, TOP_N).map(enrich),
+      roy: royIsFallback(races) ? [] : races.roy.slice(0, TOP_N).map(enrich),
+    });
+
+    return {
+      season: s.season,
+      day: s.day,
+      gamesRemaining,
+      al: enrichBoard(alRaces),
+      nl: enrichBoard(nlRaces),
+    };
+  },
+
   getRivalries(teamId?: string) {
     const s = requireState();
     return Array.from(getRivalriesForTeam(s, teamId ?? s.userTeamId).values())

@@ -441,3 +441,274 @@ describe('worker pennant races query', () => {
     expect(leagues.has('NL')).toBe(true);
   });
 });
+describe('worker award race boards query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  interface AwardEntryView {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    teamAbbreviation: string;
+    teamName: string;
+    score: number;
+    statCallout: string;
+  }
+
+  interface AwardBoardView {
+    mvp: AwardEntryView[];
+    cyYoung: AwardEntryView[];
+    roy: AwardEntryView[];
+  }
+
+  interface AwardRaceBoardsView {
+    season: number;
+    day: number;
+    gamesRemaining: number;
+    al: AwardBoardView;
+    nl: AwardBoardView;
+  }
+
+  // Plant a controlled W-L record directly into the standings tracker's private
+  // map. Mirrors the pattern used for pennant races — avoids recordGame noise.
+  function plantTeamRecord(
+    state: ReturnType<typeof requireState>,
+    teamId: string,
+    wins: number,
+    losses: number,
+  ): void {
+    const tracker = state.seasonState.standings as unknown as {
+      records: Map<string, {
+        teamId: string;
+        wins: number;
+        losses: number;
+        runsScored: number;
+        runsAllowed: number;
+        streak: number;
+        last10: [number, number];
+        divisionWins: number;
+        divisionLosses: number;
+      }>;
+    };
+    tracker.records.set(teamId, {
+      teamId,
+      wins,
+      losses,
+      runsScored: 0,
+      runsAllowed: 0,
+      streak: 0,
+      last10: [0, 0],
+      divisionWins: 0,
+      divisionLosses: 0,
+    });
+  }
+
+  it('returns a view with season/day plus al + nl boards', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 30, 20);
+
+    const workerApi = api as typeof api & { getAwardRaceBoards: () => AwardRaceBoardsView };
+    const view = workerApi.getAwardRaceBoards();
+
+    expect(view.season).toBe(state.season);
+    expect(view.day).toBe(state.day);
+    expect(typeof view.gamesRemaining).toBe('number');
+    expect(view.al).toBeDefined();
+    expect(view.nl).toBeDefined();
+    expect(Array.isArray(view.al.mvp)).toBe(true);
+    expect(Array.isArray(view.al.cyYoung)).toBe(true);
+    expect(Array.isArray(view.al.roy)).toBe(true);
+  });
+
+  it('is deterministic — two calls against the same state return the same view', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+
+    const workerApi = api as typeof api & { getAwardRaceBoards: () => AwardRaceBoardsView };
+    const first = workerApi.getAwardRaceBoards();
+    const second = workerApi.getAwardRaceBoards();
+
+    expect(second).toEqual(first);
+  });
+
+  it('gates early-season output with empty boards when no team has reached 30 games', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 10, 5);
+
+    const workerApi = api as typeof api & { getAwardRaceBoards: () => AwardRaceBoardsView };
+    const view = workerApi.getAwardRaceBoards();
+
+    expect(view.al.mvp).toEqual([]);
+    expect(view.al.cyYoung).toEqual([]);
+    expect(view.al.roy).toEqual([]);
+    expect(view.nl.mvp).toEqual([]);
+    expect(view.nl.cyYoung).toEqual([]);
+    expect(view.nl.roy).toEqual([]);
+  });
+
+  it('applies sample-size filter — a thumping hitter below 100 PA is excluded from MVP board', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+
+    // Find an AL hitter from nym (Mets sit in AL_EAST in the fixture universe)
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nym' && player.pitcherAttributes == null,
+    );
+    expect(hitter).toBeDefined();
+    if (!hitter) return;
+
+    // Plant overwhelming stats but under the 100 PA floor — should not qualify.
+    state.seasonState.playerSeasonStats.set(hitter.id, {
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      pa: 40,
+      ab: 35,
+      hits: 20,
+      doubles: 4,
+      triples: 0,
+      hr: 12,
+      rbi: 35,
+      bb: 5,
+      k: 6,
+      runs: 18,
+      hbp: 0,
+      sacFlies: 0,
+      ip: 0,
+      earnedRuns: 0,
+      strikeouts: 0,
+      walks: 0,
+      hitsAllowed: 0,
+      homeRunsAllowed: 0,
+      hitBatters: 0,
+      flyBallsAllowed: 0,
+      wins: 0,
+      losses: 0,
+    });
+
+    const workerApi = api as typeof api & { getAwardRaceBoards: () => AwardRaceBoardsView };
+    const view = workerApi.getAwardRaceBoards();
+
+    const appearsInMvp = view.al.mvp.some((entry) => entry.playerId === hitter.id)
+      || view.nl.mvp.some((entry) => entry.playerId === hitter.id);
+    expect(appearsInMvp).toBe(false);
+  });
+
+  it('enriches entries with playerName, team display info, and a stat callout', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nym' && player.pitcherAttributes == null,
+    );
+    expect(hitter).toBeDefined();
+    if (!hitter) return;
+
+    state.seasonState.playerSeasonStats.set(hitter.id, {
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      pa: 200,
+      ab: 180,
+      hits: 63,
+      doubles: 12,
+      triples: 1,
+      hr: 25,
+      rbi: 70,
+      bb: 20,
+      k: 40,
+      runs: 55,
+      hbp: 0,
+      sacFlies: 0,
+      ip: 0,
+      earnedRuns: 0,
+      strikeouts: 0,
+      walks: 0,
+      hitsAllowed: 0,
+      homeRunsAllowed: 0,
+      hitBatters: 0,
+      flyBallsAllowed: 0,
+      wins: 0,
+      losses: 0,
+    });
+
+    const workerApi = api as typeof api & { getAwardRaceBoards: () => AwardRaceBoardsView };
+    const view = workerApi.getAwardRaceBoards();
+
+    const allMvp = [...view.al.mvp, ...view.nl.mvp];
+    const entry = allMvp.find((candidate) => candidate.playerId === hitter.id);
+    expect(entry).toBeDefined();
+    expect(entry?.playerName).toBe(`${hitter.firstName} ${hitter.lastName}`);
+    expect(entry?.teamAbbreviation).toBeTruthy();
+    expect(entry?.teamAbbreviation).not.toBe(hitter.teamId.toLowerCase());
+    expect(entry?.statCallout).toMatch(/HR/);
+    expect(entry?.statCallout).toMatch(/RBI/);
+  });
+
+  it('routes hitters into mvp and pitchers into cyYoung on their respective league board', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+
+    const pitcher = state.players.find(
+      (player) => player.teamId === 'nym' && player.pitcherAttributes != null,
+    );
+    expect(pitcher).toBeDefined();
+    if (!pitcher) return;
+
+    // Plant a dominant pitcher stat line — 80 IP (240 thirds) of ace-level work.
+    state.seasonState.playerSeasonStats.set(pitcher.id, {
+      playerId: pitcher.id,
+      teamId: pitcher.teamId,
+      pa: 0,
+      ab: 0,
+      hits: 0,
+      doubles: 0,
+      triples: 0,
+      hr: 0,
+      rbi: 0,
+      bb: 0,
+      k: 0,
+      runs: 0,
+      hbp: 0,
+      sacFlies: 0,
+      ip: 240,
+      earnedRuns: 18,
+      strikeouts: 110,
+      walks: 15,
+      hitsAllowed: 55,
+      homeRunsAllowed: 5,
+      hitBatters: 1,
+      flyBallsAllowed: 40,
+      wins: 10,
+      losses: 2,
+    });
+
+    const workerApi = api as typeof api & { getAwardRaceBoards: () => AwardRaceBoardsView };
+    const view = workerApi.getAwardRaceBoards();
+
+    const division = state.players.find((p) => p.id === pitcher.id)?.teamId;
+    expect(division).toBeDefined();
+
+    const boards = [view.al, view.nl];
+    const appearsInCyYoung = boards.some((board) =>
+      board.cyYoung.some((entry) => entry.playerId === pitcher.id),
+    );
+    const appearsInMvp = boards.some((board) =>
+      board.mvp.some((entry) => entry.playerId === pitcher.id),
+    );
+    expect(appearsInCyYoung).toBe(true);
+    expect(appearsInMvp).toBe(false);
+
+    const cyEntry = boards
+      .flatMap((board) => board.cyYoung)
+      .find((entry) => entry.playerId === pitcher.id);
+    expect(cyEntry?.statCallout).toMatch(/ERA/);
+    expect(cyEntry?.statCallout).toMatch(/K/);
+  });
+});
