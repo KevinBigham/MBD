@@ -10,11 +10,11 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v24', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(24);
+  it('tracks the current additive save schema as v25', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(25);
   });
 
-  it('migrates the v17 fixture into the additive v24 shape', () => {
+  it('migrates the v17 fixture into the additive v25 shape', () => {
     const fixture = loadFixture('./fixtures/save/v17/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -28,7 +28,7 @@ describe('save schema migration', () => {
     expect(migrated.narrative.teamMoments).toEqual([]);
   });
 
-  it('migrates the v18 fixture into the additive v24 arbitration shape', () => {
+  it('migrates the v18 fixture into the additive v25 arbitration shape', () => {
     const fixture = loadFixture('./fixtures/save/v18/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -41,7 +41,7 @@ describe('save schema migration', () => {
     expect(migrated.narrative.teamMoments).toEqual([]);
   });
 
-  it('migrates the v19 fixture into the additive v24 broadcast shape', () => {
+  it('migrates the v19 fixture into the additive v25 broadcast shape', () => {
     const fixture = loadFixture('./fixtures/save/v19/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -54,7 +54,7 @@ describe('save schema migration', () => {
     expect(migrated.narrative.teamMoments).toEqual([]);
   });
 
-  it('migrates the v20 fixture into the additive v24 trade-deadline shape', () => {
+  it('migrates the v20 fixture into the additive v25 trade-deadline shape', () => {
     const fixture = loadFixture('./fixtures/save/v20/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -67,7 +67,7 @@ describe('save schema migration', () => {
     expect(migrated.narrative.teamMoments).toEqual([]);
   });
 
-  it('migrates the v21 fixture into the additive v24 team-moments shape', () => {
+  it('migrates the v21 fixture into the additive v25 team-moments shape', () => {
     const fixture = loadFixture('./fixtures/save/v21/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -80,7 +80,7 @@ describe('save schema migration', () => {
     expect(migrated.narrative.teamMoments).toEqual([]);
   });
 
-  it('migrates the v22 fixture into the additive v24 season-identity enum shape', () => {
+  it('migrates the v22 fixture into the additive v25 season-identity enum shape', () => {
     const fixture = loadFixture('./fixtures/save/v22/core.json');
 
     const migrated = parseGameSnapshot(fixture);
@@ -89,13 +89,32 @@ describe('save schema migration', () => {
     expect(migrated.narrative.teamMoments).toEqual([]);
   });
 
-  it('migrates the v23 fixture into the additive v24 season-identity enum shape', () => {
+  it('migrates the v23 fixture into the additive v25 season-identity enum shape', () => {
     const fixture = loadFixture('./fixtures/save/v23/core.json');
 
     const migrated = parseGameSnapshot(fixture);
 
     expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(migrated.narrative.teamMoments).toEqual([]);
+  });
+
+  it('migrates the v24 fixture into the additive v25 season-identity enum shape', () => {
+    const fixture = loadFixture('./fixtures/save/v24/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(migrated.narrative.teamMoments).toEqual([
+      [
+        'nym',
+        [
+          expect.objectContaining({
+            type: 'first_dynasty_peak',
+            description: expect.stringContaining('division titles'),
+          }),
+        ],
+      ],
+    ]);
   });
 
   it('rejects malformed legacy fixtures during migration', () => {
