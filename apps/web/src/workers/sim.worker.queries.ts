@@ -1402,6 +1402,21 @@ export const queryApi = {
       });
   },
 
+  getRecentTeamMoments(sinceDay: number) {
+    const s = requireState();
+    const threshold = (s.season * 1000) + Math.max(1, sinceDay);
+
+    return [...s.teamMoments.entries()]
+      .flatMap(([teamId, moments]) => moments.map((moment) => ({ teamId, moment })))
+      .filter(({ moment }) => absoluteMomentDay(moment) >= threshold)
+      .sort((left, right) =>
+        absoluteMomentDay(right.moment) - absoluteMomentDay(left.moment)
+        || right.moment.relevance - left.moment.relevance
+        || left.teamId.localeCompare(right.teamId)
+        || left.moment.type.localeCompare(right.moment.type),
+      );
+  },
+
   getNicknamesForPlayer(playerId: string) {
     const s = requireState();
     return s.playerNicknames.get(playerId) ?? null;
