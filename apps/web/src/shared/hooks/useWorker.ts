@@ -406,6 +406,10 @@ export function useWorker() {
     async (playerId: string) => api.getPlayerMoments(playerId),
     [api],
   );
+  const getTeamMoments = useCallback(
+    async (teamId: string) => api.getTeamMoments(teamId),
+    [api],
+  );
   const getRecentLeagueMoments = useCallback(
     async (sinceDay: number) => api.getRecentLeagueMoments(sinceDay),
     [api],
@@ -936,7 +940,7 @@ export function useWorker() {
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,
-    getStandings, getScheduleView, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getPlayerMoments, getRecentLeagueMoments, getNicknamesForPlayer, getRelationships, getRelationshipWith, getPlayerStoryArcs, getMilestoneAlerts, getAdvancedStats,
+    getStandings, getScheduleView, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getPlayerMoments, getTeamMoments, getRecentLeagueMoments, getNicknamesForPlayer, getRelationships, getRelationshipWith, getPlayerStoryArcs, getMilestoneAlerts, getAdvancedStats,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getSeasonRecap, getOffseasonHeadline, getMonthlyPulse, getCurrentLeagueEvents, getLeagueEventHistory, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
