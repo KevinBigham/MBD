@@ -97,3 +97,74 @@ describe('worker team moments query', () => {
     expect(workerApi.getTeamMoments('unknown')).toEqual([]);
   });
 });
+
+describe('worker getRecentTeamMoments query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  it('returns team moments flattened across teams, sorted by recency and filtered by sinceDay', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.season = 7;
+
+    const momentA: SignatureMoment = {
+      season: 7,
+      day: 120,
+      timestamp: 'S7D120',
+      type: 'deadline_buyer',
+      description: 'Tycoons doubled down.',
+      impact: 21,
+      relevance: 0.91,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    };
+    const momentB: SignatureMoment = {
+      season: 7,
+      day: 115,
+      timestamp: 'S7D115',
+      type: 'deadline_seller',
+      description: 'Sluggers sold at the deadline.',
+      impact: -16,
+      relevance: 0.88,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    };
+    const staleMoment: SignatureMoment = {
+      season: 7,
+      day: 40,
+      timestamp: 'S7D40',
+      type: 'deadline_seller',
+      description: 'Way back.',
+      impact: -10,
+      relevance: 0.5,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    };
+
+    state.teamMoments.set('nym', [momentA]);
+    state.teamMoments.set('det', [momentB, staleMoment]);
+
+    const workerApi = api as typeof api & {
+      getRecentTeamMoments: (sinceDay: number) => Array<{ teamId: string; moment: SignatureMoment }>;
+    };
+
+    const recent = workerApi.getRecentTeamMoments(100);
+
+    expect(recent).toEqual([
+      { teamId: 'nym', moment: momentA },
+      { teamId: 'det', moment: momentB },
+    ]);
+
+    const repeat = workerApi.getRecentTeamMoments(100);
+    expect(repeat).toEqual(recent);
+    expect(workerApi.getRecentTeamMoments(200)).toEqual([]);
+  });
+});
