@@ -3,6 +3,7 @@
  * 162-game season simulation with schedule execution and stat accumulation.
  */
 
+import type { MonthlyRecordSplits } from '@mbd/contracts';
 import type { GameRNG } from '../math/prng.js';
 import type { DayOneOpeningPlan } from '../onboarding/dayOne.js';
 import type { GeneratedPlayer } from '../player/generation.js';
@@ -12,7 +13,11 @@ import { StandingsTracker } from '../league/standings.js';
 import type { GameBoxScore, PlayerGameStats, GameTeam } from './gameSimulator.js';
 import { simulateGame } from './gameSimulator.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
-import { getNextMonthStartDay, REGULAR_SEASON_DAYS } from './calendar.js';
+import {
+  getNextMonthStartDay,
+  getRegularSeasonMonthForDay,
+  REGULAR_SEASON_DAYS,
+} from './calendar.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,6 +30,7 @@ export interface SeasonState {
   readonly playerSeasonStats: Map<string, PlayerGameStats>;
   readonly gameLog: GameBoxScore[];
   readonly completed: boolean;
+  readonly monthlyRecordSplits: MonthlyRecordSplits;
 }
 
 export interface DaySimResult {
@@ -36,6 +42,7 @@ export interface DaySimResult {
 export interface SeasonSimulationOptions {
   readonly teamModifiers?: Map<string, number>;
   readonly openingDayPlans?: Map<string, DayOneOpeningPlan>;
+  readonly unavailablePlayerIds?: ReadonlySet<string>;
 }
 
 function clonePlayerGameStats(stats: PlayerGameStats): PlayerGameStats {
@@ -50,6 +57,37 @@ function clonePlayerSeasonStats(
   );
 }
 
+function cloneMonthlyRecordSplits(
+  monthlyRecordSplits: MonthlyRecordSplits,
+): MonthlyRecordSplits {
+  return Object.fromEntries(
+    Object.entries(monthlyRecordSplits).map(([teamId, monthlySplits]) => [
+      teamId,
+      Object.fromEntries(
+        Object.entries(monthlySplits).map(([month, record]) => [month, { ...record }]),
+      ),
+    ]),
+  );
+}
+
+function recordMonthlyResult(
+  monthlyRecordSplits: MonthlyRecordSplits,
+  teamId: string,
+  month: number,
+  result: 'win' | 'loss',
+): void {
+  const monthKey = String(month);
+  const teamSplits = monthlyRecordSplits[teamId] ?? {};
+  const monthRecord = teamSplits[monthKey] ?? { wins: 0, losses: 0 };
+  monthlyRecordSplits[teamId] = {
+    ...teamSplits,
+    [monthKey]: {
+      wins: monthRecord.wins + (result === 'win' ? 1 : 0),
+      losses: monthRecord.losses + (result === 'loss' ? 1 : 0),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Lineup builder
 // ---------------------------------------------------------------------------
@@ -60,8 +98,13 @@ function buildGameTeam(
   players: GeneratedPlayer[],
   currentDay: number,
   openingPlan?: DayOneOpeningPlan,
+  unavailablePlayerIds: ReadonlySet<string> = new Set(),
 ): GameTeam {
-  const mlbPlayers = players.filter(p => p.teamId === teamId && p.rosterStatus === 'MLB');
+  const mlbPlayers = players.filter((player) =>
+    player.teamId === teamId
+    && player.rosterStatus === 'MLB'
+    && !unavailablePlayerIds.has(player.id),
+  );
   const playerById = new Map(mlbPlayers.map((player) => [player.id, player]));
 
   const hitters = mlbPlayers
@@ -158,6 +201,7 @@ export function createSeasonState(
     playerSeasonStats: new Map(),
     gameLog: [],
     completed: false,
+    monthlyRecordSplits: {},
   };
 }
 
@@ -177,10 +221,24 @@ export function simulateDay(
   const boxScores: GameBoxScore[] = [];
   const nextStandings = StandingsTracker.deserialize(state.standings.serialize());
   const nextPlayerSeasonStats = clonePlayerSeasonStats(state.playerSeasonStats);
+  const nextMonthlyRecordSplits = cloneMonthlyRecordSplits(state.monthlyRecordSplits);
+  const currentMonth = getRegularSeasonMonthForDay(state.currentDay).month;
 
   for (const game of dayGames) {
-    const homeTeam = buildGameTeam(game.homeTeamId, allPlayers, state.currentDay, options.openingDayPlans?.get(game.homeTeamId));
-    const awayTeam = buildGameTeam(game.awayTeamId, allPlayers, state.currentDay, options.openingDayPlans?.get(game.awayTeamId));
+    const homeTeam = buildGameTeam(
+      game.homeTeamId,
+      allPlayers,
+      state.currentDay,
+      options.openingDayPlans?.get(game.homeTeamId),
+      options.unavailablePlayerIds,
+    );
+    const awayTeam = buildGameTeam(
+      game.awayTeamId,
+      allPlayers,
+      state.currentDay,
+      options.openingDayPlans?.get(game.awayTeamId),
+      options.unavailablePlayerIds,
+    );
 
     // Skip if either team can't field a lineup
     if (
@@ -222,6 +280,8 @@ export function simulateDay(
       loserScore,
       isDivisionGame(game.homeTeamId, game.awayTeamId),
     );
+    recordMonthlyResult(nextMonthlyRecordSplits, winnerId, currentMonth, 'win');
+    recordMonthlyResult(nextMonthlyRecordSplits, loserId, currentMonth, 'loss');
 
     // Accumulate player season stats
     for (const [playerId, gameStats] of playerStats) {
@@ -269,6 +329,7 @@ export function simulateDay(
     playerSeasonStats: nextPlayerSeasonStats,
     gameLog: [...state.gameLog, ...boxScores],
     completed: seasonComplete,
+    monthlyRecordSplits: nextMonthlyRecordSplits,
   };
 
   return {

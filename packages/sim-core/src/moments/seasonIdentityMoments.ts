@@ -1,9 +1,13 @@
 import type {
   ArchivedSeason,
   CareerStatsLedger,
+  MonthlyRecordSplits,
+  PlayoffSeriesHistoryEntry,
   SeasonArchiveEntry,
   TradeHistoryEntry,
 } from '@mbd/contracts';
+import type { GeneratedPlayer } from '../player/generation.js';
+import { getLongestTeamTenureSeasons } from '../player/teamTenures.js';
 import { isTradeDeadlineModeDay } from '../sim/calendar.js';
 import type { GMPersonality } from '../trade/tradeAI.js';
 import { compareMomentType, type Moment, type MomentRound } from './momentDetector.js';
@@ -29,10 +33,18 @@ export const DYNASTY_END_IMPACT = -65;
 export const DYNASTY_END_RELEVANCE = 0.95;
 export const CURSED_FRANCHISE_IMPACT = -45;
 export const CURSED_FRANCHISE_RELEVANCE = 0.85;
+export const VETERAN_CORE_RETIRES_IMPACT = -38;
+export const VETERAN_CORE_RETIRES_RELEVANCE = 0.78;
+export const SEPTEMBER_HEROICS_IMPACT = 42;
+export const SEPTEMBER_HEROICS_RELEVANCE = 0.8;
+export const PLAYOFF_GAUNTLET_IMPACT = 64;
+export const PLAYOFF_GAUNTLET_RELEVANCE = 0.92;
 
 const FIRE_SALE_VETERAN_THRESHOLD = 3;
 const FIRE_SALE_WIN_PCT_THRESHOLD = 0.45;
 const CURSED_FRANCHISE_MILESTONES = [10, 15, 20] as const;
+const VETERAN_CORE_TENURE_THRESHOLD = 8;
+const SEPTEMBER_HEROICS_WIN_THRESHOLD = 20;
 
 export interface PriorSeasonSummary {
   readonly season: number;
@@ -64,6 +76,9 @@ export interface SeasonIdentityMomentDetectionContext {
   readonly careerStats?: readonly CareerStatsLedger[];
   readonly gmPersonalities?: ReadonlyMap<string, GMPersonality>;
   readonly offseasonRetirementsByTeamId?: ReadonlyMap<string, readonly string[]>;
+  readonly retiredPlayers?: readonly GeneratedPlayer[];
+  readonly monthlyRecordSplits?: MonthlyRecordSplits;
+  readonly playoffSeriesHistory?: readonly PlayoffSeriesHistoryEntry[];
 }
 
 export interface SeasonIdentityDetectedMoment {
@@ -556,6 +571,98 @@ export function detectCursedFranchise(
   };
 }
 
+export function detectVeteranCoreRetires(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'veteran_core_retires')) {
+    return null;
+  }
+
+  const retirees = (context.retiredPlayers ?? [])
+    .filter((player) =>
+      player.teamId === summary.teamId
+      && getLongestTeamTenureSeasons(player, summary.teamId, context.season) >= VETERAN_CORE_TENURE_THRESHOLD,
+    )
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  if (retirees.length < 3) {
+    return null;
+  }
+
+  const names = retirees
+    .slice(0, 3)
+    .map((player) => `${player.firstName} ${player.lastName}`)
+    .join(', ');
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'veteran_core_retires',
+      `${names} all retired together, ending a veteran core that held the ${teamLabel(summary)} together for years.`,
+      VETERAN_CORE_RETIRES_IMPACT,
+      VETERAN_CORE_RETIRES_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
+export function detectPlayoffGauntlet(
+  series: PlayoffSeriesHistoryEntry,
+  day: number,
+): SeasonIdentityDetectedMoment | null {
+  if (series.deficitReached == null || series.deficitTeamId !== series.winnerTeamId) {
+    return null;
+  }
+
+  const opponentTeamId = series.winnerTeamId === series.higherSeedTeamId
+    ? series.lowerSeedTeamId
+    : series.higherSeedTeamId;
+  const deficitLabel = series.deficitReached === '0-2' ? 'down 0-2' : 'down 3-1';
+
+  return {
+    teamId: series.winnerTeamId,
+    moment: createMoment(
+      'playoff_gauntlet',
+      `The ${series.winnerTeamId.toUpperCase()} survived a ${deficitLabel} ${series.round.toLowerCase()} against ${opponentTeamId.toUpperCase()} and stole the series back.`,
+      PLAYOFF_GAUNTLET_IMPACT,
+      PLAYOFF_GAUNTLET_RELEVANCE,
+      series.season,
+      day,
+    ),
+  };
+}
+
+export function detectSeptemberHeroics(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'september_heroics')) {
+    return null;
+  }
+  if (!summary.madePlayoffs) {
+    return null;
+  }
+
+  const septemberWins = context.monthlyRecordSplits?.[summary.teamId]?.['9']?.wins ?? 0;
+  if (septemberWins < SEPTEMBER_HEROICS_WIN_THRESHOLD) {
+    return null;
+  }
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'september_heroics',
+      `A ${septemberWins}-win September shoved the ${teamLabel(summary)} through the regular-season door and into October.`,
+      SEPTEMBER_HEROICS_IMPACT,
+      SEPTEMBER_HEROICS_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
 export function detectSeasonIdentityMoments(
   context: SeasonIdentityMomentDetectionContext,
 ): SeasonIdentityDetectedMoment[] {
@@ -590,6 +697,10 @@ export function detectSeasonIdentityMoments(
     if (cursedFranchise) {
       moments.push(cursedFranchise);
     }
+    const veteranCoreRetires = detectVeteranCoreRetires(summary, context);
+    if (veteranCoreRetires) {
+      moments.push(veteranCoreRetires);
+    }
     const rebuildBegun = detectRebuildBegun(summary, context.season, context.day);
     if (rebuildBegun) {
       moments.push(rebuildBegun);
@@ -601,6 +712,10 @@ export function detectSeasonIdentityMoments(
     }
     if (breakoutTeamIds.has(summary.teamId)) {
       continue;
+    }
+    const septemberHeroics = detectSeptemberHeroics(summary, context);
+    if (septemberHeroics) {
+      moments.push(septemberHeroics);
     }
     const contentionWindowOpens = detectContentionWindowOpens(summary, context.season, context.day);
     if (contentionWindowOpens) {

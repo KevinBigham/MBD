@@ -2,7 +2,7 @@ export interface CareerMilestoneDefinition {
   id: string;
   label: string;
   category: 'batting' | 'pitching';
-  statKey: 'hits' | 'hr' | 'rbi' | 'sb' | 'strikeouts' | 'wins' | 'saves';
+  statKey: 'hits' | 'hr' | 'rbi' | 'sb' | 'strikeouts' | 'wins' | 'saves' | 'shutouts';
   thresholds: number[];
 }
 
@@ -14,6 +14,7 @@ export interface CareerStatTotals {
   strikeouts: number;
   wins: number;
   saves: number;
+  shutouts: number;
   isPitcher: boolean;
   seasonsPlayed: number;
 }
@@ -51,6 +52,7 @@ export const CAREER_MILESTONES: CareerMilestoneDefinition[] = [
   { id: 'strikeouts', label: 'Pitcher Strikeouts', category: 'pitching', statKey: 'strikeouts', thresholds: [1000, 2000, 3000] },
   { id: 'wins', label: 'Pitcher Wins', category: 'pitching', statKey: 'wins', thresholds: [100, 200, 300] },
   { id: 'saves', label: 'Saves', category: 'pitching', statKey: 'saves', thresholds: [100, 200, 300, 400] },
+  { id: 'shutouts', label: 'Shutouts', category: 'pitching', statKey: 'shutouts', thresholds: [50, 100] },
 ];
 
 function applicableMilestones(careerStats: CareerStatTotals): CareerMilestoneDefinition[] {

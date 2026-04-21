@@ -4,6 +4,7 @@
  * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
+import type { TeamTenureEntry } from '@mbd/contracts';
 import { GameRNG } from '../math/prng.js';
 import { clampRating } from './attributes.js';
 import type { HitterAttributes, PitcherAttributes } from './attributes.js';
@@ -294,6 +295,9 @@ export interface GeneratedPlayer {
   arbitrationHistory: ArbitrationHistoryEntry[];
   holdoutState: HoldoutState | null;
   superTwoQualified: boolean;
+  teamTenures: TeamTenureEntry[];
+  priorSeasonGamesMissed: number;
+  careerShutouts: number;
   personalityTraits?: string[];
   potentialRating?: number;
 }
@@ -733,6 +737,9 @@ export function generatePlayer(
     arbitrationHistory: [],
     holdoutState: null,
     superTwoQualified: false,
+    teamTenures: [],
+    priorSeasonGamesMissed: 0,
+    careerShutouts: 0,
     personalityTraits,
   };
 }

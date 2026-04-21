@@ -40,6 +40,14 @@ export type {
   ExtensionHistoryEntry,
   GeneratedPlayer,
 } from './generation.js';
+export {
+  assignPlayerToTeam,
+  getLongestTeamTenureSeasons,
+  getTenureSeasonCount,
+  releasePlayerFromTeam,
+  retirePlayerFromTeam,
+  seedInitialTeamTenure,
+} from './teamTenures.js';
 
 export {
   PERSONALITY_TRAITS,

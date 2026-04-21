@@ -9,6 +9,7 @@ import type { GeneratedPlayer } from '../player/generation.js';
 import { FORTY_MAN_LIMIT, PITCHER_POSITIONS, ROSTER_LEVELS } from '../player/enums.js';
 import type { RosterLevel } from '../player/enums.js';
 import { hitterOverall, pitcherOverall } from '../player/attributes.js';
+import { assignPlayerToTeam, releasePlayerFromTeam } from '../player/teamTenures.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,6 +115,11 @@ function cloneRosterState(state: RosterState): RosterState {
     fortyManRoster: [...state.fortyManRoster],
     transactions: [...state.transactions],
   };
+}
+
+function parseSeasonFromTimestamp(timestamp: string): number {
+  const match = /^S(\d+)D\d+$/.exec(timestamp);
+  return match ? Number(match[1]) : 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -448,7 +454,10 @@ export function executeRosterAction(
       const newState = cloneRosterState(rosterState);
       newState.mlbRoster = newState.mlbRoster.filter((id) => id !== playerId);
       newState.fortyManRoster = newState.fortyManRoster.filter((id) => id !== playerId);
-      const released: GeneratedPlayer = { ...player, teamId: '', rosterStatus: 'INTERNATIONAL' };
+      const released: GeneratedPlayer = {
+        ...releasePlayerFromTeam(player, parseSeasonFromTimestamp(timestamp)),
+        rosterStatus: 'INTERNATIONAL',
+      };
       newState.transactions.push({
         action: 'release',
         playerId,
@@ -548,8 +557,7 @@ export function executeRosterAction(
       }
       newState.fortyManRoster.push(playerId);
       const claimed: GeneratedPlayer = {
-        ...player,
-        teamId: rosterState.teamId,
+        ...assignPlayerToTeam(player, rosterState.teamId, parseSeasonFromTimestamp(timestamp)),
         rosterStatus: 'AAA',
       };
       newState.transactions.push({

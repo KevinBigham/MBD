@@ -10,8 +10,8 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v26', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(26);
+  it('tracks the current additive save schema as v27', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(27);
   });
 
   it('migrates the v17 fixture into the additive v25 shape', () => {
@@ -134,6 +134,27 @@ describe('save schema migration', () => {
         ],
       ],
     ]);
+  });
+
+  it('migrates the v26 fixture into the additive v27 persisted-fidelity shape', () => {
+    const fixture = loadFixture('./fixtures/save/v26/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+    const [player] = migrated.players;
+    const [playerSeasonStats] = migrated.seasonState.playerSeasonStats;
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(player).toMatchObject({
+      teamTenures: [],
+      priorSeasonGamesMissed: 0,
+      careerShutouts: 0,
+    });
+    expect(playerSeasonStats?.[1]).toMatchObject({
+      gamesMissedToInjury: 0,
+    });
+    expect(migrated.seasonState.monthlyRecordSplits).toEqual({});
+    expect(migrated.narrative.playoffSeriesHistory).toEqual([]);
+    expect(migrated.narrative.rookieOfTheYearVoting).toEqual([]);
   });
 
   it('rejects malformed legacy fixtures during migration', () => {

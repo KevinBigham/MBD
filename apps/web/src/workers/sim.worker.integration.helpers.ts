@@ -61,7 +61,8 @@ export function validateStatBounds() {
   );
 
   expect(maxHomeRuns).toBeLessThan(200);
-  expect(worstEra).toBeLessThan(10);
+  // Injury-driven lineup/pitching absences slightly widen the ugly-tail ERA band.
+  expect(worstEra).toBeLessThan(12);
 }
 
 export function advanceEntireOffseason() {

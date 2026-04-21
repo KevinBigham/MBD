@@ -86,8 +86,15 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // 134,398 bytes for the identical commit (+534 byte environmental drift),
 // which tripped the 131 KB cap (134,144) by 254 bytes. One KB lift restores
 // headroom for the already-landed wave-3 payload without touching any code.
-export const WORKER_CHUNK_BUDGET_BYTES = 428 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 132 * 1024;
+// WORKER raw/gzip: bumped 428 -> 432 KB raw and 132 -> 134 KB gzip for
+// narrative depth wave 4 (v27). The persisted-state fidelity sprint added
+// worker-side snapshot/state plumbing plus playoff comeback tracking, pushing
+// the measured worker chunks to 415,354 raw / 136,054 gzip for
+// game-engine-core and 442,235 raw / 131,714 gzip for game-engine-story.
+// This lands exactly at the sprint hard cap and restores bundleBudget headroom
+// without exceeding the approved +4 KB raw / +2 KB gzip ceiling.
+export const WORKER_CHUNK_BUDGET_BYTES = 432 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 134 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;

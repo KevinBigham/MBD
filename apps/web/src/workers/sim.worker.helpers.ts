@@ -57,6 +57,8 @@ import {
   skipCurrentPhase,
   autoResolveTenderNonTender,
   applyMoraleEvent,
+  assignPlayerToTeam,
+  buildRookieOfTheYearVotingEntries,
   buildRosterState,
   buildWaiverPriority,
   calculateTeamPayroll,
@@ -103,6 +105,8 @@ import {
   lockRule5ProtectionAudit as lockRule5ProtectionAuditCore,
   makeRule5Selection as makeRule5SelectionCore,
   passRule5DraftTurn as passRule5DraftTurnCore,
+  releasePlayerFromTeam,
+  retirePlayerFromTeam,
   toggleRule5Protection as toggleRule5ProtectionCore,
   type DraftPickResult,
   type DraftPickSlot,
@@ -178,6 +182,7 @@ import type {
   MonthlyPulseState,
   OwnerState,
   PerformanceDiagnostics,
+  PlayoffSeriesHistoryEntry,
   PlayerNicknameState,
   PlayerOrigin,
   PlayerMorale,
@@ -186,6 +191,7 @@ import type {
   RecordBookEntry,
   RecordWatchEntry,
   Rivalry,
+  RookieOfTheYearVotingEntry,
   ScoutConflict,
   SeasonArchiveEntry,
   SeasonHistoryEntry,
@@ -264,8 +270,10 @@ export interface FullGameState {
   hallOfFameBallot: HallOfFameBallotEntry[];
   franchiseTimeline: FranchiseTimelineEntry[];
   careerStats: CareerStatsLedger[];
+  playoffSeriesHistory: PlayoffSeriesHistoryEntry[];
   recordBook: RecordBookEntry[];
   recordWatch: RecordWatchEntry[];
+  rookieOfTheYearVoting: RookieOfTheYearVotingEntry[];
   seasonArchive: SeasonArchiveEntry[];
   archivedSeasons: ArchivedSeason[];
   historicalPlayers: HistoricalPlayer[];
@@ -291,6 +299,28 @@ export let state: FullGameState | null = null;
 
 export function setState(s: FullGameState | null): void {
   state = s;
+}
+
+export function updatePlayerTeamAssignment(
+  player: GeneratedPlayer,
+  teamId: string,
+  season: number,
+): void {
+  Object.assign(player, assignPlayerToTeam(player, teamId, season));
+}
+
+export function releasePlayerAssignment(
+  player: GeneratedPlayer,
+  season: number,
+): void {
+  Object.assign(player, releasePlayerFromTeam(player, season));
+}
+
+export function retirePlayerAssignment(
+  player: GeneratedPlayer,
+  season: number,
+): void {
+  Object.assign(player, retirePlayerFromTeam(player, season));
 }
 
 // ---------------------------------------------------------------------------
@@ -1680,6 +1710,14 @@ export function appendArbitrationMoments(
   s.playerMoments.set(playerId, merged);
 }
 
+export function appendPlayerMoments(
+  s: FullGameState,
+  playerId: string,
+  nextMoments: SignatureMoment[],
+) {
+  appendArbitrationMoments(s, playerId, nextMoments);
+}
+
 export function appendTeamMoments(
   s: FullGameState,
   teamId: string,
@@ -2030,7 +2068,7 @@ function recordDraftPickForState(
     tone: transactionToneForTeam(s, teamId),
   };
 
-  (prospect.player as { teamId: string }).teamId = teamId;
+  updatePlayerTeamAssignment(prospect.player, teamId, s.season);
   if (!s.players.some((player) => player.id === prospect.player.id)) {
     s.players.push(prospect.player);
   }
@@ -2535,7 +2573,7 @@ function applyUnsignedDraftOutcome(
   const player = s.players.find((candidate) => candidate.id === playerId);
   if (!player) return;
 
-  player.teamId = '';
+  releasePlayerAssignment(player, s.season);
   player.rosterStatus = 'INTERNATIONAL';
   player.minorLeagueLevel = 'INTERNATIONAL';
   s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
@@ -3749,7 +3787,7 @@ function applyRule5SelectionToLeague(s: FullGameState, selection: Rule5Selection
   if (!player) return;
 
   const previousTeamId = player.teamId;
-  player.teamId = selection.draftingTeamId;
+  updatePlayerTeamAssignment(player, selection.draftingTeamId, s.season);
   player.rosterStatus = 'MLB';
   player.contract.years = Math.max(1, player.contract.years);
 
@@ -3829,7 +3867,7 @@ export function resolveRule5OfferBackDecision(
 
   const previousTeamId = player.teamId;
   if (acceptReturn) {
-    player.teamId = offer.originalTeamId;
+    updatePlayerTeamAssignment(player, offer.originalTeamId, s.season);
     player.rosterStatus = 'AAA';
     obligation.status = 'returned';
     offer.status = 'accepted';
@@ -4082,7 +4120,7 @@ function applyTenderDecisionsOnce(s: FullGameState) {
       const player = s.players.find((candidate) => candidate.id === playerId);
       if (!player) continue;
       const previousTeamId = player.teamId;
-      player.teamId = '';
+      releasePlayerAssignment(player, s.season);
       player.rosterStatus = 'INTERNATIONAL';
       player.contract = {
         ...player.contract,
@@ -4330,7 +4368,7 @@ function applyNewFreeAgencySignings(
     if (!player) continue;
 
     const previousTeamId = player.teamId;
-    player.teamId = teamId;
+    updatePlayerTeamAssignment(player, teamId, s.season);
     player.rosterStatus = 'MLB';
     player.contract = {
       years: contract.years,

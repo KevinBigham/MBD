@@ -45,14 +45,18 @@ import {
   RecordBookEntrySchema,
   RecordWatchEntrySchema,
   RivalrySchema,
+  RookieOfTheYearVotingEntrySchema,
   ScoutConflictSchema,
   SeasonArchiveEntrySchema,
   TeamChemistrySchema,
+  TeamTenureEntrySchema,
   TickerEntrySchema,
   WhatIfBranchMetaSchema,
   WinLossRecordSchema,
   SeasonHistoryEntrySchema,
   SignatureMomentSchema,
+  MonthlyRecordSplitsSchema,
+  PlayoffSeriesHistoryEntrySchema,
   type NewsTag,
 } from "./narrative.js";
 import { MonthlyPulseStateSchema } from "./monthlyPulse.js";
@@ -158,6 +162,9 @@ export const SnapshotPlayerSchema = SnapshotPlayerV17Schema.extend({
   arbitrationHistory: z.array(ArbitrationHistoryEntrySchema).default([]),
   holdoutState: HoldoutStateSchema.nullable().default(null),
   superTwoQualified: z.boolean().default(false),
+  teamTenures: z.array(TeamTenureEntrySchema).default([]),
+  priorSeasonGamesMissed: z.number().int().min(0).default(0),
+  careerShutouts: z.number().int().min(0).default(0),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
 
@@ -208,6 +215,7 @@ export const PlayerStatEntrySchema = z.tuple([
     wins: z.number().int().min(0),
     saves: z.number().int().min(0).default(0),
     losses: z.number().int().min(0),
+    gamesMissedToInjury: z.number().int().min(0).default(0),
   }),
 ]);
 export type PlayerStatEntry = z.infer<typeof PlayerStatEntrySchema>;
@@ -263,6 +271,7 @@ export const SerializedSeasonStateSchema = z.object({
   playerSeasonStats: z.array(PlayerStatEntrySchema),
   gameLog: z.array(z.unknown()),
   completed: z.boolean(),
+  monthlyRecordSplits: MonthlyRecordSplitsSchema.default({}),
 });
 export type SerializedSeasonState = z.infer<typeof SerializedSeasonStateSchema>;
 
@@ -346,6 +355,8 @@ export const NarrativeSnapshotSchema = z.object({
   dynastyCards: z.array(DynastyCardSchema).default([]),
   challengeState: ChallengeStateSchema.nullable().default(null),
   seasonHistory: z.array(SeasonHistoryEntrySchema),
+  playoffSeriesHistory: z.array(PlayoffSeriesHistoryEntrySchema).default([]),
+  rookieOfTheYearVoting: z.array(RookieOfTheYearVotingEntrySchema).default([]),
 });
 export type NarrativeSnapshot = z.infer<typeof NarrativeSnapshotSchema>;
 
@@ -498,7 +509,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 26;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 27;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -612,6 +623,11 @@ export const GameSnapshotV25Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(25),
 });
 export type GameSnapshotV25 = z.infer<typeof GameSnapshotV25Schema>;
+
+export const GameSnapshotV26Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(26),
+});
+export type GameSnapshotV26 = z.infer<typeof GameSnapshotV26Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -912,6 +928,7 @@ function migratePlayerStatEntry([playerId, stats]: z.infer<typeof LegacyPlayerSt
       wins: 0,
       saves: 0,
       losses: 0,
+      gamesMissedToInjury: 0,
     },
   ];
 }
@@ -928,6 +945,7 @@ function migratePlayerStatEntryV8([playerId, stats]: z.infer<typeof PlayerStatEn
       hitBatters: 0,
       flyBallsAllowed: 0,
       saves: 0,
+      gamesMissedToInjury: 0,
     },
   ];
 }
@@ -1940,6 +1958,9 @@ function migrateSnapshotPlayer(
     arbitrationHistory: [],
     holdoutState: null,
     superTwoQualified: false,
+    teamTenures: [],
+    priorSeasonGamesMissed: 0,
+    careerShutouts: 0,
   };
 }
 
@@ -1979,6 +2000,9 @@ function migrateV6SnapshotPlayer(
     arbitrationHistory: [],
     holdoutState: null,
     superTwoQualified: false,
+    teamTenures: [],
+    priorSeasonGamesMissed: 0,
+    careerShutouts: 0,
     ...backfillDevelopmentProfile(upgradedPlayer),
   };
 }
@@ -2617,6 +2641,25 @@ function migrateGameSnapshotV25(snapshot: GameSnapshotV25): GameSnapshot {
   });
 }
 
+// v26 -> v27: add wave-4 persisted-state fidelity fields for team tenures,
+// injury-missed games snapshots, career shutouts, monthly record splits,
+// playoff comeback history, and rookie-of-the-year voting history.
+// Additive only — existing v26 saves load with empty/default values.
+function migrateGameSnapshotV26(snapshot: GameSnapshotV26): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -2652,6 +2695,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 23
   ) {
     return migrateGameSnapshotV23(GameSnapshotV23Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 26
+  ) {
+    return migrateGameSnapshotV26(GameSnapshotV26Schema.parse(snapshotLike));
   }
 
   if (

@@ -12,6 +12,7 @@ export interface CareerPitchingTotals {
   strikeouts: number;
   inningsPitched: number;
   earnedRuns: number;
+  shutouts: number;
 }
 
 export interface CareerStatsLedger {

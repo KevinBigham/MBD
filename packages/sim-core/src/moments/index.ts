@@ -23,6 +23,12 @@ export {
   DYNASTY_END_RELEVANCE,
   CURSED_FRANCHISE_IMPACT,
   CURSED_FRANCHISE_RELEVANCE,
+  VETERAN_CORE_RETIRES_IMPACT,
+  VETERAN_CORE_RETIRES_RELEVANCE,
+  SEPTEMBER_HEROICS_IMPACT,
+  SEPTEMBER_HEROICS_RELEVANCE,
+  PLAYOFF_GAUNTLET_IMPACT,
+  PLAYOFF_GAUNTLET_RELEVANCE,
   detectCursedFranchise,
   detectBreakoutSeason,
   detectChampionshipRun,
@@ -32,14 +38,30 @@ export {
   detectFireSale,
   detectFirstDynastyPeak,
   detectLosingSeasonStreak,
+  detectPlayoffGauntlet,
   detectRebuildBegun,
+  detectSeptemberHeroics,
   detectSeasonIdentityMoments,
+  detectVeteranCoreRetires,
 } from './seasonIdentityMoments.js';
 export type {
   TeamSeasonSummary,
   SeasonIdentityMomentDetectionContext,
   SeasonIdentityDetectedMoment,
 } from './seasonIdentityMoments.js';
+export {
+  COMEBACK_PLAYER_IMPACT,
+  COMEBACK_PLAYER_MISSED_GAMES_THRESHOLD,
+  COMEBACK_PLAYER_RELEVANCE,
+  COMEBACK_PLAYER_WAR_THRESHOLD,
+  ROOKIE_SENSATION_IMPACT,
+  ROOKIE_SENSATION_RELEVANCE,
+  detectComebackPlayer,
+  detectRookieSensation,
+} from './signatureMoments.js';
+export type {
+  SignatureMomentDetectionResult,
+} from './signatureMoments.js';
 export {
   MOMENT_IMPACT_THRESHOLD,
   MOMENT_RELEVANCE_DECAY_RATE,

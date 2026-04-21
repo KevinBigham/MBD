@@ -46,6 +46,7 @@ export interface PlayerGameStats {
   playerId: string;
   teamId: string;
   gamesPlayed?: number;
+  gamesMissedToInjury?: number;
   pa: number;
   ab: number;
   hits: number;
@@ -139,6 +140,7 @@ export function simulateGame(
       stats = {
         playerId: player.id, teamId,
         gamesPlayed: 1,
+        gamesMissedToInjury: 0,
         pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0,
         rbi: 0, bb: 0, k: 0, runs: 0, hbp: 0, sacFlies: 0,
         ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,

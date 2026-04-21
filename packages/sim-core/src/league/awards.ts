@@ -1,4 +1,4 @@
-import type { AwardHistoryEntry } from '@mbd/contracts';
+import type { AwardHistoryEntry, RookieOfTheYearVotingEntry } from '@mbd/contracts';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { PlayerGameStats } from '../sim/gameSimulator.js';
 import { getTeamById } from './teams.js';
@@ -17,6 +17,12 @@ export interface AwardRaces {
 }
 
 type LeagueId = 'AL' | 'NL';
+
+function isRookieEligible(player: GeneratedPlayer): boolean {
+  return player.age <= 23
+    || player.developmentPhase === 'Prospect'
+    || player.developmentPhase === 'Ascent';
+}
 
 function hitterScore(stats: PlayerGameStats): number {
   return (
@@ -118,7 +124,7 @@ export function calculateAwardRaces(
       });
     }
 
-    if (player.age <= 23 || player.developmentPhase === 'Prospect' || player.developmentPhase === 'Ascent') {
+    if (isRookieEligible(player)) {
       roy.push({
         playerId: player.id,
         teamId: player.teamId,
@@ -133,6 +139,10 @@ export function calculateAwardRaces(
     cyYoung: topFive(cyYoung),
     roy: topFive(roy.length > 0 ? roy : mvp),
   };
+}
+
+function rookieRaceIsFallback(players: GeneratedPlayer[], races: AwardRaces): boolean {
+  return races.roy.length === 0 || !players.some(isRookieEligible);
 }
 
 function leagueForTeam(teamId: string): LeagueId | null {
@@ -219,4 +229,39 @@ export function finalizeAwardResults(
   }
 
   return winners;
+}
+
+export function buildRookieOfTheYearVotingEntries(
+  season: number,
+  players: GeneratedPlayer[],
+  statsByPlayer: Map<string, PlayerGameStats>,
+): RookieOfTheYearVotingEntry[] {
+  const votingEntries: RookieOfTheYearVotingEntry[] = [];
+
+  for (const league of ['AL', 'NL'] as const) {
+    const leaguePlayers = players.filter((player) => leagueForTeam(player.teamId) === league);
+    const leagueRaces = calculateAwardRaces(leaguePlayers, statsByPlayer);
+    if (rookieRaceIsFallback(leaguePlayers, leagueRaces)) {
+      votingEntries.push({
+        season,
+        leagueId: league,
+        placements: [],
+      });
+      continue;
+    }
+
+    votingEntries.push({
+      season,
+      leagueId: league,
+      placements: leagueRaces.roy
+        .slice(0, 3)
+        .map((entry, index) => ({
+          rank: index + 1,
+          playerId: entry.playerId,
+          points: Math.round(entry.score * 10) / 10,
+        })),
+    });
+  }
+
+  return votingEntries;
 }

@@ -97,6 +97,7 @@ function serializeSeasonState(seasonState: SeasonState): GameSnapshot['seasonSta
       playerId,
       {
         gamesPlayed: stats.gamesPlayed ?? 0,
+        gamesMissedToInjury: stats.gamesMissedToInjury ?? 0,
         pa: stats.pa,
         ab: stats.ab,
         hits: stats.hits,
@@ -124,6 +125,7 @@ function serializeSeasonState(seasonState: SeasonState): GameSnapshot['seasonSta
     ]),
     gameLog: seasonState.gameLog,
     completed: seasonState.completed,
+    monthlyRecordSplits: seasonState.monthlyRecordSplits,
   };
 }
 
@@ -141,6 +143,7 @@ function deserializeSeasonState(
           playerId,
           teamId: '',
           gamesPlayed: stats.gamesPlayed,
+          gamesMissedToInjury: stats.gamesMissedToInjury ?? 0,
           pa: stats.pa,
           ab: stats.ab,
           hits: stats.hits,
@@ -169,6 +172,7 @@ function deserializeSeasonState(
     ),
     gameLog: serialized.gameLog as GameBoxScore[],
     completed: serialized.completed,
+    monthlyRecordSplits: serialized.monthlyRecordSplits ?? {},
   };
 }
 
@@ -374,10 +378,12 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       archivedSeasons: state.archivedSeasons,
       historicalPlayers: state.historicalPlayers,
       mentorRelationships: state.mentorRelationships,
+      playoffSeriesHistory: state.playoffSeriesHistory,
       frontOfficeState: toEntries(state.frontOfficeState),
       whatIfBranches: state.whatIfBranches,
       gmCareer: state.gmCareer,
       jobMarket: state.jobMarket,
+      rookieOfTheYearVoting: state.rookieOfTheYearVoting,
       consequenceWatchers: state.consequenceWatchers,
       fanSentiment: state.fanSentiment,
       scoutConflicts: state.scoutConflicts,
@@ -489,8 +495,10 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     hallOfFameBallot: snapshot.narrative.hallOfFameBallot as HallOfFameBallotEntry[],
     franchiseTimeline: snapshot.narrative.franchiseTimeline as FranchiseTimelineEntry[],
     careerStats: snapshot.narrative.careerStats as CareerStatsLedger[],
+    playoffSeriesHistory: (snapshot.narrative.playoffSeriesHistory as FullGameState['playoffSeriesHistory'] | undefined) ?? [],
     recordBook: snapshot.narrative.recordBook as RecordBookEntry[],
     recordWatch: snapshot.narrative.recordWatch as RecordWatchEntry[],
+    rookieOfTheYearVoting: (snapshot.narrative.rookieOfTheYearVoting as FullGameState['rookieOfTheYearVoting'] | undefined) ?? [],
     seasonArchive: snapshot.narrative.seasonArchive as SeasonArchiveEntry[],
     archivedSeasons: (snapshot.narrative.archivedSeasons as ArchivedSeason[] | undefined) ?? [],
     historicalPlayers: snapshot.narrative.historicalPlayers as HistoricalPlayer[],
