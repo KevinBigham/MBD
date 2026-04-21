@@ -1,3 +1,4 @@
+import type { AwardHistoryEntry } from '@mbd/contracts';
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { GameBoxScore, PlayerGameStats } from '../sim/gameSimulator.js';
@@ -13,6 +14,7 @@ export const PERFECT_GAME_IMPACT = 100;
 export const FOUR_HR_GAME_IMPACT = 90;
 export const PLAYOFF_ERROR_IMPACT = -80;
 export const FIRST_CAREER_HR_IMPACT = 62;
+export const FIRST_ALL_STAR_IMPACT = 45;
 export const MILESTONE_500_HR_IMPACT = 95;
 export const MILESTONE_3000_HIT_IMPACT = 95;
 export const MILESTONE_300_WIN_IMPACT = 95;
@@ -99,6 +101,7 @@ export interface MomentDetectionContext {
   decisiveErrorPlayerId: string | null;
   blownSavePitcherId: string | null;
   playerNameById?: ReadonlyMap<string, string>;
+  awardHistory?: readonly AwardHistoryEntry[];
 }
 
 export interface DetectedMoment {
@@ -437,6 +440,51 @@ function detectContextMoments(
   }
 }
 
+function playerAlreadyHasMomentType(
+  context: MomentDetectionContext,
+  playerId: string,
+  type: MomentType,
+): boolean {
+  return (context.existingMomentsByPlayer.get(playerId) ?? []).some((moment) => moment.type === type);
+}
+
+function detectAwardMoments(
+  context: MomentDetectionContext,
+  pendingMoments: PendingMoment[],
+): void {
+  const seenPlayers = new Set<string>();
+  const awardHistory = [...(context.awardHistory ?? [])].sort((left, right) => (
+    left.playerId.localeCompare(right.playerId)
+    || left.season - right.season
+    || left.award.localeCompare(right.award)
+  ));
+
+  for (const award of awardHistory) {
+    if (award.season !== context.currentSeason || award.award !== 'All-Star') {
+      continue;
+    }
+    if (seenPlayers.has(award.playerId) || playerAlreadyHasMomentType(context, award.playerId, 'first_all_star')) {
+      continue;
+    }
+
+    const priorAllStarSelection = awardHistory.some((candidate) => (
+      candidate.playerId === award.playerId
+      && candidate.award === 'All-Star'
+      && candidate.season < context.currentSeason
+    ));
+    if (priorAllStarSelection) {
+      continue;
+    }
+
+    seenPlayers.add(award.playerId);
+    addPendingMoment(
+      pendingMoments,
+      award.playerId,
+      createMomentRecord('first_all_star', FIRST_ALL_STAR_IMPACT, context),
+    );
+  }
+}
+
 function detectStatMoments(
   gameResult: GameBoxScore,
   playerStats: ReadonlyMap<string, PlayerGameStats>,
@@ -563,6 +611,7 @@ export function detectMoment(
   detectWalkOffHomeRun(gameResult, context, pendingMoments);
   detectStatMoments(gameResult, playerStats, context, pendingMoments);
   detectContextMoments(context, pendingMoments);
+  detectAwardMoments(context, pendingMoments);
   assignDescriptions(pendingMoments, context, rng);
 
   const momentsByPlayer = new Map<string, Moment[]>();

@@ -17,6 +17,7 @@ import {
   BLOWN_WS_SAVE_IMPACT,
   CYCLE_IMPACT,
   FIRST_CAREER_HR_IMPACT,
+  FIRST_ALL_STAR_IMPACT,
   FOUR_HR_GAME_IMPACT,
   MAX_MOMENTS_PER_PLAYER,
   MILESTONE_3000_HIT_IMPACT,
@@ -878,6 +879,94 @@ describe('detectMoment', () => {
     );
 
     expect(updates).toEqual([]);
+  });
+
+  it('emits first_all_star when the current season contains a player first-time All-Star selection', () => {
+    const updates = detectMoment(
+      createBoxScore(),
+      createStatsMap([]),
+      createContext({
+        awardHistory: [
+          {
+            season: 5,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'First All-Star selection.',
+          },
+        ],
+      }),
+      new GameRNG(38),
+    );
+
+    expect(findMoment(updates, 'first_all_star')).toMatchObject({
+      type: 'first_all_star',
+      impact: FIRST_ALL_STAR_IMPACT,
+    });
+  });
+
+  it('does not emit first_all_star when the player already made a prior All-Star team', () => {
+    const updates = detectMoment(
+      createBoxScore(),
+      createStatsMap([]),
+      createContext({
+        awardHistory: [
+          {
+            season: 4,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'Repeat All-Star selection.',
+          },
+          {
+            season: 5,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'Another All-Star selection.',
+          },
+        ],
+      }),
+      new GameRNG(39),
+    );
+
+    expect(findMoment(updates, 'first_all_star')).toBeUndefined();
+  });
+
+  it('does not duplicate first_all_star when the moment already exists for the player', () => {
+    const updates = detectMoment(
+      createBoxScore(),
+      createStatsMap([]),
+      createContext({
+        awardHistory: [
+          {
+            season: 5,
+            award: 'All-Star',
+            league: 'MLB',
+            playerId: 'slugger',
+            teamId: 'bos',
+            summary: 'First All-Star selection.',
+          },
+        ],
+        existingMomentsByPlayer: new Map([
+          ['slugger', [
+            createMoment({
+              season: 5,
+              type: 'first_all_star',
+              description: 'Existing All-Star moment.',
+              impact: FIRST_ALL_STAR_IMPACT,
+              relevance: FIRST_ALL_STAR_IMPACT,
+            }),
+          ]],
+        ]),
+      }),
+      new GameRNG(40),
+    );
+
+    expect(findMoment(updates, 'first_all_star')).toBeUndefined();
   });
 
   it('supports a simulateGame-backed walk-off scan', () => {
