@@ -64,7 +64,12 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // highlights from seasonArchive + archivedSeasons. Story chunk landed ~2.2 KB
 // over the 420 KB ceiling; gzip held under cap (~125.8 KB actual vs 127 KB
 // ceiling). Raw-only lift.
-export const WORKER_CHUNK_BUDGET_BYTES = 423 * 1024;
+// WORKER raw: bumped 423 -> 425 KB for the Pennant Race Detail query slice.
+// Adds getPennantRaceDetail — all-six-divisions full standings + top-5
+// wildcard picture with projectedWins via winning-percentage pace. Story
+// chunk landed ~1.5 KB over the 423 KB ceiling; gzip held under cap
+// (~126.4 KB actual vs 127 KB ceiling). Raw-only lift.
+export const WORKER_CHUNK_BUDGET_BYTES = 425 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 127 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */

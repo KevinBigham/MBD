@@ -3294,6 +3294,145 @@ export const queryApi = {
     };
   },
 
+  getPennantRaceDetail() {
+    const s = requireState();
+    const fullStandings = s.seasonState.standings.getFullStandings();
+
+    // Full-picture detail for the Pennant Race modal — shows every division
+    // in order with the complete 5-team ladder (not just leader + chaser),
+    // plus the wildcard bubble picture per league and a projected-wins pace
+    // for each club. Unlike getPennantRaces, no filtering by "heat" — the
+    // modal is a deep-dive the user explicitly opens.
+
+    const MIN_GAMES_FOR_RACES = 10;
+
+    const divisionLeaders: StandingsEntry[] = [];
+    for (const div of DIVISIONS) {
+      const leader = fullStandings[div]?.[0];
+      if (leader) divisionLeaders.push(leader);
+    }
+    const maxLeaderGames = divisionLeaders.reduce(
+      (max, entry) => Math.max(max, entry.wins + entry.losses),
+      0,
+    );
+    const gamesRemaining = Math.max(SEASON_GAMES - maxLeaderGames, 0);
+
+    if (maxLeaderGames < MIN_GAMES_FOR_RACES) {
+      return {
+        season: s.season,
+        day: s.day,
+        gamesRemaining,
+        divisions: [],
+        wildcards: [],
+      };
+    }
+
+    const streakLabel = (streak: number): string => {
+      if (streak > 0) return `W${streak}`;
+      if (streak < 0) return `L${Math.abs(streak)}`;
+      return '-';
+    };
+
+    const projectedWins = (wins: number, losses: number): number => {
+      const gamesPlayed = wins + losses;
+      if (gamesPlayed <= 0) return 0;
+      return Math.round((wins / gamesPlayed) * SEASON_GAMES);
+    };
+
+    const divisionLabel = (div: Division): string => {
+      const [league, region] = div.split('_');
+      const regionTitle = region ? region.charAt(0) + region.slice(1).toLowerCase() : '';
+      return `${league} ${regionTitle}`.trim();
+    };
+
+    const toDetailTeam = (entry: StandingsEntry) => {
+      const team = getTeamById(entry.teamId);
+      const record = s.seasonState.standings.getRecord(entry.teamId);
+      return {
+        teamId: entry.teamId,
+        abbreviation: team?.abbreviation ?? entry.teamId.toUpperCase(),
+        name: team?.name ?? entry.teamId,
+        wins: entry.wins,
+        losses: entry.losses,
+        pct: entry.pct,
+        gamesBack: entry.gamesBack,
+        streak: streakLabel(record?.streak ?? 0),
+        projectedWins: projectedWins(entry.wins, entry.losses),
+      };
+    };
+
+    const divisions = DIVISIONS.map((div) => {
+      const entries = fullStandings[div] ?? [];
+      return {
+        division: div,
+        divisionLabel: divisionLabel(div),
+        teams: entries.map(toDetailTeam),
+      };
+    });
+
+    const WILDCARD_SPOTS = 3;
+    const WILDCARD_ROW_COUNT = 5;
+
+    const wildcards: Array<{
+      league: 'AL' | 'NL';
+      leagueLabel: string;
+      teams: Array<
+        ReturnType<typeof toDetailTeam> & { inWildcard: boolean }
+      >;
+    }> = [];
+
+    for (const league of ['AL', 'NL'] as const) {
+      const leagueDivs = DIVISIONS.filter((d) => d.startsWith(`${league}_`));
+      const nonLeaders: StandingsEntry[] = [];
+      for (const div of leagueDivs) {
+        const entries = fullStandings[div];
+        if (entries && entries.length > 1) {
+          nonLeaders.push(...entries.slice(1));
+        }
+      }
+
+      nonLeaders.sort((left, right) => {
+        if (right.pct !== left.pct) return right.pct - left.pct;
+        if (right.wins !== left.wins) return right.wins - left.wins;
+        if (left.losses !== right.losses) return left.losses - right.losses;
+        return left.teamId.localeCompare(right.teamId);
+      });
+
+      if (nonLeaders.length < WILDCARD_SPOTS) {
+        wildcards.push({
+          league,
+          leagueLabel: league === 'AL' ? 'American' : 'National',
+          teams: [],
+        });
+        continue;
+      }
+
+      const cutoff = nonLeaders[WILDCARD_SPOTS - 1]!;
+      const teams = nonLeaders.slice(0, WILDCARD_ROW_COUNT).map((entry, idx) => {
+        const gb = ((cutoff.wins - entry.wins) + (entry.losses - cutoff.losses)) / 2;
+        return {
+          ...toDetailTeam(entry),
+          gamesBack: gb,
+          inWildcard: idx < WILDCARD_SPOTS,
+        };
+      });
+
+      wildcards.push({
+        league,
+        leagueLabel: league === 'AL' ? 'American' : 'National',
+        teams,
+      });
+    }
+
+    return {
+      season: s.season,
+      day: s.day,
+      gamesRemaining,
+      divisions,
+      wildcards,
+    };
+  },
+
   // ---------------------------------------------------------------------------
   // Round 3 API Integration: Comparison, Projections, Similarity, Enhanced PBP, Awards
   // ---------------------------------------------------------------------------
