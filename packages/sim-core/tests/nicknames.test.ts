@@ -1,3 +1,4 @@
+import { NicknameIdEnum } from '@mbd/contracts';
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { GeneratedPlayer } from '../src/index.js';
@@ -205,6 +206,10 @@ describe('NICKNAME_TRIGGERS', () => {
       expect(getNicknameDisplayText(trigger.id)).toBe(trigger.displayText);
       expect(trigger.priority).toBeGreaterThan(0);
     }
+  });
+
+  it('keeps the nickname trigger registry aligned with the persisted nickname enum', () => {
+    expect(NICKNAME_TRIGGERS.map((trigger) => trigger.id)).toEqual(NicknameIdEnum.options);
   });
 });
 

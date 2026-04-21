@@ -1,3 +1,4 @@
+import { SignatureMomentTypeEnum } from '@mbd/contracts';
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
@@ -24,8 +25,10 @@ import {
   MILESTONE_3000_HIT_IMPACT,
   MILESTONE_300_WIN_IMPACT,
   MILESTONE_500_HR_IMPACT,
+  MOMENT_DESCRIPTION_TEMPLATES,
   MOMENT_IMPACT_THRESHOLD,
   MOMENT_RELEVANCE_DECAY_RATE,
+  MOMENT_TYPE_ORDER,
   NO_HITTER_ATTRIBUTE_BONUS,
   NO_HITTER_IMPACT,
   PERFECT_GAME_IMPACT,
@@ -1304,25 +1307,12 @@ describe('applyMomentEffects', () => {
 });
 
 describe('formatMomentDescription', () => {
-  it('includes the player name for every moment type', () => {
-    const types: Moment['type'][] = [
-      'walk_off_hr',
-      'no_hitter',
-      'perfect_game',
-      'four_hr_game',
-      'playoff_error',
-      'first_career_hr',
-      'milestone_500hr',
-      'milestone_3000h',
-      'milestone_300w',
-      'blown_ws_save',
-      'cycle',
-      'twenty_k_game',
-    ];
+  it('includes the player name for every persisted signature moment type', () => {
+    const types = SignatureMomentTypeEnum.options;
 
     for (const type of types) {
       const description = formatMomentDescription(
-        createMoment({ type }),
+        createMoment({ type: type as Moment['type'] }),
         'Pat Legend',
         new GameRNG(700 + types.indexOf(type)),
       );
@@ -1338,6 +1328,16 @@ describe('formatMomentDescription', () => {
     const second = formatMomentDescription(moment, 'Pat Legend', new GameRNG(801));
 
     expect(first).toBe(second);
+  });
+
+  it('keeps the local moment registry aligned with the persisted signature moment enum and templates', () => {
+    expect(MOMENT_TYPE_ORDER).toEqual(SignatureMomentTypeEnum.options);
+    expect(Object.keys(MOMENT_DESCRIPTION_TEMPLATES)).toEqual(SignatureMomentTypeEnum.options);
+
+    for (const type of SignatureMomentTypeEnum.options) {
+      expect(MOMENT_DESCRIPTION_TEMPLATES[type as Moment['type']]?.length ?? 0).toBeGreaterThan(0);
+      expect(MOMENT_DESCRIPTION_TEMPLATES[type as Moment['type']]?.every((template) => template.includes('{player}'))).toBe(true);
+    }
   });
 });
 

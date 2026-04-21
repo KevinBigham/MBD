@@ -133,7 +133,7 @@ interface PendingMoment extends DetectedMoment {
   sequence: number;
 }
 
-const MOMENT_TYPE_ORDER: MomentType[] = [
+export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'walk_off_hr',
   'no_hitter',
   'perfect_game',
@@ -168,7 +168,7 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'cursed_franchise',
 ];
 
-const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
+export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   walk_off_hr: [
     '{player} ended the night with one violent swing and a walk-off blast.',
     '{player} turned the final pitch into a walk-off home run and instant legend.',
