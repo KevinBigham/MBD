@@ -441,6 +441,180 @@ describe('worker pennant races query', () => {
     expect(leagues.has('NL')).toBe(true);
   });
 });
+
+describe('worker pennant race detail query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  interface PennantRaceDetailView {
+    season: number;
+    day: number;
+    gamesRemaining: number;
+    divisions: Array<{
+      division: string;
+      divisionLabel: string;
+      teams: Array<{
+        teamId: string;
+        abbreviation: string;
+        name: string;
+        wins: number;
+        losses: number;
+        pct: number;
+        gamesBack: number;
+        streak: string;
+        projectedWins: number;
+      }>;
+    }>;
+    wildcards: Array<{
+      league: 'AL' | 'NL';
+      leagueLabel: string;
+      teams: Array<{
+        teamId: string;
+        abbreviation: string;
+        name: string;
+        wins: number;
+        losses: number;
+        pct: number;
+        gamesBack: number;
+        streak: string;
+        projectedWins: number;
+        inWildcard: boolean;
+      }>;
+    }>;
+  }
+
+  function plantTeamRecord(
+    state: ReturnType<typeof requireState>,
+    teamId: string,
+    wins: number,
+    losses: number,
+    streak: number = 0,
+  ): void {
+    const tracker = state.seasonState.standings as unknown as {
+      records: Map<string, {
+        teamId: string;
+        wins: number;
+        losses: number;
+        runsScored: number;
+        runsAllowed: number;
+        streak: number;
+        last10: [number, number];
+        divisionWins: number;
+        divisionLosses: number;
+      }>;
+    };
+    tracker.records.set(teamId, {
+      teamId,
+      wins,
+      losses,
+      runsScored: 0,
+      runsAllowed: 0,
+      streak,
+      last10: [0, 0],
+      divisionWins: 0,
+      divisionLosses: 0,
+    });
+  }
+
+  it('returns all six divisions with full standings and projected wins', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 60, 30);
+    plantTeamRecord(state, 'phi', 58, 32);
+
+    const workerApi = api as typeof api & {
+      getPennantRaceDetail: () => PennantRaceDetailView;
+    };
+    const view = workerApi.getPennantRaceDetail();
+
+    expect(view.season).toBe(state.season);
+    expect(view.day).toBe(state.day);
+    expect(typeof view.gamesRemaining).toBe('number');
+    expect(view.divisions.length).toBe(6);
+    for (const div of view.divisions) {
+      expect(div.teams.length).toBeGreaterThanOrEqual(4);
+      for (const team of div.teams) {
+        expect(typeof team.pct).toBe('number');
+        expect(typeof team.projectedWins).toBe('number');
+        expect(team.projectedWins).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it('computes projected wins from the current winning percentage pace', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    // 60 wins in 90 games → .667 pace → 108 projected over 162 games.
+    plantTeamRecord(state, 'nym', 60, 30);
+
+    const workerApi = api as typeof api & {
+      getPennantRaceDetail: () => PennantRaceDetailView;
+    };
+    const view = workerApi.getPennantRaceDetail();
+
+    const alEast = view.divisions.find((d) => d.division === 'AL_EAST');
+    const nymEntry = alEast?.teams.find((t) => t.teamId === 'nym');
+    expect(nymEntry).toBeDefined();
+    expect(nymEntry?.projectedWins).toBe(Math.round((60 / 90) * SEASON_GAMES));
+  });
+
+  it('surfaces both leagues in the wildcard picture with top-5 non-leaders each', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    // Spread varied records across divisions so the wildcard sort has real fodder.
+    plantTeamRecord(state, 'nym', 90, 40);
+    plantTeamRecord(state, 'phi', 85, 45);
+    plantTeamRecord(state, 'lax', 90, 40);
+    plantTeamRecord(state, 'sfb', 85, 45);
+
+    const workerApi = api as typeof api & {
+      getPennantRaceDetail: () => PennantRaceDetailView;
+    };
+    const view = workerApi.getPennantRaceDetail();
+
+    const leagues = view.wildcards.map((wc) => wc.league);
+    expect(leagues).toContain('AL');
+    expect(leagues).toContain('NL');
+    for (const wc of view.wildcards) {
+      expect(wc.teams.length).toBeLessThanOrEqual(5);
+      const inCount = wc.teams.filter((t) => t.inWildcard).length;
+      expect(inCount).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('is deterministic — two calls against the same state return the same view', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 60, 30);
+    plantTeamRecord(state, 'phi', 58, 32);
+
+    const workerApi = api as typeof api & {
+      getPennantRaceDetail: () => PennantRaceDetailView;
+    };
+    const first = workerApi.getPennantRaceDetail();
+    const second = workerApi.getPennantRaceDetail();
+
+    expect(second).toEqual(first);
+  });
+
+  it('gates early-season output with empty divisions/wildcards when under 10 games played', () => {
+    startGame(4411, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 5, 3);
+    plantTeamRecord(state, 'phi', 3, 5);
+
+    const workerApi = api as typeof api & {
+      getPennantRaceDetail: () => PennantRaceDetailView;
+    };
+    const view = workerApi.getPennantRaceDetail();
+
+    expect(view.divisions).toEqual([]);
+    expect(view.wildcards).toEqual([]);
+  });
+});
+
 describe('worker award race boards query', () => {
   afterEach(() => {
     setState(null);

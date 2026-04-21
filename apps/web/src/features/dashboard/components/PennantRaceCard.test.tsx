@@ -20,9 +20,13 @@ const mockedUseWorker = vi.mocked(useWorker);
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-function mockWorker(view: unknown, overrides: { isReady?: boolean } = {}): void {
+function mockWorker(
+  view: unknown,
+  overrides: { isReady?: boolean; detail?: unknown } = {},
+): void {
   mockedUseWorker.mockReturnValue({
     getPennantRaces: vi.fn().mockResolvedValue(view),
+    getPennantRaceDetail: vi.fn().mockResolvedValue(overrides.detail ?? null),
     isReady: overrides.isReady ?? true,
   } as unknown as ReturnType<typeof useWorker>);
 }
@@ -276,6 +280,26 @@ describe('PennantRaceCard', () => {
     // 1 division race + 1 wildcard race = 2
     const header = container.querySelector('h2')?.parentElement;
     expect(header?.textContent).toContain('2');
+  });
+
+  it('exposes a Board button that opens the expanded pennant race modal', async () => {
+    mockWorker({
+      season: 4,
+      day: 150,
+      gamesRemaining: 12,
+      divisionRaces: [],
+      wildcardRaces: [],
+    });
+
+    await act(async () => {
+      root.render(<PennantRaceCard />);
+    });
+    await flush();
+
+    const boardBtn = container.querySelector(
+      'button[aria-label="Open pennant race board"]',
+    ) as HTMLButtonElement | null;
+    expect(boardBtn).not.toBeNull();
   });
 
   it('suppresses content while the worker is not ready', async () => {

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Flame } from 'lucide-react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { Flame, Maximize2 } from 'lucide-react';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { useWorker } from '@/shared/hooks/useWorker';
+
+const PennantRaceModal = lazy(() => import('./PennantRaceModal'));
 
 type Heat = 'tight' | 'close' | 'comfortable';
 
@@ -81,6 +83,7 @@ export default function PennantRaceCard() {
   const { getPennantRaces, isReady } = useWorker();
   const [view, setView] = useState<PennantRaceView | null>(null);
   const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchView = useCallback(async () => {
     try {
@@ -111,10 +114,19 @@ export default function PennantRaceCard() {
           Pennant Race Heat
         </h2>
         {totalRaces > 0 && (
-          <span className="ml-auto rounded-full bg-accent-danger/20 px-2 py-0.5 font-data text-[11px] font-medium text-accent-danger">
+          <span className="rounded-full bg-accent-danger/20 px-2 py-0.5 font-data text-[11px] font-medium text-accent-danger">
             {totalRaces}
           </span>
         )}
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 px-2 py-0.5 font-data text-[10px] uppercase tracking-[0.14em] text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright"
+          aria-label="Open pennant race board"
+        >
+          <Maximize2 className="h-3 w-3" />
+          Board
+        </button>
       </div>
 
       {loading ? (
@@ -241,6 +253,12 @@ export default function PennantRaceCard() {
           )}
         </div>
       )}
+
+      {modalOpen ? (
+        <Suspense fallback={null}>
+          <PennantRaceModal onDismiss={() => setModalOpen(false)} />
+        </Suspense>
+      ) : null}
     </section>
   );
 }
