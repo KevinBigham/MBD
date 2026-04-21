@@ -97,12 +97,14 @@ export const SignatureMomentTypeEnum = z.enum([
   "four_hr_game",
   "playoff_error",
   "first_career_hr",
+  "first_all_star",
   "milestone_500hr",
   "milestone_3000h",
   "milestone_300w",
   "blown_ws_save",
   "cycle",
   "twenty_k_game",
+  "bench_clearing_brawl",
   "arbitration_win",
   "arbitration_loss",
   "super_two_debut",
@@ -118,6 +120,9 @@ export const SignatureMomentTypeEnum = z.enum([
   "rebuild_begun",
   "breakout_season",
   "contention_window_opens",
+  "fire_sale",
+  "dynasty_end",
+  "cursed_franchise",
 ]);
 export type SignatureMomentType = z.infer<typeof SignatureMomentTypeEnum>;
 

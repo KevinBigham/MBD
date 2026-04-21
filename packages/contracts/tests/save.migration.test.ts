@@ -10,8 +10,8 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v25', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(25);
+  it('tracks the current additive save schema as v26', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(26);
   });
 
   it('migrates the v17 fixture into the additive v25 shape', () => {
@@ -100,6 +100,25 @@ describe('save schema migration', () => {
 
   it('migrates the v24 fixture into the additive v25 season-identity enum shape', () => {
     const fixture = loadFixture('./fixtures/save/v24/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(migrated.narrative.teamMoments).toEqual([
+      [
+        'nym',
+        [
+          expect.objectContaining({
+            type: 'first_dynasty_peak',
+            description: expect.stringContaining('division titles'),
+          }),
+        ],
+      ],
+    ]);
+  });
+
+  it('migrates the v25 fixture into the additive v26 wave-3 enum shape', () => {
+    const fixture = loadFixture('./fixtures/save/v25/core.json');
 
     const migrated = parseGameSnapshot(fixture);
 

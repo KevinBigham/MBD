@@ -41,12 +41,14 @@ export type MomentType =
   | 'four_hr_game'
   | 'playoff_error'
   | 'first_career_hr'
+  | 'first_all_star'
   | 'milestone_500hr'
   | 'milestone_3000h'
   | 'milestone_300w'
   | 'blown_ws_save'
   | 'cycle'
   | 'twenty_k_game'
+  | 'bench_clearing_brawl'
   | 'arbitration_win'
   | 'arbitration_loss'
   | 'super_two_debut'
@@ -61,7 +63,10 @@ export type MomentType =
   | 'losing_season_streak'
   | 'rebuild_begun'
   | 'breakout_season'
-  | 'contention_window_opens';
+  | 'contention_window_opens'
+  | 'fire_sale'
+  | 'dynasty_end'
+  | 'cursed_franchise';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -126,12 +131,14 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'four_hr_game',
   'playoff_error',
   'first_career_hr',
+  'first_all_star',
   'milestone_500hr',
   'milestone_3000h',
   'milestone_300w',
   'blown_ws_save',
   'cycle',
   'twenty_k_game',
+  'bench_clearing_brawl',
   'arbitration_win',
   'arbitration_loss',
   'super_two_debut',
@@ -147,6 +154,9 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'rebuild_begun',
   'breakout_season',
   'contention_window_opens',
+  'fire_sale',
+  'dynasty_end',
+  'cursed_franchise',
 ];
 
 const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -180,6 +190,11 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
     '{player} broke through with the first home run of the career arc.',
     '{player} got the first career homer out of the way and the dugout felt it.',
   ],
+  first_all_star: [
+    '{player} broke through with a first All-Star selection.',
+    '{player} made the first All-Star team of the career climb.',
+    '{player} turned steady production into a first trip to the All-Star stage.',
+  ],
   milestone_500hr: [
     '{player} reached 500 home runs and moved into rare company.',
     '{player} crossed the 500-homer line and stamped the power legacy.',
@@ -209,6 +224,11 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
     '{player} piled up 20 strikeouts and overwhelmed the entire lineup.',
     '{player} turned the mound into a strikeout factory with a 20-K game.',
     '{player} hit the 20-strikeout mark and dominated from first pitch to last.',
+  ],
+  bench_clearing_brawl: [
+    '{player} was in the middle of a rivalry flashpoint when both benches emptied.',
+    '{player} got dragged into a late-inning brawl as the rivalry spilled over.',
+    '{player} stood in the middle of a bench-clearing scene that changed the temperature.',
   ],
   arbitration_win: [
     '{player} won the arbitration case.',
@@ -254,6 +274,15 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   ],
   contention_window_opens: [
     '{player} helped crack open a fresh contention window after lean seasons.',
+  ],
+  fire_sale: [
+    '{player} became part of a franchise fire sale before the deadline slammed shut.',
+  ],
+  dynasty_end: [
+    '{player} saw a once-dominant division run finally crack apart.',
+  ],
+  cursed_franchise: [
+    '{player} remained stuck in a franchise losing streak that reached another bleak milestone.',
   ],
 };
 
