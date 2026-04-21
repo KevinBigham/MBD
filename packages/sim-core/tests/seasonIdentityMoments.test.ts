@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BREAKOUT_SEASON_IMPACT,
   CHAMPIONSHIP_RUN_IMPACT,
   CONTENTION_COLLAPSE_IMPACT,
   CONTENTION_COLLAPSE_WINS_THRESHOLD,
+  CONTENTION_WINDOW_OPENS_IMPACT,
   FIRST_DYNASTY_PEAK_IMPACT,
   LOSING_SEASON_STREAK_IMPACT,
+  REBUILD_BEGUN_IMPACT,
+  detectBreakoutSeason,
   detectChampionshipRun,
+  detectContentionWindowOpens,
   detectContentionCollapse,
   detectFirstDynastyPeak,
   detectLosingSeasonStreak,
+  detectRebuildBegun,
   detectSeasonIdentityMoments,
   type TeamSeasonSummary,
 } from '../src/moments/seasonIdentityMoments.js';
@@ -237,6 +243,250 @@ describe('detectLosingSeasonStreak', () => {
   });
 });
 
+describe('detectRebuildBegun', () => {
+  it('emits a rebuild_begun moment when a first losing season follows two winning seasons', () => {
+    const result = detectRebuildBegun(
+      summary({
+        teamId: 'chc',
+        wins: 74,
+        losses: 88,
+        priorSeasonsSummary: [
+          { season: 5, wins: 86, losses: 76, divisionRank: 2 },
+          { season: 6, wins: 90, losses: 72, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('rebuild_begun');
+    expect(result?.moment.impact).toBe(REBUILD_BEGUN_IMPACT);
+    expect(result?.moment.description).toContain('74-88');
+  });
+
+  it('returns null when the current season is winning', () => {
+    const result = detectRebuildBegun(
+      summary({
+        teamId: 'sea',
+        wins: 84,
+        losses: 78,
+        priorSeasonsSummary: [
+          { season: 5, wins: 86, losses: 76, divisionRank: 2 },
+          { season: 6, wins: 90, losses: 72, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when only one of the two prior seasons was winning', () => {
+    const result = detectRebuildBegun(
+      summary({
+        teamId: 'pit',
+        wins: 75,
+        losses: 87,
+        priorSeasonsSummary: [
+          { season: 5, wins: 78, losses: 84, divisionRank: 4 },
+          { season: 6, wins: 85, losses: 77, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when no prior seasons summary exists', () => {
+    const result = detectRebuildBegun(
+      summary({ teamId: 'col', wins: 68, losses: 94, priorSeasonsSummary: [] }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('detectBreakoutSeason', () => {
+  it('emits a breakout_season moment for a division winner after three non-title seasons', () => {
+    const result = detectBreakoutSeason(
+      summary({
+        teamId: 'hou',
+        wins: 92,
+        losses: 70,
+        divisionRank: 1,
+        priorSeasonsSummary: [
+          { season: 4, wins: 78, losses: 84, divisionRank: 3 },
+          { season: 5, wins: 81, losses: 81, divisionRank: 2 },
+          { season: 6, wins: 75, losses: 87, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('breakout_season');
+    expect(result?.moment.impact).toBe(BREAKOUT_SEASON_IMPACT);
+    expect(result?.moment.description).toContain('92-70');
+  });
+
+  it('returns null when the current team did not win the division', () => {
+    const result = detectBreakoutSeason(
+      summary({
+        teamId: 'sea',
+        wins: 89,
+        losses: 73,
+        divisionRank: 2,
+        priorSeasonsSummary: [
+          { season: 4, wins: 80, losses: 82, divisionRank: 3 },
+          { season: 5, wins: 83, losses: 79, divisionRank: 2 },
+          { season: 6, wins: 84, losses: 78, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when fewer than three prior seasons are available', () => {
+    const result = detectBreakoutSeason(
+      summary({
+        teamId: 'cin',
+        wins: 91,
+        losses: 71,
+        divisionRank: 1,
+        priorSeasonsSummary: [
+          { season: 5, wins: 78, losses: 84, divisionRank: 3 },
+          { season: 6, wins: 79, losses: 83, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when one of the prior three seasons was already a division title', () => {
+    const result = detectBreakoutSeason(
+      summary({
+        teamId: 'lad',
+        wins: 99,
+        losses: 63,
+        divisionRank: 1,
+        priorSeasonsSummary: [
+          { season: 4, wins: 88, losses: 74, divisionRank: 1 },
+          { season: 5, wins: 84, losses: 78, divisionRank: 2 },
+          { season: 6, wins: 87, losses: 75, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('treats null prior division ranks as non-champions', () => {
+    const result = detectBreakoutSeason(
+      summary({
+        teamId: 'mil',
+        wins: 90,
+        losses: 72,
+        divisionRank: 1,
+        priorSeasonsSummary: [
+          { season: 4, wins: 70, losses: 92, divisionRank: null },
+          { season: 5, wins: 76, losses: 86, divisionRank: 3 },
+          { season: 6, wins: 80, losses: 82, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('breakout_season');
+  });
+});
+
+describe('detectContentionWindowOpens', () => {
+  it('emits a contention_window_opens moment after two losing seasons and a winning turnaround', () => {
+    const result = detectContentionWindowOpens(
+      summary({
+        teamId: 'mia',
+        wins: 84,
+        losses: 78,
+        divisionRank: 2,
+        priorSeasonsSummary: [
+          { season: 5, wins: 69, losses: 93, divisionRank: 4 },
+          { season: 6, wins: 74, losses: 88, divisionRank: 3 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('contention_window_opens');
+    expect(result?.moment.impact).toBe(CONTENTION_WINDOW_OPENS_IMPACT);
+    expect(result?.moment.description).toContain('84-78');
+  });
+
+  it('returns null when the current season is losing', () => {
+    const result = detectContentionWindowOpens(
+      summary({
+        teamId: 'pit',
+        wins: 76,
+        losses: 86,
+        priorSeasonsSummary: [
+          { season: 5, wins: 69, losses: 93, divisionRank: 4 },
+          { season: 6, wins: 74, losses: 88, divisionRank: 3 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when only one prior season was losing', () => {
+    const result = detectContentionWindowOpens(
+      summary({
+        teamId: 'tor',
+        wins: 85,
+        losses: 77,
+        priorSeasonsSummary: [
+          { season: 5, wins: 82, losses: 80, divisionRank: 3 },
+          { season: 6, wins: 73, losses: 89, divisionRank: 4 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when no prior seasons summary exists', () => {
+    const result = detectContentionWindowOpens(
+      summary({ teamId: 'col', wins: 83, losses: 79, priorSeasonsSummary: [] }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+});
+
 describe('detectSeasonIdentityMoments', () => {
   it('emits moments deterministically sorted by teamId + canonical type order', () => {
     const result = detectSeasonIdentityMoments({
@@ -244,6 +494,16 @@ describe('detectSeasonIdentityMoments', () => {
       day: 182,
       teams: [
         summary({ teamId: 'bos', wins: 88, losses: 74, madePlayoffs: false }),
+        summary({
+          teamId: 'chc',
+          wins: 74,
+          losses: 88,
+          madePlayoffs: false,
+          priorSeasonsSummary: [
+            { season: 5, wins: 86, losses: 76, divisionRank: 2 },
+            { season: 6, wins: 90, losses: 72, divisionRank: 2 },
+          ],
+        }),
         summary({
           teamId: 'det',
           wins: 68,
@@ -253,6 +513,30 @@ describe('detectSeasonIdentityMoments', () => {
             { season: 4, wins: 81, losses: 81, divisionRank: 4 },
             { season: 5, wins: 73, losses: 89, divisionRank: 4 },
             { season: 6, wins: 70, losses: 92, divisionRank: 5 },
+          ],
+        }),
+        summary({
+          teamId: 'hou',
+          wins: 90,
+          losses: 72,
+          madePlayoffs: true,
+          divisionRank: 1,
+          priorSeasonsSummary: [
+            { season: 4, wins: 70, losses: 92, divisionRank: null },
+            { season: 5, wins: 68, losses: 94, divisionRank: 3 },
+            { season: 6, wins: 75, losses: 87, divisionRank: 2 },
+          ],
+        }),
+        summary({
+          teamId: 'mia',
+          wins: 84,
+          losses: 78,
+          madePlayoffs: false,
+          divisionRank: 2,
+          priorSeasonsSummary: [
+            { season: 4, wins: 86, losses: 76, divisionRank: 2 },
+            { season: 5, wins: 69, losses: 93, divisionRank: 4 },
+            { season: 6, wins: 74, losses: 88, divisionRank: 3 },
           ],
         }),
         summary({
@@ -273,7 +557,10 @@ describe('detectSeasonIdentityMoments', () => {
     expect(result.map((entry) => ({ teamId: entry.teamId, type: entry.moment.type })))
       .toEqual([
         { teamId: 'bos', type: 'contention_collapse' },
+        { teamId: 'chc', type: 'rebuild_begun' },
         { teamId: 'det', type: 'losing_season_streak' },
+        { teamId: 'hou', type: 'breakout_season' },
+        { teamId: 'mia', type: 'contention_window_opens' },
         { teamId: 'nym', type: 'championship_run' },
         { teamId: 'nym', type: 'first_dynasty_peak' },
       ]);
