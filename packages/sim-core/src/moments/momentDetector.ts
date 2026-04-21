@@ -54,7 +54,9 @@ export type MomentType =
   | 'blockbuster_trade_moved'
   | 'blockbuster_trade_acquired'
   | 'deadline_seller'
-  | 'deadline_buyer';
+  | 'deadline_buyer'
+  | 'championship_run'
+  | 'contention_collapse';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -133,6 +135,8 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'blockbuster_trade_acquired',
   'deadline_seller',
   'deadline_buyer',
+  'championship_run',
+  'contention_collapse',
 ];
 
 const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -219,6 +223,12 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   ],
   deadline_buyer: [
     '{player} became the face of a deadline buy signal.',
+  ],
+  championship_run: [
+    '{player} hoisted the World Series trophy and stamped a championship season.',
+  ],
+  contention_collapse: [
+    '{player} watched the playoffs from home after a winning season slipped away.',
   ],
 };
 
