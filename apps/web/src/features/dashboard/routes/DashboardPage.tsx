@@ -38,6 +38,7 @@ const PennantRaceCard = lazy(() => import('../components/PennantRaceCard'));
 const AwardRaceCard = lazy(() => import('../components/AwardRaceCard'));
 const RecentMomentsCard = lazy(() => import('../components/RecentMomentsCard'));
 const FranchiseLegacyCard = lazy(() => import('../components/FranchiseLegacyCard'));
+const CareerRetrospectiveCard = lazy(() => import('../components/CareerRetrospectiveCard'));
 
 interface DashboardSummary {
   franchise: {
@@ -753,6 +754,9 @@ export default function DashboardPage() {
           </Suspense>
           <Suspense fallback={<CardFallback title="Franchise Legacy" />}>
             <FranchiseLegacyCard />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="Career Retrospective" />}>
+            <CareerRetrospectiveCard />
           </Suspense>
         </section>
 

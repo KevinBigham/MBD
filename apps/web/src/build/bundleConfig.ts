@@ -50,7 +50,14 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // story chunk landed ~1.6 KB over the 414 KB ceiling — raw lift with a
 // small headroom buffer. Gzip also bumped 126 -> 127 KB; copy compressed
 // ~296 bytes over the prior cap.
-export const WORKER_CHUNK_BUDGET_BYTES = 417 * 1024;
+// WORKER raw: bumped 417 -> 420 KB for the Career Retrospective query slice.
+// Adds buildCareerRetrospective + getCareerRetrospective to sim.worker.queries
+// — unifies titles (WS/pennants/division/playoffs derived from seasonArchive +
+// archivedSeasons), team-moment beats, completed story arcs, awards-shelf
+// counts, and top rivalry into one dashboard payload. Story chunk landed
+// ~2.5 KB over the 417 KB ceiling; gzip held under cap (~125 KB actual vs
+// 127 KB ceiling).
+export const WORKER_CHUNK_BUDGET_BYTES = 420 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 127 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
