@@ -9,10 +9,16 @@ export const FIRST_DYNASTY_PEAK_IMPACT = 55;
 export const FIRST_DYNASTY_PEAK_RELEVANCE = 0.95;
 export const LOSING_SEASON_STREAK_IMPACT = -40;
 export const LOSING_SEASON_STREAK_RELEVANCE = 0.85;
+export const REBUILD_BEGUN_IMPACT = -25;
+export const REBUILD_BEGUN_RELEVANCE = 0.75;
+export const BREAKOUT_SEASON_IMPACT = 45;
+export const BREAKOUT_SEASON_RELEVANCE = 0.90;
+export const CONTENTION_WINDOW_OPENS_IMPACT = 30;
+export const CONTENTION_WINDOW_OPENS_RELEVANCE = 0.75;
 
 export interface PriorSeasonSummary {
   readonly season: number;
-  readonly divisionRank: number;
+  readonly divisionRank: number | null;
   readonly wins: number;
   readonly losses: number;
 }
@@ -23,7 +29,7 @@ export interface TeamSeasonSummary {
   readonly losses: number;
   readonly madePlayoffs: boolean;
   readonly isChampion: boolean;
-  readonly divisionRank?: number;
+  readonly divisionRank?: number | null;
   readonly priorSeasonsSummary?: readonly PriorSeasonSummary[];
 }
 
@@ -184,10 +190,118 @@ export function detectLosingSeasonStreak(
   };
 }
 
+export function detectRebuildBegun(
+  summary: TeamSeasonSummary,
+  season: number,
+  day: number,
+): SeasonIdentityDetectedMoment | null {
+  if (summary.losses <= summary.wins) {
+    return null;
+  }
+  if ((summary.priorSeasonsSummary?.length ?? 0) < 2) {
+    return null;
+  }
+
+  const priorSeason = getPriorSeason(summary, season - 1);
+  const twoSeasonsBack = getPriorSeason(summary, season - 2);
+  if (!priorSeason || !twoSeasonsBack) {
+    return null;
+  }
+  if (priorSeason.losses >= priorSeason.wins || twoSeasonsBack.losses >= twoSeasonsBack.wins) {
+    return null;
+  }
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'rebuild_begun',
+      `After back-to-back winning campaigns, a ${summary.wins}-${summary.losses} slide signals the front office may be pivoting toward a full rebuild.`,
+      REBUILD_BEGUN_IMPACT,
+      REBUILD_BEGUN_RELEVANCE,
+      season,
+      day,
+    ),
+  };
+}
+
+export function detectBreakoutSeason(
+  summary: TeamSeasonSummary,
+  season: number,
+  day: number,
+): SeasonIdentityDetectedMoment | null {
+  if (summary.divisionRank !== 1) {
+    return null;
+  }
+  if ((summary.priorSeasonsSummary?.length ?? 0) < 3) {
+    return null;
+  }
+
+  const priorSeason = getPriorSeason(summary, season - 1);
+  const twoSeasonsBack = getPriorSeason(summary, season - 2);
+  const threeSeasonsBack = getPriorSeason(summary, season - 3);
+  if (!priorSeason || !twoSeasonsBack || !threeSeasonsBack) {
+    return null;
+  }
+  if (
+    priorSeason.divisionRank === 1
+    || twoSeasonsBack.divisionRank === 1
+    || threeSeasonsBack.divisionRank === 1
+  ) {
+    return null;
+  }
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'breakout_season',
+      `After going three straight years without a division title, a ${summary.wins}-${summary.losses} breakout puts the franchise back in the conversation.`,
+      BREAKOUT_SEASON_IMPACT,
+      BREAKOUT_SEASON_RELEVANCE,
+      season,
+      day,
+    ),
+  };
+}
+
+export function detectContentionWindowOpens(
+  summary: TeamSeasonSummary,
+  season: number,
+  day: number,
+): SeasonIdentityDetectedMoment | null {
+  if (summary.wins <= summary.losses) {
+    return null;
+  }
+  if ((summary.priorSeasonsSummary?.length ?? 0) < 2) {
+    return null;
+  }
+
+  const priorSeason = getPriorSeason(summary, season - 1);
+  const twoSeasonsBack = getPriorSeason(summary, season - 2);
+  if (!priorSeason || !twoSeasonsBack) {
+    return null;
+  }
+  if (priorSeason.losses <= priorSeason.wins || twoSeasonsBack.losses <= twoSeasonsBack.wins) {
+    return null;
+  }
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'contention_window_opens',
+      `After consecutive losing campaigns, a ${summary.wins}-${summary.losses} turnaround cracks open a fresh contention window.`,
+      CONTENTION_WINDOW_OPENS_IMPACT,
+      CONTENTION_WINDOW_OPENS_RELEVANCE,
+      season,
+      day,
+    ),
+  };
+}
+
 export function detectSeasonIdentityMoments(
   context: SeasonIdentityMomentDetectionContext,
 ): SeasonIdentityDetectedMoment[] {
   const moments: SeasonIdentityDetectedMoment[] = [];
+  const breakoutTeamIds = new Set<string>();
   for (const summary of context.teams) {
     const championship = detectChampionshipRun(summary, context.season, context.day);
     if (championship) {
@@ -204,6 +318,22 @@ export function detectSeasonIdentityMoments(
     const losingStreak = detectLosingSeasonStreak(summary, context.season, context.day);
     if (losingStreak) {
       moments.push(losingStreak);
+    }
+    const rebuildBegun = detectRebuildBegun(summary, context.season, context.day);
+    if (rebuildBegun) {
+      moments.push(rebuildBegun);
+    }
+    const breakoutSeason = detectBreakoutSeason(summary, context.season, context.day);
+    if (breakoutSeason) {
+      breakoutTeamIds.add(summary.teamId);
+      moments.push(breakoutSeason);
+    }
+    if (breakoutTeamIds.has(summary.teamId)) {
+      continue;
+    }
+    const contentionWindowOpens = detectContentionWindowOpens(summary, context.season, context.day);
+    if (contentionWindowOpens) {
+      moments.push(contentionWindowOpens);
     }
   }
   return moments.sort((left, right) =>

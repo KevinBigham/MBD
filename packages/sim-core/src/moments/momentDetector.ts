@@ -58,7 +58,10 @@ export type MomentType =
   | 'championship_run'
   | 'contention_collapse'
   | 'first_dynasty_peak'
-  | 'losing_season_streak';
+  | 'losing_season_streak'
+  | 'rebuild_begun'
+  | 'breakout_season'
+  | 'contention_window_opens';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -141,6 +144,9 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'contention_collapse',
   'first_dynasty_peak',
   'losing_season_streak',
+  'rebuild_begun',
+  'breakout_season',
+  'contention_window_opens',
 ];
 
 const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -239,6 +245,15 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   ],
   losing_season_streak: [
     '{player} was part of a club staring at a third straight losing season.',
+  ],
+  rebuild_begun: [
+    '{player} now sits at the front edge of a franchise pivot toward a rebuild.',
+  ],
+  breakout_season: [
+    '{player} helped drag the franchise back into the division-title conversation.',
+  ],
+  contention_window_opens: [
+    '{player} helped crack open a fresh contention window after lean seasons.',
   ],
 };
 

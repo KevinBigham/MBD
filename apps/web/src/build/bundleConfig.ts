@@ -69,8 +69,14 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // wildcard picture with projectedWins via winning-percentage pace. Story
 // chunk landed ~1.5 KB over the 423 KB ceiling; gzip held under cap
 // (~126.4 KB actual vs 127 KB ceiling). Raw-only lift.
+// WORKER gzip: bumped 127 -> 128 KB for team-identity expansion wave 2 (v25).
+// Adds rebuild_begun + breakout_season + contention_window_opens detectors with
+// their MOMENT_TYPE_ORDER entries and description templates. game-engine-core
+// landed at 130,174 gzip bytes vs the prior 130,048 cap (+126 bytes), so the
+// smallest safe lift is one KB. Raw ceiling already at 425 KB from PR #44's
+// Pennant Race detail query absorbs the wave-2 detector code with headroom.
 export const WORKER_CHUNK_BUDGET_BYTES = 425 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 127 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 128 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
