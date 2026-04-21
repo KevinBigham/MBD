@@ -75,8 +75,14 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // landed at 130,174 gzip bytes vs the prior 130,048 cap (+126 bytes), so the
 // smallest safe lift is one KB. Raw ceiling already at 425 KB from PR #44's
 // Pennant Race detail query absorbs the wave-2 detector code with headroom.
-export const WORKER_CHUNK_BUDGET_BYTES = 425 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 128 * 1024;
+// WORKER raw/gzip: bumped 425 -> 428 KB raw and 128 -> 131 KB gzip for
+// narrative depth wave 3 (v26). The additive detector/template expansion kept
+// game-engine-core raw under the existing ceiling (~399 KB) but pushed gzip to
+// 133,864 bytes; game-engine-story stayed under gzip but landed at 437,490 raw
+// bytes. This is the maximum sprint-allowed lift (+3 KB raw / +3 KB gzip),
+// preserving the hard stop at 430 KB raw / 131 KB gzip.
+export const WORKER_CHUNK_BUDGET_BYTES = 428 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 131 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
