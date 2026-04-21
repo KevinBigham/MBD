@@ -70,7 +70,12 @@ export {
 } from './arbitrationPressConferences.js';
 export {
   generateHoldoutBriefing,
+  generateHoldoutResolutionBriefing,
 } from './holdoutCoverage.js';
+export {
+  generateExtensionSignedBriefing,
+  generateRebuildAnnouncementBriefing,
+} from './eventBriefings.js';
 export {
   generateOffseasonHeadline,
   generateSeasonRecapNarrative,
@@ -171,6 +176,10 @@ export type {
   HoldoutCoverageContext,
   HoldoutBriefing,
 } from './holdoutCoverage.js';
+export type {
+  ExtensionSignedBriefingContext,
+  RebuildAnnouncementBriefingContext,
+} from './eventBriefings.js';
 export type {
   LeagueEventType,
   LeagueEventTeamSnapshot,

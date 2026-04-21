@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { GameRNG } from '../src/math/prng.js';
 import type { GeneratedPlayer } from '../src/player/generation.js';
 import {
   generateHoldoutBriefing,
@@ -352,5 +353,79 @@ describe('generateHoldoutResolutionBriefing', () => {
     expect(openingId).toBe('briefing-holdout-player-1-5-12');
     expect(resolutionId).toBe('briefing-holdout-resolution-player-1-6-3');
     expect(openingId).not.toBe(resolutionId);
+  });
+
+  it('stays deterministic for the same resolution seed', () => {
+    const makeContext = () => ({
+      player: createPlayer({
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 3.0,
+          holdoutDays: 10,
+          moraleHit: 15,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 55,
+      rng: new GameRNG(901),
+    });
+
+    const first = generateHoldoutResolutionBriefing(makeContext());
+    const second = generateHoldoutResolutionBriefing(makeContext());
+
+    expect(first).toEqual(second);
+  });
+
+  it('uses at least four distinct pressure-tier resolution variants across seeds', () => {
+    const variants = new Set(
+      Array.from({ length: 20 }, (_, index) => generateHoldoutResolutionBriefing({
+        player: createPlayer({
+          holdoutState: {
+            season: 5,
+            teamId: 'bos',
+            salaryGap: 2.9,
+            holdoutDays: 10,
+            moraleHit: 14,
+          },
+        }),
+        season: 6,
+        day: 3,
+        teamName: 'Boston',
+        moraleScore: 55,
+        rng: new GameRNG(1000 + index),
+      }))
+        .filter((briefing): briefing is NonNullable<typeof briefing> => briefing != null)
+        .map((briefing) => `${briefing.headline} :: ${briefing.body}`),
+    );
+
+    expect(variants.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('uses at least four distinct crisis-tier resolution variants across seeds', () => {
+    const variants = new Set(
+      Array.from({ length: 20 }, (_, index) => generateHoldoutResolutionBriefing({
+        player: createPlayer({
+          holdoutState: {
+            season: 5,
+            teamId: 'bos',
+            salaryGap: 4.6,
+            holdoutDays: 18,
+            moraleHit: 19,
+          },
+        }),
+        season: 6,
+        day: 3,
+        teamName: 'Boston',
+        moraleScore: 32,
+        rng: new GameRNG(1100 + index),
+      }))
+        .filter((briefing): briefing is NonNullable<typeof briefing> => briefing != null)
+        .map((briefing) => `${briefing.headline} :: ${briefing.body}`),
+    );
+
+    expect(variants.size).toBeGreaterThanOrEqual(4);
   });
 });
