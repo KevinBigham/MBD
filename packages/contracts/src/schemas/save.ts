@@ -498,7 +498,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 22;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 23;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -592,6 +592,11 @@ export const GameSnapshotV21Schema = GameSnapshotSchema.extend({
   narrative: NarrativeSnapshotV21Schema,
 });
 export type GameSnapshotV21 = z.infer<typeof GameSnapshotV21Schema>;
+
+export const GameSnapshotV22Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(22),
+});
+export type GameSnapshotV22 = z.infer<typeof GameSnapshotV22Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -2526,6 +2531,24 @@ function migrateGameSnapshotV21(snapshot: GameSnapshotV21): GameSnapshot {
   });
 }
 
+// v22 -> v23: expand SignatureMomentTypeEnum with season-identity moment
+// types (championship_run, contention_collapse). Purely additive — no stored
+// state shape changes; existing v22 saves load as-is.
+function migrateGameSnapshotV22(snapshot: GameSnapshotV22): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -2552,6 +2575,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 12
   ) {
     return migrateGameSnapshotV12(GameSnapshotV12Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 22
+  ) {
+    return migrateGameSnapshotV22(GameSnapshotV22Schema.parse(snapshotLike));
   }
 
   if (
