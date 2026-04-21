@@ -427,6 +427,64 @@ function applySeasonIdentityMoments(state: FullGameState) {
     return;
   }
 
+  type PriorSeasonSummary = NonNullable<TeamSeasonSummary['priorSeasonsSummary']>[number];
+
+  const divisionRankByTeamId = new Map<string, number>();
+  for (const divisionStandings of Object.values(state.seasonState.standings.getFullStandings())) {
+    for (const [index, entry] of divisionStandings.entries()) {
+      divisionRankByTeamId.set(entry.teamId, index + 1);
+    }
+  }
+
+  const buildPriorSeasonsSummary = (
+    teamId: string,
+  ): readonly PriorSeasonSummary[] => {
+    const priorSeasons: PriorSeasonSummary[] = [];
+    const seenSeasons = new Set<number>();
+
+    for (const entry of [...state.seasonArchive].sort((left, right) => left.season - right.season)) {
+      if (entry.season >= state.season || seenSeasons.has(entry.season)) {
+        continue;
+      }
+
+      const standing = entry.standings.find((candidate) => candidate.teamId === teamId);
+      if (!standing) {
+        continue;
+      }
+
+      seenSeasons.add(entry.season);
+      priorSeasons.push({
+        season: entry.season,
+        divisionRank: standing.divisionRank,
+        wins: standing.wins,
+        losses: standing.losses,
+      });
+    }
+
+    for (const entry of [...state.archivedSeasons].sort((left, right) => left.season - right.season)) {
+      if (entry.season >= state.season || seenSeasons.has(entry.season)) {
+        continue;
+      }
+
+      const standing = entry.standings.find((candidate) => candidate.teamId === teamId);
+      if (!standing) {
+        continue;
+      }
+
+      seenSeasons.add(entry.season);
+      priorSeasons.push({
+        season: entry.season,
+        divisionRank: standing.divisionRank,
+        wins: standing.wins,
+        losses: standing.losses,
+      });
+    }
+
+    return priorSeasons
+      .sort((left, right) => left.season - right.season)
+      .slice(-3);
+  };
+
   const standings = state.seasonState.standings.getLeagueStandings();
   const champion = state.playoffBracket?.champion ?? null;
   const playoffTeamIds = new Set(state.playoffBracket?.seeds.map((seed) => seed.teamId) ?? []);
@@ -437,6 +495,8 @@ function applySeasonIdentityMoments(state: FullGameState) {
     losses: entry.losses,
     madePlayoffs: playoffTeamIds.has(entry.teamId),
     isChampion: champion === entry.teamId,
+    divisionRank: divisionRankByTeamId.get(entry.teamId),
+    priorSeasonsSummary: buildPriorSeasonsSummary(entry.teamId),
   }));
 
   const detected = detectSeasonIdentityMoments({

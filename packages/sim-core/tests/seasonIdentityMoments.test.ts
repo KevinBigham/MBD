@@ -3,8 +3,12 @@ import {
   CHAMPIONSHIP_RUN_IMPACT,
   CONTENTION_COLLAPSE_IMPACT,
   CONTENTION_COLLAPSE_WINS_THRESHOLD,
+  FIRST_DYNASTY_PEAK_IMPACT,
+  LOSING_SEASON_STREAK_IMPACT,
   detectChampionshipRun,
   detectContentionCollapse,
+  detectFirstDynastyPeak,
+  detectLosingSeasonStreak,
   detectSeasonIdentityMoments,
   type TeamSeasonSummary,
 } from '../src/moments/seasonIdentityMoments.js';
@@ -90,24 +94,188 @@ describe('detectContentionCollapse', () => {
   });
 });
 
+describe('detectFirstDynastyPeak', () => {
+  it('emits a first_dynasty_peak moment for a back-to-back division winner', () => {
+    const result = detectFirstDynastyPeak(
+      summary({
+        teamId: 'nym',
+        wins: 97,
+        losses: 65,
+        divisionRank: 1,
+        priorSeasonsSummary: [
+          { season: 5, wins: 84, losses: 78, divisionRank: 2 },
+          { season: 6, wins: 93, losses: 69, divisionRank: 1 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('first_dynasty_peak');
+    expect(result?.moment.impact).toBe(FIRST_DYNASTY_PEAK_IMPACT);
+    expect(result?.moment.description).toContain('97-65');
+    expect(result?.moment.description).toContain("93-69");
+  });
+
+  it('returns null for a single-year division champion', () => {
+    const result = detectFirstDynastyPeak(
+      summary({
+        teamId: 'bos',
+        wins: 92,
+        losses: 70,
+        divisionRank: 1,
+        priorSeasonsSummary: [
+          { season: 6, wins: 85, losses: 77, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the prior season did not finish first in the division', () => {
+    const result = detectFirstDynastyPeak(
+      summary({
+        teamId: 'det',
+        wins: 94,
+        losses: 68,
+        divisionRank: 1,
+        priorSeasonsSummary: [
+          { season: 6, wins: 90, losses: 72, divisionRank: 2 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when no prior seasons summary exists', () => {
+    const result = detectFirstDynastyPeak(
+      summary({ teamId: 'sd', wins: 91, losses: 71, divisionRank: 1, priorSeasonsSummary: [] }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('detectLosingSeasonStreak', () => {
+  it('emits a losing_season_streak moment for three consecutive losing seasons', () => {
+    const result = detectLosingSeasonStreak(
+      summary({
+        teamId: 'mia',
+        wins: 71,
+        losses: 91,
+        priorSeasonsSummary: [
+          { season: 4, wins: 84, losses: 78, divisionRank: 3 },
+          { season: 5, wins: 74, losses: 88, divisionRank: 4 },
+          { season: 6, wins: 69, losses: 93, divisionRank: 5 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.moment.type).toBe('losing_season_streak');
+    expect(result?.moment.impact).toBe(LOSING_SEASON_STREAK_IMPACT);
+    expect(result?.moment.description).toContain('71-91');
+  });
+
+  it('returns null when one of the two immediately prior seasons was winning', () => {
+    const result = detectLosingSeasonStreak(
+      summary({
+        teamId: 'oak',
+        wins: 73,
+        losses: 89,
+        priorSeasonsSummary: [
+          { season: 4, wins: 76, losses: 86, divisionRank: 4 },
+          { season: 5, wins: 82, losses: 80, divisionRank: 3 },
+          { season: 6, wins: 70, losses: 92, divisionRank: 5 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the current season is winning', () => {
+    const result = detectLosingSeasonStreak(
+      summary({
+        teamId: 'sea',
+        wins: 84,
+        losses: 78,
+        priorSeasonsSummary: [
+          { season: 4, wins: 73, losses: 89, divisionRank: 4 },
+          { season: 5, wins: 75, losses: 87, divisionRank: 4 },
+          { season: 6, wins: 74, losses: 88, divisionRank: 5 },
+        ],
+      }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when no prior seasons summary exists', () => {
+    const result = detectLosingSeasonStreak(
+      summary({ teamId: 'col', wins: 66, losses: 96, priorSeasonsSummary: [] }),
+      7,
+      182,
+    );
+
+    expect(result).toBeNull();
+  });
+});
+
 describe('detectSeasonIdentityMoments', () => {
-  it('emits moments deterministically sorted by teamId + type', () => {
+  it('emits moments deterministically sorted by teamId + canonical type order', () => {
     const result = detectSeasonIdentityMoments({
       season: 7,
       day: 182,
       teams: [
-        summary({ teamId: 'det', wins: 86, losses: 76, madePlayoffs: false }),
-        summary({ teamId: 'nym', wins: 101, losses: 61, madePlayoffs: true, isChampion: true }),
         summary({ teamId: 'bos', wins: 88, losses: 74, madePlayoffs: false }),
-        summary({ teamId: 'sd', wins: 72, losses: 90, madePlayoffs: false }),
+        summary({
+          teamId: 'det',
+          wins: 68,
+          losses: 94,
+          madePlayoffs: false,
+          priorSeasonsSummary: [
+            { season: 4, wins: 81, losses: 81, divisionRank: 4 },
+            { season: 5, wins: 73, losses: 89, divisionRank: 4 },
+            { season: 6, wins: 70, losses: 92, divisionRank: 5 },
+          ],
+        }),
+        summary({
+          teamId: 'nym',
+          wins: 101,
+          losses: 61,
+          madePlayoffs: true,
+          isChampion: true,
+          divisionRank: 1,
+          priorSeasonsSummary: [
+            { season: 5, wins: 84, losses: 78, divisionRank: 2 },
+            { season: 6, wins: 95, losses: 67, divisionRank: 1 },
+          ],
+        }),
       ],
     });
 
     expect(result.map((entry) => ({ teamId: entry.teamId, type: entry.moment.type })))
       .toEqual([
         { teamId: 'bos', type: 'contention_collapse' },
-        { teamId: 'det', type: 'contention_collapse' },
+        { teamId: 'det', type: 'losing_season_streak' },
         { teamId: 'nym', type: 'championship_run' },
+        { teamId: 'nym', type: 'first_dynasty_peak' },
       ]);
   });
 

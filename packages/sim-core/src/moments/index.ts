@@ -7,8 +7,14 @@ export {
   CONTENTION_COLLAPSE_IMPACT,
   CONTENTION_COLLAPSE_RELEVANCE,
   CONTENTION_COLLAPSE_WINS_THRESHOLD,
+  FIRST_DYNASTY_PEAK_IMPACT,
+  FIRST_DYNASTY_PEAK_RELEVANCE,
+  LOSING_SEASON_STREAK_IMPACT,
+  LOSING_SEASON_STREAK_RELEVANCE,
   detectChampionshipRun,
   detectContentionCollapse,
+  detectFirstDynastyPeak,
+  detectLosingSeasonStreak,
   detectSeasonIdentityMoments,
 } from './seasonIdentityMoments.js';
 export type {
