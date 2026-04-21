@@ -43,8 +43,15 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // calculateAwardRaces scorer) into the story chunk. Absorbed within the
 // current 414 KB ceiling from the pennant-race stack; gzip held well under
 // cap (~126 KB actual vs 126 KB ceiling) — no new sim-core changes.
-export const WORKER_CHUNK_BUDGET_BYTES = 414 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 126 * 1024;
+// WORKER raw: bumped 414 -> 417 KB for the team-moment types slice (v23).
+// Adds detectSeasonIdentityMoments + championship_run / contention_collapse
+// enum values + MOMENT_TYPE_ORDER and description template entries. When
+// stacked on top of the dashboard query slices (chase/pennant/award), the
+// story chunk landed ~1.6 KB over the 414 KB ceiling — raw lift with a
+// small headroom buffer. Gzip also bumped 126 -> 127 KB; copy compressed
+// ~296 bytes over the prior cap.
+export const WORKER_CHUNK_BUDGET_BYTES = 417 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 127 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;

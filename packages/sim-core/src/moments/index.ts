@@ -2,6 +2,21 @@ export {
   detectArbitrationMoments,
 } from './arbitrationMoments.js';
 export {
+  CHAMPIONSHIP_RUN_IMPACT,
+  CHAMPIONSHIP_RUN_RELEVANCE,
+  CONTENTION_COLLAPSE_IMPACT,
+  CONTENTION_COLLAPSE_RELEVANCE,
+  CONTENTION_COLLAPSE_WINS_THRESHOLD,
+  detectChampionshipRun,
+  detectContentionCollapse,
+  detectSeasonIdentityMoments,
+} from './seasonIdentityMoments.js';
+export type {
+  TeamSeasonSummary,
+  SeasonIdentityMomentDetectionContext,
+  SeasonIdentityDetectedMoment,
+} from './seasonIdentityMoments.js';
+export {
   MOMENT_IMPACT_THRESHOLD,
   MOMENT_RELEVANCE_DECAY_RATE,
   MAX_MOMENTS_PER_PLAYER,

@@ -147,6 +147,14 @@ export {
   SNAKEBIT_WAR_THRESHOLD,
   evaluateNicknames,
   getNicknameDisplayText,
+  CHAMPIONSHIP_RUN_IMPACT,
+  CHAMPIONSHIP_RUN_RELEVANCE,
+  CONTENTION_COLLAPSE_IMPACT,
+  CONTENTION_COLLAPSE_RELEVANCE,
+  CONTENTION_COLLAPSE_WINS_THRESHOLD,
+  detectChampionshipRun,
+  detectContentionCollapse,
+  detectSeasonIdentityMoments,
 } from './moments/index.js';
 export type {
   MomentType as SignatureMomentType,
@@ -166,6 +174,9 @@ export type {
   NicknameSeasonHistoryEntry,
   EarnedNickname,
   NicknameEvaluation,
+  TeamSeasonSummary,
+  SeasonIdentityMomentDetectionContext,
+  SeasonIdentityDetectedMoment,
 } from './moments/index.js';
 
 // Player
