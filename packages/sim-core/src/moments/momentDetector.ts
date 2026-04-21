@@ -56,7 +56,9 @@ export type MomentType =
   | 'deadline_seller'
   | 'deadline_buyer'
   | 'championship_run'
-  | 'contention_collapse';
+  | 'contention_collapse'
+  | 'first_dynasty_peak'
+  | 'losing_season_streak';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -137,6 +139,8 @@ const MOMENT_TYPE_ORDER: MomentType[] = [
   'deadline_buyer',
   'championship_run',
   'contention_collapse',
+  'first_dynasty_peak',
+  'losing_season_streak',
 ];
 
 const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -230,9 +234,15 @@ const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
   contention_collapse: [
     '{player} watched the playoffs from home after a winning season slipped away.',
   ],
+  first_dynasty_peak: [
+    '{player} helped turn back-to-back division titles into a franchise identity.',
+  ],
+  losing_season_streak: [
+    '{player} was part of a club staring at a third straight losing season.',
+  ],
 };
 
-function compareMomentType(left: MomentType, right: MomentType): number {
+export function compareMomentType(left: MomentType, right: MomentType): number {
   return MOMENT_TYPE_ORDER.indexOf(left) - MOMENT_TYPE_ORDER.indexOf(right);
 }
 
