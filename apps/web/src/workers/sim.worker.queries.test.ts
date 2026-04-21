@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SignatureMoment } from '@mbd/contracts';
-import { SEASON_GAMES } from '@mbd/sim-core';
+import { SEASON_GAMES, getTeamById } from '@mbd/sim-core';
 
 vi.mock('comlink', () => ({
   expose: () => {},
@@ -884,5 +884,176 @@ describe('worker award race boards query', () => {
       .find((entry) => entry.playerId === pitcher.id);
     expect(cyEntry?.statCallout).toMatch(/ERA/);
     expect(cyEntry?.statCallout).toMatch(/K/);
+  });
+});
+
+describe('worker award race detail query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  interface AwardEntryView {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    teamAbbreviation: string;
+    teamName: string;
+    score: number;
+    statCallout: string;
+  }
+
+  interface AwardBoardView {
+    mvp: AwardEntryView[];
+    cyYoung: AwardEntryView[];
+    roy: AwardEntryView[];
+  }
+
+  interface AwardRaceDetailView {
+    season: number;
+    day: number;
+    gamesRemaining: number;
+    al: AwardBoardView;
+    nl: AwardBoardView;
+  }
+
+  function plantTeamRecord(
+    state: ReturnType<typeof requireState>,
+    teamId: string,
+    wins: number,
+    losses: number,
+  ): void {
+    const tracker = state.seasonState.standings as unknown as {
+      records: Map<string, {
+        teamId: string;
+        wins: number;
+        losses: number;
+        runsScored: number;
+        runsAllowed: number;
+        streak: number;
+        last10: [number, number];
+        divisionWins: number;
+        divisionLosses: number;
+      }>;
+    };
+    tracker.records.set(teamId, {
+      teamId,
+      wins,
+      losses,
+      runsScored: 0,
+      runsAllowed: 0,
+      streak: 0,
+      last10: [0, 0],
+      divisionWins: 0,
+      divisionLosses: 0,
+    });
+  }
+
+  it('returns the same shape as getAwardRaceBoards with season/day/al/nl fields', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+
+    const workerApi = api as typeof api & {
+      getAwardRaceDetail: () => AwardRaceDetailView;
+    };
+    const view = workerApi.getAwardRaceDetail();
+
+    expect(view.season).toBe(state.season);
+    expect(view.day).toBe(state.day);
+    expect(typeof view.gamesRemaining).toBe('number');
+    expect(view.al).toBeDefined();
+    expect(view.nl).toBeDefined();
+    expect(Array.isArray(view.al.mvp)).toBe(true);
+    expect(Array.isArray(view.al.cyYoung)).toBe(true);
+    expect(Array.isArray(view.al.roy)).toBe(true);
+  });
+
+  it('returns up to 10 entries per list (vs 3 for the card query)', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 60, 40);
+
+    // Plant 12 qualifying AL hitters so the detail query has deep leaderboards
+    // to populate beyond the top-3 surface the card shows.
+    const alHitters = state.players
+      .filter((player) => {
+        if (player.pitcherAttributes != null) return false;
+        const team = getTeamById(player.teamId);
+        return team?.division?.startsWith('AL') ?? false;
+      })
+      .slice(0, 12);
+
+    expect(alHitters.length).toBeGreaterThanOrEqual(12);
+
+    alHitters.forEach((hitter, idx) => {
+      state.seasonState.playerSeasonStats.set(hitter.id, {
+        playerId: hitter.id,
+        teamId: hitter.teamId,
+        pa: 300 - idx,
+        ab: 270 - idx,
+        hits: 95 - idx,
+        doubles: 15,
+        triples: 1,
+        hr: 30 - idx,
+        rbi: 90 - idx,
+        bb: 25,
+        k: 45,
+        runs: 65 - idx,
+        hbp: 0,
+        sacFlies: 0,
+        ip: 0,
+        earnedRuns: 0,
+        strikeouts: 0,
+        walks: 0,
+        hitsAllowed: 0,
+        homeRunsAllowed: 0,
+        hitBatters: 0,
+        flyBallsAllowed: 0,
+        wins: 0,
+        losses: 0,
+      });
+    });
+
+    const workerApi = api as typeof api & {
+      getAwardRaceBoards: () => AwardRaceDetailView;
+      getAwardRaceDetail: () => AwardRaceDetailView;
+    };
+    const boards = workerApi.getAwardRaceBoards();
+    const detail = workerApi.getAwardRaceDetail();
+
+    expect(boards.al.mvp.length).toBeLessThanOrEqual(3);
+    expect(detail.al.mvp.length).toBeGreaterThan(boards.al.mvp.length);
+    expect(detail.al.mvp.length).toBeLessThanOrEqual(10);
+  });
+
+  it('is deterministic — two calls against the same state return the same view', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+
+    const workerApi = api as typeof api & {
+      getAwardRaceDetail: () => AwardRaceDetailView;
+    };
+    const first = workerApi.getAwardRaceDetail();
+    const second = workerApi.getAwardRaceDetail();
+
+    expect(second).toEqual(first);
+  });
+
+  it('returns empty boards early-season with no team past 30 games', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 10, 5);
+
+    const workerApi = api as typeof api & {
+      getAwardRaceDetail: () => AwardRaceDetailView;
+    };
+    const view = workerApi.getAwardRaceDetail();
+
+    expect(view.al.mvp).toEqual([]);
+    expect(view.al.cyYoung).toEqual([]);
+    expect(view.al.roy).toEqual([]);
+    expect(view.nl.mvp).toEqual([]);
   });
 });

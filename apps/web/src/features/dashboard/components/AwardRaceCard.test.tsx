@@ -7,6 +7,7 @@ import AwardRaceCard from './AwardRaceCard';
 const mockWorker = {
   isReady: true,
   getAwardRaceBoards: vi.fn(),
+  getAwardRaceDetail: vi.fn(),
 };
 
 vi.mock('@/shared/hooks/useWorker', () => ({
@@ -26,6 +27,8 @@ describe('AwardRaceCard', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     mockWorker.getAwardRaceBoards.mockReset();
+    mockWorker.getAwardRaceDetail.mockReset();
+    mockWorker.getAwardRaceDetail.mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -237,5 +240,22 @@ describe('AwardRaceCard', () => {
     expect(text).toContain('1.');
     expect(text).toContain('2.');
     expect(text).toContain('3.');
+  });
+
+  it('exposes a Board button that opens the expanded award race modal', async () => {
+    mockWorker.getAwardRaceBoards.mockResolvedValue({
+      season: 4,
+      day: 20,
+      gamesRemaining: 140,
+      al: emptyBoard,
+      nl: emptyBoard,
+    });
+
+    await renderCard();
+
+    const boardBtn = container.querySelector(
+      'button[aria-label="Open award race board"]',
+    ) as HTMLButtonElement | null;
+    expect(boardBtn).not.toBeNull();
   });
 });

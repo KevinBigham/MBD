@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, Flame, Sparkles } from 'lucide-react';
+import { Trophy, Flame, Sparkles, Maximize2 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+
+const AwardRaceModal = lazy(() => import('./AwardRaceModal'));
 
 interface AwardEntry {
   playerId: string;
@@ -39,6 +41,7 @@ export default function AwardRaceCard() {
   const { getAwardRaceBoards, isReady } = useWorker();
   const [view, setView] = useState<AwardRaceBoardsView | null>(null);
   const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchBoards = useCallback(async () => {
     if (!isReady || typeof getAwardRaceBoards !== 'function') {
@@ -70,9 +73,18 @@ export default function AwardRaceCard() {
       <div className="flex items-center gap-2">
         <Trophy className="h-4 w-4 text-accent-warning" />
         <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Award Race</h2>
-        <span className="ml-auto font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+        <span className="font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
           League-wide
         </span>
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          className="ml-auto flex items-center gap-1 rounded border border-dynasty-border/70 bg-dynasty-surface/70 px-2 py-0.5 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright"
+          aria-label="Open award race board"
+        >
+          <Maximize2 className="h-3 w-3" />
+          Board
+        </button>
       </div>
 
       {loading ? (
@@ -105,6 +117,11 @@ export default function AwardRaceCard() {
           })}
         </div>
       )}
+      {modalOpen ? (
+        <Suspense fallback={null}>
+          <AwardRaceModal onDismiss={() => setModalOpen(false)} />
+        </Suspense>
+      ) : null}
     </section>
   );
 }
