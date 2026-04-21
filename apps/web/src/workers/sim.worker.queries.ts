@@ -1362,6 +1362,16 @@ export const queryApi = {
       );
   },
 
+  getTeamMoments(teamId: string) {
+    const s = requireState();
+    return [...(s.teamMoments.get(teamId) ?? [])]
+      .sort((left, right) =>
+        absoluteMomentDay(right) - absoluteMomentDay(left)
+        || right.relevance - left.relevance
+        || left.type.localeCompare(right.type),
+      );
+  },
+
   getRecentLeagueMoments(sinceDay: number) {
     const s = requireState();
     const threshold = (s.season * 1000) + Math.max(1, sinceDay);
