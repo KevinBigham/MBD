@@ -1,5 +1,6 @@
 import {
   detectBreakoutCountdowns,
+  detectSeasonIdentityMoments,
   evaluateScenarioProgress,
   generateDebutFlashback,
   generatePressConference,
@@ -7,7 +8,9 @@ import {
   pruneTickerFeed,
 } from '@mbd/sim-core';
 import { getTeamById } from '@mbd/sim-core';
+import type { TeamSeasonSummary } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
+import { appendTeamMoments } from './sim.worker.helpers.js';
 import { queueProspectDebutMoment } from './sim.worker.ceremony.js';
 import { previewRecordWatchList } from './sim.worker.records.js';
 import { exportGameSnapshot } from './snapshot.js';
@@ -418,7 +421,40 @@ export function applyMonthlyNarrativeHooks(state: FullGameState, month: number) 
   draftAnniversaryTicker(state);
 }
 
+function applySeasonIdentityMoments(state: FullGameState) {
+  const flag = `season_identity_moments_${state.season}`;
+  if (hasStoryFlag(state, flag)) {
+    return;
+  }
+
+  const standings = state.seasonState.standings.getLeagueStandings();
+  const champion = state.playoffBracket?.champion ?? null;
+  const playoffTeamIds = new Set(state.playoffBracket?.seeds.map((seed) => seed.teamId) ?? []);
+
+  const summaries: TeamSeasonSummary[] = standings.map((entry) => ({
+    teamId: entry.teamId,
+    wins: entry.wins,
+    losses: entry.losses,
+    madePlayoffs: playoffTeamIds.has(entry.teamId),
+    isChampion: champion === entry.teamId,
+  }));
+
+  const detected = detectSeasonIdentityMoments({
+    season: state.season,
+    day: state.day,
+    teams: summaries,
+  });
+
+  for (const entry of detected) {
+    appendTeamMoments(state, entry.teamId, [entry.moment]);
+  }
+
+  addStoryFlag(state, flag);
+}
+
 export function applyOffseasonNarrativeHooks(state: FullGameState) {
+  applySeasonIdentityMoments(state);
+
   const flag = `where_are_they_now_${state.season}`;
   if (hasStoryFlag(state, flag)) {
     return;
