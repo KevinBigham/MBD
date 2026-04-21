@@ -116,11 +116,13 @@ function evaluate(
   careerStats: Partial<NicknameCareerStats> = {},
   seasonHistory: NicknameSeasonHistoryEntry[] = [],
   playerOverrides: Partial<GeneratedPlayer> = {},
+  selectionSeed?: string | number,
 ) {
   return evaluateNicknames(
     createPlayer(playerOverrides),
     createCareerStats(careerStats),
     seasonHistory,
+    selectionSeed,
   );
 }
 
@@ -128,11 +130,74 @@ function earnedIds(result: ReturnType<typeof evaluate>): NicknameId[] {
   return result.earnedNicknames.map((nickname) => nickname.id);
 }
 
+const HOT_STREAK_IDS = [
+  'the_inferno',
+  'on_a_heater',
+  'torch_mode',
+  'wildfire',
+  'smoke_show',
+  'red_hot',
+  'barrelstorm',
+  'the_oven',
+] as const;
+
+const COLD_STREAK_IDS = [
+  'deep_freeze',
+  'the_yips',
+  'snow_day',
+  'slump_merchant',
+  'warning_track',
+  'the_icebox',
+  'whiff_machine',
+  'cold_spell',
+] as const;
+
+const POWER_STYLE_IDS = [
+  'big_boomer',
+  'the_hammer',
+  'thunderstick',
+  'moonshot',
+  'light_tower',
+  'the_anvil',
+  'launch_code',
+  'big_fly_machine',
+] as const;
+
+const CONTACT_STYLE_IDS = [
+  'slapdash',
+  'the_surgeon',
+  'silk_bat',
+  'needle_threader',
+  'line_driver',
+  'bat_control',
+  'the_metronome',
+  'table_setter',
+] as const;
+
+const SPEED_STYLE_IDS = [
+  'cheetah',
+  'the_blur',
+  'jetstream',
+  'green_light',
+  'first_to_third',
+  'dust_trail',
+  'burner',
+  'quicksilver',
+] as const;
+
+function hasNicknameInSet(
+  result: ReturnType<typeof evaluate>,
+  ids: readonly string[],
+): boolean {
+  return result.earnedNicknames.some((nickname) => ids.includes(nickname.id));
+}
+
 describe('NICKNAME_TRIGGERS', () => {
-  it('defines all 20 triggers in display-priority order', () => {
-    expect(NICKNAME_TRIGGERS).toHaveLength(20);
+  it('defines all legacy and wave-3 triggers in display-priority order', () => {
+    expect(NICKNAME_TRIGGERS).toHaveLength(60);
     expect(NICKNAME_TRIGGERS[0]?.displayText).toBe('Mr. 3000');
-    expect(NICKNAME_TRIGGERS.at(-1)?.displayText).toBe('The Ghost');
+    expect(NICKNAME_TRIGGERS.find((trigger) => trigger.id === 'the_inferno')?.displayText).toBe('The Inferno');
+    expect(NICKNAME_TRIGGERS.find((trigger) => trigger.id === 'the_hammer')?.displayText).toBe('The Hammer');
   });
 
   it('maps every trigger id to non-empty display text', () => {
@@ -149,6 +214,8 @@ describe('getNicknameDisplayText', () => {
     expect(getNicknameDisplayText('mr_october')).toBe('Mr. October');
     expect(getNicknameDisplayText('doctor_k')).toBe('Doctor K');
     expect(getNicknameDisplayText('snakebit')).toBe('Snakebit');
+    expect(getNicknameDisplayText('the_inferno' as NicknameId)).toBe('The Inferno');
+    expect(getNicknameDisplayText('cheetah' as NicknameId)).toBe('Cheetah');
   });
 });
 
@@ -559,6 +626,175 @@ describe('evaluateNicknames', () => {
     expect(earnedIds(result)).not.toContain('snakebit');
   });
 
+  it('assigns a fire-category nickname to hot hitters and varies deterministically by seed', () => {
+    const seasonHistory = [
+      createSeason({
+        season: 5,
+        pa: 660,
+        hits: 172,
+        hr: 41,
+        battingWalks: 78,
+        battingStrikeouts: 112,
+        overallStart: 76,
+        overallEnd: 82,
+      }),
+    ];
+    const seeds = Array.from({ length: 20 }, (_, index) => `hot-seed-${index + 1}`);
+    const hotIds = new Set(
+      seeds.map((seed) => {
+        const result = evaluate(
+          { careerBatting: { hits: 1400, hr: 260 } },
+          seasonHistory,
+          {
+            hitterAttributes: {
+              contact: 290,
+              power: 360,
+              eye: 300,
+              speed: 210,
+              defense: 280,
+              durability: 310,
+            },
+          },
+          seed,
+        );
+
+        expect(hasNicknameInSet(result, HOT_STREAK_IDS)).toBe(true);
+        return result.earnedNicknames.find((nickname) => HOT_STREAK_IDS.includes(nickname.id))?.id;
+      }),
+    );
+
+    expect(hotIds.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('assigns a humor-category nickname to cold hitters and varies deterministically by seed', () => {
+    const seasonHistory = [
+      createSeason({
+        season: 5,
+        pa: 545,
+        hits: 104,
+        hr: 12,
+        battingWalks: 29,
+        battingStrikeouts: 184,
+        injuryCount: 2,
+        overallStart: 79,
+        overallEnd: 71,
+      }),
+    ];
+    const seeds = Array.from({ length: 20 }, (_, index) => `cold-seed-${index + 1}`);
+    const coldIds = new Set(
+      seeds.map((seed) => {
+        const result = evaluate(
+          { careerBatting: { hits: 980, hr: 150 } },
+          seasonHistory,
+          {
+            hitterAttributes: {
+              contact: 250,
+              power: 250,
+              eye: 240,
+              speed: 220,
+              defense: 260,
+              durability: 240,
+            },
+          },
+          seed,
+        );
+
+        expect(hasNicknameInSet(result, COLD_STREAK_IDS)).toBe(true);
+        return result.earnedNicknames.find((nickname) => COLD_STREAK_IDS.includes(nickname.id))?.id;
+      }),
+    );
+
+    expect(coldIds.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('assigns a power-style nickname to sluggers', () => {
+    const result = evaluate(
+      { careerBatting: { hits: 1250, hr: 275 } },
+      [
+        createSeason({
+          season: 6,
+          pa: 650,
+          hr: 39,
+          hits: 155,
+          battingStrikeouts: 145,
+        }),
+      ],
+      {
+        hitterAttributes: {
+          contact: 260,
+          power: 360,
+          eye: 300,
+          speed: 190,
+          defense: 260,
+          durability: 300,
+        },
+      },
+      'slugger-seed',
+    );
+
+    expect(hasNicknameInSet(result, POWER_STYLE_IDS)).toBe(true);
+  });
+
+  it('assigns a contact-style nickname to bat-control hitters', () => {
+    const result = evaluate(
+      { careerBatting: { hits: 1325, hr: 95 } },
+      [
+        createSeason({
+          season: 6,
+          pa: 635,
+          hits: 188,
+          hr: 14,
+          battingWalks: 68,
+          battingStrikeouts: 54,
+        }),
+      ],
+      {
+        hitterAttributes: {
+          contact: 360,
+          power: 220,
+          eye: 315,
+          speed: 240,
+          defense: 270,
+          durability: 300,
+        },
+      },
+      'contact-seed',
+    );
+
+    expect(hasNicknameInSet(result, CONTACT_STYLE_IDS)).toBe(true);
+    expect(hasNicknameInSet(result, POWER_STYLE_IDS)).toBe(false);
+  });
+
+  it('assigns a speed-style nickname to burners', () => {
+    const result = evaluate(
+      { careerBatting: { hits: 1180, hr: 55 } },
+      [
+        createSeason({
+          season: 6,
+          pa: 620,
+          hits: 164,
+          hr: 8,
+          stolenBases: 61,
+          ledLeagueInStolenBases: true,
+        }),
+      ],
+      {
+        hitterAttributes: {
+          contact: 295,
+          power: 180,
+          eye: 265,
+          speed: 365,
+          defense: 290,
+          durability: 305,
+        },
+      },
+      'speed-seed',
+    );
+
+    expect(hasNicknameInSet(result, SPEED_STYLE_IDS)).toBe(true);
+    expect(hasNicknameInSet(result, CONTACT_STYLE_IDS)).toBe(false);
+  });
+
   it('sorts multiple earned nicknames by priority and limits badge nicknames to three', () => {
     const result = evaluate({
       currentAge: 35,
@@ -662,6 +898,6 @@ describe('nickname barrel exports', () => {
 
     expect(root.evaluateNicknames).toBeTypeOf('function');
     expect(root.getNicknameDisplayText).toBeTypeOf('function');
-    expect(root.NICKNAME_TRIGGERS).toHaveLength(20);
+    expect(root.NICKNAME_TRIGGERS).toHaveLength(60);
   });
 });
