@@ -14,6 +14,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { humanizeLabel, momentTypeLabel } from '@/shared/lib/labels';
 
 const SeasonStoryReelModal = lazy(() => import('./SeasonStoryReelModal'));
 
@@ -80,13 +81,6 @@ interface CareerRetrospectiveView {
   legendArcs: LegendArcEntry[];
   awardsShelf: AwardsShelfView;
   topRivalry: TopRivalryView | null;
-}
-
-function humanizeLabel(value: string): string {
-  return value
-    .split('_')
-    .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
-    .join(' ');
 }
 
 function formatWinPct(pct: number): string {
@@ -334,7 +328,7 @@ function SignatureBeats({
               >
                 <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${iconClass}`} />
                 <div className="min-w-0 flex-1">
-                  <div className="font-heading text-xs text-dynasty-textBright">{humanizeLabel(moment.type)}</div>
+                  <div className="font-heading text-xs text-dynasty-textBright">{momentTypeLabel(moment.type)}</div>
                   <div className="mt-0.5 font-heading text-xs text-dynasty-text">{moment.description}</div>
                   <div className="mt-0.5 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
                     Season {moment.season}
