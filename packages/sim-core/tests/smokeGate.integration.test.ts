@@ -4,6 +4,14 @@
  * smokeGate runtime note:
  * - tuned to 3 seasons
  * - local targeted runtime: 71.27s tests / 72.23s total on 2026-04-22
+ * - CI-measured runtime: 105.3s on GitHub Actions ubuntu runners (2026-04-22)
+ *
+ * MAX_RUNTIME_MS must absorb CI/local environmental drift. Patterns.md "CI vs local
+ * drift" codifies the rule: leave ~2x buffer above the CI measurement. 180s sits
+ * above the 105s CI baseline with room for CI variance without hiding a real ~2.5x
+ * perf regression. Initial value of 90s tripped only on CI — identical commit,
+ * identical seed; pure env variance. Same pattern class as the terser gzip drift
+ * fixed in a9d473b.
  */
 
 import { GameSnapshotSchema, type GameSnapshot } from '@mbd/contracts';
@@ -12,7 +20,7 @@ import { TEAMS } from '../src/index.js';
 
 const SMOKE_GATE_SEED = 2_601;
 const SMOKE_GATE_YEARS = 3;
-const MAX_RUNTIME_MS = 90_000;
+const MAX_RUNTIME_MS = 180_000;
 
 const TEAM_IDS = new Set(TEAMS.map((team) => team.id));
 const TEAM_ID_LIST_KEYS = new Set(['relatedTeamIds', 'teamIds']);
@@ -432,7 +440,7 @@ describe('smokeGate integration', () => {
       roundTripAtEnd: true,
       validateInvariants: true,
     });
-  }, 180_000);
+  }, 240_000);
 
   afterAll(() => {
     vi.restoreAllMocks();
@@ -449,5 +457,5 @@ describe('smokeGate integration', () => {
     });
 
     expect(JSON.stringify(replay.finalSnapshot)).toBe(JSON.stringify(baseline.finalSnapshot));
-  }, 180_000);
+  }, 240_000);
 });
