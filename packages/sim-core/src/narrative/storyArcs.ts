@@ -14,6 +14,8 @@ type StoryArcType =
   | 'prospect_rise'
   | 'dynasty_cornerstone';
 
+type StoryArcOutcomePhase = Exclude<PlayerStoryArc['phase'], 'setup'>;
+
 type StoryStatLine = {
   pa?: number;
   ab?: number;
@@ -50,8 +52,42 @@ const ARC_PRIORITY: Record<StoryArcType, number> = {
   dynasty_cornerstone: 3,
 };
 
+const STORY_PHASE_TEMPLATES = {
+  rising: [
+    '{player} is building momentum in a {arc}.',
+    '{player} is turning the {arc} into a louder conversation.',
+    'Momentum is building around {player} as the {arc} sharpens.',
+  ],
+  climax: [
+    'All eyes are on {player} as the {arc} peaks.',
+    '{player} has pushed the {arc} to an inflection point.',
+    '{player} now sits at the center of the {arc}.',
+  ],
+  resolution: [
+    '{player} carried the {arc} into its defining turn.',
+    'The {arc} around {player} has landed on its clearest outcome.',
+    'The {arc} closed with {player} on the line that will be remembered.',
+  ],
+} as const;
+
 function currentTimestamp(season: number, day: number): string {
   return `S${season}D${day}`;
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function pickStableVariant(scope: string, variants: readonly string[]): string {
+  if (variants.length === 0) {
+    return '';
+  }
+  return variants[hashString(scope) % variants.length] ?? variants[0] ?? '';
 }
 
 function arcLabel(arcType: StoryArcType): string {
@@ -326,26 +362,38 @@ function progressLevel(snapshot: StoryArcSnapshot, arc: PlayerStoryArc, player: 
   }
 }
 
-function storyOutcomeText(playerName: string, arc: PlayerStoryArc, nextPhase: PlayerStoryArc['phase']): string {
-  if (nextPhase === 'rising') {
-    return `${playerName}'s story is gaining momentum in a ${arcLabel(arc.arcType as StoryArcType)}.`;
-  }
-  if (nextPhase === 'climax') {
-    return `All eyes on ${playerName} as the ${arcLabel(arc.arcType as StoryArcType)} reaches a crescendo.`;
-  }
-  return `${playerName}'s ${arcLabel(arc.arcType as StoryArcType)} concludes with a defining turn.`;
+function storyOutcomeText(
+  snapshot: StoryArcSnapshot,
+  player: GeneratedPlayer,
+  arc: PlayerStoryArc,
+  nextPhase: StoryArcOutcomePhase,
+): string {
+  const phaseTemplates = STORY_PHASE_TEMPLATES[nextPhase];
+  const scope = [
+    'story-arc',
+    player.id,
+    arc.arcType,
+    nextPhase,
+    snapshot.season,
+    snapshot.day,
+  ].join(':');
+
+  return pickStableVariant(scope, phaseTemplates)
+    .replaceAll('{player}', `${player.firstName} ${player.lastName}`)
+    .replaceAll('{arc}', arcLabel(arc.arcType as StoryArcType));
 }
 
 function storyNews(
   snapshot: StoryArcSnapshot,
   player: GeneratedPlayer,
   arc: PlayerStoryArc,
-  nextPhase: PlayerStoryArc['phase'],
+  nextPhase: StoryArcOutcomePhase,
+  outcomeText: string,
 ): NewsItem {
   const playerName = `${player.firstName} ${player.lastName}`;
   return {
     id: `story-arc-${arc.arcType}-${player.id}-${nextPhase}-${snapshot.season}-${snapshot.day}`,
-    headline: storyOutcomeText(playerName, arc, nextPhase),
+    headline: outcomeText,
     body: `${playerName} has moved into the ${nextPhase} phase of a ${arcLabel(arc.arcType as StoryArcType)}.`,
     priority: nextPhase === 'climax' ? 2 : 3,
     category: arc.arcType === 'trade_saga' || arc.arcType === 'contract_drama' ? 'rumor' : 'performance',
@@ -361,14 +409,14 @@ function storyTicker(
   snapshot: StoryArcSnapshot,
   player: GeneratedPlayer,
   arc: PlayerStoryArc,
-  nextPhase: PlayerStoryArc['phase'],
+  nextPhase: StoryArcOutcomePhase,
+  outcomeText: string,
 ): TickerEntry {
-  const playerName = `${player.firstName} ${player.lastName}`;
   return {
     id: `ticker-story-${arc.arcType}-${player.id}-${nextPhase}-${snapshot.season}-${snapshot.day}`,
     timestamp: currentTimestamp(snapshot.season, snapshot.day),
     category: transitionCategory(arc.arcType as StoryArcType),
-    text: storyOutcomeText(playerName, arc, nextPhase),
+    text: outcomeText,
     priority: nextPhase === 'climax' ? 4 : 3,
     relatedTeamIds: [player.teamId],
     relatedPlayerIds: [player.id],
@@ -413,13 +461,16 @@ export function advanceStoryArcs(
       return arc;
     }
 
-    newsItems.push(storyNews(snapshot, player, arc, nextPhase));
-    tickerEntries.push(storyTicker(snapshot, player, arc, nextPhase));
+    const resolvedPhase = nextPhase as StoryArcOutcomePhase;
+    const outcomeText = storyOutcomeText(snapshot, player, arc, resolvedPhase);
+
+    newsItems.push(storyNews(snapshot, player, arc, resolvedPhase, outcomeText));
+    tickerEntries.push(storyTicker(snapshot, player, arc, resolvedPhase, outcomeText));
 
     return {
       ...arc,
       phase: nextPhase,
-      milestones: [...arc.milestones, storyOutcomeText(`${player.firstName} ${player.lastName}`, arc, nextPhase)],
+      milestones: [...arc.milestones, outcomeText],
       resolvedSeason: nextPhase === 'resolution' ? snapshot.season : null,
     } satisfies PlayerStoryArc;
   });
