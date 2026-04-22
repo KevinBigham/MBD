@@ -937,6 +937,32 @@ function buildCareerRetrospective(s: NonNullable<typeof state>) {
     }
   }
 
+  const seasonHistoryMap = new Map<number, { season: number; winPct: number }>();
+  for (const entry of s.seasonArchive) {
+    const userStanding = entry.standings.find((standing) => standing.teamId === s.userTeamId);
+    if (!userStanding) continue;
+    const games = userStanding.wins + userStanding.losses;
+    if (games <= 0) continue;
+    seasonHistoryMap.set(entry.season, {
+      season: entry.season,
+      winPct: userStanding.wins / games,
+    });
+  }
+  for (const entry of s.archivedSeasons) {
+    if (seasonHistoryMap.has(entry.season)) continue;
+    const userStanding = entry.standings.find((standing) => standing.teamId === s.userTeamId);
+    if (!userStanding) continue;
+    const games = userStanding.wins + userStanding.losses;
+    if (games <= 0) continue;
+    seasonHistoryMap.set(entry.season, {
+      season: entry.season,
+      winPct: userStanding.wins / games,
+    });
+  }
+  const seasonHistory = Array.from(seasonHistoryMap.values()).sort(
+    (left, right) => left.season - right.season,
+  );
+
   const teamMoments = [...(s.teamMoments.get(s.userTeamId) ?? [])]
     .sort((left, right) =>
       right.relevance - left.relevance
@@ -1032,6 +1058,7 @@ function buildCareerRetrospective(s: NonNullable<typeof state>) {
       divisionTitles,
       playoffAppearances,
     },
+    seasonHistory,
     teamMoments,
     legendArcs,
     awardsShelf,

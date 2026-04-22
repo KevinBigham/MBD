@@ -49,6 +49,7 @@ const baseView = {
     divisionTitles: 3,
     playoffAppearances: 4,
   },
+  seasonHistory: [] as Array<{ season: number; winPct: number }>,
   teamMoments: [] as Array<{
     type: string;
     description: string;
@@ -225,6 +226,44 @@ describe('CareerRetrospectiveCard', () => {
     expect(text).toContain('Hall Of Fame Track');
     expect(text).toContain('S2029');
     expect(text).toContain('3000 career hits');
+  });
+
+  it('renders season arc sparkline strip when two or more seasons are logged', async () => {
+    mockWorker.getCareerRetrospective.mockResolvedValue({
+      ...baseView,
+      seasonHistory: [
+        { season: 2024, winPct: 0.48 },
+        { season: 2025, winPct: 0.52 },
+        { season: 2026, winPct: 0.61 },
+        { season: 2027, winPct: 0.55 },
+      ],
+    });
+
+    await renderCard();
+
+    const strip = container.querySelector('[data-testid="season-winpct-strip"]');
+    expect(strip).not.toBeNull();
+    const text = strip?.textContent ?? '';
+    expect(text).toContain('Season Arc');
+    expect(text).toContain('4 seasons');
+    expect(text).toContain('S2024');
+    expect(text).toContain('S2027');
+    expect(text).toContain('Peak');
+    expect(text).toContain('Low');
+    expect(text).toContain('.610');
+    expect(text).toContain('.480');
+  });
+
+  it('does not render season arc strip for a single-season career', async () => {
+    mockWorker.getCareerRetrospective.mockResolvedValue({
+      ...baseView,
+      seasonHistory: [{ season: 2024, winPct: 0.55 }],
+    });
+
+    await renderCard();
+
+    const strip = container.querySelector('[data-testid="season-winpct-strip"]');
+    expect(strip).toBeNull();
   });
 
   it('renders top rivalry block with intensity and head-to-head records', async () => {

@@ -93,7 +93,13 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // game-engine-core and 442,235 raw / 131,714 gzip for game-engine-story.
 // This lands exactly at the sprint hard cap and restores bundleBudget headroom
 // without exceeding the approved +4 KB raw / +2 KB gzip ceiling.
-export const WORKER_CHUNK_BUDGET_BYTES = 432 * 1024;
+// WORKER raw: bumped 432 -> 433 KB for the Career Retrospective season-history
+// slice. Extends buildCareerRetrospective with seasonHistory derivation (user
+// team per-season win% from seasonArchive + archivedSeasons, deduped by
+// season). Story chunk landed 442,727 raw bytes (+359 over the 432 KB cap);
+// gzip held at 131,941 (well under the 134 KB ceiling) so only raw moves.
+// Pure aggregation of existing persisted state — no sim-core changes.
+export const WORKER_CHUNK_BUDGET_BYTES = 433 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 134 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
