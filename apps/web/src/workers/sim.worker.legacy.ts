@@ -61,6 +61,7 @@ function ensureCareerEntry(
         strikeouts: 0,
         inningsPitched: 0,
         earnedRuns: 0,
+        shutouts: 0,
       }
       : null,
   };
@@ -90,6 +91,7 @@ function applySeasonStatsToCareer(entry: CareerStatsLedger, stats: PlayerGameSta
       strikeouts: entry.pitching.strikeouts + stats.strikeouts,
       inningsPitched: entry.pitching.inningsPitched + (stats.ip / 3),
       earnedRuns: entry.pitching.earnedRuns + stats.earnedRuns,
+      shutouts: entry.pitching.shutouts,
     };
   }
 }
@@ -169,6 +171,9 @@ export function accrueCareerStatsForSeason(state: FullGameState) {
       entry.championshipRings += 1;
     }
     applySeasonStatsToCareer(entry, state.seasonState.playerSeasonStats.get(player.id));
+    if (entry.pitching) {
+      entry.pitching.shutouts = player.careerShutouts;
+    }
     entry.war = Number(((entry.war ?? 0) + (advancedIndex.get(player.id)?.war ?? 0)).toFixed(1));
   }
 }

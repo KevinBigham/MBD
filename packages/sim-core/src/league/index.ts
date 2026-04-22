@@ -59,6 +59,7 @@ export type {
 
 export {
   calculateAwardRaces,
+  buildRookieOfTheYearVotingEntries,
   finalizeAwardResults,
 } from './awards.js';
 export type {

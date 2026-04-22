@@ -15,6 +15,7 @@ function createCareerStats(overrides: Partial<CareerStatTotals> = {}): CareerSta
     strikeouts: 0,
     wins: 0,
     saves: 0,
+    shutouts: 0,
     isPitcher: false,
     seasonsPlayed: 1,
     ...overrides,
@@ -64,7 +65,7 @@ describe('calculateMilestoneProgress', () => {
     );
 
     expect(progress.some((entry) => entry.milestoneId === 'sb')).toBe(false);
-    expect(progress.every((entry) => ['strikeouts', 'wins', 'saves'].includes(entry.milestoneId))).toBe(true);
+    expect(progress.every((entry) => ['strikeouts', 'wins', 'saves', 'shutouts'].includes(entry.milestoneId))).toBe(true);
   });
 
   it('computes pace projections from the supplied seasons played value', () => {
@@ -133,7 +134,21 @@ describe('calculateMilestoneProgress', () => {
       5,
     );
 
-    expect(progress.map((entry) => entry.milestoneId)).toEqual(['strikeouts', 'wins', 'saves']);
+    expect(progress.map((entry) => entry.milestoneId)).toEqual(['strikeouts', 'wins', 'saves', 'shutouts']);
+  });
+
+  it('adds the 100-shutout checkpoint for pitchers', () => {
+    const progress = calculateMilestoneProgress(
+      createCareerStats({ isPitcher: true, strikeouts: 2400, wins: 210, saves: 0, shutouts: 99, seasonsPlayed: 14 }),
+      14,
+    );
+    const shutouts = progress.find((entry) => entry.milestoneId === 'shutouts');
+
+    expect(shutouts).toMatchObject({
+      nextThreshold: 100,
+      remainingToNext: 1,
+      isApproaching: true,
+    });
   });
 });
 

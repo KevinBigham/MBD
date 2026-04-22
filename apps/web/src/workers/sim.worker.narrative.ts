@@ -22,6 +22,7 @@ import {
   deriveDeterministicPersonalityTraits,
   deriveRivalriesFromStandings,
   detectProspectBreakouts,
+  buildRookieOfTheYearVotingEntries,
   evaluateOwnerState,
   evaluatePlayerTradeValue,
   finalizeAwardResults,
@@ -1134,7 +1135,13 @@ export function refreshNarrativeState(
 export function ensureAwardHistoryForSeason(state: FullGameState) {
   if (state.awardHistory.some((entry) => entry.season === state.season)) return;
   const winners = finalizeAwardResults(state.season, state.players, state.seasonState.playerSeasonStats);
+  const rookieVoting = buildRookieOfTheYearVotingEntries(
+    state.season,
+    state.players,
+    state.seasonState.playerSeasonStats,
+  );
   state.awardHistory.push(...winners);
+  state.rookieOfTheYearVoting.push(...rookieVoting);
   state.briefingQueue = dedupeBriefing([
     ...state.briefingQueue,
     ...winners.map((winner) => ({

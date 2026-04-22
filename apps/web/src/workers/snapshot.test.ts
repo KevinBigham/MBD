@@ -318,6 +318,8 @@ function createState(): FullGameState {
       decisionQueue: [],
     },
     ...narrative,
+    playoffSeriesHistory: [],
+    rookieOfTheYearVoting: [],
     tradeState: {
       pendingOffers: [],
       tradeHistory: [],
@@ -713,6 +715,159 @@ describe('snapshot helpers', () => {
     expect(restored.historicalPlayers.length).toBeGreaterThan(0);
     expect(restored.mentorRelationships).toEqual([]);
     expect(restored.frontOfficeState.size).toBe(0);
+  });
+
+  it('round-trips wave-4 persisted-state fields through snapshot export/import', () => {
+    const original = createState();
+    const hitter = original.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const pitcher = original.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+
+    hitter.teamTenures = [{ teamId: 'nym', startSeason: 1, endSeason: null }];
+    hitter.priorSeasonGamesMissed = 61;
+    pitcher.careerShutouts = 99;
+    original.seasonState.playerSeasonStats.set(hitter.id, {
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      gamesPlayed: 0,
+      pa: 0,
+      ab: 0,
+      hits: 0,
+      doubles: 0,
+      triples: 0,
+      hr: 0,
+      rbi: 0,
+      bb: 0,
+      k: 0,
+      runs: 0,
+      hbp: 0,
+      sacFlies: 0,
+      ip: 0,
+      earnedRuns: 0,
+      strikeouts: 0,
+      walks: 0,
+      hitsAllowed: 0,
+      homeRunsAllowed: 0,
+      hitBatters: 0,
+      flyBallsAllowed: 0,
+      wins: 0,
+      saves: 0,
+      losses: 0,
+      gamesMissedToInjury: 61,
+    });
+    original.seasonState = {
+      ...original.seasonState,
+      monthlyRecordSplits: {
+        nym: {
+          9: { wins: 22, losses: 6 },
+        },
+      },
+    };
+    original.playoffBracket = {
+      seeds: [
+        { teamId: 'nym', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+        { teamId: 'lax', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+      ],
+      currentRound: 'WORLD_SERIES',
+      currentRoundSeries: [{
+        id: 'WS-1',
+        round: 'WORLD_SERIES',
+        league: 'MLB',
+        bestOf: 7,
+        higherSeed: { teamId: 'lax', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+        lowerSeed: { teamId: 'nym', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+        games: [],
+        higherSeedWins: 3,
+        lowerSeedWins: 2,
+        leaderSummary: 'LAX leads 3-2',
+        status: 'in_progress',
+        deficitReached: '1-3',
+        deficitTeamId: 'nym',
+        winnerId: null,
+        loserId: null,
+      }],
+      completedRounds: [],
+      series: [],
+      champion: null,
+      runnerUp: null,
+    };
+    original.playoffSeriesHistory = [{
+      season: 1,
+      round: 'CHAMPIONSHIP_SERIES',
+      higherSeedTeamId: 'lax',
+      lowerSeedTeamId: 'nym',
+      bestOf: 7,
+      deficitReached: '1-3',
+      deficitTeamId: 'nym',
+      winnerTeamId: 'nym',
+    }];
+    original.rookieOfTheYearVoting = [{
+      season: 1,
+      leagueId: 'AL',
+      placements: [{ rank: 2, playerId: hitter.id, points: 42.5 }],
+    }];
+
+    const snapshot = exportGameSnapshot(original);
+    const restored = importGameSnapshot(snapshot);
+    const restoredHitter = restored.players.find((player) => player.id === hitter.id)!;
+    const restoredPitcher = restored.players.find((player) => player.id === pitcher.id)!;
+
+    expect(snapshot.players.find((player) => player.id === hitter.id)?.teamTenures).toEqual([
+      { teamId: 'nym', startSeason: 1, endSeason: null },
+    ]);
+    expect(snapshot.players.find((player) => player.id === hitter.id)?.priorSeasonGamesMissed).toBe(61);
+    expect(snapshot.players.find((player) => player.id === pitcher.id)?.careerShutouts).toBe(99);
+    expect(snapshot.seasonState.playerSeasonStats.find(([playerId]) => playerId === hitter.id)?.[1].gamesMissedToInjury).toBe(61);
+    expect(snapshot.seasonState.monthlyRecordSplits).toEqual({
+      nym: {
+        9: { wins: 22, losses: 6 },
+      },
+    });
+    expect(snapshot.narrative.playoffSeriesHistory).toEqual([{
+      season: 1,
+      round: 'CHAMPIONSHIP_SERIES',
+      higherSeedTeamId: 'lax',
+      lowerSeedTeamId: 'nym',
+      bestOf: 7,
+      deficitReached: '1-3',
+      deficitTeamId: 'nym',
+      winnerTeamId: 'nym',
+    }]);
+    expect(snapshot.narrative.rookieOfTheYearVoting).toEqual([{
+      season: 1,
+      leagueId: 'AL',
+      placements: [{ rank: 2, playerId: hitter.id, points: 42.5 }],
+    }]);
+
+    expect(restoredHitter.teamTenures).toEqual([{ teamId: 'nym', startSeason: 1, endSeason: null }]);
+    expect(restoredHitter.priorSeasonGamesMissed).toBe(61);
+    expect(restoredPitcher.careerShutouts).toBe(99);
+    expect(restored.seasonState.playerSeasonStats.get(hitter.id)?.gamesMissedToInjury).toBe(61);
+    expect(restored.seasonState.monthlyRecordSplits).toEqual({
+      nym: {
+        9: { wins: 22, losses: 6 },
+      },
+    });
+    expect(restored.playoffBracket?.currentRoundSeries[0]?.deficitReached).toBe('1-3');
+    expect(restored.playoffBracket?.currentRoundSeries[0]?.deficitTeamId).toBe('nym');
+    expect(restored.playoffSeriesHistory).toEqual([{
+      season: 1,
+      round: 'CHAMPIONSHIP_SERIES',
+      higherSeedTeamId: 'lax',
+      lowerSeedTeamId: 'nym',
+      bestOf: 7,
+      deficitReached: '1-3',
+      deficitTeamId: 'nym',
+      winnerTeamId: 'nym',
+    }]);
+    expect(restored.rookieOfTheYearVoting).toEqual([{
+      season: 1,
+      leagueId: 'AL',
+      placements: [{ rank: 2, playerId: hitter.id, points: 42.5 }],
+    }]);
   });
 
   it('migrates v12 snapshots into the v13 career and replayability state shape', () => {

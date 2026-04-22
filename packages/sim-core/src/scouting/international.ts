@@ -450,6 +450,13 @@ export function convertIFAProspectToPlayer(
     arbitrationHistory: [],
     holdoutState: null,
     superTwoQualified: false,
+    teamTenures: [{
+      teamId,
+      startSeason: prospect.season,
+      endSeason: null,
+    }],
+    priorSeasonGamesMissed: 0,
+    careerShutouts: 0,
   };
 }
 

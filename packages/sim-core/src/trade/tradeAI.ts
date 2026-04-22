@@ -8,6 +8,7 @@
 
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { assignPlayerToTeam } from '../player/teamTenures.js';
 import { isTradeDeadlineModeDay } from '../sim/calendar.js';
 import { evaluatePlayerTradeValue, comparePackages } from './valuation.js';
 
@@ -516,6 +517,7 @@ function generateSellerTradeOffers(
 export function executeTrade(
   proposal: TradeProposal,
   allPlayers: GeneratedPlayer[],
+  season: number = 1,
 ): TradeResult {
   const playersMoved: TradeResult['playersMoved'] = [];
 
@@ -524,7 +526,7 @@ export function executeTrade(
     const player = playerById(allPlayers, playerId);
     if (player) {
       const fromTeam = player.teamId;
-      player.teamId = proposal.toTeamId;
+      Object.assign(player, assignPlayerToTeam(player, proposal.toTeamId, season));
       playersMoved.push({ playerId, fromTeam, toTeam: proposal.toTeamId });
     }
   }
@@ -534,7 +536,7 @@ export function executeTrade(
     const player = playerById(allPlayers, playerId);
     if (player) {
       const fromTeam = player.teamId;
-      player.teamId = proposal.fromTeamId;
+      Object.assign(player, assignPlayerToTeam(player, proposal.fromTeamId, season));
       playersMoved.push({ playerId, fromTeam, toTeam: proposal.fromTeamId });
     }
   }

@@ -123,6 +123,11 @@ export const SignatureMomentTypeEnum = z.enum([
   "fire_sale",
   "dynasty_end",
   "cursed_franchise",
+  "veteran_core_retires",
+  "playoff_gauntlet",
+  "comeback_player",
+  "rookie_sensation",
+  "september_heroics",
 ]);
 export type SignatureMomentType = z.infer<typeof SignatureMomentTypeEnum>;
 
@@ -571,6 +576,64 @@ export type Rivalry = z.infer<typeof RivalrySchema>;
 export const AwardLeagueEnum = z.enum(["AL", "NL", "MLB"]);
 export type AwardLeague = z.infer<typeof AwardLeagueEnum>;
 
+export const TeamTenureEntrySchema = z.object({
+  teamId: z.string(),
+  startSeason: z.number().int().min(1),
+  endSeason: z.number().int().min(1).nullable(),
+});
+export type TeamTenureEntry = z.infer<typeof TeamTenureEntrySchema>;
+
+export const MonthlyRecordBucketSchema = z.object({
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+});
+export type MonthlyRecordBucket = z.infer<typeof MonthlyRecordBucketSchema>;
+
+export const MonthlyRecordSplitsSchema = z.record(
+  z.string(),
+  z.record(z.string(), MonthlyRecordBucketSchema),
+);
+export type MonthlyRecordSplits = z.infer<typeof MonthlyRecordSplitsSchema>;
+
+export const PlayoffSeriesDeficitReachedEnum = z.enum(["0-2", "1-3"]);
+export type PlayoffSeriesDeficitReached = z.infer<
+  typeof PlayoffSeriesDeficitReachedEnum
+>;
+
+export const PlayoffSeriesHistoryEntrySchema = z.object({
+  season: z.number().int().min(1),
+  round: z.string().min(1),
+  higherSeedTeamId: z.string(),
+  lowerSeedTeamId: z.string(),
+  bestOf: z.number().int().positive(),
+  deficitReached: PlayoffSeriesDeficitReachedEnum.nullable(),
+  deficitTeamId: z.string().nullable().default(null),
+  winnerTeamId: z.string(),
+});
+export type PlayoffSeriesHistoryEntry = z.infer<
+  typeof PlayoffSeriesHistoryEntrySchema
+>;
+
+export const RookieOfTheYearVotingPlacementSchema = z.object({
+  rank: z.number().int().min(1),
+  playerId: z.string(),
+  points: z.number(),
+});
+export type RookieOfTheYearVotingPlacement = z.infer<
+  typeof RookieOfTheYearVotingPlacementSchema
+>;
+
+const RookieOfTheYearLeagueEnum = z.enum(["AL", "NL"]);
+
+export const RookieOfTheYearVotingEntrySchema = z.object({
+  season: z.number().int().min(1),
+  leagueId: RookieOfTheYearLeagueEnum,
+  placements: z.array(RookieOfTheYearVotingPlacementSchema),
+});
+export type RookieOfTheYearVotingEntry = z.infer<
+  typeof RookieOfTheYearVotingEntrySchema
+>;
+
 export const AwardHistoryEntrySchema = z.object({
   season: z.number().int().min(1),
   award: z.string(),
@@ -593,6 +656,7 @@ export const CareerPitchingTotalsSchema = z.object({
   strikeouts: z.number().int().min(0),
   inningsPitched: z.number().min(0),
   earnedRuns: z.number().int().min(0),
+  shutouts: z.number().int().min(0).default(0),
 });
 export type CareerPitchingTotals = z.infer<typeof CareerPitchingTotalsSchema>;
 

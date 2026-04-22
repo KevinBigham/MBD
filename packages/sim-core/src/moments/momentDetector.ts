@@ -73,7 +73,12 @@ export type MomentType =
   | 'contention_window_opens'
   | 'fire_sale'
   | 'dynasty_end'
-  | 'cursed_franchise';
+  | 'cursed_franchise'
+  | 'veteran_core_retires'
+  | 'playoff_gauntlet'
+  | 'comeback_player'
+  | 'rookie_sensation'
+  | 'september_heroics';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -166,6 +171,11 @@ export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'fire_sale',
   'dynasty_end',
   'cursed_franchise',
+  'veteran_core_retires',
+  'playoff_gauntlet',
+  'comeback_player',
+  'rookie_sensation',
+  'september_heroics',
 ];
 
 export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -292,6 +302,21 @@ export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]>
   ],
   cursed_franchise: [
     '{player} remained stuck in a franchise losing streak that reached another bleak milestone.',
+  ],
+  veteran_core_retires: [
+    '{player} watched a franchise core age out together and leave a real void behind.',
+  ],
+  playoff_gauntlet: [
+    '{player} survived a playoff hole and helped drag the club back out of it.',
+  ],
+  comeback_player: [
+    '{player} turned a lost season into a full comeback.',
+  ],
+  rookie_sensation: [
+    '{player} forced the rookie race into the spotlight.',
+  ],
+  september_heroics: [
+    '{player} helped carry a September charge straight into October.',
   ],
 };
 

@@ -24,10 +24,15 @@ import {
   executeTrade,
   createFrontOfficeState,
   createOwnerState,
+  CAREER_SHUTOUT_MILESTONE,
   deduplicateNews,
   decayRelationships,
   decayMoments,
+  detectComebackPlayer,
+  detectPlayoffGauntlet,
   detectMoment,
+  detectRookieSensation,
+  detectSeptemberHeroics,
   generateDraftClass,
   generateCoachFreeAgents,
   generateChampionshipCard,
@@ -51,6 +56,7 @@ import {
   promotePlayer,
   reconcileDevelopmentPipeline,
   recordRetirements,
+  recordCareerShutout,
   recordStarDefectionRivalry,
   rivalryGameModifier,
   runMonthlyDevelopmentCheckpoint,
@@ -81,6 +87,8 @@ import {
   createEmptyInternationalScoutingState,
   createEmptyMinorLeagueState,
   advanceMinorLeagueDay,
+  appendPlayerMoments,
+  appendTeamMoments,
   buildOffseasonStateView,
   claimPlayerOffWaivers,
   createEmptyTradeState,
@@ -96,8 +104,10 @@ import {
   negotiatePlayerExtension,
   processDayInjuriesAndNews,
   requireState,
+  retirePlayerAssignment,
   resolveOutstandingQualifyingOffers,
   resolveRule5OfferBackDecision,
+  updatePlayerTeamAssignment,
   passUserRule5Turn,
   placePlayerOnWaivers,
   scoutUserDraftPlayer,
@@ -139,6 +149,7 @@ import {
   dismissCeremonyMoment as dismissCeremonyMomentState,
   maybeQueuePlayoffClinchMoment,
   queueAwardMoments,
+  queueCeremonyMoment,
   queueHallOfFameMoments,
   queuePlayoffSeriesMoment,
 } from './sim.worker.ceremony.js';
@@ -300,6 +311,7 @@ function createEmptyPlayerGameStats(playerId: string, teamId: string): PlayerGam
     playerId,
     teamId,
     gamesPlayed: 0,
+    gamesMissedToInjury: 0,
     pa: 0,
     ab: 0,
     hits: 0,
@@ -544,8 +556,74 @@ function processSignatureMoments(
     || left.awayTeamId.localeCompare(right.awayTeamId),
   );
 
+  const queueCareerShutoutMilestoneContent = (
+    player: FullGameState['players'][number],
+    gameDate: string,
+  ) => {
+    const playerName = `${player.firstName} ${player.lastName}`;
+    const newsId = `milestone-shutout-${player.id}-${CAREER_SHUTOUT_MILESTONE}`;
+    if (!s.news.some((item) => item.id === newsId)) {
+      s.news.unshift({
+        id: newsId,
+        headline: `${playerName} records career shutout #${CAREER_SHUTOUT_MILESTONE}`,
+        body: `${playerName} reached ${CAREER_SHUTOUT_MILESTONE} career complete-game shutouts and pushed into one of baseball's smallest pitching milestones.`,
+        priority: 1,
+        category: 'milestone',
+        timestamp: gameDate,
+        relatedPlayerIds: [player.id],
+        relatedTeamIds: [player.teamId],
+        read: false,
+      });
+    }
+
+    const milestoneDay = parseSimDayFromTimestamp(gameDate) ?? s.day;
+    const tickerId = `ticker-shutout-${player.id}-${CAREER_SHUTOUT_MILESTONE}`;
+    if (!s.tickerFeed.some((entry) => entry.id === tickerId)) {
+      s.tickerFeed.unshift({
+        id: tickerId,
+        timestamp: gameDate,
+        category: 'milestone',
+        text: `${playerName} reaches ${CAREER_SHUTOUT_MILESTONE} career shutouts.`,
+        priority: 5,
+        relatedTeamIds: [player.teamId],
+        relatedPlayerIds: [player.id],
+        expiresDay: (s.season * 1000) + milestoneDay + 30,
+      });
+    }
+
+    if (player.teamId === s.userTeamId) {
+      queueCeremonyMoment(s, {
+        id: `career-shutout-${player.id}-${CAREER_SHUTOUT_MILESTONE}`,
+        type: 'career_milestone',
+        title: `${CAREER_SHUTOUT_MILESTONE} SHUTOUTS`,
+        subtitle: playerName,
+        detailLines: ['A rare pitching ledger just hit triple digits.'],
+        soundEffect: 'achievement_unlock',
+        autoDismissMs: 5000,
+        createdAt: gameDate,
+        theme: 'historic',
+        relatedTeamIds: [player.teamId],
+        relatedPlayerIds: [player.id],
+      });
+    }
+  };
+
   for (const game of orderedGames) {
     const gameStats = buildMomentPlayerStats(s, game);
+    for (const [playerId, stats] of gameStats.entries()) {
+      const playerIndex = s.players.findIndex((candidate) => candidate.id === playerId);
+      if (playerIndex < 0) {
+        continue;
+      }
+      const result = recordCareerShutout(s.players[playerIndex]!, game, stats);
+      if (!result.recorded) {
+        continue;
+      }
+      s.players[playerIndex] = result.player;
+      if (result.crossedMilestone) {
+        queueCareerShutoutMilestoneContent(result.player, game.date);
+      }
+    }
     const updates = detectMoment(game, gameStats, {
       currentSeason: s.season,
       existingMomentsByPlayer: s.playerMoments,
@@ -1066,6 +1144,30 @@ function recordPlayoffProgressCoverage(
       );
       applySeriesOutcomeConsequences(s, series.winnerId ?? series.higherSeed.teamId, series.loserId ?? series.lowerSeed.teamId);
       queuePlayoffSeriesMoment(s, series);
+      s.playoffSeriesHistory.push({
+        season: s.season,
+        round: series.round,
+        higherSeedTeamId: series.higherSeed.teamId,
+        lowerSeedTeamId: series.lowerSeed.teamId,
+        bestOf: series.bestOf,
+        deficitReached: series.deficitReached,
+        deficitTeamId: series.deficitTeamId,
+        winnerTeamId: series.winnerId ?? series.higherSeed.teamId,
+      });
+      const gauntlet = detectPlayoffGauntlet(
+        s.playoffSeriesHistory[s.playoffSeriesHistory.length - 1]!,
+        s.day,
+      );
+      if (gauntlet) {
+        const existing = s.teamMoments.get(gauntlet.teamId) ?? [];
+        if (!existing.some((moment) =>
+          moment.type === gauntlet.moment.type
+          && moment.season === gauntlet.moment.season
+          && moment.description === gauntlet.moment.description
+        )) {
+          appendTeamMoments(s, gauntlet.teamId, [gauntlet.moment]);
+        }
+      }
     }
   }
 
@@ -1129,6 +1231,64 @@ function playoffResult(s: FullGameState, gamesPlayed: number): SimResultDTO {
   };
 }
 
+function applyWave4PlayoffIntroMoments(s: FullGameState) {
+  const playoffTeamIds = new Set(
+    determinePlayoffSeeds(s.seasonState.standings.getFullStandings()).map((seed) => seed.teamId),
+  );
+
+  for (const entry of s.seasonState.standings.getLeagueStandings()) {
+    if (!playoffTeamIds.has(entry.teamId)) {
+      continue;
+    }
+
+    const septemberHeroics = detectSeptemberHeroics({
+      teamId: entry.teamId,
+      wins: entry.wins,
+      losses: entry.losses,
+      madePlayoffs: true,
+      isChampion: false,
+    }, {
+      season: s.season,
+      day: s.day,
+      teams: [],
+      monthlyRecordSplits: s.seasonState.monthlyRecordSplits,
+      teamMoments: s.teamMoments,
+    });
+
+    if (septemberHeroics) {
+      appendTeamMoments(s, septemberHeroics.teamId, [septemberHeroics.moment]);
+    }
+  }
+
+  for (const player of s.players) {
+    if (player.teamId !== s.userTeamId || player.rosterStatus !== 'MLB') {
+      continue;
+    }
+
+    const comebackPlayer = detectComebackPlayer(
+      player,
+      s.seasonState.playerSeasonStats.get(player.id),
+      s.season,
+      s.day,
+      s.playerMoments,
+    );
+    if (comebackPlayer) {
+      appendPlayerMoments(s, comebackPlayer.playerId, [comebackPlayer.moment]);
+    }
+  }
+
+  for (const rookieMoment of detectRookieSensation(
+    s.userTeamId,
+    s.players,
+    s.rookieOfTheYearVoting,
+    s.season,
+    s.day,
+    s.playerMoments,
+  )) {
+    appendPlayerMoments(s, rookieMoment.playerId, [rookieMoment.moment]);
+  }
+}
+
 function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonComplete: boolean): SimResultDTO {
   if (seasonComplete) {
     ensureAwardHistoryForSeason(s);
@@ -1145,6 +1305,7 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     s.phase = 'playoffs';
     s.day = 1;
     s.playoffBracket = null;
+    applyWave4PlayoffIntroMoments(s);
   }
 
   return {
@@ -1225,6 +1386,7 @@ function simWeekInternal(): SimResultDTO {
   const previousStandings = s.seasonState.standings.serialize();
   const previousInjuryIds = new Set(s.injuries.keys());
   const previousTradeCount = s.tradeState.tradeHistory.length;
+  incrementGamesMissedToInjury(s, s.day, Math.min(s.day + 7, 187));
   const { newState, result } = simulateWeek(
     s.rng,
     s.seasonState,
@@ -1283,10 +1445,59 @@ function buildTeamPerformanceModifiers(s: FullGameState): Map<string, number> {
 function buildSeasonSimulationOptions(s: FullGameState) {
   return {
     teamModifiers: buildTeamPerformanceModifiers(s),
+    unavailablePlayerIds: buildUnavailablePlayerIds(s),
     openingDayPlans: s.franchise.dayOne.openingDayPlan == null
       ? undefined
       : new Map([[s.userTeamId, s.franchise.dayOne.openingDayPlan]]),
   };
+}
+
+function buildUnavailablePlayerIds(s: FullGameState): Set<string> {
+  return new Set(
+    Array.from(s.injuries.entries())
+      .filter(([, injury]) => injury.daysRemaining > 0)
+      .map(([playerId]) => playerId),
+  );
+}
+
+function incrementGamesMissedToInjury(
+  s: FullGameState,
+  startDayInclusive: number,
+  endDayExclusive: number,
+) {
+  const unavailablePlayerIds = buildUnavailablePlayerIds(s);
+  if (unavailablePlayerIds.size === 0) {
+    return;
+  }
+
+  const scheduledGamesByTeamId = new Map<string, number>();
+  for (const game of s.schedule) {
+    if (game.day < startDayInclusive || game.day >= endDayExclusive) {
+      continue;
+    }
+    scheduledGamesByTeamId.set(game.homeTeamId, (scheduledGamesByTeamId.get(game.homeTeamId) ?? 0) + 1);
+    scheduledGamesByTeamId.set(game.awayTeamId, (scheduledGamesByTeamId.get(game.awayTeamId) ?? 0) + 1);
+  }
+
+  for (const player of s.players) {
+    if (
+      !unavailablePlayerIds.has(player.id)
+      || player.rosterStatus !== 'MLB'
+      || !player.teamId
+    ) {
+      continue;
+    }
+
+    const scheduledGames = scheduledGamesByTeamId.get(player.teamId) ?? 0;
+    if (scheduledGames <= 0) {
+      continue;
+    }
+
+    const currentStats = s.seasonState.playerSeasonStats.get(player.id)
+      ?? createEmptyPlayerGameStats(player.id, player.teamId);
+    currentStats.gamesMissedToInjury = (currentStats.gamesMissedToInjury ?? 0) + scheduledGames;
+    s.seasonState.playerSeasonStats.set(player.id, currentStats);
+  }
 }
 
 function normalizeLeagueActiveRosters(s: FullGameState) {
@@ -1343,6 +1554,7 @@ function simMonthInternal(): SimResultDTO {
   const previousStandings = s.seasonState.standings.serialize();
   const previousInjuryIds = new Set(s.injuries.keys());
   const previousTradeCount = s.tradeState.tradeHistory.length;
+  incrementGamesMissedToInjury(s, s.day, getRegularSeasonMonthForDay(s.day).endDay + 1);
   const { newState, result } = simulateMonth(
     s.rng,
     s.seasonState,
@@ -1379,12 +1591,14 @@ function simMonthInternal(): SimResultDTO {
 
 function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   accrueCareerStatsForSeason(s);
+  for (const player of s.players) {
+    player.priorSeasonGamesMissed = s.seasonState.playerSeasonStats.get(player.id)?.gamesMissedToInjury ?? 0;
+  }
   syncRecordTracking(s, {
     includeCurrentSeasonPlayoffAppearance: true,
     clearWatches: true,
     publishBrokenRecords: true,
   });
-  applyOffseasonNarrativeHooks(s);
 
   const beforePlayers = s.players;
   const kernelPlayers = s.players.map((player) => developPlayer(s.rng.fork(), player));
@@ -1399,6 +1613,12 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   applySeasonEndProspectBondUpdates(s);
 
   const retired = determineRetirements(s.rng.fork(), s.players);
+  for (const playerId of retired) {
+    const player = s.players.find((candidate) => candidate.id === playerId);
+    if (player) {
+      retirePlayerAssignment(player, s.season);
+    }
+  }
   syncHistoricalPlayersForRetirements(s, retired);
   const inductees = processHallOfFameForRetirements(s, retired);
   queueHallOfFameMoments(s, inductees);
@@ -1424,6 +1644,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 
   applyRetirementConsequences(s, retired);
   finalizeSeasonHistoryRetirements(s, retired);
+  applyOffseasonNarrativeHooks(s);
   updateEarnedNicknamesForSeason(s);
   s.playerMoments = new Map(
     [...s.playerMoments.entries()].map(([playerId, moments]) => [playerId, decayMoments(moments)]),
@@ -1486,6 +1707,7 @@ function simDayInternal(): SimResultDTO {
       const previousStandings = s.seasonState.standings.serialize();
       const previousInjuryIds = new Set(s.injuries.keys());
       const previousTradeCount = s.tradeState.tradeHistory.length;
+      incrementGamesMissedToInjury(s, s.day, s.day + 1);
       const { newState, result } = simulateDay(
         s.rng,
         s.seasonState,
@@ -1533,6 +1755,7 @@ function simDayInternal(): SimResultDTO {
       while (!isPlayoffComplete(working)) {
         working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
           teamModifiers: buildTeamPerformanceModifiers(s),
+          unavailablePlayerIds: buildUnavailablePlayerIds(s),
         });
       }
       s.playoffBracket = working;
@@ -1823,6 +2046,7 @@ export const actionApi = {
     const gamesBefore = countBracketGames(before);
     s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork(), {
       teamModifiers: buildTeamPerformanceModifiers(s),
+      unavailablePlayerIds: buildUnavailablePlayerIds(s),
     });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
@@ -1849,6 +2073,7 @@ export const actionApi = {
     const gamesBefore = countBracketGames(before);
     s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork(), {
       teamModifiers: buildTeamPerformanceModifiers(s),
+      unavailablePlayerIds: buildUnavailablePlayerIds(s),
     });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
@@ -1875,6 +2100,7 @@ export const actionApi = {
     const gamesBefore = countBracketGames(before);
     s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork(), {
       teamModifiers: buildTeamPerformanceModifiers(s),
+      unavailablePlayerIds: buildUnavailablePlayerIds(s),
     });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
@@ -1903,6 +2129,7 @@ export const actionApi = {
     while (!isPlayoffComplete(working)) {
       working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
         teamModifiers: buildTeamPerformanceModifiers(s),
+        unavailablePlayerIds: buildUnavailablePlayerIds(s),
       });
     }
     s.playoffBracket = working;
@@ -2410,7 +2637,7 @@ export const actionApi = {
     }
 
     const previousTeamId = player.teamId;
-    player.teamId = s.userTeamId;
+    updatePlayerTeamAssignment(player, s.userTeamId, s.season);
     player.contract = {
       years,
       annualSalary: salary,

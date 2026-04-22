@@ -3,6 +3,7 @@
  * Interactive postseason bracket simulation with per-series state.
  */
 
+import type { PlayoffSeriesDeficitReached } from '@mbd/contracts';
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
@@ -71,6 +72,8 @@ export interface PlayoffSeriesState {
   readonly status: 'in_progress' | 'complete';
   readonly winnerId: string | null;
   readonly loserId: string | null;
+  readonly deficitReached: PlayoffSeriesDeficitReached | null;
+  readonly deficitTeamId: string | null;
 }
 
 export interface CompletedRoundResult {
@@ -104,6 +107,7 @@ export interface PlayoffPreviewSeries {
 
 export interface PlayoffSimulationOptions {
   readonly teamModifiers?: Map<string, number>;
+  readonly unavailablePlayerIds?: ReadonlySet<string>;
 }
 
 const LEAGUES: readonly LeagueId[] = ['AL', 'NL'];
@@ -236,6 +240,8 @@ function createSeries(
     status: 'in_progress',
     winnerId: null,
     loserId: null,
+    deficitReached: null,
+    deficitTeamId: null,
   };
   return {
     ...base,
@@ -243,8 +249,16 @@ function createSeries(
   };
 }
 
-function buildGameTeam(teamId: string, allPlayers: GeneratedPlayer[]): GameTeam {
-  const mlbPlayers = allPlayers.filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB');
+function buildGameTeam(
+  teamId: string,
+  allPlayers: GeneratedPlayer[],
+  unavailablePlayerIds: ReadonlySet<string> = new Set(),
+): GameTeam {
+  const mlbPlayers = allPlayers.filter((player) =>
+    player.teamId === teamId
+    && player.rosterStatus === 'MLB'
+    && !unavailablePlayerIds.has(player.id),
+  );
   const hitters = mlbPlayers
     .filter((player) => (HITTER_POSITIONS as readonly string[]).includes(player.position))
     .sort((left, right) => right.overallRating - left.overallRating);
@@ -545,8 +559,8 @@ export function simPlayoffGame(
     : series.lowerSeed;
   const guest = host.teamId === series.higherSeed.teamId ? series.lowerSeed : series.higherSeed;
 
-  const home = buildGameTeam(host.teamId, allPlayers);
-  const away = buildGameTeam(guest.teamId, allPlayers);
+  const home = buildGameTeam(host.teamId, allPlayers, options.unavailablePlayerIds);
+  const away = buildGameTeam(guest.teamId, allPlayers, options.unavailablePlayerIds);
 
   const homeCanField = canFieldGameTeam(home);
   const awayCanField = canFieldGameTeam(away);
@@ -591,6 +605,31 @@ export function simPlayoffGame(
   const nextLowerSeedWins = series.lowerSeedWins + (higherSeedWon ? 0 : 1);
   const winsNeeded = getWinsNeeded(series.bestOf);
   const complete = nextHigherSeedWins >= winsNeeded || nextLowerSeedWins >= winsNeeded;
+  const firstDeficit = series.deficitReached == null
+    ? (
+      series.bestOf === 5
+      && (
+        (nextHigherSeedWins === 2 && nextLowerSeedWins === 0)
+        || (nextHigherSeedWins === 0 && nextLowerSeedWins === 2)
+      )
+        ? {
+          deficitReached: '0-2' as const,
+          deficitTeamId: nextHigherSeedWins === 2 ? series.lowerSeed.teamId : series.higherSeed.teamId,
+        }
+        : series.bestOf === 7
+          && (
+            (nextHigherSeedWins === 3 && nextLowerSeedWins === 1)
+            || (nextHigherSeedWins === 1 && nextLowerSeedWins === 3)
+          )
+          ? {
+            deficitReached: '1-3' as const,
+            deficitTeamId: nextHigherSeedWins === 3 ? series.lowerSeed.teamId : series.higherSeed.teamId,
+          }
+          : null
+    )
+    : null;
+  const deficitReached = series.deficitReached ?? firstDeficit?.deficitReached ?? null;
+  const deficitTeamId = series.deficitTeamId ?? firstDeficit?.deficitTeamId ?? null;
 
   const nextSeries: PlayoffSeriesState = {
     ...series,
@@ -614,6 +653,8 @@ export function simPlayoffGame(
     status: complete ? 'complete' : 'in_progress',
     winnerId: complete ? winnerId : null,
     loserId: complete ? loserId : null,
+    deficitReached,
+    deficitTeamId,
   };
 
   return {

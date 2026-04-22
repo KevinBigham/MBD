@@ -49,6 +49,11 @@ export {
   getMilestoneAlerts,
 } from './stats/milestones.js';
 export {
+  CAREER_SHUTOUT_MILESTONE,
+  isCompleteGameShutout,
+  recordCareerShutout,
+} from './stats/shutouts.js';
+export {
   SEASON_GAMES,
   findNotableProjections,
   formatPaceLabel,
@@ -174,6 +179,18 @@ export {
   DYNASTY_END_RELEVANCE,
   CURSED_FRANCHISE_IMPACT,
   CURSED_FRANCHISE_RELEVANCE,
+  VETERAN_CORE_RETIRES_IMPACT,
+  VETERAN_CORE_RETIRES_RELEVANCE,
+  SEPTEMBER_HEROICS_IMPACT,
+  SEPTEMBER_HEROICS_RELEVANCE,
+  PLAYOFF_GAUNTLET_IMPACT,
+  PLAYOFF_GAUNTLET_RELEVANCE,
+  COMEBACK_PLAYER_IMPACT,
+  COMEBACK_PLAYER_MISSED_GAMES_THRESHOLD,
+  COMEBACK_PLAYER_RELEVANCE,
+  COMEBACK_PLAYER_WAR_THRESHOLD,
+  ROOKIE_SENSATION_IMPACT,
+  ROOKIE_SENSATION_RELEVANCE,
   detectCursedFranchise,
   detectBreakoutSeason,
   detectChampionshipRun,
@@ -183,8 +200,13 @@ export {
   detectFireSale,
   detectFirstDynastyPeak,
   detectLosingSeasonStreak,
+  detectPlayoffGauntlet,
   detectRebuildBegun,
+  detectSeptemberHeroics,
   detectSeasonIdentityMoments,
+  detectVeteranCoreRetires,
+  detectComebackPlayer,
+  detectRookieSensation,
 } from './moments/index.js';
 export type {
   MomentType as SignatureMomentType,
@@ -259,6 +281,14 @@ export type {
   SimilarPlayer,
   SimilarityResult,
   PlayerArchetype,
+} from './player/index.js';
+export {
+  assignPlayerToTeam,
+  getLongestTeamTenureSeasons,
+  getTenureSeasonCount,
+  releasePlayerFromTeam,
+  retirePlayerFromTeam,
+  seedInitialTeamTenure,
 } from './player/index.js';
 export {
   PERSONALITY_TRAITS,
@@ -375,6 +405,7 @@ export {
   frontOfficeFreeAgencyAppeal,
   buildFrontOfficeBriefing,
   calculateAwardRaces,
+  buildRookieOfTheYearVotingEntries,
   finalizeAwardResults,
   AWARD_NAMES,
   generateAwardNarrative,

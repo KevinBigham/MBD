@@ -62,7 +62,14 @@ import type {
 import type { CascadeEvent, PendingTrade } from '@mbd/sim-core';
 import { buildTradeBroadcastCoverage } from '../../../../packages/sim-core/src/narrative/tradeDeadlinePressConferences.js';
 import type { FullGameState } from './sim.worker.helpers.js';
-import { appendArbitrationMoments, appendTeamMoments, createStableWorkerRng, getTeamPlayers, timestamp } from './sim.worker.helpers.js';
+import {
+  appendArbitrationMoments,
+  appendTeamMoments,
+  createStableWorkerRng,
+  getTeamPlayers,
+  timestamp,
+  updatePlayerTeamAssignment,
+} from './sim.worker.helpers.js';
 import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
 import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
@@ -852,7 +859,7 @@ function moveMultiTeamPlayers(
     if (!player) {
       continue;
     }
-    player.teamId = assignment.toTeamId;
+    updatePlayerTeamAssignment(player, assignment.toTeamId, state.season);
   }
 
   for (const teamId of sortStringList(multiTeamTeamIds(proposal))) {
@@ -1084,7 +1091,7 @@ function applyTradeAssets(
     reason: 'asset trade',
   };
 
-  executeTrade(proposal, state.players);
+  executeTrade(proposal, state.players, state.season);
 
   const movedPlayers = state.players.filter((player) => proposal.playersOffered.includes(player.id));
   const acquiredPlayers = state.players.filter((player) => proposal.playersRequested.includes(player.id));

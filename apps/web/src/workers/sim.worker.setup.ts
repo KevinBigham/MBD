@@ -21,6 +21,7 @@ import {
   getTeamById,
   initializeGMCareer,
   initializePlayerDevelopmentProfile,
+  seedInitialTeamTenure,
   seedHistoricalRivalries,
   toDisplayRating,
 } from '@mbd/sim-core';
@@ -258,7 +259,10 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
   const coachingRng = new GameRNG(options.seed + 20_001);
   const coachPoolRng = new GameRNG(options.seed + 30_001);
   const players = generateLeaguePlayers(rng.fork(), teamIds)
-    .map((player) => initializePlayerDevelopmentProfile(developmentRng.fork(), player));
+    .map((player) => seedInitialTeamTenure(
+      initializePlayerDevelopmentProfile(developmentRng.fork(), player),
+      1,
+    ));
   ensurePlayersHaveRule5Eligibility(players, 1);
   const schedule = generateSchedule(rng.fork());
   const seasonState = createSeasonState(1, teamIds);
@@ -349,8 +353,10 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     hallOfFameBallot: [],
     franchiseTimeline: [],
     careerStats: [],
+    playoffSeriesHistory: [],
     recordBook,
     recordWatch: [],
+    rookieOfTheYearVoting: [],
     seasonArchive: [],
     archivedSeasons: [],
     historicalPlayers: [],

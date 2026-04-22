@@ -503,6 +503,10 @@ function applySeasonIdentityMoments(state: FullGameState) {
     season: state.season,
     day: state.day,
     teams: summaries,
+    monthlyRecordSplits: state.seasonState.monthlyRecordSplits,
+    retiredPlayers: state.players.filter((player) =>
+      (state.offseasonState?.phaseResults.retiredPlayers ?? []).some((retirement) => retirement.playerId === player.id),
+    ),
   });
 
   for (const entry of detected) {

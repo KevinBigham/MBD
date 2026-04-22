@@ -374,6 +374,7 @@ function buildMilestoneAlertInputs(
     strikeouts: number;
     wins: number;
     saves: number;
+    shutouts: number;
     isPitcher: boolean;
     seasonsPlayed: number;
   };
@@ -395,6 +396,7 @@ function buildMilestoneAlertInputs(
         strikeouts: career?.pitching?.strikeouts ?? 0,
         wins: career?.pitching?.wins ?? 0,
         saves: career?.saves ?? 0,
+        shutouts: career?.pitching?.shutouts ?? 0,
         isPitcher,
         seasonsPlayed,
       },

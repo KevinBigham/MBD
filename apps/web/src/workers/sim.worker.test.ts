@@ -466,6 +466,7 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
     wins: 0,
     saves: 0,
     losses: 0,
+    gamesMissedToInjury: 0,
     ...overrides,
   };
 }
@@ -1273,6 +1274,7 @@ describe('sim worker narrative APIs', () => {
         strikeouts: 118,
         inningsPitched: 132.1,
         earnedRuns: 41,
+        shutouts: 0,
       } : null,
     });
     state.scoutConflicts.push({
@@ -1604,6 +1606,37 @@ describe('sim worker narrative APIs', () => {
 
     expect(watches.some((entry) => entry.playerId === hitter.id && entry.recordLabel === 'Most Home Runs')).toBe(true);
     expect(news.some((item) => item.category === 'record' && item.tag === 'WATCH')).toBe(true);
+  });
+
+  it('tracks injured MLB absences and monthly splits during regular-season month sims', () => {
+    startGame(1401, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    state.seasonState = {
+      ...state.seasonState,
+      currentDay: 31,
+    };
+    const hitter = state.players
+      .filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null)
+      .sort((left, right) => right.overallRating - left.overallRating)[0]!;
+
+    state.injuries.set(hitter.id, {
+      type: 'hamstring_strain',
+      severity: 'il_10',
+      daysRemaining: 7,
+      totalDays: 7,
+      attributePenalty: 0,
+      reinjuryRisk: 0,
+    });
+
+    api.simMonth();
+    const updated = requireState();
+    const stats = updated.seasonState.playerSeasonStats.get(hitter.id);
+
+    expect(stats?.gamesMissedToInjury ?? 0).toBeGreaterThan(0);
+    expect(stats?.gamesPlayed ?? 0).toBe(0);
+    expect(updated.seasonState.monthlyRecordSplits.nym).toBeTruthy();
   });
 
   it('queues a record broken ceremony when the user club passes a tracked mark', () => {
@@ -2171,6 +2204,8 @@ describe('sim worker narrative APIs', () => {
           lowerSeedWins: 2,
           leaderSummary: 'NYT won 4-2',
           status: 'complete',
+          deficitReached: null,
+          deficitTeamId: null,
           winnerId: 'nym',
           loserId: 'lax',
         },
@@ -2189,6 +2224,8 @@ describe('sim worker narrative APIs', () => {
           lowerSeedWins: 2,
           leaderSummary: 'NYT won 4-2',
           status: 'complete',
+          deficitReached: null,
+          deficitTeamId: null,
           winnerId: 'nym',
           loserId: 'lax',
         }],
@@ -2631,6 +2668,8 @@ describe('sim worker narrative APIs', () => {
           lowerSeedWins: 2,
           leaderSummary: 'NYT won 4-2',
           status: 'complete',
+          deficitReached: null,
+          deficitTeamId: null,
           winnerId: 'nym',
           loserId: 'lax',
         },
@@ -2649,6 +2688,8 @@ describe('sim worker narrative APIs', () => {
           lowerSeedWins: 2,
           leaderSummary: 'NYT won 4-2',
           status: 'complete',
+          deficitReached: null,
+          deficitTeamId: null,
           winnerId: 'nym',
           loserId: 'lax',
         }],
@@ -4266,6 +4307,8 @@ describe('sim worker narrative APIs', () => {
         lowerSeedWins: 1,
         leaderSummary: 'NYT won 4-1',
         status: 'complete',
+        deficitReached: null,
+        deficitTeamId: null,
         winnerId: 'nym',
         loserId: 'lax',
       }],
@@ -4283,6 +4326,8 @@ describe('sim worker narrative APIs', () => {
           lowerSeedWins: 1,
           leaderSummary: 'NYT won 4-1',
           status: 'complete',
+          deficitReached: null,
+          deficitTeamId: null,
           winnerId: 'nym',
           loserId: 'lax',
         }],
@@ -4338,6 +4383,83 @@ describe('sim worker narrative APIs', () => {
     expect(timeline[0]?.dynastyScore).toBeGreaterThan(0);
     expect(dynasty?.grade).not.toBe('F');
     expect(requireState().careerStats.find((entry) => entry.playerId === icon.id)?.seasonsPlayed).toBeGreaterThanOrEqual(13);
+  });
+
+  it('rolls games missed to injury into prior-season history when starting the next season', () => {
+    startGame(1402, 'nym');
+    const state = requireState();
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      completed: true,
+    };
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      gamesMissedToInjury: 61,
+    }));
+
+    api.startNextSeason();
+
+    const updated = requireState().players.find((player) => player.id === hitter.id)!;
+    expect(updated.priorSeasonGamesMissed).toBe(61);
+    expect(requireState().seasonState.playerSeasonStats.get(hitter.id)?.gamesMissedToInjury ?? 0).toBe(0);
+  });
+
+  it('records playoff comeback history and gauntlet moments when a comeback series completes', () => {
+    startGame(1403, 'nym');
+    const state = requireState();
+    state.phase = 'playoffs';
+    state.day = 1;
+    state.playoffSeriesHistory = [];
+    state.teamMoments.set('lax', []);
+    state.playoffBracket = {
+      seeds: [
+        { teamId: 'nym', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+        { teamId: 'lax', seed: 4, wins: 90, losses: 72, league: 'AL', divisionWinner: false },
+      ],
+      currentRound: 'DIVISION_SERIES',
+      currentRoundSeries: [{
+        id: 'DS-1',
+        round: 'DIVISION_SERIES',
+        league: 'AL',
+        bestOf: 5,
+        higherSeed: { teamId: 'nym', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+        lowerSeed: { teamId: 'lax', seed: 4, wins: 90, losses: 72, league: 'AL', divisionWinner: false },
+        games: [],
+        higherSeedWins: 2,
+        lowerSeedWins: 2,
+        leaderSummary: 'Series tied 2-2',
+        status: 'in_progress',
+        deficitReached: '0-2',
+        deficitTeamId: 'lax',
+        winnerId: null,
+        loserId: null,
+      }],
+      completedRounds: [],
+      series: [],
+      champion: null,
+      runnerUp: null,
+    };
+
+    for (const player of state.players) {
+      if (player.teamId === 'nym' && player.rosterStatus === 'MLB') {
+        player.rosterStatus = 'AAA';
+      }
+    }
+
+    (api as typeof api & { simPlayoffGame: () => { phase: string } }).simPlayoffGame();
+
+    expect(requireState().playoffSeriesHistory[0]).toMatchObject({
+      deficitReached: '0-2',
+      deficitTeamId: 'lax',
+      winnerTeamId: 'lax',
+    });
+    expect(requireState().teamMoments.get('lax')?.some((moment) => moment.type === 'playoff_gauntlet')).toBe(true);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {
