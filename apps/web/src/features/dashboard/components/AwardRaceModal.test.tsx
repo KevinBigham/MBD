@@ -212,4 +212,68 @@ describe('AwardRaceModal', () => {
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('renders prior-season winners context tile when history exists', async () => {
+    mockWorker.getAwardRaceDetail.mockResolvedValue({
+      ...richView,
+      priorSeasonWinners: [
+        {
+          award: 'mvp',
+          league: 'AL',
+          season: 5,
+          playerId: 'al-mvp-prior',
+          playerName: 'Marcus Vaughn',
+          teamId: 'nyy',
+          teamAbbreviation: 'NYY',
+          summary: '.312 / 36 HR / 108 RBI',
+        },
+        {
+          award: 'cyYoung',
+          league: 'NL',
+          season: 5,
+          playerId: 'nl-cy-prior',
+          playerName: 'Diego Alvarez',
+          teamId: 'atl',
+          teamAbbreviation: 'ATL',
+          summary: '2.18 ERA / 228 K / 19-6',
+        },
+      ],
+    });
+
+    await renderModal();
+
+    const tile = container.querySelector('[data-testid="prior-season-winners"]');
+    expect(tile).not.toBeNull();
+    const tileText = tile?.textContent ?? '';
+    expect(tileText).toContain('Season 5 Winners');
+    expect(tileText).toContain('AL MVP');
+    expect(tileText).toContain('Marcus Vaughn');
+    expect(tileText).toContain('NYY');
+    expect(tileText).toContain('.312 / 36 HR / 108 RBI');
+    expect(tileText).toContain('NL Cy Young');
+    expect(tileText).toContain('Diego Alvarez');
+    expect(tileText).toContain('ATL');
+    expect(tileText).toContain('2.18 ERA / 228 K / 19-6');
+  });
+
+  it('omits prior-season tile when no history is available (year 1)', async () => {
+    mockWorker.getAwardRaceDetail.mockResolvedValue({
+      ...richView,
+      priorSeasonWinners: [],
+    });
+
+    await renderModal();
+
+    const tile = container.querySelector('[data-testid="prior-season-winners"]');
+    expect(tile).toBeNull();
+  });
+
+  it('omits prior-season tile when the field is absent from the payload', async () => {
+    mockWorker.getAwardRaceDetail.mockResolvedValue(richView);
+
+    await renderModal();
+
+    const tile = container.querySelector('[data-testid="prior-season-winners"]');
+    expect(tile).toBeNull();
+  });
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Flame, Sparkles, Trophy, X } from 'lucide-react';
+import { Flame, History, Sparkles, Trophy, X } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 
 export interface AwardRaceDetailEntry {
@@ -19,12 +19,24 @@ export interface AwardRaceDetailBoard {
   roy: AwardRaceDetailEntry[];
 }
 
+export interface AwardRacePriorSeasonWinner {
+  award: 'mvp' | 'cyYoung' | 'roy';
+  league: 'AL' | 'NL';
+  season: number;
+  playerId: string;
+  playerName: string;
+  teamId: string;
+  teamAbbreviation: string;
+  summary: string;
+}
+
 export interface AwardRaceDetailView {
   season: number;
   day: number;
   gamesRemaining: number;
   al: AwardRaceDetailBoard;
   nl: AwardRaceDetailBoard;
+  priorSeasonWinners?: AwardRacePriorSeasonWinner[];
 }
 
 interface AwardRaceModalProps {
@@ -85,6 +97,8 @@ export default function AwardRaceModal({ onDismiss }: AwardRaceModalProps) {
     && AWARD_META.some(
       ({ key }) => view.al[key].length > 0 || view.nl[key].length > 0,
     );
+
+  const priorSeasonWinners = view?.priorSeasonWinners ?? [];
 
   return (
     <div
@@ -148,6 +162,9 @@ export default function AwardRaceModal({ onDismiss }: AwardRaceModalProps) {
             </div>
           ) : (
             <div className="space-y-5">
+              {priorSeasonWinners.length > 0 ? (
+                <PriorSeasonContextTile winners={priorSeasonWinners} />
+              ) : null}
               {AWARD_META.map(({ key, label, icon: Icon }) => {
                 const alEntries = view.al[key];
                 const nlEntries = view.nl[key];
@@ -200,6 +217,71 @@ function LeagueColumn({
         </ol>
       )}
     </div>
+  );
+}
+
+function PriorSeasonContextTile({
+  winners,
+}: {
+  winners: AwardRacePriorSeasonWinner[];
+}) {
+  const priorSeason = winners[0]?.season ?? null;
+  const AWARD_ORDER: Array<{ key: AwardKey; label: string }> = [
+    { key: 'mvp', label: 'MVP' },
+    { key: 'cyYoung', label: 'Cy Young' },
+    { key: 'roy', label: 'ROY' },
+  ];
+
+  const rows: Array<{
+    awardLabel: string;
+    league: 'AL' | 'NL';
+    winner: AwardRacePriorSeasonWinner;
+  }> = [];
+  for (const { key, label } of AWARD_ORDER) {
+    for (const league of ['AL', 'NL'] as const) {
+      const winner = winners.find((w) => w.award === key && w.league === league);
+      if (winner) rows.push({ awardLabel: label, league, winner });
+    }
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <section
+      data-testid="prior-season-winners"
+      className="rounded-lg border border-dynasty-border/70 bg-dynasty-surface/70 p-3"
+    >
+      <div className="flex items-center gap-2">
+        <History className="h-4 w-4 text-dynasty-muted" />
+        <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
+          {priorSeason != null ? `Season ${priorSeason} Winners` : 'Prior Season Winners'}
+        </div>
+      </div>
+      <ul className="mt-2 grid gap-1 md:grid-cols-2">
+        {rows.map((row) => (
+          <li
+            key={`${row.winner.award}-${row.league}`}
+            className="flex min-w-0 items-baseline gap-2 font-data text-[11px]"
+          >
+            <span className="shrink-0 uppercase tracking-[0.12em] text-dynasty-muted">
+              {row.league} {row.awardLabel}
+            </span>
+            <Link
+              to={`/players/${row.winner.playerId}`}
+              className="truncate font-heading text-xs text-dynasty-text hover:text-accent-primary"
+            >
+              {row.winner.playerName}
+            </Link>
+            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+              {row.winner.teamAbbreviation}
+            </span>
+            <span className="ml-auto truncate text-[10px] text-dynasty-muted">
+              {row.winner.summary}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

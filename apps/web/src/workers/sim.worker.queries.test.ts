@@ -909,12 +909,24 @@ describe('worker award race detail query', () => {
     roy: AwardEntryView[];
   }
 
+  interface PriorSeasonWinnerView {
+    award: 'mvp' | 'cyYoung' | 'roy';
+    league: 'AL' | 'NL';
+    season: number;
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    teamAbbreviation: string;
+    summary: string;
+  }
+
   interface AwardRaceDetailView {
     season: number;
     day: number;
     gamesRemaining: number;
     al: AwardBoardView;
     nl: AwardBoardView;
+    priorSeasonWinners: PriorSeasonWinnerView[];
   }
 
   function plantTeamRecord(
@@ -1055,5 +1067,119 @@ describe('worker award race detail query', () => {
     expect(view.al.cyYoung).toEqual([]);
     expect(view.al.roy).toEqual([]);
     expect(view.nl.mvp).toEqual([]);
+  });
+
+  it('returns empty priorSeasonWinners when awardHistory is empty (year 1)', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+    expect(state.awardHistory).toEqual([]);
+
+    const workerApi = api as typeof api & {
+      getAwardRaceDetail: () => AwardRaceDetailView;
+    };
+    const view = workerApi.getAwardRaceDetail();
+
+    expect(view.priorSeasonWinners).toEqual([]);
+  });
+
+  it('returns prior-season MVP/Cy Young/ROY winners when awardHistory has them', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+    state.season = 2;
+
+    const alHitter = state.players.find((p) => {
+      if (p.pitcherAttributes != null) return false;
+      const team = getTeamById(p.teamId);
+      return team?.division?.startsWith('AL') ?? false;
+    });
+    const nlPitcher = state.players.find((p) => {
+      if (p.pitcherAttributes == null) return false;
+      const team = getTeamById(p.teamId);
+      return team?.division?.startsWith('NL') ?? false;
+    });
+    expect(alHitter).toBeDefined();
+    expect(nlPitcher).toBeDefined();
+
+    state.awardHistory = [
+      {
+        season: 1,
+        award: 'MVP',
+        league: 'AL',
+        playerId: alHitter!.id,
+        teamId: alHitter!.teamId,
+        summary: '.312 / 36 HR / 108 RBI',
+      },
+      {
+        season: 1,
+        award: 'Cy Young',
+        league: 'NL',
+        playerId: nlPitcher!.id,
+        teamId: nlPitcher!.teamId,
+        summary: '2.18 ERA / 228 K / 19-6',
+      },
+      // Prior-season entry that should be filtered out (wrong season)
+      {
+        season: 0,
+        award: 'MVP',
+        league: 'AL',
+        playerId: alHitter!.id,
+        teamId: alHitter!.teamId,
+        summary: 'ignored',
+      },
+    ];
+
+    const workerApi = api as typeof api & {
+      getAwardRaceDetail: () => AwardRaceDetailView;
+    };
+    const view = workerApi.getAwardRaceDetail() as AwardRaceDetailView;
+
+    const winners = view.priorSeasonWinners;
+    expect(winners).toHaveLength(2);
+    const alMvp = winners.find((w) => w.award === 'mvp' && w.league === 'AL');
+    expect(alMvp).toBeDefined();
+    expect(alMvp!.season).toBe(1);
+    expect(alMvp!.playerId).toBe(alHitter!.id);
+    expect(alMvp!.summary).toBe('.312 / 36 HR / 108 RBI');
+    expect(alMvp!.playerName).toBe(`${alHitter!.firstName} ${alHitter!.lastName}`);
+    expect(alMvp!.teamAbbreviation.length).toBeGreaterThan(0);
+
+    const nlCy = winners.find((w) => w.award === 'cyYoung' && w.league === 'NL');
+    expect(nlCy).toBeDefined();
+    expect(nlCy!.summary).toBe('2.18 ERA / 228 K / 19-6');
+  });
+
+  it('filters out MLB-league and unknown-award awardHistory entries', () => {
+    startGame(5522, 'nym');
+    const state = requireState();
+    plantTeamRecord(state, 'nym', 40, 20);
+    state.season = 2;
+
+    state.awardHistory = [
+      {
+        season: 1,
+        award: 'MVP',
+        league: 'MLB',
+        playerId: 'p-ignored',
+        teamId: 'nym',
+        summary: 'skip-mlb',
+      },
+      {
+        season: 1,
+        award: 'Gold Glove',
+        league: 'AL',
+        playerId: 'p-ignored-2',
+        teamId: 'nym',
+        summary: 'skip-unknown-award',
+      },
+    ];
+
+    const workerApi = api as typeof api & {
+      getAwardRaceDetail: () => AwardRaceDetailView;
+    };
+    const view = workerApi.getAwardRaceDetail();
+
+    expect(view.priorSeasonWinners).toEqual([]);
   });
 });

@@ -4,6 +4,7 @@ import type { SignatureMoment } from '@mbd/contracts';
 import { GameRNG, formatMomentDescription, getTeamById } from '@mbd/sim-core';
 import { AlertTriangle, Sparkles } from 'lucide-react';
 import { TeamLogo } from '@/shared/components/TeamLogo';
+import { momentTypeLabel } from '@/shared/lib/labels';
 
 function roundLabel(value: NonNullable<SignatureMoment['round']>): string {
   switch (value) {
@@ -21,25 +22,6 @@ function roundLabel(value: NonNullable<SignatureMoment['round']>): string {
 function teamDisplayName(teamId: string): string {
   const team = getTeamById(teamId);
   return team ? `${team.city} ${team.name}` : teamId;
-}
-
-function momentTypeLabel(type: string): string {
-  switch (type) {
-    case 'deadline_buyer':
-      return 'Deadline Buyer';
-    case 'deadline_seller':
-      return 'Deadline Seller';
-    case 'championship_run':
-      return 'Championship Run';
-    case 'contention_collapse':
-      return 'Contention Collapse';
-    default:
-      return type
-        .split('_')
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
-  }
 }
 
 export default function TeamIdentityCard({

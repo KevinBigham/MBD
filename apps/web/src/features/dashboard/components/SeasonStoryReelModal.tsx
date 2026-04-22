@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 export interface SeasonStoryReelView {
   season: number;
@@ -66,13 +67,6 @@ export interface SeasonStoryReelView {
 interface SeasonStoryReelModalProps {
   seasonYear: number;
   onDismiss: () => void;
-}
-
-function humanizeLabel(value: string): string {
-  return value
-    .split('_')
-    .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
-    .join(' ');
 }
 
 function formatRank(rank: number): string {

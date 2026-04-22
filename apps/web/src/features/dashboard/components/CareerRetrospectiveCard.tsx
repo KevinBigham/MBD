@@ -7,6 +7,7 @@ import {
   Crown,
   Flag,
   Flame,
+  LineChart as LineChartIcon,
   ScrollText,
   Sparkles,
   Star,
@@ -14,8 +15,10 @@ import {
   Trophy,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { humanizeLabel, momentTypeLabel } from '@/shared/lib/labels';
 
 const SeasonStoryReelModal = lazy(() => import('./SeasonStoryReelModal'));
+const Sparkline = lazy(() => import('@/shared/components/charts/Sparkline'));
 
 interface TeamMomentEntry {
   type: string;
@@ -55,6 +58,11 @@ interface TopRivalryView {
   historicalRecord: string;
 }
 
+interface SeasonHistoryEntry {
+  season: number;
+  winPct: number;
+}
+
 interface CareerRetrospectiveView {
   franchise: {
     gmName: string;
@@ -76,17 +84,11 @@ interface CareerRetrospectiveView {
     divisionTitles: number;
     playoffAppearances: number;
   };
+  seasonHistory: SeasonHistoryEntry[];
   teamMoments: TeamMomentEntry[];
   legendArcs: LegendArcEntry[];
   awardsShelf: AwardsShelfView;
   topRivalry: TopRivalryView | null;
-}
-
-function humanizeLabel(value: string): string {
-  return value
-    .split('_')
-    .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
-    .join(' ');
 }
 
 function formatWinPct(pct: number): string {
@@ -129,6 +131,7 @@ export default function CareerRetrospectiveCard() {
     || view.legendArcs.length > 0
     || view.awardsShelf.total > 0
     || view.topRivalry != null
+    || (view.seasonHistory?.length ?? 0) >= 2
   );
 
   return (
@@ -159,6 +162,9 @@ export default function CareerRetrospectiveCard() {
       ) : (
         <div className="mt-4 space-y-3">
           <TenureStrip view={view} />
+          {view.seasonHistory?.length >= 2 ? (
+            <SeasonWinPctStrip history={view.seasonHistory} />
+          ) : null}
           <TitlesRow titles={view.titles} />
           {view.awardsShelf.total > 0 ? <AwardsShelf shelf={view.awardsShelf} /> : null}
           {view.teamMoments.length > 0 ? (
@@ -214,6 +220,54 @@ function TenureStrip({ view }: { view: CareerRetrospectiveView }) {
         <span>
           <span className="text-dynasty-muted">Rep </span>
           <span className="text-dynasty-textBright">{Math.round(tenure.reputation)}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SeasonWinPctStrip({ history }: { history: SeasonHistoryEntry[] }) {
+  const first = history[0]!;
+  const last = history[history.length - 1]!;
+  const values = history.map((entry) => entry.winPct);
+  const peak = values.reduce((max, v) => (v > max ? v : max), values[0]!);
+  const trough = values.reduce((min, v) => (v < min ? v : min), values[0]!);
+
+  return (
+    <div
+      className="rounded-lg border border-dynasty-border/70 bg-dynasty-surface/70 p-3"
+      data-testid="season-winpct-strip"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <LineChartIcon className="h-3.5 w-3.5 text-accent-info" />
+          <div className="font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">Season Arc</div>
+        </div>
+        <div className="font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+          {history.length} season{history.length === 1 ? '' : 's'}
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <div className="flex flex-col text-right font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+          <span className="text-dynasty-textBright">{formatWinPct(first.winPct)}</span>
+          <span>S{first.season}</span>
+        </div>
+        <div className="flex-1">
+          <Suspense fallback={<div className="h-6 w-full" aria-hidden />}>
+            <Sparkline values={values} width={160} height={24} />
+          </Suspense>
+        </div>
+        <div className="flex flex-col text-left font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+          <span className="text-dynasty-textBright">{formatWinPct(last.winPct)}</span>
+          <span>S{last.season}</span>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+        <span>
+          Peak <span className="text-dynasty-textBright">{formatWinPct(peak)}</span>
+        </span>
+        <span>
+          Low <span className="text-dynasty-textBright">{formatWinPct(trough)}</span>
         </span>
       </div>
     </div>
@@ -334,7 +388,7 @@ function SignatureBeats({
               >
                 <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${iconClass}`} />
                 <div className="min-w-0 flex-1">
-                  <div className="font-heading text-xs text-dynasty-textBright">{humanizeLabel(moment.type)}</div>
+                  <div className="font-heading text-xs text-dynasty-textBright">{momentTypeLabel(moment.type)}</div>
                   <div className="mt-0.5 font-heading text-xs text-dynasty-text">{moment.description}</div>
                   <div className="mt-0.5 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
                     Season {moment.season}

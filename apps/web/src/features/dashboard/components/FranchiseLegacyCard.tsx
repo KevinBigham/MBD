@@ -4,6 +4,7 @@ import { AlertTriangle, ChevronRight, Flag, Sparkles } from 'lucide-react';
 import type { SignatureMoment } from '@mbd/contracts';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { momentTypeLabel } from '@/shared/lib/labels';
 
 interface FranchiseLegacySummary {
   total: number;
@@ -28,13 +29,6 @@ function summarize(moments: SignatureMoment[]): FranchiseLegacySummary {
     negative,
     latest: moments[0] ?? null,
   };
-}
-
-function momentTypeLabel(type: string): string {
-  return type
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
 }
 
 export default function FranchiseLegacyCard() {
