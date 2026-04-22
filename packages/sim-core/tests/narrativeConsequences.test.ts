@@ -222,6 +222,74 @@ describe('narrative consequences', () => {
     expect(bundle.seasonHistoryMoments.length).toBeGreaterThan(0);
   });
 
+  it('keeps postseason prose deterministic and varied for early exits', () => {
+    const buildPostseasonConsequenceBundle = (
+      simCore as unknown as {
+        buildPostseasonConsequenceBundle?: (context: unknown) => {
+          briefingItems: Array<{ headline: string; body: string }>;
+          ownerDecisionDelta: { delta: number; summary: string } | null;
+          storyFlags: string[];
+          seasonHistoryMoments: string[];
+        };
+      }
+    ).buildPostseasonConsequenceBundle;
+
+    expect(typeof buildPostseasonConsequenceBundle).toBe('function');
+
+    const userPlayers = [
+      withOverrides(makePlayer(106, 'nym', 'SS'), { firstName: 'Alex', lastName: 'Stone' }),
+      withOverrides(makePlayer(107, 'nym', 'CF'), { firstName: 'Jalen', lastName: 'Frost' }),
+    ];
+    const buildBundle = (season: number, champion: string) => buildPostseasonConsequenceBundle!({
+      rng: new simCore.GameRNG(22),
+      season,
+      userTeamId: 'nym',
+      playoffBracket: {
+        seeds: [
+          { teamId: 'nym', seed: 4, wins: 88, losses: 74 },
+          { teamId: champion, seed: 1, wins: 99, losses: 63 },
+        ],
+        series: [
+          { winnerId: champion, loserId: 'nym', winnerWins: 2, loserWins: 1, games: [], round: 'WILD_CARD' },
+          { winnerId: champion, loserId: 'bos', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
+        ],
+        champion,
+      },
+      userOutcome: 'wild_card_loss',
+      standings: [
+        { teamId: 'nym', wins: 88, losses: 74 },
+        { teamId: champion, wins: 99, losses: 63 },
+        { teamId: 'bos', wins: 92, losses: 70 },
+      ],
+      userPlayers,
+    });
+
+    const stableA = buildBundle(5, 'bos');
+    const stableB = buildBundle(5, 'bos');
+
+    expect(stableB).toEqual(stableA);
+    expect(stableA.ownerDecisionDelta).toEqual({
+      delta: 3,
+      summary: stableA.briefingItems[0]!.body,
+    });
+    expect(stableA.storyFlags).toEqual(['postseason_sting']);
+    expect(stableA.seasonHistoryMoments[0]).toBe(stableA.briefingItems[0]?.body);
+
+    const normalizedHeadlines = new Set(
+      ['bos', 'sea', 'chi', 'sat', 'mil', 'msp'].map((champion, index) =>
+        buildBundle(10 + index, champion).briefingItems[0]!.headline.replace(/\d+/g, 'N'),
+      ),
+    );
+    const uniqueBodies = new Set(
+      ['bos', 'sea', 'chi', 'sat', 'mil', 'msp'].map((champion, index) =>
+        buildBundle(10 + index, champion).briefingItems[0]!.body,
+      ),
+    );
+
+    expect(normalizedHeadlines.size).toBeGreaterThanOrEqual(3);
+    expect(uniqueBodies.size).toBeGreaterThanOrEqual(3);
+  });
+
   it('builds retirement consequences for notable MLB veterans', () => {
     const buildRetirementConsequenceBundle = (
       simCore as unknown as {
