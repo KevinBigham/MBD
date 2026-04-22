@@ -11,3 +11,5 @@ coverage/
 playwright-report/
 test-results/
 storybook-static/
+packages/sim-core/playtest-output/*.md
+!packages/sim-core/playtest-output/sample-dynasty.md
