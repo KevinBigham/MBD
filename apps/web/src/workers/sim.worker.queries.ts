@@ -1678,12 +1678,57 @@ function buildAwardRaceBoards(topN: number) {
     roy: royIsFallback(races) ? [] : races.roy.slice(0, topN).map(enrich),
   });
 
+  // Prior-season winners give the current award race a historical reference
+  // point. Empty on season 1; partial across ROY in years where no rookie
+  // qualified. Award strings match the narrative.AwardHistoryEntry schema
+  // (MVP / Cy Young / Rookie of the Year); leagues come from AwardLeagueEnum.
+  const awardKeyFor = (label: string): 'mvp' | 'cyYoung' | 'roy' | null => {
+    if (label === 'MVP') return 'mvp';
+    if (label === 'Cy Young') return 'cyYoung';
+    if (label === 'Rookie of the Year') return 'roy';
+    return null;
+  };
+
+  const priorSeason = s.season - 1;
+  const priorSeasonWinners: Array<{
+    award: 'mvp' | 'cyYoung' | 'roy';
+    league: 'AL' | 'NL';
+    season: number;
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    teamAbbreviation: string;
+    summary: string;
+  }> = [];
+
+  if (priorSeason >= 1) {
+    for (const entry of s.awardHistory) {
+      if (entry.season !== priorSeason) continue;
+      if (entry.league !== 'AL' && entry.league !== 'NL') continue;
+      const award = awardKeyFor(entry.award);
+      if (!award) continue;
+      const player = playerById.get(entry.playerId);
+      const team = getTeamById(entry.teamId);
+      priorSeasonWinners.push({
+        award,
+        league: entry.league,
+        season: entry.season,
+        playerId: entry.playerId,
+        playerName: player ? `${player.firstName} ${player.lastName}` : entry.playerId,
+        teamId: entry.teamId,
+        teamAbbreviation: team?.abbreviation ?? entry.teamId.toUpperCase(),
+        summary: entry.summary,
+      });
+    }
+  }
+
   return {
     season: s.season,
     day: s.day,
     gamesRemaining,
     al: enrichBoard(alRaces),
     nl: enrichBoard(nlRaces),
+    priorSeasonWinners,
   };
 }
 
