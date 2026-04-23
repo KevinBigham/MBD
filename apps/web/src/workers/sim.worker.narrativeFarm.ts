@@ -1,14 +1,19 @@
 import {
+  buildTeamSeasonSummaries,
+  detectEraEndingCollapse,
   detectBreakoutCountdowns,
   detectLateCareerPeak,
+  detectPerennialContender,
   detectRedemptionArc,
   detectRookieBreakout,
   detectSeasonIdentityMoments,
+  detectThreePeat,
   evaluateScenarioProgress,
   generateDebutFlashback,
   generatePressConference,
   getScenarioById,
   pruneTickerFeed,
+  resolvePlayoffTeamIds,
 } from '@mbd/sim-core';
 import { getTeamById } from '@mbd/sim-core';
 import type { TeamSeasonSummary } from '@mbd/sim-core';
@@ -427,84 +432,50 @@ export function applyMonthlyNarrativeHooks(state: FullGameState, month: number) 
   draftAnniversaryTicker(state);
 }
 
+function buildCurrentTeamSummaries(
+  state: FullGameState,
+  currentPlayoffTeamIds: ReadonlySet<string>,
+  championTeamId: string | null,
+): TeamSeasonSummary[] {
+  return buildTeamSeasonSummaries({
+    season: state.season,
+    standingsByDivision: state.seasonState.standings.getFullStandings(),
+    leagueStandings: state.seasonState.standings.getLeagueStandings(),
+    currentPlayoffTeamIds,
+    championTeamId,
+    seasonArchive: state.seasonArchive,
+    archivedSeasons: state.archivedSeasons,
+  });
+}
+
+function buildDynastyMarkerContext(
+  state: FullGameState,
+  summaries: readonly TeamSeasonSummary[],
+) {
+  return {
+    season: state.season,
+    day: state.day,
+    teams: summaries,
+    teamMoments: state.teamMoments,
+    seasonArchive: state.seasonArchive,
+    archivedSeasons: state.archivedSeasons,
+    seasonHistory: state.seasonHistory,
+    playoffSeriesHistory: state.playoffSeriesHistory,
+  };
+}
+
 function applySeasonIdentityMoments(state: FullGameState) {
   const flag = `season_identity_moments_${state.season}`;
   if (hasStoryFlag(state, flag)) {
     return;
   }
 
-  type PriorSeasonSummary = NonNullable<TeamSeasonSummary['priorSeasonsSummary']>[number];
-
-  const divisionRankByTeamId = new Map<string, number>();
-  for (const divisionStandings of Object.values(state.seasonState.standings.getFullStandings())) {
-    for (const [index, entry] of divisionStandings.entries()) {
-      divisionRankByTeamId.set(entry.teamId, index + 1);
-    }
-  }
-
-  const buildPriorSeasonsSummary = (
-    teamId: string,
-  ): readonly PriorSeasonSummary[] => {
-    const priorSeasons: PriorSeasonSummary[] = [];
-    const seenSeasons = new Set<number>();
-
-    for (const entry of [...state.seasonArchive].sort((left, right) => left.season - right.season)) {
-      if (entry.season >= state.season || seenSeasons.has(entry.season)) {
-        continue;
-      }
-
-      const standing = entry.standings.find((candidate) => candidate.teamId === teamId);
-      if (!standing) {
-        continue;
-      }
-
-      seenSeasons.add(entry.season);
-      priorSeasons.push({
-        season: entry.season,
-        divisionRank: standing.divisionRank,
-        wins: standing.wins,
-        losses: standing.losses,
-      });
-    }
-
-    for (const entry of [...state.archivedSeasons].sort((left, right) => left.season - right.season)) {
-      if (entry.season >= state.season || seenSeasons.has(entry.season)) {
-        continue;
-      }
-
-      const standing = entry.standings.find((candidate) => candidate.teamId === teamId);
-      if (!standing) {
-        continue;
-      }
-
-      seenSeasons.add(entry.season);
-      priorSeasons.push({
-        season: entry.season,
-        divisionRank: standing.divisionRank,
-        wins: standing.wins,
-        losses: standing.losses,
-      });
-    }
-
-    return priorSeasons
-      .sort((left, right) => left.season - right.season)
-      .slice(-3);
-  };
-
-  const standings = state.seasonState.standings.getLeagueStandings();
-  const champion = state.playoffBracket?.champion ?? null;
-  const playoffTeamIds = new Set(state.playoffBracket?.seeds.map((seed) => seed.teamId) ?? []);
-
-  const summaries: TeamSeasonSummary[] = standings.map((entry) => ({
-    teamId: entry.teamId,
-    wins: entry.wins,
-    losses: entry.losses,
-    madePlayoffs: playoffTeamIds.has(entry.teamId),
-    isChampion: champion === entry.teamId,
-    divisionRank: divisionRankByTeamId.get(entry.teamId),
-    priorSeasonsSummary: buildPriorSeasonsSummary(entry.teamId),
-  }));
   const fullStandings = state.seasonState.standings.getFullStandings();
+  const summaries = buildCurrentTeamSummaries(
+    state,
+    new Set(state.playoffBracket?.seeds.map((seed) => seed.teamId) ?? []),
+    state.playoffBracket?.champion ?? null,
+  );
   const playerTeamById = new Map(state.players.map((player) => [player.id, player.teamId] as const));
   const playerMomentCountsByTeamId = new Map<string, number>();
   for (const [playerId, moments] of state.playerMoments.entries()) {
@@ -542,6 +513,53 @@ function applySeasonIdentityMoments(state: FullGameState) {
   }
 
   addStoryFlag(state, flag);
+}
+
+export function applyRegularSeasonTeamDynastyMarkers(state: FullGameState) {
+  const currentPlayoffTeamIds = resolvePlayoffTeamIds(
+    state.seasonState.standings.getFullStandings(),
+    state.playoffBracket?.seeds.map((seed) => seed.teamId),
+  );
+  const summaries = buildCurrentTeamSummaries(state, currentPlayoffTeamIds, null)
+    .sort((left, right) => left.teamId.localeCompare(right.teamId));
+  const context = buildDynastyMarkerContext(state, summaries);
+
+  for (const summary of summaries) {
+    const detected = detectEraEndingCollapse(summary, context);
+    if (detected) {
+      appendTeamMoments(state, detected.teamId, [detected.moment]);
+    }
+  }
+}
+
+export function applySeasonEndTeamDynastyMarkers(state: FullGameState) {
+  const currentPlayoffTeamIds = resolvePlayoffTeamIds(
+    state.seasonState.standings.getFullStandings(),
+    state.playoffBracket?.seeds.map((seed) => seed.teamId),
+  );
+  const summaries = buildCurrentTeamSummaries(
+    state,
+    currentPlayoffTeamIds,
+    state.playoffBracket?.champion ?? null,
+  ).sort((left, right) => left.teamId.localeCompare(right.teamId));
+  const context = buildDynastyMarkerContext(state, summaries);
+
+  for (const summary of summaries) {
+    const detected = [
+      detectThreePeat(summary, context),
+      detectPerennialContender(summary, context, currentPlayoffTeamIds),
+    ].filter((entry): entry is NonNullable<typeof entry> => entry != null);
+
+    if (detected.length === 0) {
+      continue;
+    }
+
+    appendTeamMoments(
+      state,
+      summary.teamId,
+      detected.map((entry) => entry.moment),
+    );
+  }
 }
 
 export function applySeasonEndPlayerArcMoments(state: FullGameState) {

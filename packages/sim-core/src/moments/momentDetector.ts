@@ -67,16 +67,19 @@ export type MomentType =
   | 'championship_run'
   | 'contention_collapse'
   | 'first_dynasty_peak'
+  | 'three_peat'
   | 'losing_season_streak'
   | 'rebuild_begun'
   | 'breakout_season'
   | 'contention_window_opens'
+  | 'era_ending_collapse'
   | 'fire_sale'
   | 'dynasty_end'
   | 'cursed_franchise'
   | 'veteran_core_retires'
   | 'playoff_gauntlet'
   | 'rivalry_renewed'
+  | 'perennial_contender'
   | 'comeback_player'
   | 'rookie_sensation'
   | 'september_heroics'
@@ -184,6 +187,9 @@ export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'redemption_arc',
   'late_career_peak',
   'rookie_breakout',
+  'three_peat',
+  'era_ending_collapse',
+  'perennial_contender',
 ];
 
 export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -337,6 +343,15 @@ export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]>
   ],
   rookie_breakout: [
     '{player} closed a first MLB season with a real breakout stamp on it.',
+  ],
+  three_peat: [
+    '{player} helped seal a third straight title and put a dynasty label on the run.',
+  ],
+  era_ending_collapse: [
+    '{player} watched a recent playoff club drop into a losing season all at once.',
+  ],
+  perennial_contender: [
+    '{player} helped keep a five-year playoff streak alive and turn contention into habit.',
   ],
 };
 
