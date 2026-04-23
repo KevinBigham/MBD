@@ -1,4 +1,10 @@
 import { GameRNG } from '../math/prng.js';
+import type { Rivalry } from '@mbd/contracts';
+import {
+  computeRivalryIntensityScore,
+  RIVALRY_HIGH_LEVERAGE_MIN_SCORE,
+} from '../league/rivalries.js';
+import { getTeamById } from '../league/teams.js';
 
 export const PRESS_CONFERENCE_RESPONSE_TONES = [
   'confident',
@@ -113,6 +119,32 @@ export interface PressConferenceOutcome {
   followUpTopic: PressConferenceTopic | null;
 }
 
+export const RIVALRY_PRESS_TOPIC_IDS = [
+  'rival_trade_aftermath',
+  'rival_playoff_meeting',
+  'rival_clinch_against',
+] as const;
+
+export type RivalryPressTopicId = (typeof RIVALRY_PRESS_TOPIC_IDS)[number];
+
+export interface RivalryPressTopicContext {
+  readonly rivalry: Rivalry | null;
+  readonly season: number;
+  readonly day: number;
+  readonly teamId: string;
+  readonly opponentTeamId: string;
+  readonly topicId: RivalryPressTopicId;
+  readonly currentSeasonTeamMomentCount?: number;
+  readonly currentSeasonPlayerMomentCount?: number;
+}
+
+export interface RivalryPressTopicCopy {
+  readonly topicId: RivalryPressTopicId;
+  readonly headline: string;
+  readonly body: string;
+  readonly intensityScore: number;
+}
+
 interface ResponseTemplateDefinition {
   label: string;
   quoteOptions: readonly string[];
@@ -166,6 +198,55 @@ const TOPIC_ID_BY_CATEGORY: Record<PressConferenceTopicCategory, string> = {
 
 const ROLE_COMPETITION_WEIGHT = 3;
 
+interface RivalryPressRenderContext {
+  readonly topicId: RivalryPressTopicId;
+  readonly teamLabel: string;
+  readonly opponentLabel: string;
+  readonly pairLabel: string;
+}
+
+const RIVALRY_PRESS_HEADLINE_VARIANTS: Record<
+  RivalryPressTopicId,
+  readonly Array<(context: RivalryPressRenderContext) => string>
+> = {
+  rival_trade_aftermath: [
+    ({ teamLabel, opponentLabel }) => `${teamLabel} is still answering for the deal with ${opponentLabel}.`,
+    ({ pairLabel }) => `${pairLabel} trade fallout is back in front of the microphones.`,
+    ({ opponentLabel }) => `Another ${opponentLabel} question lands because the trade still carries weight.`,
+  ],
+  rival_playoff_meeting: [
+    ({ pairLabel }) => `${pairLabel} is running back onto an October stage.`,
+    ({ teamLabel, opponentLabel }) => `${teamLabel} and ${opponentLabel} are staring at another playoff collision.`,
+    ({ opponentLabel }) => `The playoff bracket just dropped ${opponentLabel} back into the room.`,
+  ],
+  rival_clinch_against: [
+    ({ opponentLabel }) => `${opponentLabel} is back in the frame for a clinch that would sting.`,
+    ({ pairLabel }) => `${pairLabel} could decide who gets to celebrate in the rival's face.`,
+    ({ teamLabel, opponentLabel }) => `${teamLabel} is being asked what it would mean to clinch through ${opponentLabel}.`,
+  ],
+};
+
+const RIVALRY_PRESS_BODY_VARIANTS: Record<
+  RivalryPressTopicId,
+  readonly Array<(context: RivalryPressRenderContext) => string>
+> = {
+  rival_trade_aftermath: [
+    ({ teamLabel, opponentLabel }) => `The trade has not cooled off. ${teamLabel} is still being pressed on what it cost to move talent across a live rivalry line with ${opponentLabel}.`,
+    ({ pairLabel }) => `${pairLabel} still carries deal-driven resentment, and the room wants to know whether the front office would do it again.`,
+    ({ teamLabel, opponentLabel }) => `Every rival meeting reopens the trade file. ${teamLabel} keeps hearing about the price of helping ${opponentLabel}.`,
+  ],
+  rival_playoff_meeting: [
+    ({ teamLabel, opponentLabel }) => `The rivalry is not abstract anymore. ${teamLabel} has to answer for another playoff series against ${opponentLabel}, with every old grievance back on the table.`,
+    ({ pairLabel }) => `${pairLabel} has enough carryover heat that a routine playoff availability instantly turns into a rivalry briefing.`,
+    ({ opponentLabel }) => `The room treats this like unfinished business. Another playoff draw against ${opponentLabel} means every prior chapter gets reopened.`,
+  ],
+  rival_clinch_against: [
+    ({ teamLabel, opponentLabel }) => `${teamLabel} is being asked about the chance to clinch against ${opponentLabel}, because a clean celebration would land like a statement inside the rivalry.`,
+    ({ pairLabel }) => `${pairLabel} has drifted into a clinch scenario, and the questions now center on what it would mean to slam the door on a rival.`,
+    ({ opponentLabel }) => `Even a standard clinch question sounds sharper when ${opponentLabel} is the club standing on the other side of it.`,
+  ],
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -210,6 +291,61 @@ function hashString(value: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return Math.max(1, hash >>> 0);
+}
+
+function stableRivalryPressVariant<T>(
+  variants: readonly T[],
+  context: RivalryPressTopicContext,
+  slot: 'headline' | 'body',
+): T {
+  const variantIndex = hashString(
+    `${context.rivalry?.id ?? 'none'}:${context.season}:${context.day}:${context.topicId}:${slot}`,
+  ) % variants.length;
+  return variants[variantIndex]!;
+}
+
+function teamPressLabel(teamId: string): string {
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
+export function getRivalryPressTopic(
+  context: RivalryPressTopicContext,
+): RivalryPressTopicCopy | null {
+  if (!context.rivalry) {
+    return null;
+  }
+
+  const intensityScore = computeRivalryIntensityScore({
+    rivalry: context.rivalry,
+    currentSeasonTeamMomentCount: context.currentSeasonTeamMomentCount,
+    currentSeasonPlayerMomentCount: context.currentSeasonPlayerMomentCount,
+  });
+  if (intensityScore < RIVALRY_HIGH_LEVERAGE_MIN_SCORE) {
+    return null;
+  }
+
+  const renderContext: RivalryPressRenderContext = {
+    topicId: context.topicId,
+    teamLabel: teamPressLabel(context.teamId),
+    opponentLabel: teamPressLabel(context.opponentTeamId),
+    pairLabel: `${getTeamById(context.rivalry.teamA)?.abbreviation ?? context.rivalry.teamA.toUpperCase()}-${getTeamById(context.rivalry.teamB)?.abbreviation ?? context.rivalry.teamB.toUpperCase()}`,
+  };
+
+  return {
+    topicId: context.topicId,
+    headline: stableRivalryPressVariant(
+      RIVALRY_PRESS_HEADLINE_VARIANTS[context.topicId],
+      context,
+      'headline',
+    )(renderContext),
+    body: stableRivalryPressVariant(
+      RIVALRY_PRESS_BODY_VARIANTS[context.topicId],
+      context,
+      'body',
+    )(renderContext),
+    intensityScore,
+  };
 }
 
 function ownerToneLead(ownerTone: PressConferenceTopicContext['ownerTone']): string {

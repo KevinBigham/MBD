@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Rivalry } from '@mbd/contracts';
 import {
   GameRNG,
   evaluatePressConferenceResponse,
@@ -8,6 +9,10 @@ import {
   type PressConferenceTopicCategory,
   type PressConferenceTopicContext,
 } from '../src/index.js';
+import {
+  getRivalryPressTopic,
+  type RivalryPressTopicId,
+} from '../src/narrative/pressConferences.js';
 
 function makeContext(
   overrides: Partial<PressConferenceTopicContext> = {},
@@ -113,6 +118,27 @@ const ALL_CATEGORIES: PressConferenceTopicCategory[] = [
   'CONTROVERSY',
 ];
 
+function heatedRivalry(): Rivalry {
+  return {
+    id: 'bos:nym',
+    teamA: 'nym',
+    teamB: 'bos',
+    intensity: 84,
+    summary: 'The race keeps forcing both clubs into the same spotlight.',
+    reasons: ['Standings pressure', 'October carryover'],
+    origin: 'historical',
+    active: true,
+    currentSeasonWinsA: 6,
+    currentSeasonWinsB: 5,
+    closeRaceStreak: 2,
+    playoffSeriesStreak: 2,
+    eventHistory: [
+      { season: 6, type: 'playoff', summary: 'October put the feud back on the front page.' },
+      { season: 7, type: 'division_race', summary: 'The division stayed live into September again.' },
+    ],
+  };
+}
+
 describe('enhanced press conferences', () => {
   it.each(ALL_CATEGORIES.map((category) => [category]))('selects %s when its trigger context is present', (category) => {
     const topic = selectPressConferenceTopic(new GameRNG(17), contextForCategory(category));
@@ -182,5 +208,74 @@ describe('enhanced press conferences', () => {
     expect(outcome.moraleDelta).toBe(measuredResponse?.moraleDelta);
     expect(outcome.ownerDelta).toBe(measuredResponse?.ownerDelta);
     expect(outcome.fanSentimentDelta).toBe(measuredResponse?.fanSentimentDelta);
+  });
+
+  it.each([
+    'rival_trade_aftermath',
+    'rival_playoff_meeting',
+    'rival_clinch_against',
+  ] satisfies RivalryPressTopicId[])('builds deterministic rivalry press copy for %s', (topicId) => {
+    const first = getRivalryPressTopic({
+      rivalry: heatedRivalry(),
+      season: 7,
+      day: 154,
+      teamId: 'nym',
+      opponentTeamId: 'bos',
+      topicId,
+    });
+    const second = getRivalryPressTopic({
+      rivalry: heatedRivalry(),
+      season: 7,
+      day: 154,
+      teamId: 'nym',
+      opponentTeamId: 'bos',
+      topicId,
+    });
+
+    expect(first).not.toBeNull();
+    expect(second).toEqual(first);
+  });
+
+  it('keeps rivalry press topics independent across topic ids', () => {
+    const trade = getRivalryPressTopic({
+      rivalry: heatedRivalry(),
+      season: 7,
+      day: 154,
+      teamId: 'nym',
+      opponentTeamId: 'bos',
+      topicId: 'rival_trade_aftermath',
+    });
+    const playoff = getRivalryPressTopic({
+      rivalry: heatedRivalry(),
+      season: 7,
+      day: 154,
+      teamId: 'nym',
+      opponentTeamId: 'bos',
+      topicId: 'rival_playoff_meeting',
+    });
+
+    expect(trade).not.toBeNull();
+    expect(playoff).not.toBeNull();
+    expect(trade?.headline).not.toBe(playoff?.headline);
+    expect(trade?.body).not.toBe(playoff?.body);
+  });
+
+  it('falls back when the rivalry score is not hot enough for the press room', () => {
+    expect(getRivalryPressTopic({
+      rivalry: {
+        ...heatedRivalry(),
+        intensity: 28,
+        currentSeasonWinsA: 1,
+        currentSeasonWinsB: 0,
+        closeRaceStreak: 0,
+        playoffSeriesStreak: 0,
+        eventHistory: [],
+      },
+      season: 7,
+      day: 154,
+      teamId: 'nym',
+      opponentTeamId: 'bos',
+      topicId: 'rival_trade_aftermath',
+    })).toBeNull();
   });
 });
