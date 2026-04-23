@@ -29,6 +29,8 @@ import { processTradeMarketActivity } from './sim.worker.trade';
 import { refreshTickerFeed } from './sim.worker.ticker';
 import {
   applyOffseasonNarrativeHooks,
+  applyRegularSeasonTeamDynastyMarkers,
+  applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
 } from './sim.worker.narrativeFarm';
 import {
@@ -4633,6 +4635,185 @@ describe('sim worker narrative APIs', () => {
     expect(state.playerMoments.get(rookie.id)?.filter((moment) => moment.type === 'rookie_breakout')).toHaveLength(1);
     expect(state.playerMoments.get(redemption.id)?.some((moment) => moment.type === 'redemption_arc')).toBe(true);
     expect(state.playerMoments.get(veteran.id)?.some((moment) => moment.type === 'late_career_peak')).toBe(true);
+  });
+
+  it('appends dynasty-marker team moments across regular-season and season-end passes without duplicates', () => {
+    startGame(1606, 'nym');
+    const state = requireState();
+    state.season = 5;
+    state.day = 182;
+    state.teamMoments.set('nym', []);
+    state.teamMoments.set('bos', []);
+    state.seasonHistory = [
+      {
+        season: 3,
+        championTeamId: 'nym',
+        runnerUpTeamId: 'hou',
+        worldSeriesRecord: '4-2',
+        summary: 'New York finished on top.',
+        awards: [],
+        keyMoments: [],
+        statLeaders: { hr: [], rbi: [], avg: [], era: [], k: [], w: [] },
+        notableRetirements: [],
+        blockbusterTrades: [],
+        userSeason: null,
+      },
+      {
+        season: 4,
+        championTeamId: 'nym',
+        runnerUpTeamId: 'bos',
+        worldSeriesRecord: '4-3',
+        summary: 'New York repeated.',
+        awards: [],
+        keyMoments: [],
+        statLeaders: { hr: [], rbi: [], avg: [], era: [], k: [], w: [] },
+        notableRetirements: [],
+        blockbusterTrades: [],
+        userSeason: null,
+      },
+    ];
+    state.playoffSeriesHistory = [
+      {
+        season: 1,
+        round: 'DIVISION_SERIES',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'tor',
+        bestOf: 5,
+        deficitReached: null,
+        deficitTeamId: null,
+        winnerTeamId: 'nym',
+      },
+      {
+        season: 2,
+        round: 'DIVISION_SERIES',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'bal',
+        bestOf: 5,
+        deficitReached: null,
+        deficitTeamId: null,
+        winnerTeamId: 'bal',
+      },
+      {
+        season: 3,
+        round: 'DIVISION_SERIES',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'hou',
+        bestOf: 5,
+        deficitReached: null,
+        deficitTeamId: null,
+        winnerTeamId: 'nym',
+      },
+      {
+        season: 4,
+        round: 'DIVISION_SERIES',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'bos',
+        bestOf: 5,
+        deficitReached: null,
+        deficitTeamId: null,
+        winnerTeamId: 'nym',
+      },
+    ];
+    state.seasonArchive = [{
+      season: 4,
+      standings: [
+        { teamId: 'bos', wins: 92, losses: 70, gamesBack: 6, divisionRank: 2 },
+        { teamId: 'nym', wins: 98, losses: 64, gamesBack: 0, divisionRank: 1 },
+      ],
+      playoffSeries: [],
+      awards: [],
+      statLeaders: { hr: [], rbi: [], avg: [], era: [], k: [], w: [] },
+      transactions: [],
+      draftClass: [],
+      financials: [],
+      userSummary: null,
+      timelineEvents: [],
+    }];
+    state.archivedSeasons = [];
+    state.seasonState = {
+      ...state.seasonState,
+      standings: {
+        getLeagueStandings: () => [
+          {
+            teamId: 'nym',
+            wins: 99,
+            losses: 63,
+            pct: 0.611,
+            gamesBack: 0,
+            runsScored: 810,
+            runsAllowed: 640,
+            runDifferential: 170,
+            streak: 'W3',
+            last10Wins: 7,
+            last10Losses: 3,
+          },
+          {
+            teamId: 'bos',
+            wins: 79,
+            losses: 83,
+            pct: 0.488,
+            gamesBack: 13,
+            runsScored: 690,
+            runsAllowed: 740,
+            runDifferential: -50,
+            streak: 'L2',
+            last10Wins: 4,
+            last10Losses: 6,
+          },
+        ],
+        getFullStandings: () => ({
+          'AL East': [
+            {
+              teamId: 'nym',
+              wins: 99,
+              losses: 63,
+              pct: 0.611,
+              gamesBack: 0,
+              runsScored: 810,
+              runsAllowed: 640,
+              runDifferential: 170,
+              streak: 'W3',
+              last10Wins: 7,
+              last10Losses: 3,
+            },
+            {
+              teamId: 'bos',
+              wins: 79,
+              losses: 83,
+              pct: 0.488,
+              gamesBack: 20,
+              runsScored: 690,
+              runsAllowed: 740,
+              runDifferential: -50,
+              streak: 'L2',
+              last10Wins: 4,
+              last10Losses: 6,
+            },
+          ],
+        }),
+      } as unknown as typeof state.seasonState.standings,
+    };
+    state.playoffBracket = {
+      seeds: [
+        { teamId: 'nym', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+        { teamId: 'hou', seed: 2, wins: 95, losses: 67, league: 'AL', divisionWinner: true },
+      ],
+      currentRound: 'WORLD_SERIES',
+      currentRoundSeries: [],
+      completedRounds: [],
+      series: [],
+      champion: 'nym',
+      runnerUp: 'hou',
+    };
+
+    applyRegularSeasonTeamDynastyMarkers(state);
+    applyRegularSeasonTeamDynastyMarkers(state);
+    applySeasonEndTeamDynastyMarkers(state);
+    applySeasonEndTeamDynastyMarkers(state);
+
+    expect(state.teamMoments.get('bos')?.filter((moment) => moment.type === 'era_ending_collapse')).toHaveLength(1);
+    expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'three_peat')).toHaveLength(1);
+    expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'perennial_contender')).toHaveLength(1);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {
