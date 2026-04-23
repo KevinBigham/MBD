@@ -200,9 +200,12 @@ describe('story arcs', () => {
     expect(result.updatedArcs[2]?.resolvedSeason).toBe(6);
     expect(result.newsItems).toHaveLength(3);
     expect(result.tickerEntries).toHaveLength(3);
-    expect(result.tickerEntries.some((entry) => entry.text.includes('gaining momentum'))).toBe(true);
-    expect(result.tickerEntries.some((entry) => entry.text.includes('reaches a crescendo'))).toBe(true);
-    expect(result.tickerEntries.some((entry) => entry.text.includes('concludes with a defining turn'))).toBe(true);
+    expect(result.newsItems[0]?.headline).toBe(result.tickerEntries[0]?.text);
+    expect(result.updatedArcs[0]?.milestones.at(-1)).toBe(result.tickerEntries[0]?.text);
+    expect(result.newsItems[1]?.headline).toBe(result.tickerEntries[1]?.text);
+    expect(result.updatedArcs[1]?.milestones.at(-1)).toBe(result.tickerEntries[1]?.text);
+    expect(result.newsItems[2]?.headline).toBe(result.tickerEntries[2]?.text);
+    expect(result.updatedArcs[2]?.milestones.at(-1)).toBe(result.tickerEntries[2]?.text);
   });
 
   it('is deterministic with the same seeded input', () => {
@@ -251,5 +254,59 @@ describe('story arcs', () => {
 
     expect(forward.map((arc) => arc.playerId)).toEqual(['player-a', 'player-b']);
     expect(reversed.map((arc) => arc.playerId)).toEqual(['player-a', 'player-b']);
+  });
+
+  it('offers broader deterministic prose across arc phases', () => {
+    const buildArcText = (
+      phase: PlayerStoryArc['phase'],
+      day: number,
+      arcType: PlayerStoryArc['arcType'],
+    ) => {
+      const player = makePlayer(71, {
+        id: 'story-player',
+        firstName: 'Miles',
+        lastName: 'Mercer',
+        age: 27,
+        serviceTimeDays: 400,
+        overallRating: 340,
+      }, 'RF', 'nym', 'MLB');
+      const result = advanceStoryArcs(new GameRNG(77), buildSnapshot({
+        day,
+        players: [player],
+        seasonStats: new Map([[player.id, { pa: 180, ab: 150, hits: 55, hr: 24, rbi: 80 }]]),
+        playerStoryArcs: [{
+          playerId: player.id,
+          arcType,
+          startSeason: 6,
+          startDay: 60,
+          phase,
+          milestones: [],
+          resolvedSeason: null,
+        }],
+      }));
+
+      return result.tickerEntries[0]?.text ?? '';
+    };
+
+    expect(buildArcText('setup', 150, 'rookie_sensation'))
+      .toBe(buildArcText('setup', 150, 'rookie_sensation'));
+    expect(buildArcText('rising', 150, 'breakout_campaign'))
+      .toBe(buildArcText('rising', 150, 'breakout_campaign'));
+    expect(buildArcText('climax', 150, 'prospect_rise'))
+      .toBe(buildArcText('climax', 150, 'prospect_rise'));
+
+    const risingTexts = new Set([0, 1, 2, 3, 4, 5].map((index) =>
+      buildArcText('setup', 150 + index, 'rookie_sensation'),
+    ));
+    const climaxTexts = new Set([0, 1, 2, 3, 4, 5].map((index) =>
+      buildArcText('rising', 150 + index, 'breakout_campaign'),
+    ));
+    const resolutionTexts = new Set([0, 1, 2, 3, 4, 5].map((index) =>
+      buildArcText('climax', 150 + index, 'prospect_rise'),
+    ));
+
+    expect(risingTexts.size).toBeGreaterThanOrEqual(3);
+    expect(climaxTexts.size).toBeGreaterThanOrEqual(3);
+    expect(resolutionTexts.size).toBeGreaterThanOrEqual(3);
   });
 });

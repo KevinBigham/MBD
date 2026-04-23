@@ -145,6 +145,29 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function pickStableVariant(scope: string, variants: readonly string[]): string {
+  if (variants.length === 0) {
+    return '';
+  }
+  return variants[hashString(scope) % variants.length] ?? variants[0] ?? '';
+}
+
+function pickStableVariantByValue(value: number, variants: readonly string[]): string {
+  if (variants.length === 0) {
+    return '';
+  }
+  return variants[Math.abs(value) % variants.length] ?? variants[0] ?? '';
+}
+
 function compareSeasonDay(
   leftSeason: number,
   leftDay: number,
@@ -229,35 +252,66 @@ function buildMoraleDelta(
 }
 
 function postseasonSummary(
-  outcome: UserPostseasonOutcome,
-  championTeamId: string | null,
+  context: Pick<PostseasonConsequenceContext, 'season' | 'userTeamId' | 'userOutcome'> & {
+    championTeamId: string | null;
+  },
 ): { text: string; moraleImpact: number; ownerDelta: number; storyFlags: string[] } {
-  switch (outcome) {
+  const championName = teamLabel(context.championTeamId ?? '');
+  const scopeValue =
+    (context.season * 17)
+    + hashString(context.userTeamId)
+    + hashString(context.userOutcome)
+    + hashString(context.championTeamId ?? 'none');
+
+  switch (context.userOutcome) {
     case 'champion':
       return {
-        text: `${teamLabel(championTeamId ?? '')} finished the story on top.`,
+        text: pickStableVariantByValue(scopeValue, [
+          `${championName} finished on top.`,
+          `${championName} closed October with the last word.`,
+        ]),
         moraleImpact: 8,
         ownerDelta: 15,
         storyFlags: ['championship_window'],
       };
     case 'world_series_loss':
       return {
-        text: 'The club fell in the final round but still pushed the window open.',
+        text: pickStableVariantByValue(scopeValue, [
+          'The club fell in the final round but kept the window open.',
+          'One series short of a title still left the window alive.',
+        ]),
         moraleImpact: 5,
         ownerDelta: 9,
         storyFlags: ['deep_october_run'],
       };
     case 'championship_series_loss':
       return {
-        text: 'A deep October push ended short of the final series.',
+        text: pickStableVariantByValue(scopeValue, [
+          'A deep October push ended short of the final series.',
+          'The pennant push ended, but it widened the window.',
+        ]),
         moraleImpact: 3,
         ownerDelta: 6,
         storyFlags: ['deep_october_run'],
       };
     case 'division_series_loss':
+      return {
+        text: pickStableVariantByValue(scopeValue, [
+          'The division round ended fast and left a thicker October file.',
+          'A sharp division-series exit made the roster feel close, not complete.',
+          'Getting through the door only sharpened how much more the roster still needs.',
+        ]),
+        moraleImpact: -4,
+        ownerDelta: 3,
+        storyFlags: ['postseason_sting'],
+      };
     case 'wild_card_loss':
       return {
-        text: 'The playoff exit landed early and left unfinished business.',
+        text: pickStableVariantByValue(scopeValue, [
+          'The playoff exit landed early and left unfinished business.',
+          'The wild-card round ended before the club could settle in.',
+          'The first postseason hurdle stopped the run and sharpened the offseason.',
+        ]),
         moraleImpact: -4,
         ownerDelta: 3,
         storyFlags: ['postseason_sting'],
@@ -269,6 +323,49 @@ function postseasonSummary(
         ownerDelta: 0,
         storyFlags: [],
       };
+  }
+}
+
+function postseasonBriefingHeadline(
+  context: Pick<PostseasonConsequenceContext, 'season' | 'userTeamId' | 'userOutcome'> & {
+    championTeamId: string | null;
+  },
+): string {
+  const scopeValue =
+    (context.season * 11)
+    + hashString(context.userTeamId)
+    + hashString(context.userOutcome)
+    + hashString(context.championTeamId ?? 'none');
+
+  switch (context.userOutcome) {
+    case 'champion':
+      return pickStableVariantByValue(scopeValue, [
+        `Season ${context.season} title ledger`,
+        `Season ${context.season} under title banners`,
+      ]);
+    case 'world_series_loss':
+      return pickStableVariantByValue(scopeValue, [
+        `Season ${context.season} one series short`,
+        `Season ${context.season} final-round bruise`,
+      ]);
+    case 'championship_series_loss':
+      return pickStableVariantByValue(scopeValue, [
+        `Season ${context.season} pennant-race scar`,
+        `Season ${context.season} late-October weight`,
+      ]);
+    case 'division_series_loss':
+      return pickStableVariantByValue(scopeValue, [
+        `Season ${context.season} October to-do list`,
+        `Season ${context.season} second-round fallout`,
+      ]);
+    case 'wild_card_loss':
+      return pickStableVariantByValue(scopeValue, [
+        `Season ${context.season} early October bruise`,
+        `Season ${context.season} wild-card fallout`,
+        `Season ${context.season} before rhythm`,
+      ]);
+    default:
+      return `Season ${context.season} postseason summary`;
   }
 }
 
@@ -421,7 +518,12 @@ export function buildSigningConsequenceBundle(
 export function buildPostseasonConsequenceBundle(
   context: PostseasonConsequenceContext,
 ): ConsequenceBundle {
-  const summary = postseasonSummary(context.userOutcome, context.playoffBracket.champion);
+  const summary = postseasonSummary({
+    season: context.season,
+    userTeamId: context.userTeamId,
+    userOutcome: context.userOutcome,
+    championTeamId: context.playoffBracket.champion,
+  });
   const championshipNews = context.playoffBracket.champion
     ? generateNews(
         context.rng.fork(),
@@ -456,7 +558,12 @@ export function buildPostseasonConsequenceBundle(
           id: `brief-postseason-${context.season}`,
           priority: 1,
           category: 'news',
-          headline: `Season ${context.season} postseason summary`,
+          headline: postseasonBriefingHeadline({
+            season: context.season,
+            userTeamId: context.userTeamId,
+            userOutcome: context.userOutcome,
+            championTeamId: context.playoffBracket.champion,
+          }),
           body: summary.text,
           relatedTeamIds: [context.userTeamId],
           relatedPlayerIds: [],

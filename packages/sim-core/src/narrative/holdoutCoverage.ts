@@ -51,35 +51,47 @@ interface HoldoutResolutionVariant {
 const HOLDOUT_RESOLUTION_VARIANTS: readonly HoldoutResolutionVariant[] = [
   {
     headline: ({ name, days, teamName }) => `${name} closes a ${days}-day holdout with ${teamName}`,
-    body: ({ name, gap, tone, severity }) => `${name} said the ${gap} gap is finally closed after a ${severity} standoff. The reunion read ${tone}, and the player framed the return as a chance to get the season moving again.`,
+    body: ({ name, gap, tone, severity }) => `${name} said the ${gap} gap is closed after a ${severity} standoff. The return sounded ${tone}, and the player called it a chance to move on.`,
   },
   {
     headline: ({ name, teamName, days }) => `${teamName} finally get ${name} back after a ${days}-day holdout`,
-    body: ({ name, gap, days, attendanceTag, tone }) => `${name} ended the dispute after ${days} days away. The ${gap} disagreement is off the board, ${attendanceTag}, and the tone around the report date felt ${tone}.`,
+    body: ({ name, gap, days, attendanceTag, tone }) => `${name} ended the dispute after ${days} days away. The ${gap} disagreement is off the board, ${attendanceTag}, and the room felt ${tone}.`,
   },
   {
     headline: ({ teamName, name, days }) => `${teamName} settle a ${days}-day holdout and bring ${name} back`,
-    body: ({ teamName, gap, days, tone }) => `${teamName} sold the settlement as a clubhouse reset. The ${gap} dispute lasted ${days} days, and team officials described the room as ${tone} once the paperwork was done.`,
+    body: ({ teamName, gap, days, tone }) => `${teamName} sold the settlement as a clubhouse reset. The ${gap} dispute lasted ${days} days, and officials called the room ${tone}.`,
   },
   {
-    headline: ({ teamName, days }) => `${teamName} move past a ${days}-day holdout fight`,
-    body: ({ name, gap, tone, resetVerb }) => `From the club perspective, the settlement is about ${resetVerb} structure. ${name} signed off on a deal that erased a ${gap} split, even if the reunion still sounded ${tone}.`,
+    headline: ({ teamName, name, days }) => `${teamName} move past a ${days}-day holdout with ${name}`,
+    body: ({ name, gap, tone, resetVerb }) => `From the club side, the settlement is about ${resetVerb} order. ${name} signed off on a deal that erased a ${gap} split, even if the reunion stayed ${tone}.`,
   },
   {
-    headline: ({ name, teamName, days }) => `Beat writers can finally retire the ${name}-${teamName} ${days}-day holdout file`,
-    body: ({ days, gap, tone, severity }) => `On the beat, this resolution lands as a ${severity} correction: ${days} days of leverage, a ${gap} public divide, and a handshake that looked more ${tone} than celebratory.`,
+    headline: ({ name, teamName, days }) => `Beat writers can finally retire the ${teamName} ${days}-day holdout around ${name}`,
+    body: ({ days, gap, tone, severity }) => `On the beat, this lands as a ${severity} correction: ${days} days of leverage, a ${gap} divide, and a handshake that looked more ${tone} than celebratory.`,
   },
   {
     headline: ({ teamName, name, days }) => `${teamName} close the book on the ${name} ${days}-day holdout saga`,
-    body: ({ days, gap, tone, attendanceTag }) => `The daily briefing no longer revolves around the ${gap} salary gap. After ${days} days of stalemate, ${attendanceTag}, and the room sounds ${tone} instead of exhausted.`,
+    body: ({ days, gap, tone, attendanceTag }) => `The daily briefing no longer revolves around the ${gap} gap. After ${days} days of stalemate, ${attendanceTag}, and the room sounds ${tone}.`,
   },
   {
-    headline: ({ name, days }) => `Fans finally get ${name} back after the ${days}-day holdout thaw`,
-    body: ({ name, teamName, days, gap, tone }) => `For fans, the math is simple: ${teamName} are done burning days over a ${gap} dispute. ${name} is back after ${days} days, even if the vibe around the return stays ${tone}.`,
+    headline: ({ name, teamName, days }) => `Fans finally get ${name} back for ${teamName} after the ${days}-day holdout thaw`,
+    body: ({ name, teamName, days, gap, tone }) => `For fans, the math is simple: ${teamName} are done burning days over a ${gap} dispute. ${name} is back after ${days} days, even if the vibe stays ${tone}.`,
   },
   {
     headline: ({ teamName, days }) => `${teamName} get the resolution they wanted after a ${days}-day holdout`,
-    body: ({ name, days, severity, tone }) => `${name} returned after a ${severity} absence that dragged on for ${days} days. The settlement does not erase the memory of the standoff, but it does let a ${tone} clubhouse move forward.`,
+    body: ({ name, days, severity, tone }) => `${name} returned after a ${severity} absence that dragged on for ${days} days. The settlement does not erase the standoff, but it lets a ${tone} clubhouse move forward.`,
+  },
+  {
+    headline: ({ teamName, name, days }) => `${teamName} and ${name} meet in the middle after a ${days}-day holdout`,
+    body: ({ gap, days, tone, attendanceTag }) => `The breakthrough came after a ${gap} divide lingered for ${days} days. ${attendanceTag}, and the first reactions stayed ${tone}.`,
+  },
+  {
+    headline: ({ teamName, name, days }) => `${teamName} reopen the room for ${name} after a ${days}-day holdout`,
+    body: ({ name, gap, tone, resetVerb }) => `${name} described the settlement as a chance to start ${resetVerb} trust after a ${gap} dispute. Around the club, the return felt ${tone}.`,
+  },
+  {
+    headline: ({ name, teamName, days }) => `${name} returns to ${teamName} after a ${days}-day holdout reset`,
+    body: ({ teamName, gap, days, severity, tone }) => `${teamName} stopped losing calendar to a ${gap} split that stretched ${days} days. Even after a ${severity} fight, the reset sounded ${tone}.`,
   },
 ] as const;
 
@@ -130,20 +142,20 @@ function pickVariantIndex(
   if (count <= 1) {
     return 0;
   }
-  if (context.rng) {
-    return context.rng.nextInt(0, count - 1);
-  }
-
-  const holdout = context.player.holdoutState;
   const stableKey = [
     context.player.id,
     context.season,
     context.day,
     topicId,
-    holdout?.holdoutDays ?? 0,
-    holdout?.salaryGap ?? 0,
+    context.player.holdoutState?.holdoutDays ?? 0,
+    context.player.holdoutState?.salaryGap ?? 0,
     context.moraleScore,
   ].join(':');
+
+  if (context.rng) {
+    return context.rng.nextInt(0, (count * count) - 1) % count;
+  }
+
   return hashString(stableKey) % count;
 }
 

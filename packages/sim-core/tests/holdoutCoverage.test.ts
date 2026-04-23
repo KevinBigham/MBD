@@ -379,7 +379,31 @@ describe('generateHoldoutResolutionBriefing', () => {
     expect(first).toEqual(second);
   });
 
-  it('uses at least four distinct pressure-tier resolution variants across seeds', () => {
+  it('stays deterministic for the same resolution context without an rng override', () => {
+    const context = {
+      player: createPlayer({
+        id: 'holdout-stable-no-rng',
+        holdoutState: {
+          season: 5,
+          teamId: 'bos',
+          salaryGap: 3.0,
+          holdoutDays: 10,
+          moraleHit: 15,
+        },
+      }),
+      season: 6,
+      day: 3,
+      teamName: 'Boston',
+      moraleScore: 55,
+    };
+
+    const first = generateHoldoutResolutionBriefing(context);
+    const second = generateHoldoutResolutionBriefing(context);
+
+    expect(first).toEqual(second);
+  });
+
+  it('uses at least eight distinct pressure-tier resolution variants across seeds', () => {
     const variants = new Set(
       Array.from({ length: 20 }, (_, index) => generateHoldoutResolutionBriefing({
         player: createPlayer({
@@ -401,10 +425,10 @@ describe('generateHoldoutResolutionBriefing', () => {
         .map((briefing) => `${briefing.headline} :: ${briefing.body}`),
     );
 
-    expect(variants.size).toBeGreaterThanOrEqual(4);
+    expect(variants.size).toBeGreaterThanOrEqual(8);
   });
 
-  it('uses at least four distinct crisis-tier resolution variants across seeds', () => {
+  it('uses at least nine distinct crisis-tier resolution variants across seeds', () => {
     const variants = new Set(
       Array.from({ length: 20 }, (_, index) => generateHoldoutResolutionBriefing({
         player: createPlayer({
@@ -426,6 +450,6 @@ describe('generateHoldoutResolutionBriefing', () => {
         .map((briefing) => `${briefing.headline} :: ${briefing.body}`),
     );
 
-    expect(variants.size).toBeGreaterThanOrEqual(4);
+    expect(variants.size).toBeGreaterThanOrEqual(9);
   });
 });

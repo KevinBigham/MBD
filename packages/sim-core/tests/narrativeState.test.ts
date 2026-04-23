@@ -329,6 +329,57 @@ describe('narrative state', () => {
 
     expect(briefing.some((item) => item.category === 'rivalry')).toBe(false);
   });
+
+  it('selects owner briefing headlines deterministically with wider prose coverage', () => {
+    const chemistry: TeamChemistry = {
+      teamId: 'nym',
+      score: 62,
+      tier: 'steady',
+      trend: 'holding',
+      summary: 'The room is stable.',
+      reasons: ['Veteran core'],
+    };
+
+    const buildHeadline = (teamId: string, hotSeat: boolean, summary: string): string =>
+      buildFrontOfficeBriefing({
+        teamId,
+        ownerState: {
+          teamId,
+          archetype: 'win_now',
+          patience: hotSeat ? 38 : 72,
+          confidence: hotSeat ? 41 : 74,
+          hotSeat,
+          summary,
+          expectations: {
+            winsTarget: 90,
+            playoffTarget: true,
+            payrollTarget: 210_000_000,
+          },
+        },
+        chemistry,
+        unreadNewsCount: 0,
+        rivalries: new Map(),
+      })[0]!.headline;
+
+    expect(buildHeadline('nym', true, 'Ownership expected a playoff berth.'))
+      .toBe(buildHeadline('nym', true, 'Ownership expected a playoff berth.'));
+    expect(buildHeadline('nym', false, 'Ownership is aligned with the current direction.'))
+      .toBe(buildHeadline('nym', false, 'Ownership is aligned with the current direction.'));
+
+    const hotSeatHeadlines = new Set(
+      Array.from({ length: 8 }, (_, index) =>
+        buildHeadline(`hot-${index}`, true, `Ownership expected more from stretch ${index}.`),
+      ),
+    );
+    const stableHeadlines = new Set(
+      Array.from({ length: 8 }, (_, index) =>
+        buildHeadline(`steady-${index}`, false, `Ownership likes the long-term footing ${index}.`),
+      ),
+    );
+
+    expect(hotSeatHeadlines.size).toBeGreaterThanOrEqual(3);
+    expect(stableHeadlines.size).toBeGreaterThanOrEqual(3);
+  });
 });
 
 describe('awards and rivalries', () => {

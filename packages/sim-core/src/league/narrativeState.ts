@@ -60,6 +60,29 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function pickStableVariant(scope: string, variants: readonly string[]): string {
+  if (variants.length === 0) {
+    return '';
+  }
+  return variants[hashString(scope) % variants.length] ?? variants[0] ?? '';
+}
+
+function pickStableVariantByValue(value: number, variants: readonly string[]): string {
+  if (variants.length === 0) {
+    return '';
+  }
+  return variants[Math.abs(value) % variants.length] ?? variants[0] ?? '';
+}
+
 function clampBudget(value: number): number {
   return Math.round(Math.max(0, value) * 100) / 100;
 }
@@ -108,6 +131,18 @@ function ownerSummary(owner: Pick<OwnerState, 'satisfaction' | 'hotSeat' | 'winN
   }
   return 'Ownership has lost faith in the current front-office plan after the playoff push collapsed.';
 }
+
+const OWNER_HOT_SEAT_HEADLINES = [
+  'Owner pressure rising.',
+  'Ownership is tightening the timeline.',
+  'Front office feels owner heat.',
+] as const;
+
+const OWNER_STEADY_HEADLINES = [
+  'Owner expectations remain in view.',
+  'Ownership is holding course.',
+  'Ownership sees the direction.',
+] as const;
 
 function stableOwnerBudgetBase(owner: Pick<OwnerState, 'teamId' | 'expectations'>): number {
   return normalizeBudgetAmount(getTeamBudget(owner.teamId) || owner.expectations.payrollTarget);
@@ -442,14 +477,18 @@ export function applyOwnerDecisionDelta(
 }
 
 export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem[] {
+  const ownerHeadline = pickStableVariantByValue(
+    hashString(context.teamId)
+    + (context.ownerState.summary.length * 7)
+    + (context.ownerState.hotSeat ? 19 : 37),
+    context.ownerState.hotSeat ? OWNER_HOT_SEAT_HEADLINES : OWNER_STEADY_HEADLINES,
+  );
   const ownerItem: BriefingItem = {
     id: `${context.teamId}-owner-summary`,
     priority: context.ownerState.hotSeat ? 1 : 4,
     category: 'owner',
     tag: context.ownerState.hotSeat ? 'BREAKING' : 'ANALYSIS',
-    headline: context.ownerState.hotSeat
-      ? 'Owner pressure is rising.'
-      : 'Owner expectations remain on the board.',
+    headline: ownerHeadline,
     body: context.ownerState.summary,
     relatedTeamIds: [context.teamId],
     relatedPlayerIds: [],

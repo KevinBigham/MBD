@@ -112,8 +112,17 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // headroom on both ceilings for either-or-both-branch merge paths. If the
 // Codex branch is not ultimately merged, this reservation becomes slack but
 // is bounded to one KB on each axis.
+// WORKER gzip: bumped 135 -> 137 KB for the codex/narrative-prose-expansion
+// landing after codex/rivalry-narrative-wave1 already merged its rivalry
+// prose pools into game-engine-core (PR #50, commit 2806d37). The original
+// 135 reservation was measured against rivalry-wave1 NOT being on main; once
+// that landed, rivalry prose + narrative-prose-expansion's owner/consequences/
+// storyArcs pools stacked in the same chunk. Post-rebase measurement on this
+// branch: game-engine-core gzip 138,815 (+575 over 135 KB cap). +2 KB lift
+// covers the stack plus the established +250-500 byte CI terser drift. Raw
+// stayed comfortably under: game-engine-core raw 423,076 vs 444,416 cap.
 export const WORKER_CHUNK_BUDGET_BYTES = 434 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 135 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 137 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
