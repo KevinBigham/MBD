@@ -3,9 +3,17 @@ import type {
   CareerStatsLedger,
   MonthlyRecordSplits,
   PlayoffSeriesHistoryEntry,
+  Rivalry,
   SeasonArchiveEntry,
   TradeHistoryEntry,
 } from '@mbd/contracts';
+import type { StandingsEntry } from '../league/standings.js';
+import {
+  computeRivalryIntensityScore,
+  getRivalryMatchupNarrative,
+  RIVALRY_HIGH_LEVERAGE_MIN_SCORE,
+} from '../league/rivalries.js';
+import { getTeamById } from '../league/teams.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { getLongestTeamTenureSeasons } from '../player/teamTenures.js';
 import { isTradeDeadlineModeDay } from '../sim/calendar.js';
@@ -45,6 +53,8 @@ const FIRE_SALE_WIN_PCT_THRESHOLD = 0.45;
 const CURSED_FRANCHISE_MILESTONES = [10, 15, 20] as const;
 const VETERAN_CORE_TENURE_THRESHOLD = 8;
 const SEPTEMBER_HEROICS_WIN_THRESHOLD = 20;
+const HIGH_LEVERAGE_CONTENTION_GAMES_BACK = 3;
+const WILD_CARD_SLOT_COUNT = 3;
 
 export interface PriorSeasonSummary {
   readonly season: number;
@@ -79,6 +89,9 @@ export interface SeasonIdentityMomentDetectionContext {
   readonly retiredPlayers?: readonly GeneratedPlayer[];
   readonly monthlyRecordSplits?: MonthlyRecordSplits;
   readonly playoffSeriesHistory?: readonly PlayoffSeriesHistoryEntry[];
+  readonly rivalries?: ReadonlyMap<string, Rivalry>;
+  readonly standingsByDivision?: Readonly<Record<string, readonly StandingsEntry[]>>;
+  readonly playerMomentCountsByTeamId?: ReadonlyMap<string, number>;
 }
 
 export interface SeasonIdentityDetectedMoment {
@@ -105,6 +118,22 @@ function winPct(wins: number, losses: number): number {
   return wins / totalGames;
 }
 
+function standingsSort(left: StandingsEntry, right: StandingsEntry): number {
+  if (right.pct !== left.pct) return right.pct - left.pct;
+  if (right.wins !== left.wins) return right.wins - left.wins;
+  if (left.losses !== right.losses) return left.losses - right.losses;
+  if (right.runDifferential !== left.runDifferential) return right.runDifferential - left.runDifferential;
+  return left.teamId.localeCompare(right.teamId);
+}
+
+function leagueFromTeamId(teamId: string): 'AL' | 'NL' | null {
+  const division = getTeamById(teamId)?.division;
+  if (!division) {
+    return null;
+  }
+  return division.startsWith('AL') ? 'AL' : 'NL';
+}
+
 function parseTimestamp(timestamp: string | undefined): { season: number; day: number } | null {
   if (!timestamp) {
     return null;
@@ -129,6 +158,82 @@ function momentAlreadyRecorded(
   return context.teamMoments?.get(teamId)?.some((moment) =>
     moment.type === type && moment.season === context.season
   ) ?? false;
+}
+
+function countCurrentSeasonTeamMoments(
+  context: SeasonIdentityMomentDetectionContext,
+  teamId: string,
+): number {
+  return context.teamMoments?.get(teamId)?.filter((moment) => moment.season === context.season).length ?? 0;
+}
+
+function gamesBackFromCutoff(entry: StandingsEntry, cutoff: StandingsEntry): number {
+  return ((cutoff.wins - entry.wins) + (entry.losses - cutoff.losses)) / 2;
+}
+
+function wildcardCutoffByLeague(
+  standingsByDivision: Readonly<Record<string, readonly StandingsEntry[]>>,
+): Map<'AL' | 'NL', StandingsEntry> {
+  const cutoffByLeague = new Map<'AL' | 'NL', StandingsEntry>();
+  for (const league of ['AL', 'NL'] as const) {
+    const leagueEntries = Object.entries(standingsByDivision)
+      .filter(([division]) => division.startsWith(league))
+      .map(([, entries]) => entries);
+    const wildcardCutoff = leagueEntries
+      .flatMap((entries) => entries.slice(1))
+      .sort(standingsSort)[WILD_CARD_SLOT_COUNT - 1];
+    if (wildcardCutoff) {
+      cutoffByLeague.set(league, wildcardCutoff);
+    }
+  }
+  return cutoffByLeague;
+}
+
+function teamIsWithinContentionWindow(
+  teamId: string,
+  standingsByDivision: Readonly<Record<string, readonly StandingsEntry[]>>,
+  cutoffByLeague: ReadonlyMap<'AL' | 'NL', StandingsEntry>,
+): boolean {
+  const divisionEntries = Object.values(standingsByDivision)
+    .find((entries) => entries.some((entry) => entry.teamId === teamId));
+  const entry = divisionEntries?.find((candidate) => candidate.teamId === teamId);
+  if (!entry) {
+    return false;
+  }
+  if (entry.gamesBack <= HIGH_LEVERAGE_CONTENTION_GAMES_BACK) {
+    return true;
+  }
+
+  const league = leagueFromTeamId(teamId);
+  const cutoff = league ? cutoffByLeague.get(league) : null;
+  if (!cutoff) {
+    return false;
+  }
+
+  return gamesBackFromCutoff(entry, cutoff) <= HIGH_LEVERAGE_CONTENTION_GAMES_BACK;
+}
+
+function rivalryMetInCurrentSeasonPlayoffs(
+  history: readonly PlayoffSeriesHistoryEntry[] | undefined,
+  season: number,
+  rivalryId: string,
+): boolean {
+  return history?.some((entry) =>
+    entry.season === season
+    && [entry.higherSeedTeamId, entry.lowerSeedTeamId]
+      .sort((left, right) => left.localeCompare(right))
+      .join(':') === rivalryId
+  ) ?? false;
+}
+
+function rivalryImpactProfile(intensityScore: number): { impact: number; relevance: number } {
+  if (intensityScore >= 90) {
+    return { impact: 66, relevance: 0.92 };
+  }
+  if (intensityScore >= 80) {
+    return { impact: 62, relevance: 0.88 };
+  }
+  return { impact: 58, relevance: 0.84 };
 }
 
 function buildHistoricalSummaries(
@@ -634,6 +739,113 @@ export function detectPlayoffGauntlet(
   };
 }
 
+export function detectRivalryRenewed(
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment[] {
+  if (!context.rivalries || context.rivalries.size === 0) {
+    return [];
+  }
+
+  const summaryByTeamId = new Map(context.teams.map((summary) => [summary.teamId, summary] as const));
+  const wildcardCutoffs = context.standingsByDivision
+    ? wildcardCutoffByLeague(context.standingsByDivision)
+    : new Map<'AL' | 'NL', StandingsEntry>();
+  const detected: SeasonIdentityDetectedMoment[] = [];
+  const seenPairKeys = new Set<string>();
+
+  for (const rivalry of Array.from(context.rivalries.values()).sort((left, right) => left.id.localeCompare(right.id))) {
+    const pairKey = `${context.season}:${rivalry.id}`;
+    if (seenPairKeys.has(pairKey)) {
+      continue;
+    }
+    seenPairKeys.add(pairKey);
+
+    const teamASummary = summaryByTeamId.get(rivalry.teamA);
+    const teamBSummary = summaryByTeamId.get(rivalry.teamB);
+    if (!teamASummary || !teamBSummary) {
+      continue;
+    }
+    if (
+      momentAlreadyRecorded(context, rivalry.teamA, 'rivalry_renewed')
+      || momentAlreadyRecorded(context, rivalry.teamB, 'rivalry_renewed')
+    ) {
+      continue;
+    }
+
+    const pairTeamMomentCount = countCurrentSeasonTeamMoments(context, rivalry.teamA)
+      + countCurrentSeasonTeamMoments(context, rivalry.teamB);
+    const currentSeasonPlayerMomentCount = (context.playerMomentCountsByTeamId?.get(rivalry.teamA) ?? 0)
+      + (context.playerMomentCountsByTeamId?.get(rivalry.teamB) ?? 0);
+    const intensityScore = computeRivalryIntensityScore({
+      rivalry,
+      currentSeasonTeamMomentCount: pairTeamMomentCount,
+      currentSeasonPlayerMomentCount,
+    });
+    if (intensityScore < RIVALRY_HIGH_LEVERAGE_MIN_SCORE) {
+      continue;
+    }
+
+    const playoffMeeting = rivalryMetInCurrentSeasonPlayoffs(
+      context.playoffSeriesHistory,
+      context.season,
+      rivalry.id,
+    );
+    const regularSeasonContention = context.standingsByDivision
+      ? teamIsWithinContentionWindow(rivalry.teamA, context.standingsByDivision, wildcardCutoffs)
+        && teamIsWithinContentionWindow(rivalry.teamB, context.standingsByDivision, wildcardCutoffs)
+      : false;
+    if (!playoffMeeting && !regularSeasonContention) {
+      continue;
+    }
+
+    const narrative = getRivalryMatchupNarrative({
+      rivalry,
+      season: context.season,
+      day: context.day,
+      minimumIntensityScore: RIVALRY_HIGH_LEVERAGE_MIN_SCORE,
+      currentSeasonTeamMomentCount: pairTeamMomentCount,
+      currentSeasonPlayerMomentCount,
+    });
+    if (!narrative) {
+      continue;
+    }
+
+    const stakes = playoffMeeting
+      ? `${teamLabel(teamASummary)} and ${teamLabel(teamBSummary)} ran the rivalry back onto an October stage.`
+      : `${teamLabel(teamASummary)} and ${teamLabel(teamBSummary)} both finished within three games of a division or wild-card lane.`;
+    const { impact, relevance } = rivalryImpactProfile(intensityScore);
+    const description = `${narrative.headline} ${stakes}`;
+
+    detected.push({
+      teamId: rivalry.teamA,
+      moment: createMoment(
+        'rivalry_renewed',
+        description,
+        impact,
+        relevance,
+        context.season,
+        context.day,
+      ),
+    });
+    detected.push({
+      teamId: rivalry.teamB,
+      moment: createMoment(
+        'rivalry_renewed',
+        description,
+        impact,
+        relevance,
+        context.season,
+        context.day,
+      ),
+    });
+  }
+
+  return detected.sort((left, right) =>
+    left.teamId.localeCompare(right.teamId)
+    || compareMomentType(left.moment.type, right.moment.type),
+  );
+}
+
 export function detectSeptemberHeroics(
   summary: TeamSeasonSummary,
   context: SeasonIdentityMomentDetectionContext,
@@ -666,7 +878,9 @@ export function detectSeptemberHeroics(
 export function detectSeasonIdentityMoments(
   context: SeasonIdentityMomentDetectionContext,
 ): SeasonIdentityDetectedMoment[] {
-  const moments: SeasonIdentityDetectedMoment[] = [];
+  const moments: SeasonIdentityDetectedMoment[] = [
+    ...detectRivalryRenewed(context),
+  ];
   const breakoutTeamIds = new Set<string>();
   for (const summary of context.teams) {
     const fireSale = detectFireSale(summary, context);

@@ -498,11 +498,33 @@ function applySeasonIdentityMoments(state: FullGameState) {
     divisionRank: divisionRankByTeamId.get(entry.teamId),
     priorSeasonsSummary: buildPriorSeasonsSummary(entry.teamId),
   }));
+  const fullStandings = state.seasonState.standings.getFullStandings();
+  const playerTeamById = new Map(state.players.map((player) => [player.id, player.teamId] as const));
+  const playerMomentCountsByTeamId = new Map<string, number>();
+  for (const [playerId, moments] of state.playerMoments.entries()) {
+    const teamId = playerTeamById.get(playerId);
+    if (!teamId) {
+      continue;
+    }
+    const currentSeasonCount = moments.filter((moment) => moment.season === state.season).length;
+    if (currentSeasonCount <= 0) {
+      continue;
+    }
+    playerMomentCountsByTeamId.set(
+      teamId,
+      (playerMomentCountsByTeamId.get(teamId) ?? 0) + currentSeasonCount,
+    );
+  }
 
   const detected = detectSeasonIdentityMoments({
     season: state.season,
     day: state.day,
     teams: summaries,
+    rivalries: state.rivalries,
+    standingsByDivision: fullStandings,
+    playoffSeriesHistory: state.playoffSeriesHistory,
+    teamMoments: state.teamMoments,
+    playerMomentCountsByTeamId,
     monthlyRecordSplits: state.seasonState.monthlyRecordSplits,
     retiredPlayers: state.players.filter((player) =>
       (state.offseasonState?.phaseResults.retiredPlayers ?? []).some((retirement) => retirement.playerId === player.id),

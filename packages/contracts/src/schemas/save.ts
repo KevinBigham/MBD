@@ -509,7 +509,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 27;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 28;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -628,6 +628,11 @@ export const GameSnapshotV26Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(26),
 });
 export type GameSnapshotV26 = z.infer<typeof GameSnapshotV26Schema>;
+
+export const GameSnapshotV27Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(27),
+});
+export type GameSnapshotV27 = z.infer<typeof GameSnapshotV27Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -2660,6 +2665,23 @@ function migrateGameSnapshotV26(snapshot: GameSnapshotV26): GameSnapshot {
   });
 }
 
+// v27 -> v28: expand SignatureMomentTypeEnum with rivalry_renewed.
+// Additive only — existing v27 saves load as-is.
+function migrateGameSnapshotV27(snapshot: GameSnapshotV27): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
   if (
     typeof snapshotLike === "object" &&
@@ -2695,6 +2717,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 23
   ) {
     return migrateGameSnapshotV23(GameSnapshotV23Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 27
+  ) {
+    return migrateGameSnapshotV27(GameSnapshotV27Schema.parse(snapshotLike));
   }
 
   if (
