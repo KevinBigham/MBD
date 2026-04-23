@@ -5,8 +5,15 @@ import type {
   PlayoffSeriesHistoryEntry,
   Rivalry,
   SeasonArchiveEntry,
+  SeasonHistoryEntry,
   TradeHistoryEntry,
 } from '@mbd/contracts';
+import {
+  pickStableDynastyMarkerBody,
+  pickStableDynastyMarkerHeadline,
+  type DynastyMarkerRenderContext,
+  type DynastyMarkerTopicId,
+} from '../narrative/dynastyMarkerProse.js';
 import type { StandingsEntry } from '../league/standings.js';
 import {
   computeRivalryIntensityScore,
@@ -17,6 +24,7 @@ import { getTeamById } from '../league/teams.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { getLongestTeamTenureSeasons } from '../player/teamTenures.js';
 import { isTradeDeadlineModeDay } from '../sim/calendar.js';
+import { determinePlayoffSeeds } from '../sim/playoffSimulator.js';
 import type { GMPersonality } from '../trade/tradeAI.js';
 import { compareMomentType, type Moment, type MomentRound } from './momentDetector.js';
 
@@ -47,6 +55,12 @@ export const SEPTEMBER_HEROICS_IMPACT = 42;
 export const SEPTEMBER_HEROICS_RELEVANCE = 0.8;
 export const PLAYOFF_GAUNTLET_IMPACT = 64;
 export const PLAYOFF_GAUNTLET_RELEVANCE = 0.92;
+export const THREE_PEAT_IMPACT = 72;
+export const THREE_PEAT_RELEVANCE = 0.98;
+export const ERA_ENDING_COLLAPSE_IMPACT = -58;
+export const ERA_ENDING_COLLAPSE_RELEVANCE = 0.91;
+export const PERENNIAL_CONTENDER_IMPACT = 53;
+export const PERENNIAL_CONTENDER_RELEVANCE = 0.87;
 
 const FIRE_SALE_VETERAN_THRESHOLD = 3;
 const FIRE_SALE_WIN_PCT_THRESHOLD = 0.45;
@@ -55,6 +69,8 @@ const VETERAN_CORE_TENURE_THRESHOLD = 8;
 const SEPTEMBER_HEROICS_WIN_THRESHOLD = 20;
 const HIGH_LEVERAGE_CONTENTION_GAMES_BACK = 3;
 const WILD_CARD_SLOT_COUNT = 3;
+const ERA_ENDING_COLLAPSE_MAX_WINS = 80;
+const PERENNIAL_CONTENDER_STREAK_LENGTH = 5;
 
 export interface PriorSeasonSummary {
   readonly season: number;
@@ -89,6 +105,7 @@ export interface SeasonIdentityMomentDetectionContext {
   readonly retiredPlayers?: readonly GeneratedPlayer[];
   readonly monthlyRecordSplits?: MonthlyRecordSplits;
   readonly playoffSeriesHistory?: readonly PlayoffSeriesHistoryEntry[];
+  readonly seasonHistory?: readonly SeasonHistoryEntry[];
   readonly rivalries?: ReadonlyMap<string, Rivalry>;
   readonly standingsByDivision?: Readonly<Record<string, readonly StandingsEntry[]>>;
   readonly playerMomentCountsByTeamId?: ReadonlyMap<string, number>;
@@ -99,6 +116,16 @@ export interface SeasonIdentityDetectedMoment {
   readonly moment: Moment & { readonly day: number; readonly timestamp: string };
 }
 
+export interface BuildTeamSeasonSummariesContext {
+  readonly season: number;
+  readonly standingsByDivision: Readonly<Record<string, readonly StandingsEntry[]>>;
+  readonly leagueStandings: readonly StandingsEntry[];
+  readonly currentPlayoffTeamIds: ReadonlySet<string>;
+  readonly championTeamId: string | null;
+  readonly seasonArchive?: readonly SeasonArchiveEntry[];
+  readonly archivedSeasons?: readonly ArchivedSeason[];
+}
+
 function getPriorSeason(
   summary: TeamSeasonSummary,
   season: number,
@@ -106,8 +133,114 @@ function getPriorSeason(
   return summary.priorSeasonsSummary?.find((entry) => entry.season === season) ?? null;
 }
 
+function buildDivisionRankByTeamId(
+  standingsByDivision: Readonly<Record<string, readonly StandingsEntry[]>>,
+): Map<string, number> {
+  const divisionRankByTeamId = new Map<string, number>();
+  for (const divisionStandings of Object.values(standingsByDivision)) {
+    for (const [index, entry] of divisionStandings.entries()) {
+      divisionRankByTeamId.set(entry.teamId, index + 1);
+    }
+  }
+  return divisionRankByTeamId;
+}
+
+function buildPriorSeasonsSummary(
+  teamId: string,
+  season: number,
+  seasonArchive: readonly SeasonArchiveEntry[] | undefined,
+  archivedSeasons: readonly ArchivedSeason[] | undefined,
+): readonly PriorSeasonSummary[] {
+  const priorSeasons: PriorSeasonSummary[] = [];
+  const seenSeasons = new Set<number>();
+
+  for (const entry of [...(seasonArchive ?? [])].sort((left, right) => left.season - right.season)) {
+    if (entry.season >= season || seenSeasons.has(entry.season)) {
+      continue;
+    }
+
+    const standing = entry.standings.find((candidate) => candidate.teamId === teamId);
+    if (!standing) {
+      continue;
+    }
+
+    seenSeasons.add(entry.season);
+    priorSeasons.push({
+      season: entry.season,
+      divisionRank: standing.divisionRank,
+      wins: standing.wins,
+      losses: standing.losses,
+    });
+  }
+
+  for (const entry of [...(archivedSeasons ?? [])].sort((left, right) => left.season - right.season)) {
+    if (entry.season >= season || seenSeasons.has(entry.season)) {
+      continue;
+    }
+
+    const standing = entry.standings.find((candidate) => candidate.teamId === teamId);
+    if (!standing) {
+      continue;
+    }
+
+    seenSeasons.add(entry.season);
+    priorSeasons.push({
+      season: entry.season,
+      divisionRank: standing.divisionRank,
+      wins: standing.wins,
+      losses: standing.losses,
+    });
+  }
+
+  return priorSeasons
+    .sort((left, right) => left.season - right.season)
+    .slice(-3);
+}
+
+export function buildTeamSeasonSummaries(
+  context: BuildTeamSeasonSummariesContext,
+): TeamSeasonSummary[] {
+  const divisionRankByTeamId = buildDivisionRankByTeamId(context.standingsByDivision);
+
+  return context.leagueStandings.map((entry) => ({
+    teamId: entry.teamId,
+    wins: entry.wins,
+    losses: entry.losses,
+    madePlayoffs: context.currentPlayoffTeamIds.has(entry.teamId),
+    isChampion: context.championTeamId === entry.teamId,
+    divisionRank: divisionRankByTeamId.get(entry.teamId),
+    priorSeasonsSummary: buildPriorSeasonsSummary(
+      entry.teamId,
+      context.season,
+      context.seasonArchive,
+      context.archivedSeasons,
+    ),
+  }));
+}
+
+export function resolvePlayoffTeamIds(
+  standingsByDivision: Readonly<Record<string, readonly StandingsEntry[]>>,
+  playoffSeedTeamIds?: readonly string[],
+): Set<string> {
+  if (playoffSeedTeamIds && playoffSeedTeamIds.length > 0) {
+    return new Set(playoffSeedTeamIds);
+  }
+
+  return new Set(
+    determinePlayoffSeeds(standingsByDivision as Record<string, StandingsEntry[]>).map((seed) => seed.teamId),
+  );
+}
+
 function teamLabel(summary: Pick<TeamSeasonSummary, 'teamId' | 'teamName'>): string {
   return summary.teamName ?? summary.teamId.toUpperCase();
+}
+
+function franchiseLabel(summary: Pick<TeamSeasonSummary, 'teamId' | 'teamName'>): string {
+  const team = getTeamById(summary.teamId);
+  if (team) {
+    return `${team.city} ${team.name}`;
+  }
+  return teamLabel(summary);
 }
 
 function winPct(wins: number, losses: number): number {
@@ -150,6 +283,17 @@ function parseTimestamp(timestamp: string | undefined): { season: number; day: n
   };
 }
 
+function buildDynastyMarkerDescription(
+  topicId: DynastyMarkerTopicId,
+  renderContext: DynastyMarkerRenderContext,
+  teamId: string,
+  season: number,
+): string {
+  const headline = pickStableDynastyMarkerHeadline(topicId, renderContext, teamId, season);
+  const body = pickStableDynastyMarkerBody(topicId, renderContext, teamId, season);
+  return `${headline} ${body}`;
+}
+
 function momentAlreadyRecorded(
   context: SeasonIdentityMomentDetectionContext,
   teamId: string,
@@ -165,6 +309,35 @@ function countCurrentSeasonTeamMoments(
   teamId: string,
 ): number {
   return context.teamMoments?.get(teamId)?.filter((moment) => moment.season === context.season).length ?? 0;
+}
+
+function seasonChampion(
+  context: SeasonIdentityMomentDetectionContext,
+  season: number,
+): string | null {
+  return context.seasonHistory?.find((entry) => entry.season === season)?.championTeamId ?? null;
+}
+
+function teamMadePlayoffsInSeason(
+  teamId: string,
+  season: number,
+  playoffSeriesHistory: readonly PlayoffSeriesHistoryEntry[] | undefined,
+): boolean {
+  return playoffSeriesHistory?.some((entry) =>
+    entry.season === season
+    && (entry.higherSeedTeamId === teamId || entry.lowerSeedTeamId === teamId)
+  ) ?? false;
+}
+
+function perennialContenderRecentlyRecorded(
+  context: SeasonIdentityMomentDetectionContext,
+  teamId: string,
+): boolean {
+  return context.teamMoments?.get(teamId)?.some((moment) =>
+    moment.type === 'perennial_contender'
+    && moment.season >= context.season - (PERENNIAL_CONTENDER_STREAK_LENGTH - 1)
+    && moment.season < context.season
+  ) ?? false;
 }
 
 function gamesBackFromCutoff(entry: StandingsEntry, cutoff: StandingsEntry): number {
@@ -395,6 +568,49 @@ export function detectFirstDynastyPeak(
   };
 }
 
+export function detectThreePeat(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (!summary.isChampion || momentAlreadyRecorded(context, summary.teamId, 'three_peat')) {
+    return null;
+  }
+
+  if (
+    seasonChampion(context, context.season - 1) !== summary.teamId
+    || seasonChampion(context, context.season - 2) !== summary.teamId
+  ) {
+    return null;
+  }
+
+  if (seasonChampion(context, context.season - 3) === summary.teamId) {
+    return null;
+  }
+
+  const description = buildDynastyMarkerDescription(
+    'three_peat',
+    {
+      teamLabel: franchiseLabel(summary),
+      startingSeason: context.season - 2,
+      endingSeason: context.season,
+    },
+    summary.teamId,
+    context.season,
+  );
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'three_peat',
+      description,
+      THREE_PEAT_IMPACT,
+      THREE_PEAT_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
 export function detectLosingSeasonStreak(
   summary: TeamSeasonSummary,
   season: number,
@@ -427,6 +643,50 @@ export function detectLosingSeasonStreak(
       LOSING_SEASON_STREAK_RELEVANCE,
       season,
       day,
+    ),
+  };
+}
+
+export function detectEraEndingCollapse(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (summary.madePlayoffs || summary.wins > ERA_ENDING_COLLAPSE_MAX_WINS) {
+    return null;
+  }
+  if (momentAlreadyRecorded(context, summary.teamId, 'era_ending_collapse')) {
+    return null;
+  }
+
+  const priorSeason = getPriorSeason(summary, context.season - 1);
+  if (!priorSeason) {
+    return null;
+  }
+  if (!teamMadePlayoffsInSeason(summary.teamId, priorSeason.season, context.playoffSeriesHistory)) {
+    return null;
+  }
+
+  const description = buildDynastyMarkerDescription(
+    'era_ending_collapse',
+    {
+      teamLabel: franchiseLabel(summary),
+      priorWins: priorSeason.wins,
+      currentWins: summary.wins,
+      priorSeason: priorSeason.season,
+    },
+    summary.teamId,
+    context.season,
+  );
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'era_ending_collapse',
+      description,
+      ERA_ENDING_COLLAPSE_IMPACT,
+      ERA_ENDING_COLLAPSE_RELEVANCE,
+      context.season,
+      context.day,
     ),
   };
 }
@@ -869,6 +1129,56 @@ export function detectSeptemberHeroics(
       `A ${septemberWins}-win September shoved the ${teamLabel(summary)} through the regular-season door and into October.`,
       SEPTEMBER_HEROICS_IMPACT,
       SEPTEMBER_HEROICS_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
+export function detectPerennialContender(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+  currentPlayoffTeamIds: ReadonlySet<string>,
+): SeasonIdentityDetectedMoment | null {
+  if (!summary.madePlayoffs || !currentPlayoffTeamIds.has(summary.teamId)) {
+    return null;
+  }
+  if (momentAlreadyRecorded(context, summary.teamId, 'perennial_contender')) {
+    return null;
+  }
+  if (perennialContenderRecentlyRecorded(context, summary.teamId)) {
+    return null;
+  }
+
+  for (let season = context.season - (PERENNIAL_CONTENDER_STREAK_LENGTH - 1); season < context.season; season += 1) {
+    if (!teamMadePlayoffsInSeason(summary.teamId, season, context.playoffSeriesHistory)) {
+      return null;
+    }
+  }
+
+  if (teamMadePlayoffsInSeason(summary.teamId, context.season - PERENNIAL_CONTENDER_STREAK_LENGTH, context.playoffSeriesHistory)) {
+    return null;
+  }
+
+  const description = buildDynastyMarkerDescription(
+    'perennial_contender',
+    {
+      teamLabel: franchiseLabel(summary),
+      streakLength: PERENNIAL_CONTENDER_STREAK_LENGTH,
+      streakStartSeason: context.season - (PERENNIAL_CONTENDER_STREAK_LENGTH - 1),
+      currentSeason: context.season,
+    },
+    summary.teamId,
+    context.season,
+  );
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'perennial_contender',
+      description,
+      PERENNIAL_CONTENDER_IMPACT,
+      PERENNIAL_CONTENDER_RELEVANCE,
       context.season,
       context.day,
     ),

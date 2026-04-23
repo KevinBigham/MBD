@@ -227,6 +227,8 @@ import {
   applyMonthlyNarrativeHooks,
   applyOffseasonNarrativeHooks,
   applyMonthlyPressConference,
+  applyRegularSeasonTeamDynastyMarkers,
+  applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
 } from './sim.worker.narrativeFarm.js';
 import {
@@ -1308,6 +1310,7 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     s.day = 1;
     s.playoffBracket = null;
     applyWave4PlayoffIntroMoments(s);
+    applyRegularSeasonTeamDynastyMarkers(s);
   }
 
   return {
@@ -1593,6 +1596,7 @@ function simMonthInternal(): SimResultDTO {
 
 function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   applySeasonEndPlayerArcMoments(s);
+  applySeasonEndTeamDynastyMarkers(s);
   accrueCareerStatsForSeason(s);
   for (const player of s.players) {
     const seasonStats = s.seasonState.playerSeasonStats.get(player.id);

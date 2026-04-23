@@ -2,6 +2,7 @@ export {
   detectArbitrationMoments,
 } from './arbitrationMoments.js';
 export {
+  buildTeamSeasonSummaries,
   CHAMPIONSHIP_RUN_IMPACT,
   CHAMPIONSHIP_RUN_RELEVANCE,
   CONTENTION_COLLAPSE_IMPACT,
@@ -34,18 +35,23 @@ export {
   detectChampionshipRun,
   detectContentionWindowOpens,
   detectContentionCollapse,
+  detectEraEndingCollapse,
   detectDynastyEnd,
   detectFireSale,
   detectFirstDynastyPeak,
   detectLosingSeasonStreak,
+  detectPerennialContender,
   detectPlayoffGauntlet,
   detectRivalryRenewed,
   detectRebuildBegun,
+  resolvePlayoffTeamIds,
   detectSeptemberHeroics,
   detectSeasonIdentityMoments,
+  detectThreePeat,
   detectVeteranCoreRetires,
 } from './seasonIdentityMoments.js';
 export type {
+  BuildTeamSeasonSummariesContext,
   TeamSeasonSummary,
   SeasonIdentityMomentDetectionContext,
   SeasonIdentityDetectedMoment,
