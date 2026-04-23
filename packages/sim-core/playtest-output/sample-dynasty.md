@@ -56,7 +56,7 @@
 - Justin King (WSH): Justin King dropped the curtain with a walk-off homer that shook the park.
 
 ### Press Room
-- [briefing/BREAKING] Owner pressure is rising.
+- [briefing/BREAKING] Ownership is tightening the timeline.
 - [briefing/BREAKING] Achievement unlocked: Historic Season
 - [briefing/BREAKING] Achievement unlocked: Record Breaker
 - [league_wire/BREAKING] Unknown hits career home run #0
@@ -74,8 +74,8 @@
 - vs Detroit Motor Kings (58): DET and NYT are starting to circle each other. Bad blood is still building.. Current season: 0-0. Latest beat: Playoff collision
 
 ### Dynasty Pulse
-- Recap: 94-68. Division Series exit. The playoff exit landed early and left unfinished business. Nashville Honky Tonks defeated Phoenix Dust Devils in the World Series (4-1).
-- Storylines: The playoff exit landed early and left unfinished business. | Nashville Honky Tonks wins it all after a hard-fought series | Season 1 concludes with nas as champion | Achievement unlocked: Historic Season
+- Recap: 94-68. Division Series exit. The division round ended fast and left a thicker October file. Nashville Honky Tonks defeated Phoenix Dust Devils in the World Series (4-1).
+- Storylines: The division round ended fast and left a thicker October file. | Nashville Honky Tonks wins it all after a hard-fought series | Season 1 concludes with nas as champion | Achievement unlocked: Historic Season
 - Offseason headline: 94-68 was good enough to matter, not good enough to rest on.
 - Dynasty score: 50 (D)
 - Franchise line: 94-68, Division Series exit, division title yes, awards 1.
@@ -128,12 +128,12 @@
 - Pablo Abreu (NAS): Pablo Abreu dropped the curtain with a walk-off homer that shook the park.
 
 ### Press Room
-- [briefing/BREAKING] Owner pressure is rising.
+- [briefing/BREAKING] Ownership is tightening the timeline.
 - [league_wire/BREAKING] Unknown hits career home run #0
 - [league_wire/RECAP] bal loses Eduardo Jimenez to Oblique Strain (Day-to-Day, 3 days remaining), timetable uncertain
 - [league_wire/RECAP] Miguel Morales placed on 15-day IL with Groin Strain (Day-to-Day, 3 days remaining)
 - [league_wire/RECAP] Shin-soo Uehara placed on 15-day IL with Knee Sprain (Day-to-Day, 3 days remaining)
-- [briefing/BREAKING] Season 2 postseason summary
+- [briefing/BREAKING] Season 2 early October bruise
 
 ### Milestones
 - No milestone beats surfaced.
@@ -201,12 +201,12 @@
 - Jake Brown (DAL): Jake Brown turned the final pitch into a walk-off home run and instant legend.
 
 ### Press Room
-- [briefing/BREAKING] Owner pressure is rising.
+- [briefing/BREAKING] Owner pressure rising.
 - [league_wire/BREAKING] Unknown records 0th career strikeout
 - [league_wire/RECAP] den loses Hyun-jin Senga to Back Spasm (10-Day IL, 17 days remaining), timetable uncertain
 - [league_wire/RECAP] dal loses Austin Young to Calf Strain (10-Day IL, 16 days remaining), timetable uncertain
 - [league_wire/RECAP] lax loses Pedro Valdez to Wrist Inflammation (15-Day IL, 22 days remaining), timetable uncertain
-- [briefing/BREAKING] Season 3 postseason summary
+- [briefing/BREAKING] Season 3 second-round fallout
 
 ### Milestones
 - No milestone beats surfaced.
@@ -220,8 +220,8 @@
 - vs Minneapolis Frost Giants (58): MSP and NYT are starting to circle each other. Bad blood is still building.. Current season: 0-0. Latest beat: Playoff collision
 
 ### Dynasty Pulse
-- Recap: 90-72. Division Series exit. The playoff exit landed early and left unfinished business. Minneapolis Frost Giants defeated Los Angeles Sunset Strip in the World Series (4-2).
-- Storylines: The playoff exit landed early and left unfinished business. | Minneapolis Frost Giants captures the championship in dominant fashion | Season 3 concludes with msp as champion | Walk-off finish: Tycoons stun Forge
+- Recap: 90-72. Division Series exit. A sharp division-series exit made the roster feel close, not complete. Minneapolis Frost Giants defeated Los Angeles Sunset Strip in the World Series (4-2).
+- Storylines: A sharp division-series exit made the roster feel close, not complete. | Minneapolis Frost Giants captures the championship in dominant fashion | Season 3 concludes with msp as champion | Walk-off finish: Tycoons stun Forge
 - Offseason headline: A 90-72 season kept the window open, but October left work unfinished.
 - Dynasty score: 110 (C)
 - Franchise line: 90-72, Division Series exit, division title no, awards 1.
@@ -352,7 +352,7 @@
 - [league_wire/BREAKING] Achievement unlocked: Award Arsenal
 - [league_wire/RECAP] Robert Hill placed on 15-day IL with Elbow Soreness (10-Day IL, 19 days remaining)
 - [league_wire/RECAP] Kolten Imanaga placed on 15-day IL with Knee Sprain (10-Day IL, 16 days remaining)
-- [briefing/BREAKING] Season 5 postseason summary
+- [briefing/BREAKING] Season 5 second-round fallout
 
 ### Milestones
 - No milestone beats surfaced.
@@ -366,8 +366,8 @@
 - vs Minneapolis Frost Giants (75): MSP and NYT keep colliding in meaningful spots. Tracked head-to-head: MSP 0-3 NYT. Current season: 0-0. Latest beat: NYT took another chapter in the rivalry.
 
 ### Dynasty Pulse
-- Recap: 112-50. Division Series exit. The playoff exit landed early and left unfinished business. San Antonio Riverwalk defeated Chicago Deep Dish in the World Series (4-3).
-- Storylines: The playoff exit landed early and left unfinished business. | Season 5 concludes with San Antonio Riverwalk as champion | Season 5 concludes with sat as champion | Achievement unlocked: Award Arsenal
+- Recap: 112-50. Division Series exit. The division round ended fast and left a thicker October file. San Antonio Riverwalk defeated Chicago Deep Dish in the World Series (4-3).
+- Storylines: The division round ended fast and left a thicker October file. | Season 5 concludes with San Antonio Riverwalk as champion | Season 5 concludes with sat as champion | Achievement unlocked: Award Arsenal
 - Offseason headline: A 112-50 season kept the window open, but October left work unfinished.
 - Dynasty score: 220 (B)
 - Franchise line: 112-50, Division Series exit, division title yes, awards 3.
@@ -425,7 +425,7 @@
 - [league_wire/RECAP] Chase Miller placed on 15-day IL with Shoulder Inflammation (60-Day IL, 81 days remaining)
 - [league_wire/RECAP] chi scrambles after Logan Baker suffers Forearm Strain (Day-to-Day, 3 days remaining)
 - [league_wire/RECAP] bal scrambles after Yu Ryu suffers Rotator Cuff Tear (60-Day IL, 67 days remaining)
-- [briefing/BREAKING] Season 6 postseason summary
+- [briefing/BREAKING] Season 6 title ledger
 
 ### Milestones
 - Ryan Green: 4 away from RBI (496/500)
@@ -442,8 +442,8 @@
 - vs Minneapolis Frost Giants (76): MSP and NYT keep colliding in meaningful spots. Tracked head-to-head: MSP 1-5 NYT. Current season: 0-0. Latest beat: NYT took another chapter in the rivalry.
 
 ### Dynasty Pulse
-- Recap: 100-62. Champion. New York Tycoons finished the story on top. New York Tycoons defeated Phoenix Dust Devils in the World Series (4-1).
-- Storylines: New York Tycoons finished the story on top. | Season 6 concludes with New York Tycoons as champion | Season 6 concludes with nym as champion | Win over rival BOS keeps the series hot
+- Recap: 100-62. Champion. New York Tycoons finished on top. New York Tycoons defeated Phoenix Dust Devils in the World Series (4-1).
+- Storylines: New York Tycoons finished on top. | Season 6 concludes with New York Tycoons as champion | Season 6 concludes with nym as champion | Win over rival BOS keeps the series hot
 - Offseason headline: World Series afterglow carries straight into the winter.
 - Dynasty score: 410 (A)
 - Franchise line: 100-62, Champion, division title yes, awards 1.
@@ -499,7 +499,7 @@
 - [league_wire/BREAKING] Unknown records 0th career strikeout
 - [league_wire/RECAP] Thomas White placed on 15-day IL with Hamstring Strain (Day-to-Day, 2 days remaining)
 - [league_wire/RECAP] James Miller placed on 15-day IL with Calf Strain (Day-to-Day, 1 day remaining)
-- [briefing/BREAKING] Season 7 postseason summary
+- [briefing/BREAKING] Season 7 pennant-race scar
 - [league_wire/BREAKING] Walk-off finish: Suds stun Peach Kings
 - [league_wire/BREAKING] Unknown records 0th career strikeout
 
@@ -573,12 +573,12 @@
 - Daniel Hill (CLB): Daniel Hill arrived as part of a blockbuster return that reset the club's direction.
 
 ### Press Room
-- [briefing/BREAKING] Owner pressure is rising.
+- [briefing/BREAKING] Ownership is tightening the timeline.
 - [league_wire/BREAKING] Unknown hits career home run #0
 - [league_wire/RECAP] Richard Martin placed on 15-day IL with Oblique Strain (15-Day IL, 22 days remaining)
 - [league_wire/RECAP] hou scrambles after Yusei Yoshida suffers Back Spasm (15-Day IL, 21 days remaining)
 - [league_wire/RECAP] Colby Campbell placed on 15-day IL with Knee Sprain (15-Day IL, 21 days remaining)
-- [briefing/BREAKING] Season 8 postseason summary
+- [briefing/BREAKING] Season 8 early October bruise
 
 ### Milestones
 - Bruce Maeda: 3 away from RBI (497/500)
@@ -652,7 +652,7 @@
 - [league_wire/BREAKING] Unknown records 0th career strikeout
 - [league_wire/RECAP] atl loses Adalberto Alonso to Back Spasm (Day-to-Day, 1 day remaining), timetable uncertain
 - [league_wire/RECAP] phi scrambles after Miguel Acuna suffers Hip Flexor Strain (Season-Ending, 200 days remaining)
-- [briefing/BREAKING] Season 9 postseason summary
+- [briefing/BREAKING] Season 9 before rhythm
 - [league_wire/BREAKING] Walk-off finish: Motor Kings stun Dust Devils
 - [league_wire/BREAKING] Walk-off finish: Noreasters stun Sasquatch
 
@@ -670,8 +670,8 @@
 - vs Minneapolis Frost Giants (83): MSP and NYT are running hot. Tracked head-to-head: MSP 1-8 NYT. Current season: 0-0. Latest beat: October put the clubs on the same line.
 
 ### Dynasty Pulse
-- Recap: 100-62. Wild Card exit. The playoff exit landed early and left unfinished business. Chicago Deep Dish defeated Austin Bat Colony in the World Series (4-2).
-- Storylines: The playoff exit landed early and left unfinished business. | Season 9 concludes with Chicago Deep Dish as champion | Season 9 concludes with chi as champion | Walk-off finish: Tycoons stun Crab Cakes
+- Recap: 100-62. Wild Card exit. The first postseason hurdle stopped the run and sharpened the offseason. Chicago Deep Dish defeated Austin Bat Colony in the World Series (4-2).
+- Storylines: The first postseason hurdle stopped the run and sharpened the offseason. | Season 9 concludes with Chicago Deep Dish as champion | Season 9 concludes with chi as champion | Walk-off finish: Tycoons stun Crab Cakes
 - Offseason headline: A 100-62 season kept the window open, but October left work unfinished.
 - Dynasty score: 535 (S)
 - Franchise line: 100-62, Wild Card exit, division title no, awards 4.
@@ -747,8 +747,8 @@
 - vs Detroit Motor Kings (78): DET and NYT keep colliding in meaningful spots. Tracked head-to-head: DET 3-10 NYT. Current season: 0-0. Latest beat: NYT took another chapter in the rivalry.
 
 ### Dynasty Pulse
-- Recap: 100-62. Wild Card exit. The playoff exit landed early and left unfinished business. Detroit Motor Kings defeated San Francisco Sourdoughs in the World Series (4-0).
-- Storylines: The playoff exit landed early and left unfinished business. | Season 10 concludes with Detroit Motor Kings as champion | Season 10 concludes with det as champion | BOS hands the rival another punch
+- Recap: 100-62. Wild Card exit. The first postseason hurdle stopped the run and sharpened the offseason. Detroit Motor Kings defeated San Francisco Sourdoughs in the World Series (4-0).
+- Storylines: The first postseason hurdle stopped the run and sharpened the offseason. | Season 10 concludes with Detroit Motor Kings as champion | Season 10 concludes with det as champion | BOS hands the rival another punch
 - Offseason headline: 100-62 was good enough to matter, not good enough to rest on.
 - Dynasty score: 565 (S)
 - Franchise line: 100-62, Wild Card exit, division title no, awards 1.
