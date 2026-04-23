@@ -218,6 +218,8 @@ describe('narrative state', () => {
       chemistry,
       unreadNewsCount: 5,
       rivalries,
+      season: 2028,
+      day: 90,
     });
 
     expect(briefing[0]?.category).toBe('owner');
@@ -272,6 +274,8 @@ describe('narrative state', () => {
       chemistry,
       unreadNewsCount: 0,
       rivalries: new Map([[rivalry.id, rivalry]]),
+      season: 2028,
+      day: 90,
     }).find((item) => item.category === 'rivalry');
     const second = buildFrontOfficeBriefing({
       teamId: 'nym',
@@ -279,6 +283,8 @@ describe('narrative state', () => {
       chemistry,
       unreadNewsCount: 0,
       rivalries: new Map([[rivalry.id, rivalry]]),
+      season: 2028,
+      day: 90,
     }).find((item) => item.category === 'rivalry');
 
     expect(first).toBeTruthy();
@@ -325,6 +331,8 @@ describe('narrative state', () => {
           reasons: ['Dormant season'],
         },
       ]]),
+      season: 2028,
+      day: 90,
     });
 
     expect(briefing.some((item) => item.category === 'rivalry')).toBe(false);
@@ -359,6 +367,8 @@ describe('narrative state', () => {
         chemistry,
         unreadNewsCount: 0,
         rivalries: new Map(),
+        season: 2028,
+        day: 90,
       })[0]!.headline;
 
     expect(buildHeadline('nym', true, 'Ownership expected a playoff berth.'))

@@ -1011,6 +1011,8 @@ export function rebuildBriefing(state: FullGameState) {
       chemistry,
       unreadNewsCount: getUnreadNews(state.news).length,
       rivalries: getRivalriesForTeam(state, state.userTeamId),
+      season: state.season,
+      day: state.day,
     }),
     ...persistentItems,
   ]);

@@ -44,6 +44,8 @@ export interface BriefingContext {
   chemistry: TeamChemistry;
   unreadNewsCount: number;
   rivalries: Map<string, Rivalry>;
+  season: number;
+  day: number;
 }
 
 export interface TeamChemistryContext {
@@ -537,8 +539,8 @@ export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem
   if (topRivalry && topRivalry.intensity >= 55) {
     const rivalryNarrative = getRivalryMatchupNarrative({
       rivalry: topRivalry,
-      season: 0,
-      day: 0,
+      season: context.season,
+      day: context.day,
     });
     items.push({
       id: topRivalry.id,
