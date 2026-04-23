@@ -5,6 +5,7 @@ import {
   deriveRivalriesFromStandings,
   finalizeSeasonRivalries,
   getRivalry,
+  getRivalryMatchupNarrative,
   recordBlockbusterTradeRivalry,
   recordRivalryGame,
   recordStarDefectionRivalry,
@@ -241,5 +242,94 @@ describe('rivalry engine', () => {
     });
 
     expect(score).toBeLessThan(40);
+  });
+
+  it('builds deterministic rivalry matchup copy from a stable pair-scoped key', () => {
+    const rivalry = {
+      ...getRivalry(baseRivalries(), 'nym', 'bos')!,
+      currentSeasonWinsA: 6,
+      currentSeasonWinsB: 5,
+      closeRaceStreak: 2,
+      playoffSeriesStreak: 1,
+      eventHistory: [
+        { season: 7, type: 'division_race', summary: 'The standings stayed tight into September.' },
+        { season: 7, type: 'series_result', summary: 'Another one-run finish carried the edge forward.' },
+        { season: 6, type: 'playoff', summary: 'October put the clubs on the same line.' },
+      ],
+    };
+
+    const first = getRivalryMatchupNarrative({
+      rivalry,
+      season: 7,
+      day: 150,
+      minimumIntensityScore: 55,
+    });
+    const second = getRivalryMatchupNarrative({
+      rivalry,
+      season: 7,
+      day: 150,
+      minimumIntensityScore: 55,
+    });
+
+    expect(first).not.toBeNull();
+    expect(second).toEqual(first);
+  });
+
+  it('selects pair-specific rivalry matchup copy for different clubs', () => {
+    const eastCoast = getRivalryMatchupNarrative({
+      rivalry: {
+        ...getRivalry(baseRivalries(), 'nym', 'bos')!,
+        currentSeasonWinsA: 6,
+        currentSeasonWinsB: 5,
+        closeRaceStreak: 2,
+        playoffSeriesStreak: 1,
+        eventHistory: [
+          { season: 7, type: 'division_race', summary: 'The standings stayed tight into September.' },
+          { season: 6, type: 'playoff', summary: 'October put the clubs on the same line.' },
+        ],
+      },
+      season: 7,
+      day: 150,
+      minimumIntensityScore: 55,
+    });
+    const westCoast = getRivalryMatchupNarrative({
+      rivalry: {
+        ...getRivalry(baseRivalries(), 'lax', 'sfb')!,
+        currentSeasonWinsA: 7,
+        currentSeasonWinsB: 6,
+        closeRaceStreak: 3,
+        playoffSeriesStreak: 1,
+        eventHistory: [
+          { season: 7, type: 'division_race', summary: 'Every meeting kept tightening the division race.' },
+          { season: 6, type: 'playoff', summary: 'October ran the feud straight back.' },
+        ],
+      },
+      season: 7,
+      day: 150,
+      minimumIntensityScore: 55,
+    });
+
+    expect(eastCoast).not.toBeNull();
+    expect(westCoast).not.toBeNull();
+    expect(eastCoast?.headline).not.toBe(westCoast?.headline);
+  });
+
+  it('suppresses rivalry matchup copy when the computed score stays below the floor', () => {
+    const rivalry = {
+      ...getRivalry(baseRivalries(), 'nym', 'bos')!,
+      intensity: 18,
+      currentSeasonWinsA: 8,
+      currentSeasonWinsB: 1,
+      closeRaceStreak: 0,
+      playoffSeriesStreak: 0,
+      eventHistory: [],
+    };
+
+    expect(getRivalryMatchupNarrative({
+      rivalry,
+      season: 7,
+      day: 150,
+      minimumIntensityScore: 55,
+    })).toBeNull();
   });
 });

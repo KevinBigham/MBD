@@ -13,6 +13,7 @@ import {
   POSITIVE_CHEMISTRY_TRAITS,
   countMatchingTraits,
 } from '../player/personalityTraits.js';
+import { getRivalryMatchupNarrative } from './rivalries.js';
 
 export type PersonalityArchetype =
   | 'captain'
@@ -495,13 +496,18 @@ export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem
     .sort((a, b) => b.intensity - a.intensity)[0];
 
   if (topRivalry && topRivalry.intensity >= 55) {
+    const rivalryNarrative = getRivalryMatchupNarrative({
+      rivalry: topRivalry,
+      season: 0,
+      day: 0,
+    });
     items.push({
       id: topRivalry.id,
       priority: 4,
       category: 'rivalry',
       tag: 'ANALYSIS',
-      headline: 'A rivalry is becoming a real subplot.',
-      body: topRivalry.summary,
+      headline: rivalryNarrative?.headline ?? 'A rivalry is becoming a real subplot.',
+      body: rivalryNarrative?.body ?? topRivalry.summary,
       relatedTeamIds: [topRivalry.teamA, topRivalry.teamB],
       relatedPlayerIds: [],
       timestamp: 'NOW',

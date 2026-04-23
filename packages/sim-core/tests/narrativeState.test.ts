@@ -224,6 +224,111 @@ describe('narrative state', () => {
     expect(briefing.some((item) => item.category === 'chemistry')).toBe(true);
     expect(briefing.some((item) => item.category === 'rivalry')).toBe(true);
   });
+
+  it('uses deterministic pooled rivalry copy in the front office briefing', () => {
+    const ownerState: OwnerState = {
+      teamId: 'nym',
+      archetype: 'win_now',
+      patience: 36,
+      confidence: 42,
+      hotSeat: false,
+      summary: 'Ownership expected a playoff berth.',
+      expectations: {
+        winsTarget: 90,
+        playoffTarget: true,
+        payrollTarget: 210_000_000,
+      },
+    };
+    const chemistry: TeamChemistry = {
+      teamId: 'nym',
+      score: 68,
+      tier: 'connected',
+      trend: 'steady',
+      summary: 'The clubhouse is holding together.',
+      reasons: ['Veteran leadership'],
+    };
+    const rivalry: Rivalry = {
+      id: 'bos:nym',
+      teamA: 'nym',
+      teamB: 'bos',
+      intensity: 72,
+      summary: 'Boston keeps showing up in the biggest spots.',
+      reasons: ['Standings pressure', 'October carryover'],
+      origin: 'historical',
+      active: true,
+      currentSeasonWinsA: 6,
+      currentSeasonWinsB: 5,
+      closeRaceStreak: 2,
+      playoffSeriesStreak: 1,
+      eventHistory: [
+        { season: 7, type: 'division_race', summary: 'The standings stayed tight into September.' },
+        { season: 6, type: 'playoff', summary: 'October kept the feud alive.' },
+      ],
+    };
+
+    const first = buildFrontOfficeBriefing({
+      teamId: 'nym',
+      ownerState,
+      chemistry,
+      unreadNewsCount: 0,
+      rivalries: new Map([[rivalry.id, rivalry]]),
+    }).find((item) => item.category === 'rivalry');
+    const second = buildFrontOfficeBriefing({
+      teamId: 'nym',
+      ownerState,
+      chemistry,
+      unreadNewsCount: 0,
+      rivalries: new Map([[rivalry.id, rivalry]]),
+    }).find((item) => item.category === 'rivalry');
+
+    expect(first).toBeTruthy();
+    expect(second).toEqual(first);
+    expect(first?.headline).not.toBe('A rivalry is becoming a real subplot.');
+  });
+
+  it('keeps rivalry briefings off the board below the existing intensity gate', () => {
+    const ownerState: OwnerState = {
+      teamId: 'nym',
+      archetype: 'win_now',
+      patience: 36,
+      confidence: 42,
+      hotSeat: false,
+      summary: 'Ownership expected a playoff berth.',
+      expectations: {
+        winsTarget: 90,
+        playoffTarget: true,
+        payrollTarget: 210_000_000,
+      },
+    };
+    const chemistry: TeamChemistry = {
+      teamId: 'nym',
+      score: 68,
+      tier: 'connected',
+      trend: 'steady',
+      summary: 'The clubhouse is holding together.',
+      reasons: ['Veteran leadership'],
+    };
+
+    const briefing = buildFrontOfficeBriefing({
+      teamId: 'nym',
+      ownerState,
+      chemistry,
+      unreadNewsCount: 0,
+      rivalries: new Map([[
+        'bos:nym',
+        {
+          id: 'bos:nym',
+          teamA: 'nym',
+          teamB: 'bos',
+          intensity: 54,
+          summary: 'The feud cooled off for now.',
+          reasons: ['Dormant season'],
+        },
+      ]]),
+    });
+
+    expect(briefing.some((item) => item.category === 'rivalry')).toBe(false);
+  });
 });
 
 describe('awards and rivalries', () => {
