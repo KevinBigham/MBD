@@ -207,7 +207,7 @@ interface RivalryPressRenderContext {
 
 const RIVALRY_PRESS_HEADLINE_VARIANTS: Record<
   RivalryPressTopicId,
-  readonly Array<(context: RivalryPressRenderContext) => string>
+  ReadonlyArray<(context: RivalryPressRenderContext) => string>
 > = {
   rival_trade_aftermath: [
     ({ teamLabel, opponentLabel }) => `${teamLabel} is still answering for the deal with ${opponentLabel}.`,
@@ -228,7 +228,7 @@ const RIVALRY_PRESS_HEADLINE_VARIANTS: Record<
 
 const RIVALRY_PRESS_BODY_VARIANTS: Record<
   RivalryPressTopicId,
-  readonly Array<(context: RivalryPressRenderContext) => string>
+  ReadonlyArray<(context: RivalryPressRenderContext) => string>
 > = {
   rival_trade_aftermath: [
     ({ teamLabel, opponentLabel }) => `The trade has not cooled off. ${teamLabel} is still being pressed on what it cost to move talent across a live rivalry line with ${opponentLabel}.`,

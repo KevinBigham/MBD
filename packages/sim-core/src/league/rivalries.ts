@@ -72,7 +72,7 @@ const HISTORICAL_RIVALRIES: Array<{
   { teamA: 'chi', teamB: 'det', intensity: 72, reason: 'Historic Great Lakes feud' },
 ];
 
-const RIVALRY_MATCHUP_HEADLINE_VARIANTS: readonly Array<
+const RIVALRY_MATCHUP_HEADLINE_VARIANTS: ReadonlyArray<
   (context: RivalryNarrativeRenderContext) => string
 > = [
   ({ teamALabel, teamBLabel }) => `${teamALabel} and ${teamBLabel} are lining up for another loud chapter.`,
@@ -80,7 +80,7 @@ const RIVALRY_MATCHUP_HEADLINE_VARIANTS: readonly Array<
   ({ teamALabel, teamBLabel }) => `Another meaningful ${teamALabel}-${teamBLabel} meeting is back on the board.`,
 ];
 
-const RIVALRY_MATCHUP_BODY_VARIANTS: readonly Array<
+const RIVALRY_MATCHUP_BODY_VARIANTS: ReadonlyArray<
   (context: RivalryNarrativeRenderContext) => string
 > = [
   ({ teamALabel, teamBLabel, summary }) => `${teamALabel} and ${teamBLabel} keep running into meaningful stakes. ${summary}`,
@@ -125,7 +125,7 @@ function stableRivalryNarrativeKey(
 }
 
 function pickStableRivalryNarrative(
-  variants: readonly Array<(context: RivalryNarrativeRenderContext) => string>,
+  variants: ReadonlyArray<(context: RivalryNarrativeRenderContext) => string>,
   renderContext: RivalryNarrativeRenderContext,
   season: number,
   day: number,
