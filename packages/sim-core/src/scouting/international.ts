@@ -456,6 +456,7 @@ export function convertIFAProspectToPlayer(
       endSeason: null,
     }],
     priorSeasonGamesMissed: 0,
+    priorSeasonEstimatedWar: null,
     careerShutouts: 0,
   };
 }

@@ -79,7 +79,10 @@ export type MomentType =
   | 'rivalry_renewed'
   | 'comeback_player'
   | 'rookie_sensation'
-  | 'september_heroics';
+  | 'september_heroics'
+  | 'redemption_arc'
+  | 'late_career_peak'
+  | 'rookie_breakout';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -178,6 +181,9 @@ export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'comeback_player',
   'rookie_sensation',
   'september_heroics',
+  'redemption_arc',
+  'late_career_peak',
+  'rookie_breakout',
 ];
 
 export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -322,6 +328,15 @@ export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]>
   ],
   september_heroics: [
     '{player} helped carry a September charge straight into October.',
+  ],
+  redemption_arc: [
+    '{player} authored the kind of rebound season front offices wait around to see.',
+  ],
+  late_career_peak: [
+    '{player} proved an older star can still land another peak season.',
+  ],
+  rookie_breakout: [
+    '{player} closed a first MLB season with a real breakout stamp on it.',
   ],
 };
 

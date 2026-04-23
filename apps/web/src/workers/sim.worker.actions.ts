@@ -29,6 +29,7 @@ import {
   decayRelationships,
   decayMoments,
   detectComebackPlayer,
+  estimatedWar,
   detectPlayoffGauntlet,
   detectMoment,
   detectRookieSensation,
@@ -226,6 +227,7 @@ import {
   applyMonthlyNarrativeHooks,
   applyOffseasonNarrativeHooks,
   applyMonthlyPressConference,
+  applySeasonEndPlayerArcMoments,
 } from './sim.worker.narrativeFarm.js';
 import {
   archiveOldSeasonsInState,
@@ -1590,9 +1592,16 @@ function simMonthInternal(): SimResultDTO {
 }
 
 function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
+  applySeasonEndPlayerArcMoments(s);
   accrueCareerStatsForSeason(s);
   for (const player of s.players) {
-    player.priorSeasonGamesMissed = s.seasonState.playerSeasonStats.get(player.id)?.gamesMissedToInjury ?? 0;
+    const seasonStats = s.seasonState.playerSeasonStats.get(player.id);
+    player.priorSeasonGamesMissed = seasonStats?.gamesMissedToInjury ?? 0;
+    player.priorSeasonEstimatedWar = seasonStats != null && (seasonStats.pa > 0 || seasonStats.ip > 0)
+      ? estimatedWar(seasonStats)
+      : player.rosterStatus === 'MLB'
+        ? 0
+        : null;
   }
   syncRecordTracking(s, {
     includeCurrentSeasonPlayoffAppearance: true,

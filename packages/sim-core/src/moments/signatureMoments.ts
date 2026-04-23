@@ -1,5 +1,12 @@
 import type { RookieOfTheYearVotingEntry } from '@mbd/contracts';
+import {
+  pickStablePlayerArcBody,
+  pickStablePlayerArcHeadline,
+  type PlayerArcRenderContext,
+  type PlayerArcTopicId,
+} from '../narrative/playerArcProse.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { getTeamById } from '../league/teams.js';
 import type { PlayerGameStats } from '../sim/gameSimulator.js';
 import type { Moment } from './momentDetector.js';
 
@@ -9,6 +16,19 @@ export const COMEBACK_PLAYER_MISSED_GAMES_THRESHOLD = 50;
 export const COMEBACK_PLAYER_WAR_THRESHOLD = 3.5;
 export const ROOKIE_SENSATION_IMPACT = 52;
 export const ROOKIE_SENSATION_RELEVANCE = 0.82;
+export const REDEMPTION_ARC_IMPACT = 56;
+export const REDEMPTION_ARC_RELEVANCE = 0.88;
+export const REDEMPTION_ARC_PRIOR_WAR_MAX = 1.0;
+export const REDEMPTION_ARC_CURRENT_WAR_MIN = 3.0;
+export const LATE_CAREER_PEAK_IMPACT = 54;
+export const LATE_CAREER_PEAK_RELEVANCE = 0.86;
+export const LATE_CAREER_PEAK_AGE_MIN = 36;
+export const LATE_CAREER_PEAK_CAREER_WAR_MIN = 40.0;
+export const LATE_CAREER_PEAK_CURRENT_WAR_MIN = 3.0;
+export const ROOKIE_BREAKOUT_IMPACT = 55;
+export const ROOKIE_BREAKOUT_RELEVANCE = 0.84;
+export const ROOKIE_BREAKOUT_SERVICE_TIME_MAX = 172;
+export const ROOKIE_BREAKOUT_CURRENT_WAR_MIN = 3.0;
 
 export interface SignatureMomentDetectionResult {
   readonly playerId: string;
@@ -38,7 +58,7 @@ function createMoment(
   };
 }
 
-function estimatedWar(stats: PlayerGameStats): number {
+export function estimatedWar(stats: PlayerGameStats): number {
   if (stats.ip > 0 && stats.pa < 30) {
     const innings = stats.ip / 3;
     const era = innings > 0 ? (stats.earnedRuns * 9) / innings : 9;
@@ -56,6 +76,30 @@ function playerAlreadyHasMoment(
   season: number,
 ): boolean {
   return playerMoments.get(playerId)?.some((moment) => moment.type === type && moment.season === season) ?? false;
+}
+
+function playerName(player: Pick<GeneratedPlayer, 'firstName' | 'lastName'>): string {
+  return `${player.firstName} ${player.lastName}`;
+}
+
+function teamLabel(teamId: string): string {
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
+function roundToTenth(value: number): number {
+  return Number(value.toFixed(1));
+}
+
+function buildPlayerArcDescription(
+  topicId: PlayerArcTopicId,
+  renderContext: PlayerArcRenderContext,
+  playerId: string,
+  season: number,
+): string {
+  const headline = pickStablePlayerArcHeadline(topicId, renderContext, playerId, season);
+  const body = pickStablePlayerArcBody(topicId, renderContext, playerId, season);
+  return `${headline} ${body}`;
 }
 
 export function detectComebackPlayer(
@@ -135,4 +179,137 @@ export function detectRookieSensation(
   }
 
   return detected.sort((left, right) => left.playerId.localeCompare(right.playerId));
+}
+
+export function detectRedemptionArc(
+  player: GeneratedPlayer,
+  stats: PlayerGameStats | undefined,
+  season: number,
+  day: number,
+  playerMoments: ReadonlyMap<string, readonly Moment[]> = new Map(),
+): SignatureMomentDetectionResult | null {
+  if (!stats || player.priorSeasonEstimatedWar == null) {
+    return null;
+  }
+  if (playerAlreadyHasMoment(playerMoments, player.id, 'redemption_arc', season)) {
+    return null;
+  }
+
+  const currentWar = estimatedWar(stats);
+  if (player.priorSeasonEstimatedWar >= REDEMPTION_ARC_PRIOR_WAR_MAX || currentWar < REDEMPTION_ARC_CURRENT_WAR_MIN) {
+    return null;
+  }
+
+  const description = buildPlayerArcDescription(
+    'redemption_arc',
+    {
+      playerName: playerName(player),
+      teamLabel: teamLabel(player.teamId),
+      priorWar: roundToTenth(player.priorSeasonEstimatedWar),
+      currentWar: roundToTenth(currentWar),
+    },
+    player.id,
+    season,
+  );
+
+  return {
+    playerId: player.id,
+    moment: createMoment(
+      season,
+      day,
+      'redemption_arc',
+      description,
+      REDEMPTION_ARC_IMPACT,
+      REDEMPTION_ARC_RELEVANCE,
+    ),
+  };
+}
+
+export function detectLateCareerPeak(
+  player: GeneratedPlayer,
+  stats: PlayerGameStats | undefined,
+  careerWarBeforeSeason: number,
+  season: number,
+  day: number,
+  playerMoments: ReadonlyMap<string, readonly Moment[]> = new Map(),
+): SignatureMomentDetectionResult | null {
+  if (!stats || player.age < LATE_CAREER_PEAK_AGE_MIN) {
+    return null;
+  }
+  if (playerAlreadyHasMoment(playerMoments, player.id, 'late_career_peak', season)) {
+    return null;
+  }
+
+  const currentWar = estimatedWar(stats);
+  if (careerWarBeforeSeason < LATE_CAREER_PEAK_CAREER_WAR_MIN || currentWar < LATE_CAREER_PEAK_CURRENT_WAR_MIN) {
+    return null;
+  }
+
+  const description = buildPlayerArcDescription(
+    'late_career_peak',
+    {
+      playerName: playerName(player),
+      teamLabel: teamLabel(player.teamId),
+      age: player.age,
+      careerWar: roundToTenth(careerWarBeforeSeason),
+      currentWar: roundToTenth(currentWar),
+    },
+    player.id,
+    season,
+  );
+
+  return {
+    playerId: player.id,
+    moment: createMoment(
+      season,
+      day,
+      'late_career_peak',
+      description,
+      LATE_CAREER_PEAK_IMPACT,
+      LATE_CAREER_PEAK_RELEVANCE,
+    ),
+  };
+}
+
+export function detectRookieBreakout(
+  player: GeneratedPlayer,
+  stats: PlayerGameStats | undefined,
+  season: number,
+  day: number,
+  playerMoments: ReadonlyMap<string, readonly Moment[]> = new Map(),
+): SignatureMomentDetectionResult | null {
+  if (!stats || player.serviceTimeDays >= ROOKIE_BREAKOUT_SERVICE_TIME_MAX) {
+    return null;
+  }
+  if (playerAlreadyHasMoment(playerMoments, player.id, 'rookie_breakout', season)) {
+    return null;
+  }
+
+  const currentWar = estimatedWar(stats);
+  if (currentWar < ROOKIE_BREAKOUT_CURRENT_WAR_MIN) {
+    return null;
+  }
+
+  const description = buildPlayerArcDescription(
+    'rookie_breakout',
+    {
+      playerName: playerName(player),
+      teamLabel: teamLabel(player.teamId),
+      currentWar: roundToTenth(currentWar),
+    },
+    player.id,
+    season,
+  );
+
+  return {
+    playerId: player.id,
+    moment: createMoment(
+      season,
+      day,
+      'rookie_breakout',
+      description,
+      ROOKIE_BREAKOUT_IMPACT,
+      ROOKIE_BREAKOUT_RELEVANCE,
+    ),
+  };
 }
