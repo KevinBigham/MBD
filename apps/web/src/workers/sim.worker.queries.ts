@@ -888,6 +888,17 @@ function teamNameFromId(teamId: string): string {
 
 const AWARD_CATEGORY_KEYS = ['MVP', 'CY_YOUNG', 'ROY', 'GOLD_GLOVE', 'SILVER_SLUGGER', 'All-Star'] as const;
 
+// Player-scoped signature moment types (PR #55, schema v29). Shared across the
+// Career Retrospective (career-spanning `signatureArcs`), Season Story Reel
+// (season-scoped `playerArcs`), and the `getPlayerArcsOfSeason` dashboard query
+// so all three surfaces agree on which moment types count as "arc" moments.
+const PLAYER_ARC_MOMENT_TYPES = [
+  'redemption_arc',
+  'late_career_peak',
+  'rookie_breakout',
+] as const;
+const PLAYER_ARC_MOMENT_TYPE_SET: ReadonlySet<string> = new Set(PLAYER_ARC_MOMENT_TYPES);
+
 function buildCareerRetrospective(s: NonNullable<typeof state>) {
   const gm = s.gmCareer;
   const userTeam = getTeamById(s.userTeamId);
@@ -1001,6 +1012,68 @@ function buildCareerRetrospective(s: NonNullable<typeof state>) {
     )
     .slice(0, 5);
 
+  // Career-spanning player-arc signature moments (PR #55). Sourced from
+  // `s.playerMoments` (season-end signatures) — distinct from `legendArcs`
+  // above, which is sourced from `s.playerStoryArcs` (multi-season narrative
+  // threads). Dedupe by `playerId|arcType` keeping the entry with the highest
+  // relevance (breaking ties on newest season). Then global top-5 by relevance
+  // with stable tiebreakers so the same dynasty state always renders the same
+  // ordering.
+  type SignatureArcCandidate = {
+    playerId: string;
+    arcType: string;
+    season: number;
+    description: string;
+    relevance: number;
+  };
+  const signatureArcByKey = new Map<string, SignatureArcCandidate>();
+  for (const [playerId, moments] of s.playerMoments.entries()) {
+    for (const moment of moments) {
+      if (!PLAYER_ARC_MOMENT_TYPE_SET.has(moment.type)) continue;
+      const key = `${playerId}|${moment.type}`;
+      const candidate: SignatureArcCandidate = {
+        playerId,
+        arcType: moment.type,
+        season: moment.season,
+        description: moment.description,
+        relevance: moment.relevance,
+      };
+      const existing = signatureArcByKey.get(key);
+      if (
+        !existing
+        || candidate.relevance > existing.relevance
+        || (candidate.relevance === existing.relevance && candidate.season > existing.season)
+      ) {
+        signatureArcByKey.set(key, candidate);
+      }
+    }
+  }
+  const signatureArcs = Array.from(signatureArcByKey.values())
+    .map((candidate) => {
+      const livePlayer = s.players.find((player) => player.id === candidate.playerId);
+      const historicalPlayer = s.historicalPlayers.find(
+        (player) => player.playerId === candidate.playerId,
+      );
+      const playerName = livePlayer
+        ? `${livePlayer.firstName} ${livePlayer.lastName}`
+        : historicalPlayer?.fullName ?? candidate.playerId;
+      return {
+        playerId: candidate.playerId,
+        playerName,
+        arcType: candidate.arcType,
+        season: candidate.season,
+        description: candidate.description,
+        relevance: candidate.relevance,
+      };
+    })
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || right.season - left.season
+      || left.arcType.localeCompare(right.arcType)
+      || left.playerId.localeCompare(right.playerId),
+    )
+    .slice(0, 5);
+
   const userAwards = s.awardHistory.filter((entry) => entry.teamId === s.userTeamId);
   const awardsShelf = {
     mvp: userAwards.filter((entry) => entry.award === 'MVP').length,
@@ -1061,6 +1134,7 @@ function buildCareerRetrospective(s: NonNullable<typeof state>) {
     seasonHistory,
     teamMoments,
     legendArcs,
+    signatureArcs,
     awardsShelf,
     topRivalry,
   };
@@ -1130,6 +1204,46 @@ function buildSeasonStoryReel(s: NonNullable<typeof state>, seasonYear: number) 
       relevance: moment.relevance,
     }));
 
+  // Player-arc signatures filed this season (PR #55). Sourced from
+  // `s.playerMoments` across every player, filtered to the three arc moment
+  // types and this season only. Deterministic sort: relevance desc → arc type
+  // alpha → playerId alpha. Cap at 5.
+  type SeasonPlayerArcEntry = {
+    playerId: string;
+    playerName: string;
+    arcType: string;
+    description: string;
+    relevance: number;
+  };
+  const playerArcEntries: SeasonPlayerArcEntry[] = [];
+  for (const [playerId, moments] of s.playerMoments.entries()) {
+    for (const moment of moments) {
+      if (moment.season !== seasonYear) continue;
+      if (!PLAYER_ARC_MOMENT_TYPE_SET.has(moment.type)) continue;
+      const livePlayer = s.players.find((player) => player.id === playerId);
+      const historicalPlayer = s.historicalPlayers.find(
+        (player) => player.playerId === playerId,
+      );
+      const playerName = livePlayer
+        ? `${livePlayer.firstName} ${livePlayer.lastName}`
+        : historicalPlayer?.fullName ?? playerId;
+      playerArcEntries.push({
+        playerId,
+        playerName,
+        arcType: moment.type,
+        description: moment.description,
+        relevance: moment.relevance,
+      });
+    }
+  }
+  const playerArcs = playerArcEntries
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || left.arcType.localeCompare(right.arcType)
+      || left.playerId.localeCompare(right.playerId),
+    )
+    .slice(0, 5);
+
   const keyTransactions = [...(archiveEntry?.transactions ?? [])]
     .sort((left, right) => right.impactScore - left.impactScore)
     .slice(0, 3)
@@ -1197,6 +1311,7 @@ function buildSeasonStoryReel(s: NonNullable<typeof state>, seasonYear: number) 
     storylines,
     timelineEvents,
     signatureBeats,
+    playerArcs,
     keyTransactions,
     playoffPath,
     awards,
@@ -1976,16 +2091,11 @@ export const queryApi = {
   // explicit season forces that season's view — used by retrospective surfaces.
   getPlayerArcsOfSeason(season?: number) {
     const s = requireState();
-    const arcTypes: ReadonlySet<string> = new Set([
-      'redemption_arc',
-      'late_career_peak',
-      'rookie_breakout',
-    ]);
 
     const allArcs = [...s.playerMoments.entries()]
       .flatMap(([playerId, moments]) =>
         moments
-          .filter((moment) => arcTypes.has(moment.type))
+          .filter((moment) => PLAYER_ARC_MOMENT_TYPE_SET.has(moment.type))
           .map((moment) => ({ playerId, moment })),
       );
 

@@ -10,12 +10,24 @@ import {
   Crown,
   Sparkles,
   Star,
+  TrendingUp,
   Trophy,
   X,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { humanizeLabel } from '@/shared/lib/labels';
+
+const SIGNATURE_ARC_LABELS: Readonly<Record<string, string>> = {
+  redemption_arc: 'Redemption',
+  late_career_peak: 'Late-Career Peak',
+  rookie_breakout: 'Rookie Breakout',
+};
+
+function signatureArcLabel(arcType: string): string {
+  return SIGNATURE_ARC_LABELS[arcType] ?? humanizeLabel(arcType);
+}
 
 export interface SeasonStoryReelView {
   season: number;
@@ -64,6 +76,13 @@ export interface SeasonStoryReelView {
     teamId: string;
     teamAbbreviation: string;
     value: string;
+  }>;
+  playerArcs: Array<{
+    playerId: string;
+    playerName: string;
+    arcType: string;
+    description: string;
+    relevance: number;
   }>;
 }
 
@@ -247,6 +266,9 @@ export default function SeasonStoryReelModal({ seasonYear, onDismiss }: SeasonSt
               {view.storylines.length > 0 ? <StorylinesSection storylines={view.storylines} /> : null}
               {view.timelineEvents.length > 0 ? <TimelineSection events={view.timelineEvents} /> : null}
               {view.signatureBeats.length > 0 ? <BeatsSection beats={view.signatureBeats} /> : null}
+              {(view.playerArcs?.length ?? 0) > 0 ? (
+                <PlayerArcsSection arcs={view.playerArcs} />
+              ) : null}
               {view.keyTransactions.length > 0 ? <TransactionsSection entries={view.keyTransactions} /> : null}
               {view.playoffPath.length > 0 ? <PlayoffPathSection path={view.playoffPath} /> : null}
               {view.awards.length > 0 ? <AwardsSection awards={view.awards} /> : null}
@@ -275,6 +297,7 @@ function isEmptySeason(view: SeasonStoryReelView): boolean {
     && view.playoffPath.length === 0
     && view.awards.length === 0
     && view.statLeaderHighlights.length === 0
+    && (view.playerArcs?.length ?? 0) === 0
   );
 }
 
@@ -348,6 +371,33 @@ function BeatsSection({ beats }: { beats: SeasonStoryReelView['signatureBeats'] 
             </li>
           );
         })}
+      </ul>
+    </SectionCard>
+  );
+}
+
+function PlayerArcsSection({ arcs }: { arcs: SeasonStoryReelView['playerArcs'] }) {
+  return (
+    <SectionCard icon={<TrendingUp className="h-3.5 w-3.5 text-accent-info" />} label="Notable Player Arcs">
+      <ul className="space-y-2">
+        {arcs.map((arc) => (
+          <li key={`player-arc-${arc.playerId}-${arc.arcType}`} className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <Link
+                to={`/players/${arc.playerId}?tab=moments`}
+                className="truncate font-heading text-xs text-dynasty-textBright hover:text-accent-primary"
+              >
+                {arc.playerName}
+              </Link>
+              <span className="shrink-0 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+                {signatureArcLabel(arc.arcType)}
+              </span>
+            </div>
+            {arc.description ? (
+              <div className="mt-0.5 font-heading text-xs text-dynasty-text">{arc.description}</div>
+            ) : null}
+          </li>
+        ))}
       </ul>
     </SectionCard>
   );

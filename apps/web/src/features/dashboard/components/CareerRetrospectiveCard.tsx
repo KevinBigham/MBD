@@ -12,6 +12,7 @@ import {
   Sparkles,
   Star,
   Swords,
+  TrendingUp,
   Trophy,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
@@ -35,6 +36,25 @@ interface LegendArcEntry {
   arcType: string;
   resolvedSeason: number;
   milestoneHeadline: string | null;
+}
+
+interface SignatureArcEntry {
+  playerId: string;
+  playerName: string;
+  arcType: string;
+  season: number;
+  description: string;
+  relevance: number;
+}
+
+const SIGNATURE_ARC_LABELS: Readonly<Record<string, string>> = {
+  redemption_arc: 'Redemption',
+  late_career_peak: 'Late-Career Peak',
+  rookie_breakout: 'Rookie Breakout',
+};
+
+function signatureArcLabel(arcType: string): string {
+  return SIGNATURE_ARC_LABELS[arcType] ?? humanizeLabel(arcType);
 }
 
 interface AwardsShelfView {
@@ -87,6 +107,7 @@ interface CareerRetrospectiveView {
   seasonHistory: SeasonHistoryEntry[];
   teamMoments: TeamMomentEntry[];
   legendArcs: LegendArcEntry[];
+  signatureArcs: SignatureArcEntry[];
   awardsShelf: AwardsShelfView;
   topRivalry: TopRivalryView | null;
 }
@@ -129,6 +150,7 @@ export default function CareerRetrospectiveCard() {
     || view.titles.playoffAppearances > 0
     || view.teamMoments.length > 0
     || view.legendArcs.length > 0
+    || (view.signatureArcs?.length ?? 0) > 0
     || view.awardsShelf.total > 0
     || view.topRivalry != null
     || (view.seasonHistory?.length ?? 0) >= 2
@@ -175,6 +197,12 @@ export default function CareerRetrospectiveCard() {
           ) : null}
           {view.legendArcs.length > 0 ? (
             <LegendArcs arcs={view.legendArcs.slice(0, 3)} onSelectSeason={setSelectedSeason} />
+          ) : null}
+          {(view.signatureArcs?.length ?? 0) > 0 ? (
+            <SignatureArcs
+              arcs={view.signatureArcs.slice(0, 3)}
+              onSelectSeason={setSelectedSeason}
+            />
           ) : null}
           {view.topRivalry ? <TopRivalry rivalry={view.topRivalry} /> : null}
         </div>
@@ -442,6 +470,53 @@ function LegendArcs({
             </div>
             {arc.milestoneHeadline ? (
               <div className="mt-0.5 font-heading text-xs text-dynasty-text">{arc.milestoneHeadline}</div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SignatureArcs({
+  arcs,
+  onSelectSeason,
+}: {
+  arcs: SignatureArcEntry[];
+  onSelectSeason: (season: number) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dynasty-border/70 bg-dynasty-surface/70 p-3">
+      <div className="flex items-center gap-1.5">
+        <TrendingUp className="h-3.5 w-3.5 text-accent-info" />
+        <div className="font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+          Notable Player Arcs
+        </div>
+      </div>
+      <ul className="mt-2 space-y-2">
+        {arcs.map((arc) => (
+          <li key={`${arc.playerId}-${arc.arcType}-${arc.season}`} className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <Link
+                to={`/players/${arc.playerId}?tab=moments`}
+                className="truncate font-heading text-xs text-dynasty-textBright hover:text-accent-primary"
+              >
+                {arc.playerName}
+              </Link>
+              <span className="shrink-0 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted">
+                {signatureArcLabel(arc.arcType)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onSelectSeason(arc.season)}
+                aria-label={`Open season ${arc.season} story reel`}
+                className="ml-auto shrink-0 rounded-full border border-dynasty-border/60 bg-dynasty-elevated/70 px-2 py-0.5 font-data text-[10px] uppercase tracking-[0.12em] text-dynasty-muted transition hover:border-accent-info/60 hover:text-accent-info focus:outline-none focus:ring-1 focus:ring-accent-info/60"
+              >
+                S{arc.season}
+              </button>
+            </div>
+            {arc.description ? (
+              <div className="mt-0.5 font-heading text-xs text-dynasty-text">{arc.description}</div>
             ) : null}
           </li>
         ))}

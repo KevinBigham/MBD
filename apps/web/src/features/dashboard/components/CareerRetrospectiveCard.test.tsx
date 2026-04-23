@@ -65,6 +65,14 @@ const baseView = {
     resolvedSeason: number;
     milestoneHeadline: string | null;
   }>,
+  signatureArcs: [] as Array<{
+    playerId: string;
+    playerName: string;
+    arcType: string;
+    season: number;
+    description: string;
+    relevance: number;
+  }>,
   awardsShelf: emptyShelf,
   topRivalry: null as null | {
     opponentTeamId: string;
@@ -226,6 +234,59 @@ describe('CareerRetrospectiveCard', () => {
     expect(text).toContain('Hall Of Fame Track');
     expect(text).toContain('S2029');
     expect(text).toContain('3000 career hits');
+  });
+
+  it('renders Notable Player Arcs section with player-arc signature moments', async () => {
+    mockWorker.getCareerRetrospective.mockResolvedValue({
+      ...baseView,
+      signatureArcs: [
+        {
+          playerId: 'p-redeem',
+          playerName: 'Marcus Rivera',
+          arcType: 'redemption_arc',
+          season: 2027,
+          description: 'Roared back with a 5.1 WAR season after a lost year.',
+          relevance: 0.93,
+        },
+        {
+          playerId: 'p-veteran',
+          playerName: 'Henry Ishikawa',
+          arcType: 'late_career_peak',
+          season: 2029,
+          description: 'Posted a career-best season at age 38.',
+          relevance: 0.91,
+        },
+        {
+          playerId: 'p-rookie',
+          playerName: 'Tito Delgado',
+          arcType: 'rookie_breakout',
+          season: 2026,
+          description: 'Debut season 4.0 WAR and ROY vote share.',
+          relevance: 0.88,
+        },
+      ],
+    });
+
+    await renderCard();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('Notable Player Arcs');
+    expect(text).toContain('Marcus Rivera');
+    expect(text).toContain('Redemption');
+    expect(text).toContain('S2027');
+    expect(text).toContain('Henry Ishikawa');
+    expect(text).toContain('Late-Career Peak');
+    expect(text).toContain('Tito Delgado');
+    expect(text).toContain('Rookie Breakout');
+  });
+
+  it('does not render Notable Player Arcs when signatureArcs is empty', async () => {
+    mockWorker.getCareerRetrospective.mockResolvedValue(baseView);
+
+    await renderCard();
+
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('Notable Player Arcs');
   });
 
   it('renders season arc sparkline strip when two or more seasons are logged', async () => {
