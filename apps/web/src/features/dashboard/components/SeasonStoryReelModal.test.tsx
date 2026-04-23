@@ -1,6 +1,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
+import { MemoryRouter } from 'react-router-dom';
 import SeasonStoryReelModal, { type SeasonStoryReelView } from './SeasonStoryReelModal';
 
 const mockWorker = {
@@ -68,6 +69,7 @@ const baseView: SeasonStoryReelView = {
     { category: 'HR', playerId: 'p2', playerName: 'Pete Alonso', teamId: 'nym', teamAbbreviation: 'NYM', value: '46' },
     { category: 'ERA', playerId: 'p3', playerName: 'Kodai Senga', teamId: 'nym', teamAbbreviation: 'NYM', value: '2.51' },
   ],
+  playerArcs: [],
 };
 
 describe('SeasonStoryReelModal', () => {
@@ -94,7 +96,11 @@ describe('SeasonStoryReelModal', () => {
 
   async function renderModal(seasonYear = 2028) {
     await act(async () => {
-      root.render(<SeasonStoryReelModal seasonYear={seasonYear} onDismiss={onDismiss} />);
+      root.render(
+        <MemoryRouter>
+          <SeasonStoryReelModal seasonYear={seasonYear} onDismiss={onDismiss} />
+        </MemoryRouter>,
+      );
     });
     await act(async () => {
       await Promise.resolve();
@@ -142,6 +148,59 @@ describe('SeasonStoryReelModal', () => {
     expect(text).toContain('Stat Leaders');
     expect(text).toContain('Pete Alonso');
     expect(text).toContain('Kodai Senga');
+  });
+
+  it('renders Notable Player Arcs section when playerArcs are present', async () => {
+    mockWorker.getSeasonStoryReel.mockResolvedValue({
+      ...baseView,
+      playerArcs: [
+        {
+          playerId: 'p-redeem',
+          playerName: 'Marcus Rivera',
+          arcType: 'redemption_arc',
+          description: 'Roared back with a 5.1 WAR season after a lost year.',
+          relevance: 0.93,
+        },
+        {
+          playerId: 'p-veteran',
+          playerName: 'Henry Ishikawa',
+          arcType: 'late_career_peak',
+          description: 'Posted a career-best season at age 38.',
+          relevance: 0.91,
+        },
+        {
+          playerId: 'p-rookie',
+          playerName: 'Tito Delgado',
+          arcType: 'rookie_breakout',
+          description: 'Debut season 4.0 WAR and ROY vote share.',
+          relevance: 0.88,
+        },
+      ],
+    });
+
+    await renderModal(2028);
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('Notable Player Arcs');
+    expect(text).toContain('Marcus Rivera');
+    expect(text).toContain('Redemption');
+    expect(text).toContain('Henry Ishikawa');
+    expect(text).toContain('Late-Career Peak');
+    expect(text).toContain('Tito Delgado');
+    expect(text).toContain('Rookie Breakout');
+    expect(text).toContain('5.1 WAR season');
+
+    const playerLink = container.querySelector('a[href="/players/p-redeem?tab=moments"]');
+    expect(playerLink).not.toBeNull();
+  });
+
+  it('does not render Notable Player Arcs when playerArcs is empty', async () => {
+    mockWorker.getSeasonStoryReel.mockResolvedValue(baseView);
+
+    await renderModal(2028);
+
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('Notable Player Arcs');
   });
 
   it('dismisses on Escape key', async () => {

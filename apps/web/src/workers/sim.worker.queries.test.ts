@@ -434,6 +434,265 @@ describe('worker getPlayerArcsOfSeason query', () => {
   });
 });
 
+describe('worker getCareerRetrospective signatureArcs', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  function makeArcMoment(
+    season: number,
+    type: string,
+    description: string,
+    relevance: number,
+  ): SignatureMoment {
+    return {
+      season,
+      day: 162,
+      timestamp: `S${season}D162`,
+      type: type as SignatureMoment['type'],
+      description,
+      impact: 10,
+      relevance,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    };
+  }
+
+  interface SignatureArcEntry {
+    playerId: string;
+    playerName: string;
+    arcType: string;
+    season: number;
+    description: string;
+    relevance: number;
+  }
+  interface RetrospectiveView {
+    signatureArcs: SignatureArcEntry[];
+  }
+
+  function getWorker(): typeof api & { getCareerRetrospective: () => RetrospectiveView } {
+    return api as typeof api & { getCareerRetrospective: () => RetrospectiveView };
+  }
+
+  it('returns empty signatureArcs when no player-arc moments exist', () => {
+    startGame(2211, 'nym');
+    const view = getWorker().getCareerRetrospective();
+    expect(view.signatureArcs).toEqual([]);
+  });
+
+  it('dedupes by playerId+arcType, keeping the highest-relevance entry', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    // Same player, same arc type — keep higher relevance (0.92 vs 0.80).
+    state.playerMoments.set('p1', [
+      makeArcMoment(4, 'redemption_arc', 'First redemption.', 0.80),
+      makeArcMoment(6, 'redemption_arc', 'Bigger redemption.', 0.92),
+    ]);
+
+    const view = getWorker().getCareerRetrospective();
+    expect(view.signatureArcs).toHaveLength(1);
+    expect(view.signatureArcs[0]?.description).toBe('Bigger redemption.');
+    expect(view.signatureArcs[0]?.relevance).toBe(0.92);
+  });
+
+  it('keeps distinct arcs when the same player has different arc types', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.playerMoments.set('p1', [
+      makeArcMoment(4, 'rookie_breakout', 'Rookie year.', 0.85),
+      makeArcMoment(12, 'late_career_peak', 'Old-timer glory.', 0.90),
+    ]);
+
+    const view = getWorker().getCareerRetrospective();
+    expect(view.signatureArcs).toHaveLength(2);
+    expect(view.signatureArcs.map((e) => e.arcType).sort()).toEqual([
+      'late_career_peak',
+      'rookie_breakout',
+    ]);
+  });
+
+  it('filters strictly to the three arc moment types', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.playerMoments.set('p1', [
+      makeArcMoment(6, 'redemption_arc', 'Arc.', 0.9),
+      makeArcMoment(6, 'no_hitter', 'Filtered.', 0.95),
+      makeArcMoment(6, 'walk_off_hr', 'Filtered.', 0.9),
+    ]);
+
+    const view = getWorker().getCareerRetrospective();
+    expect(view.signatureArcs).toHaveLength(1);
+    expect(view.signatureArcs[0]?.arcType).toBe('redemption_arc');
+  });
+
+  it('caps signatureArcs at 5 entries with relevance desc + stable tiebreakers', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    // Seven distinct players, each with a redemption arc — relevance strictly
+    // descending so the top 5 are deterministic.
+    for (let i = 1; i <= 7; i += 1) {
+      state.playerMoments.set(`p${i}`, [
+        makeArcMoment(6, 'redemption_arc', `Arc ${i}.`, 0.90 - i * 0.01),
+      ]);
+    }
+
+    const view = getWorker().getCareerRetrospective();
+    expect(view.signatureArcs).toHaveLength(5);
+    expect(view.signatureArcs.map((e) => e.playerId)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5']);
+  });
+
+  it('returns identical output across repeated calls (deterministic)', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.playerMoments.set('p1', [makeArcMoment(6, 'redemption_arc', 'A.', 0.9)]);
+    state.playerMoments.set('p2', [makeArcMoment(6, 'late_career_peak', 'B.', 0.9)]);
+    state.playerMoments.set('p3', [makeArcMoment(6, 'rookie_breakout', 'C.', 0.9)]);
+
+    const first = getWorker().getCareerRetrospective();
+    const second = getWorker().getCareerRetrospective();
+    expect(first.signatureArcs).toEqual(second.signatureArcs);
+  });
+});
+
+describe('worker getSeasonStoryReel playerArcs', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  function makeArcMoment(
+    season: number,
+    type: string,
+    description: string,
+    relevance: number,
+  ): SignatureMoment {
+    return {
+      season,
+      day: 162,
+      timestamp: `S${season}D162`,
+      type: type as SignatureMoment['type'],
+      description,
+      impact: 10,
+      relevance,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    };
+  }
+
+  interface PlayerArcEntry {
+    playerId: string;
+    playerName: string;
+    arcType: string;
+    description: string;
+    relevance: number;
+  }
+  interface StoryReelView {
+    season: number;
+    playerArcs: PlayerArcEntry[];
+  }
+
+  function getWorker(): typeof api & { getSeasonStoryReel: (season: number) => StoryReelView | null } {
+    return api as typeof api & { getSeasonStoryReel: (season: number) => StoryReelView | null };
+  }
+
+  function seedArchiveSeason(seasonYear: number) {
+    const state = requireState();
+    // Story reel returns null unless an archive entry exists for the season.
+    // Use a minimal archive entry that satisfies the lookup.
+    state.seasonArchive.push({
+      season: seasonYear,
+      standings: [],
+      playoffSeries: [],
+      timelineEvents: [],
+      transactions: [],
+      awards: [],
+      userSummary: null,
+      statLeaders: null,
+    } as unknown as (typeof state.seasonArchive)[number]);
+  }
+
+  it('filters playerArcs to the target season only', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    seedArchiveSeason(6);
+    state.playerMoments.set('p1', [
+      makeArcMoment(5, 'redemption_arc', 'Last season.', 0.9),
+      makeArcMoment(6, 'late_career_peak', 'This season.', 0.9),
+      makeArcMoment(7, 'rookie_breakout', 'Next season.', 0.9),
+    ]);
+
+    const view = getWorker().getSeasonStoryReel(6);
+    expect(view?.playerArcs).toHaveLength(1);
+    expect(view?.playerArcs[0]?.description).toBe('This season.');
+  });
+
+  it('filters strictly to the three arc moment types', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    seedArchiveSeason(6);
+    state.playerMoments.set('p1', [
+      makeArcMoment(6, 'redemption_arc', 'Arc.', 0.9),
+      makeArcMoment(6, 'no_hitter', 'Filtered.', 0.95),
+      makeArcMoment(6, 'walk_off_hr', 'Filtered.', 0.9),
+    ]);
+
+    const view = getWorker().getSeasonStoryReel(6);
+    expect(view?.playerArcs).toHaveLength(1);
+    expect(view?.playerArcs[0]?.arcType).toBe('redemption_arc');
+  });
+
+  it('sorts by relevance desc with stable arc-type and playerId tiebreakers', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    seedArchiveSeason(6);
+    // Equal relevance — tiebreakers decide.
+    state.playerMoments.set('p_zzz', [makeArcMoment(6, 'redemption_arc', 'Z.', 0.9)]);
+    state.playerMoments.set('p_aaa', [makeArcMoment(6, 'rookie_breakout', 'A.', 0.9)]);
+    state.playerMoments.set('p_bbb', [makeArcMoment(6, 'redemption_arc', 'B.', 0.9)]);
+    // Higher relevance wins outright.
+    state.playerMoments.set('p_top', [makeArcMoment(6, 'late_career_peak', 'Top.', 0.95)]);
+
+    const view = getWorker().getSeasonStoryReel(6);
+    expect(view?.playerArcs.map((entry) => entry.playerId)).toEqual([
+      'p_top',  // highest relevance
+      'p_bbb',  // redemption_arc < rookie_breakout, playerId bbb < zzz
+      'p_zzz',
+      'p_aaa',
+    ]);
+  });
+
+  it('caps playerArcs at 5 entries', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    seedArchiveSeason(6);
+    for (let i = 1; i <= 7; i += 1) {
+      state.playerMoments.set(`p${i}`, [
+        makeArcMoment(6, 'redemption_arc', `Arc ${i}.`, 0.90 - i * 0.01),
+      ]);
+    }
+
+    const view = getWorker().getSeasonStoryReel(6);
+    expect(view?.playerArcs).toHaveLength(5);
+  });
+
+  it('returns empty playerArcs when no arc moments fall in the season', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    seedArchiveSeason(6);
+    state.playerMoments.set('p1', [
+      makeArcMoment(5, 'redemption_arc', 'Different season.', 0.9),
+    ]);
+
+    const view = getWorker().getSeasonStoryReel(6);
+    expect(view?.playerArcs).toEqual([]);
+  });
+});
+
 describe('worker chase watch query', () => {
   afterEach(() => {
     setState(null);
