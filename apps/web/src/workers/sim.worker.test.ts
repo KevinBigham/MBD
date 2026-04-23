@@ -29,6 +29,7 @@ import { processTradeMarketActivity } from './sim.worker.trade';
 import { refreshTickerFeed } from './sim.worker.ticker';
 import {
   applyOffseasonNarrativeHooks,
+  applyRegularSeasonPositionGroupMoments,
   applyRegularSeasonTeamDynastyMarkers,
   applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
@@ -4814,6 +4815,88 @@ describe('sim worker narrative APIs', () => {
     expect(state.teamMoments.get('bos')?.filter((moment) => moment.type === 'era_ending_collapse')).toHaveLength(1);
     expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'three_peat')).toHaveLength(1);
     expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'perennial_contender')).toHaveLength(1);
+  });
+
+  it('applies regular-season position group moments idempotently', () => {
+    startGame(1420, 'nym');
+    const state = requireState();
+    const nymStarters = state.players
+      .filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.position === 'SP')
+      .slice(0, 5);
+    const nymRelievers = state.players
+      .filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && (player.position === 'RP' || player.position === 'CL'))
+      .slice(0, 3);
+    const nymHitters = state.players
+      .filter((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null)
+      .slice(0, 9);
+    const bosPitcher = state.players.find((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.position === 'SP')!;
+    const bosHitters = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null)
+      .slice(0, 9);
+
+    state.seasonState.playerSeasonStats.clear();
+    for (const starter of nymStarters) {
+      state.seasonState.playerSeasonStats.set(starter.id, createPlayerStats({
+        playerId: starter.id,
+        teamId: 'nym',
+        ip: 330,
+        earnedRuns: 36,
+        strikeouts: 155,
+      }));
+    }
+    for (const reliever of nymRelievers) {
+      state.seasonState.playerSeasonStats.set(reliever.id, createPlayerStats({
+        playerId: reliever.id,
+        teamId: 'nym',
+        ip: 405,
+        earnedRuns: 155,
+      }));
+    }
+    for (const hitter of nymHitters) {
+      state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+        playerId: hitter.id,
+        teamId: 'nym',
+        pa: 650,
+        ab: 560,
+        hits: 190,
+        doubles: 42,
+        triples: 4,
+        hr: 42,
+        bb: 82,
+        hbp: 5,
+        sacFlies: 3,
+        runs: 120,
+      }));
+    }
+    state.seasonState.playerSeasonStats.set(bosPitcher.id, createPlayerStats({
+      playerId: bosPitcher.id,
+      teamId: 'bos',
+      ip: 2_700,
+      earnedRuns: 300,
+    }));
+    for (const hitter of bosHitters) {
+      state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+        playerId: hitter.id,
+        teamId: 'bos',
+        pa: 620,
+        ab: 570,
+        hits: 112,
+        doubles: 18,
+        triples: 1,
+        hr: 8,
+        bb: 42,
+        hbp: 4,
+        sacFlies: 4,
+        runs: 48,
+      }));
+    }
+
+    applyRegularSeasonPositionGroupMoments(state);
+    applyRegularSeasonPositionGroupMoments(state);
+
+    expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'dominant_rotation')).toHaveLength(1);
+    expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'bullpen_collapse')).toHaveLength(1);
+    expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'lineup_of_era')).toHaveLength(1);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {

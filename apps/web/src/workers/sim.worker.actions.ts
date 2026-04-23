@@ -227,6 +227,7 @@ import {
   applyMonthlyNarrativeHooks,
   applyOffseasonNarrativeHooks,
   applyMonthlyPressConference,
+  applyRegularSeasonPositionGroupMoments,
   applyRegularSeasonTeamDynastyMarkers,
   applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
@@ -1311,6 +1312,7 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     s.playoffBracket = null;
     applyWave4PlayoffIntroMoments(s);
     applyRegularSeasonTeamDynastyMarkers(s);
+    applyRegularSeasonPositionGroupMoments(s);
   }
 
   return {

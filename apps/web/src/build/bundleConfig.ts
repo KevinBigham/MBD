@@ -144,8 +144,14 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // new prose pools and detector exports expand the worker-compressed footprint.
 // Smallest safe lift: +1 KB raw / +2 KB gzip, preserving sub-1 KB local
 // headroom on story while leaving the broader worker budget effectively flat.
+// WORKER gzip: bumped 139 -> 141 KB for Narrative Depth Wave 7. Position-group
+// moment detectors add team aggregate helpers plus deterministic prose pools
+// for dominant_rotation / bullpen_collapse / lineup_of_era. Local budget test
+// measured game-engine-core at 142,927 gzip bytes, 591 bytes over the 139 KB
+// cap. Raw stayed under the existing 439 KB ceiling (440,242 vs 449,536), so
+// only the pre-authorized +2 KB gzip lift is applied.
 export const WORKER_CHUNK_BUDGET_BYTES = 439 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 139 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 141 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;

@@ -14,6 +14,12 @@ import {
   type DynastyMarkerRenderContext,
   type DynastyMarkerTopicId,
 } from '../narrative/dynastyMarkerProse.js';
+import {
+  pickStablePositionGroupBody,
+  pickStablePositionGroupHeadline,
+  type PositionGroupRenderContext,
+  type PositionGroupTopicId,
+} from '../narrative/positionGroupProse.js';
 import type { StandingsEntry } from '../league/standings.js';
 import {
   computeRivalryIntensityScore,
@@ -24,7 +30,14 @@ import { getTeamById } from '../league/teams.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { getLongestTeamTenureSeasons } from '../player/teamTenures.js';
 import { isTradeDeadlineModeDay } from '../sim/calendar.js';
+import type { PlayerGameStats } from '../sim/gameSimulator.js';
 import { determinePlayoffSeeds } from '../sim/playoffSimulator.js';
+import {
+  computeTeamBullpenEraPlus,
+  findLeadingHitterByWrcPlus,
+  getPrimaryStarterEraPlusLines,
+  rankTeamsByWrcPlus,
+} from '../stats/teamAggregates.js';
 import type { GMPersonality } from '../trade/tradeAI.js';
 import { compareMomentType, type Moment, type MomentRound } from './momentDetector.js';
 
@@ -61,6 +74,12 @@ export const ERA_ENDING_COLLAPSE_IMPACT = -58;
 export const ERA_ENDING_COLLAPSE_RELEVANCE = 0.91;
 export const PERENNIAL_CONTENDER_IMPACT = 53;
 export const PERENNIAL_CONTENDER_RELEVANCE = 0.87;
+export const DOMINANT_ROTATION_IMPACT = 48;
+export const DOMINANT_ROTATION_RELEVANCE = 0.84;
+export const BULLPEN_COLLAPSE_IMPACT = -44;
+export const BULLPEN_COLLAPSE_RELEVANCE = 0.83;
+export const LINEUP_OF_ERA_IMPACT = 50;
+export const LINEUP_OF_ERA_RELEVANCE = 0.86;
 
 const FIRE_SALE_VETERAN_THRESHOLD = 3;
 const FIRE_SALE_WIN_PCT_THRESHOLD = 0.45;
@@ -71,6 +90,13 @@ const HIGH_LEVERAGE_CONTENTION_GAMES_BACK = 3;
 const WILD_CARD_SLOT_COUNT = 3;
 const ERA_ENDING_COLLAPSE_MAX_WINS = 80;
 const PERENNIAL_CONTENDER_STREAK_LENGTH = 5;
+const PRIMARY_STARTER_COUNT = 5;
+const PRIMARY_STARTER_MIN_INNINGS = 100;
+const DOMINANT_ROTATION_MIN_ERA_PLUS = 110;
+const BULLPEN_COLLAPSE_MAX_ERA_PLUS = 80;
+const BULLPEN_COLLAPSE_MIN_INNINGS = 400;
+const LINEUP_OF_ERA_MIN_WRC_PLUS = 115;
+const LINEUP_OF_ERA_MAX_RANK = 5;
 
 export interface PriorSeasonSummary {
   readonly season: number;
@@ -109,6 +135,8 @@ export interface SeasonIdentityMomentDetectionContext {
   readonly rivalries?: ReadonlyMap<string, Rivalry>;
   readonly standingsByDivision?: Readonly<Record<string, readonly StandingsEntry[]>>;
   readonly playerMomentCountsByTeamId?: ReadonlyMap<string, number>;
+  readonly players?: readonly GeneratedPlayer[];
+  readonly playerSeasonStats?: ReadonlyMap<string, PlayerGameStats>;
 }
 
 export interface SeasonIdentityDetectedMoment {
@@ -291,6 +319,17 @@ function buildDynastyMarkerDescription(
 ): string {
   const headline = pickStableDynastyMarkerHeadline(topicId, renderContext, teamId, season);
   const body = pickStableDynastyMarkerBody(topicId, renderContext, teamId, season);
+  return `${headline} ${body}`;
+}
+
+function buildPositionGroupDescription(
+  topicId: PositionGroupTopicId,
+  renderContext: PositionGroupRenderContext,
+  teamId: string,
+  season: number,
+): string {
+  const headline = pickStablePositionGroupHeadline(topicId, renderContext, teamId, season);
+  const body = pickStablePositionGroupBody(topicId, renderContext, teamId, season);
   return `${headline} ${body}`;
 }
 
@@ -605,6 +644,166 @@ export function detectThreePeat(
       description,
       THREE_PEAT_IMPACT,
       THREE_PEAT_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
+export function detectDominantRotation(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'dominant_rotation')) {
+    return null;
+  }
+  if (!context.players || !context.playerSeasonStats) {
+    return null;
+  }
+
+  const starters = getPrimaryStarterEraPlusLines(
+    summary.teamId,
+    context.players,
+    context.playerSeasonStats,
+    PRIMARY_STARTER_COUNT,
+  );
+  if (starters.length < PRIMARY_STARTER_COUNT) {
+    return null;
+  }
+  if (starters.some((starter) =>
+    starter.innings < PRIMARY_STARTER_MIN_INNINGS
+    || starter.eraPlus < DOMINANT_ROTATION_MIN_ERA_PLUS
+  )) {
+    return null;
+  }
+
+  const eraPlusValues = starters.map((starter) => starter.eraPlus);
+  const combinedInnings = Math.round(starters.reduce((total, starter) => total + starter.innings, 0));
+  const description = buildPositionGroupDescription(
+    'dominant_rotation',
+    {
+      teamLabel: franchiseLabel(summary),
+      worstStarterEraPlus: Math.min(...eraPlusValues),
+      bestStarterEraPlus: Math.max(...eraPlusValues),
+      combinedInnings,
+    },
+    summary.teamId,
+    context.season,
+  );
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'dominant_rotation',
+      description,
+      DOMINANT_ROTATION_IMPACT,
+      DOMINANT_ROTATION_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
+export function detectBullpenCollapse(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'bullpen_collapse')) {
+    return null;
+  }
+  if (!context.players || !context.playerSeasonStats) {
+    return null;
+  }
+
+  const bullpen = computeTeamBullpenEraPlus(
+    summary.teamId,
+    context.players,
+    context.playerSeasonStats,
+  );
+  if (
+    bullpen.innings < BULLPEN_COLLAPSE_MIN_INNINGS
+    || bullpen.eraPlus > BULLPEN_COLLAPSE_MAX_ERA_PLUS
+  ) {
+    return null;
+  }
+
+  const description = buildPositionGroupDescription(
+    'bullpen_collapse',
+    {
+      teamLabel: franchiseLabel(summary),
+      bullpenEraPlus: bullpen.eraPlus,
+      bullpenInnings: Math.round(bullpen.innings),
+    },
+    summary.teamId,
+    context.season,
+  );
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'bullpen_collapse',
+      description,
+      BULLPEN_COLLAPSE_IMPACT,
+      BULLPEN_COLLAPSE_RELEVANCE,
+      context.season,
+      context.day,
+    ),
+  };
+}
+
+export function detectLineupOfEra(
+  summary: TeamSeasonSummary,
+  context: SeasonIdentityMomentDetectionContext,
+): SeasonIdentityDetectedMoment | null {
+  if (momentAlreadyRecorded(context, summary.teamId, 'lineup_of_era')) {
+    return null;
+  }
+  if (!context.players || !context.playerSeasonStats) {
+    return null;
+  }
+
+  const ranks = rankTeamsByWrcPlus(
+    context.teams.map((team) => team.teamId),
+    context.players,
+    context.playerSeasonStats,
+  );
+  const teamRank = ranks.find((entry) => entry.teamId === summary.teamId);
+  if (
+    !teamRank
+    || teamRank.wrcPlus < LINEUP_OF_ERA_MIN_WRC_PLUS
+    || teamRank.rank > LINEUP_OF_ERA_MAX_RANK
+  ) {
+    return null;
+  }
+
+  const leadingHitter = findLeadingHitterByWrcPlus(
+    summary.teamId,
+    context.players,
+    context.playerSeasonStats,
+  );
+  if (!leadingHitter) {
+    return null;
+  }
+
+  const description = buildPositionGroupDescription(
+    'lineup_of_era',
+    {
+      teamLabel: franchiseLabel(summary),
+      teamWrcPlus: teamRank.wrcPlus,
+      leagueRank: teamRank.rank,
+      leadingHitterName: leadingHitter.playerName,
+    },
+    summary.teamId,
+    context.season,
+  );
+
+  return {
+    teamId: summary.teamId,
+    moment: createMoment(
+      'lineup_of_era',
+      description,
+      LINEUP_OF_ERA_IMPACT,
+      LINEUP_OF_ERA_RELEVANCE,
       context.season,
       context.day,
     ),

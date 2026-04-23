@@ -10,8 +10,8 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v30', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(30);
+  it('tracks the current additive save schema as v31', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(31);
   });
 
   it('migrates the v17 fixture into the additive v25 shape', () => {
@@ -207,6 +207,31 @@ describe('save schema migration', () => {
 
   it('migrates the v29 fixture into the additive v30 dynasty-marker enum shape', () => {
     const fixture = loadFixture('./fixtures/save/v29/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+    const [player] = migrated.players;
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(player?.priorSeasonEstimatedWar).toBeNull();
+    expect(migrated.narrative.teamMoments).toEqual([
+      [
+        'nym',
+        [
+          expect.objectContaining({
+            type: 'first_dynasty_peak',
+            description: expect.stringContaining('franchise identity'),
+          }),
+          expect.objectContaining({
+            type: 'rivalry_renewed',
+            description: expect.stringContaining('rivalry'),
+          }),
+        ],
+      ],
+    ]);
+  });
+
+  it('migrates the v30 fixture into the additive v31 position-group enum shape', () => {
+    const fixture = loadFixture('./fixtures/save/v30/core.json');
 
     const migrated = parseGameSnapshot(fixture);
     const [player] = migrated.players;

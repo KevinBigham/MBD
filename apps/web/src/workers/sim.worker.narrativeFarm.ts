@@ -1,8 +1,11 @@
 import {
   buildTeamSeasonSummaries,
+  detectBullpenCollapse,
+  detectDominantRotation,
   detectEraEndingCollapse,
   detectBreakoutCountdowns,
   detectLateCareerPeak,
+  detectLineupOfEra,
   detectPerennialContender,
   detectRedemptionArc,
   detectRookieBreakout,
@@ -464,6 +467,20 @@ function buildDynastyMarkerContext(
   };
 }
 
+function buildPositionGroupContext(
+  state: FullGameState,
+  summaries: readonly TeamSeasonSummary[],
+) {
+  return {
+    season: state.season,
+    day: state.day,
+    teams: summaries,
+    teamMoments: state.teamMoments,
+    players: state.players,
+    playerSeasonStats: state.seasonState.playerSeasonStats,
+  };
+}
+
 function applySeasonIdentityMoments(state: FullGameState) {
   const flag = `season_identity_moments_${state.season}`;
   if (hasStoryFlag(state, flag)) {
@@ -529,6 +546,34 @@ export function applyRegularSeasonTeamDynastyMarkers(state: FullGameState) {
     if (detected) {
       appendTeamMoments(state, detected.teamId, [detected.moment]);
     }
+  }
+}
+
+export function applyRegularSeasonPositionGroupMoments(state: FullGameState) {
+  const currentPlayoffTeamIds = resolvePlayoffTeamIds(
+    state.seasonState.standings.getFullStandings(),
+    state.playoffBracket?.seeds.map((seed) => seed.teamId),
+  );
+  const summaries = buildCurrentTeamSummaries(state, currentPlayoffTeamIds, null)
+    .sort((left, right) => left.teamId.localeCompare(right.teamId));
+  const context = buildPositionGroupContext(state, summaries);
+
+  for (const summary of summaries) {
+    const detected = [
+      detectDominantRotation(summary, context),
+      detectBullpenCollapse(summary, context),
+      detectLineupOfEra(summary, context),
+    ].filter((entry): entry is NonNullable<typeof entry> => entry != null);
+
+    if (detected.length === 0) {
+      continue;
+    }
+
+    appendTeamMoments(
+      state,
+      summary.teamId,
+      detected.map((entry) => entry.moment),
+    );
   }
 }
 

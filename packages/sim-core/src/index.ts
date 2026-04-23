@@ -44,6 +44,15 @@ export {
   estimateProjectedWarRange,
 } from './stats/advanced.js';
 export {
+  ERA_PLUS_SHUTOUT_CAP,
+  computeTeamBullpenEraPlus,
+  computeTeamEraPlus,
+  computeTeamWrcPlus,
+  findLeadingHitterByWrcPlus,
+  getPrimaryStarterEraPlusLines,
+  rankTeamsByWrcPlus,
+} from './stats/teamAggregates.js';
+export {
   CAREER_MILESTONES,
   calculateMilestoneProgress,
   getMilestoneAlerts,
@@ -65,6 +74,13 @@ export type {
   LeaderboardStatKey,
   ProjectedWarRange,
 } from './stats/advanced.js';
+export type {
+  LeadingHitterLine,
+  StarterEraPlusLine,
+  TeamPitchingAggregate,
+  TeamWrcPlusLine,
+  TeamWrcPlusRank,
+} from './stats/teamAggregates.js';
 export type {
   CareerMilestoneDefinition,
   CareerStatTotals,
@@ -185,6 +201,12 @@ export {
   SEPTEMBER_HEROICS_RELEVANCE,
   PLAYOFF_GAUNTLET_IMPACT,
   PLAYOFF_GAUNTLET_RELEVANCE,
+  DOMINANT_ROTATION_IMPACT,
+  DOMINANT_ROTATION_RELEVANCE,
+  BULLPEN_COLLAPSE_IMPACT,
+  BULLPEN_COLLAPSE_RELEVANCE,
+  LINEUP_OF_ERA_IMPACT,
+  LINEUP_OF_ERA_RELEVANCE,
   COMEBACK_PLAYER_IMPACT,
   COMEBACK_PLAYER_MISSED_GAMES_THRESHOLD,
   COMEBACK_PLAYER_RELEVANCE,
@@ -201,13 +223,16 @@ export {
   estimatedWar,
   detectCursedFranchise,
   detectBreakoutSeason,
+  detectBullpenCollapse,
   detectChampionshipRun,
   detectContentionWindowOpens,
   detectContentionCollapse,
+  detectDominantRotation,
   detectEraEndingCollapse,
   detectDynastyEnd,
   detectFireSale,
   detectFirstDynastyPeak,
+  detectLineupOfEra,
   detectLosingSeasonStreak,
   detectPerennialContender,
   detectPlayoffGauntlet,

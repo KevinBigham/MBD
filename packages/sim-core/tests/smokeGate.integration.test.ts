@@ -447,7 +447,7 @@ describe('smokeGate integration', () => {
   });
 
   it('drives a multi-year dynasty with year-boundary invariants, end-to-end save/load, and deterministic replay', async () => {
-    expect(baseline.finalSnapshot.schemaVersion).toBe(30);
+    expect(baseline.finalSnapshot.schemaVersion).toBe(31);
     expect(baseline.finalSnapshot.season).toBe(SMOKE_GATE_YEARS);
     expect(baseline.finalSnapshot.phase).toBe('playoffs');
     expect(baseline.runtimeMs).toBeLessThan(MAX_RUNTIME_MS);

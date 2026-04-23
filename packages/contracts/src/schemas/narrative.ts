@@ -135,6 +135,9 @@ export const SignatureMomentTypeEnum = z.enum([
   "three_peat",
   "era_ending_collapse",
   "perennial_contender",
+  "dominant_rotation",
+  "bullpen_collapse",
+  "lineup_of_era",
 ]);
 export type SignatureMomentType = z.infer<typeof SignatureMomentTypeEnum>;
 
