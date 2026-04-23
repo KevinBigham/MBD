@@ -1968,6 +1968,67 @@ export const queryApi = {
     };
   },
 
+  // "Player Arcs of the Season" — surfaces the three player-scoped narrative
+  // moments (redemption_arc, late_career_peak, rookie_breakout) from the most
+  // recently resolved season. Defaults to the newest season found in
+  // playerMoments so it works mid-season (shows last season's arcs) and during
+  // the off-season transition (shows the season that just ended). Passing an
+  // explicit season forces that season's view — used by retrospective surfaces.
+  getPlayerArcsOfSeason(season?: number) {
+    const s = requireState();
+    const arcTypes: ReadonlySet<string> = new Set([
+      'redemption_arc',
+      'late_career_peak',
+      'rookie_breakout',
+    ]);
+
+    const allArcs = [...s.playerMoments.entries()]
+      .flatMap(([playerId, moments]) =>
+        moments
+          .filter((moment) => arcTypes.has(moment.type))
+          .map((moment) => ({ playerId, moment })),
+      );
+
+    if (allArcs.length === 0) {
+      return { season: 0, arcs: [] };
+    }
+
+    const targetSeason = season ?? allArcs.reduce(
+      (max, entry) => Math.max(max, entry.moment.season),
+      0,
+    );
+
+    const entries = allArcs
+      .filter(({ moment }) => moment.season === targetSeason)
+      .map(({ playerId, moment }) => {
+        const livePlayer = s.players.find((candidate) => candidate.id === playerId) ?? null;
+        const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
+        const playerName = livePlayer
+          ? `${livePlayer.firstName} ${livePlayer.lastName}`
+          : historicalPlayer?.fullName ?? playerId;
+        const teamId = livePlayer?.teamId ?? historicalPlayer?.lastKnownTeamId ?? '';
+        return {
+          playerId,
+          playerName,
+          teamId,
+          moment,
+        };
+      });
+
+    // Stable sort: highest relevance first, then by arc type (alpha), then by
+    // playerId — deterministic for identical state across identical seeds.
+    entries.sort((left, right) =>
+      right.moment.relevance - left.moment.relevance
+      || left.moment.type.localeCompare(right.moment.type)
+      || left.playerId.localeCompare(right.playerId),
+    );
+
+    return {
+      season: targetSeason,
+      arcs: entries,
+    };
+  },
+
   getNicknamesForPlayer(playerId: string) {
     const s = requireState();
     return s.playerNicknames.get(playerId) ?? null;
