@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Rivalry } from '@mbd/contracts';
 import {
   BREAKOUT_SEASON_IMPACT,
   CURSED_FRANCHISE_IMPACT,
@@ -20,6 +21,7 @@ import {
   detectFireSale,
   detectFirstDynastyPeak,
   detectLosingSeasonStreak,
+  detectRivalryRenewed,
   detectRebuildBegun,
   detectSeasonIdentityMoments,
   type SeasonIdentityMomentDetectionContext,
@@ -66,6 +68,56 @@ function tradeHistoryEntry(
     fairnessScore: 0,
     summary: `${fromTeamId} moved ${playerIds.join(', ')}`,
     timestamp: `S${season}D${day}`,
+  };
+}
+
+function standingsEntry(overrides: Partial<{
+  teamId: string;
+  wins: number;
+  losses: number;
+  pct: number;
+  gamesBack: number;
+  runsScored: number;
+  runsAllowed: number;
+  runDifferential: number;
+  streak: string;
+  last10Wins: number;
+  last10Losses: number;
+}> & { teamId: string }) {
+  return {
+    teamId: overrides.teamId,
+    wins: overrides.wins ?? 85,
+    losses: overrides.losses ?? 77,
+    pct: overrides.pct ?? 0.525,
+    gamesBack: overrides.gamesBack ?? 0,
+    runsScored: overrides.runsScored ?? 700,
+    runsAllowed: overrides.runsAllowed ?? 650,
+    runDifferential: overrides.runDifferential ?? 50,
+    streak: overrides.streak ?? '-',
+    last10Wins: overrides.last10Wins ?? 5,
+    last10Losses: overrides.last10Losses ?? 5,
+  };
+}
+
+function rivalry(overrides: Partial<Rivalry> = {}): Rivalry {
+  return {
+    id: 'bos:nym',
+    teamA: 'nym',
+    teamB: 'bos',
+    intensity: 72,
+    summary: 'The race keeps dragging both clubs back into the same frame.',
+    reasons: ['Standings pressure', 'October carryover'],
+    origin: 'historical',
+    active: true,
+    currentSeasonWinsA: 4,
+    currentSeasonWinsB: 3,
+    closeRaceStreak: 2,
+    playoffSeriesStreak: 0,
+    eventHistory: [
+      { season: 7, type: 'division_race', summary: 'The division stayed live into September.' },
+      { season: 6, type: 'playoff', summary: 'October kept the feud alive.' },
+    ],
+    ...overrides,
   };
 }
 
@@ -801,6 +853,199 @@ describe('detectCursedFranchise', () => {
   });
 });
 
+describe('detectRivalryRenewed', () => {
+  it('emits rivalry_renewed for both clubs in a heated late-season contention matchup', () => {
+    const result = detectRivalryRenewed(context({
+      teams: [
+        summary({ teamId: 'nym', teamName: 'New York Tycoons', wins: 89, losses: 73, madePlayoffs: true }),
+        summary({ teamId: 'bos', teamName: 'Boston Noreasters', wins: 87, losses: 75, madePlayoffs: true }),
+      ],
+      rivalries: new Map([[
+        'bos:nym',
+        rivalry(),
+      ]]),
+      standingsByDivision: {
+        AL_EAST: [
+          standingsEntry({ teamId: 'nym', wins: 89, losses: 73, pct: 89 / 162, gamesBack: 0 }),
+          standingsEntry({ teamId: 'bos', wins: 87, losses: 75, pct: 87 / 162, gamesBack: 2 }),
+          standingsEntry({ teamId: 'bal', wins: 82, losses: 80, pct: 82 / 162, gamesBack: 7 }),
+        ],
+      },
+      teamMoments: new Map([
+        ['nym', [{
+          season: 7,
+          day: 182,
+          timestamp: 'S7D182',
+          type: 'first_dynasty_peak',
+          description: 'Prior team momentum is already in the ledger.',
+          impact: 55,
+          relevance: 0.95,
+          isPlayoff: false,
+          isEliminationGame: false,
+          worldSeriesClincher: false,
+          round: null,
+        }]],
+        ['bos', []],
+      ]),
+      playerMomentCountsByTeamId: new Map([
+        ['nym', 1],
+        ['bos', 0],
+      ]),
+    }));
+
+    expect(result.map((entry) => ({ teamId: entry.teamId, type: entry.moment.type }))).toEqual([
+      { teamId: 'bos', type: 'rivalry_renewed' },
+      { teamId: 'nym', type: 'rivalry_renewed' },
+    ]);
+    expect(result.every((entry) => entry.moment.impact === 58)).toBe(true);
+    expect(result.every((entry) => entry.moment.relevance === 0.84)).toBe(true);
+  });
+
+  it('fires for any current-season playoff meeting between active heated rivals', () => {
+    const result = detectRivalryRenewed(context({
+      teams: [
+        summary({ teamId: 'nym', teamName: 'New York Tycoons', wins: 94, losses: 68, madePlayoffs: true }),
+        summary({ teamId: 'bos', teamName: 'Boston Noreasters', wins: 91, losses: 71, madePlayoffs: true }),
+      ],
+      rivalries: new Map([[
+        'bos:nym',
+        rivalry({
+          intensity: 85,
+          currentSeasonWinsA: 6,
+          currentSeasonWinsB: 5,
+          closeRaceStreak: 1,
+          playoffSeriesStreak: 2,
+          eventHistory: [
+            { season: 7, type: 'playoff', summary: 'October brought them together again.' },
+            { season: 6, type: 'division_race', summary: 'They stayed on each other all season.' },
+          ],
+        }),
+      ]]),
+      playoffSeriesHistory: [{
+        season: 7,
+        round: 'DIVISION_SERIES',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'bos',
+        bestOf: 5,
+        deficitReached: null,
+        deficitTeamId: null,
+        winnerTeamId: 'nym',
+      }],
+      teamMoments: new Map([
+        ['nym', [{
+          season: 7,
+          day: 182,
+          timestamp: 'S7D182',
+          type: 'first_dynasty_peak',
+          description: 'Prior team momentum is already in the ledger.',
+          impact: 55,
+          relevance: 0.95,
+          isPlayoff: false,
+          isEliminationGame: false,
+          worldSeriesClincher: false,
+          round: null,
+        }]],
+        ['bos', []],
+      ]),
+      playerMomentCountsByTeamId: new Map([
+        ['nym', 0],
+        ['bos', 0],
+      ]),
+    }));
+
+    expect(result).toHaveLength(2);
+    expect(result.every((entry) => entry.moment.type === 'rivalry_renewed')).toBe(true);
+    expect(result.every((entry) => entry.moment.impact === 62)).toBe(true);
+    expect(result.every((entry) => entry.moment.relevance === 0.88)).toBe(true);
+  });
+
+  it('returns no rivalry_renewed moments when the intensity score stays below the floor', () => {
+    const result = detectRivalryRenewed(context({
+      teams: [
+        summary({ teamId: 'nym', wins: 84, losses: 78, madePlayoffs: false }),
+        summary({ teamId: 'bos', wins: 83, losses: 79, madePlayoffs: false }),
+      ],
+      rivalries: new Map([[
+        'bos:nym',
+        rivalry({
+          intensity: 35,
+          currentSeasonWinsA: 1,
+          currentSeasonWinsB: 0,
+          closeRaceStreak: 0,
+          playoffSeriesStreak: 0,
+          eventHistory: [],
+        }),
+      ]]),
+      standingsByDivision: {
+        AL_EAST: [
+          standingsEntry({ teamId: 'nym', wins: 84, losses: 78, pct: 84 / 162, gamesBack: 0 }),
+          standingsEntry({ teamId: 'bos', wins: 83, losses: 79, pct: 83 / 162, gamesBack: 1 }),
+        ],
+      },
+      teamMoments: new Map([
+        ['nym', [{
+          season: 7,
+          day: 182,
+          timestamp: 'S7D182',
+          type: 'first_dynasty_peak',
+          description: 'Prior team momentum is already in the ledger.',
+          impact: 55,
+          relevance: 0.95,
+          isPlayoff: false,
+          isEliminationGame: false,
+          worldSeriesClincher: false,
+          round: null,
+        }]],
+        ['bos', []],
+      ]),
+      playerMomentCountsByTeamId: new Map([
+        ['nym', 0],
+        ['bos', 0],
+      ]),
+    }));
+
+    expect(result).toEqual([]);
+  });
+
+  it('stays idempotent when either club already has a current-season rivalry_renewed moment', () => {
+    const result = detectRivalryRenewed(context({
+      teams: [
+        summary({ teamId: 'nym', wins: 89, losses: 73, madePlayoffs: true }),
+        summary({ teamId: 'bos', wins: 87, losses: 75, madePlayoffs: true }),
+      ],
+      rivalries: new Map([['bos:nym', rivalry()]]),
+      standingsByDivision: {
+        AL_EAST: [
+          standingsEntry({ teamId: 'nym', wins: 89, losses: 73, pct: 89 / 162, gamesBack: 0 }),
+          standingsEntry({ teamId: 'bos', wins: 87, losses: 75, pct: 87 / 162, gamesBack: 2 }),
+        ],
+      },
+      teamMoments: new Map([
+        ['nym', [{
+          season: 7,
+          day: 182,
+          timestamp: 'S7D182',
+          type: 'rivalry_renewed',
+          description: 'Already recorded.',
+          impact: 58,
+          relevance: 0.84,
+          isPlayoff: false,
+          isEliminationGame: false,
+          worldSeriesClincher: false,
+          round: null,
+        }]],
+        ['bos', []],
+      ]),
+      playerMomentCountsByTeamId: new Map([
+        ['nym', 1],
+        ['bos', 0],
+      ]),
+    }));
+
+    expect(result).toEqual([]);
+  });
+});
+
 describe('detectSeasonIdentityMoments', () => {
   it('emits moments deterministically sorted by teamId + canonical type order', () => {
     const result = detectSeasonIdentityMoments({
@@ -981,5 +1226,47 @@ describe('detectSeasonIdentityMoments', () => {
     expect(emittedTypes).toContain('cursed_franchise');
     expect(emittedTypes).not.toContain('playoff_gauntlet');
     expect(emittedTypes).not.toContain('veteran_core_retires');
+  });
+
+  it('emits rivalry_renewed once for each club in a heated pair meeting', () => {
+    const result = detectSeasonIdentityMoments(context({
+      teams: [
+        summary({ teamId: 'nym', teamName: 'New York Tycoons', wins: 89, losses: 73, madePlayoffs: true }),
+        summary({ teamId: 'bos', teamName: 'Boston Noreasters', wins: 87, losses: 75, madePlayoffs: true }),
+      ],
+      rivalries: new Map([['bos:nym', rivalry()]]),
+      standingsByDivision: {
+        AL_EAST: [
+          standingsEntry({ teamId: 'nym', wins: 89, losses: 73, pct: 89 / 162, gamesBack: 0 }),
+          standingsEntry({ teamId: 'bos', wins: 87, losses: 75, pct: 87 / 162, gamesBack: 2 }),
+          standingsEntry({ teamId: 'bal', wins: 82, losses: 80, pct: 82 / 162, gamesBack: 7 }),
+        ],
+      },
+      teamMoments: new Map([
+        ['nym', [{
+          season: 7,
+          day: 182,
+          timestamp: 'S7D182',
+          type: 'first_dynasty_peak',
+          description: 'Prior team momentum is already in the ledger.',
+          impact: 55,
+          relevance: 0.95,
+          isPlayoff: false,
+          isEliminationGame: false,
+          worldSeriesClincher: false,
+          round: null,
+        }]],
+        ['bos', []],
+      ]),
+      playerMomentCountsByTeamId: new Map([
+        ['nym', 1],
+        ['bos', 0],
+      ]),
+    }));
+
+    expect(result.map((entry) => ({ teamId: entry.teamId, type: entry.moment.type }))).toEqual([
+      { teamId: 'bos', type: 'rivalry_renewed' },
+      { teamId: 'nym', type: 'rivalry_renewed' },
+    ]);
   });
 });

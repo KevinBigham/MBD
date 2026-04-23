@@ -35,6 +35,32 @@ export interface ComputedRivalryIntensityContext {
   readonly currentSeasonPlayerMomentCount?: number;
 }
 
+export interface RivalryMatchupNarrativeContext {
+  readonly rivalry: Rivalry | null;
+  readonly season: number;
+  readonly day: number;
+  readonly minimumIntensityScore?: number;
+  readonly currentSeasonTeamMomentCount?: number;
+  readonly currentSeasonPlayerMomentCount?: number;
+}
+
+export interface RivalryMatchupNarrative {
+  readonly headline: string;
+  readonly body: string;
+  readonly intensityScore: number;
+}
+
+export const RIVALRY_MATCHUP_BRIEFING_MIN_SCORE = 55;
+export const RIVALRY_HIGH_LEVERAGE_MIN_SCORE = 70;
+
+interface RivalryNarrativeRenderContext {
+  readonly rivalry: Rivalry;
+  readonly intensityScore: number;
+  readonly summary: string;
+  readonly teamALabel: string;
+  readonly teamBLabel: string;
+}
+
 const HISTORICAL_RIVALRIES: Array<{
   teamA: string;
   teamB: string;
@@ -44,6 +70,22 @@ const HISTORICAL_RIVALRIES: Array<{
   { teamA: 'nym', teamB: 'bos', intensity: 78, reason: 'Historic East Coast feud' },
   { teamA: 'lax', teamB: 'sfb', intensity: 76, reason: 'Historic California feud' },
   { teamA: 'chi', teamB: 'det', intensity: 72, reason: 'Historic Great Lakes feud' },
+];
+
+const RIVALRY_MATCHUP_HEADLINE_VARIANTS: readonly Array<
+  (context: RivalryNarrativeRenderContext) => string
+> = [
+  ({ teamALabel, teamBLabel }) => `${teamALabel} and ${teamBLabel} are lining up for another loud chapter.`,
+  ({ teamALabel, teamBLabel }) => `${teamALabel}-${teamBLabel} is drifting back to the center of the season.`,
+  ({ teamALabel, teamBLabel }) => `Another meaningful ${teamALabel}-${teamBLabel} meeting is back on the board.`,
+];
+
+const RIVALRY_MATCHUP_BODY_VARIANTS: readonly Array<
+  (context: RivalryNarrativeRenderContext) => string
+> = [
+  ({ teamALabel, teamBLabel, summary }) => `${teamALabel} and ${teamBLabel} keep running into meaningful stakes. ${summary}`,
+  ({ teamALabel, teamBLabel, summary }) => `The room already knows this matchup carries old noise and fresh pressure. ${summary}`,
+  ({ teamALabel, teamBLabel, summary }) => `${teamALabel} and ${teamBLabel} have real carryover heat again. ${summary}`,
 ];
 
 function rivalryId(teamA: string, teamB: string): string {
@@ -62,6 +104,41 @@ function sameDivision(teamA: string, teamB: string): boolean {
 
 function abbreviate(teamId: string): string {
   return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function stableRivalryNarrativeKey(
+  rivalry: Rivalry,
+  season: number,
+  day: number,
+  topicId: string,
+): string {
+  return [rivalry.id, season, day, topicId].join(':');
+}
+
+function pickStableRivalryNarrative(
+  variants: readonly Array<(context: RivalryNarrativeRenderContext) => string>,
+  renderContext: RivalryNarrativeRenderContext,
+  season: number,
+  day: number,
+  topicId: string,
+): string {
+  if (variants.length === 1) {
+    return variants[0]!(renderContext);
+  }
+
+  const variantIndex = hashString(
+    stableRivalryNarrativeKey(renderContext.rivalry, season, day, topicId),
+  ) % variants.length;
+  return variants[variantIndex]!(renderContext);
 }
 
 function defaultOrigin(teamA: string, teamB: string): RivalryOrigin {
@@ -508,4 +585,47 @@ export function computeRivalryIntensityScore(
     + teamMomentBonus
     + playerMomentBonus,
   );
+}
+
+export function getRivalryMatchupNarrative(
+  context: RivalryMatchupNarrativeContext,
+): RivalryMatchupNarrative | null {
+  if (!context.rivalry) {
+    return null;
+  }
+
+  const intensityScore = computeRivalryIntensityScore({
+    rivalry: context.rivalry,
+    currentSeasonTeamMomentCount: context.currentSeasonTeamMomentCount,
+    currentSeasonPlayerMomentCount: context.currentSeasonPlayerMomentCount,
+  });
+  if (intensityScore < (context.minimumIntensityScore ?? 0)) {
+    return null;
+  }
+
+  const renderContext: RivalryNarrativeRenderContext = {
+    rivalry: context.rivalry,
+    intensityScore,
+    summary: context.rivalry.summary || summarizeRivalry(context.rivalry),
+    teamALabel: abbreviate(context.rivalry.teamA),
+    teamBLabel: abbreviate(context.rivalry.teamB),
+  };
+
+  return {
+    headline: pickStableRivalryNarrative(
+      RIVALRY_MATCHUP_HEADLINE_VARIANTS,
+      renderContext,
+      context.season,
+      context.day,
+      'matchup_headline',
+    ),
+    body: pickStableRivalryNarrative(
+      RIVALRY_MATCHUP_BODY_VARIANTS,
+      renderContext,
+      context.season,
+      context.day,
+      'matchup_body',
+    ),
+    intensityScore,
+  };
 }

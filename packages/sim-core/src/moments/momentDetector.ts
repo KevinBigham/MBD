@@ -76,6 +76,7 @@ export type MomentType =
   | 'cursed_franchise'
   | 'veteran_core_retires'
   | 'playoff_gauntlet'
+  | 'rivalry_renewed'
   | 'comeback_player'
   | 'rookie_sensation'
   | 'september_heroics';
@@ -173,6 +174,7 @@ export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'cursed_franchise',
   'veteran_core_retires',
   'playoff_gauntlet',
+  'rivalry_renewed',
   'comeback_player',
   'rookie_sensation',
   'september_heroics',
@@ -308,6 +310,9 @@ export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]>
   ],
   playoff_gauntlet: [
     '{player} survived a playoff hole and helped drag the club back out of it.',
+  ],
+  rivalry_renewed: [
+    '{player} stepped into a rivalry that suddenly mattered all over again.',
   ],
   comeback_player: [
     '{player} turned a lost season into a full comeback.',

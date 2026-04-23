@@ -4462,6 +4462,67 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().teamMoments.get('lax')?.some((moment) => moment.type === 'playoff_gauntlet')).toBe(true);
   });
 
+  it('appends rivalry_renewed moments during offseason narrative processing for heated playoff rivals', () => {
+    startGame(1404, 'nym');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.day = 182;
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      completed: true,
+    };
+    state.teamMoments.set('nym', []);
+    state.teamMoments.set('bos', []);
+    state.rivalries = new Map([[
+      'bos:nym',
+      {
+        id: 'bos:nym',
+        teamA: 'nym',
+        teamB: 'bos',
+        intensity: 85,
+        summary: 'The race keeps dragging both clubs back into the same frame.',
+        reasons: ['Standings pressure', 'October carryover'],
+        origin: 'historical',
+        active: true,
+        currentSeasonWinsA: 6,
+        currentSeasonWinsB: 5,
+        closeRaceStreak: 1,
+        playoffSeriesStreak: 2,
+        eventHistory: [
+          { season: state.season, type: 'playoff', summary: 'October brought them together again.' },
+          { season: state.season, type: 'division_race', summary: 'The race stayed tight into the final month.' },
+        ],
+      },
+    ]]);
+    state.playoffSeriesHistory = [{
+      season: state.season,
+      round: 'DIVISION_SERIES',
+      higherSeedTeamId: 'nym',
+      lowerSeedTeamId: 'bos',
+      bestOf: 5,
+      deficitReached: null,
+      deficitTeamId: null,
+      winnerTeamId: 'nym',
+    }];
+    state.playoffBracket = {
+      seeds: [
+        { teamId: 'nym', seed: 1, wins: 98, losses: 64, league: 'AL', divisionWinner: true },
+        { teamId: 'bos', seed: 4, wins: 91, losses: 71, league: 'AL', divisionWinner: false },
+      ],
+      currentRound: 'DIVISION_SERIES',
+      currentRoundSeries: [],
+      completedRounds: [],
+      series: [],
+      champion: null,
+      runnerUp: null,
+    };
+
+    applyOffseasonNarrativeHooks(state);
+
+    expect(state.teamMoments.get('nym')?.some((moment) => moment.type === 'rivalry_renewed')).toBe(true);
+    expect(state.teamMoments.get('bos')?.some((moment) => moment.type === 'rivalry_renewed')).toBe(true);
+  });
+
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {
     startGame(777, 'nym');
     const state = requireState();

@@ -10,8 +10,8 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v27', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(27);
+  it('tracks the current additive save schema as v28', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(28);
   });
 
   it('migrates the v17 fixture into the additive v25 shape', () => {
@@ -155,6 +155,29 @@ describe('save schema migration', () => {
     expect(migrated.seasonState.monthlyRecordSplits).toEqual({});
     expect(migrated.narrative.playoffSeriesHistory).toEqual([]);
     expect(migrated.narrative.rookieOfTheYearVoting).toEqual([]);
+  });
+
+  it('migrates the v27 fixture into the additive v28 rivalry-renewed enum shape', () => {
+    const fixture = loadFixture('./fixtures/save/v27/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(migrated.narrative.teamMoments).toEqual([
+      [
+        'nym',
+        [
+          expect.objectContaining({
+            type: 'first_dynasty_peak',
+            description: expect.stringContaining('franchise identity'),
+          }),
+          expect.objectContaining({
+            type: 'rivalry_renewed',
+            description: expect.stringContaining('rivalry'),
+          }),
+        ],
+      ],
+    ]);
   });
 
   it('rejects malformed legacy fixtures during migration', () => {

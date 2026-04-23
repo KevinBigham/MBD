@@ -125,6 +125,7 @@ export const SignatureMomentTypeEnum = z.enum([
   "cursed_franchise",
   "veteran_core_retires",
   "playoff_gauntlet",
+  "rivalry_renewed",
   "comeback_player",
   "rookie_sensation",
   "september_heroics",

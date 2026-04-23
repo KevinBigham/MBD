@@ -39,6 +39,7 @@ export {
   detectFirstDynastyPeak,
   detectLosingSeasonStreak,
   detectPlayoffGauntlet,
+  detectRivalryRenewed,
   detectRebuildBegun,
   detectSeptemberHeroics,
   detectSeasonIdentityMoments,
