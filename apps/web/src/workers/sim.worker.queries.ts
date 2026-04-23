@@ -1897,6 +1897,77 @@ export const queryApi = {
       );
   },
 
+  // "This Week in History" — signature moments from PRIOR seasons whose `day`
+  // falls within ±dayWindow of the current calendar day. Groups nothing; caller
+  // presents the "N years ago today" surfacing. Only strictly-prior seasons
+  // (season < current) are returned so current-season moments don't echo back.
+  // Returns player moments and team moments as separate arrays so the UI can
+  // render them with different link affordances (player page vs team page).
+  getThisWeekInHistory(dayWindow: number) {
+    const s = requireState();
+    const currentSeason = s.season;
+    const currentDay = s.day;
+    const window = Math.max(0, Math.floor(dayWindow));
+
+    const dayMatches = (moment: SignatureMoment): boolean => {
+      const momentDay = moment.day ?? momentDayFromTimestamp(moment.timestamp);
+      if (momentDay == null) return false;
+      if (moment.season >= currentSeason) return false;
+      return Math.abs(momentDay - currentDay) <= window;
+    };
+
+    const playerEntries = [...s.playerMoments.entries()]
+      .flatMap(([playerId, moments]) => moments.map((moment) => ({ playerId, moment })))
+      .filter(({ moment }) => dayMatches(moment))
+      .map(({ playerId, moment }) => {
+        const livePlayer = s.players.find((candidate) => candidate.id === playerId) ?? null;
+        const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
+        const playerName = livePlayer
+          ? `${livePlayer.firstName} ${livePlayer.lastName}`
+          : historicalPlayer?.fullName ?? playerId;
+        const teamId = livePlayer?.teamId ?? historicalPlayer?.lastKnownTeamId ?? '';
+        return {
+          playerId,
+          playerName,
+          teamId,
+          yearsAgo: currentSeason - moment.season,
+          moment,
+        };
+      });
+
+    const teamEntries = [...s.teamMoments.entries()]
+      .flatMap(([teamId, moments]) => moments.map((moment) => ({ teamId, moment })))
+      .filter(({ moment }) => dayMatches(moment))
+      .map(({ teamId, moment }) => ({
+        teamId,
+        yearsAgo: currentSeason - moment.season,
+        moment,
+      }));
+
+    // Stable sort: newer (smaller yearsAgo) first, then by relevance desc, then
+    // by stable tiebreakers so output is deterministic across identical state.
+    playerEntries.sort((left, right) =>
+      left.yearsAgo - right.yearsAgo
+      || right.moment.relevance - left.moment.relevance
+      || left.playerId.localeCompare(right.playerId)
+      || left.moment.type.localeCompare(right.moment.type),
+    );
+    teamEntries.sort((left, right) =>
+      left.yearsAgo - right.yearsAgo
+      || right.moment.relevance - left.moment.relevance
+      || left.teamId.localeCompare(right.teamId)
+      || left.moment.type.localeCompare(right.moment.type),
+    );
+
+    return {
+      season: currentSeason,
+      day: currentDay,
+      dayWindow: window,
+      playerMoments: playerEntries,
+      teamMoments: teamEntries,
+    };
+  },
+
   getNicknamesForPlayer(playerId: string) {
     const s = requireState();
     return s.playerNicknames.get(playerId) ?? null;

@@ -37,6 +37,7 @@ const ChaseWatchCard = lazy(() => import('../components/ChaseWatchCard'));
 const PennantRaceCard = lazy(() => import('../components/PennantRaceCard'));
 const AwardRaceCard = lazy(() => import('../components/AwardRaceCard'));
 const RecentMomentsCard = lazy(() => import('../components/RecentMomentsCard'));
+const ThisWeekInHistoryCard = lazy(() => import('../components/ThisWeekInHistoryCard'));
 const FranchiseLegacyCard = lazy(() => import('../components/FranchiseLegacyCard'));
 const CareerRetrospectiveCard = lazy(() => import('../components/CareerRetrospectiveCard'));
 
@@ -751,6 +752,9 @@ export default function DashboardPage() {
           </Suspense>
           <Suspense fallback={<CardFallback title="Signature Moments" />}>
             <RecentMomentsCard />
+          </Suspense>
+          <Suspense fallback={<CardFallback title="This Week in History" />}>
+            <ThisWeekInHistoryCard />
           </Suspense>
           <Suspense fallback={<CardFallback title="Franchise Legacy" />}>
             <FranchiseLegacyCard />
