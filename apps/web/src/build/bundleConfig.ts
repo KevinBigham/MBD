@@ -121,7 +121,15 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // branch: game-engine-core gzip 138,815 (+575 over 135 KB cap). +2 KB lift
 // covers the stack plus the established +250-500 byte CI terser drift. Raw
 // stayed comfortably under: game-engine-core raw 423,076 vs 444,416 cap.
-export const WORKER_CHUNK_BUDGET_BYTES = 434 * 1024;
+// WORKER raw: bumped 434 -> 436 KB for the This Week in History query slice.
+// Adds getThisWeekInHistory to sim.worker.queries — computes yearsAgo and
+// strict-prior-season ±dayWindow filtering over persisted playerMoments /
+// teamMoments Maps for the dashboard tile. Pure read wiring, no sim-core
+// touch. Story chunk landed 445,537 raw bytes (+1,121 over the 434 KB cap);
+// gzip held well under cap (132,609 actual vs 140,288 ceiling). +2 KB raw
+// lift gives ~900 bytes headroom against the established +250-500 byte
+// CI terser drift. Raw-only; no gzip ceiling move needed.
+export const WORKER_CHUNK_BUDGET_BYTES = 436 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 137 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */

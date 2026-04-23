@@ -170,6 +170,145 @@ describe('worker getRecentTeamMoments query', () => {
   });
 });
 
+describe('worker getThisWeekInHistory query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  function makeMoment(season: number, day: number, type: string, description: string, relevance: number): SignatureMoment {
+    return {
+      season,
+      day,
+      timestamp: `S${season}D${day}`,
+      type: type as SignatureMoment['type'],
+      description,
+      impact: 10,
+      relevance,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    };
+  }
+
+  it('returns empty arrays when no prior-season moments fall within the window', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.season = 3;
+    state.day = 120;
+
+    // Only current-season moments; should be filtered out.
+    state.teamMoments.set('nym', [makeMoment(3, 118, 'deadline_buyer', 'Current season.', 0.8)]);
+    state.playerMoments.set('p1', [makeMoment(3, 119, 'walk_off_hr', 'Also current.', 0.7)]);
+
+    const workerApi = api as typeof api & {
+      getThisWeekInHistory: (dayWindow: number) => {
+        season: number;
+        day: number;
+        dayWindow: number;
+        playerMoments: ReadonlyArray<{ playerId: string; playerName: string; teamId: string; yearsAgo: number; moment: SignatureMoment }>;
+        teamMoments: ReadonlyArray<{ teamId: string; yearsAgo: number; moment: SignatureMoment }>;
+      };
+    };
+
+    const view = workerApi.getThisWeekInHistory(3);
+
+    expect(view.season).toBe(3);
+    expect(view.day).toBe(120);
+    expect(view.dayWindow).toBe(3);
+    expect(view.playerMoments).toEqual([]);
+    expect(view.teamMoments).toEqual([]);
+  });
+
+  it('surfaces strictly-prior-season moments whose day is within ±window, annotated with yearsAgo', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.season = 7;
+    state.day = 120;
+
+    // In window (±3 of day 120): day 118, 120, 123. Out of window: day 100, day 130.
+    const inWindowPlayer = makeMoment(5, 121, 'no_hitter', 'No-hitter at Fenway.', 0.9);
+    const inWindowTeam = makeMoment(4, 118, 'championship_run', 'Clinched division.', 0.95);
+    const outOfWindowPlayer = makeMoment(5, 100, 'walk_off_hr', 'Too far back.', 0.6);
+    const outOfWindowTeam = makeMoment(4, 130, 'deadline_seller', 'Too far forward.', 0.5);
+    // Current season, even if day matches, must be excluded.
+    const currentSeasonTeam = makeMoment(7, 120, 'contention_window_opens', 'Current season match.', 0.9);
+
+    state.playerMoments.set('p1', [inWindowPlayer, outOfWindowPlayer]);
+    state.teamMoments.set('nym', [inWindowTeam, outOfWindowTeam, currentSeasonTeam]);
+
+    const workerApi = api as typeof api & {
+      getThisWeekInHistory: (dayWindow: number) => {
+        season: number;
+        day: number;
+        dayWindow: number;
+        playerMoments: Array<{ playerId: string; playerName: string; teamId: string; yearsAgo: number; moment: SignatureMoment }>;
+        teamMoments: Array<{ teamId: string; yearsAgo: number; moment: SignatureMoment }>;
+      };
+    };
+
+    const view = workerApi.getThisWeekInHistory(3);
+
+    expect(view.playerMoments).toHaveLength(1);
+    expect(view.playerMoments[0]?.playerId).toBe('p1');
+    expect(view.playerMoments[0]?.yearsAgo).toBe(2);
+    expect(view.playerMoments[0]?.moment).toEqual(inWindowPlayer);
+
+    expect(view.teamMoments).toHaveLength(1);
+    expect(view.teamMoments[0]?.teamId).toBe('nym');
+    expect(view.teamMoments[0]?.yearsAgo).toBe(3);
+    expect(view.teamMoments[0]?.moment).toEqual(inWindowTeam);
+  });
+
+  it('is deterministic and order-stable across repeated calls on the same state', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.season = 6;
+    state.day = 100;
+
+    state.teamMoments.set('nym', [makeMoment(4, 100, 'championship_run', 'A', 0.9)]);
+    state.teamMoments.set('bos', [makeMoment(4, 100, 'championship_run', 'B', 0.9)]);
+    state.teamMoments.set('det', [makeMoment(3, 101, 'championship_run', 'C', 0.9)]);
+
+    const workerApi = api as typeof api & {
+      getThisWeekInHistory: (dayWindow: number) => {
+        teamMoments: ReadonlyArray<{ teamId: string; yearsAgo: number; moment: SignatureMoment }>;
+      };
+    };
+
+    const first = workerApi.getThisWeekInHistory(3);
+    const second = workerApi.getThisWeekInHistory(3);
+
+    expect(first).toEqual(second);
+    // Smaller yearsAgo sorts earlier. Among same yearsAgo, relevance desc;
+    // here identical so tiebreaker falls to teamId ascending.
+    expect(first.teamMoments.map((entry) => entry.teamId)).toEqual(['bos', 'nym', 'det']);
+  });
+
+  it('honors dayWindow=0 as exact-day match and excludes off-by-one days', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    state.season = 5;
+    state.day = 80;
+
+    state.teamMoments.set('nym', [
+      makeMoment(3, 80, 'championship_run', 'Exact match.', 0.9),
+      makeMoment(3, 81, 'championship_run', 'Off by one.', 0.9),
+    ]);
+
+    const workerApi = api as typeof api & {
+      getThisWeekInHistory: (dayWindow: number) => {
+        teamMoments: ReadonlyArray<{ teamId: string; yearsAgo: number; moment: SignatureMoment }>;
+      };
+    };
+
+    const view = workerApi.getThisWeekInHistory(0);
+    expect(view.teamMoments).toHaveLength(1);
+    expect(view.teamMoments[0]?.moment.description).toBe('Exact match.');
+  });
+});
+
 describe('worker chase watch query', () => {
   afterEach(() => {
     setState(null);

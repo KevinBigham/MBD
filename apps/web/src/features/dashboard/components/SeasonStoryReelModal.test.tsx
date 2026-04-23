@@ -12,6 +12,14 @@ vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: () => mockWorker,
 }));
 
+// useGameStore selector form: mock returns `state.season` value regardless
+// of which selector the component passes. Default current season is 2028.
+let currentSeason = 2028;
+vi.mock('@/shared/hooks/useGameStore', () => ({
+  useGameStore: (selector: (state: { season: number }) => unknown) =>
+    selector({ season: currentSeason }),
+}));
+
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -73,6 +81,7 @@ describe('SeasonStoryReelModal', () => {
     root = createRoot(container);
     mockWorker.getSeasonStoryReel.mockReset();
     onDismiss = vi.fn();
+    currentSeason = 2028;
   });
 
   afterEach(async () => {
@@ -197,5 +206,92 @@ describe('SeasonStoryReelModal', () => {
 
     const text = container.textContent ?? '';
     expect(text).toContain('Season 2028 wrapped with a quiet record');
+  });
+
+  it('navigates to the prior season when the previous-season button is clicked', async () => {
+    currentSeason = 2028;
+    mockWorker.getSeasonStoryReel.mockImplementation(async (year: number) => ({
+      ...baseView,
+      season: year,
+    }));
+
+    await renderModal(2028);
+    expect(mockWorker.getSeasonStoryReel).toHaveBeenLastCalledWith(2028);
+
+    const prevBtn = container.querySelector('button[aria-label="Previous season"]') as HTMLButtonElement;
+    expect(prevBtn).not.toBeNull();
+    expect(prevBtn.disabled).toBe(false);
+
+    await act(async () => {
+      prevBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockWorker.getSeasonStoryReel).toHaveBeenLastCalledWith(2027);
+    expect(container.textContent ?? '').toContain('Season 2027');
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('disables the next-season button when already at the current season', async () => {
+    currentSeason = 2028;
+    mockWorker.getSeasonStoryReel.mockResolvedValue(baseView);
+
+    await renderModal(2028);
+
+    const nextBtn = container.querySelector('button[aria-label="Next season"]') as HTMLButtonElement;
+    expect(nextBtn).not.toBeNull();
+    expect(nextBtn.disabled).toBe(true);
+  });
+
+  it('disables the previous-season button at season 1', async () => {
+    currentSeason = 5;
+    mockWorker.getSeasonStoryReel.mockImplementation(async (year: number) => ({
+      ...baseView,
+      season: year,
+    }));
+
+    await renderModal(1);
+
+    const prevBtn = container.querySelector('button[aria-label="Previous season"]') as HTMLButtonElement;
+    expect(prevBtn).not.toBeNull();
+    expect(prevBtn.disabled).toBe(true);
+  });
+
+  it('supports ArrowLeft / ArrowRight keys for season navigation', async () => {
+    currentSeason = 2028;
+    mockWorker.getSeasonStoryReel.mockImplementation(async (year: number) => ({
+      ...baseView,
+      season: year,
+    }));
+
+    await renderModal(2027);
+    expect(mockWorker.getSeasonStoryReel).toHaveBeenLastCalledWith(2027);
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockWorker.getSeasonStoryReel).toHaveBeenLastCalledWith(2028);
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockWorker.getSeasonStoryReel).toHaveBeenLastCalledWith(2027);
+
+    // Escape still dismisses — arrow key handling must not have stolen it
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });
