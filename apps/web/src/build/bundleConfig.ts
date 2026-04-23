@@ -129,7 +129,15 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // gzip held well under cap (132,609 actual vs 140,288 ceiling). +2 KB raw
 // lift gives ~900 bytes headroom against the established +250-500 byte
 // CI terser drift. Raw-only; no gzip ceiling move needed.
-export const WORKER_CHUNK_BUDGET_BYTES = 436 * 1024;
+// WORKER raw: bumped 436 -> 438 KB for the Player Arcs of the Season query
+// slice. Adds getPlayerArcsOfSeason to sim.worker.queries — filters persisted
+// playerMoments for redemption_arc / late_career_peak / rookie_breakout and
+// surfaces the most recent season's arcs for the dashboard tile. Pure read
+// wiring of existing player-arc moment state (PR #55), no sim-core touch.
+// Story chunk landed 446,889 raw bytes (+425 over the 436 KB cap); gzip held
+// well under cap (132,865 actual vs 140,288 ceiling). +2 KB raw lift gives
+// ~1,599 bytes headroom for CI terser drift. Raw-only; no gzip move needed.
+export const WORKER_CHUNK_BUDGET_BYTES = 438 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 137 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
