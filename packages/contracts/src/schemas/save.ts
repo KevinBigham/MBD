@@ -510,7 +510,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 30;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 31;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -644,6 +644,11 @@ export const GameSnapshotV29Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(29),
 });
 export type GameSnapshotV29 = z.infer<typeof GameSnapshotV29Schema>;
+
+export const GameSnapshotV30Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(30),
+});
+export type GameSnapshotV30 = z.infer<typeof GameSnapshotV30Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -2730,7 +2735,34 @@ function migrateGameSnapshotV29(snapshot: GameSnapshotV29): GameSnapshot {
   });
 }
 
+// v30 -> v31: expand SignatureMomentTypeEnum with dominant_rotation,
+// bullpen_collapse, and lineup_of_era. Additive only — existing v30 saves
+// load as-is.
+function migrateGameSnapshotV30(snapshot: GameSnapshotV30): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 30
+  ) {
+    return migrateGameSnapshotV30(GameSnapshotV30Schema.parse(snapshotLike));
+  }
+
   if (
     typeof snapshotLike === "object" &&
     snapshotLike !== null &&

@@ -73,6 +73,9 @@ export type MomentType =
   | 'breakout_season'
   | 'contention_window_opens'
   | 'era_ending_collapse'
+  | 'dominant_rotation'
+  | 'bullpen_collapse'
+  | 'lineup_of_era'
   | 'fire_sale'
   | 'dynasty_end'
   | 'cursed_franchise'
@@ -190,6 +193,9 @@ export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'three_peat',
   'era_ending_collapse',
   'perennial_contender',
+  'dominant_rotation',
+  'bullpen_collapse',
+  'lineup_of_era',
 ];
 
 export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -352,6 +358,15 @@ export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]>
   ],
   perennial_contender: [
     '{player} helped keep a five-year playoff streak alive and turn contention into habit.',
+  ],
+  dominant_rotation: [
+    '{player} worked inside a rotation that carried the club all season.',
+  ],
+  bullpen_collapse: [
+    '{player} lived through a bullpen season that kept reopening games.',
+  ],
+  lineup_of_era: [
+    '{player} hit inside a lineup that became one of the league standards.',
   ],
 };
 
