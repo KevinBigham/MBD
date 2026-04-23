@@ -137,8 +137,15 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // Story chunk landed 446,889 raw bytes (+425 over the 436 KB cap); gzip held
 // well under cap (132,865 actual vs 140,288 ceiling). +2 KB raw lift gives
 // ~1,599 bytes headroom for CI terser drift. Raw-only; no gzip move needed.
-export const WORKER_CHUNK_BUDGET_BYTES = 438 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 137 * 1024;
+// WORKER raw/gzip: bumped 438 -> 439 KB raw and 137 -> 139 KB gzip for
+// Narrative Depth Wave 6. The dynasty-marker worker wiring moved enough
+// season-summary/detector orchestration into game-engine-story to leave the
+// chunk 66 bytes over the prior raw ceiling (448,578 vs 448,512), while the
+// new prose pools and detector exports expand the worker-compressed footprint.
+// Smallest safe lift: +1 KB raw / +2 KB gzip, preserving sub-1 KB local
+// headroom on story while leaving the broader worker budget effectively flat.
+export const WORKER_CHUNK_BUDGET_BYTES = 439 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 139 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
