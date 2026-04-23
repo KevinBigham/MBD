@@ -27,7 +27,10 @@ import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
 import { refreshTickerFeed } from './sim.worker.ticker';
-import { applyOffseasonNarrativeHooks } from './sim.worker.narrativeFarm';
+import {
+  applyOffseasonNarrativeHooks,
+  applySeasonEndPlayerArcMoments,
+} from './sim.worker.narrativeFarm';
 import {
   createBranchSave,
   deleteSaveById,
@@ -4521,6 +4524,115 @@ describe('sim worker narrative APIs', () => {
 
     expect(state.teamMoments.get('nym')?.some((moment) => moment.type === 'rivalry_renewed')).toBe(true);
     expect(state.teamMoments.get('bos')?.some((moment) => moment.type === 'rivalry_renewed')).toBe(true);
+  });
+
+  it('appends player-arc signature moments at season end without suppressing rookie_sensation', () => {
+    startGame(1505, 'nym');
+    const state = requireState();
+    state.day = 182;
+
+    const rookie = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const redemption = state.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const veteran = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.id !== rookie.id && player.pitcherAttributes == null,
+    )!;
+
+    rookie.serviceTimeDays = 60;
+    rookie.priorSeasonEstimatedWar = null;
+    state.playerMoments.set(rookie.id, [{
+      season: state.season,
+      day: state.day,
+      timestamp: `S${state.season}D${state.day}`,
+      type: 'rookie_sensation',
+      description: 'Existing rookie spotlight.',
+      impact: 52,
+      relevance: 0.82,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    }]);
+
+    redemption.priorSeasonEstimatedWar = 0.3;
+    veteran.age = 37;
+    veteran.serviceTimeDays = 10 * 172;
+
+    state.seasonState.playerSeasonStats.set(rookie.id, createPlayerStats({
+      playerId: rookie.id,
+      teamId: rookie.teamId,
+      gamesPlayed: 131,
+      pa: 560,
+      ab: 500,
+      hits: 162,
+      doubles: 28,
+      triples: 4,
+      hr: 24,
+      rbi: 84,
+      bb: 58,
+      runs: 93,
+    }));
+    state.seasonState.playerSeasonStats.set(redemption.id, createPlayerStats({
+      playerId: redemption.id,
+      teamId: redemption.teamId,
+      gamesPlayed: 128,
+      pa: 548,
+      ab: 486,
+      hits: 166,
+      doubles: 31,
+      triples: 1,
+      hr: 26,
+      rbi: 101,
+      bb: 67,
+      runs: 90,
+    }));
+    state.seasonState.playerSeasonStats.set(veteran.id, createPlayerStats({
+      playerId: veteran.id,
+      teamId: veteran.teamId,
+      gamesPlayed: 124,
+      pa: 544,
+      ab: 482,
+      hits: 165,
+      doubles: 30,
+      triples: 2,
+      hr: 25,
+      rbi: 98,
+      bb: 70,
+      runs: 87,
+    }));
+
+    state.careerStats = [{
+      playerId: veteran.id,
+      playerName: `${veteran.firstName} ${veteran.lastName}`,
+      position: veteran.position,
+      seasonsPlayed: 10,
+      teamIds: [veteran.teamId],
+      peakOverall: 78,
+      championshipRings: 0,
+      allStarSelections: 4,
+      gamesPlayed: 1400,
+      saves: 0,
+      war: 45.1,
+      batting: {
+        hits: 1500,
+        hr: 260,
+        rbi: 920,
+      },
+      pitching: null,
+    }];
+
+    applySeasonEndPlayerArcMoments(state);
+    applySeasonEndPlayerArcMoments(state);
+
+    expect(state.playerMoments.get(rookie.id)?.map((moment) => moment.type)).toEqual(
+      expect.arrayContaining(['rookie_sensation', 'rookie_breakout']),
+    );
+    expect(state.playerMoments.get(rookie.id)?.filter((moment) => moment.type === 'rookie_breakout')).toHaveLength(1);
+    expect(state.playerMoments.get(redemption.id)?.some((moment) => moment.type === 'redemption_arc')).toBe(true);
+    expect(state.playerMoments.get(veteran.id)?.some((moment) => moment.type === 'late_career_peak')).toBe(true);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {

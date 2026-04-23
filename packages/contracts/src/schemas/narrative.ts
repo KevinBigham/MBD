@@ -129,6 +129,9 @@ export const SignatureMomentTypeEnum = z.enum([
   "comeback_player",
   "rookie_sensation",
   "september_heroics",
+  "redemption_arc",
+  "late_career_peak",
+  "rookie_breakout",
 ]);
 export type SignatureMomentType = z.infer<typeof SignatureMomentTypeEnum>;
 

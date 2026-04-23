@@ -297,6 +297,7 @@ export interface GeneratedPlayer {
   superTwoQualified: boolean;
   teamTenures: TeamTenureEntry[];
   priorSeasonGamesMissed: number;
+  priorSeasonEstimatedWar: number | null;
   careerShutouts: number;
   personalityTraits?: string[];
   potentialRating?: number;
@@ -739,6 +740,7 @@ export function generatePlayer(
     superTwoQualified: false,
     teamTenures: [],
     priorSeasonGamesMissed: 0,
+    priorSeasonEstimatedWar: null,
     careerShutouts: 0,
     personalityTraits,
   };

@@ -164,6 +164,7 @@ export const SnapshotPlayerSchema = SnapshotPlayerV17Schema.extend({
   superTwoQualified: z.boolean().default(false),
   teamTenures: z.array(TeamTenureEntrySchema).default([]),
   priorSeasonGamesMissed: z.number().int().min(0).default(0),
+  priorSeasonEstimatedWar: z.number().nullable().default(null),
   careerShutouts: z.number().int().min(0).default(0),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
@@ -509,7 +510,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 28;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 29;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -633,6 +634,11 @@ export const GameSnapshotV27Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(27),
 });
 export type GameSnapshotV27 = z.infer<typeof GameSnapshotV27Schema>;
+
+export const GameSnapshotV28Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(28),
+});
+export type GameSnapshotV28 = z.infer<typeof GameSnapshotV28Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -1965,6 +1971,7 @@ function migrateSnapshotPlayer(
     superTwoQualified: false,
     teamTenures: [],
     priorSeasonGamesMissed: 0,
+    priorSeasonEstimatedWar: null,
     careerShutouts: 0,
   };
 }
@@ -2007,6 +2014,7 @@ function migrateV6SnapshotPlayer(
     superTwoQualified: false,
     teamTenures: [],
     priorSeasonGamesMissed: 0,
+    priorSeasonEstimatedWar: null,
     careerShutouts: 0,
     ...backfillDevelopmentProfile(upgradedPlayer),
   };
@@ -2682,7 +2690,33 @@ function migrateGameSnapshotV27(snapshot: GameSnapshotV27): GameSnapshot {
   });
 }
 
+// v28 -> v29: add prior-season estimated WAR carryover for player-arc moments.
+// Additive only — existing v28 saves load with null carryover values.
+function migrateGameSnapshotV28(snapshot: GameSnapshotV28): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 28
+  ) {
+    return migrateGameSnapshotV28(GameSnapshotV28Schema.parse(snapshotLike));
+  }
+
   if (
     typeof snapshotLike === "object" &&
     snapshotLike !== null &&

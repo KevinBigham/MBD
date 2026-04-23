@@ -1,5 +1,8 @@
 import {
   detectBreakoutCountdowns,
+  detectLateCareerPeak,
+  detectRedemptionArc,
+  detectRookieBreakout,
   detectSeasonIdentityMoments,
   evaluateScenarioProgress,
   generateDebutFlashback,
@@ -10,7 +13,10 @@ import {
 import { getTeamById } from '@mbd/sim-core';
 import type { TeamSeasonSummary } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
-import { appendTeamMoments } from './sim.worker.helpers.js';
+import {
+  appendPlayerMoments,
+  appendTeamMoments,
+} from './sim.worker.helpers.js';
 import { queueProspectDebutMoment } from './sim.worker.ceremony.js';
 import { previewRecordWatchList } from './sim.worker.records.js';
 import { exportGameSnapshot } from './snapshot.js';
@@ -536,6 +542,51 @@ function applySeasonIdentityMoments(state: FullGameState) {
   }
 
   addStoryFlag(state, flag);
+}
+
+export function applySeasonEndPlayerArcMoments(state: FullGameState) {
+  const careerWarByPlayerId = new Map(
+    state.careerStats.map((entry) => [entry.playerId, entry.war ?? 0] as const),
+  );
+
+  for (const player of [...state.players].sort((left, right) => left.id.localeCompare(right.id))) {
+    const stats = state.seasonState.playerSeasonStats.get(player.id);
+    const careerWarBeforeSeason = careerWarByPlayerId.get(player.id) ?? 0;
+    const detected = [
+      detectRedemptionArc(
+        player,
+        stats,
+        state.season,
+        state.day,
+        state.playerMoments,
+      ),
+      detectLateCareerPeak(
+        player,
+        stats,
+        careerWarBeforeSeason,
+        state.season,
+        state.day,
+        state.playerMoments,
+      ),
+      detectRookieBreakout(
+        player,
+        stats,
+        state.season,
+        state.day,
+        state.playerMoments,
+      ),
+    ].filter((entry): entry is NonNullable<typeof entry> => entry != null);
+
+    if (detected.length === 0) {
+      continue;
+    }
+
+    appendPlayerMoments(
+      state,
+      player.id,
+      detected.map((entry) => entry.moment),
+    );
+  }
 }
 
 export function applyOffseasonNarrativeHooks(state: FullGameState) {
