@@ -88,7 +88,10 @@ export type MomentType =
   | 'september_heroics'
   | 'redemption_arc'
   | 'late_career_peak'
-  | 'rookie_breakout';
+  | 'rookie_breakout'
+  | 'injury_return_hero'
+  | 'trade_deadline_spark'
+  | 'september_callup_hero';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -196,6 +199,9 @@ export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'dominant_rotation',
   'bullpen_collapse',
   'lineup_of_era',
+  'injury_return_hero',
+  'trade_deadline_spark',
+  'september_callup_hero',
 ];
 
 export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -367,6 +373,15 @@ export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]>
   ],
   lineup_of_era: [
     '{player} hit inside a lineup that became one of the league standards.',
+  ],
+  injury_return_hero: [
+    '{player} turned an injury return into one of the season pivots.',
+  ],
+  trade_deadline_spark: [
+    '{player} made a deadline trade matter right away.',
+  ],
+  september_callup_hero: [
+    '{player} made a September call-up feel bigger than a roster move.',
   ],
 };
 

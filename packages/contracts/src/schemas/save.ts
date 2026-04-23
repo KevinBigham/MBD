@@ -510,7 +510,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 31;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 32;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -649,6 +649,11 @@ export const GameSnapshotV30Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(30),
 });
 export type GameSnapshotV30 = z.infer<typeof GameSnapshotV30Schema>;
+
+export const GameSnapshotV31Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(31),
+});
+export type GameSnapshotV31 = z.infer<typeof GameSnapshotV31Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -2753,7 +2758,34 @@ function migrateGameSnapshotV30(snapshot: GameSnapshotV30): GameSnapshot {
   });
 }
 
+// v31 -> v32: expand SignatureMomentTypeEnum with injury_return_hero,
+// trade_deadline_spark, and september_callup_hero. Additive only — existing
+// v31 saves load as-is.
+function migrateGameSnapshotV31(snapshot: GameSnapshotV31): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 31
+  ) {
+    return migrateGameSnapshotV31(GameSnapshotV31Schema.parse(snapshotLike));
+  }
+
   if (
     typeof snapshotLike === "object" &&
     snapshotLike !== null &&
