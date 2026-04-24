@@ -69,6 +69,27 @@ export {
   generateArbitrationPressConference,
 } from './arbitrationPressConferences.js';
 export {
+  AWARD_CAPSTONE_BRANCH_VARIANTS,
+  pickAwardCeremonyLine,
+  resolveAwardCapstoneBranch,
+} from './awardCeremonyProse.js';
+export {
+  HOF_CAPSTONE_BRANCH_VARIANTS,
+  pickHallOfFameInductionSummary,
+  resolveHallOfFameBranch,
+} from './hofProse.js';
+export {
+  RETIREMENT_CAPSTONE_BRANCH_VARIANTS,
+  pickDebutPressLine,
+  pickFarewellTourLine,
+  pickJerseyRetirementLine,
+  pickRetirementSpeechLine,
+  resolveDebutPressBranch,
+  resolveFarewellTourBranch,
+  resolveJerseyRetirementBranch,
+  resolveRetirementBranch,
+} from './retirementProse.js';
+export {
   generateHoldoutBriefing,
   generateHoldoutResolutionBriefing,
 } from './holdoutCoverage.js';
@@ -177,6 +198,24 @@ export type {
   ArbitrationPressConferenceContext,
   ArbitrationPressConference,
 } from './arbitrationPressConferences.js';
+export type {
+  AwardAcquisitionType,
+  AwardCapstoneBranch,
+  AwardCapstonePoolId,
+  AwardWinnerRole,
+} from './awardCeremonyProse.js';
+export type {
+  HallOfFameCapstoneBranch,
+  HallOfFameInductionType,
+} from './hofProse.js';
+export type {
+  DebutPressBranch,
+  FarewellTourBranch,
+  JerseyRetirementBranch,
+  RetirementCapstoneBranch,
+  RetirementCapstonePoolId,
+  RetirementSpeechBranch,
+} from './retirementProse.js';
 export type {
   HoldoutCoverageContext,
   HoldoutBriefing,

@@ -1,4 +1,10 @@
 import type { GameRNG } from '../math/prng.js';
+import {
+  pickAwardCeremonyLine,
+  type AwardAcquisitionType,
+  type AwardCapstonePoolId,
+  type AwardWinnerRole,
+} from '../narrative/awardCeremonyProse.js';
 import { getTeamById } from './teams.js';
 
 const MVP_HEADLINES = [
@@ -150,6 +156,16 @@ export interface AwardNarrativeContext {
     wins: number;
     losses: number;
   };
+  season?: number;
+  voteShare?: number;
+  winnerRole?: AwardWinnerRole;
+  saves?: number;
+  inningsPitched?: number;
+  starts?: number;
+  acquisitionType?: AwardAcquisitionType;
+  draftRound?: number | null;
+  draftPickNumber?: number | null;
+  callupDay?: number | null;
 }
 
 export interface AwardNarrative {
@@ -194,6 +210,13 @@ function awardHeadlineTemplates(awardId: string): readonly string[] {
   if (awardId === 'GOLD_GLOVE') return GOLD_GLOVE_HEADLINES;
   if (awardId === 'SILVER_SLUGGER') return SILVER_SLUGGER_HEADLINES;
   return RELIEVER_HEADLINES;
+}
+
+function awardCapstonePoolId(awardId: string): AwardCapstonePoolId | null {
+  if (awardId.startsWith('MVP')) return 'mvp';
+  if (awardId.startsWith('CY_YOUNG')) return 'cy_young';
+  if (awardId.startsWith('ROY')) return 'rookie_of_the_year';
+  return null;
 }
 
 function quoteTemplates(tone: AwardReactionTone): readonly string[] {
@@ -255,6 +278,34 @@ function buildHistoricalContext(rng: GameRNG, context: AwardNarrativeContext, aw
   return `${statusLine} ${ageLine} ${recordLine}`;
 }
 
+function buildCapstoneContextLine(context: AwardNarrativeContext, awardName: string): string | null {
+  const poolId = awardCapstonePoolId(context.awardId);
+  if (!poolId || context.season == null) {
+    return null;
+  }
+
+  return pickAwardCeremonyLine({
+    playerId: context.winnerId,
+    playerName: context.winnerName,
+    teamName: teamDisplayName(context.winnerTeamId),
+    awardName,
+    season: context.season,
+    poolId,
+    winnerAge: context.winnerAge,
+    isFirstAward: context.isFirstAward,
+    isRepeatWinner: context.isRepeatWinner,
+    voteShare: context.voteShare,
+    winnerRole: context.winnerRole,
+    saves: context.saves,
+    inningsPitched: context.inningsPitched,
+    starts: context.starts,
+    acquisitionType: context.acquisitionType,
+    draftRound: context.draftRound,
+    draftPickNumber: context.draftPickNumber,
+    callupDay: context.callupDay,
+  });
+}
+
 function buildVotingSummary(context: AwardNarrativeContext, awardName: string): string {
   const runnerUpSummary = context.runnerUpNames.length > 0
     ? `Runner-up pressure came from ${context.runnerUpNames.join(', ')}.`
@@ -274,6 +325,8 @@ export function generateAwardNarrative(
 ): AwardNarrative {
   const awardName = AWARD_NAMES[context.awardId] ?? context.awardId;
   const teamName = teamDisplayName(context.winnerTeamId);
+  const historicalContext = buildHistoricalContext(rng, context, awardName);
+  const capstoneContextLine = buildCapstoneContextLine(context, awardName);
 
   return {
     awardId: context.awardId,
@@ -288,7 +341,9 @@ export function generateAwardNarrative(
       season: '',
     }),
     votingSummary: buildVotingSummary(context, awardName),
-    historicalContext: buildHistoricalContext(rng, context, awardName),
+    historicalContext: capstoneContextLine
+      ? `${capstoneContextLine} ${historicalContext}`
+      : historicalContext,
     reactionQuote: buildReactionQuote(rng, context),
     runnerUpNames: [...context.runnerUpNames],
   };

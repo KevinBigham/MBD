@@ -1,5 +1,7 @@
 import type { GameRNG } from '../math/prng.js';
 import type { AwardHistoryEntry } from '@mbd/contracts';
+import { pickHallOfFameInductionSummary } from '../narrative/hofProse.js';
+import { getTeamById } from './teams.js';
 
 export interface CareerBattingTotals {
   hits: number;
@@ -156,6 +158,13 @@ function awardLabels(playerId: string, awardHistory: AwardHistoryEntry[]): strin
     .map((entry) => `${entry.league} ${entry.award}`);
 }
 
+function primaryHallTeamName(teamIds: readonly string[]): string {
+  const teamId = teamIds[0];
+  if (!teamId) return 'the club';
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
 function inductionSummary(candidate: HallOfFameCandidate, score: number, tier: HallOfFameEvaluation['inductionTier']): string {
   if (tier === 'first_ballot') {
     return `${candidate.playerName} authored a Hall of Fame career and cleared the first-ballot bar with a ${score} score.`;
@@ -218,7 +227,15 @@ function createHallOfFameEntry(
     inductionSeason,
     score,
     inductionType,
-    summary: `${candidate.playerName} entered the Hall of Fame in season ${inductionSeason}.`,
+    summary: pickHallOfFameInductionSummary({
+      playerId: candidate.playerId,
+      playerName: candidate.playerName,
+      teamName: primaryHallTeamName(candidate.teamIds),
+      season: inductionSeason,
+      score,
+      inductionType,
+      teamIds: candidate.teamIds,
+    }),
   };
 }
 
@@ -278,7 +295,15 @@ export function processHOFInductions({
         inductionSeason: currentSeason,
         score: ballotEntry.score,
         inductionType: 'ballot',
-        summary: `${ballotEntry.playerName} earned Hall of Fame induction after waiting on the ballot.`,
+        summary: pickHallOfFameInductionSummary({
+          playerId: ballotEntry.playerId,
+          playerName: ballotEntry.playerName,
+          teamName: primaryHallTeamName(ballotEntry.careerStats.teamIds),
+          season: currentSeason,
+          score: ballotEntry.score,
+          inductionType: 'ballot',
+          teamIds: ballotEntry.careerStats.teamIds,
+        }),
       });
       existingIds.add(ballotEntry.playerId);
       continue;

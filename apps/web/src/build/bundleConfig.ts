@@ -160,7 +160,12 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // game-engine-core; the remaining worker checkpoint wiring leaves
 // game-engine-story ~0.6 KB over the Wave 8 raw cap. +2 KB raw stays within
 // the pre-authorized Wave 9 lift and leaves modest minifier-drift headroom.
-export const WORKER_CHUNK_BUDGET_BYTES = 442 * 1024;
+// WORKER raw: bumped 442 -> 443 KB for Narrative Depth Wave 10. The capstone
+// prose variant pools are split into game-engine-capstone to keep
+// game-engine-core under budget; the remaining award/HOF/retirement worker
+// context wiring leaves game-engine-story at 452,887 raw bytes (+279 over the
+// Wave 9 cap). Gzip stayed under the existing 143 KB ceiling (134,439 bytes).
+export const WORKER_CHUNK_BUDGET_BYTES = 443 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 143 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
@@ -264,6 +269,18 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
     includesPath(normalized, '/packages/sim-core/src/narrative/holdoutCoverage.')
   ) {
     return 'game-engine-story';
+  }
+
+  // Wave 10 capstone prose is deterministic template payload. Keep the large
+  // variant pools out of game-engine-core while leaving the live worker owners
+  // in their existing chunks.
+  if (
+    includesPath(normalized, '/packages/sim-core/src/narrative/awardCeremonyProse.')
+    || includesPath(normalized, '/packages/sim-core/src/narrative/hofProse.')
+    || includesPath(normalized, '/packages/sim-core/src/narrative/retirementProse.')
+    || includesPath(normalized, '/packages/sim-core/src/narrative/stableProse.')
+  ) {
+    return 'game-engine-capstone';
   }
 
   // Weekly narrative cadence is worker-only detector/prose code. Keep it out
