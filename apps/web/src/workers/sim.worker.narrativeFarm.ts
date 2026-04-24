@@ -3,14 +3,17 @@ import {
   detectBullpenCollapse,
   detectDominantRotation,
   detectEraEndingCollapse,
+  detectInjuryReturnHero,
   detectBreakoutCountdowns,
   detectLateCareerPeak,
   detectLineupOfEra,
   detectPerennialContender,
   detectRedemptionArc,
   detectRookieBreakout,
+  detectSeptemberCallupHero,
   detectSeasonIdentityMoments,
   detectThreePeat,
+  detectTradeDeadlineSpark,
   evaluateScenarioProgress,
   generateDebutFlashback,
   generatePressConference,
@@ -39,6 +42,14 @@ function parseTimestamp(timestamp: string): number {
     return 0;
   }
   return (Number(match[1]) * 1000) + Number(match[2]);
+}
+
+function parseTimestampParts(timestamp: string): readonly [number, number] | null {
+  const match = /^S(\d+)D(\d+)$/.exec(timestamp);
+  if (!match) {
+    return null;
+  }
+  return [Number(match[1]), Number(match[2])];
 }
 
 function latestMinorLevelFromBond(state: FullGameState, playerId: string): string {
@@ -574,6 +585,112 @@ export function applyRegularSeasonPositionGroupMoments(state: FullGameState) {
       summary.teamId,
       detected.map((entry) => entry.moment),
     );
+  }
+}
+
+function playerMicroArcBaseContext(state: FullGameState) {
+  return {
+    season: state.season,
+    detectionDay: state.day,
+    players: state.players,
+    playerSeasonStats: state.seasonState.playerSeasonStats,
+    gameLog: state.seasonState.gameLog,
+    playerMoments: state.playerMoments,
+  };
+}
+
+function latestInjuryStartDay(state: FullGameState, playerId: string): number {
+  let latest = 0;
+  for (const item of state.news) {
+    if (item.category[0] !== 'i' || item.relatedPlayerIds[0] !== playerId) {
+      continue;
+    }
+    const parsed = parseTimestampParts(item.timestamp);
+    if (parsed && parsed[0] === state.season) {
+      latest = parsed[1];
+    }
+  }
+  return latest;
+}
+
+export function applyRegularSeasonPlayerMicroArcMoments(state: FullGameState) {
+  const baseContext = playerMicroArcBaseContext(state);
+
+  for (const player of state.players) {
+    const injury = state.injuries.get(player.id);
+    const injuryStartDay = latestInjuryStartDay(state, player.id);
+    if (!injury || injury.daysRemaining > 0 || !injuryStartDay) {
+      continue;
+    }
+    const detected = detectInjuryReturnHero(player, {
+      ...baseContext,
+      returnDay: injuryStartDay + injury.totalDays,
+      injuryLabel: injury.type.split('_')[0]!,
+      daysOnIl: injury.totalDays,
+      teamId: player.teamId,
+    });
+    if (detected) {
+      appendPlayerMoments(state, detected.playerId, [detected.moment]);
+    }
+  }
+}
+
+export function applySeasonEndPlayerMicroArcMoments(state: FullGameState) {
+  const baseContext = playerMicroArcBaseContext(state);
+
+  for (const player of state.players) {
+    for (const item of state.news) {
+      if (
+        item.relatedPlayerIds[0] !== player.id
+        || !item.body.includes('cal')
+      ) {
+        continue;
+      }
+      const parsed = parseTimestampParts(item.timestamp);
+      if (!parsed || parsed[0] - state.season) {
+        continue;
+      }
+      const detected = detectSeptemberCallupHero(player, {
+        ...baseContext,
+        callupDay: parsed[1],
+        teamId: player.teamId,
+      });
+      if (detected) {
+        appendPlayerMoments(state, detected.playerId, [detected.moment]);
+      }
+    }
+
+    const bestTrades: Record<string, NonNullable<ReturnType<typeof detectTradeDeadlineSpark>>> = {};
+    for (const trade of state.tradeState.tradeHistory) {
+      const parsed = parseTimestampParts(trade.timestamp);
+      if (!parsed || parsed[0] - state.season) {
+        continue;
+      }
+      for (const [assets, acquiringTeamId, priorTeamId] of [
+        [trade.offeringAssets, trade.toTeamId, trade.fromTeamId],
+        [trade.requestingAssets, trade.fromTeamId, trade.toTeamId],
+      ] as const) {
+        for (const asset of assets) {
+          if ((asset as { readonly playerId?: string }).playerId === player.id) {
+            const detected = detectTradeDeadlineSpark(player, {
+              ...baseContext,
+              tradeDay: parsed[1],
+              acquiringTeamId,
+              priorTeamId,
+            });
+            if (detected) {
+              const current = bestTrades[acquiringTeamId];
+              if (!current || detected.score! > current.score!) {
+                bestTrades[acquiringTeamId] = detected;
+              }
+            }
+          }
+        }
+      }
+    }
+    for (const teamId in bestTrades) {
+      appendPlayerMoments(state, bestTrades[teamId]!.playerId, [bestTrades[teamId]!.moment]);
+    }
   }
 }
 

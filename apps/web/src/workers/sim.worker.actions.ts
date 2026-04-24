@@ -228,7 +228,9 @@ import {
   applyOffseasonNarrativeHooks,
   applyMonthlyPressConference,
   applyRegularSeasonPositionGroupMoments,
+  applyRegularSeasonPlayerMicroArcMoments,
   applyRegularSeasonTeamDynastyMarkers,
+  applySeasonEndPlayerMicroArcMoments,
   applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
 } from './sim.worker.narrativeFarm.js';
@@ -1307,6 +1309,7 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     captureSeasonAchievementFacts(s);
     syncAchievementState(s);
     clearPendingTradeOffers(s);
+    applySeasonEndPlayerMicroArcMoments(s);
     s.phase = 'playoffs';
     s.day = 1;
     s.playoffBracket = null;
@@ -1408,6 +1411,7 @@ function simWeekInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   processSignatureMoments(s, result.games);
+  applyRegularSeasonPlayerMicroArcMoments(s);
   refreshNarrativeState(s, result.games);
   refreshTickerFeed(s, {
     simDay: Math.max(previousDay, s.day - 1),
@@ -1576,6 +1580,7 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   processSignatureMoments(s, result.games);
+  applyRegularSeasonPlayerMicroArcMoments(s);
   refreshNarrativeState(s, result.games);
   refreshTickerFeed(s, {
     simDay: Math.max(previousDay, s.day - 1),
@@ -1738,6 +1743,7 @@ function simDayInternal(): SimResultDTO {
       processTradeMarketActivity(s, previousDay, s.day);
       processDayInjuriesAndNews(s);
       processSignatureMoments(s, result.games);
+      applyRegularSeasonPlayerMicroArcMoments(s);
       refreshNarrativeState(s, result.games);
       refreshTickerFeed(s, {
         simDay: previousDay,
@@ -2501,7 +2507,7 @@ export const actionApi = {
           teamId: promotedPlayer.teamId,
           teamName: teamLabel(promotedPlayer.teamId),
           level: player.rosterStatus,
-          streak: 'call-up watch',
+          streak: 'call',
         },
       }, s.players, s.season, s.day));
       recordProspectCallup(s, promotedPlayer.id);

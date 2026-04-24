@@ -6,7 +6,10 @@ import {
   buildRosterState,
   createOffseasonState,
   evaluatePlayerTradeValue,
+  type GameBoxScore,
   type GeneratedPlayer,
+  type PAOutcome,
+  type PAResult,
   type PlayerGameStats,
   TEAMS,
 } from '@mbd/sim-core';
@@ -30,7 +33,9 @@ import { refreshTickerFeed } from './sim.worker.ticker';
 import {
   applyOffseasonNarrativeHooks,
   applyRegularSeasonPositionGroupMoments,
+  applyRegularSeasonPlayerMicroArcMoments,
   applyRegularSeasonTeamDynastyMarkers,
+  applySeasonEndPlayerMicroArcMoments,
   applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
 } from './sim.worker.narrativeFarm';
@@ -474,6 +479,37 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
     losses: 0,
     gamesMissedToInjury: 0,
     ...overrides,
+  };
+}
+
+function microArcPa(outcome: PAOutcome, batterId: string, pitcherId: string): PAResult {
+  return {
+    outcome,
+    batterId,
+    pitcherId,
+    inning: 1,
+    halfInning: 'top',
+    outs: 0,
+    runnersOn: 0,
+    scoreBefore: [0, 0],
+    scoreAfter: [0, outcome === 'HR' ? 1 : 0],
+    rbiOnPlay: outcome === 'HR' ? 1 : 0,
+    isWalkOff: false,
+  };
+}
+
+function microArcBoxScore(day: number, paResults: PAResult[]): GameBoxScore {
+  return {
+    homeTeamId: 'nym',
+    awayTeamId: 'bos',
+    homeScore: 7,
+    awayScore: 3,
+    innings: 9,
+    homeHits: 12,
+    awayHits: 7,
+    paResults,
+    date: `S1D${day}`,
+    isPlayoff: false,
   };
 }
 
@@ -4636,6 +4672,147 @@ describe('sim worker narrative APIs', () => {
     expect(state.playerMoments.get(rookie.id)?.filter((moment) => moment.type === 'rookie_breakout')).toHaveLength(1);
     expect(state.playerMoments.get(redemption.id)?.some((moment) => moment.type === 'redemption_arc')).toBe(true);
     expect(state.playerMoments.get(veteran.id)?.some((moment) => moment.type === 'late_career_peak')).toBe(true);
+  });
+
+  it('plumbs player micro-arc sources through regular-season and season-end passes without duplicates', () => {
+    startGame(1508, 'nym');
+    const state = requireState();
+    state.season = 1;
+    state.day = 186;
+    state.phase = 'regular';
+
+    const hitters = state.players.filter((player) => player.rosterStatus === 'MLB' && player.pitcherAttributes == null);
+    const injuryHero = hitters[0]!;
+    const tradeHero = hitters[1]!;
+    const callupHero = hitters[2]!;
+    const leagueAverage = hitters[3]!;
+    const pitcher = state.players.find((player) => player.rosterStatus === 'MLB' && player.pitcherAttributes != null)!;
+
+    injuryHero.teamId = 'nym';
+    tradeHero.teamId = 'bos';
+    callupHero.teamId = 'nym';
+    callupHero.age = 22;
+    for (const player of [injuryHero, tradeHero, callupHero, leagueAverage, pitcher]) {
+      player.rosterStatus = 'MLB';
+    }
+
+    state.injuries.set(injuryHero.id, {
+      type: 'hamstring_strain',
+      severity: 'il_15',
+      daysRemaining: 0,
+      totalDays: 34,
+      attributePenalty: 0.03,
+      reinjuryRisk: 0.05,
+    });
+    state.news.unshift(
+      {
+        id: 'micro-arc-injury-start',
+        headline: 'Injury watch',
+        body: 'Hamstring strain.',
+        priority: 3,
+        category: 'injury',
+        timestamp: 'S1D66',
+        relatedPlayerIds: [injuryHero.id],
+        relatedTeamIds: ['nym'],
+        read: false,
+      },
+      {
+        id: 'micro-arc-callup',
+        headline: 'Prospect promoted',
+        body: 'call-up watch.',
+        priority: 3,
+        category: 'development',
+        timestamp: 'S1D154',
+        relatedPlayerIds: [callupHero.id],
+        relatedTeamIds: ['nym'],
+        read: false,
+      },
+    );
+    state.tradeState.tradeHistory = [
+      {
+        id: 'micro-arc-trade',
+        fromTeamId: 'nym',
+        toTeamId: 'bos',
+        offeringAssets: [{ type: 'player', playerId: tradeHero.id }],
+        requestingAssets: [],
+        fairnessScore: 12,
+        summary: 'New York Tycoons sent a bat to Boston Noreasters.',
+        timestamp: 'S1D118',
+      },
+    ];
+
+    const injuryOutcomes = [
+      ...Array<PAOutcome>(20).fill('HR'),
+      ...Array<PAOutcome>(20).fill('SINGLE'),
+      ...Array<PAOutcome>(20).fill('BB'),
+    ];
+    const tradeOutcomes = [
+      ...Array<PAOutcome>(25).fill('HR'),
+      ...Array<PAOutcome>(25).fill('SINGLE'),
+      ...Array<PAOutcome>(25).fill('BB'),
+    ];
+    const callupOutcomes = [
+      ...Array<PAOutcome>(15).fill('HR'),
+      ...Array<PAOutcome>(15).fill('SINGLE'),
+      ...Array<PAOutcome>(10).fill('BB'),
+    ];
+    state.seasonState.gameLog.splice(0, state.seasonState.gameLog.length, ...[
+      ...injuryOutcomes.map((outcome, index) =>
+        microArcBoxScore(100 + Math.floor(index / 4), [microArcPa(outcome, injuryHero.id, pitcher.id)])
+      ),
+      ...tradeOutcomes.map((outcome, index) =>
+        microArcBoxScore(118 + Math.floor(index / 5), [microArcPa(outcome, tradeHero.id, pitcher.id)])
+      ),
+      ...callupOutcomes.map((outcome, index) =>
+        microArcBoxScore(154 + Math.floor(index / 4), [microArcPa(outcome, callupHero.id, pitcher.id)])
+      ),
+    ]);
+    state.seasonState.playerSeasonStats.set(injuryHero.id, createPlayerStats({
+      playerId: injuryHero.id,
+      teamId: injuryHero.teamId,
+      pa: 220,
+      ab: 170,
+      hits: 70,
+      hr: 22,
+      bb: 45,
+    }));
+    state.seasonState.playerSeasonStats.set(tradeHero.id, createPlayerStats({
+      playerId: tradeHero.id,
+      teamId: tradeHero.teamId,
+      pa: 220,
+      ab: 170,
+      hits: 70,
+      hr: 24,
+      bb: 45,
+    }));
+    state.seasonState.playerSeasonStats.set(callupHero.id, createPlayerStats({
+      playerId: callupHero.id,
+      teamId: callupHero.teamId,
+      pa: 160,
+      ab: 122,
+      hits: 52,
+      hr: 15,
+      bb: 35,
+    }));
+    state.seasonState.playerSeasonStats.set(leagueAverage.id, createPlayerStats({
+      playerId: leagueAverage.id,
+      teamId: leagueAverage.teamId,
+      pa: 6000,
+      ab: 5400,
+      hits: 1350,
+      doubles: 250,
+      hr: 120,
+      bb: 450,
+      runs: 620,
+    }));
+
+    applyRegularSeasonPlayerMicroArcMoments(state);
+    applySeasonEndPlayerMicroArcMoments(state);
+    applySeasonEndPlayerMicroArcMoments(state);
+
+    expect(state.playerMoments.get(injuryHero.id)?.filter((moment) => moment.type === 'injury_return_hero')).toHaveLength(1);
+    expect(state.playerMoments.get(tradeHero.id)?.filter((moment) => moment.type === 'trade_deadline_spark')).toHaveLength(1);
+    expect(state.playerMoments.get(callupHero.id)?.filter((moment) => moment.type === 'september_callup_hero')).toHaveLength(1);
   });
 
   it('appends dynasty-marker team moments across regular-season and season-end passes without duplicates', () => {

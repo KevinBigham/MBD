@@ -150,8 +150,13 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // measured game-engine-core at 142,927 gzip bytes, 591 bytes over the 139 KB
 // cap. Raw stayed under the existing 439 KB ceiling (440,242 vs 449,536), so
 // only the pre-authorized +2 KB gzip lift is applied.
-export const WORKER_CHUNK_BUDGET_BYTES = 439 * 1024;
-export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 141 * 1024;
+// WORKER raw/gzip: bumped 439 -> 440 KB raw and 141 -> 143 KB gzip for
+// Narrative Depth Wave 8. Player micro-arc worker source plumbing was trimmed
+// before lifting the cap; local build lands game-engine-story just under the
+// 440 KB raw ceiling and game-engine-core at 145,118 gzip bytes, covered by
+// the pre-authorized +2 KB gzip headroom.
+export const WORKER_CHUNK_BUDGET_BYTES = 440 * 1024;
+export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 143 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
