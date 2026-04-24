@@ -10,8 +10,8 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v32', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(32);
+  it('tracks the current additive save schema as v33', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(33);
   });
 
   it('migrates the v17 fixture into the additive v25 shape', () => {
@@ -257,6 +257,42 @@ describe('save schema migration', () => {
 
   it('migrates the v31 fixture into the additive v32 player micro-arc enum shape', () => {
     const fixture = loadFixture('./fixtures/save/v31/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+    const [player] = migrated.players;
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(player?.priorSeasonEstimatedWar).toBeNull();
+    expect(migrated.narrative.teamMoments).toEqual([
+      [
+        'nym',
+        [
+          expect.objectContaining({
+            type: 'first_dynasty_peak',
+            description: expect.stringContaining('franchise identity'),
+          }),
+          expect.objectContaining({
+            type: 'rivalry_renewed',
+            description: expect.stringContaining('rivalry'),
+          }),
+        ],
+      ],
+    ]);
+    expect(migrated.narrative.playerMoments).toEqual([
+      [
+        '11111111-1111-4111-8111-111111111111',
+        [
+          expect.objectContaining({
+            type: 'redemption_arc',
+            description: expect.stringContaining('rebound'),
+          }),
+        ],
+      ],
+    ]);
+  });
+
+  it('migrates the v32 fixture into the additive v33 weekly moment enum shape', () => {
+    const fixture = loadFixture('./fixtures/save/v32/core.json');
 
     const migrated = parseGameSnapshot(fixture);
     const [player] = migrated.players;

@@ -152,6 +152,11 @@ export type {
   StoryArcSnapshot,
 } from './storyArcs.js';
 export type {
+  WeeklyMomentRenderContext,
+  WeeklyMomentStableKey,
+  WeeklyMomentTopicId,
+} from './weeklyMomentProse.js';
+export type {
   BreakoutCountdown,
   BreakoutCountdownSnapshot,
   PressConferenceContext,

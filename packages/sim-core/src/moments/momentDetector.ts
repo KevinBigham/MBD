@@ -91,7 +91,13 @@ export type MomentType =
   | 'rookie_breakout'
   | 'injury_return_hero'
   | 'trade_deadline_spark'
-  | 'september_callup_hero';
+  | 'september_callup_hero'
+  | 'hot_streak_week'
+  | 'cold_snap_week'
+  | 'closer_lights_out'
+  | 'closer_meltdown_week'
+  | 'bench_clutch_week'
+  | 'bullpen_overwork_warning';
 
 export type MomentRound = 'WC' | 'DS' | 'CS' | 'WS';
 
@@ -202,6 +208,12 @@ export const MOMENT_TYPE_ORDER: readonly MomentType[] = [
   'injury_return_hero',
   'trade_deadline_spark',
   'september_callup_hero',
+  'hot_streak_week',
+  'cold_snap_week',
+  'closer_lights_out',
+  'closer_meltdown_week',
+  'bench_clutch_week',
+  'bullpen_overwork_warning',
 ];
 
 export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]> = {
@@ -382,6 +394,24 @@ export const MOMENT_DESCRIPTION_TEMPLATES: Record<MomentType, readonly string[]>
   ],
   september_callup_hero: [
     '{player} made a September call-up feel bigger than a roster move.',
+  ],
+  hot_streak_week: [
+    '{player} helped turn one week into a surge.',
+  ],
+  cold_snap_week: [
+    '{player} was part of a rough week that forced a reset.',
+  ],
+  closer_lights_out: [
+    '{player} locked down save chances all week.',
+  ],
+  closer_meltdown_week: [
+    '{player} could not keep the ninth inning quiet during a rough week.',
+  ],
+  bench_clutch_week: [
+    '{player} helped the bench turn role-player chances into runs.',
+  ],
+  bullpen_overwork_warning: [
+    '{player} worked through a bullpen week that pushed the relief group hard.',
   ],
 };
 

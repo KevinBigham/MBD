@@ -155,7 +155,12 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // before lifting the cap; local build lands game-engine-story just under the
 // 440 KB raw ceiling and game-engine-core at 145,118 gzip bytes, covered by
 // the pre-authorized +2 KB gzip headroom.
-export const WORKER_CHUNK_BUDGET_BYTES = 440 * 1024;
+// WORKER raw: bumped 440 -> 442 KB for Narrative Depth Wave 9. Weekly cadence
+// detector/prose modules are split into game-engine-weekly to protect
+// game-engine-core; the remaining worker checkpoint wiring leaves
+// game-engine-story ~0.6 KB over the Wave 8 raw cap. +2 KB raw stays within
+// the pre-authorized Wave 9 lift and leaves modest minifier-drift headroom.
+export const WORKER_CHUNK_BUDGET_BYTES = 442 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 143 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
@@ -259,6 +264,15 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
     includesPath(normalized, '/packages/sim-core/src/narrative/holdoutCoverage.')
   ) {
     return 'game-engine-story';
+  }
+
+  // Weekly narrative cadence is worker-only detector/prose code. Keep it out
+  // of game-engine-core so the deterministic sim chunk retains headroom.
+  if (
+    includesPath(normalized, '/packages/sim-core/src/moments/weeklyMoments.')
+    || includesPath(normalized, '/packages/sim-core/src/narrative/weeklyMomentProse.')
+  ) {
+    return 'game-engine-weekly';
   }
 
   if (includesPath(normalized, '/packages/sim-core/src/')) {

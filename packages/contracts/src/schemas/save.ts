@@ -510,7 +510,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 32;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 33;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -654,6 +654,11 @@ export const GameSnapshotV31Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(31),
 });
 export type GameSnapshotV31 = z.infer<typeof GameSnapshotV31Schema>;
+
+export const GameSnapshotV32Schema = GameSnapshotSchema.extend({
+  schemaVersion: z.literal(32),
+});
+export type GameSnapshotV32 = z.infer<typeof GameSnapshotV32Schema>;
 
 export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
   schemaVersion: z.literal(12),
@@ -2776,7 +2781,33 @@ function migrateGameSnapshotV31(snapshot: GameSnapshotV31): GameSnapshot {
   });
 }
 
+// v32 -> v33: expand SignatureMomentTypeEnum with weekly-cadence narrative
+// density moments. Additive only — existing v32 saves load as-is.
+function migrateGameSnapshotV32(snapshot: GameSnapshotV32): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 32
+  ) {
+    return migrateGameSnapshotV32(GameSnapshotV32Schema.parse(snapshotLike));
+  }
+
   if (
     typeof snapshotLike === "object" &&
     snapshotLike !== null &&

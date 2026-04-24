@@ -238,6 +238,7 @@ export {
   SEPTEMBER_CALLUP_HERO_MIN_PA,
   SEPTEMBER_CALLUP_HERO_MIN_IP_OUTS,
   buildTeamSeasonSummaries,
+  detectWeeklyMoments,
   estimatedWar,
   detectCursedFranchise,
   detectBreakoutSeason,
@@ -296,6 +297,8 @@ export type {
   SeasonIdentityDetectedMoment,
   SignatureMomentDetectionResult,
   TradeDeadlineSparkDetectionContext,
+  WeeklyDetectedMoment,
+  WeeklyMomentDetectionContext,
 } from './moments/index.js';
 
 // Player
