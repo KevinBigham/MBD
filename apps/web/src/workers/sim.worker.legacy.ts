@@ -295,7 +295,7 @@ export function processHallOfFameForRetirements(state: FullGameState, retiredPla
 
   for (const inductee of result.inductees) {
     const headline = `${inductee.playerName} enters the Hall of Fame`;
-    const body = `${inductee.playerName} was honored in season ${inductee.inductionSeason} after a ${inductee.score}-point Hall of Fame case.`;
+    const body = inductee.summary;
     if (!state.news.some((item) => item.id === `hof-${inductee.playerId}-${inductee.inductionSeason}`)) {
       state.news.unshift({
         id: `hof-${inductee.playerId}-${inductee.inductionSeason}`,

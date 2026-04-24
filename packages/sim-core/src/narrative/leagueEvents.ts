@@ -5,9 +5,16 @@
 
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { toDisplayRating } from '../player/attributes.js';
 import { getTeamById } from '../league/teams.js';
 import type { GMRelationship } from '../league/gmRelationships.js';
 import { assignGMPersonality, type GMPersonality } from '../trade/tradeAI.js';
+import {
+  pickDebutPressLine,
+  pickFarewellTourLine,
+  resolveDebutPressBranch,
+  resolveFarewellTourBranch,
+} from './retirementProse.js';
 
 export const EVENTS_PER_MONTH_MIN = 0;
 export const EVENTS_PER_MONTH_MAX = 2;
@@ -279,6 +286,10 @@ function getPlayerById(playerMap: Map<string, GeneratedPlayer>, playerId: string
   return playerMap.get(playerId);
 }
 
+function playerFullName(player: GeneratedPlayer): string {
+  return `${player.firstName} ${player.lastName}`;
+}
+
 function pickRandomTeam(
   rng: GameRNG,
   teams: readonly LeagueEventTeamSnapshot[],
@@ -494,6 +505,49 @@ function buildEventDescription(eventType: LeagueEventType, teamIds: readonly str
   }
 }
 
+function buildPhenomDebutDescription(context: LeagueEventContext, selectedTeam: LeagueEventTeamSnapshot, prospect: GeneratedPlayer): string {
+  const teamName = getTeamDisplayName(selectedTeam.teamId);
+  const branch = resolveDebutPressBranch({
+    age: prospect.age,
+    previousLevel: prospect.rosterStatus,
+    topProspect: (prospect.potentialRating ?? prospect.ceiling ?? prospect.overallRating) >= 260,
+  });
+
+  return pickDebutPressLine({
+    playerId: prospect.id,
+    playerName: playerFullName(prospect),
+    teamName,
+    season: context.season,
+    branch,
+    age: prospect.age,
+    previousLevel: prospect.rosterStatus,
+    topProspect: (prospect.potentialRating ?? prospect.ceiling ?? prospect.overallRating) >= 260,
+  });
+}
+
+function buildRetirementTourDescription(context: LeagueEventContext, selectedTeam: LeagueEventTeamSnapshot, legend: GeneratedPlayer): string {
+  const teamName = getTeamDisplayName(selectedTeam.teamId);
+  const overallRating = toDisplayRating(legend.overallRating);
+  const branch = resolveFarewellTourBranch({
+    wins: selectedTeam.wins,
+    losses: selectedTeam.losses,
+    leadership: legend.personality.leadership,
+    overallRating,
+  });
+
+  return pickFarewellTourLine({
+    playerId: legend.id,
+    playerName: playerFullName(legend),
+    teamName,
+    season: context.season,
+    branch,
+    wins: selectedTeam.wins,
+    losses: selectedTeam.losses,
+    leadership: legend.personality.leadership,
+    overallRating,
+  });
+}
+
 function rollEventCount(rng: GameRNG, month: number): number {
   const options = [EVENTS_PER_MONTH_MIN, 1, EVENTS_PER_MONTH_MAX] as const;
   return rng.weightedPick(options, getEventCountWeights(month));
@@ -581,7 +635,7 @@ function createPhenomDebutEvent(rng: GameRNG, context: LeagueEventContext, playe
     teamIds: [selectedTeam.teamId],
     playerIds: [prospect.id],
     headline: getEventHeadline('phenom_debut', [selectedTeam.teamId]),
-    description: buildEventDescription('phenom_debut', [selectedTeam.teamId], [prospect.id], playerMap),
+    description: buildPhenomDebutDescription(context, selectedTeam, prospect),
     gameplayEffect: getEventGameplayEffect('phenom_debut', [selectedTeam.teamId]),
     effectData: {
       kind: 'prospect_market_shift',
@@ -765,7 +819,7 @@ function createRetirementTourEvent(rng: GameRNG, context: LeagueEventContext, pl
     teamIds: [selectedTeam.teamId],
     playerIds: [legend.id],
     headline: getEventHeadline('retirement_tour', [selectedTeam.teamId]),
-    description: buildEventDescription('retirement_tour', [selectedTeam.teamId], [legend.id], playerMap),
+    description: buildRetirementTourDescription(context, selectedTeam, legend),
     gameplayEffect: getEventGameplayEffect('retirement_tour', [selectedTeam.teamId]),
     effectData: {
       kind: 'revenue_shift',
@@ -975,7 +1029,7 @@ export function generateLeagueEventNarrative(rng: GameRNG, event: LeagueEvent): 
     case 'phenom_debut':
       return flavorIndex === 0
         ? `${leadTeam} made the call. ${event.description}`
-        : `${event.headline}. ${leadTeam} is betting that the hype is ready for the majors right now.`;
+        : `${event.headline}. ${event.description}`;
     case 'gm_firing':
       return flavorIndex === 0
         ? `${event.headline}. ${leadTeam} is starting over and every relationship with that front office just got less certain.`
@@ -999,7 +1053,7 @@ export function generateLeagueEventNarrative(rng: GameRNG, event: LeagueEvent): 
     case 'retirement_tour':
       return flavorIndex === 0
         ? `${event.headline}. ${event.description}`
-        : `${leadTeam} gets one last tour with a franchise icon, and every visit should feel bigger.`;
+        : `${leadTeam} gets one last tour with a franchise icon. ${event.description}`;
     case 'scandal':
       return flavorIndex === 0
         ? `${event.headline}. ${event.description}`

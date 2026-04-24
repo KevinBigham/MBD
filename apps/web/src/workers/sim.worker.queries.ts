@@ -222,6 +222,43 @@ function calculateEra(stats: PlayerGameStats): number {
   return (stats.earnedRuns / (stats.ip / 3)) * 9;
 }
 
+function inferAwardWinnerRole(
+  player: GeneratedPlayer | undefined,
+  stats: PlayerGameStats | undefined,
+): 'position_player' | 'starter' | 'reliever' | 'closer' {
+  if (player?.position === 'CL' || (stats?.saves ?? 0) >= 20) {
+    return 'closer';
+  }
+  if (player?.position === 'SP') {
+    return 'starter';
+  }
+  if (player?.position === 'RP') {
+    return 'reliever';
+  }
+  return stats && stats.ip > 0 ? 'starter' : 'position_player';
+}
+
+function awardDominanceProxy(
+  award: string,
+  stats: PlayerGameStats | undefined,
+): number | undefined {
+  if (!stats) {
+    return undefined;
+  }
+
+  if (award === 'MVP' && stats.pa >= 500 && (calculateOps(stats) >= 1.05 || stats.hr >= 50)) {
+    return 1;
+  }
+  if (award === 'CY_YOUNG' && stats.ip >= 540 && calculateEra(stats) <= 2.25) {
+    return 1;
+  }
+  if (award === 'CY_YOUNG' && (stats.saves ?? 0) >= 45) {
+    return 1;
+  }
+
+  return undefined;
+}
+
 function buildRelationshipView(relationship: GMRelationship) {
   const team = getTeamById(relationship.targetTeamId);
   const latestMemory = relationship.tradeHistory[0] ?? null;
@@ -3921,6 +3958,7 @@ export const queryApi = {
     const contexts = seasonAwards.map(entry => {
       const player = s.players.find(p => p.id === entry.playerId);
       const stats = s.seasonState.playerSeasonStats.get(entry.playerId);
+      const origin = s.playerOrigins.get(entry.playerId);
       const leaguePrefix = entry.league === 'AL' ? '_AL' : entry.league === 'NL' ? '_NL' : '';
       const baseKey = awardKeyMap[entry.award] ?? entry.award.toUpperCase().replace(/\s+/g, '_');
       const awardId = `${baseKey}${leaguePrefix}`;
@@ -3952,6 +3990,14 @@ export const queryApi = {
         isRepeatWinner: previousWins > 0,
         reactionTone: tones[toneIndex]!,
         teamRecord: { wins, losses },
+        season: targetSeason,
+        voteShare: awardDominanceProxy(entry.award, stats),
+        winnerRole: inferAwardWinnerRole(player, stats),
+        saves: stats?.saves,
+        inningsPitched: stats ? stats.ip / 3 : undefined,
+        acquisitionType: origin?.acquisitionType,
+        draftRound: origin?.draftRound,
+        draftPickNumber: origin?.draftPickNumber,
       };
     });
 

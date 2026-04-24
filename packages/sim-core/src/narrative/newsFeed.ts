@@ -6,8 +6,11 @@
  */
 
 import type { GameRNG } from '../math/prng.js';
+import type { CareerStatsLedger } from '../league/hallOfFame.js';
+import { toDisplayRating } from '../player/attributes.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { REGULAR_SEASON_DAYS } from '../sim/calendar.js';
+import { pickRetirementSpeechLine, resolveRetirementBranch } from './retirementProse.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -102,6 +105,15 @@ export interface GameEvent {
   data: Record<string, unknown>;
   season: number;
   day: number;
+}
+
+export interface RetirementNewsContext {
+  readonly careerStats?: CareerStatsLedger | null;
+  readonly teamIds?: readonly string[];
+  readonly championshipRings?: number;
+  readonly peakOverall?: number;
+  readonly priorSeasonGamesMissed?: number;
+  readonly currentTeamId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1273,13 +1285,35 @@ export function generateRetirementNews(
   season: number,
   day: number,
   teamName?: string,
+  retirementContext: RetirementNewsContext = {},
 ): NewsItem {
   const club = teamName ?? player.teamId.toUpperCase();
+  const playerName = `${player.firstName} ${player.lastName}`;
+  const careerStats = retirementContext.careerStats ?? null;
+  const teamIds = retirementContext.teamIds ?? careerStats?.teamIds ?? [player.teamId];
+  const branch = resolveRetirementBranch({
+    championshipRings: retirementContext.championshipRings ?? careerStats?.championshipRings,
+    currentTeamId: retirementContext.currentTeamId ?? player.teamId,
+    teamIds,
+    peakOverall: retirementContext.peakOverall ?? careerStats?.peakOverall ?? toDisplayRating(player.overallRating),
+    priorSeasonGamesMissed: retirementContext.priorSeasonGamesMissed,
+  });
 
   return {
     id: generateNewsId(rng),
-    headline: `${player.firstName} ${player.lastName} calls it a career.`,
-    body: `${player.firstName} ${player.lastName} has retired from baseball after closing out his run with ${club}.`,
+    headline: `${playerName} calls it a career.`,
+    body: pickRetirementSpeechLine({
+      playerId: player.id,
+      playerName,
+      teamName: club,
+      season,
+      branch,
+      championshipRings: retirementContext.championshipRings ?? careerStats?.championshipRings,
+      currentTeamId: retirementContext.currentTeamId ?? player.teamId,
+      teamIds,
+      peakOverall: retirementContext.peakOverall ?? careerStats?.peakOverall ?? toDisplayRating(player.overallRating),
+      priorSeasonGamesMissed: retirementContext.priorSeasonGamesMissed,
+    }),
     priority: 1,
     category: 'roster_move',
     timestamp: formatTimestamp(season, day),

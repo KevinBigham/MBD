@@ -1,5 +1,6 @@
 import type { BriefingItem, ConsequenceWatcher, FanSentiment } from '@mbd/contracts';
 import { getTeamById } from '../league/teams.js';
+import type { CareerStatsLedger } from '../league/hallOfFame.js';
 import type { MoraleEvent } from '../league/narrativeState.js';
 import type { GameRNG } from '../math/prng.js';
 import { toDisplayRating } from '../player/attributes.js';
@@ -86,6 +87,8 @@ export interface RetirementConsequenceContext {
   userTeamId: string;
   retiredPlayers: GeneratedPlayer[];
   remainingUserPlayers: GeneratedPlayer[];
+  careerStatsByPlayerId?: ReadonlyMap<string, CareerStatsLedger>;
+  priorSeasonGamesMissedByPlayerId?: ReadonlyMap<string, number>;
 }
 
 export interface TradeAftermathChainContext {
@@ -615,6 +618,11 @@ export function buildRetirementConsequenceBundle(
       context.season,
       context.day,
       teamLabel(player.teamId),
+      {
+        careerStats: context.careerStatsByPlayerId?.get(player.id) ?? null,
+        priorSeasonGamesMissed: context.priorSeasonGamesMissedByPlayerId?.get(player.id),
+        currentTeamId: player.teamId,
+      },
     );
     newsItems.push(newsItem);
     seasonHistoryMoments.push(newsItem.headline);

@@ -12,6 +12,10 @@ import {
   checkMilestones,
   determinePlayoffSeeds,
   getTeamById,
+  pickDebutPressLine,
+  pickJerseyRetirementLine,
+  resolveDebutPressBranch,
+  resolveJerseyRetirementBranch,
   toDisplayRating,
   type PlayerGameStats,
   type PlayoffSeriesState,
@@ -286,12 +290,31 @@ export function queueHallOfFameMoments(state: FullGameState, inductees: HallOfFa
       continue;
     }
 
+    const primaryTeamId = inductee.teamIds[0] ?? state.userTeamId;
+    const jerseyBranch = resolveJerseyRetirementBranch({
+      hallOfFame: true,
+      inductionType: inductee.inductionType,
+      currentTeamId: primaryTeamId,
+      teamIds: inductee.teamIds,
+    });
+    const jerseyLine = pickJerseyRetirementLine({
+      playerId: inductee.playerId,
+      playerName: inductee.playerName,
+      teamName: teamLabel(primaryTeamId),
+      season: inductee.inductionSeason,
+      branch: jerseyBranch,
+      hallOfFame: true,
+      inductionType: inductee.inductionType,
+      currentTeamId: primaryTeamId,
+      teamIds: inductee.teamIds,
+    });
+
     queueCeremonyMoment(state, {
       id: `hall-of-fame-${inductee.playerId}-${inductee.inductionSeason}`,
       type: 'hall_of_fame',
       title: 'HALL OF FAME',
       subtitle: inductee.playerName,
-      detailLines: [inductee.summary],
+      detailLines: [inductee.summary, jerseyLine],
       soundEffect: 'achievement_unlock',
       autoDismissMs: 5000,
       createdAt: currentTimestamp(state),
@@ -395,13 +418,38 @@ export function queueProspectDebutMoment(
     return;
   }
 
+  const origin = state.playerOrigins.get(playerId);
+  const debutBranch = resolveDebutPressBranch({
+    age: player.age,
+    previousLevel,
+    acquisitionType: origin?.acquisitionType,
+    draftRound: origin?.draftRound,
+    draftPickNumber: origin?.draftPickNumber,
+    callupDay: state.day,
+  });
+  const debutLine = pickDebutPressLine({
+    playerId: player.id,
+    playerName: `${player.firstName} ${player.lastName}`,
+    teamName: teamLabel(player.teamId),
+    season: state.season,
+    branch: debutBranch,
+    age: player.age,
+    previousLevel,
+    acquisitionType: origin?.acquisitionType,
+    draftRound: origin?.draftRound,
+    draftPickNumber: origin?.draftPickNumber,
+    callupDay: state.day,
+  });
+
   const detailLines = flashback
     ? [
       `Remember when ${player.firstName} ${player.lastName} was a Round ${flashback.draftRound} pick in Season ${flashback.draftSeason}?`,
+      debutLine,
       `Original grade ${flashback.originalGrade} · Debut overall ${flashback.debutOverall}.`,
       ...flashback.journeyHighlights.slice(-3),
     ]
     : [
+      debutLine,
       `${previousLevel} to MLB.`,
       `${player.position} · ${toDisplayRating(player.overallRating)} OVR`,
     ];

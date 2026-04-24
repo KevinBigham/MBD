@@ -546,6 +546,11 @@ export function applyRetirementConsequences(
     remainingUserPlayers: getTeamPlayers(state.userTeamId).filter(
       (player) => player.rosterStatus === 'MLB' && !retiredIds.includes(player.id),
     ),
+    careerStatsByPlayerId: new Map(state.careerStats.map((entry) => [entry.playerId, entry])),
+    priorSeasonGamesMissedByPlayerId: new Map(retiredPlayers.map((player) => [
+      player.id,
+      state.seasonState.playerSeasonStats.get(player.id)?.gamesMissedToInjury ?? player.priorSeasonGamesMissed,
+    ])),
   });
 
   applyConsequenceBundle(state, bundle);
