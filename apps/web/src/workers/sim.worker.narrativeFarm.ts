@@ -14,6 +14,7 @@ import {
   detectSeasonIdentityMoments,
   detectThreePeat,
   detectTradeDeadlineSpark,
+  detectWeeklyMoments,
   evaluateScenarioProgress,
   generateDebutFlashback,
   generatePressConference,
@@ -632,6 +633,64 @@ export function applyRegularSeasonPlayerMicroArcMoments(state: FullGameState) {
     if (detected) {
       appendPlayerMoments(state, detected.playerId, [detected.moment]);
     }
+  }
+}
+
+export function applyWeeklyMoments(state: FullGameState, weekEndDay: number) {
+  const detected = detectWeeklyMoments({
+    season: state.season,
+    weekEndDay,
+    players: state.players,
+    gameLog: state.seasonState.gameLog,
+    teamMoments: state.teamMoments,
+    playerMoments: state.playerMoments,
+  });
+
+  for (const entry of detected) {
+    if (entry.scope === 'team') {
+      appendTeamMoments(state, entry.teamId, [entry.moment]);
+    } else {
+      appendPlayerMoments(state, entry.playerId, [entry.moment]);
+    }
+  }
+}
+
+export function getWeeklyMomentCheckpointDays(
+  previousDay: number,
+  currentDay: number,
+  seasonComplete: boolean,
+): number[] {
+  const finalCompletedDay = currentDay - 1;
+  if (finalCompletedDay < previousDay) {
+    return [];
+  }
+
+  const checkpoints: number[] = [];
+  for (let day = previousDay; day <= finalCompletedDay; day += 1) {
+    if (day > 0 && day % 7 === 0) {
+      checkpoints.push(day);
+    }
+  }
+
+  if (
+    seasonComplete
+    && finalCompletedDay > 0
+    && !checkpoints.includes(finalCompletedDay)
+  ) {
+    checkpoints.push(finalCompletedDay);
+  }
+
+  return checkpoints;
+}
+
+export function applyWeeklyMomentsForCompletedRange(
+  state: FullGameState,
+  previousDay: number,
+  currentDay: number,
+  seasonComplete: boolean,
+) {
+  for (const checkpointDay of getWeeklyMomentCheckpointDays(previousDay, currentDay, seasonComplete)) {
+    applyWeeklyMoments(state, checkpointDay);
   }
 }
 

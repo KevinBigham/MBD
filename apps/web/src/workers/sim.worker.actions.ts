@@ -233,6 +233,7 @@ import {
   applySeasonEndPlayerMicroArcMoments,
   applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
+  applyWeeklyMomentsForCompletedRange,
 } from './sim.worker.narrativeFarm.js';
 import {
   archiveOldSeasonsInState,
@@ -1411,6 +1412,7 @@ function simWeekInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   processSignatureMoments(s, result.games);
+  applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
   applyRegularSeasonPlayerMicroArcMoments(s);
   refreshNarrativeState(s, result.games);
   refreshTickerFeed(s, {
@@ -1580,6 +1582,7 @@ function simMonthInternal(): SimResultDTO {
   processDayInjuriesAndNews(s);
   normalizeLeagueActiveRosters(s);
   processSignatureMoments(s, result.games);
+  applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
   applyRegularSeasonPlayerMicroArcMoments(s);
   refreshNarrativeState(s, result.games);
   refreshTickerFeed(s, {
@@ -1743,6 +1746,7 @@ function simDayInternal(): SimResultDTO {
       processTradeMarketActivity(s, previousDay, s.day);
       processDayInjuriesAndNews(s);
       processSignatureMoments(s, result.games);
+      applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
       applyRegularSeasonPlayerMicroArcMoments(s);
       refreshNarrativeState(s, result.games);
       refreshTickerFeed(s, {

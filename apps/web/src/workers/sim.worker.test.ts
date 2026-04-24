@@ -38,6 +38,8 @@ import {
   applySeasonEndPlayerMicroArcMoments,
   applySeasonEndTeamDynastyMarkers,
   applySeasonEndPlayerArcMoments,
+  applyWeeklyMomentsForCompletedRange,
+  getWeeklyMomentCheckpointDays,
 } from './sim.worker.narrativeFarm';
 import {
   createBranchSave,
@@ -508,6 +510,21 @@ function microArcBoxScore(day: number, paResults: PAResult[]): GameBoxScore {
     homeHits: 12,
     awayHits: 7,
     paResults,
+    date: `S1D${day}`,
+    isPlayoff: false,
+  };
+}
+
+function weeklyTeamBoxScore(day: number): GameBoxScore {
+  return {
+    homeTeamId: 'nym',
+    awayTeamId: 'bos',
+    homeScore: 7,
+    awayScore: 3,
+    innings: 9,
+    homeHits: 12,
+    awayHits: 7,
+    paResults: [],
     date: `S1D${day}`,
     isPlayoff: false,
   };
@@ -5074,6 +5091,32 @@ describe('sim worker narrative APIs', () => {
     expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'dominant_rotation')).toHaveLength(1);
     expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'bullpen_collapse')).toHaveLength(1);
     expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'lineup_of_era')).toHaveLength(1);
+  });
+
+  it('computes weekly moment checkpoints across day, week, month, and season-complete passes', () => {
+    expect(getWeeklyMomentCheckpointDays(7, 8, false)).toEqual([7]);
+    expect(getWeeklyMomentCheckpointDays(1, 8, false)).toEqual([7]);
+    expect(getWeeklyMomentCheckpointDays(1, 31, false)).toEqual([7, 14, 21, 28]);
+    expect(getWeeklyMomentCheckpointDays(155, 163, true)).toEqual([161, 162]);
+  });
+
+  it('applies weekly moments idempotently across crossed regular-season checkpoints', () => {
+    startGame(1709, 'nym');
+    const state = requireState();
+    state.season = 1;
+    state.day = 31;
+    state.phase = 'regular';
+    state.teamMoments.set('nym', []);
+    state.seasonState.gameLog.splice(0, state.seasonState.gameLog.length, ...[
+      ...[1, 2, 3, 4, 5].map((day) => weeklyTeamBoxScore(day)),
+      ...[22, 23, 24, 25, 26].map((day) => weeklyTeamBoxScore(day)),
+    ]);
+
+    applyWeeklyMomentsForCompletedRange(state, 1, 31, false);
+    applyWeeklyMomentsForCompletedRange(state, 1, 31, false);
+
+    expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'hot_streak_week')).toHaveLength(2);
+    expect(state.teamMoments.get('nym')?.filter((moment) => moment.type === 'hot_streak_week').map((moment) => moment.day)).toEqual([28, 7]);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {

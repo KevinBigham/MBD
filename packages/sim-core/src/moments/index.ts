@@ -113,6 +113,13 @@ export type {
   TradeDeadlineSparkDetectionContext,
 } from './signatureMoments.js';
 export {
+  detectWeeklyMoments,
+} from './weeklyMoments.js';
+export type {
+  WeeklyDetectedMoment,
+  WeeklyMomentDetectionContext,
+} from './weeklyMoments.js';
+export {
   MOMENT_IMPACT_THRESHOLD,
   MOMENT_RELEVANCE_DECAY_RATE,
   MAX_MOMENTS_PER_PLAYER,
