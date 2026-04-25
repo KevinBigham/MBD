@@ -6,7 +6,7 @@ import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStor
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { useTour } from '@/shared/components/TourProvider';
-import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
+import { useSaveRecovery } from '@/features/save-recovery';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { logger } from '@/shared/lib/logger';
 import {
@@ -16,11 +16,10 @@ import {
   exportSnapshotToJson,
   importSnapshotFromJson,
   listSaves,
-  loadGameSafe,
-  repairSave,
+  loadSaveSafely,
   saveGame,
   type SaveData,
-  type SaveInspectionResult,
+  type LoadSaveSafelyResult,
 } from '@/shared/lib/saveSystem';
 import type { PerformanceDiagnosticsView } from '@/workers/sim.worker.diagnostics';
 
@@ -111,6 +110,7 @@ function TutorialRestartButton() {
 
 export default function SettingsPage() {
   const worker = useWorker();
+  const recovery = useSaveRecovery();
   const workerReady = worker.isReady;
   const { season, day, phase, userTeamId, initializeGame, activeSaveId, activeSaveSlot } = useGameStore();
   const muted = useAudioPreferencesStore((state) => state.muted);
@@ -144,10 +144,6 @@ export default function SettingsPage() {
   const [diagnostics, setDiagnostics] = useState<PerformanceDiagnosticsView | null>(null);
   const [diagnosticsBusy, setDiagnosticsBusy] = useState<'archive' | 'prune' | null>(null);
   const [openSections, setOpenSections] = useState<Record<SettingsSectionKey, boolean>>(DEFAULT_OPEN_SECTIONS);
-  const [recoveryState, setRecoveryState] = useState<{
-    slot: number;
-    message: string;
-  } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const activeRootSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : null;
   const activeManagedSaveId = activeSaveId ?? activeRootSaveId;
@@ -222,26 +218,27 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleLoad(slot: number) {
-    if (!workerReady) return;
+  async function handleLoad(slot: number): Promise<boolean> {
+    if (!workerReady) return false;
     setBusySlot(slot);
     setStatus('');
     try {
-      const result = await loadGameSafe(slot);
-      if (result.status !== 'ok') {
-        setRecoveryState({
-          slot,
-          message: result.status === 'empty'
-            ? `Slot ${slot} is empty.`
-            : result.message,
+      const result = await loadSaveSafely(slot);
+      if (!result.ok) {
+        recovery.showFailure({
+          failure: result,
+          onDelete: () => handleDelete(slot),
+          onRetry: () => handleLoad(slot),
         });
-        return;
+        return false;
       }
-      await continueFromInspection(result);
+      await continueFromSafeLoad(result);
       setStatus(`Loaded slot ${slot}.`);
+      return true;
     } catch (error) {
       logger.error('Failed to load game:', error);
       setStatus(`Failed to load slot ${slot}.`);
+      return false;
     } finally {
       setBusySlot(null);
     }
@@ -252,7 +249,6 @@ export default function SettingsPage() {
     setStatus('');
     try {
       await deleteSave(slot);
-      setRecoveryState((current) => (current?.slot === slot ? null : current));
       await refreshSaves();
       setStatus(`Deleted slot ${slot}.`);
     } catch (error) {
@@ -263,8 +259,12 @@ export default function SettingsPage() {
     }
   }
 
-  async function continueFromInspection(result: Extract<SaveInspectionResult, { status: 'ok' }>) {
-    const imported = await worker.importSnapshot(result.save.snapshot);
+  async function continueFromSafeLoad(result: Extract<LoadSaveSafelyResult, { ok: true }>) {
+    await continueFromSave(result.save, result.snapshot);
+  }
+
+  async function continueFromSave(save: SaveData, snapshot: object | null) {
+    const imported = await worker.importSnapshot(snapshot);
     if (!imported.success) {
       const errorMsg = 'error' in imported ? (imported as { error?: string }).error : 'Failed to load save.';
       logger.error('Save incompatible:', errorMsg);
@@ -279,37 +279,9 @@ export default function SettingsPage() {
       teamName: imported.teamName,
       gmName: imported.gmName,
       difficulty: imported.difficulty,
-      activeSaveId: result.save.id,
-      activeSaveSlot: result.save.slotNumber,
+      activeSaveId: save.id,
+      activeSaveSlot: save.slotNumber,
     });
-  }
-
-  async function handleRepair(slot: number) {
-    setBusySlot(slot);
-    setStatus('');
-    try {
-      const repaired = await repairSave(slot);
-      if (repaired.status !== 'ok') {
-        setStatus(`Unable to repair slot ${slot}.`);
-        return;
-      }
-
-      setRecoveryState(null);
-      await refreshSaves();
-      await continueFromInspection(repaired);
-      setStatus(`Repaired and loaded slot ${slot}.`);
-    } catch (error) {
-      logger.error('Failed to repair save:', error);
-      setStatus(`Failed to repair slot ${slot}.`);
-    } finally {
-      setBusySlot(null);
-    }
-  }
-
-  async function handleStartFresh(slot: number) {
-    await handleDelete(slot);
-    setRecoveryState(null);
-    setStatus(`Slot ${slot} is ready for a new dynasty.`);
   }
 
   function handleMuteToggle() {
@@ -540,18 +512,6 @@ export default function SettingsPage() {
             {status}
           </div>
         )}
-
-        {recoveryState ? (
-          <SaveRecoveryDialog
-            slot={recoveryState.slot}
-            message={recoveryState.message}
-            busy={busySlot === recoveryState.slot}
-            onRepair={() => void handleRepair(recoveryState.slot)}
-            onStartFresh={() => void handleStartFresh(recoveryState.slot)}
-            onDelete={() => void handleDelete(recoveryState.slot)}
-            onClose={() => setRecoveryState(null)}
-          />
-        ) : null}
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <SettingsSection

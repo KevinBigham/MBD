@@ -11,11 +11,15 @@ import {
   listSaveTree,
   listSaves,
   loadGameSafe,
+  loadSaveSafely,
   repairSave,
   saveGame,
 } from '@/shared/lib/saveSystem';
 
 const mockedNavigate = vi.fn();
+const recoveryMockState = vi.hoisted(() => ({
+  showFailure: vi.fn(),
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -33,6 +37,12 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/features/save-recovery', () => ({
+  useSaveRecovery: () => ({
+    showFailure: recoveryMockState.showFailure,
+  }),
+}));
+
 vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),
@@ -41,6 +51,7 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   listSaves: vi.fn(),
   loadGame: vi.fn(),
   loadGameSafe: vi.fn(),
+  loadSaveSafely: vi.fn(),
   repairSave: vi.fn(),
   saveGame: vi.fn(),
 }));
@@ -50,6 +61,7 @@ const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedListSaves = vi.mocked(listSaves);
 const mockedListSaveTree = vi.mocked(listSaveTree);
 const mockedLoadGameSafe = vi.mocked(loadGameSafe);
+const mockedLoadSaveSafely = vi.mocked(loadSaveSafely);
 const mockedRepairSave = vi.mocked(repairSave);
 const mockedSaveGame = vi.mocked(saveGame);
 const mockedDeleteSave = vi.mocked(deleteSave);
@@ -74,6 +86,7 @@ describe('SetupPage', () => {
     root = createRoot(container);
 
     mockedNavigate.mockReset();
+    recoveryMockState.showFailure.mockReset();
     storeMock = {
       isInitialized: false,
       initializeGame: vi.fn(),
@@ -321,6 +334,66 @@ describe('SetupPage', () => {
         updatedAt: '2026-04-02T12:00:00.000Z',
       },
     } as never);
+    mockedLoadSaveSafely.mockResolvedValue({
+      ok: true,
+      snapshot: {
+        schemaVersion: 11,
+        season: 4,
+        day: 88,
+        phase: 'regular',
+        franchise: {
+          gmName: 'General Manager',
+          difficulty: 'standard',
+          playMode: 'standard',
+          createdAt: 'S1D1',
+          teamId: 'nym',
+          teamName: 'New York Tycoons',
+          teamAbbreviation: 'NYT',
+          teamDivision: 'AL_EAST',
+          onboarding: {
+            welcomeBriefingSeen: true,
+            firstMonthlyPulseSeen: true,
+          },
+        },
+      },
+      save: {
+        id: 'save-slot-1',
+        slotNumber: 1,
+        name: 'Tycoons Year 4',
+        season: 4,
+        day: 88,
+        phase: 'regular',
+        schemaVersion: 11,
+        hasSnapshot: true,
+        snapshot: {
+          schemaVersion: 11,
+          season: 4,
+          day: 88,
+          phase: 'regular',
+          franchise: {
+            gmName: 'General Manager',
+            difficulty: 'standard',
+            playMode: 'standard',
+            createdAt: 'S1D1',
+            teamId: 'nym',
+            teamName: 'New York Tycoons',
+            teamAbbreviation: 'NYT',
+            teamDivision: 'AL_EAST',
+            onboarding: {
+              welcomeBriefingSeen: true,
+              firstMonthlyPulseSeen: true,
+            },
+          },
+        },
+        legacyState: null,
+        createdAt: '2026-04-02T00:00:00.000Z',
+        updatedAt: '2026-04-02T12:00:00.000Z',
+        parentSaveId: null,
+        isRootSave: true,
+        branchMeta: null,
+      },
+      rawJson: '{"id":"save-slot-1"}',
+    } as never);
     mockedRepairSave.mockResolvedValue({
       status: 'ok',
       save: {
@@ -497,7 +570,7 @@ describe('SetupPage', () => {
       await Promise.resolve();
     });
 
-    expect(mockedLoadGameSafe).toHaveBeenCalledWith(1);
+    expect(mockedLoadSaveSafely).toHaveBeenCalledWith(1);
     expect(vi.mocked(workerMock.importSnapshot)).toHaveBeenCalled();
     expect(storeMock.initializeGame).toHaveBeenCalled();
     expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
@@ -555,12 +628,18 @@ describe('SetupPage', () => {
     });
   });
 
-  it('offers repair, fresh start, and delete actions when a save is corrupt', async () => {
-    mockedLoadGameSafe.mockResolvedValueOnce({
-      status: 'corrupt',
-      slot: 1,
-      message: 'Snapshot payload is invalid.',
-    } as never);
+  it('hands corrupt root saves to the recovery flow with retry and delete callbacks', async () => {
+    const failure = {
+      ok: false,
+      reason: 'zod',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'Snapshot payload is invalid.',
+        rawJson: '{"id":"save-slot-1"}',
+      },
+    } as const;
+    mockedLoadSaveSafely.mockResolvedValueOnce(failure as never);
 
     await act(async () => {
       root.render(
@@ -582,23 +661,73 @@ describe('SetupPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('Try to repair');
-    expect(container.textContent).toContain('Start fresh');
-    expect(container.textContent).toContain('Delete this save');
+    expect(recoveryMockState.showFailure).toHaveBeenCalledWith(expect.objectContaining({
+      failure,
+      onDelete: expect.any(Function),
+      onRetry: expect.any(Function),
+    }));
 
-    const repairButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Try to repair'),
-    );
+    const options = recoveryMockState.showFailure.mock.calls[0]?.[0] as {
+      onDelete: () => Promise<void>;
+      onRetry: () => Promise<boolean | void>;
+    };
 
     await act(async () => {
-      repairButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await options.onDelete();
+    });
+    expect(mockedDeleteSave).toHaveBeenCalledWith(1);
+
+    mockedLoadSaveSafely.mockResolvedValueOnce({
+      ok: false,
+      reason: 'parse',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'Still broken.',
+        rawJson: '{"id":"save-slot-1"}',
+      },
+    } as never);
+
+    let retryResult: boolean | void = undefined;
+    await act(async () => {
+      retryResult = await options.onRetry();
+    });
+    expect(retryResult).toBe(false);
+  });
+
+  it('loads branch saves through the existing branch inspection path', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <SetupPage />
+        </MemoryRouter>,
+      );
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(mockedRepairSave).toHaveBeenCalledWith(1);
+    const continueButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Continue'),
+    );
+
+    await act(async () => {
+      continueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const branchButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Open Branch'),
+    );
+
+    await act(async () => {
+      branchButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedInspectSaveById).toHaveBeenCalledWith('branch-1');
     expect(vi.mocked(workerMock.importSnapshot)).toHaveBeenCalled();
-    expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
   });
 
   it('renders branch list under the parent save and shows the branch cap indicator', async () => {

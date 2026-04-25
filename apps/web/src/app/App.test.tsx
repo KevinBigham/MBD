@@ -4,9 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { App } from './App';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
+import { createSaveLoadRecoveryError } from '@/features/save-recovery';
+import { logger } from '@/shared/lib/logger';
+import type { LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
+
+const routeMockState = vi.hoisted(() => ({
+  error: null as unknown,
+}));
 
 vi.mock('./routes', () => ({
-  AppRoutes: () => <div>Routes</div>,
+  AppRoutes: () => {
+    if (routeMockState.error) {
+      throw routeMockState.error;
+    }
+    return <div>Routes</div>;
+  },
 }));
 
 vi.mock('./providers/ErrorBoundary', () => ({
@@ -57,6 +69,7 @@ describe('App', () => {
       configurable: true,
     });
     usePreferencesStore.getState().reset();
+    routeMockState.error = null;
     document.documentElement.dataset.contrast = 'standard';
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -81,5 +94,41 @@ describe('App', () => {
     });
 
     expect(document.documentElement.dataset.contrast).toBe('high');
+  });
+
+  it('routes save-load render failures into recovery instead of the generic app shell', async () => {
+    const failure: Extract<LoadSaveSafelyResult, { ok: false }> = {
+      ok: false,
+      reason: 'parse',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'Unexpected end of JSON input',
+        rawJson: '{"id":"save-slot-1"}',
+      },
+    };
+    routeMockState.error = createSaveLoadRecoveryError(failure);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    await act(async () => {
+      root!.render(<App />);
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Save Recovery');
+    expect(container.textContent).toContain('Slot 1 needs recovery');
+    expect(container.textContent).toContain('Export raw JSON');
+  });
+
+  it('does not swallow unrelated render failures at the root', async () => {
+    routeMockState.error = new Error('Unrelated root failure');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    await expect(act(async () => {
+      root!.render(<App />);
+      await Promise.resolve();
+    })).rejects.toThrow('Unrelated root failure');
   });
 });

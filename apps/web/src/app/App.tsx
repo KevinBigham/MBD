@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { dynasty } from '@mbd/design-tokens';
-import { ErrorBoundary } from './providers/ErrorBoundary';
+import { SaveLoadErrorBoundary, SaveRecoveryProvider } from '@/features/save-recovery';
 import { AppRoutes } from './routes';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 
@@ -20,22 +20,24 @@ export function App() {
   }, [highContrast]);
 
   return (
-    <ErrorBoundary>
-      <BrowserRouter>
-        <AppRoutes />
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            style: {
-              background: highContrast ? HC_BASE : dynasty.surface,
-              border: `1px solid ${highContrast ? dynasty.textBright : dynasty.border}`,
-              color: highContrast ? dynasty.textBright : dynasty.text,
-              fontFamily: "'Space Grotesk', sans-serif",
-              fontSize: '0.875rem',
-            },
-          }}
-        />
-      </BrowserRouter>
-    </ErrorBoundary>
+    <SaveRecoveryProvider>
+      <SaveLoadErrorBoundary>
+        <BrowserRouter>
+          <AppRoutes />
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: highContrast ? HC_BASE : dynasty.surface,
+                border: `1px solid ${highContrast ? dynasty.textBright : dynasty.border}`,
+                color: highContrast ? dynasty.textBright : dynasty.text,
+                fontFamily: "'Space Grotesk', sans-serif",
+                fontSize: '0.875rem',
+              },
+            }}
+          />
+        </BrowserRouter>
+      </SaveLoadErrorBoundary>
+    </SaveRecoveryProvider>
   );
 }
