@@ -10,7 +10,11 @@ import {
 } from '@/shared/hooks/useAudioPreferencesStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { resetAudioEngineForTest } from '@/shared/lib/audio';
-import { listSaves, loadGameSafe, repairSave } from '@/shared/lib/saveSystem';
+import { listSaves, loadGameSafe, loadSaveSafely, repairSave } from '@/shared/lib/saveSystem';
+
+const recoveryMockState = vi.hoisted(() => ({
+  showFailure: vi.fn(),
+}));
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -34,12 +38,19 @@ vi.mock('@/shared/components/TourProvider', () => ({
   }),
 }));
 
+vi.mock('@/features/save-recovery', () => ({
+  useSaveRecovery: () => ({
+    showFailure: recoveryMockState.showFailure,
+  }),
+}));
+
 vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),
   listSaves: vi.fn(),
   loadGame: vi.fn(),
   loadGameSafe: vi.fn(),
+  loadSaveSafely: vi.fn(),
   repairSave: vi.fn(),
   saveGame: vi.fn(),
 }));
@@ -48,6 +59,7 @@ const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedListSaves = vi.mocked(listSaves);
 const mockedLoadGameSafe = vi.mocked(loadGameSafe);
+const mockedLoadSaveSafely = vi.mocked(loadSaveSafely);
 const mockedRepairSave = vi.mocked(repairSave);
 
 (
@@ -99,6 +111,7 @@ describe('SettingsPage', () => {
       muted: AUDIO_PREFERENCES_DEFAULTS.muted,
     });
     usePreferencesStore.getState().reset();
+    recoveryMockState.showFailure.mockReset();
 
     mockedUseWorker.mockReturnValue({
       isReady: false,
@@ -136,6 +149,35 @@ describe('SettingsPage', () => {
         createdAt: '2026-04-02T00:00:00.000Z',
         updatedAt: '2026-04-02T12:00:00.000Z',
       },
+    } as never);
+    mockedLoadSaveSafely.mockResolvedValue({
+      ok: true,
+      snapshot: {
+        schemaVersion: 11,
+        season: 3,
+        day: 87,
+        phase: 'regular',
+      },
+      save: {
+        id: 'save-slot-1',
+        slotNumber: 1,
+        name: 'Healthy Save',
+        season: 3,
+        day: 87,
+        phase: 'regular',
+        schemaVersion: 11,
+        hasSnapshot: true,
+        snapshot: {
+          schemaVersion: 11,
+          season: 3,
+          day: 87,
+          phase: 'regular',
+        },
+        legacyState: null,
+        createdAt: '2026-04-02T00:00:00.000Z',
+        updatedAt: '2026-04-02T12:00:00.000Z',
+      },
+      rawJson: '{"id":"save-slot-1"}',
     } as never);
     mockedRepairSave.mockResolvedValue({
       status: 'ok',
@@ -223,7 +265,7 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('42%');
   });
 
-  it('shows the recovery options when a save slot is corrupt', async () => {
+  it('hands corrupt save slots to the recovery flow with retry callbacks', async () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       importSnapshot: vi.fn(),
@@ -244,11 +286,18 @@ describe('SettingsPage', () => {
         updatedAt: '2026-04-02T12:00:00.000Z',
       },
     ] as never);
-    mockedLoadGameSafe.mockResolvedValueOnce({
-      status: 'corrupt',
-      slot: 1,
-      message: 'Snapshot payload is invalid.',
-    } as never);
+    const failure = {
+      ok: false,
+      reason: 'migration_failed',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'Snapshot payload is invalid.',
+        rawJson: '{"id":"save-slot-1"}',
+        schemaVersion: 2,
+      },
+    } as const;
+    mockedLoadSaveSafely.mockResolvedValueOnce(failure as never);
 
     await act(async () => {
       root.render(<SettingsPage />);
@@ -266,9 +315,31 @@ describe('SettingsPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('Try to repair');
-    expect(container.textContent).toContain('Delete this save');
-    expect(container.textContent).toContain('Start fresh');
+    expect(recoveryMockState.showFailure).toHaveBeenCalledWith(expect.objectContaining({
+      failure,
+      onDelete: expect.any(Function),
+      onRetry: expect.any(Function),
+    }));
+
+    const options = recoveryMockState.showFailure.mock.calls[0]?.[0] as {
+      onRetry: () => Promise<boolean | void>;
+    };
+    mockedLoadSaveSafely.mockResolvedValueOnce({
+      ok: false,
+      reason: 'storage_failed',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'IndexedDB failed.',
+        rawJson: null,
+      },
+    } as never);
+
+    let retryResult: boolean | void = undefined;
+    await act(async () => {
+      retryResult = await options.onRetry();
+    });
+    expect(retryResult).toBe(false);
   });
 
   it('updates reduced motion and high contrast preferences from the settings page', async () => {

@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import {
+  CURRENT_GAME_SNAPSHOT_VERSION,
   GameSnapshotSchema,
   parseGameSnapshot,
   type GameSnapshot,
@@ -53,6 +54,37 @@ export type SaveInspectionResult =
   | { status: 'empty'; slot: number | null }
   | { status: 'legacy'; slot: number | null; save: SaveData; message: string }
   | { status: 'corrupt'; slot: number | null; message: string; raw?: Partial<SaveData> | null };
+
+export type SaveLoadFailureReason =
+  | 'parse'
+  | 'zod'
+  | 'version_too_new'
+  | 'version_too_old'
+  | 'migration_failed'
+  | 'storage_failed';
+
+export interface SaveLoadFailureDetail {
+  slotId: string;
+  slotNumber: number | null;
+  message: string;
+  rawJson: string | null;
+  schemaVersion?: number;
+  currentVersion?: number;
+  minimumSupportedVersion?: number;
+}
+
+export type LoadSaveSafelyResult =
+  | {
+    ok: true;
+    snapshot: GameSnapshot;
+    save: SaveData;
+    rawJson: string;
+  }
+  | {
+    ok: false;
+    reason: SaveLoadFailureReason;
+    detail: SaveLoadFailureDetail;
+  };
 
 export interface SaveTreeEntry {
   save: SaveData;
@@ -128,6 +160,7 @@ class MBDDatabase extends Dexie {
 
 export const db = new MBDDatabase();
 const MAX_BRANCHES_PER_SAVE = 3;
+const MINIMUM_SUPPORTED_SNAPSHOT_VERSION = 2;
 let branchIdCounter = 0;
 
 function hasIndexedDBSupport(): boolean {
@@ -152,6 +185,72 @@ function createBranchId(): string {
   }
   branchIdCounter += 1;
   return `branch-${Date.now().toString(36)}-${branchIdCounter.toString(36)}`;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function safeRecordJson(raw: unknown): string | null {
+  try {
+    return JSON.stringify(raw, null, 2);
+  } catch {
+    return null;
+  }
+}
+
+function resolveSaveId(slotId: number | string): string {
+  return typeof slotId === 'number' ? rootSaveId(slotId) : slotId;
+}
+
+function readSnapshotVersion(snapshotLike: unknown, fallback?: unknown): number | undefined {
+  if (
+    snapshotLike
+    && typeof snapshotLike === 'object'
+    && 'schemaVersion' in snapshotLike
+    && typeof (snapshotLike as { schemaVersion?: unknown }).schemaVersion === 'number'
+  ) {
+    return (snapshotLike as { schemaVersion: number }).schemaVersion;
+  }
+
+  return typeof fallback === 'number' ? fallback : undefined;
+}
+
+function loadSnapshotCandidate(raw: Partial<SaveData>): unknown {
+  if (typeof raw.snapshot === 'string') {
+    return JSON.parse(raw.snapshot) as unknown;
+  }
+
+  if (raw.snapshot != null) {
+    return raw.snapshot;
+  }
+
+  const legacyState = raw.legacyState ?? raw.gameState;
+  if (typeof legacyState === 'string') {
+    return JSON.parse(legacyState) as unknown;
+  }
+
+  return null;
+}
+
+function saveLoadFailure(
+  reason: SaveLoadFailureReason,
+  raw: Partial<SaveData> | undefined,
+  slotId: string,
+  message: string,
+  extras: Partial<Omit<SaveLoadFailureDetail, 'slotId' | 'slotNumber' | 'message' | 'rawJson'>> = {},
+): LoadSaveSafelyResult {
+  return {
+    ok: false,
+    reason,
+    detail: {
+      slotId,
+      slotNumber: raw?.slotNumber ?? parseSlotNumberFromId(slotId),
+      message,
+      rawJson: raw ? safeRecordJson(raw) : null,
+      ...extras,
+    },
+  };
 }
 
 function fallbackGMCareer(snapshot: GameSnapshot): NonNullable<GameSnapshot['narrative']['gmCareer']> {
@@ -552,6 +651,68 @@ export async function loadGame(
   slot: number,
 ): Promise<SaveData | undefined> {
   return loadGameById(rootSaveId(slot));
+}
+
+export async function loadSaveSafely(slotId: number | string): Promise<LoadSaveSafelyResult> {
+  const id = resolveSaveId(slotId);
+  let raw: SaveData | undefined;
+
+  try {
+    raw = await db.saves.get(id);
+  } catch (error) {
+    return saveLoadFailure('storage_failed', undefined, id, errorMessage(error));
+  }
+
+  if (!raw) {
+    return saveLoadFailure('storage_failed', undefined, id, 'No save record found.');
+  }
+
+  let snapshotLike: unknown;
+  try {
+    snapshotLike = loadSnapshotCandidate(raw);
+  } catch (error) {
+    return saveLoadFailure('parse', raw, id, errorMessage(error));
+  }
+
+  const schemaVersion = readSnapshotVersion(snapshotLike, raw.schemaVersion);
+  if (schemaVersion != null && schemaVersion > CURRENT_GAME_SNAPSHOT_VERSION) {
+    return saveLoadFailure('version_too_new', raw, id, `Save schema v${schemaVersion} is newer than this build supports.`, {
+      schemaVersion,
+      currentVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    });
+  }
+
+  if (schemaVersion != null && schemaVersion < MINIMUM_SUPPORTED_SNAPSHOT_VERSION) {
+    return saveLoadFailure('version_too_old', raw, id, `Save schema v${schemaVersion} is older than the supported migration floor.`, {
+      schemaVersion,
+      minimumSupportedVersion: MINIMUM_SUPPORTED_SNAPSHOT_VERSION,
+    });
+  }
+
+  try {
+    const snapshot = parseGameSnapshot(snapshotLike);
+    const save = normalizeLoadedSaveRecord({
+      ...raw,
+      snapshot,
+      schemaVersion: snapshot.schemaVersion,
+      hasSnapshot: true,
+      legacyState: null,
+    });
+    return {
+      ok: true,
+      snapshot,
+      save,
+      rawJson: safeRecordJson(raw) ?? '{}',
+    };
+  } catch (error) {
+    const reason: SaveLoadFailureReason = schemaVersion === CURRENT_GAME_SNAPSHOT_VERSION || schemaVersion == null
+      ? 'zod'
+      : 'migration_failed';
+    return saveLoadFailure(reason, raw, id, errorMessage(error), {
+      ...(schemaVersion == null ? {} : { schemaVersion }),
+      ...(reason === 'zod' ? { currentVersion: CURRENT_GAME_SNAPSHOT_VERSION } : {}),
+    });
+  }
 }
 
 export async function inspectSaveById(id: string): Promise<SaveInspectionResult> {
