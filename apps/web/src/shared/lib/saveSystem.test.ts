@@ -21,6 +21,7 @@ import {
   loadGameSafe,
   listBranches,
   listSaveTree,
+  loadSaveSafely,
   normalizeLoadedSaveRecord,
   repairSave,
   saveGame,
@@ -676,5 +677,208 @@ describe('saveSystem helpers', () => {
       status: 'corrupt',
       slot: 4,
     });
+  });
+
+  it('classifies malformed serialized snapshot JSON without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-1',
+      slotNumber: 1,
+      name: 'Truncated Save',
+      season: 3,
+      day: 97,
+      phase: 'regular',
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+      hasSnapshot: true,
+      snapshot: '{"schemaVersion":33,' as unknown as GameSnapshot,
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    const result = await loadSaveSafely(1);
+    if (result.ok) {
+      throw new Error('Expected malformed JSON to return a failure.');
+    }
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'parse',
+      detail: expect.objectContaining({
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+      }),
+    });
+    expect(result.detail.rawJson).toContain('Truncated Save');
+  });
+
+  it('classifies current-schema Zod failures without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Wrong Shape',
+      season: 3,
+      day: 97,
+      phase: 'regular',
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+      hasSnapshot: true,
+      snapshot: {
+        ...createSnapshot(),
+        season: 'third',
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(2)).resolves.toMatchObject({
+      ok: false,
+      reason: 'zod',
+      detail: expect.objectContaining({
+        slotId: 'save-slot-2',
+        slotNumber: 2,
+      }),
+    });
+  });
+
+  it('refuses saves from newer snapshot versions without attempting migration', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-3',
+      slotNumber: 3,
+      name: 'Future Save',
+      season: 3,
+      day: 97,
+      phase: 'regular',
+      schemaVersion: 999,
+      hasSnapshot: true,
+      snapshot: {
+        ...createSnapshot(),
+        schemaVersion: 999,
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(3)).resolves.toMatchObject({
+      ok: false,
+      reason: 'version_too_new',
+      detail: expect.objectContaining({
+        schemaVersion: 999,
+        currentVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+      }),
+    });
+  });
+
+  it('refuses saves older than the supported migration floor', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-4',
+      slotNumber: 4,
+      name: 'Pre Release Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 0,
+      hasSnapshot: true,
+      snapshot: {
+        schemaVersion: 0,
+        season: 1,
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(4)).resolves.toMatchObject({
+      ok: false,
+      reason: 'version_too_old',
+      detail: expect.objectContaining({
+        schemaVersion: 0,
+        minimumSupportedVersion: 2,
+      }),
+    });
+  });
+
+  it('classifies supported legacy migration failures without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-5',
+      slotNumber: 5,
+      name: 'Broken Legacy Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 2,
+      hasSnapshot: true,
+      snapshot: {
+        schemaVersion: 2,
+        season: 'bad legacy payload',
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(5)).resolves.toMatchObject({
+      ok: false,
+      reason: 'migration_failed',
+      detail: expect.objectContaining({
+        schemaVersion: 2,
+      }),
+    });
+  });
+
+  it('classifies storage read failures without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockRejectedValue(new Error('QuotaExceededError') as never);
+
+    await expect(loadSaveSafely(1)).resolves.toMatchObject({
+      ok: false,
+      reason: 'storage_failed',
+      detail: expect.objectContaining({
+        slotId: 'save-slot-1',
+        message: 'QuotaExceededError',
+      }),
+    });
+  });
+
+  it('round-trips exported snapshot json with canonical equality after import', () => {
+    const snapshot = createSnapshot();
+    const exported = exportSnapshotToJson('Round Trip', snapshot);
+    const imported = importSnapshotFromJson(exported);
+    const reexported = exportSnapshotToJson('Round Trip', imported.snapshot);
+    const canonicalExported = JSON.parse(exported) as { exportedAt?: string; snapshot: unknown };
+    const canonicalReexported = JSON.parse(reexported) as { exportedAt?: string; snapshot: unknown };
+    delete canonicalExported.exportedAt;
+    delete canonicalReexported.exportedAt;
+
+    expect(canonicalReexported).toEqual(canonicalExported);
+  });
+
+  it('loads one slot without mutating another saved slot on disk', async () => {
+    const slotA = buildSaveRecord(1, 'Slot A', {
+      ...createSnapshot(),
+      rng: { seed: 101, callCount: 1 },
+    });
+    const slotB = buildSaveRecord(2, 'Slot B', {
+      ...createSnapshot(),
+      rng: { seed: 202, callCount: 2 },
+      season: 4,
+    });
+    const rawSlotA = JSON.stringify(slotA);
+    const records = new Map([
+      ['save-slot-1', slotA],
+      ['save-slot-2', slotB],
+    ]);
+    vi.spyOn(db.saves, 'get').mockImplementation(((id: unknown) =>
+      Promise.resolve(records.get(String(id)))) as never);
+
+    const loadedB = await loadSaveSafely(2);
+
+    expect(loadedB).toMatchObject({
+      ok: true,
+      snapshot: expect.objectContaining({
+        season: 4,
+        rng: { seed: 202, callCount: 2 },
+      }),
+    });
+    expect(JSON.stringify(records.get('save-slot-1'))).toBe(rawSlotA);
   });
 });

@@ -6,17 +6,17 @@ import { TeamLogo } from '@/shared/components/TeamLogo';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
-import { SaveRecoveryDialog } from '@/shared/components/SaveRecoveryDialog';
+import { useSaveRecovery } from '@/features/save-recovery';
 import {
   SAVE_SLOTS,
   deleteSave,
   inspectSaveById,
   listSaveTree,
-  loadGameSafe,
-  repairSave,
+  loadSaveSafely,
   saveGame,
   type SaveData,
   type SaveInspectionResult,
+  type LoadSaveSafelyResult,
   type SaveTreeEntry,
 } from '@/shared/lib/saveSystem';
 
@@ -124,6 +124,7 @@ function saveAchievementCount(save: SaveData): number {
 export default function SetupPage() {
   const navigate = useNavigate();
   const worker = useWorker();
+  const recovery = useSaveRecovery();
   const { isInitialized, initializeGame } = useGameStore();
   const [saveTree, setSaveTree] = useState<SaveTreeEntry[]>([]);
   const [status, setStatus] = useState('');
@@ -140,10 +141,6 @@ export default function SetupPage() {
   const [previewMap, setPreviewMap] = useState<Record<string, SetupPreview>>({});
   const [scenarioCatalog, setScenarioCatalog] = useState<ScenarioCatalogEntry[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
-  const [recoveryState, setRecoveryState] = useState<{
-    slot: number;
-    message: string;
-  } | null>(null);
   const selectedScenario = scenarioCatalog.find((entry) => entry.id === selectedScenarioId) ?? null;
   const preview = previewMap[teamId] ?? null;
   const activePreview = wizardMode === 'scenario'
@@ -223,34 +220,42 @@ export default function SetupPage() {
     [saveTree],
   );
 
-  async function handleContinueSave(save: SaveData) {
+  async function handleContinueSave(save: SaveData): Promise<boolean> {
     if (!worker.isReady) {
-      return;
+      return false;
     }
     setBusySlot(save.slotNumber);
     setStatus('');
     try {
-      const result = save.isRootSave && save.slotNumber != null
-        ? await loadGameSafe(save.slotNumber)
-        : await inspectSaveById(save.id);
-      if (result.status !== 'ok') {
-        if (save.slotNumber != null) {
-          setRecoveryState({
-            slot: save.slotNumber,
-            message: result.status === 'empty'
-              ? `Slot ${save.slotNumber} is empty.`
-              : result.message,
+      if (save.isRootSave && save.slotNumber != null) {
+        const result = await loadSaveSafely(save.slotNumber);
+        if (!result.ok) {
+          recovery.showFailure({
+            failure: result,
+            onDelete: () => handleDelete(save.slotNumber!),
+            onRetry: () => handleContinueSave(save),
           });
-        } else {
+          return false;
+        }
+
+        await continueFromSafeLoad(result);
+        return true;
+      }
+
+      const result = await inspectSaveById(save.id);
+      if (result.status !== 'ok') {
+        if (save.slotNumber == null) {
           setStatus(`Unable to load branch "${save.name}".`);
         }
-        return;
+        return false;
       }
 
       await continueFromInspection(result);
+      return true;
     } catch (error) {
       logger.error('Failed to continue save:', error);
       setStatus(save.slotNumber != null ? `Failed to load slot ${save.slotNumber}.` : `Failed to load branch "${save.name}".`);
+      return false;
     } finally {
       setBusySlot(null);
     }
@@ -261,7 +266,6 @@ export default function SetupPage() {
     setStatus('');
     try {
       await deleteSave(slot);
-      setRecoveryState((current) => (current?.slot === slot ? null : current));
       await refreshSaves();
     } catch (error) {
       logger.error('Failed to delete save:', error);
@@ -272,7 +276,15 @@ export default function SetupPage() {
   }
 
   async function continueFromInspection(result: Extract<SaveInspectionResult, { status: 'ok' }>) {
-    const imported = await worker.importSnapshot(result.save.snapshot);
+    await continueFromSave(result.save, result.save.snapshot);
+  }
+
+  async function continueFromSafeLoad(result: Extract<LoadSaveSafelyResult, { ok: true }>) {
+    await continueFromSave(result.save, result.snapshot);
+  }
+
+  async function continueFromSave(save: SaveData, snapshot: object | null) {
+    const imported = await worker.importSnapshot(snapshot);
     if (!imported.success) {
       const msg = 'error' in imported ? (imported as { error?: string }).error : 'Incompatible save.';
       setStatus(typeof msg === 'string' ? msg : 'This save is from an older version and is no longer compatible. Please start a new dynasty.');
@@ -287,38 +299,10 @@ export default function SetupPage() {
       teamName: imported.teamName,
       gmName: imported.gmName,
       difficulty: imported.difficulty,
-      activeSaveId: result.save.id,
-      activeSaveSlot: result.save.slotNumber,
+      activeSaveId: save.id,
+      activeSaveSlot: save.slotNumber,
     });
     navigate('/dashboard');
-  }
-
-  async function handleRepair(slot: number) {
-    setBusySlot(slot);
-    setStatus('');
-    try {
-      const repaired = await repairSave(slot);
-      if (repaired.status !== 'ok') {
-        setStatus(`Unable to repair slot ${slot}.`);
-        return;
-      }
-
-      setRecoveryState(null);
-      await refreshSaves();
-      await continueFromInspection(repaired);
-    } catch (error) {
-      logger.error('Failed to repair save:', error);
-      setStatus(`Failed to repair slot ${slot}.`);
-    } finally {
-      setBusySlot(null);
-    }
-  }
-
-  async function handleStartFresh(slot: number) {
-    await handleDelete(slot);
-    setRecoveryState(null);
-    setSelectedSlot(slot);
-    openWizard();
   }
 
   function openWizard() {
@@ -419,18 +403,6 @@ export default function SetupPage() {
         </div>
       ) : null}
         </section>
-
-        {recoveryState ? (
-          <SaveRecoveryDialog
-            slot={recoveryState.slot}
-            message={recoveryState.message}
-            busy={busySlot === recoveryState.slot}
-            onRepair={() => void handleRepair(recoveryState.slot)}
-            onStartFresh={() => void handleStartFresh(recoveryState.slot)}
-            onDelete={() => void handleDelete(recoveryState.slot)}
-            onClose={() => setRecoveryState(null)}
-          />
-        ) : null}
 
         <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
           <div className="flex items-center justify-between gap-4">
