@@ -12,6 +12,18 @@ type RegisterServiceWorker = (
   options?: ServiceWorkerRegisterOptions,
 ) => Promise<ServiceWorkerRegistration>;
 
+export function showServiceWorkerUpdatedToast(
+  reload: () => void = () => window.location.reload(),
+) {
+  toast.info('App updated — refresh for the latest version.', {
+    duration: Infinity,
+    action: {
+      label: 'Refresh',
+      onClick: reload,
+    },
+  });
+}
+
 export function registerMbdServiceWorker(
   register?: RegisterServiceWorker,
 ) {
@@ -46,13 +58,7 @@ export function registerMbdServiceWorker(
   // When a new SW activates and takes control, prompt the user to reload
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      toast.info('App updated — refresh for the latest version.', {
-        duration: Infinity,
-        action: {
-          label: 'Refresh',
-          onClick: () => window.location.reload(),
-        },
-      });
+      showServiceWorkerUpdatedToast();
     });
   }
 }
