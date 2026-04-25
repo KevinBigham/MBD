@@ -9,6 +9,10 @@ import RevisedOnboardingPage from './RevisedOnboardingPage';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
+import {
+  readGuidedStartNudgeRecord,
+  registerGuidedStartSave,
+} from '../nudges';
 
 const mockedNavigate = vi.fn();
 
@@ -43,6 +47,24 @@ const mockedSaveGameById = vi.mocked(saveGameById);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+function createStorageMock(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: vi.fn(() => values.clear()),
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    key: vi.fn((index: number) => [...values.keys()][index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      values.delete(key);
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value);
+    }),
+  };
+}
 
 const AGMS: AGMCandidate[] = [
   {
@@ -231,6 +253,10 @@ describe('RevisedOnboardingPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: createStorageMock(),
+    });
     mockedNavigate.mockReset();
     mockGameStore();
     mockedLoadGameById.mockResolvedValue(undefined);
@@ -286,6 +312,55 @@ describe('RevisedOnboardingPage', () => {
     expect(container.textContent).toContain('The local read is simple: you invited scrutiny on purpose.');
     expect(container.textContent).toContain('Every late-inning wobble becomes a referendum.');
     expect(container.textContent).toContain('Opening Day is waiting with the volume already turned up.');
+  });
+
+  it('shows the intro-scroll nudge once for a newly registered save', async () => {
+    registerGuidedStartSave('save-slot-1');
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getDayOneSession: vi.fn().mockResolvedValue(buildSession()),
+      finishDayOne: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <RevisedOnboardingPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('The owner handed you the keys');
+    const dismissButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent === "Let's go.",
+    );
+
+    await act(async () => {
+      dismissButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(readGuidedStartNudgeRecord('save-slot-1')?.seen.intro_scroll).toBe(true);
+    expect(container.textContent).not.toContain('The owner handed you the keys');
+
+    await act(async () => {
+      root.unmount();
+    });
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <RevisedOnboardingPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).not.toContain('The owner handed you the keys');
   });
 
   it('shows duplicate opening-day warnings and lets the user reset back to AGM recommendations', async () => {

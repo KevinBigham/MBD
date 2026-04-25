@@ -6,6 +6,10 @@ import DraftPage from './DraftPage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { DraftRoomView } from '@/workers/sim.worker.helpers';
+import {
+  markGuidedStartNudgeSeen,
+  registerGuidedStartSave,
+} from '@/features/onboarding/nudges';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -21,6 +25,24 @@ const mockedUseGameStore = vi.mocked(useGameStore);
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+function createStorageMock(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: vi.fn(() => values.clear()),
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    key: vi.fn((index: number) => [...values.keys()][index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      values.delete(key);
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value);
+    }),
+  };
+}
+
 describe('DraftPage', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -30,6 +52,10 @@ describe('DraftPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: createStorageMock(),
+    });
 
     mockedUseGameStore.mockReturnValue({
       season: 4,
@@ -49,6 +75,8 @@ describe('DraftPage', () => {
       setUserTeamId: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
     });
   });
 
@@ -486,6 +514,149 @@ describe('DraftPage', () => {
     expect(container.textContent).toContain('Your Draft Class');
     expect(container.textContent).toContain('Overall Grade B');
     expect(container.textContent).toContain('League Reaction Board');
+  });
+
+  it('shows the first-draft nudge once for a guided-start save in season 1', async () => {
+    registerGuidedStartSave('save-slot-1');
+    markGuidedStartNudgeSeen('save-slot-1', 'intro_scroll');
+    const availableView: DraftRoomView = {
+      status: 'available',
+      availableProspects: [],
+      udfaProspects: [],
+      completedPicks: [],
+      currentPick: null,
+      board: { teams: [], rounds: [] },
+      counts: { totalRounds: 20, totalPicks: 0, picksMade: 0, picksRemaining: 0 },
+      userDraftClass: null,
+      userBigBoard: [],
+    };
+    mockedUseGameStore.mockReturnValue({
+      season: 1,
+      day: 1,
+      phase: 'offseason',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 162,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+    });
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getDraftClass: vi.fn().mockResolvedValue(availableView),
+      getDraftCommentary: vi.fn().mockResolvedValue(null),
+      getDraftProspectReaction: vi.fn().mockResolvedValue(null),
+      getDraftPostDraftGrades: vi.fn().mockResolvedValue(null),
+      startDraft: vi.fn(),
+      makeDraftPick: vi.fn(),
+      scoutDraftPlayer: vi.fn(),
+      toggleDraftBigBoard: vi.fn(),
+      signDraftPick: vi.fn(),
+      simulateRemainingDraft: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DraftPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Scouting report first');
+    const dismissButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent === 'Got it',
+    );
+
+    await act(async () => {
+      dismissButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(container.textContent).not.toContain('Scouting report first');
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DraftPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).not.toContain('Scouting report first');
+  });
+
+  it('does not show the first-draft nudge in season 2 or for existing saves without a marker', async () => {
+    const availableView: DraftRoomView = {
+      status: 'available',
+      availableProspects: [],
+      udfaProspects: [],
+      completedPicks: [],
+      currentPick: null,
+      board: { teams: [], rounds: [] },
+      counts: { totalRounds: 20, totalPicks: 0, picksMade: 0, picksRemaining: 0 },
+      userDraftClass: null,
+      userBigBoard: [],
+    };
+    mockedUseGameStore.mockReturnValue({
+      season: 2,
+      day: 1,
+      phase: 'offseason',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 162,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+    });
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getDraftClass: vi.fn().mockResolvedValue(availableView),
+      getDraftCommentary: vi.fn().mockResolvedValue(null),
+      getDraftProspectReaction: vi.fn().mockResolvedValue(null),
+      getDraftPostDraftGrades: vi.fn().mockResolvedValue(null),
+      startDraft: vi.fn(),
+      makeDraftPick: vi.fn(),
+      scoutDraftPlayer: vi.fn(),
+      toggleDraftBigBoard: vi.fn(),
+      signDraftPick: vi.fn(),
+      simulateRemainingDraft: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DraftPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).not.toContain('Scouting report first');
   });
 
   it('labels compensatory picks with qualifying-offer context', async () => {
