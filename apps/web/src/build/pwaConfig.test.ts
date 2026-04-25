@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mbdPwaManifest, createMbdPwaPlugin } from './pwaConfig';
+import { VitePWA } from 'vite-plugin-pwa';
+
+vi.mock('vite-plugin-pwa', () => ({
+  VitePWA: vi.fn((config) => [{ name: 'mock-vite-pwa', config }]),
+}));
 
 describe('mbdPwaManifest', () => {
   it('defines the install metadata for Mr. Baseball Dynasty', () => {
@@ -16,5 +21,18 @@ describe('createMbdPwaPlugin', () => {
     const plugin = createMbdPwaPlugin();
     // VitePWA returns an array of Vite plugins
     expect(Array.isArray(plugin)).toBe(true);
+  });
+
+  it('keeps the service worker auto-update strategy enabled', () => {
+    createMbdPwaPlugin();
+
+    expect(VitePWA).toHaveBeenCalledWith(expect.objectContaining({
+      injectRegister: false,
+      registerType: 'autoUpdate',
+      workbox: expect.objectContaining({
+        skipWaiting: true,
+        clientsClaim: true,
+      }),
+    }));
   });
 });
