@@ -7,6 +7,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
 import { useSaveRecovery } from '@/features/save-recovery';
+import { registerGuidedStartSave } from '@/features/onboarding/nudges';
 import {
   SAVE_SLOTS,
   deleteSave,
@@ -342,6 +343,7 @@ export default function SetupPage() {
       });
       const snapshot = await worker.exportSnapshot();
       await saveGame(selectedSlot, `${finalGmName} • ${result.teamName}`, snapshot);
+      registerGuidedStartSave(`save-slot-${selectedSlot}`);
       initializeGame({
         season: result.season,
         day: result.day,

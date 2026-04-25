@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ChevronRight,
@@ -18,6 +18,8 @@ import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { logger } from '@/shared/lib/logger';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { exportSnapshotToJson } from '@/shared/lib/saveSystem';
+import { GuidedStartNudgeCard, useNudges, type GuidedStartNudgeId } from '@/features/onboarding/nudges';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 import type { GamePlayByPlayView, GameRecapView } from '../components/gameDayBroadcast';
 import type { SeasonRecapView, OffseasonHeadlineView } from '@/workers/sim.worker.seasonNarrative';
@@ -218,6 +220,11 @@ interface JobMarketView {
   }>;
 }
 
+interface ScheduleGameEntry {
+  day: number;
+  isCompleted: boolean;
+}
+
 type SimAction = 'day' | 'week' | 'month' | null;
 
 function ownerTone(value: number | undefined): string {
@@ -318,6 +325,8 @@ export default function DashboardPage() {
   const {
     isInitialized,
     userTeamId,
+    teamName,
+    gmName,
     season,
     day,
     phase,
@@ -333,6 +342,7 @@ export default function DashboardPage() {
   const [seasonRecap, setSeasonRecap] = useState<SeasonRecapView | null>(null);
   const [offseasonHeadline, setOffseasonHeadline] = useState<OffseasonHeadlineView | null>(null);
   const [recentRecaps, setRecentRecaps] = useState<GameRecapView[]>([]);
+  const [scheduleEntries, setScheduleEntries] = useState<ScheduleGameEntry[] | null>(null);
   const [selectedGameIndex, setSelectedGameIndex] = useState<number | null>(null);
   const [selectedGameDetail, setSelectedGameDetail] = useState<GamePlayByPlayView | null>(null);
   const [playByPlayLoading, setPlayByPlayLoading] = useState(false);
@@ -344,19 +354,24 @@ export default function DashboardPage() {
     if (!isInitialized || !worker.isReady) return;
     setLoading(true);
     try {
-      const [nextSummary, nextCareer, nextJobMarket, nextRecaps, nextSeasonRecap, nextOffseasonHeadline] = await Promise.all([
+      const scheduleViewPromise = typeof worker.getScheduleView === 'function'
+        ? worker.getScheduleView()
+        : Promise.resolve(null);
+      const [nextSummary, nextCareer, nextJobMarket, nextRecaps, nextSeasonRecap, nextOffseasonHeadline, nextSchedule] = await Promise.all([
         worker.getDashboardSummary(),
         worker.getGMCareer(),
         worker.getJobMarket(),
         worker.getRecentGameRecaps(3),
         phase === 'offseason' ? worker.getSeasonRecap(season) : Promise.resolve(null),
         phase === 'offseason' ? worker.getOffseasonHeadline(season) : Promise.resolve(null),
+        scheduleViewPromise,
       ]);
       setSummary((nextSummary ?? null) as DashboardSummary | null);
       setCareer((nextCareer ?? null) as GMCareerView | null);
       setJobMarket((nextJobMarket ?? null) as JobMarketView | null);
       setSeasonRecap((nextSeasonRecap ?? null) as SeasonRecapView | null);
       setOffseasonHeadline((nextOffseasonHeadline ?? null) as OffseasonHeadlineView | null);
+      setScheduleEntries((nextSchedule ?? null) as ScheduleGameEntry[] | null);
       const recapViews = (nextRecaps ?? []) as GameRecapView[];
       setRecentRecaps(recapViews);
       setSelectedGameIndex((currentValue) => {
@@ -457,6 +472,99 @@ export default function DashboardPage() {
 
   const ownerMeterValue = summary?.franchise.owner?.satisfaction ?? summary?.franchise.owner?.patience ?? 0;
   const topRivalry = summary?.intel.rivalries?.[0] ?? null;
+  const activeGuidedStartSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : activeSaveId;
+  const completedUserGames = useMemo(
+    () => scheduleEntries?.filter((entry) => entry.isCompleted).length ?? 0,
+    [scheduleEntries],
+  );
+  const hasCurrentDayGame = useMemo(
+    () => scheduleEntries?.some((entry) => entry.day === day) ?? false,
+    [day, scheduleEntries],
+  );
+  const hasPriorScheduledGame = useMemo(
+    () => scheduleEntries?.some((entry) => entry.day < day) ?? false,
+    [day, scheduleEntries],
+  );
+  const hasFutureScheduledGame = useMemo(
+    () => scheduleEntries?.some((entry) => entry.day > day) ?? false,
+    [day, scheduleEntries],
+  );
+  const dashboardNudgeTriggers = useMemo<GuidedStartNudgeId[]>(() => {
+    if (!isInitialized || season !== 1 || phase !== 'regular' || scheduleEntries == null) {
+      return [];
+    }
+
+    if (completedUserGames === 0 && hasCurrentDayGame) {
+      return ['first_series_pointer'];
+    }
+
+    if (
+      completedUserGames > 0
+      && !hasCurrentDayGame
+      && hasPriorScheduledGame
+      && hasFutureScheduledGame
+    ) {
+      return ['first_offday_autosave_prompt'];
+    }
+
+    return [];
+  }, [
+    completedUserGames,
+    hasCurrentDayGame,
+    hasFutureScheduledGame,
+    hasPriorScheduledGame,
+    isInitialized,
+    phase,
+    scheduleEntries,
+    season,
+  ]);
+  const dashboardNudges = useNudges({
+    saveSlotId: activeGuidedStartSaveId,
+    triggers: dashboardNudgeTriggers,
+  });
+  const { current: currentDashboardNudge, dismiss: dismissDashboardNudge, isSeen: isDashboardNudgeSeen, skip: skipDashboardNudge } = dashboardNudges;
+
+  useEffect(() => {
+    if (
+      isInitialized
+      && season === 1
+      && phase === 'regular'
+      && scheduleEntries != null
+      && completedUserGames > 0
+      && !isDashboardNudgeSeen('first_series_pointer')
+    ) {
+      skipDashboardNudge('first_series_pointer');
+    }
+  }, [
+    completedUserGames,
+    isDashboardNudgeSeen,
+    isInitialized,
+    phase,
+    scheduleEntries,
+    season,
+    skipDashboardNudge,
+  ]);
+
+  const handleExportGuidedStartBackup = useCallback(async () => {
+    const snapshot = await worker.exportSnapshot();
+    const exportName = `${gmName ?? 'General Manager'} • ${teamName ?? 'Franchise'} • Season ${season} Day ${day}`;
+    const payload = exportSnapshotToJson(
+      exportName,
+      snapshot as Parameters<typeof exportSnapshotToJson>[1],
+    );
+
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return;
+    }
+
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `mbd-season-${season}-day-${day}.json`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  }, [day, gmName, season, teamName, worker]);
 
   return (
     <PageShell loading={loading && summary == null} skeleton={<DashboardSkeleton />}>
@@ -863,6 +971,11 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
+      <GuidedStartNudgeCard
+        current={currentDashboardNudge}
+        onDismiss={dismissDashboardNudge}
+        onExportBackup={handleExportGuidedStartBackup}
+      />
     </PageShell>
   );
 }

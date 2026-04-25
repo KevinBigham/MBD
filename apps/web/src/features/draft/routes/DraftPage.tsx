@@ -13,6 +13,7 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { PageHelp } from '@/shared/components/PageHelp';
+import { GuidedStartNudgeCard, useNudges } from '@/features/onboarding/nudges';
 import type { WorkerApi } from '@/workers/sim.worker';
 import type {
   DraftActionResult,
@@ -827,7 +828,12 @@ export default function DraftPage() {
     signDraftPick,
     simulateRemainingDraft,
   } = worker;
-  const { phase, season, isInitialized } = useGameStore();
+  const { phase, season, isInitialized, activeSaveId, activeSaveSlot } = useGameStore();
+  const saveSlotId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : activeSaveId;
+  const draftNudges = useNudges({
+    saveSlotId,
+    triggers: isInitialized && season === 1 && phase === 'offseason' ? ['first_draft_nudge'] : [],
+  });
 
   const [draft, setDraft] = useState<DraftRoomView | null>(null);
   const [commentary, setCommentary] = useState<DraftCommentaryView | null>(null);
@@ -1074,62 +1080,69 @@ export default function DraftPage() {
 
   if (phase !== 'offseason') {
     return (
-      <div className="space-y-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
-            <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
+      <>
+        <div className="space-y-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
+              <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
+            </div>
+            <PageHelp pageKey="draft" />
           </div>
-          <PageHelp pageKey="draft" />
-        </div>
 
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">
-          <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-            <Users className="h-12 w-12 text-dynasty-muted" />
-            <h2 className="font-heading text-lg font-semibold text-dynasty-text">Draft Available During Offseason</h2>
-            <p className="max-w-md font-heading text-sm text-dynasty-muted">
-              The draft room opens after the regular season and playoffs are finished.
-            </p>
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">
+            <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+              <Users className="h-12 w-12 text-dynasty-muted" />
+              <h2 className="font-heading text-lg font-semibold text-dynasty-text">Draft Available During Offseason</h2>
+              <p className="max-w-md font-heading text-sm text-dynasty-muted">
+                The draft room opens after the regular season and playoffs are finished.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+        <GuidedStartNudgeCard current={draftNudges.current} onDismiss={draftNudges.dismiss} />
+      </>
     );
   }
 
   if (!draft || draft.status === 'available') {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
-          <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
-        </div>
+      <>
+        <div className="space-y-6">
+          <div>
+            <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
+            <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
+          </div>
 
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">
-          <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-            <Users className="h-12 w-12 text-dynasty-muted" />
-            <h2 className="font-heading text-lg font-semibold text-dynasty-text">{status}</h2>
-            <p className="max-w-md font-heading text-sm text-dynasty-muted">
-              Start the draft to load the class, reveal the first picks, and put your front office on the clock.
-            </p>
-            <button
-              onClick={handleStartDraft}
-              disabled={loading}
-              className="rounded-md bg-accent-primary px-6 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:bg-dynasty-border disabled:text-dynasty-muted"
-            >
-              {loading ? 'Preparing Draft...' : 'Start Draft'}
-            </button>
-            {error && (
-              <p className="font-data text-xs text-accent-danger">{error}</p>
-            )}
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">
+            <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+              <Users className="h-12 w-12 text-dynasty-muted" />
+              <h2 className="font-heading text-lg font-semibold text-dynasty-text">{status}</h2>
+              <p className="max-w-md font-heading text-sm text-dynasty-muted">
+                Start the draft to load the class, reveal the first picks, and put your front office on the clock.
+              </p>
+              <button
+                onClick={handleStartDraft}
+                disabled={loading}
+                className="rounded-md bg-accent-primary px-6 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:bg-dynasty-border disabled:text-dynasty-muted"
+              >
+                {loading ? 'Preparing Draft...' : 'Start Draft'}
+              </button>
+              {error && (
+                <p className="font-data text-xs text-accent-danger">{error}</p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+        <GuidedStartNudgeCard current={draftNudges.current} onDismiss={draftNudges.dismiss} />
+      </>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+    <>
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1154,13 +1167,13 @@ export default function DraftPage() {
             {watching ? 'Watching Draft' : 'Watch Draft'}
           </button>
         </div>
-      </div>
-
-      {error && (
-        <div className="rounded border border-accent-danger/30 bg-accent-danger/10 px-4 py-2 font-data text-xs text-accent-danger">
-          {error}
         </div>
-      )}
+
+        {error && (
+          <div className="rounded border border-accent-danger/30 bg-accent-danger/10 px-4 py-2 font-data text-xs text-accent-danger">
+            {error}
+          </div>
+        )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="xl:col-span-5">
@@ -1193,13 +1206,15 @@ export default function DraftPage() {
       <DraftTicker picks={visiblePicks} progressLabel={progressLabel} />
       <DraftBoard draft={draft} visibleCount={visiblePicks.length} />
       <PostDraftGrades gradesView={gradesView} />
-      <DraftSummary
-        draft={draft}
-        bonusOffers={bonusOffers}
-        onBonusChange={(playerId, value) => setBonusOffers((current) => ({ ...current, [playerId]: value }))}
-        onSign={handleSignDraftPick}
-        signingPlayerId={signingPlayerId}
-      />
-    </div>
+        <DraftSummary
+          draft={draft}
+          bonusOffers={bonusOffers}
+          onBonusChange={(playerId, value) => setBonusOffers((current) => ({ ...current, [playerId]: value }))}
+          onSign={handleSignDraftPick}
+          signingPlayerId={signingPlayerId}
+        />
+      </div>
+      <GuidedStartNudgeCard current={draftNudges.current} onDismiss={draftNudges.dismiss} />
+    </>
   );
 }

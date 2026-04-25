@@ -6,6 +6,12 @@ import type { GameBoxScore } from '@mbd/sim-core';
 import DashboardPage from './DashboardPage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import {
+  markGuidedStartNudgeSeen,
+  readGuidedStartNudgeRecord,
+  registerGuidedStartSave,
+} from '@/features/onboarding/nudges';
+import { exportSnapshotToJson } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -15,11 +21,34 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/lib/saveSystem', () => ({
+  exportSnapshotToJson: vi.fn().mockReturnValue('{"kind":"mbd-save-export"}'),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedExportSnapshotToJson = vi.mocked(exportSnapshotToJson);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+function createStorageMock(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: vi.fn(() => values.clear()),
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    key: vi.fn((index: number) => [...values.keys()][index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      values.delete(key);
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value);
+    }),
+  };
+}
 
 function createBoxScore(overrides: Partial<GameBoxScore>): GameBoxScore {
   return {
@@ -148,6 +177,19 @@ describe('DashboardPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: createStorageMock(),
+    });
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:guided-start-backup'),
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
 
     mockedUseGameStore.mockReturnValue({
       season: 4,
@@ -450,6 +492,225 @@ describe('DashboardPage', () => {
     });
 
     expect(container.textContent).toContain('Boston grabs the lead late.');
+  });
+
+  it('shows the first-series pointer once on the first season opening series', async () => {
+    registerGuidedStartSave('save-slot-1');
+    markGuidedStartNudgeSeen('save-slot-1', 'intro_scroll');
+    markGuidedStartNudgeSeen('save-slot-1', 'first_draft_nudge');
+    mockedUseGameStore.mockReturnValue({
+      season: 1,
+      day: 1,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 0,
+      isSimulating: false,
+      activeSaveId: 'save-slot-1',
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+      activeSaveSlot: 1,
+    });
+    const worker = mockedUseWorker();
+    mockedUseWorker.mockReturnValue({
+      ...worker,
+      getScheduleView: vi.fn().mockResolvedValue([
+        {
+          day: 1,
+          opponentId: 'bos',
+          opponentName: 'Boston Noreasters',
+          opponentAbbr: 'BOS',
+          isHome: true,
+          isCompleted: false,
+        },
+      ]),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+    });
+
+    expect(container.textContent).toContain('First pitch is waiting');
+    const dismissButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent === 'Got it',
+    );
+
+    await act(async () => {
+      dismissButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(readGuidedStartNudgeRecord('save-slot-1')?.seen.first_series_pointer).toBe(true);
+    expect(container.textContent).not.toContain('First pitch is waiting');
+  });
+
+  it('skips the first-series pointer after game one has already been completed', async () => {
+    registerGuidedStartSave('save-slot-1');
+    markGuidedStartNudgeSeen('save-slot-1', 'intro_scroll');
+    markGuidedStartNudgeSeen('save-slot-1', 'first_draft_nudge');
+    mockedUseGameStore.mockReturnValue({
+      season: 1,
+      day: 2,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 1,
+      isSimulating: false,
+      activeSaveId: 'save-slot-1',
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+      activeSaveSlot: 1,
+    });
+    const worker = mockedUseWorker();
+    mockedUseWorker.mockReturnValue({
+      ...worker,
+      getScheduleView: vi.fn().mockResolvedValue([
+        {
+          day: 1,
+          opponentId: 'bos',
+          opponentName: 'Boston Noreasters',
+          opponentAbbr: 'BOS',
+          isHome: true,
+          isCompleted: true,
+          result: 'W',
+          userScore: 4,
+          opponentScore: 2,
+        },
+      ]),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+    });
+
+    expect(container.textContent).not.toContain('First pitch is waiting');
+    expect(readGuidedStartNudgeRecord('save-slot-1')?.seen.first_series_pointer).toBe(true);
+  });
+
+  it('shows the first off-day autosave prompt and exports through the save export path', async () => {
+    registerGuidedStartSave('save-slot-1');
+    markGuidedStartNudgeSeen('save-slot-1', 'intro_scroll');
+    markGuidedStartNudgeSeen('save-slot-1', 'first_draft_nudge');
+    markGuidedStartNudgeSeen('save-slot-1', 'first_series_pointer');
+    mockedUseGameStore.mockReturnValue({
+      season: 1,
+      day: 2,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      difficulty: 'hard',
+      playerCount: 780,
+      gamesPlayed: 1,
+      isSimulating: false,
+      activeSaveId: 'save-slot-1',
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+      activeSaveSlot: 1,
+    });
+    const worker = mockedUseWorker();
+    const exportSnapshot = vi.fn().mockResolvedValue({
+      schemaVersion: 33,
+      season: 1,
+      day: 2,
+      phase: 'regular',
+    });
+    mockedUseWorker.mockReturnValue({
+      ...worker,
+      exportSnapshot,
+      getScheduleView: vi.fn().mockResolvedValue([
+        {
+          day: 1,
+          opponentId: 'bos',
+          opponentName: 'Boston Noreasters',
+          opponentAbbr: 'BOS',
+          isHome: true,
+          isCompleted: true,
+          result: 'W',
+          userScore: 4,
+          opponentScore: 2,
+        },
+        {
+          day: 3,
+          opponentId: 'bos',
+          opponentName: 'Boston Noreasters',
+          opponentAbbr: 'BOS',
+          isHome: true,
+          isCompleted: false,
+        },
+      ]),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+    });
+
+    expect(container.textContent).toContain('Grab a backup');
+    const exportButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent === 'Export backup',
+    );
+
+    await act(async () => {
+      exportButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockedExportSnapshotToJson).toHaveBeenCalledWith(
+      'Alex Rivera • Tycoons • Season 1 Day 2',
+      expect.objectContaining({ season: 1, day: 2 }),
+    );
+    expect(readGuidedStartNudgeRecord('save-slot-1')?.seen.first_offday_autosave_prompt).toBe(true);
+    expect(container.textContent).not.toContain('Grab a backup');
   });
 
   it('renders a loading skeleton before the dashboard summary resolves', async () => {

@@ -15,6 +15,7 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
 import { AGMRuntimePanel } from '../components/AGMRuntimePanel';
+import { GuidedStartNudgeCard, useNudges } from '../nudges';
 
 type OpeningPlanDraft = NonNullable<DayOneSession['choices']['openingDayPlan']>;
 type OpeningPlanOption = NonNullable<DayOneSession['openingPlanView']>['lineupOptions'][number];
@@ -136,6 +137,11 @@ export default function RevisedOnboardingPage() {
   const activeSaveId = useGameStore((state) => state.activeSaveId);
   const activeSaveSlot = useGameStore((state) => state.activeSaveSlot);
   const gmName = useGameStore((state) => state.gmName);
+  const saveSlotId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : activeSaveId;
+  const introNudges = useNudges({
+    saveSlotId,
+    triggers: ['intro_scroll'],
+  });
   const [session, setSession] = useState<DayOneSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -480,6 +486,10 @@ export default function RevisedOnboardingPage() {
           {agmPanel}
         </section>
       </div>
+      <GuidedStartNudgeCard
+        current={introNudges.current}
+        onDismiss={introNudges.dismiss}
+      />
     </div>
   );
 }

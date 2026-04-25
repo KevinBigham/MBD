@@ -15,6 +15,7 @@ import {
   repairSave,
   saveGame,
 } from '@/shared/lib/saveSystem';
+import { registerGuidedStartSave } from '@/features/onboarding/nudges';
 
 const mockedNavigate = vi.fn();
 const recoveryMockState = vi.hoisted(() => ({
@@ -43,6 +44,10 @@ vi.mock('@/features/save-recovery', () => ({
   }),
 }));
 
+vi.mock('@/features/onboarding/nudges', () => ({
+  registerGuidedStartSave: vi.fn(),
+}));
+
 vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),
@@ -66,6 +71,7 @@ const mockedRepairSave = vi.mocked(repairSave);
 const mockedSaveGame = vi.mocked(saveGame);
 const mockedDeleteSave = vi.mocked(deleteSave);
 const mockedInspectSaveById = vi.mocked(inspectSaveById);
+const mockedRegisterGuidedStartSave = vi.mocked(registerGuidedStartSave);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -546,6 +552,7 @@ describe('SetupPage', () => {
       dayOneExperience: 'full',
     });
     expect(mockedSaveGame).toHaveBeenCalledWith(2, expect.stringContaining('Alex Rivera'), expect.any(Object));
+    expect(mockedRegisterGuidedStartSave).toHaveBeenCalledWith('save-slot-2');
     expect(storeMock.initializeGame).toHaveBeenCalled();
     expect(mockedNavigate).toHaveBeenCalledWith('/onboarding');
   });
