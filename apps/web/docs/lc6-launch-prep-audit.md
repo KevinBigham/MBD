@@ -60,14 +60,14 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - Slice 4, changelog: complete.
 - Slice 5, feedback widget: complete.
 - Slice 6, version bump and meta: complete.
-- Slice 7, final verification: pending.
+- Slice 7, final verification: complete.
 
 ## Self-Critique Gate
 
 - Schema bump? Expected none. Current schema is v33.
 - RNG safety? No sim code touched. Feedback uses no RNG, `Math.random()`, or `Date.now()`.
 - Save compatibility? No save shape changes.
-- Tests run? Slice 1 audit only; no tests required. Slice 2 used browser capture only.
+- Tests run? Yes. See the final gate entries below.
 - Files outside scope? `apps/web/docs/lc6-launch-prep-audit.md` is required by the LC-6 slice plan. `package.json` at repo root was also bumped to `1.0.0` because the pre-edit audit identified it as a version string and the acceptance gate requires version consistency.
 - Version strings consistent? Yes: root `package.json`, `apps/web/package.json`, Settings About copy, and `apps/web/index.html` meta/title now show `1.0.0` / `v1.0.0`.
 - Feedback widget privacy? Implemented as explicit user-entered fields only. Mailto body includes type, report body, and optional contact only when typed; no user agent, URL, email scraping, or device fingerprint is included.
@@ -85,6 +85,11 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - `cd apps/web && npx pnpm typecheck` passed after the version/meta slice.
 - `cd apps/web && npx vitest run` passed after the version/meta slice: 98 files, 621 tests. Existing jsdom/Recharts and mocked-worker stderr warnings remain.
 - `cd apps/web && npx vite build` passed. Built `dist/index.html` contains the `v1.0.0` title, description, OG title, OG description, and `og:image`.
+- `cd packages/sim-core && npx pnpm typecheck && npx vitest run` passed: 137 files, 1608 tests.
+- `cd packages/contracts && npx pnpm typecheck && npx vitest run` passed: 1 file, 18 tests.
+- `cd apps/web && npx pnpm typecheck && npx vitest run && npx vite build` passed: 98 files, 621 tests, production build emitted `dist/`.
+- `cd apps/web && npx vitest run src/build/bundleBudget.test.ts` passed: 1 file, 1 test.
+- `rg "CURRENT_GAME_SNAPSHOT_VERSION" packages/contracts/src/schemas/save.ts` confirms `CURRENT_GAME_SNAPSHOT_VERSION = 33`.
 
 ## Files Touched
 
@@ -123,6 +128,6 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - [x] Feedback widget ships with mailto fallback or existing Supabase insert.
 - [x] Version strings updated to `1.0.0` / `v1.0.0`.
 - [x] Screenshots committed under 1.5 MB total.
-- [ ] Schema remains v33.
-- [ ] Bundle ceilings hold.
-- [ ] Full verification gate passes.
+- [x] Schema remains v33.
+- [x] Bundle ceilings hold.
+- [x] Full verification gate passes.
