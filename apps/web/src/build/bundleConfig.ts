@@ -292,6 +292,13 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
     return 'game-engine-weekly';
   }
 
+  // Keep the sim-core root barrel out of game-engine-core. It re-exports
+  // onboarding modules for the app-facing API, while onboarding modules import
+  // core helpers; assigning the barrel to core creates a circular chunk edge.
+  if (normalized.endsWith('/packages/sim-core/src/index.ts')) {
+    return 'game-engine-shell';
+  }
+
   if (includesPath(normalized, '/packages/sim-core/src/')) {
     return 'game-engine-core';
   }

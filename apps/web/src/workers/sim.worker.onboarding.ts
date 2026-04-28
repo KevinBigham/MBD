@@ -4,11 +4,16 @@
  * the full onboarding script with AGM dialogue.
  */
 import {
-  AGM_CANDIDATES,
-  GameRNG,
   LUXURY_TAX_THRESHOLD,
   TEAM_MARKETS,
   TEAMS,
+  getTeamById,
+} from '@mbd/sim-core';
+import type {
+  GameRNG,
+} from '@mbd/sim-core';
+import {
+  AGM_CANDIDATES,
   buildDayOneDefaults,
   buildDayOneImpacts,
   buildDayOneNarrativePack,
@@ -30,8 +35,7 @@ import {
   generateOwnerMeeting,
   generateScoutingBriefing,
   generateSeasonStrategy,
-  getTeamById,
-} from '@mbd/sim-core';
+} from '../../../../packages/sim-core/src/onboarding/index.js';
 import type {
   AGMCandidate,
   AGMCandidateId,
@@ -53,7 +57,7 @@ import type {
   ScoutingHiringSlate,
   StaffHireChoices,
   StaffHiringSlate,
-} from '@mbd/sim-core';
+} from '../../../../packages/sim-core/src/onboarding/index.js';
 import {
   createStableWorkerRng,
   requireState,
