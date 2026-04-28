@@ -55,7 +55,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 ## Slice Progress Ledger
 
 - Slice 1, baseline audit: complete.
-- Slice 2, screenshots: pending.
+- Slice 2, screenshots: complete.
 - Slice 3, README rewrite: pending.
 - Slice 4, changelog: pending.
 - Slice 5, feedback widget: pending.
@@ -67,7 +67,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - Schema bump? Expected none. Current schema is v33.
 - RNG safety? No sim code touched in slice 1.
 - Save compatibility? No save shape changes in slice 1.
-- Tests run? Slice 1 audit only; no tests required.
+- Tests run? Slice 1 audit only; no tests required. Slice 2 used browser capture only.
 - Files outside scope? `apps/web/docs/lc6-launch-prep-audit.md` is required by the LC-6 slice plan.
 - Version strings consistent? Not yet; current audit records `0.0.1`.
 - Feedback widget privacy? Not yet implemented; target is explicit user-entered fields only.
@@ -75,10 +75,23 @@ Baseline verified on 2026-04-28 from `origin/main`:
 ## Test Results
 
 - Not run for slice 1. Audit-only slice.
+- Not run for slice 2. Screenshot-only slice.
 
 ## Files Touched
 
 - `apps/web/docs/lc6-launch-prep-audit.md`
+- `apps/web/public/screenshots/career-retrospective.jpg`
+- `apps/web/public/screenshots/dashboard-desktop.jpg`
+- `apps/web/public/screenshots/dashboard-mobile.jpg`
+- `apps/web/public/screenshots/landing-save-hub.jpg`
+- `apps/web/public/screenshots/pennant-race-board.jpg`
+- `apps/web/public/screenshots/season-story-reel.jpg`
+
+## Screenshot Notes
+
+- Total screenshot payload: `364 KB`, below the `1.5 MB` budget.
+- Live browser capture path: Vite dev server at `http://127.0.0.1:5173/MBD/`, Quick Start save, Marcus Chen AGM, real dashboard, real Pennant Race board, real Career Retrospective card, real mobile dashboard.
+- The short generated save did not expose a Season Story Reel trigger, matching the LC-3 audit note that dashboard story modals were not available in the day-zero browser save. `season-story-reel.jpg` is a styled reference using the existing Season Story Reel test fixture copy and the live app stylesheet; no source files were changed to create it.
 
 ## v1.0.0 Readiness Checklist
 
