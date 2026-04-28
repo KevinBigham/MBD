@@ -56,7 +56,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 
 - Slice 1, baseline audit: complete.
 - Slice 2, screenshots: complete.
-- Slice 3, README rewrite: pending.
+- Slice 3, README rewrite: complete.
 - Slice 4, changelog: pending.
 - Slice 5, feedback widget: pending.
 - Slice 6, version bump and meta: pending.
@@ -76,6 +76,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 
 - Not run for slice 1. Audit-only slice.
 - Not run for slice 2. Screenshot-only slice.
+- Not run for slice 3. README-only slice; visual inspection and `wc -l README.md` (`69`) passed.
 
 ## Files Touched
 
@@ -86,6 +87,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - `apps/web/public/screenshots/landing-save-hub.jpg`
 - `apps/web/public/screenshots/pennant-race-board.jpg`
 - `apps/web/public/screenshots/season-story-reel.jpg`
+- `README.md`
 
 ## Screenshot Notes
 

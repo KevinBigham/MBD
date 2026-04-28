@@ -1,60 +1,69 @@
 # Mr. Baseball Dynasty
 
-A deep baseball franchise dynasty simulator. Build your front office, draft prospects, make trades, and pursue championships across decades.
+Browser-based baseball franchise dynasty simulation. Build a front office, make baseball decisions, and watch a deterministic league history unfold across seasons.
 
-**[PLAY NOW](https://kevinbigham.github.io/MBD/)**
+**Play:** [kevinbigham.github.io/MBD](https://kevinbigham.github.io/MBD/)
 
----
+## Screenshots
 
-## What Is This?
+![Save hub](apps/web/public/screenshots/landing-save-hub.jpg)
 
-Mr. Baseball Dynasty (MBD) is a browser-based, single-player baseball management sim. You take over as GM of a franchise and guide it through seasons of roster moves, scouting, player development, trades, free agency, and postseason runs. Every decision ripples forward through a fully deterministic simulation engine.
+![Dashboard desktop](apps/web/public/screenshots/dashboard-desktop.jpg)
 
-### Features
+![Pennant race board](apps/web/public/screenshots/pennant-race-board.jpg)
 
-- **Full Season Simulation** -- Day-by-day sim with box scores, standings, and stat tracking
-- **Scouting & Draft** -- Amateur draft, international free agents, scout assignments, prospect rankings
-- **Player Development** -- Minor league system, development curves, attribute progression
-- **Trade Engine** -- AI-driven trade proposals, counter-offers, deadline deals
-- **Free Agency** -- Bidding, contract negotiations, salary cap management
-- **GM Career Mode** -- Get hired, get fired, build a legacy across multiple franchises
-- **History & Records** -- Hall of Fame, record books, season archives, dynasty cards
-- **Press Room** -- Generated narratives, story arcs, press conferences
-- **War Room Visualizations** -- Recharts-powered charts, radar plots, sparklines, drag-and-drop lineup builder
-- **PWA Support** -- Install as an app on desktop or mobile, works offline
-- **Deterministic Engine** -- Seeded RNG means every save produces identical results on replay
+![Mobile dashboard](apps/web/public/screenshots/dashboard-mobile.jpg)
+
+## What It Is
+
+- A single-player franchise sim about roster building, player development, payroll pressure, scouting, trades, drafts, free agency, playoffs, and long-term consequences.
+- A deterministic save-driven simulation: the same seed and same decisions produce the same league.
+- A dynasty history machine: records, awards, rivalries, story reels, career retrospectives, and franchise memory accumulate over time.
+- A local-first browser game using IndexedDB saves and a web-worker sim engine.
+
+## What It Is Not
+
+- Not an MLB-licensed product.
+- Not fantasy sports, betting, packs, loot boxes, or pay-to-win.
+- Not a twitch game. Most value comes from planning, simming, reading the league, and making tradeoffs.
+- Not a finished forever-game. v1.0.0 is the first stable public milestone.
+
+## How To Play
+
+1. Open the live URL.
+2. Start a new dynasty from the Save Hub.
+3. Pick a club, choose Quick Start or Full Day One, and enter the front office.
+4. Advance by day, week, or month.
+5. Use the dashboard, roster, minors, draft, trade, finance, scouting, league, history, and press-room views to steer the franchise.
+6. Follow the dynasty through seasons: standings, playoff races, player arcs, awards, records, and owner pressure all compound.
 
 ## Tech Stack
 
-- **Frontend:** React 18, TypeScript (strict), Vite 6, Tailwind CSS
-- **State:** Zustand stores, Dexie (IndexedDB) for saves
-- **Simulation:** Pure TypeScript engine running in a Web Worker via Comlink
-- **Visualization:** Recharts, @dnd-kit
-- **Design:** Bloomberg Terminal aesthetic with custom design tokens
-- **Testing:** Vitest (700+ tests across sim-core and web app)
-- **Monorepo:** pnpm workspaces + Turborepo
+TypeScript strict mode, React 18, Vite 6, Tailwind CSS, Zustand, Dexie, Comlink web workers, pure-rand, Zod contracts, Vitest, pnpm, and Turbo.
 
-## Architecture
+## Contributors
 
-```
-mr-baseball-dynasty/
-  apps/web/              React frontend (17 feature pages)
-  packages/sim-core/     Pure simulation engine (no DOM, no React)
-  packages/contracts/    Zod schemas shared between packages
-  packages/ui/           Shared UI component library
-  packages/design-tokens/ Color, typography, spacing tokens
-```
-
-## Development
+Active code lives in `mr-baseball-dynasty/`.
 
 ```bash
-# Prerequisites: Node 20+, pnpm 9+
-pnpm install
-pnpm dev          # Start dev server (apps/web)
-pnpm test         # Run all tests
-pnpm build        # Production build
+npx pnpm install
+npx pnpm verify
 ```
+
+Focused gates used before release:
+
+```bash
+cd packages/sim-core && npx pnpm typecheck && npx vitest run
+cd ../contracts && npx pnpm typecheck && npx vitest run
+cd ../../apps/web && npx pnpm typecheck && npx vitest run && npx vite build
+```
+
+Do not touch save schema without a version bump, migration, backwards-compat note, and fixture. Do not use `Math.random()` in sim code.
 
 ## License
 
 Private project. All rights reserved.
+
+## Credits
+
+Built by Kevin Bigham with AI-assisted implementation across Codex and Claude Code sessions.
