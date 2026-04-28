@@ -146,7 +146,7 @@ interface TeamUnitScores {
   defense: number;
   farm: number;
   mlb: number;
-  projectedWins: number;
+  winStrength: number;
   topProspectName: string | null;
 }
 
@@ -158,6 +158,15 @@ interface DayOneTeamMetadata {
 }
 
 const REQUIRED_LINEUP_POSITIONS: readonly Position[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
+const LEAGUE_AVERAGE_WINS = 81;
+const PROJECTED_WIN_MAX_SPREAD = 20;
+const PROJECTED_WIN_CURVE_EXPONENT = 0.82;
+const ROSTER_WIN_WEIGHTS = {
+  offense: 0.4,
+  rotation: 0.34,
+  bullpen: 0.18,
+  defense: 0.08,
+} as const;
 
 const DAY_ONE_TEAM_METADATA: Record<string, DayOneTeamMetadata> = {
   nym: {
@@ -723,7 +732,10 @@ function buildTeamScores(players: GeneratedPlayer[], teamId: string): TeamUnitSc
   const defense = hitters.slice(0, 9).reduce((sum, player) => sum + Math.round((player.hitterAttributes.defense ?? 0) / 5.5), 0) / Math.max(1, Math.min(9, hitters.length));
   const farmScore = farm.slice(0, 12).reduce((sum, player) => sum + toDisplayRating(player.overallRating), 0) / Math.max(1, Math.min(12, farm.length));
   const mlb = mlbPlayers.slice(0, 26).reduce((sum, player) => sum + toDisplayRating(player.overallRating), 0) / Math.max(1, Math.min(26, mlbPlayers.length));
-  const projectedWins = Math.max(58, Math.min(104, Math.round(64 + (offense * 0.28) + (rotation * 0.24) + (bullpen * 0.08) + (defense * 0.05))));
+  const winStrength = (offense * ROSTER_WIN_WEIGHTS.offense)
+    + (rotation * ROSTER_WIN_WEIGHTS.rotation)
+    + (bullpen * ROSTER_WIN_WEIGHTS.bullpen)
+    + (defense * ROSTER_WIN_WEIGHTS.defense);
 
   return {
     teamId,
@@ -733,9 +745,36 @@ function buildTeamScores(players: GeneratedPlayer[], teamId: string): TeamUnitSc
     defense,
     farm: farmScore,
     mlb,
-    projectedWins,
+    winStrength,
     topProspectName: playerName(farm[0]),
   };
+}
+
+function projectedWinsForLeagueRank(rankIndex: number, teamCount: number): number {
+  const pairCount = Math.floor(teamCount / 2);
+  if (pairCount === 0) {
+    return LEAGUE_AVERAGE_WINS;
+  }
+
+  const middleRank = (teamCount - 1) / 2;
+  if (rankIndex === middleRank) {
+    return LEAGUE_AVERAGE_WINS;
+  }
+
+  const upperHalf = rankIndex < middleRank;
+  const pairIndex = upperHalf ? rankIndex : teamCount - 1 - rankIndex;
+  const pairStrength = (pairCount - pairIndex) / pairCount;
+  const spread = Math.round(PROJECTED_WIN_MAX_SPREAD * Math.pow(pairStrength, PROJECTED_WIN_CURVE_EXPONENT));
+  return LEAGUE_AVERAGE_WINS + (upperHalf ? spread : -spread);
+}
+
+function buildProjectedWinsByTeam(teamScores: TeamUnitScores[]): Map<string, number> {
+  const ranked = [...teamScores].sort((left, right) =>
+    right.winStrength - left.winStrength
+    || right.mlb - left.mlb
+    || right.farm - left.farm
+    || left.teamId.localeCompare(right.teamId));
+  return new Map(ranked.map((entry, index) => [entry.teamId, projectedWinsForLeagueRank(index, ranked.length)]));
 }
 
 function categoryLabels(scores: TeamUnitScores) {
@@ -807,9 +846,10 @@ export function buildDayOneTeamCard(input: DayOneTeamCardInput): DayOneTeamCard 
 
 export function buildDayOneOrgReview(players: GeneratedPlayer[], teamId: string): DayOneOrgReview {
   const teamScores = TEAMS.map((team) => buildTeamScores(players, team.id));
+  const projectedWinsByTeam = buildProjectedWinsByTeam(teamScores);
   const current = teamScores.find((entry) => entry.teamId === teamId) ?? buildTeamScores(players, teamId);
   const mlbRank = [...teamScores]
-    .sort((left, right) => right.mlb - left.mlb || right.projectedWins - left.projectedWins || left.teamId.localeCompare(right.teamId))
+    .sort((left, right) => right.mlb - left.mlb || right.winStrength - left.winStrength || left.teamId.localeCompare(right.teamId))
     .findIndex((entry) => entry.teamId === teamId) + 1;
   const farmRank = [...teamScores]
     .sort((left, right) => right.farm - left.farm || right.mlb - left.mlb || left.teamId.localeCompare(right.teamId))
@@ -830,7 +870,7 @@ export function buildDayOneOrgReview(players: GeneratedPlayer[], teamId: string)
     weaknesses,
     inheritedStory: `${metadata?.orgStory ?? 'You inherited a franchise with a real identity problem.'} The MLB club is ${tierLabel(mlbTier)} right now and the farm is ${tierLabel(farmTier)} behind it.`,
     topProspectName: current.topProspectName,
-    projectedWins: current.projectedWins,
+    projectedWins: projectedWinsByTeam.get(teamId) ?? LEAGUE_AVERAGE_WINS,
   };
 }
 
