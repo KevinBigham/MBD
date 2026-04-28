@@ -73,4 +73,35 @@ describe('PageShell', () => {
     const shell = container.querySelector('[data-testid="page-shell"]');
     expect(shell?.getAttribute('data-motion')).toBe('reduced');
   });
+
+  it('removes transform after the enter animation so fixed route overlays stay viewport-fixed', async () => {
+    mockReducedMotion(false);
+    let rafCallback: FrameRequestCallback | null = null;
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback: FrameRequestCallback) => {
+        rafCallback = callback;
+        return 1;
+      });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+    await act(async () => {
+      root.render(
+        <PageShell>
+          <div>Animated content</div>
+        </PageShell>,
+      );
+    });
+
+    const shell = container.querySelector('[data-testid="page-shell"]');
+    expect(shell?.className).toContain('translate-y-2');
+
+    await act(async () => {
+      rafCallback?.(0);
+    });
+
+    expect(shell?.className).toContain('transform-none');
+    expect(shell?.className).not.toContain('translate-y-0');
+    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+  });
 });

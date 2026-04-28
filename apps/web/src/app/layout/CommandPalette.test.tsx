@@ -107,4 +107,22 @@ describe('CommandPalette', () => {
     expect(container.textContent).toContain('Start Negotiation');
     expect(container.textContent).toContain('View Signature Moments');
   });
+
+  it('renders as a mobile-safe dialog with a 16px command input', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <CommandPalette open onOpenChange={vi.fn()} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog?.getAttribute('aria-modal')).toBe('true');
+
+    const input = container.querySelector('input[placeholder="Type a command or search..."]');
+    expect(input?.className).toContain('text-base');
+    expect(input?.className).toContain('min-h-11');
+  });
 });

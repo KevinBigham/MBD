@@ -285,4 +285,16 @@ describe('PennantRaceModal', () => {
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('uses a 44px close target for touch devices', async () => {
+    mockWorker.getPennantRaceDetail.mockResolvedValue(richView);
+
+    await renderModal();
+
+    const closeBtn = container.querySelector(
+      'button[aria-label="Close pennant race board"]',
+    ) as HTMLButtonElement;
+    expect(closeBtn.className).toContain('min-h-11');
+    expect(closeBtn.className).toContain('min-w-11');
+  });
 });

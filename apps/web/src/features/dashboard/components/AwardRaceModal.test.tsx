@@ -213,6 +213,18 @@ describe('AwardRaceModal', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a 44px close target for touch devices', async () => {
+    mockWorker.getAwardRaceDetail.mockResolvedValue(richView);
+
+    await renderModal();
+
+    const closeBtn = container.querySelector(
+      'button[aria-label="Close award race board"]',
+    ) as HTMLButtonElement;
+    expect(closeBtn.className).toContain('min-h-11');
+    expect(closeBtn.className).toContain('min-w-11');
+  });
+
   it('renders prior-season winners context tile when history exists', async () => {
     mockWorker.getAwardRaceDetail.mockResolvedValue({
       ...richView,

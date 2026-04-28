@@ -95,4 +95,33 @@ describe('Sidebar', () => {
     expect(container.textContent).toContain('Compare');
     expect(getDashboardSummary).toHaveBeenCalledTimes(1);
   });
+
+  it('closes the mobile more drawer on Escape', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <Sidebar />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const moreButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('More'),
+    ) as HTMLButtonElement | undefined;
+    expect(moreButton).toBeTruthy();
+
+    await act(async () => {
+      moreButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('Navigation');
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(container.textContent).not.toContain('Navigation');
+  });
 });

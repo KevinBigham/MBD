@@ -138,6 +138,17 @@ function MobileMoreDrawer({
   open: boolean;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, open]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -145,7 +156,11 @@ function MobileMoreDrawer({
       <div className="max-h-[70vh] overflow-y-auto rounded-t-xl border-t border-dynasty-border bg-dynasty-surface pb-safe">
         <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
           <span className="font-heading text-sm font-semibold text-dynasty-textBright">Navigation</span>
-          <button onClick={onClose} className="rounded p-1 text-dynasty-muted hover:text-dynasty-text" aria-label="Close">
+          <button
+            onClick={onClose}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-dynasty-muted hover:text-dynasty-text"
+            aria-label="Close"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -160,7 +175,7 @@ function MobileMoreDrawer({
               }}
               className={({ isActive }) =>
                 [
-                  'flex flex-col items-center gap-1 rounded-lg p-3 text-center transition-colors',
+                  'flex min-h-11 flex-col items-center gap-1 rounded-lg p-3 text-center transition-colors',
                   isActive
                     ? 'bg-accent-primary/10 text-accent-primary'
                     : 'text-dynasty-muted hover:bg-dynasty-elevated hover:text-dynasty-text',
@@ -192,7 +207,7 @@ export function MobileTabBar({ items }: { items: NavItem[] }) {
             getAudioEngine().playEffect('button_click');
             setMoreOpen(true);
           }}
-          className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium text-dynasty-muted"
+          className="flex min-h-11 flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium text-dynasty-muted"
         >
           <MoreHorizontal className="h-5 w-5" />
           <span>More</span>

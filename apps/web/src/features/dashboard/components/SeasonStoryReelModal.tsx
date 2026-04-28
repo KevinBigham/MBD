@@ -201,7 +201,7 @@ export default function SeasonStoryReelModal({ seasonYear, onDismiss }: SeasonSt
                 onClick={goPrev}
                 disabled={!canGoPrev}
                 aria-label="Previous season"
-                className="rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 p-1 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-dynasty-surface/70 disabled:hover:text-dynasty-muted"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-dynasty-surface/70 disabled:hover:text-dynasty-muted"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -217,7 +217,7 @@ export default function SeasonStoryReelModal({ seasonYear, onDismiss }: SeasonSt
                 onClick={goNext}
                 disabled={!canGoNext}
                 aria-label="Next season"
-                className="rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 p-1 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-dynasty-surface/70 disabled:hover:text-dynasty-muted"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-dynasty-surface/70 disabled:hover:text-dynasty-muted"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -243,7 +243,7 @@ export default function SeasonStoryReelModal({ seasonYear, onDismiss }: SeasonSt
           <button
             type="button"
             onClick={onDismiss}
-            className="rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 p-1.5 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright"
             aria-label="Close season story reel"
           >
             <X className="h-4 w-4" />

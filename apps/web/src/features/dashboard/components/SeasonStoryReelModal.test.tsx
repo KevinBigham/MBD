@@ -248,6 +248,28 @@ describe('SeasonStoryReelModal', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it('uses 44px header controls for touch devices', async () => {
+    currentSeason = 2029;
+    mockWorker.getSeasonStoryReel.mockResolvedValue(baseView);
+
+    await renderModal(2028);
+
+    const closeButton = container.querySelector(
+      'button[aria-label="Close season story reel"]',
+    ) as HTMLButtonElement;
+    const previousButton = container.querySelector(
+      'button[aria-label="Previous season"]',
+    ) as HTMLButtonElement;
+    const nextButton = container.querySelector(
+      'button[aria-label="Next season"]',
+    ) as HTMLButtonElement;
+
+    for (const button of [closeButton, previousButton, nextButton]) {
+      expect(button.className).toContain('min-h-11');
+      expect(button.className).toContain('min-w-11');
+    }
+  });
+
   it('falls back to quiet-season prompt when all sections are empty', async () => {
     mockWorker.getSeasonStoryReel.mockResolvedValue({
       ...baseView,

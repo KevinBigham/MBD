@@ -147,7 +147,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh] sm:pt-[20vh]">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm"
@@ -157,6 +157,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
       {/* Dialog */}
       <Command
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         className="relative w-full max-w-lg overflow-hidden rounded-lg border border-dynasty-border bg-dynasty-surface shadow-2xl"
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === 'Escape') {
@@ -168,7 +171,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           value={search}
           onValueChange={setSearch}
           placeholder="Type a command or search..."
-          className="w-full border-b border-dynasty-border bg-transparent px-4 py-3 font-heading text-sm text-dynasty-text outline-none placeholder:text-dynasty-muted"
+          className="min-h-11 w-full border-b border-dynasty-border bg-transparent px-4 py-3 font-heading text-base text-dynasty-text outline-none placeholder:text-dynasty-muted"
           autoFocus
         />
 
@@ -189,7 +192,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   item.action();
                   onOpenChange(false);
                 }}
-                className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-dynasty-text aria-selected:bg-dynasty-elevated aria-selected:text-accent-primary"
+                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-dynasty-text aria-selected:bg-dynasty-elevated aria-selected:text-accent-primary"
               >
                 <span className="text-dynasty-muted">{item.icon}</span>
                 <span className="font-heading">{item.label}</span>
@@ -211,7 +214,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   item.action();
                   onOpenChange(false);
                 }}
-                className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-dynasty-text aria-selected:bg-dynasty-elevated aria-selected:text-accent-primary"
+                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-dynasty-text aria-selected:bg-dynasty-elevated aria-selected:text-accent-primary"
               >
                 <span className="text-dynasty-muted">{item.icon}</span>
                 <span className="font-heading">{item.label}</span>
@@ -228,7 +231,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             {KEYBOARD_SHORTCUTS.map((shortcut) => (
               <div
                 key={shortcut.label}
-                className="flex items-center justify-between px-3 py-2"
+                className="flex min-h-11 items-center justify-between px-3 py-2"
               >
                 <span className="flex items-center gap-3 text-sm text-dynasty-text">
                   <Keyboard className="h-4 w-4 text-dynasty-muted" />

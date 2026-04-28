@@ -138,7 +138,7 @@ export default function AwardRaceModal({ onDismiss }: AwardRaceModalProps) {
           <button
             type="button"
             onClick={onDismiss}
-            className="rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 p-1.5 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-dynasty-border/70 bg-dynasty-surface/70 text-dynasty-muted transition hover:bg-dynasty-surface hover:text-dynasty-textBright"
             aria-label="Close award race board"
           >
             <X className="h-4 w-4" />
