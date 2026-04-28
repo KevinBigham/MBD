@@ -101,4 +101,45 @@ Current gap: existing tests mostly assert rendering, not the 44px/touch/font-siz
 
 ## Post-Fix Verdict
 
-Pending.
+Post-fix browser sweep:
+
+- Viewports: `375x667`, `360x640`, `414x896`.
+- Method: reopened the Quick Start save, stayed inside the initialized SPA, changed routes client-side, and measured visible interactive elements with `getBoundingClientRect()`.
+- Route result: every measured primary route had `overflowX=0`, `badCount=0` for visible targets below `44x44`, and `inputFontBelow16=0` at all three viewport sizes.
+- Player profile result: `/players/f589431b-a8a0-49e6-a688-15c64220fe71` measured separately at `375x667` with `overflowX=0`, `badCount=0`, and `inputFontBelow16=0`.
+- Overlay result: Command Palette, Mobile More sheet, and Page Help measured at `375x667` with zero undersized visible controls and zero inputs below 16px; Command Palette backdrop tap dismissed; Mobile More Escape dismissed; Page Help backdrop tap dismissed.
+- Dashboard race/story modals were not available in the day-zero browser save, so their final verdict uses component tests plus the shared `PageShell` fixed-overlay class contract.
+
+Updated `apps/web/index.html` viewport meta:
+
+```html
+<meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0" />
+```
+
+| Route | Post-fix measurement | Screenshot description at `375x667` | Verdict |
+| --- | --- | --- | --- |
+| Setup / Save Hub (`/`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Welcome and save slots stack cleanly; primary actions are 44px+ touch targets. | PASS |
+| Quick Start Onboarding (`/onboarding`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Quick Start recap remains reachable; nudge and CTA controls meet the tap floor. | PASS |
+| Dashboard / Game Day (`/dashboard`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Header, bottom nav, sim controls, and first dashboard stack are clean in portrait. | PASS |
+| Roster (`/roster`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Tabs and player links are reachable without document horizontal scroll. | PASS |
+| Draft (`/draft`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Unavailable-state content and route shortcuts remain stacked and touch-safe. | PASS |
+| Trade (`/trade`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Trade controls stack in portrait; selects/search inputs use the 16px mobile font floor. | PASS |
+| League Standings (`/league/standings`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Division blocks remain readable; secondary nav links are 44px+ targets. | PASS |
+| Players Directory (`/players`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Search field keeps 44px height and 16px computed font size on mobile. | PASS |
+| Player Profile (`/players/:playerId`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Back link, tabs, and profile controls render without cutoff or undersized targets. | PASS |
+| Schedule (`/schedule`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Schedule content and top actions remain touch-safe in portrait. | PASS |
+| Press Room (`/press-room`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Filter controls stack/read cleanly and compute to 16px font at 414px and below. | PASS |
+| GM Career (`/career`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Career hub remains readable with top actions at the tap floor. | PASS |
+| History (`/history`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | History filters/tabs are touch-safe and avoid document horizontal scroll. | PASS |
+| Settings (`/settings`) | `overflowX=0`, `badCount=0`, `inputFontBelow16=0` | Settings sections stack cleanly; sliders/selects/input controls are mobile-safe. | PASS |
+
+| Surface | Post-fix evidence | Verdict |
+| --- | --- | --- |
+| Command Palette | Browser measured zero undersized targets / zero low-font inputs; `role="dialog"` + `aria-modal="true"`; backdrop tap dismissed. | PASS |
+| Mobile More sheet | Browser measured zero undersized visible targets; close button is 44px+; Escape dismissed. | PASS |
+| Page Help | Browser measured zero undersized visible targets; backdrop tap dismissed. | PASS |
+| Pennant Race modal | Close button has `min-h-11 min-w-11`; backdrop/Escape tests pass; `PageShell` no longer leaves a fixed-overlay-breaking transform. | PASS |
+| Award Race modal | Close button has `min-h-11 min-w-11`; backdrop/Escape tests pass; `PageShell` no longer leaves a fixed-overlay-breaking transform. | PASS |
+| Career Retrospective card | Dashboard route sweep reports zero undersized visible links/buttons; shared mobile CSS covers anchor/button tap floors. | PASS |
+| Season Story Reel modal | Close/prev/next controls have `min-h-11 min-w-11`; backdrop/Escape tests pass; `PageShell` fixed-overlay contract is green. | PASS |
+| Save Recovery dialog | Global mobile control floor covers the close/action buttons; existing dialog semantics and dismissal tests remain green. | PASS |

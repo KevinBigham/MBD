@@ -54,7 +54,7 @@ export function PageShell({
     <div
       className={cn(
         'transition-[opacity,transform] duration-200 ease-out',
-        reducedMotion ? 'opacity-100' : entered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
+        reducedMotion ? 'opacity-100' : entered ? 'transform-none opacity-100' : 'translate-y-2 opacity-0',
         className,
       )}
       data-motion={reducedMotion ? 'reduced' : 'animated'}

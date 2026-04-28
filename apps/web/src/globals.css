@@ -45,6 +45,27 @@
     box-shadow: 0 0 0 4px rgb(248 201 76 / 18%);
   }
 
+  @media (max-width: 767px) {
+    :where(button, a[href], input, select, textarea, summary, [role='button'], [tabindex]:not([tabindex='-1'])) {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    input:not([type='range']),
+    select:enabled,
+    textarea:enabled {
+      font-size: 16px;
+    }
+
+    :where(input[type='range']) {
+      min-height: 44px;
+    }
+
+    :where(button, a[href], [role='button'], summary) {
+      touch-action: manipulation;
+    }
+  }
+
   html[data-contrast='high'] body {
     background: #020617;
     color: #F8FAFC;
