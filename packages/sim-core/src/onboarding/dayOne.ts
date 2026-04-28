@@ -159,8 +159,8 @@ interface DayOneTeamMetadata {
 
 const REQUIRED_LINEUP_POSITIONS: readonly Position[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
 const LEAGUE_AVERAGE_WINS = 81;
-const PROJECTED_WIN_MAX_SPREAD = 20;
-const PROJECTED_WIN_CURVE_EXPONENT = 0.82;
+const PROJECTED_WIN_MAX_SPREAD = 14;
+const PROJECTED_WIN_CURVE_EXPONENT = 1.2;
 const ROSTER_WIN_WEIGHTS = {
   offense: 0.4,
   rotation: 0.34,

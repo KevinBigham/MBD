@@ -1230,6 +1230,20 @@ describe('sim worker narrative APIs', () => {
     expect(wins.filter((winTotal) => winTotal < 81).length).toBeGreaterThanOrEqual(10);
   });
 
+  it('keeps setup preview projections conservative instead of clustering at 97 wins', () => {
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const wins = TEAMS.map((team) => parseProjectedWins(workerApi.getSetupPreview({
+      seed: 2124,
+      userTeamId: team.id,
+      difficulty: 'standard',
+    }).projectedRecord));
+
+    expect(Math.max(...wins)).toBeLessThanOrEqual(95);
+    expect(wins.filter((winTotal) => winTotal >= 95)).toHaveLength(1);
+    expect(wins.filter((winTotal) => winTotal >= 90).length).toBeLessThanOrEqual(6);
+    expect(wins.filter((winTotal) => winTotal >= 97)).toHaveLength(0);
+  });
+
   it('initializes career mode and exposes the GM career ledger', () => {
     startGameWithOptions({
       seed: 919,
