@@ -59,7 +59,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - Slice 3, README rewrite: complete.
 - Slice 4, changelog: complete.
 - Slice 5, feedback widget: complete.
-- Slice 6, version bump and meta: pending.
+- Slice 6, version bump and meta: complete.
 - Slice 7, final verification: pending.
 
 ## Self-Critique Gate
@@ -68,8 +68,8 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - RNG safety? No sim code touched. Feedback uses no RNG, `Math.random()`, or `Date.now()`.
 - Save compatibility? No save shape changes.
 - Tests run? Slice 1 audit only; no tests required. Slice 2 used browser capture only.
-- Files outside scope? `apps/web/docs/lc6-launch-prep-audit.md` is required by the LC-6 slice plan.
-- Version strings consistent? Not yet; current audit records `0.0.1`.
+- Files outside scope? `apps/web/docs/lc6-launch-prep-audit.md` is required by the LC-6 slice plan. `package.json` at repo root was also bumped to `1.0.0` because the pre-edit audit identified it as a version string and the acceptance gate requires version consistency.
+- Version strings consistent? Yes: root `package.json`, `apps/web/package.json`, Settings About copy, and `apps/web/index.html` meta/title now show `1.0.0` / `v1.0.0`.
 - Feedback widget privacy? Implemented as explicit user-entered fields only. Mailto body includes type, report body, and optional contact only when typed; no user agent, URL, email scraping, or device fingerprint is included.
 
 ## Test Results
@@ -81,6 +81,10 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - `cd apps/web && npx vitest run src/features/feedback/__tests__/FeedbackForm.test.tsx src/features/settings/routes/SettingsPage.test.tsx` passed: 2 files, 11 tests.
 - `cd apps/web && npx pnpm typecheck` passed.
 - `cd apps/web && npx vitest run` passed: 98 files, 621 tests. Existing jsdom/Recharts and mocked-worker stderr warnings remain.
+- `cd apps/web && npx vitest run src/features/setup/routes/SetupPage.test.tsx src/features/settings/routes/SettingsPage.test.tsx` passed: 2 files, 13 tests.
+- `cd apps/web && npx pnpm typecheck` passed after the version/meta slice.
+- `cd apps/web && npx vitest run` passed after the version/meta slice: 98 files, 621 tests. Existing jsdom/Recharts and mocked-worker stderr warnings remain.
+- `cd apps/web && npx vite build` passed. Built `dist/index.html` contains the `v1.0.0` title, description, OG title, OG description, and `og:image`.
 
 ## Files Touched
 
@@ -100,6 +104,11 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - `apps/web/src/features/feedback/__tests__/FeedbackForm.test.tsx`
 - `apps/web/src/features/settings/routes/SettingsPage.tsx`
 - `apps/web/src/features/settings/routes/SettingsPage.test.tsx`
+- `apps/web/src/features/setup/routes/SetupPage.tsx`
+- `apps/web/src/features/setup/routes/SetupPage.test.tsx`
+- `apps/web/package.json`
+- `package.json`
+- `apps/web/index.html`
 
 ## Screenshot Notes
 
@@ -109,11 +118,11 @@ Baseline verified on 2026-04-28 from `origin/main`:
 
 ## v1.0.0 Readiness Checklist
 
-- [ ] README rewritten and screenshot links resolve.
+- [x] README rewritten and screenshot links resolve.
 - [x] CHANGELOG created with v1.0.0 launch narrative.
 - [x] Feedback widget ships with mailto fallback or existing Supabase insert.
-- [ ] Version strings updated to `1.0.0` / `v1.0.0`.
-- [ ] Screenshots committed under 1.5 MB total.
+- [x] Version strings updated to `1.0.0` / `v1.0.0`.
+- [x] Screenshots committed under 1.5 MB total.
 - [ ] Schema remains v33.
 - [ ] Bundle ceilings hold.
 - [ ] Full verification gate passes.

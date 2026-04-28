@@ -504,7 +504,10 @@ describe('SetupPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('Welcome to Mr. Baseball Dynasty');
+    expect(container.textContent).toContain('A browser-based baseball franchise dynasty sim');
+    expect(container.textContent).toContain('What it is');
+    expect(container.textContent).toContain('What it is not');
+    expect(container.textContent).toContain('Start with New Dynasty');
     expect(container.textContent).toContain('New York Tycoons');
 
     const newDynastyButton = Array.from(container.querySelectorAll('button')).find((button) =>

@@ -232,6 +232,7 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('Accessibility');
     expect(container.textContent).toContain('Data / Install');
     expect(container.textContent).toContain('Send Feedback');
+    expect(container.textContent).toContain('Mr. Baseball Dynasty v1.0.0');
   });
 
   it('opens the feedback form from the settings page', async () => {
