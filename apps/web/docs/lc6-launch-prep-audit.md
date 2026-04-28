@@ -57,7 +57,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - Slice 1, baseline audit: complete.
 - Slice 2, screenshots: complete.
 - Slice 3, README rewrite: complete.
-- Slice 4, changelog: pending.
+- Slice 4, changelog: complete.
 - Slice 5, feedback widget: pending.
 - Slice 6, version bump and meta: pending.
 - Slice 7, final verification: pending.
@@ -77,6 +77,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - Not run for slice 1. Audit-only slice.
 - Not run for slice 2. Screenshot-only slice.
 - Not run for slice 3. README-only slice; visual inspection and `wc -l README.md` (`69`) passed.
+- Not run for slice 4. Changelog-only slice; visual inspection and `wc -l CHANGELOG.md` (`68`) passed.
 
 ## Files Touched
 
@@ -88,6 +89,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - `apps/web/public/screenshots/pennant-race-board.jpg`
 - `apps/web/public/screenshots/season-story-reel.jpg`
 - `README.md`
+- `CHANGELOG.md`
 
 ## Screenshot Notes
 
@@ -98,7 +100,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 ## v1.0.0 Readiness Checklist
 
 - [ ] README rewritten and screenshot links resolve.
-- [ ] CHANGELOG created with v1.0.0 launch narrative.
+- [x] CHANGELOG created with v1.0.0 launch narrative.
 - [ ] Feedback widget ships with mailto fallback or existing Supabase insert.
 - [ ] Version strings updated to `1.0.0` / `v1.0.0`.
 - [ ] Screenshots committed under 1.5 MB total.
