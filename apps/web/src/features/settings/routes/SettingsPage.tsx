@@ -6,6 +6,7 @@ import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStor
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { useTour } from '@/shared/components/TourProvider';
+import { FeedbackButton } from '@/features/feedback';
 import { useSaveRecovery } from '@/features/save-recovery';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { logger } from '@/shared/lib/logger';
@@ -997,7 +998,10 @@ export default function SettingsPage() {
                 Built with TypeScript, React, Vite, Web Workers, and deterministic pure-rand simulation.
               </p>
             </div>
-            <TutorialRestartButton />
+            <div className="flex flex-wrap gap-2">
+              <TutorialRestartButton />
+              <FeedbackButton />
+            </div>
           </div>
         </SettingsSection>
       </div>

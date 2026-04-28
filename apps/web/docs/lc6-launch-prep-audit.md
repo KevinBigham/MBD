@@ -58,19 +58,19 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - Slice 2, screenshots: complete.
 - Slice 3, README rewrite: complete.
 - Slice 4, changelog: complete.
-- Slice 5, feedback widget: pending.
+- Slice 5, feedback widget: complete.
 - Slice 6, version bump and meta: pending.
 - Slice 7, final verification: pending.
 
 ## Self-Critique Gate
 
 - Schema bump? Expected none. Current schema is v33.
-- RNG safety? No sim code touched in slice 1.
-- Save compatibility? No save shape changes in slice 1.
+- RNG safety? No sim code touched. Feedback uses no RNG, `Math.random()`, or `Date.now()`.
+- Save compatibility? No save shape changes.
 - Tests run? Slice 1 audit only; no tests required. Slice 2 used browser capture only.
 - Files outside scope? `apps/web/docs/lc6-launch-prep-audit.md` is required by the LC-6 slice plan.
 - Version strings consistent? Not yet; current audit records `0.0.1`.
-- Feedback widget privacy? Not yet implemented; target is explicit user-entered fields only.
+- Feedback widget privacy? Implemented as explicit user-entered fields only. Mailto body includes type, report body, and optional contact only when typed; no user agent, URL, email scraping, or device fingerprint is included.
 
 ## Test Results
 
@@ -78,6 +78,9 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - Not run for slice 2. Screenshot-only slice.
 - Not run for slice 3. README-only slice; visual inspection and `wc -l README.md` (`69`) passed.
 - Not run for slice 4. Changelog-only slice; visual inspection and `wc -l CHANGELOG.md` (`68`) passed.
+- `cd apps/web && npx vitest run src/features/feedback/__tests__/FeedbackForm.test.tsx src/features/settings/routes/SettingsPage.test.tsx` passed: 2 files, 11 tests.
+- `cd apps/web && npx pnpm typecheck` passed.
+- `cd apps/web && npx vitest run` passed: 98 files, 621 tests. Existing jsdom/Recharts and mocked-worker stderr warnings remain.
 
 ## Files Touched
 
@@ -90,6 +93,13 @@ Baseline verified on 2026-04-28 from `origin/main`:
 - `apps/web/public/screenshots/season-story-reel.jpg`
 - `README.md`
 - `CHANGELOG.md`
+- `apps/web/src/features/feedback/FeedbackButton.tsx`
+- `apps/web/src/features/feedback/FeedbackForm.tsx`
+- `apps/web/src/features/feedback/feedbackSubmit.ts`
+- `apps/web/src/features/feedback/index.ts`
+- `apps/web/src/features/feedback/__tests__/FeedbackForm.test.tsx`
+- `apps/web/src/features/settings/routes/SettingsPage.tsx`
+- `apps/web/src/features/settings/routes/SettingsPage.test.tsx`
 
 ## Screenshot Notes
 
@@ -101,7 +111,7 @@ Baseline verified on 2026-04-28 from `origin/main`:
 
 - [ ] README rewritten and screenshot links resolve.
 - [x] CHANGELOG created with v1.0.0 launch narrative.
-- [ ] Feedback widget ships with mailto fallback or existing Supabase insert.
+- [x] Feedback widget ships with mailto fallback or existing Supabase insert.
 - [ ] Version strings updated to `1.0.0` / `v1.0.0`.
 - [ ] Screenshots committed under 1.5 MB total.
 - [ ] Schema remains v33.
