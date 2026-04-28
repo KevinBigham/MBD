@@ -451,6 +451,15 @@ interface MinorLeagueWorkerApi {
   } | null>;
 }
 
+function parseProjectedWins(record: string): number {
+  const match = /^(\d+)-(\d+)$/.exec(record);
+  expect(match).not.toBeNull();
+  const wins = Number(match?.[1] ?? 0);
+  const losses = Number(match?.[2] ?? 0);
+  expect(wins + losses).toBe(162);
+  return wins;
+}
+
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
   return {
     playerId: 'player',
@@ -1204,6 +1213,21 @@ describe('sim worker narrative APIs', () => {
     expect(previewA.topPlayers.length).toBeGreaterThan(0);
     expect(teamRoster.mlb.some((player) => player.id === previewA.topPlayers[0]?.playerId)).toBe(true);
     expect(creation.userTeamId).toBe('por');
+  });
+
+  it('surfaces a realistic league-wide spread of setup preview records', () => {
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const wins = TEAMS.map((team) => parseProjectedWins(workerApi.getSetupPreview({
+      seed: 2124,
+      userTeamId: team.id,
+      difficulty: 'standard',
+    }).projectedRecord));
+
+    expect(wins.reduce((sum, value) => sum + value, 0)).toBe(TEAMS.length * 81);
+    expect(Math.max(...wins)).toBeGreaterThanOrEqual(94);
+    expect(Math.min(...wins)).toBeLessThanOrEqual(70);
+    expect(wins.filter((winTotal) => winTotal > 81).length).toBeGreaterThanOrEqual(10);
+    expect(wins.filter((winTotal) => winTotal < 81).length).toBeGreaterThanOrEqual(10);
   });
 
   it('initializes career mode and exposes the GM career ledger', () => {

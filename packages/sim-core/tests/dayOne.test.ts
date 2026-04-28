@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDayOneOrgReview,
   buildDayOneImpacts,
   buildDayOneNarrativePack,
   buildDayOneTeaser,
@@ -7,8 +8,11 @@ import {
   buildOpeningDayPlan,
   createGameRNG,
   createSeasonState,
+  GameRNG,
+  generateLeaguePlayers,
   pickDayOneCrisis,
   simulateDay,
+  TEAMS,
 } from '../src/index.js';
 import type { GeneratedPlayer } from '../src/player/generation.js';
 
@@ -220,6 +224,17 @@ describe('day one helpers', () => {
     expect(fallbackPack.owner.summary).toMatch(/Liberty Bells|club|franchise/i);
     expect(fallbackPack.agmPitches.walt_kowalski).toBeTruthy();
     expect(fallbackPack.teaser.aprilWatchItems).toHaveLength(3);
+  });
+
+  it('projects a zero-sum 32-team win distribution for Day One org reviews', () => {
+    const players = generateLeaguePlayers(new GameRNG(2124), TEAMS.map((team) => team.id));
+    const wins = TEAMS.map((team) => buildDayOneOrgReview(players, team.id).projectedWins);
+
+    expect(wins.reduce((sum, value) => sum + value, 0)).toBe(TEAMS.length * 81);
+    expect(Math.max(...wins)).toBeGreaterThanOrEqual(94);
+    expect(Math.min(...wins)).toBeLessThanOrEqual(70);
+    expect(wins.filter((winTotal) => winTotal > 81).length).toBeGreaterThanOrEqual(10);
+    expect(wins.filter((winTotal) => winTotal < 81).length).toBeGreaterThanOrEqual(10);
   });
 
   it('builds deterministic teaser copy from the same team and Day One choices', () => {
