@@ -237,6 +237,16 @@ describe('day one helpers', () => {
     expect(wins.filter((winTotal) => winTotal < 81).length).toBeGreaterThanOrEqual(10);
   });
 
+  it('keeps setup projections conservative instead of assigning many elite records', () => {
+    const players = generateLeaguePlayers(new GameRNG(2124), TEAMS.map((team) => team.id));
+    const wins = TEAMS.map((team) => buildDayOneOrgReview(players, team.id).projectedWins);
+
+    expect(Math.max(...wins)).toBeLessThanOrEqual(95);
+    expect(wins.filter((winTotal) => winTotal >= 95)).toHaveLength(1);
+    expect(wins.filter((winTotal) => winTotal >= 90).length).toBeLessThanOrEqual(6);
+    expect(wins.filter((winTotal) => winTotal >= 97)).toHaveLength(0);
+  });
+
   it('builds deterministic teaser copy from the same team and Day One choices', () => {
     const context = {
       teamId: 'hou',
