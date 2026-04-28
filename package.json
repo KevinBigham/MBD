@@ -1,7 +1,7 @@
 {
   "name": "mr-baseball-dynasty",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "A browser-based baseball franchise dynasty simulator",
   "packageManager": "pnpm@9.15.4",
   "engines": {

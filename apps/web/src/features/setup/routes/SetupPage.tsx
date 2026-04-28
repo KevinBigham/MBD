@@ -373,11 +373,37 @@ export default function SetupPage() {
         <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-info">Front Door</div>
-              <h1 className="mt-3 font-brand text-5xl text-dynasty-textBright">Welcome to Mr. Baseball Dynasty</h1>
+              <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-info">v1.0.0 Launch</div>
+              <h1 className="mt-3 font-brand text-5xl text-dynasty-textBright">Mr. Baseball Dynasty</h1>
               <p className="mt-4 max-w-3xl font-heading text-sm leading-6 text-dynasty-muted">
-                Build a franchise across decades. Draft, trade, develop, spend, and leave a legacy that survives every save slot.
+                A browser-based baseball franchise dynasty sim built for long saves, front-office decisions, and seasons that leave a record.
               </p>
+              <div className="mt-6 grid gap-5 font-heading text-sm leading-6 md:grid-cols-2 xl:grid-cols-4">
+                <div className="border-l border-accent-info/50 pl-4">
+                  <div className="font-semibold text-dynasty-textBright">What it is</div>
+                  <p className="mt-1 text-dynasty-muted">
+                    Draft, trade, develop, spend, and manage a club through years of roster pressure.
+                  </p>
+                </div>
+                <div className="border-l border-accent-warning/50 pl-4">
+                  <div className="font-semibold text-dynasty-textBright">What it is not</div>
+                  <p className="mt-1 text-dynasty-muted">
+                    Not a live MLB roster app, fantasy tool, betting product, or pay-to-win loop.
+                  </p>
+                </div>
+                <div className="border-l border-accent-success/50 pl-4">
+                  <div className="font-semibold text-dynasty-textBright">Who it is for</div>
+                  <p className="mt-1 text-dynasty-muted">
+                    Players who like contracts, prospects, arcs, and multi-season consequences.
+                  </p>
+                </div>
+                <div className="border-l border-dynasty-border pl-4">
+                  <div className="font-semibold text-dynasty-textBright">Start with New Dynasty</div>
+                  <p className="mt-1 text-dynasty-muted">
+                    Pick a slot, choose a club and mode, then enter Day One or quick-start into Season 1.
+                  </p>
+                </div>
+              </div>
             </div>
             <div className="flex flex-wrap gap-3">
               {isInitialized ? (
