@@ -30,7 +30,7 @@ function SimButton({ onClick, disabled, icon, label, shortLabel, tooltip }: SimB
       }}
       disabled={disabled}
       title={tooltip}
-      className="focus-ring flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-40"
+      className="focus-ring flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-dynasty-base transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-40"
       aria-label={tooltip ?? label}
     >
       {icon}
@@ -53,7 +53,7 @@ export function SimControls({
   const showRegularControls = flow?.canUseRegularSimControls ?? true;
 
   return (
-    <footer data-tour="sim-controls" className="border-t border-dynasty-border bg-dynasty-surface px-3 py-2 pb-2 md:px-4 md:pb-2">
+    <footer data-tour="sim-controls" className="border-t border-dynasty-border bg-dynasty-surface px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+4.5rem)] md:px-4 md:pb-2">
       <div className="flex items-center gap-2 md:gap-3">
         {/* Status display */}
         <div className="hidden min-w-[140px] md:block" aria-live="polite">
@@ -110,7 +110,7 @@ export function SimControls({
                 onFlowAction();
               }}
               disabled={isSimulating || !flow?.actionLabel}
-              className="focus-ring flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-40"
+              className="focus-ring flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-dynasty-base transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Zap className="h-4 w-4" />
               {flow?.actionLabel ?? 'Continue'}

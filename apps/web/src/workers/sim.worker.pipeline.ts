@@ -1,4 +1,4 @@
-import { AFFILIATE_LEVELS } from '@mbd/sim-core';
+import { AFFILIATE_LEVELS, toDisplayRating } from '@mbd/sim-core';
 import type { DevelopmentSetback, MinorLeagueSeasonLine, ProspectBond } from '@mbd/contracts';
 import type { FullGameState } from './sim.worker.helpers';
 import {
@@ -124,6 +124,10 @@ const ETA_ORDER = new Map([
   ['3+ seasons', 5],
 ]);
 
+function displayRatingFromOverall(value: number): number {
+  return value > 100 ? toDisplayRating(value) : value;
+}
+
 export function buildProspectPipelineView(
   state: FullGameState,
   teamId: string = state.userTeamId,
@@ -139,6 +143,8 @@ export function buildProspectPipelineView(
       const progression = getMinorLeagueProgressionView(state, player.id);
       const latestLine = progression.at(-1) ?? null;
       const ceiling = player.ceiling ?? player.overallRating;
+      const displayRating = displayRatingFromOverall(player.overallRating);
+      const displayCeiling = displayRatingFromOverall(ceiling);
 
       return {
         playerId: player.id,
@@ -147,14 +153,14 @@ export function buildProspectPipelineView(
         level: player.rosterStatus,
         levelLabel: formatMinorLevel(player.rosterStatus),
         age: player.age,
-        overallRating: player.overallRating,
-        ceiling,
+        overallRating: displayRating,
+        ceiling: displayCeiling,
         bondStrength: bond?.bondStrength ?? 0,
         eta: etaForProspect(
           player.rosterStatus,
           player.age,
-          player.overallRating,
-          ceiling,
+          displayRating,
+          displayCeiling,
           setback,
         ),
         trend: trendForSetback(setback),

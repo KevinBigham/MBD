@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, PlusCircle, Shield, Trash2, Trophy } from 'lucide-react';
 import { PageShell } from '@/shared/components/PageShell';
@@ -131,6 +131,7 @@ export default function SetupPage() {
   const [status, setStatus] = useState('');
   const [busySlot, setBusySlot] = useState<number | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const wizardRef = useRef<HTMLElement | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number>(2);
   const [seed, setSeed] = useState<number>(() => Date.now());
   const [teamId, setTeamId] = useState<string>('nym');
@@ -318,6 +319,14 @@ export default function SetupPage() {
     setStatus('');
   }
 
+  useEffect(() => {
+    if (!wizardOpen) return;
+    window.requestAnimationFrame(() => {
+      wizardRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      wizardRef.current?.focus();
+    });
+  }, [wizardOpen]);
+
   async function handleBeginDynasty() {
     if (!worker.isReady) {
       return;
@@ -418,7 +427,7 @@ export default function SetupPage() {
               <button
                 type="button"
                 onClick={openWizard}
-                className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover"
+                className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-dynasty-base hover:bg-accent-primaryHover"
               >
                 <PlusCircle className="h-4 w-4" />
                 New Dynasty
@@ -574,7 +583,7 @@ export default function SetupPage() {
         </section>
 
         {wizardOpen ? (
-          <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <section ref={wizardRef} tabIndex={-1} className="grid gap-6 outline-none xl:grid-cols-[0.95fr_1.05fr]" aria-label="New Dynasty setup">
             <div className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-success">New Dynasty</div>
               <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">Start in Slot {selectedSlot}</h2>
@@ -832,7 +841,7 @@ export default function SetupPage() {
                     type="button"
                     disabled={busySlot != null || !worker.isReady}
                     onClick={() => void handleBeginDynasty()}
-                    className="rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:bg-dynasty-muted disabled:text-dynasty-border"
+                    className="rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-dynasty-base hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:bg-dynasty-muted disabled:text-dynasty-border"
                   >
                     {busySlot != null
                       ? 'Creating...'

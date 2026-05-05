@@ -10,6 +10,7 @@ import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import { TickerBar } from './TickerBar';
 import { PressConferenceModal } from '@/features/press-room/components/PressConferenceModal';
 import { AssistantPanel } from '@/features/assistant/components/AssistantPanel';
+import type { AssistantSeasonSnapshot } from '@/features/assistant/data/assistantGuidance';
 import { TourProvider } from '@/shared/components/TourProvider';
 import { KeyboardShortcutsPanel } from '@/shared/components/KeyboardShortcutsPanel';
 import type { SeasonFlowState } from './seasonFlow';
@@ -31,7 +32,9 @@ function isEditableTarget(target: EventTarget | null): boolean {
   }
 
   return (
-    target.isContentEditable
+    target.closest('button, a, [role="button"], [role="menuitem"]') != null
+    || target.getAttribute('tabindex') != null
+    || target.isContentEditable
     || target.tagName === 'INPUT'
     || target.tagName === 'TEXTAREA'
     || target.tagName === 'SELECT'
@@ -229,6 +232,16 @@ export function AppLayout() {
 
   const activeReport = activeMoment ? null : (monthlyPulse?.pendingReport ?? null);
   const activeDecision = activeReport ? null : (monthlyPulse?.decisionQueue[0] ?? null);
+  const assistantSeasonSnapshot: AssistantSeasonSnapshot | null = seasonFlow
+    ? {
+      teamName,
+      standing: seasonFlow.standingsSnapshot.find((standing) => standing.teamId === userTeamId) ?? null,
+      daysUntilTradeDeadline: seasonFlow.daysUntilTradeDeadline,
+      phaseLabel: seasonFlow.phaseLabel,
+      detailLabel: seasonFlow.detailLabel,
+      seasonSummary: seasonFlow.seasonSummary,
+    }
+    : null;
   const ambientMode = resolveAmbientMode(
     location.pathname,
     isInitialized,
@@ -468,7 +481,7 @@ export function AppLayout() {
       {/* Main area: sidebar + content */}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main id="main-content" className="flex-1 overflow-y-auto p-4 pb-20 md:p-6 md:pb-6">
+        <main id="main-content" className="flex-1 overflow-y-auto p-4 pb-56 md:p-6 md:pb-6">
           <>
             {seasonFlow && (
               <SeasonFlowCard
@@ -495,7 +508,7 @@ export function AppLayout() {
         flow={seasonFlow}
       />
 
-      <AssistantPanel tickerFeed={tickerFeed} />
+      <AssistantPanel tickerFeed={tickerFeed} seasonSnapshot={assistantSeasonSnapshot} />
 
       {/* Command palette overlay */}
       <CommandPalette

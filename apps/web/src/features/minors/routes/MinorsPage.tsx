@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { RatingBadge } from '@/shared/components/RatingBadge';
 import PipelineView, { type ProspectPipelineView } from '../components/PipelineView';
 
 const ProspectBreakoutTracker = lazy(() => import('../components/ProspectBreakoutTracker'));
@@ -52,6 +53,7 @@ interface AffiliateOverviewView {
       level: string;
       levelLabel: string;
       overallRating: number;
+      letterGrade: string;
       ceiling: number;
       bondStrength: number;
       loyaltyModifier: number;
@@ -241,7 +243,7 @@ export default function MinorsPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-data text-lg text-dynasty-text">{prospect.overallRating}</div>
+                  <RatingBadge value={prospect.overallRating} grade={prospect.letterGrade} size="sm" />
                   <div className="font-data text-[11px] text-dynasty-muted">Bond {prospect.bondStrength}</div>
                 </div>
               </div>

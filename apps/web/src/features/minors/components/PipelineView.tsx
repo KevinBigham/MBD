@@ -1,4 +1,5 @@
 import type { ProspectPipelineView } from '@/workers/sim.worker.pipeline';
+import { RatingBadge } from '@/shared/components/RatingBadge';
 
 export type { ProspectPipelineView } from '@/workers/sim.worker.pipeline';
 
@@ -45,7 +46,7 @@ export default function PipelineView({
                     {prospect.position} | {prospect.levelLabel} | Age {prospect.age}
                   </div>
                 </div>
-                <span className="font-data text-sm text-dynasty-text">{prospect.overallRating}</span>
+                <RatingBadge value={prospect.overallRating} size="sm" />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className="rounded-full border border-accent-info/40 bg-accent-info/10 px-2 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-accent-info">

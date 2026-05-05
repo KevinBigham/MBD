@@ -5,6 +5,7 @@ import { Clock3, DollarSign, FileSignature, GripVertical, ShieldCheck } from 'lu
 import { PITCHER_POSITIONS } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { PageHelp } from '@/shared/components/PageHelp';
+import { RatingBadge } from '@/shared/components/RatingBadge';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { gradeBadgeColor } from '@/shared/lib/grade';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
@@ -17,6 +18,8 @@ interface PromotionCandidateView {
   playerId: string;
   playerName: string;
   position: string;
+  displayRating: number;
+  letterGrade: string;
   currentLevel: string;
   targetLevel: string;
   score: number;
@@ -34,6 +37,8 @@ interface DFACandidateView {
   playerName: string;
   position: string;
   age: number;
+  displayRating: number;
+  letterGrade: string;
   salary: number;
   score: number;
   reason: string;
@@ -76,6 +81,8 @@ interface AffiliateOverviewView {
     fromTeamName: string;
     toTeamName: string | null;
     status: string;
+    displayRating: number | null;
+    letterGrade: string | null;
     salary: number;
     priorityIndex: number | null;
   }>;
@@ -85,6 +92,8 @@ interface ExtensionCandidateView {
   playerId: string;
   playerName: string;
   position: string;
+  displayRating: number;
+  letterGrade: string;
   yearsRemaining: number;
   currentSalary: number;
   willingness: number;
@@ -421,7 +430,10 @@ export default function RosterPage() {
                               {candidate.position} | Age {candidate.age} | ${candidate.salary.toFixed(1)}M
                             </div>
                           </div>
-                          <div className="font-data text-sm text-accent-warning">Score {candidate.score}</div>
+                          <div className="flex flex-col items-end gap-2">
+                            <RatingBadge value={candidate.displayRating} grade={candidate.letterGrade} size="sm" />
+                            <div className="font-data text-sm text-accent-warning">Score {candidate.score}</div>
+                          </div>
                         </div>
                         <div className="mt-2 text-sm text-dynasty-muted">{candidate.reason}</div>
                         <button
@@ -608,7 +620,10 @@ export default function RosterPage() {
                         {candidate.position} | {minorLevelLabel(candidate.currentLevel)} to {minorLevelLabel(candidate.targetLevel)}
                       </div>
                     </div>
-                    <div className="font-data text-sm text-accent-success">Score {candidate.score}</div>
+                    <div className="flex flex-col items-end gap-2">
+                      <RatingBadge value={candidate.displayRating} grade={candidate.letterGrade} size="sm" />
+                      <div className="font-data text-sm text-accent-success">Score {candidate.score}</div>
+                    </div>
                   </div>
                   <div className="mt-2 text-sm text-dynasty-muted">{candidate.reason}</div>
                   <button
@@ -667,8 +682,11 @@ export default function RosterPage() {
                         <div className="mt-1 text-xs text-dynasty-muted">
                           {claim.status === 'pending' ? 'Pending claim' : claim.status.toUpperCase()} | {claim.fromTeamName}
                         </div>
-                        <div className="mt-2 text-xs text-dynasty-muted">
-                          ${claim.salary.toFixed(1)}M
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-dynasty-muted">
+                          {claim.displayRating != null ? (
+                            <RatingBadge value={claim.displayRating} grade={claim.letterGrade} size="sm" />
+                          ) : null}
+                          <span>${claim.salary.toFixed(1)}M</span>
                           {claim.priorityIndex ? ` | Priority ${claim.priorityIndex}` : ''}
                         </div>
                         {claim.status === 'pending' && (
@@ -811,8 +829,9 @@ export default function RosterPage() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="font-heading text-sm text-dynasty-text">{candidate.playerName}</div>
-                        <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                          {candidate.position} | {candidate.yearsRemaining} year control left
+                        <div className="mt-1 flex flex-wrap items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                          <span>{candidate.position} | {candidate.yearsRemaining} year control left</span>
+                          <RatingBadge value={candidate.displayRating} grade={candidate.letterGrade} size="sm" />
                         </div>
                         <StatLine
                           className="mt-3"

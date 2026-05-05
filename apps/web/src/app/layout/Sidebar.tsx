@@ -107,8 +107,7 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   );
 }
 
-/** Mobile bottom tab indices: Dashboard, Roster, Draft, Trade, League, More */
-const MOBILE_TAB_INDICES = [0, 2, 8, 9, 10];
+const MOBILE_TAB_ROUTES = ['/dashboard', '/roster', '/draft', '/trade', '/league/standings'] as const;
 
 function MobileTabLink({ item }: { item: NavItem }) {
   return (
@@ -153,7 +152,7 @@ function MobileMoreDrawer({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       <div className="flex-1" onClick={onClose} aria-hidden />
-      <div className="max-h-[70vh] overflow-y-auto rounded-t-xl border-t border-dynasty-border bg-dynasty-surface pb-safe">
+      <div className="max-h-[70vh] overflow-y-auto rounded-t-xl border-t border-dynasty-border bg-dynasty-surface pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
         <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
           <span className="font-heading text-sm font-semibold text-dynasty-textBright">Navigation</span>
           <button
@@ -194,11 +193,13 @@ function MobileMoreDrawer({
 
 export function MobileTabBar({ items }: { items: NavItem[] }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const tabItems = MOBILE_TAB_INDICES.map((i) => items[i]).filter((item): item is NavItem => item != null);
+  const tabItems = MOBILE_TAB_ROUTES
+    .map((route) => items.find((item) => item.to === route))
+    .filter((item): item is NavItem => item != null);
 
   return (
     <>
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-dynasty-border bg-dynasty-surface md:hidden" aria-label="Mobile navigation">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-dynasty-border bg-dynasty-surface pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Mobile navigation">
         {tabItems.map((item) => (
           <MobileTabLink key={item.to} item={item} />
         ))}

@@ -49,9 +49,30 @@ export interface AssistantGuidance {
   whenToUse: string;
   decision: string;
   ratingsFocus: string;
+  firstSessionCue?: string;
   suggestedAction: AssistantAction;
   deeperStrategy: string;
   mobileTip: string;
+}
+
+export interface AssistantStandingSnapshot {
+  teamName?: string;
+  wins: number;
+  losses: number;
+  division?: string;
+}
+
+export interface AssistantSeasonSnapshot {
+  teamName?: string;
+  standing: AssistantStandingSnapshot | null;
+  daysUntilTradeDeadline: number | null;
+  phaseLabel: string | null;
+  detailLabel: string | null;
+  seasonSummary: {
+    record: string;
+    divisionFinish: string;
+    playoffStatus: string;
+  } | null;
 }
 
 export interface AssistantNextActionContext {
@@ -60,6 +81,7 @@ export interface AssistantNextActionContext {
   day: number;
   season: number;
   mode: AssistantMode;
+  seasonSnapshot?: AssistantSeasonSnapshot | null;
 }
 
 export interface AssistantTickerItem {
@@ -84,6 +106,15 @@ export interface AssistantStoryContext {
   tickerFeed: readonly AssistantTickerItem[];
 }
 
+export interface AssistantStorySoFarContext {
+  phase: string;
+  day: number;
+  season: number;
+  gamesPlayed: number;
+  routeKey: AssistantRouteKey;
+  seasonSnapshot?: AssistantSeasonSnapshot | null;
+}
+
 function action(label: string, route: string, reason: string): AssistantAction {
   return { label, route, reason };
 }
@@ -96,6 +127,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it when starting a new club, continuing a long save, or branching a what-if timeline.',
     decision: 'Choose Quick Start if you want the front office fast; choose Full Day One if you want more context and role-play.',
     ratingsFocus: 'Team previews include player OVR so you can spot whether the club starts star-heavy, balanced, or rebuilding.',
+    firstSessionCue: 'Start with Quick Start, then let Mack point you from Dashboard to one decision page before you sim.',
     suggestedAction: action('Start or continue a save', '/', 'A live save unlocks the Assistant and route-aware guidance.'),
     deeperStrategy: 'For a first save, a balanced club is easier than a teardown. Hardcore players may prefer a weak roster with payroll room.',
     mobileTip: 'Save actions stack vertically on mobile; keep the Assistant collapsed until the first dashboard.',
@@ -107,6 +139,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use this flow once per new dynasty, or replay guidance from Settings if the opening choices blur together.',
     decision: 'Pick the style and early priorities that match the club you want to build.',
     ratingsFocus: 'Roster and staff grades summarize current ability; treat them as a first diagnosis, not a final plan.',
+    firstSessionCue: 'Finish Day One, then review the first Dashboard card before touching the sim controls.',
     suggestedAction: action('Finish Day One', '/onboarding', 'Completing onboarding hands you to the real dashboard with a prepared save.'),
     deeperStrategy: 'Your choices should create a mental model: win now, develop, spend carefully, or aggressively reshape the club.',
     mobileTip: 'Read one chapter at a time and use the primary CTA at the bottom of each panel.',
@@ -118,6 +151,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it before every sim chunk to decide whether the club is ready for more days to pass.',
     decision: 'Decide whether to sim, fix a roster issue, scout, check finances, review trades, or read the latest story.',
     ratingsFocus: 'Dashboard cards do not show every OVR, but roster health, farm, and trade intel all point you toward rating checks.',
+    firstSessionCue: 'Open one yellow or red Dashboard card, then visit the suggested route before simming a week.',
     suggestedAction: action('Review one red or yellow card', '/dashboard', 'Handle urgent cards before simming a week or month.'),
     deeperStrategy: 'A good rhythm is dashboard, one decision page, then sim. Avoid simming past deadlines without checking roster and budget.',
     mobileTip: 'Use the Assistant route link instead of hunting through More when a card points to a deeper page.',
@@ -129,6 +163,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it after injuries, trades, promotions, or any compliance alert.',
     decision: 'Choose who plays, who sits, who moves levels, and who leaves the roster.',
     ratingsFocus: 'OVR and grade show current talent; position, service time, options, stats, and role fit decide the actual move.',
+    firstSessionCue: 'Check compliance first, then open one player profile to see how OVR connects to role and risk.',
     suggestedAction: action('Check roster compliance', '/roster', 'A legal roster keeps simulation moving and prevents avoidable losses.'),
     deeperStrategy: 'Do not chase OVR blindly. A 61 OVR shortstop can be more useful than a 64 OVR bat without a defensive home.',
     mobileTip: 'Roster tables scroll horizontally; use Assistant explanations before making a dense mobile move.',
@@ -173,6 +208,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it before any meaningful player-specific decision.',
     decision: 'Decide whether to play, promote, trade, extend, bench, or build around the player.',
     ratingsFocus: 'Current OVR, grade bars, ceiling/floor, and tab-specific reports show talent, risk, and trajectory.',
+    firstSessionCue: 'Review the header OVR, then use Development or Scouting before making a player move.',
     suggestedAction: action('Check development and scouting tabs', '/players', 'Current OVR matters more when you understand where it is heading.'),
     deeperStrategy: 'Profile reading order: header OVR, role/position, recent stats, development trend, contract, then story/personality.',
     mobileTip: 'Use tabs as chapters; do not try to consume the full profile in one scroll.',
@@ -184,6 +220,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it before draft picks, signings, trades, and international spending.',
     decision: 'Decide who needs more looks and whose report you trust.',
     ratingsFocus: 'Scouted OVR, ceiling, floor, confidence, and scout conflicts tell you how much to believe the number.',
+    firstSessionCue: 'Scout one uncertain target instead of trying to solve the whole board at once.',
     suggestedAction: action('Scout one uncertain target', '/scouting', 'Better information prevents paying full price for guesswork.'),
     deeperStrategy: 'Low-confidence high-upside reports are portfolio bets; high-confidence average reports are depth bets.',
     mobileTip: 'Use the report panel for detail; tables are for narrowing the pool.',
@@ -206,6 +243,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it during offseason and pre-draft prep.',
     decision: 'Decide between current ability, ceiling, signability, need, and risk.',
     ratingsFocus: 'OVR is present value; ceiling is upside; confidence tells how much trust to place in the report.',
+    firstSessionCue: 'If the draft room is closed, treat this as planning: use Scouting now and come back in the offseason.',
     suggestedAction: action('Scout the top of your board', '/draft', 'Your best pick is usually the best blend of upside, confidence, and need.'),
     deeperStrategy: 'A contender can draft upside; a thin system may need safer players who reach useful OVR sooner.',
     mobileTip: 'Open details before picking; do not make draft decisions from one cramped row.',
@@ -217,6 +255,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it near the deadline, after injuries, during rebuilds, or when payroll needs a reset.',
     decision: 'Decide who is expendable and what return matches your competitive window.',
     ratingsFocus: 'OVR starts the value conversation; age, contract, control, role, scarcity, and GM personality finish it.',
+    firstSessionCue: 'If the market is closed, do not force it. Check Finance and roster needs so you are ready when trades reopen.',
     suggestedAction: action('Audit deadline value', '/trade', 'Know what you can buy or sell before the market closes.'),
     deeperStrategy: 'Never trade only from OVR. A cheaper 62 OVR player with control can be worth more than an expensive 68 rental.',
     mobileTip: 'Use smaller packages on mobile and inspect selected-player summaries carefully.',
@@ -294,6 +333,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it during offseason or when planning future payroll.',
     decision: 'Decide who is worth money, years, roster space, and opportunity cost.',
     ratingsFocus: 'OVR gives current talent; age, trend, role, demand, and contract length decide whether the deal ages well.',
+    firstSessionCue: 'If the market is closed, use Finance first. When offseason opens, filter by one roster need before offering.',
     suggestedAction: action('Filter by roster need', '/free-agency', 'The best signing solves a specific weakness.'),
     deeperStrategy: 'Hardcore rule: pay for prime years, avoid paying star money for decline years unless the title window is now.',
     mobileTip: 'Select one target to read the detail panel before offering.',
@@ -316,6 +356,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it before trades, free agency, extensions, and deadline buying.',
     decision: 'Decide whether the team can afford the next move now and later.',
     ratingsFocus: 'OVR is not enough; compare talent to salary, years, age, and roster window.',
+    firstSessionCue: 'Check future commitments before any trade, extension, or free-agent offer.',
     suggestedAction: action('Check future commitments', '/finance', 'A move that fits this year can still damage the next three seasons.'),
     deeperStrategy: 'Payroll flexibility is a strategic asset. Rebuilders should buy control; contenders can rent impact.',
     mobileTip: 'Focus on one budget section at a time; finance tables are dense.',
@@ -426,6 +467,7 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     whenToUse: 'Use it when the game feels too dense, too fast, too loud, or when you want help replayed.',
     decision: 'Decide how the interface should support your play style.',
     ratingsFocus: 'Ratings are not a Settings decision, but tutorial replay and density can make rating-heavy pages easier to read.',
+    firstSessionCue: 'Use Replay Tutorial or Assistant mode if the first route pass felt too dense.',
     suggestedAction: action('Review accessibility and tutorial controls', '/settings', 'A comfortable UI makes long saves easier to sustain.'),
     deeperStrategy: 'Hardcore players may prefer denser tables; newcomers should keep more breathing room until routes feel familiar.',
     mobileTip: 'Settings controls are mobile-safe; change one preference and test it before changing several.',
@@ -475,6 +517,18 @@ export function selectRouteGuidance(pathname: string): AssistantGuidance {
 }
 
 export function buildAssistantNextAction(context: AssistantNextActionContext): AssistantAction {
+  if (context.routeKey === 'draft' && context.phase !== 'offseason') {
+    return action('Scout before draft season', '/scouting', 'The draft room opens later; pro and amateur reports are the useful prep right now.');
+  }
+
+  if (context.routeKey === 'free-agency' && context.phase !== 'offseason') {
+    return action('Check payroll room', '/finance', 'Free agency opens in the offseason, but budget pressure is visible now.');
+  }
+
+  if (context.routeKey === 'trade' && context.phase !== 'regular') {
+    return action('Check payroll and roster needs', '/finance', 'The trade market is closed, so prepare the budget and need list first.');
+  }
+
   if (context.phase === 'offseason') {
     return action('Open offseason checklist', '/offseason', 'Offseason tasks are easiest when handled in sequence.');
   }
@@ -489,6 +543,15 @@ export function buildAssistantNextAction(context: AssistantNextActionContext): A
       : action('Review one trade target', '/trade', 'Start with one need instead of building a five-player package.');
   }
 
+  if (
+    context.phase === 'regular'
+    && context.seasonSnapshot?.daysUntilTradeDeadline != null
+    && context.seasonSnapshot.daysUntilTradeDeadline >= 0
+    && context.seasonSnapshot.daysUntilTradeDeadline <= 14
+  ) {
+    return action('Check trade and budget fit', '/trade', 'The deadline is close enough that roster value and payroll need a quick audit.');
+  }
+
   if (context.routeKey === 'dashboard' && context.phase === 'regular' && context.day <= 30) {
     return action('Scout early-season needs', '/scouting', 'Early reports give you time before the draft and deadline.');
   }
@@ -498,6 +561,55 @@ export function buildAssistantNextAction(context: AssistantNextActionContext): A
   }
 
   return ASSISTANT_GUIDANCE[context.routeKey].suggestedAction;
+}
+
+function formatRecord(standing: AssistantStandingSnapshot): string {
+  return `${standing.wins}-${standing.losses}`;
+}
+
+function winningPercentage(standing: AssistantStandingSnapshot): number {
+  const total = standing.wins + standing.losses;
+  return total > 0 ? standing.wins / total : 0.5;
+}
+
+function teamLabel(snapshot: AssistantSeasonSnapshot | null | undefined, standing: AssistantStandingSnapshot | null): string {
+  return standing?.teamName ?? snapshot?.teamName ?? 'Your club';
+}
+
+export function buildStorySoFar(context: AssistantStorySoFarContext): string[] {
+  const snapshot = context.seasonSnapshot ?? null;
+  const standing = snapshot?.standing ?? null;
+  const lines: string[] = [];
+
+  if (context.phase === 'preseason' || context.gamesPlayed === 0) {
+    lines.push(`Opening checkpoint: Season ${context.season} is still clean. Learn the roster, pick one need, then sim in small chunks.`);
+  } else if (standing) {
+    const pct = winningPercentage(standing);
+    const club = teamLabel(snapshot, standing);
+    const division = standing.division ? ` in the ${standing.division}` : '';
+    if (pct >= 0.58) {
+      lines.push(`${club} are ${formatRecord(standing)}${division}. A winning record makes the next move about protecting the window without draining the farm.`);
+    } else if (pct >= 0.47) {
+      lines.push(`${club} are ${formatRecord(standing)}${division}. This is the point where a .500-ish club chooses a lane before the market chooses for it.`);
+    } else {
+      lines.push(`${club} are ${formatRecord(standing)}${division}. If the climb is getting steep, protect payroll and prospects before chasing short-term noise.`);
+    }
+  } else if (context.phase === 'offseason' && snapshot?.seasonSummary) {
+    lines.push(`Last season finished ${snapshot.seasonSummary.record}: ${snapshot.seasonSummary.divisionFinish}, ${snapshot.seasonSummary.playoffStatus}. Start with obligations, then fix the biggest roster hole.`);
+  } else {
+    lines.push(`Season ${context.season}, Day ${context.day}: use this stop to turn the latest signal into one roster, scouting, or finance decision.`);
+  }
+
+  if (
+    context.phase === 'regular'
+    && snapshot?.daysUntilTradeDeadline != null
+    && snapshot.daysUntilTradeDeadline >= 0
+    && snapshot.daysUntilTradeDeadline <= 14
+  ) {
+    lines.push(`The deadline is ${snapshot.daysUntilTradeDeadline} days away. Check trade value and payroll before simming past the window.`);
+  }
+
+  return lines.slice(0, 2);
 }
 
 export function buildStoryCallback(context: AssistantStoryContext): AssistantStoryCallback | null {
