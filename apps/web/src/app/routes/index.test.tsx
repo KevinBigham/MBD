@@ -15,6 +15,10 @@ vi.mock('@/app/layout/AppLayout', async () => {
   };
 });
 
+vi.mock('@/features/assistant/components/AssistantPanel', () => ({
+  AssistantPanel: () => <div data-testid="setup-assistant">Assistant</div>,
+}));
+
 vi.mock('@/features/setup/routes/SetupPage', () => ({
   default: () => <div>Setup Route Ready</div>,
 }));
@@ -122,6 +126,7 @@ describe('AppRoutes', () => {
     });
 
     expect(container.textContent).toContain('Setup Route Ready');
+    expect(container.textContent).toContain('Assistant');
   });
 
   it('navigates to an in-session route without breaking nested layout rendering', async () => {
