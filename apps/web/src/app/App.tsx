@@ -25,7 +25,13 @@ export function App() {
         <BrowserRouter>
           <AppRoutes />
           <Toaster
+            closeButton
             position="bottom-right"
+            mobileOffset={{
+              bottom: 'calc(env(safe-area-inset-bottom) + 16rem)',
+              left: '0.75rem',
+              right: '0.75rem',
+            }}
             toastOptions={{
               style: {
                 background: highContrast ? HC_BASE : dynasty.surface,

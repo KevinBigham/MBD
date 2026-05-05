@@ -42,6 +42,8 @@ const mbdPreset = {
         'ceremony-glow': 'ceremonyGlow 2s ease-in-out infinite',
         'ceremony-slide-up': 'ceremonySlideUp 0.4s ease-out forwards',
         'stat-tick': 'statTick 0.3s ease-out',
+        'assistant-enter': 'assistantEnter 0.18s ease-out',
+        'assistant-pulse': 'assistantPulse 0.9s ease-out 1',
       },
       keyframes: {
         ceremonyFadeIn: {
@@ -63,6 +65,15 @@ const mbdPreset = {
         statTick: {
           '0%': { transform: 'scale(1.15)', color: 'rgba(249, 115, 22, 1)' },
           '100%': { transform: 'scale(1)', color: 'inherit' },
+        },
+        assistantEnter: {
+          '0%': { transform: 'translateY(4px) scale(0.96)', opacity: '0' },
+          '100%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+        },
+        assistantPulse: {
+          '0%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(34, 197, 94, 0.28)' },
+          '45%': { transform: 'scale(1.04)', boxShadow: '0 0 0 8px rgba(34, 197, 94, 0.12)' },
+          '100%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(34, 197, 94, 0)' },
         },
         shimmer: {
           '0%': { transform: 'translateX(-100%)' },

@@ -2,9 +2,9 @@ import { useEffect, useRef } from 'react';
 import { estimateProjectedWarRange, type MilestoneAlert } from '@mbd/sim-core';
 import { Badge, Card, CardContent, GradeBar, StatLine } from '@mbd/ui';
 import { Award, Quote } from 'lucide-react';
+import { RatingBadge } from '@/shared/components/RatingBadge';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { getAudioEngine } from '@/shared/lib/audio';
-import { gradeBadgeColor } from '@/shared/lib/grade';
 import {
   badgeVariantForStoryPhase,
   badgeVariantForTrajectory,
@@ -102,16 +102,8 @@ export default function ProfileHeader({
             ) : null}
           </div>
 
-          <div className="rounded-2xl border border-dynasty-border bg-dynasty-elevated px-6 py-5 text-right">
-            <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-              Display Grade
-            </div>
-            <div className="mt-2 font-data text-5xl font-bold text-dynasty-textBright">
-              {player.displayRating}
-            </div>
-            <div className={`mt-2 inline-flex rounded px-3 py-1 font-data text-xl font-bold ${gradeBadgeColor(player.letterGrade)}`}>
-              {player.letterGrade}
-            </div>
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-5 py-4 text-right">
+            <RatingBadge value={player.displayRating} grade={player.letterGrade} size="lg" />
           </div>
         </div>
 

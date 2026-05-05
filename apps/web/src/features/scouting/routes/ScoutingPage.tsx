@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { TEAMS, estimateProjectedWarRange, getTeamById } from '@mbd/sim-core';
 import { PageShell } from '@/shared/components/PageShell';
+import { RatingBadge } from '@/shared/components/RatingBadge';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
@@ -194,7 +195,7 @@ export default function ScoutingPage() {
   const workerReady = worker.isReady;
   const { userTeamId, isInitialized } = useGameStore();
 
-  const [activeView, setActiveView] = useState<'pro' | 'international' | 'conflicts'>('international');
+  const [activeView, setActiveView] = useState<'pro' | 'international' | 'conflicts'>('pro');
   const [scouts, setScouts] = useState<Scout[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PlayerDTO[]>([]);
@@ -483,12 +484,15 @@ export default function ScoutingPage() {
                     key={player.id}
                     type="button"
                     onClick={() => { void handleScout(player); setSearchResults([]); }}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-dynasty-surface"
+                    className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-dynasty-surface"
                   >
                     <span className="font-heading text-sm text-dynasty-text">
                       {player.firstName} {player.lastName}
                     </span>
-                    <span className="font-data text-xs text-dynasty-muted">{player.position} / Age {player.age}</span>
+                    <span className="flex items-center gap-2 font-data text-xs text-dynasty-muted">
+                      <RatingBadge value={player.displayRating} grade={player.letterGrade} size="sm" />
+                      <span>{player.position} / Age {player.age}</span>
+                    </span>
                   </button>
                 ))}
               </div>

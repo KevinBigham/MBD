@@ -4,6 +4,18 @@
 
 Ship with a production-safe CSS/SVG-style avatar first, then replace with generated raster assets when available.
 
+## V2 Shipped Asset Hook
+
+`apps/web/src/features/assistant/components/AssistantAvatar.tsx` now provides a production-safe inline SVG avatar with five expression states:
+
+- neutral
+- excited
+- warning
+- success
+- thinking / scouting
+
+The component is intentionally small, in-repo, and free of external image paths. Future portrait assets should replace the SVG behind the same expression enum.
+
 ## Placeholder Requirements
 
 - Small avatar for compact chip.

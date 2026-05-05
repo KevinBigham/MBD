@@ -12,6 +12,10 @@ const routeMockState = vi.hoisted(() => ({
   error: null as unknown,
 }));
 
+const toasterMockState = vi.hoisted(() => ({
+  props: [] as Array<Record<string, unknown>>,
+}));
+
 vi.mock('./routes', () => ({
   AppRoutes: () => {
     if (routeMockState.error) {
@@ -23,6 +27,13 @@ vi.mock('./routes', () => ({
 
 vi.mock('./providers/ErrorBoundary', () => ({
   ErrorBoundary: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+vi.mock('sonner', () => ({
+  Toaster: (props: Record<string, unknown>) => {
+    toasterMockState.props.push(props);
+    return null;
+  },
 }));
 
 (
@@ -70,6 +81,7 @@ describe('App', () => {
     });
     usePreferencesStore.getState().reset();
     routeMockState.error = null;
+    toasterMockState.props = [];
     document.documentElement.dataset.contrast = 'standard';
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -94,6 +106,22 @@ describe('App', () => {
     });
 
     expect(document.documentElement.dataset.contrast).toBe('high');
+  });
+
+  it('keeps persistent toasts dismissible and clear of mobile chrome', async () => {
+    await act(async () => {
+      root!.render(<App />);
+      await Promise.resolve();
+    });
+
+    expect(toasterMockState.props.at(-1)).toEqual(expect.objectContaining({
+      closeButton: true,
+      mobileOffset: expect.objectContaining({
+        bottom: 'calc(env(safe-area-inset-bottom) + 16rem)',
+        left: '0.75rem',
+        right: '0.75rem',
+      }),
+    }));
   });
 
   it('routes save-load render failures into recovery instead of the generic app shell', async () => {

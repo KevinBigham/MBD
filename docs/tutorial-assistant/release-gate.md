@@ -26,6 +26,15 @@ Date: 2026-05-05
 - [x] Mobile browser check verified Setup and Dashboard Assistant behavior at 390x844.
 - [x] Focus/Escape behavior exists for the expanded panel.
 - [x] Save schema remains v33.
+- [x] V2 scorecard exists.
+- [x] V2 first-session flow exists.
+- [x] Mack Mercer has expression-state avatar hooks.
+- [x] Assistant feedback loop exists without backend dependency.
+- [x] Story-so-far guidance is deterministic and save-safe.
+- [x] Highest-impact OVR/rating decision surfaces have visible badges or one-tap rating explanation.
+- [x] Closed-market Draft/Trade/Free Agency guidance is phase-aware.
+- [x] V2 full validation gauntlet is complete.
+- [x] V2 390x844 browser smoke is complete.
 
 ## Verification
 
@@ -38,19 +47,30 @@ Date: 2026-05-05
 - `PATH=/Users/tkevinbigham/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npx --yes pnpm@9.15.4 --filter @mbd/contracts test`: passed, 18 tests.
 - `PATH=/Users/tkevinbigham/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npx --yes pnpm@9.15.4 run verify:determinism`: passed, 3 tests.
 - Playwright mobile browser check at 390x844 on a static preview of `apps/web/dist`: passed. Verified Setup Assistant chip/panel, ratings explanation, quick-start save creation, Dashboard Assistant chip/panel after skipping the existing legacy tutorial modal, and route-aware Dashboard guidance.
+- V2 final `npx --yes pnpm@9.15.4 --filter @mbd/web typecheck`: passed.
+- V2 final `npx --yes pnpm@9.15.4 --filter @mbd/web test -- src/features/assistant src/app/routes/index.test.tsx src/app/layout/AppLayout.test.tsx src/app/App.test.tsx src/shared/components/RatingBadge.test.tsx`: passed, 33 tests.
+- V2 final `npx --yes pnpm@9.15.4 --filter @mbd/web test -- src/workers/sim.worker.test.ts`: passed, 103 tests.
+- V2 final `npx --yes pnpm@9.15.4 --filter @mbd/web build`: passed.
+- V2 final `npx --yes pnpm@9.15.4 --filter @mbd/contracts test`: passed, 18 tests.
+- V2 final `npx --yes pnpm@9.15.4 run verify:determinism`: passed, 3 tests.
+- V2 final `git diff --check`: passed.
+- V2 Playwright mobile browser smoke at 390x844 passed after clearing the local test service worker/cache. Verified Setup, Dashboard, Roster, Player Profile, Draft, Trade, Scouting, Finance, Free Agency, Settings, the corrected mobile bottom tabs, dismissible update toast, and the Assistant feedback form.
 
-## Remaining Blockers
+## Remaining Release Risks
 
-- **P0 — Repo health.** `.git/objects/pack/pack-0e3dc6...pack` is corrupt: `file` reports it as empty and `git verify-pack` reports `early EOF, pack is bad`. All in-pack history (~5,901 objects) is unreadable from this clone. Symptoms: `git status`, `git diff`, `git fsck` hang; `git rev-parse main HEAD` returns the same SHA so the branch is currently identical to `main`. **Fix before any commit / merge / PR**: re-clone fresh from `git@github.com:KevinBigham/MBD.git`, then copy the working-tree files for the Assistant feature and docs over the fresh checkout. Do NOT run destructive git commands (`git gc`, `git repack`, `rm -rf .git/objects/pack/`) without first preserving the working tree.
-- **P0 — Work is uncommitted.** Every file listed under "Changed Files" in `docs/goals/MBD_TUTORIAL_ASSISTANT_V1_PROGRESS.md` is untracked relative to `main`. Once the repo is healthy, stage with explicit paths (`git add apps/web/src/features/assistant docs/goals/MBD_TUTORIAL_ASSISTANT_V1_*.md docs/tutorial-assistant apps/web/src/app/layout/AppLayout.tsx apps/web/src/app/layout/AppLayout.test.tsx apps/web/src/app/routes/index.tsx apps/web/src/app/routes/index.test.tsx`) — never `git add -A`.
 - Manual closed-tester playtest is still recommended before public launch handoff.
-- The Assistant uses a CSS/icon avatar placeholder; generated bitmap portraits are deferred.
-- The Assistant explains OVR/ratings through guidance instead of adding new rating columns to already-dense tables. Future slices can add visual rating badges where playtest shows hunting/confusion.
-- Root typecheck/build under the default Node path hung before using the bundled Codex Node runtime. Use the bundled Node command form above on this machine.
-- During independent review on 2026-05-05, vitest and `vite build` hung when invoked from this shell with both bundled and Homebrew Node, while `tsc --noEmit` exited cleanly. The previously generated `apps/web/dist/` already contains the Assistant bundle, so the build is known to pass — but a clean re-run on a healthy repo is part of the merge gate.
+- Generated bitmap portraits are deferred; V2 ships a production-safe inline SVG/CSS avatar with expression hooks.
+- Incoming AI-generated trade offer labels still use reduced worker-side asset text in some contexts. V2 improves locally built trade packages and visible decision tables first.
+- Legacy guided-start, PageHelp, and Assistant can still coexist. Closed playtest should decide whether a V3 pacing pass should suppress older helper layers once Mack is open.
+
+## Historical V1 Recovery Note
+
+- The original `/Users/tkevinbigham/Documents/GitHub/MBD` checkout previously had a corrupt `.git` packfile and hung on basic git operations. V2 work moved to `/Users/tkevinbigham/Documents/GitHub/MBD-fresh`, which passed `git fsck --no-dangling` before edits.
+- PR #72 is still open, so V2 is intentionally stacked on `origin/goal/tutorial-assistant-v1` rather than `main`.
 
 ## Launch-Readiness Notes
 
 - V1 is shippable as a guidance layer: it is global, route-aware, persistent, dismissible, replayable, mobile-shaped, and save-safe.
 - It deliberately keeps existing TourProvider, PageHelp, ContextualHelp, GameAdvisor, and guided-start nudges intact.
 - No sim logic, save schema, RNG, or migration code was changed.
+- V2 adds product polish in the healthy `MBD-fresh` branch: expression avatar, story so far, first-session cues, display-scale rating badges, mobile/accessibility hardening, and copyable playtest feedback.

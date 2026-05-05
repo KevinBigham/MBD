@@ -26,6 +26,7 @@ import {
   generateInteractivePressConference,
   SCENARIO_LIBRARY,
   scoutPlayer,
+  toDisplayRating,
   toInternalRating,
   toLetterGrade,
   // Round 1 APIs
@@ -1456,6 +1457,14 @@ function formatMinorLevel(level: string): string {
   }
 }
 
+function displayRatingFromOverall(value: number): number {
+  return value > 100 ? toDisplayRating(value) : value;
+}
+
+function letterGradeFromOverall(value: number): ReturnType<typeof toLetterGrade> {
+  return toLetterGrade(value > 100 ? value : toInternalRating(value));
+}
+
 function buildDFARecommendations(teamId: string) {
   const s = requireState();
   const rosterState = s.rosterStates.get(teamId);
@@ -1468,6 +1477,7 @@ function buildDFARecommendations(teamId: string) {
     .filter((player) => player.teamId === teamId && fortyManSet.has(player.id))
     .map((player) => {
       const tradeValue = evaluatePlayerTradeValue(player);
+      const displayRating = displayRatingFromOverall(player.overallRating);
       const score = Math.round(
         Math.max(0, 82 - player.overallRating)
         + Math.max(0, player.age - 26) * 4
@@ -1481,6 +1491,8 @@ function buildDFARecommendations(teamId: string) {
         playerName: `${player.firstName} ${player.lastName}`,
         position: player.position,
         age: player.age,
+        displayRating,
+        letterGrade: letterGradeFromOverall(player.overallRating),
         salary: Number(player.contract.annualSalary.toFixed(1)),
         score,
         reason: `${levelLabel} with age ${player.age} and $${player.contract.annualSalary.toFixed(1)}M salary pressure.`,
@@ -1549,8 +1561,9 @@ function buildFarmReport(teamId: string) {
         position: player.position,
         level: player.rosterStatus,
         levelLabel: formatMinorLevel(player.rosterStatus),
-        overallRating: player.overallRating,
-        ceiling: player.ceiling ?? player.overallRating,
+        overallRating: displayRatingFromOverall(player.overallRating),
+        letterGrade: letterGradeFromOverall(player.overallRating),
+        ceiling: displayRatingFromOverall(player.ceiling ?? player.overallRating),
         bondStrength: prospectBond?.bondStrength ?? 0,
         loyaltyModifier: prospectBond?.loyaltyModifier ?? 0,
         milestones: prospectBond?.milestones.slice(-2) ?? [],
@@ -1651,6 +1664,8 @@ function buildAffiliateOverview(teamId: string) {
         fromTeamName: teamNameFromId(claim.fromTeamId),
         toTeamName: claim.toTeamId ? teamNameFromId(claim.toTeamId) : null,
         status: claim.status,
+        displayRating: player ? displayRatingFromOverall(player.overallRating) : null,
+        letterGrade: player ? letterGradeFromOverall(player.overallRating) : null,
         salary: Number(claim.salary.toFixed(1)),
         priorityIndex: priorityIndex >= 0 ? priorityIndex + 1 : null,
       };
@@ -2227,6 +2242,8 @@ export const queryApi = {
         playerName: player ? `${player.firstName} ${player.lastName}` : candidate.playerId,
         position: player?.position ?? 'UTIL',
         age: player?.age ?? 0,
+        displayRating: player ? displayRatingFromOverall(player.overallRating) : 0,
+        letterGrade: player ? letterGradeFromOverall(player.overallRating) : 'F',
       };
     });
   },
@@ -2640,7 +2657,8 @@ export const queryApi = {
           playerId: candidate.playerId,
           playerName: player ? `${player.firstName} ${player.lastName}` : candidate.playerId,
           position: player?.position ?? 'UTIL',
-          overallRating: player?.overallRating ?? 0,
+          overallRating: player ? displayRatingFromOverall(player.overallRating) : 0,
+          letterGrade: player ? letterGradeFromOverall(player.overallRating) : 'F',
           currentLevel: candidate.currentLevel,
           score: candidate.score,
           reason: candidate.reason,
@@ -3069,6 +3087,8 @@ export const queryApi = {
         name: `${p.firstName} ${p.lastName}`,
         position: p.position,
         rosterStatus: p.rosterStatus,
+        displayRating: displayRatingFromOverall(p.overallRating),
+        letterGrade: letterGradeFromOverall(p.overallRating),
         annualSalary: p.contract.annualSalary,
         yearsRemaining: p.contract.years,
         noTradeClause: p.contract.noTradeClause,

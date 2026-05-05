@@ -3,12 +3,15 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, StatLine } from '@mbd/
 import { DollarSign, TrendingDown, TrendingUp, Users, Briefcase } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { RatingBadge } from '@/shared/components/RatingBadge';
 
 interface ContractEntry {
   playerId: string;
   name: string;
   position: string;
   rosterStatus: string;
+  displayRating: number;
+  letterGrade: string;
   annualSalary: number;
   yearsRemaining: number;
   noTradeClause: boolean;
@@ -28,7 +31,7 @@ interface FinanceData {
   contracts: ContractEntry[];
 }
 
-type SortKey = 'name' | 'position' | 'annualSalary' | 'yearsRemaining';
+type SortKey = 'name' | 'position' | 'displayRating' | 'annualSalary' | 'yearsRemaining';
 type SortDir = 'asc' | 'desc';
 
 function formatDollars(millions: number): string {
@@ -98,6 +101,9 @@ export default function FinancePage() {
           break;
         case 'annualSalary':
           cmp = a.annualSalary - b.annualSalary;
+          break;
+        case 'displayRating':
+          cmp = a.displayRating - b.displayRating;
           break;
         case 'yearsRemaining':
           cmp = a.yearsRemaining - b.yearsRemaining;
@@ -275,6 +281,12 @@ export default function FinancePage() {
                     Pos{sortIndicator('position')}
                   </th>
                   <th
+                    className="cursor-pointer px-3 py-2 text-center font-heading text-xs uppercase tracking-wider text-dynasty-muted hover:text-dynasty-text"
+                    onClick={() => handleSort('displayRating')}
+                  >
+                    OVR{sortIndicator('displayRating')}
+                  </th>
+                  <th
                     className="cursor-pointer px-3 py-2 text-right font-heading text-xs uppercase tracking-wider text-dynasty-muted hover:text-dynasty-text"
                     onClick={() => handleSort('annualSalary')}
                   >
@@ -299,6 +311,9 @@ export default function FinancePage() {
                   <tr key={c.playerId} className="border-b border-dynasty-border/50 hover:bg-dynasty-elevated/30">
                     <td className="px-3 py-2 font-heading text-sm text-dynasty-text">{c.name}</td>
                     <td className="px-3 py-2 text-center font-data text-xs uppercase text-dynasty-muted">{c.position}</td>
+                    <td className="px-3 py-2 text-center">
+                      <RatingBadge value={c.displayRating} grade={c.letterGrade} size="sm" />
+                    </td>
                     <td className="px-3 py-2 text-right font-data text-sm text-dynasty-text">{formatDollars(c.annualSalary)}</td>
                     <td className="px-3 py-2 text-center font-data text-sm text-dynasty-text">{c.yearsRemaining}</td>
                     <td className="px-3 py-2 text-center">

@@ -16,6 +16,7 @@ import { useSearchParams } from 'react-router-dom';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
+import { RatingBadge } from '@/shared/components/RatingBadge';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { PageHelp } from '@/shared/components/PageHelp';
 import DeadlineDramaPanel from '../components/DeadlineDramaPanel';
@@ -363,7 +364,7 @@ function buildTradeAssetLabel(
       if (!player) {
         return asset.playerId;
       }
-      return `${player.firstName[0]}. ${player.lastName} · ${player.position}`;
+      return `${player.firstName[0]}. ${player.lastName} · ${player.position} · ${player.displayRating} OVR · ${player.letterGrade}`;
     }
     case 'draft_pick':
       return `R${asset.round} ${asset.season} · ${asset.originalTeamId.toUpperCase()} original`;
@@ -449,9 +450,11 @@ function PlayerRow({
         {player.firstName} {player.lastName}
       </td>
       <td className="px-2 py-1.5 font-data text-dynasty-muted">{player.position}</td>
-      <td className="px-2 py-1.5 text-right font-data text-dynasty-text">{player.displayRating}</td>
+      <td className="px-2 py-1.5 text-right">
+        <RatingBadge value={player.displayRating} grade={player.letterGrade} size="sm" />
+      </td>
       <td className="px-2 py-1.5 text-center">
-        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
+        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`} aria-hidden="true">
           {player.letterGrade}
         </span>
       </td>

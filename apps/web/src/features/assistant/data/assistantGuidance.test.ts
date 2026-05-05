@@ -3,6 +3,7 @@ import {
   ASSISTANT_GUIDANCE,
   REQUIRED_ASSISTANT_ROUTE_KEYS,
   buildAssistantNextAction,
+  buildStorySoFar,
   buildStoryCallback,
   resolveAssistantRouteKey,
   selectRouteGuidance,
@@ -51,6 +52,77 @@ describe('assistantGuidance', () => {
       season: 1,
       mode: 'hardcore',
     })).toMatchObject({ route: '/trade', label: 'Audit deadline value' });
+
+    expect(buildAssistantNextAction({
+      routeKey: 'dashboard',
+      phase: 'regular',
+      day: 92,
+      season: 2,
+      mode: 'newcomer',
+      seasonSnapshot: {
+        teamName: 'Tycoons',
+        standing: { wins: 42, losses: 40, division: 'East' },
+        daysUntilTradeDeadline: 10,
+        phaseLabel: 'Regular Season',
+        detailLabel: 'Deadline approaching',
+        seasonSummary: null,
+      },
+    })).toMatchObject({ route: '/trade', label: 'Check trade and budget fit' });
+
+    expect(buildAssistantNextAction({
+      routeKey: 'draft',
+      phase: 'regular',
+      day: 8,
+      season: 1,
+      mode: 'newcomer',
+    })).toMatchObject({ route: '/scouting', label: 'Scout before draft season' });
+
+    expect(buildAssistantNextAction({
+      routeKey: 'free-agency',
+      phase: 'regular',
+      day: 8,
+      season: 1,
+      mode: 'newcomer',
+    })).toMatchObject({ route: '/finance', label: 'Check payroll room' });
+  });
+
+  it('keeps first-session guidance short and actionable on core routes', () => {
+    for (const path of ['/', '/onboarding', '/dashboard', '/roster', '/players/example', '/scouting', '/draft', '/trade', '/free-agency', '/finance', '/settings']) {
+      const cue = selectRouteGuidance(path).firstSessionCue;
+      expect(cue, `${path} first-session cue`).toBeTruthy();
+      expect(cue!.length, `${path} first-session cue length`).toBeLessThanOrEqual(150);
+      expect(cue, `${path} first-session cue action`).toMatch(/Start|Finish|Open|Check|Review|Pick|Scout|Filter|Use|Set/i);
+    }
+  });
+
+  it('builds deterministic story-so-far lines from safe season context', () => {
+    expect(buildStorySoFar({
+      phase: 'regular',
+      day: 92,
+      season: 2,
+      gamesPlayed: 82,
+      routeKey: 'dashboard',
+      seasonSnapshot: {
+        teamName: 'Tycoons',
+        standing: { wins: 42, losses: 40, division: 'East' },
+        daysUntilTradeDeadline: 10,
+        phaseLabel: 'Regular Season',
+        detailLabel: 'Deadline approaching',
+        seasonSummary: null,
+      },
+    })).toEqual([
+      'Tycoons are 42-40 in the East. This is the point where a .500-ish club chooses a lane before the market chooses for it.',
+      'The deadline is 10 days away. Check trade value and payroll before simming past the window.',
+    ]);
+
+    expect(buildStorySoFar({
+      phase: 'preseason',
+      day: 1,
+      season: 1,
+      gamesPlayed: 0,
+      routeKey: 'dashboard',
+      seasonSnapshot: null,
+    })[0]).toContain('Opening checkpoint');
   });
 
   it('creates deterministic story callbacks from phase and ticker context', () => {

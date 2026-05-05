@@ -1002,6 +1002,8 @@ export function getExtensionCandidatesForTeam(
         playerName: `${player.firstName} ${player.lastName}`,
         position: player.position,
         teamId,
+        displayRating: toDisplayRating(player.overallRating),
+        letterGrade: toLetterGrade(player.overallRating),
         yearsRemaining: player.contract.years,
         currentSalary: player.contract.annualSalary,
         willingness: willingness.willingness,
