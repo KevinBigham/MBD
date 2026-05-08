@@ -13,3 +13,13 @@ test-results/
 storybook-static/
 packages/sim-core/playtest-output/*.md
 !packages/sim-core/playtest-output/sample-dynasty.md
+
+# Local-only agent state
+.playwright-cli/
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local-only agent state
+.playwright-cli/
+.claude/settings.local.json
+.claude/worktrees/
