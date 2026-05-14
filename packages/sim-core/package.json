@@ -13,6 +13,7 @@
     "test": "vitest run",
     "playtest": "MBD_PLAYTEST_DUMP=1 vitest run tests/playtestNarrativeDump.generate.ts",
     "playtest:sample": "PLAYTEST_SEED=2601 PLAYTEST_YEARS=10 PLAYTEST_OUT=playtest-output/sample-dynasty.md MBD_PLAYTEST_DUMP=1 vitest run tests/playtestNarrativeDump.generate.ts",
+    "playtest:calibrate": "MBD_PLAYTEST_DUMP=1 vitest run tests/calibrationDump.generate.ts",
     "build": "tsc -b"
   },
   "dependencies": {
