@@ -327,6 +327,24 @@ describe('save schema migration', () => {
     ]);
   });
 
+  it('parses a current-schema v33 fixture without applying a migration', () => {
+    const fixture = loadFixture('./fixtures/save/v33/core.json');
+
+    const parsed = parseGameSnapshot(fixture);
+
+    expect(parsed.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(fixture.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+  });
+
+  it('round-trips a current-schema snapshot through JSON without drift', () => {
+    const fixture = loadFixture('./fixtures/save/v33/core.json');
+
+    const first = parseGameSnapshot(fixture);
+    const second = parseGameSnapshot(JSON.parse(JSON.stringify(first)));
+
+    expect(second).toEqual(first);
+  });
+
   it('rejects malformed legacy fixtures during migration', () => {
     const fixture = loadFixture('./fixtures/save/v18/core.json');
     fixture.players[0].id = 7;
