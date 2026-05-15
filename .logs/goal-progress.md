@@ -541,3 +541,12 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/features/news/routes/NewsPage.tsx`, `apps/web/src/features/news/routes/NewsPage.test.tsx`
 - Scope decisions: Used the existing `relatedPlayerIds` field from `NewsItem` and resolved display labels through existing `worker.getPlayer`; unresolved or failed lookups fall back to the raw player ID. Moved related chips outside the clickable news-card button so player links are valid interactive elements.
 - Surprises: News already displayed related player IDs as plain text spans, so the milestone was a clean conversion to linked chips rather than a skip.
+
+## Milestone 9 — Trade Value on Player Profile
+
+- Commit: 0832a9b `feat(players): surface trade value on player profile`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `641 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/players/routes/PlayerProfilePage.tsx`, `apps/web/src/features/players/routes/PlayerProfilePage.test.tsx`, `apps/web/src/shared/hooks/useWorker.ts`
+- Scope decisions: Rendered a compact sidebar card rather than adding another tab. The hook now forwards the existing sim-worker `getPlayerTradeValue` query; no new worker query/action was added.
+- Surprises: The sim worker already exposed `getPlayerTradeValue`, but `useWorker` did not forward it, so wiring the profile required a hook wrapper.
