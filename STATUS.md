@@ -1,165 +1,105 @@
-# STATUS - Sprint 3.5 Hard-Reload State Survival
+# STATUS - Sprint 4 Front Office Marathon
 
-Status: **COMPLETE** for the hard-reload state survival mission. The active save shell state now persists to localStorage, app boot auto-loads the persisted save through the existing safe save/worker path, and hard-reloaded in-game routes render their route instead of falling back to Save Hub.
+Status: **PAUSED before Milestone 1**.
 
-## What shipped
+## Pause Condition
 
-`useGameStore` now persists only the allowed shell fields under `mbd:game-store@v1`: active save id/slot, user team id, season, day, phase, team name, GM name, and difficulty. `AppBootGate` wraps the router, shows a `Resuming save...` route-level skeleton while loading, calls `loadSaveSafely(activeSaveId)`, imports the snapshot through `worker.importSnapshot`, then calls `initializeGame(...)` before `AppLayout` can redirect. Missing save ids clear the stale persisted active-save fields and fall through to Save Hub; corrupt saves route through the existing Save Recovery dialog.
+Sprint 4 expected `worker.getOpenNegotiations()` / `worker.getNegotiation(id)` to expose open contract negotiations with salary asks, offered terms, deadlines, and player-agent context. The actual worker shape is `TradeNegotiationView`, backed by `apps/web/src/workers/sim.worker.trade.ts`, with trade packages (`offeringAssets`, `requestingAssets`, optional `counterOffer`), counterpart team, phase, rounds, dialogue, and expiration day.
 
-## Files changed
+That mismatch hits GOAL.md Pause Condition 1: a worker method returned an unexpected shape for the planned UI. I did not add worker methods, did not touch protected worker/sim/contracts/save files, and did not reinterpret the route as contract negotiations without Kevin/Claude direction.
 
-Current implementation diff is intentionally inside the Sprint 3.5 allowed scope plus proof artifacts:
+## What Shipped
+
+No Sprint 4 milestone shipped. This run completed read-first orientation only and stopped before implementation because the first required UI surface cannot honestly render the salary/contract fields named in GOAL.md from the existing worker methods.
+
+## Files Changed
 
 ```text
-.logs/goal-progress.md
 STATUS.md
-apps/web/docs/screenshots/sprint-3-5/*.png
-apps/web/src/app/App.test.tsx
-apps/web/src/app/App.tsx
-apps/web/src/app/boot/AppBootGate.test.tsx
-apps/web/src/app/boot/AppBootGate.tsx
-apps/web/src/shared/hooks/useGameStore.test.ts
-apps/web/src/shared/hooks/useGameStore.ts
+.logs/goal-progress.md
 ```
 
 Pre-existing local dirt left untouched:
 
 ```text
 .claude/launch.json
-.claude/scheduled_tasks.lock
 ```
 
-`git diff --stat origin/main..HEAD`:
+## Validations Run
+
+No milestone validation was run because no implementation milestone was completed. The pause was reached during read-first verification before any production code changes.
+
+Read/inspection commands included:
 
 ```text
- .logs/goal-progress.md                             | 121 +++++++
- GOAL.md                                            | 355 ++++++++++-----------
- STATUS.md                                          | 180 ++++++-----
- .../sprint-3-5/01-dashboard-before-hard-reload.png | Bin 0 -> 156026 bytes
- .../sprint-3-5/02-dashboard-after-hard-reload.png  | Bin 0 -> 139473 bytes
- .../sprint-3-5/03-news-before-hard-reload.png      | Bin 0 -> 126471 bytes
- .../sprint-3-5/04-news-after-hard-reload.png       | Bin 0 -> 103543 bytes
- .../sprint-3-5/05-roster-after-hard-reload.png     | Bin 0 -> 135451 bytes
- .../sprint-3-5/06-trade-after-hard-reload.png      | Bin 0 -> 150587 bytes
- .../sprint-3-5/07-draft-after-hard-reload.png      | Bin 0 -> 93716 bytes
- .../sprint-3-5/08-save-hub-after-delete-slot.png   | Bin 0 -> 135242 bytes
- .../09-missing-save-fallback-save-hub.png          | Bin 0 -> 138231 bytes
- .../sprint-3-5/10-corrupt-save-recovery-dialog.png | Bin 0 -> 89768 bytes
- .../11-dashboard-mobile-375-after-hard-reload.png  | Bin 0 -> 32785 bytes
- apps/web/src/app/App.test.tsx                      |   4 +
- apps/web/src/app/App.tsx                           |  33 +-
- apps/web/src/app/boot/AppBootGate.test.tsx         | 283 ++++++++++++++++
- apps/web/src/app/boot/AppBootGate.tsx              | 171 ++++++++++
- apps/web/src/shared/hooks/useGameStore.test.ts     |  72 +++++
- apps/web/src/shared/hooks/useGameStore.ts          | 118 ++++---
- 20 files changed, 1008 insertions(+), 329 deletions(-)
+git rev-parse --show-toplevel
+git status --short
+git log -1 --oneline
+sed -n '1,260p' GOAL.md
+sed -n '261,520p' GOAL.md
+sed -n '2520,2758p' apps/web/src/workers/sim.worker.queries.ts
+sed -n '160,225p' apps/web/src/workers/sim.worker.trade.ts
+sed -n '500,570p' apps/web/src/workers/sim.worker.trade.ts
+rg -n "getOpenNegotiations|getNegotiation|getInteractivePressConference|getPlayerTradeValue" apps/web/src packages
 ```
 
-## Validations run
+## Browser Evidence
 
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/shared/hooks/useGameStore.test.ts src/app/boot/AppBootGate.test.tsx
-```
+No browser smoke was run. Milestone 11 was not reached.
 
-Red proof: FAIL as expected before implementation. The store persistence test saw `persisted.version` as `undefined`, and `AppBootGate.tsx` did not exist.
+## Cross-Linking Coverage
 
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/shared/hooks/useGameStore.test.ts src/app/boot/AppBootGate.test.tsx src/app/App.test.tsx
-```
+| Surface | Status |
+| --- | --- |
+| Roster | Existing baseline already links player names |
+| Free Agency | Existing baseline not changed |
+| Minors | Existing baseline not changed |
+| Trade | Not started |
+| Draft | Not started |
+| News | Not started |
+| Scouting | Not started |
+| Stats | Not started |
 
-Latest focused result: PASS, 3 files / 8 tests.
+## Bundle Impact
 
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck
-```
+Not measured. No app bundle code changed.
 
-PASS. Turbo reported `Tasks: 9 successful, 9 total` in `5.418s`.
+## Worker Method Confirmation
 
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test
-```
+Existing worker methods found:
 
-PASS. Turbo reported `Tasks: 8 successful, 8 total` in `1m23.712s`. Web passed 101 files / 629 tests, sim-core passed 137 files / 1610 tests, contracts passed 1 file / 20 tests, and UI passed 1 file / 1 test. Existing non-fatal console noise remained: Recharts zero-size warnings, React `act(...)` warnings, service worker failure-test log, and the existing ScoutingPage mock-function log.
+- `getOpenNegotiations()` exists, but returns `TradeNegotiationView[]`.
+- `getNegotiation(negotiationId)` exists, but returns `TradeNegotiationView | null`.
+- `getInteractivePressConference()` exists and is already consumed by `AppLayout` for the press conference modal.
+- `getPlayerTradeValue(playerId)` exists and is currently unconsumed.
 
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build
-```
+Zero new worker methods were added. Zero worker action/query files were modified.
 
-PASS. Turbo reported `Tasks: 5 successful, 5 total` in `4.134s`; Vite built in `3.28s`; PWA precached 120 entries. Bundle budget stayed green. Main app chunk: `index-jENJPu8m.js` 205.74 KB raw / 58.38 KB gzip. Worker chunks remained `game-engine-core` 450.75 KB raw and `game-engine-story` 452.10 KB raw.
+## Sprint 3.5 Invariant
 
-## Browser evidence
+Not re-verified in browser because the sprint paused before new routes were added. No files in the Sprint 3.5 protected area were touched:
 
-Dev server:
+- `apps/web/src/shared/hooks/useGameStore.ts`
+- `apps/web/src/shared/lib/saveSystem.ts`
+- `apps/web/src/app/boot/AppBootGate.tsx`
+- `apps/web/src/features/save-recovery/**`
 
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev
-```
+## Known Limitations
 
-PASS at `http://localhost:5173/MBD/`.
+The GOAL.md product language and actual worker shape disagree. The current worker methods are trade-negotiation readers, not contract-negotiation readers. A read-only UI can be built for active trade negotiations from the existing shape, but it would not satisfy the specific salary/contract fields described in Milestone 1 without a worker/API change.
 
-Screenshots under `apps/web/docs/screenshots/sprint-3-5/`:
-
-- `01-dashboard-before-hard-reload.png` - dashboard loaded from Save Hub continue.
-- `02-dashboard-after-hard-reload.png` - `/MBD/dashboard` after hard reload, dashboard rendered.
-- `03-news-before-hard-reload.png` - News Inbox before hard reload.
-- `04-news-after-hard-reload.png` - `/MBD/news` after hard reload, News Inbox rendered.
-- `05-roster-after-hard-reload.png` - `/MBD/roster` after hard reload, Roster rendered.
-- `06-trade-after-hard-reload.png` - `/MBD/trade` after hard reload, Trade Center rendered.
-- `07-draft-after-hard-reload.png` - `/MBD/draft` after hard reload, Draft Room rendered.
-- `08-save-hub-after-delete-slot.png` - active Slot 1 deleted for missing-save fallback.
-- `09-missing-save-fallback-save-hub.png` - stale persisted id fell through to Save Hub.
-- `10-corrupt-save-recovery-dialog.png` - corrupt persisted save hit Save Recovery actions.
-- `11-dashboard-mobile-375-after-hard-reload.png` - 375x667 dashboard hard reload rendered dashboard with `scrollWidth=375`.
-
-Routes hard-reloaded successfully without Save Hub redirect:
-
-```text
-/MBD/dashboard
-/MBD/news
-/MBD/roster
-/MBD/trade
-/MBD/draft
-```
-
-localStorage before dashboard reload:
-
-```json
-{"state":{"activeSaveId":"save-slot-1","activeSaveSlot":1,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Mobile Smoke","difficulty":"standard"},"version":1}
-```
-
-localStorage after dashboard reload:
-
-```json
-{"state":{"activeSaveId":"save-slot-1","activeSaveSlot":1,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Mobile Smoke","difficulty":"standard"},"version":1}
-```
-
-Missing-save fallback cleared the stale active save id and rendered Save Hub. Corrupt-save fallback cleared the stale active save id and showed the existing Save Recovery action surface; post-recovery storage was:
-
-```json
-{"state":{"activeSaveId":null,"activeSaveSlot":null,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Smoke Tester","difficulty":"standard"},"version":1}
-```
-
-## Save Recovery integration
-
-Auto-resume uses `loadSaveSafely(activeSaveId)`. Non-missing `{ ok: false }` results call `SaveRecoveryProvider.showFailure(...)` with a retry callback, matching the manual Save Hub load path. `AppBootGate.test.tsx` covers the corrupt-save branch, and browser evidence `10-corrupt-save-recovery-dialog.png` confirms the recovery action surface appears for a malformed persisted save.
-
-## Known limitations
-
-- The in-app Browser read-only page scope did not expose `localStorage` or `indexedDB`, so exact storage snapshots and 375x667 viewport metrics were captured in a separate Playwright context against the same dev server.
-- Auto-resume intentionally does not persist or duplicate snapshots in localStorage. IndexedDB remains the source of truth for heavy save data.
-- If localStorage is disabled, the app behaves like the old flow and falls back to Save Hub on hard reload.
+The audit claim that `getInteractivePressConference()` has zero consumers is also stale: `apps/web/src/app/layout/AppLayout.tsx` already calls it and displays `PressConferenceModal`. A dedicated reachable Press Room surface could still be added, but that milestone was not reached.
 
 ## Risks
 
-- Browser storage edge cases remain the main risk: localStorage denied, IndexedDB blocked, quota pressure, or a stale persisted id after manual browser data cleanup. The implemented behavior clears stale active-save state and falls back to Save Hub.
-- Worker import failures now surface through Save Recovery as `storage_failed`; watch production telemetry/manual reports for any confusing copy if a future worker compatibility error is not truly storage-related.
+Continuing without clarification would likely create a misleading `/negotiations` product surface: it would either omit required contract fields or relabel active trade packages as contract negotiations. Adding the missing contract-negotiation query would violate the Sprint 4 protected scope and the "no new worker methods" rule.
 
-## Rollback notes
+## Rollback Notes
 
-Revert the Sprint 3.5 merge commit. No save schema bump, no migration, no worker/sim-core/contracts changes, no new dependencies. Existing `mbd:game-store@v1` localStorage entries become inert on the old code path; users can also remove that key manually if needed.
+No implementation rollback is needed. Revert this pause-status edit and the appended `.logs/goal-progress.md` pause note if Kevin wants the branch returned to the exact Sprint 4 contract starting point.
 
-## Next /goal
+## Exact Next /goal
 
 ```text
-/goal Implement Sprint 4: wire orphaned player-profile + open-negotiations endpoints. Read README.md, CHANGELOG.md, MASTER_CONTEXT.md, STATUS.md, GOAL.md, the player profile route/tests, trade negotiation route/tests, useWorker, and worker query/action surfaces first. Keep save schema v33 and do not touch sim-core/contracts unless GOAL.md explicitly allows it. Wire the existing worker endpoints into the player profile and open-negotiations UI so hard-reloaded long-running saves can inspect a player and resume active trade talks without dead controls. Add focused tests for player-profile endpoint wiring and open-negotiations resume behavior, then validate with pnpm typecheck + pnpm test + pnpm build and a dev-server browser smoke. Keep proof in .logs/goal-progress.md and finish with STATUS.md.
+/goal Clarify Sprint 4 Milestone 1 before implementation: should /negotiations consume the existing TradeNegotiationView shape from getOpenNegotiations/getNegotiation as an active trade-negotiations center, or should the GOAL be revised to use an existing contract-extension surface instead? Keep no-new-worker-methods and save schema v33 unless Kevin explicitly changes protected scope.
 ```

@@ -452,3 +452,20 @@ Checks to run for Milestone 1:
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck`
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test`
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build`
+
+---
+
+# Sprint 4 Goal Progress
+
+Workspace: `/Users/tkevinbigham/MBD-main`
+Branch: `goal/sprint-4-front-office`
+Date: 2026-05-14
+
+## Pause Before Milestone 1 - Worker Shape Mismatch
+
+- Commit: none; stopped before implementation.
+- typecheck: not run; no milestone code was completed.
+- test: not run; no milestone code was completed.
+- Files touched: `STATUS.md`, `.logs/goal-progress.md`.
+- Scope decisions: Did not add worker methods, did not touch protected worker/sim/contracts/save files, and did not reinterpret contract-negotiation fields from trade package data.
+- Surprises: `getOpenNegotiations()` and `getNegotiation(id)` return `TradeNegotiationView` trade-package shapes (`offeringAssets`, `requestingAssets`, `counterOffer`, `phase`, `dialogue`, `expiresAtDay`), not contract salary asks/offered terms. Also, `getInteractivePressConference()` already has an `AppLayout` consumer through `PressConferenceModal`, so the audit's zero-consumer claim is stale.
