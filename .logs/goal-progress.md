@@ -63,6 +63,113 @@ Checks to run for Milestone 1:
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test`
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build`
 
+## 2026-05-14 19:47 - Sprint 3 Implementation + Pause Gate
+
+Milestones completed:
+
+- Added lazy `/news` route under `AppLayout`.
+- Built `NewsPage` with worker-backed `getNews(100)`, newest-first sort, priority tie-break, All/Unread toggle, category select, loading/empty/error states, read/unread visuals, category/priority/tag/timestamp/entity chips, and mobile-survivable layout.
+- Added `markNewsRead(id)` wiring with optimistic local state, deterministic `mbd:news-read` browser event, and active-save persistence via `exportSnapshot()` + `saveGame/saveGameById` so the read flag is written to IndexedDB when an active save exists.
+- Added Sidebar `News` entry with lucide `Inbox` and TopBar unread badge that decrements on the local read event without polling.
+- Added tests for news rendering/sort, mark-read, active-save persistence, category filtering, route registration, Sidebar nav entry, and TopBar badge decrement.
+
+Files changed:
+
+- `apps/web/src/features/news/lib/newsEvents.ts`
+- `apps/web/src/features/news/routes/NewsPage.tsx`
+- `apps/web/src/features/news/routes/NewsPage.test.tsx`
+- `apps/web/src/app/routes/index.tsx`
+- `apps/web/src/app/routes/index.test.tsx`
+- `apps/web/src/app/layout/Sidebar.tsx`
+- `apps/web/src/app/layout/Sidebar.test.tsx`
+- `apps/web/src/app/layout/TopBar.tsx`
+- `apps/web/src/app/layout/TopBar.test.tsx`
+- `apps/web/docs/screenshots/sprint-3/*.png`
+- `.logs/goal-progress.md`
+
+Targeted validation:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/features/news/routes/NewsPage.test.tsx src/app/layout/TopBar.test.tsx` -> PASS. 2 files / 5 tests.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck` -> PASS. Turbo reported `Tasks: 9 successful, 9 total` in `5.853s` after the persistence change.
+
+Final validation:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck` -> PASS. Turbo reported `Tasks: 9 successful, 9 total` in `7.669s`.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test` -> PASS. Turbo reported `Tasks: 8 successful, 8 total` in `1m23.837s`; web passed 99 files / 624 tests, sim-core passed 137 files / 1610 tests, contracts passed 1 file / 20 tests, UI passed 1 file / 1 test. Existing non-fatal test noise remained: Recharts zero-size warnings, React `act(...)` warnings, service worker failure-test log, and existing ScoutingPage mock-function log.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build` -> PASS. Turbo reported `Tasks: 5 successful, 5 total` in `6.347s`; Vite built in `4.69s`; PWA precached 120 entries.
+
+Browser evidence:
+
+- Dev server command: `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev` -> PASS at `http://localhost:5173/MBD/`.
+- Browser flow: loaded a simmed Day 31 save, clicked Sidebar `News`, verified `/MBD/news`, applied category filter, opened an unread item, verified TopBar count changed from `News 100` to `News 99`, verified IndexedDB save-slot-2 news changed from `total=580 unread=580` to `total=580 unread=579`, and verified 375x667 mobile had `horizontalOverflow=false`.
+- Screenshots captured:
+  - `apps/web/docs/screenshots/sprint-3/01-dashboard-after-month.png`
+  - `apps/web/docs/screenshots/sprint-3/02-news-inbox-unread.png`
+  - `apps/web/docs/screenshots/sprint-3/03-news-category-filter.png`
+  - `apps/web/docs/screenshots/sprint-3/04-news-item-read.png`
+  - `apps/web/docs/screenshots/sprint-3/05-news-mobile-375.png`
+  - `apps/web/docs/screenshots/sprint-3/06-news-hard-reload-blocked.png`
+
+Pause condition hit:
+
+- Full browser hard reload at `/MBD/news` lands back on Save Hub (`http://localhost:5173/MBD`) instead of rendering `News Inbox`.
+- Root cause: `AppLayout` redirects to `/` whenever `useGameStore().isInitialized` is false after a page reload. The active save id/slot are not persisted across reload by the current app-level routing/store bootstrap.
+- Fixing this requires protected scope (`apps/web/src/app/App.tsx`, `apps/web/src/app/layout/AppLayout.tsx`, or `apps/web/src/shared/hooks/useGameStore.ts` / setup bootstrap), so the Sprint 3 Done When item `/MBD/news hard-reload survives` cannot be satisfied within this GOAL's allowed write scope.
+
+Milestone 1 validation:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck` -> PASS. Turbo reported `Tasks: 9 successful, 9 total` in `29ms`; all tasks were cached.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test` -> PASS. Turbo reported `Tasks: 8 successful, 8 total` in `1m21.584s`; web passed 97 files / 618 tests, sim-core passed 137 files / 1610 tests, contracts passed 1 file / 20 tests, UI passed 1 file / 1 test. Existing non-fatal console noise remained: Recharts sizing warnings, React `act(...)` warnings, service worker failure-test log, and ScoutingPage mock-function log.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build` -> PASS. Turbo reported `Tasks: 5 successful, 5 total` in `4.167s`; Vite built in `3.37s`; PWA precached 118 entries.
+
+## 2026-05-14 19:21 - Milestone 2 Red Tests
+
+Files changed:
+
+- `apps/web/src/features/news/routes/NewsPage.test.tsx`
+- `apps/web/src/app/layout/TopBar.test.tsx`
+- `apps/web/src/app/layout/Sidebar.test.tsx`
+- `apps/web/src/app/routes/index.test.tsx`
+
+Red test proof:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/features/news/routes/NewsPage.test.tsx src/app/layout/TopBar.test.tsx src/app/layout/Sidebar.test.tsx src/app/routes/index.test.tsx` -> FAIL as expected. Failures proved missing feature work: `NewsPage` import unresolved, `/news` redirected to dashboard, Sidebar had no `News` entry, and TopBar had no unread badge.
+
+## 2026-05-14 19:24 - Milestone 3 Route, List, Mark-Read, Sidebar, TopBar
+
+Files changed:
+
+- `apps/web/src/features/news/lib/newsEvents.ts`
+- `apps/web/src/features/news/routes/NewsPage.tsx`
+- `apps/web/src/features/news/routes/NewsPage.test.tsx`
+- `apps/web/src/app/routes/index.tsx`
+- `apps/web/src/app/routes/index.test.tsx`
+- `apps/web/src/app/layout/Sidebar.tsx`
+- `apps/web/src/app/layout/Sidebar.test.tsx`
+- `apps/web/src/app/layout/TopBar.tsx`
+- `apps/web/src/app/layout/TopBar.test.tsx`
+
+Implementation:
+
+- Added lazy `/news` route under `AppLayout` with `RouteErrorBoundary('News', ...)`.
+- Added worker-backed inbox page that calls `getNews(100)`, sorts by timestamp descending and priority descending for same timestamps, renders headline/body/category/priority/tag/timestamp/related chips/read state, and supports All/Unread plus category filtering.
+- Clicking an unread item expands it, flips local read state optimistically, calls `markNewsRead(id)`, and dispatches a local `mbd:news-read` event after the worker mutation resolves.
+- Added Sidebar `News` entry with lucide `Inbox`, leaving Press Room on `Newspaper`.
+- Added TopBar unread-count chip driven by `getNews(100)` and the local news-read event. It does not poll and does not subscribe to AppLayout's flow listener channel.
+
+Focused validation:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/features/news/routes/NewsPage.test.tsx src/app/layout/TopBar.test.tsx src/app/layout/Sidebar.test.tsx src/app/routes/index.test.tsx` -> PASS, 4 files / 9 tests.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/app/layout/AppLayout.test.tsx src/app/layout/TopBar.test.tsx` -> PASS, 2 files / 11 tests after fixing the TopBar worker-mock guard.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/app/layout/TopBar.test.tsx` -> PASS, 1 file / 1 test after draining the async badge update in the test.
+
+Full validation:
+
+- First `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test` run failed because `TopBar` subscribed to the same flow channel as `AppLayout` and existing AppLayout tests intentionally assert a single subscription. Root cause fixed by removing the TopBar flow subscription and guarding minimal worker mocks that do not include `getNews`.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck` -> PASS. Turbo reported `Tasks: 9 successful, 9 total` in `5.299s`.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test` -> PASS after fix. Turbo reported `Tasks: 8 successful, 8 total` in `1m24.004s`; web passed 99 files / 623 tests, sim-core passed 137 files / 1610 tests, contracts passed 1 file / 20 tests, UI passed 1 file / 1 test. Existing non-fatal console noise remains: Recharts sizing warnings, React `act(...)` warnings from existing route tests, service worker failure-test log, and ScoutingPage mock-function log.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build` -> PASS. Turbo reported `Tasks: 5 successful, 5 total` in `4.118s`; Vite built in `3.26s`; PWA precached 119 entries.
+
 Milestone 1 validation:
 
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck` -> PASS. Turbo reported `Tasks: 9 successful, 9 total` in `9.623s`.
@@ -180,3 +287,47 @@ Blocker / pause condition:
 - A hard reload at `/dashboard` fails in dev with: `The server is configured with a public base URL of /MBD/ - did you mean to visit /MBD/dashboard instead?`
 - The save itself is persisted and reloadable through Save Hub, but the Done When item requiring dashboard hard reload cannot be satisfied without fixing the app-level public-base routing. The likely fix is in `apps/web/src/app/App.tsx` (`BrowserRouter` basename) or route/base handling, which is outside this GOAL's allowed write scope.
 - This hits the pause condition: a protected file must be modified to make further progress.
+
+---
+
+# Sprint 3 Goal Progress
+
+Workspace: `/Users/tkevinbigham/MBD-main`
+Branch: `goal/sprint-3-news-inbox`
+Date: 2026-05-14
+
+## 2026-05-14 19:18 - Milestone 1 Inventory
+
+Files inspected:
+
+- Root orientation: `README.md`, `CHANGELOG.md`, `MASTER_CONTEXT.md`, `GOAL.md`, previous `STATUS.md`.
+- Data contract, read-only: `packages/contracts/src/schemas/narrative.ts` lines 1-60.
+- Worker surface, read-only: `apps/web/src/workers/sim.worker.queries.ts`, `apps/web/src/workers/sim.worker.actions.ts`, `apps/web/src/shared/hooks/useWorker.ts`.
+- App shell: `apps/web/src/app/routes/index.tsx`, `apps/web/src/app/layout/Sidebar.tsx`, `apps/web/src/app/layout/TopBar.tsx`.
+- Existing patterns: `PressRoomPage.tsx`, `HistoryPage.tsx`, `RecordWatchPage.tsx`, `RecentMomentsCard.tsx`, `PageShell.tsx`, `EmptyStatePanel.tsx`.
+- Settings reference: `SettingsPage.tsx` line 945 uses `diagnostics.queues.newsItems`.
+- News tests/reference: `packages/sim-core/tests/narrative.test.ts`, `packages/sim-core/src/narrative/newsFeed.ts`, and `apps/web/src/workers/sim.worker.test.ts` news cases.
+
+Repo state:
+
+- `git status --short --branch`: on `goal/sprint-3-news-inbox`; pre-existing modified file is `.claude/launch.json`.
+- `git log -1 --oneline`: `4589299 docs(goal): add Sprint 3 mission contract — News inbox`.
+
+Inventory findings:
+
+- `NewsItem` shape: `{ id, headline, body, priority: 1|2|3|4|5, category, tag?, timestamp, relatedPlayerIds, relatedTeamIds, read }`.
+- `NewsCategory` enum has 21 values: `injury`, `trade`, `signing`, `extension`, `qualifying_offer`, `coaching`, `draft`, `milestone`, `performance`, `standings`, `roster_move`, `development`, `rumor`, `rivalry`, `award`, `record`, `playoff`, `arbitration`, `holdout`, `press_conference`, `league_event`.
+- `getNews(limit = 50)` currently returns `getUnreadNews(requireState().news).slice(0, limit)`, so it is an unread queue, not the full historical news array. Sim-core sorts unread items by priority ascending first, then timestamp descending. The `/news` page will re-sort the returned items by timestamp descending and tie-break by priority descending per `GOAL.md`.
+- `markNewsRead(newsId)` sets `s.news = markAsRead(s.news, newsId)` and returns `void`. Because `useWorker` only notifies flow listeners when a mutation result includes `flowStateChanged`, this mutation will not automatically update layout state through `subscribeToFlowUpdates`.
+- Implementation assumption: keep a local page copy of returned news and flip the opened item to `read: true` optimistically, then dispatch a deterministic in-app news-read event so `TopBar` can decrement without polling or protected worker edits.
+- Reuse targets: `PageShell`, `EmptyStatePanel`, `Badge`, `Skeleton`, lucide `Inbox`, and the Press Room feed chip/timestamp patterns.
+
+Files changed:
+
+- `.logs/goal-progress.md`
+
+Checks to run for Milestone 1:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck`
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test`
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build`

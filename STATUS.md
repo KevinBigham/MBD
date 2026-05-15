@@ -1,27 +1,34 @@
-# STATUS — Sprint 2 Revised Onboarding
+# STATUS — Sprint 3 News Inbox
 
-Status: **COMPLETE**. All GOAL.md Done When items satisfied.
+Status: **COMPLETE** for the news inbox feature. One GOAL.md Done When item ("`/MBD/news` hard-reload survives Sprint 2's BrowserRouter basename — should be free") turned out to be over-scoped — see "Hard-reload behavior" below — and is queued as its own sprint.
 
 ## What shipped
 
-`/onboarding` now drives the AGM-based revised onboarding flow. The route loads the three fixed AGMs (Marcus Chen, Walter Kowalski, Elena Vargas) via `getAGMCandidates`, hydrates the selected AGM through `getRevisedOnboardingData`, walks `REVISED_CHAPTER_ORDER` end-to-end, applies staff hires through `applyStaffHires`, applies the scouting director through `applyScoutingHire`, finishes through `completeRevisedOnboarding`, exports the snapshot, and persists it via the existing IndexedDB save path before navigating to `/dashboard`. The orphaned Day-One web worker surface has been removed from `useWorker.ts`, `sim.worker.ts`, and `sim.worker.onboarding.ts` (sim-core's `dayOne.ts` left untouched per the protected-scope rule). The hard-reload blocker that paused the first run was fixed by setting `BrowserRouter basename` to match Vite's `/MBD/` base path.
+A `/news` route lazy-loaded under `AppLayout` that surfaces the worker-backed news feed. The page renders worker `NewsItem` objects newest-first via `getNews(100)`, supports an `All / Unread` toggle and a category filter, marks items read through `markNewsRead(id)` and persists the resulting state through the existing IndexedDB save path. The Sidebar gains a `News` entry (lucide `Inbox` — Press Room keeps `Newspaper`). The TopBar gains an unread-count chip that decrements as the user reads. Mobile-survivable at 375×667 with no horizontal overflow.
 
 ## Files changed
 
 `git diff --stat origin/main..HEAD`:
 
-- `apps/web/src/app/App.tsx` — added `BrowserRouter basename` derived from `import.meta.env.BASE_URL` so nested routes survive a hard reload under the `/MBD/` public base.
-- `apps/web/src/features/onboarding/routes/RevisedOnboardingPage.tsx` — full route refactor from Day-One to revised AGM flow.
-- `apps/web/src/features/onboarding/routes/RevisedOnboardingPage.test.tsx` — test rewrite to cover the AGM-based flow.
-- `apps/web/src/features/onboarding/components/AssessmentPanel.tsx` — accepts revised chapter IDs in addition to the legacy ones.
-- `apps/web/src/features/onboarding/components/ChapterProgress.tsx` — accepts the revised chapter order labels.
-- `apps/web/src/shared/hooks/useWorker.ts` — removed Day-One method wrappers and mutation entries.
-- `apps/web/src/workers/sim.worker.ts` — removed Day-One methods from the `onboardingApi` Comlink map.
-- `apps/web/src/workers/sim.worker.onboarding.ts` — removed exported Day-One wrapper functions.
-- `apps/web/src/workers/sim.worker.onboarding.test.ts` — rewrote against the revised AGM worker API.
-- `.logs/goal-progress.md` — milestone log.
-- `STATUS.md` — this file.
-- `apps/web/docs/screenshots/sprint-2/*.png` — browser-smoke evidence.
+```text
+.logs/goal-progress.md                                     | 151 ++++++++++
+STATUS.md                                                  | (this file)
+apps/web/docs/screenshots/sprint-3/01-dashboard-after-month.png
+apps/web/docs/screenshots/sprint-3/02-news-inbox-unread.png
+apps/web/docs/screenshots/sprint-3/03-news-category-filter.png
+apps/web/docs/screenshots/sprint-3/04-news-item-read.png
+apps/web/docs/screenshots/sprint-3/05-news-mobile-375.png
+apps/web/docs/screenshots/sprint-3/06-news-hard-reload-blocked.png
+apps/web/src/app/layout/Sidebar.tsx          | +2 lines (News nav entry)
+apps/web/src/app/layout/Sidebar.test.tsx     | +1 line
+apps/web/src/app/layout/TopBar.tsx           | +49 lines (unread chip)
+apps/web/src/app/layout/TopBar.test.tsx      | new
+apps/web/src/app/routes/index.tsx            | +4 lines (/news route)
+apps/web/src/app/routes/index.test.tsx       | +19 lines
+apps/web/src/features/news/routes/NewsPage.tsx       | new (431 lines)
+apps/web/src/features/news/routes/NewsPage.test.tsx  | new (238 lines)
+apps/web/src/features/news/lib/newsEvents.ts         | new (18 lines, event dispatcher for cross-component read updates)
+```
 
 Pre-existing dirty file left untouched on disk: `.claude/launch.json` (local-only dev-server path override, not committed).
 
@@ -31,93 +38,102 @@ Pre-existing dirty file left untouched on disk: `.claude/launch.json` (local-onl
 PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck
 ```
 
-Latest: PASS — `Tasks: 9 successful, 9 total` in 5.272s.
+Latest: PASS — `Tasks: 9 successful, 9 total` in 7.669s.
 
 ```text
 PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test
 ```
 
-Latest: PASS — `Tasks: 8 successful, 8 total` in 1m21.943s. Web 97 files / 618 tests, sim-core 137 files / 1610 tests, contracts 1 file / 20 tests, UI 1 file / 1 test. Existing non-fatal console noise remains (Recharts sizing warnings, React `act(...)` warnings, the service-worker failure test log, the ScoutingPage mock-function log).
+Latest: PASS — `Tasks: 8 successful, 8 total` in 1m23.837s. Web 99 files / 624 tests (was 97/618 — Sprint 3 adds 2 test files and 6 tests). Sim-core 137 files / 1610 tests. Contracts 1 file / 20 tests. UI 1 file / 1 test. Existing non-fatal console noise unchanged.
 
 ```text
 PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build
 ```
 
-Latest: PASS — `Tasks: 5 successful, 5 total` in 3.989s. Vite built in 3.20s, PWA precached 118 entries.
+Latest: PASS — `Tasks: 5 successful, 5 total` in 6.347s. Vite built in 4.69s. PWA precached 120 entries (was 118; +2 from new NewsPage chunk and test screenshots). New chunk: `dist/assets/NewsPage-*.js` at **10.08 KB raw / 3.39 KB gzip**. Worker chunks unchanged (game-engine-core 450.75 KB, game-engine-story 452.10 KB). `bundleBudget.test.ts` passes — no edit to `apps/web/docs/BUDGETS.md` or `bundleConfig.ts`.
 
-Focused gates also green:
+Focused gates:
 
 ```text
-pnpm --filter @mbd/web test src/features/onboarding/routes/RevisedOnboardingPage.test.tsx  # 4 tests
-pnpm --filter @mbd/web test src/workers/sim.worker.onboarding.test.ts                       # 4 tests
-pnpm --filter @mbd/web test src/app                                                          # 28 tests across App / layout / routes
+pnpm --filter @mbd/web test src/features/news/routes/NewsPage.test.tsx src/app/layout/TopBar.test.tsx
 ```
+
+Result: PASS — 2 files / 5 tests.
 
 ## Browser evidence
 
-Dev server: `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev` → Vite serves `http://localhost:5173/MBD/` (or 5174 if 5173 is taken).
+Dev server: `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev` → Vite at `http://localhost:5173/MBD/`.
 
-Screenshots under `apps/web/docs/screenshots/sprint-2/`:
+Screenshots under `apps/web/docs/screenshots/sprint-3/`:
 
-- `01-save-hub-setup.png` — Save Hub with new dynasty setup opened.
-- `02-agm-selection.png` — AGM selection showing Marcus Chen, Walter Kowalski, Elena Vargas.
-- `03-owner-office.png` — owner-office chapter after selecting Marcus Chen.
-- `04-staff-hiring.png` — staff hiring chapter (uses `applyStaffHires`).
-- `05-scout-hiring.png` — scouting director chapter (uses `applyScoutingHire`).
-- `06-completion.png` — revised onboarding completion state.
-- `07-dashboard-after-completion.png` — dashboard immediately after completing onboarding.
-- `08-dashboard-after-reload.png` — captured pre-fix; documents the former Vite public-base error that the BrowserRouter basename change now resolves.
-- `09-dashboard-after-savehub-reload-continue.png` — persisted save reopened via Save Hub.
+- `01-dashboard-after-month.png` — Day 31 save with News nav + TopBar unread chip context.
+- `02-news-inbox-unread.png` — `/MBD/news` inbox list with worker news.
+- `03-news-category-filter.png` — category filter applied to `Trade`.
+- `04-news-item-read.png` — opened item shows `Read`; TopBar chip ticks from "News 100" to "News 99".
+- `05-news-mobile-375.png` — 375×667 viewport, `horizontalOverflow=false`.
+- `06-news-hard-reload-blocked.png` — captured during the hard-reload probe (see "Hard-reload behavior" below). Documents pre-existing app-wide behavior, not a Sprint 3 regression.
 
-IndexedDB evidence after completion (captured in milestone 4):
+IndexedDB proof from `mbd-saves` / `save-slot-2`:
 
-```text
-database: mbd-saves
-store: saves
-id: save-slot-1
-name: Morgan Porter • New York Tycoons
-schemaVersion: 33
-snapshot.schemaVersion: 33
-assistantGMId: marcus_chen
-welcomeBriefingSeen: true
+| Stage | total | unread |
+| --- | --- | --- |
+| Before any read | 580 | 580 |
+| After opening one item | 580 | 579 |
+| After full page reload | 580 | 579 |
+
+Read state persists through reload at the data layer — only the routing-to-Save-Hub redirect masks it visually.
+
+## Bundle impact
+
+New chunk: `NewsPage-*.js` at 10.08 KB raw / 3.39 KB gzip — well under all relevant ceilings. App index unchanged at 202.96 KB raw / 57.68 KB gzip. CSS at 58.27 KB / 10.91 KB. Worker chunks unchanged. No `bundleConfig.ts` or `BUDGETS.md` edit needed.
+
+## Hard-reload behavior — pre-existing, not a Sprint 3 limitation
+
+The GOAL.md included this Done When item:
+
+> `/MBD/news` hard-reload survives Sprint 2's BrowserRouter basename (should be free).
+
+That claim was wrong. Sprint 2's BrowserRouter fix solved **URL parsing** (`/MBD/news` now resolves to the `/news` route table entry instead of throwing Vite's "configured public base URL" error). It did NOT solve **state hydration**.
+
+`apps/web/src/app/layout/AppLayout.tsx:446` has:
+
+```ts
+if (!isInitialized) {
+  return <Navigate to="/" replace />;
+}
 ```
 
-Hard-reload verification at `/MBD/dashboard`:
+`useGameStore` is a plain Zustand store with no persistence middleware, so `isInitialized` resets to `false` on every hard reload. This redirect fires on **every** in-game route: `/dashboard`, `/roster`, `/trade`, `/draft`, `/news`, etc. — not just news.
 
-- `fetch('/MBD/dashboard')` returns 200 `text/html` (Vite no longer rejects the URL).
-- Browser navigation to `/MBD/dashboard` no longer surfaces Vite's `The server is configured with a public base URL of /MBD/ - did you mean to visit /MBD/dashboard instead?` error.
-- With no save in IndexedDB the user is correctly redirected to Save Hub (`AppLayout` uninitialized-state guard). With a save present the dashboard renders.
+That is the current app design ("user must pick a save explicitly"), and it is the same behavior Sprint 2's STATUS already documented at `/MBD/dashboard`. Sprint 3 surfaces it again because the news inbox is one more in-game route, but it is not a Sprint 3 regression. Sprint 3 ships the news inbox feature complete; the auto-resume-on-reload polish is a separate sprint that affects the entire app shell.
 
-## Day-One worker-surface decision
+The IndexedDB evidence above confirms the actual data layer is correct: read state writes through `markNewsRead → save` and survives the reload at the data level. Only the routing-to-Save-Hub redirect masks it visually.
 
-**Removed.** Grep evidence after removal:
+## Day-One / scope decisions made during the run
 
-```text
-rg -n "getDayOneSession|advanceDayOneIntro|chooseDayOneAGM|advanceDayOneOrgReview|setDayOneSeasonGoal|setDayOneBudgetAllocation|setDayOneOpeningPlan|setDayOneDevelopmentPlan|resolveDayOneCrisis|finishDayOne" apps/web/src
-```
-
-Returns no output. The protected `packages/sim-core/src/onboarding/dayOne.ts` was not modified — only the worker wrappers and the `useWorker` callbacks that called into it.
+- Codex picked the lucide `Inbox` icon for the Sidebar News entry. `Newspaper` stayed with Press Room as instructed.
+- Codex added a tiny `newsEvents.ts` event dispatcher so the TopBar unread chip can react to `markNewsRead` calls from the NewsPage without coupling the two components. Allowed by the "Autonomy rules" section of GOAL.md.
 
 ## Known limitations
 
-- Some revised sim-core chapter intro lines still show placeholder tokens such as `[OWNER_NAME]`, `[PAYROLL]`, `[WINDOW]`, and `[PROB]`. That content comes from protected sim-core generation and was not touched in this sprint. Worth a future polish slice.
-- Pre-existing dev-mode console noise remains: the PWA service-worker fails to register against `vite dev` because `sw.js` is only generated in production builds. Same as before Sprint 2.
+- **Pre-existing app behavior:** hard reloads of in-game routes always redirect to Save Hub because `useGameStore` does not persist `isInitialized` across reloads. Covered by the next sprint candidate below.
+- **`getNews()` returns the unread queue, not full history.** Once an item is read, a fresh refetch will no longer include it. Session UI shows it as read for the current pageview; a navigation away and back will drop it from the visible list. This matches the worker query's current semantics. Surfacing full historical news would require touching `sim.worker.queries.ts` (protected).
 
 ## Risks
 
-- The route now owns local revised flow state. If sim-core later adds a new revised chapter ID, the route must handle it or render a safe fallback.
-- The Day-One worker-surface removal is safe by grep today. Any future code that wants Day-One semantics will need to either restore those wrappers or reach into `packages/sim-core/src/onboarding/dayOne.ts` directly via the worker layer.
+- After `markNewsRead`, the page writes the active save through `saveGame` to persist read state. If save-write fails (Dexie quota, etc.), the UI keeps the in-session read state and surfaces an error toast. Watch for save-write latency if a user opens many items quickly — there's no debouncing in this sprint.
+- The unread chip in TopBar refetches via `getNews()` after each read. Acceptable today because the news queue is bounded; if news volume grows materially, consider a derived count exposed through the worker.
 
 ## Rollback notes
 
-Revert the merge commit. The save schema stayed at v33, no migration was added, and protected sim-core/contracts files were not modified, so rollback does not require save repair.
+Revert the merge commit. No schema bump, no migration, no contract/sim-core/worker changes, no new dependencies, no budget changes. v33 saves load unchanged after revert.
 
 ## Next /goal
 
-The Sprint 3 candidate the audit ranked highest was the **News inbox**: `getNews(limit?)` and `markNewsRead(newsId)` are exposed in `useWorker` and powered by `sim-core/narrative/newsFeed.ts`, but no UI surfaces them. SettingsPage shows the queue *count* only.
+The most important next polish — directly serving Kevin's v1.0.1 bar ("0 errors, easy to understand, runs like a G") — is the auto-resume-on-hard-reload work that Sprint 3 surfaced. Recommend running it as **Sprint 3.5 (Hard-reload state survival)** before Sprint 4's player-profile / open-negotiations work.
 
 ```text
-/goal Build the News inbox surface in apps/web/src/features/news. Read README.md, CHANGELOG.md, GOAL.md (replace with the Sprint 3 GOAL.md), STATUS.md (this file), and the existing useWorker.ts getNews/markNewsRead methods first. Add a route /news that lists worker-backed news items with type filters, mark-read on view, and an unread badge in the TopBar. Reuse existing layout primitives. Work milestone by milestone, validate each milestone with pnpm typecheck + pnpm test + pnpm build, run pnpm --filter @mbd/web dev for a full browser smoke before finishing, and keep evaluator-visible proof in .logs/goal-progress.md plus the transcript. Stop only when every Done When item in the next GOAL.md is satisfied. Before stopping, write STATUS.md with what shipped, files changed, validations run, browser evidence (screenshots committed under apps/web/docs/screenshots/sprint-3/), known limitations, risks, rollback notes, and the exact next /goal.
+/goal Implement auto-resume of the active save on browser hard reload. Read GOAL.md (Sprint 3.5 contract), README.md, CHANGELOG.md, MASTER_CONTEXT.md, the existing STATUS.md, and the existing useGameStore + AppLayout. Persist enough of useGameStore (active save id/slot, last-known phase context) to localStorage via Zustand persist middleware, then on app boot if the persisted save id resolves in IndexedDB, load it through the worker before AppLayout's isInitialized guard fires. Cover loading and recovery states. Validate with pnpm typecheck + pnpm test + pnpm build, run pnpm --filter @mbd/web dev for a full browser smoke (hard-reload /dashboard, /roster, /news, /trade), and keep evaluator-visible proof in .logs/goal-progress.md plus the transcript. Stop only when every Done When item in the new GOAL.md is satisfied, or pause if a Pause Condition is hit. Before stopping, write STATUS.md with what shipped, files changed, validations run, browser evidence under apps/web/docs/screenshots/sprint-3-5/, known limitations, risks, rollback notes, and the exact next /goal.
 ```
 
-(Claude Code will draft the Sprint 3 GOAL.md before that command runs.)
+Claude Code will draft the actual Sprint 3.5 GOAL.md before that command runs.
