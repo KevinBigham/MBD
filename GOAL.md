@@ -1,286 +1,426 @@
-# GOAL.md — Sprint 3.5: Hard-reload state survival
+# GOAL.md — Sprint 4: Front Office Marathon
 
 > Single-mission contract for Codex (or any one-shot coding agent).
 > Format: Goal Packet v2.0 — Kevin's one-shot ritual.
-> Built on top of Sprint 3 ([PR #76](https://github.com/KevinBigham/MBD/pull/76)). Will rebase onto `main` once Sprint 3 merges.
-
-## Mission
-
-When a user hard-reloads any in-game route (`/dashboard`, `/roster`, `/trade`, `/draft`, `/news`, etc.), they are currently redirected to the Save Hub because `apps/web/src/app/layout/AppLayout.tsx:446` checks `useGameStore().isInitialized` and `useGameStore` is a plain Zustand store with no persistence. The user's read state, unread count, and current view are preserved in IndexedDB but **invisible behind the redirect**.
-
-Fix it. Persist enough of `useGameStore` to `localStorage` (via Zustand `persist` middleware) so the active save id/slot survive a reload. On app boot, if the persisted save id resolves to a real IndexedDB record, auto-load it through the worker and call `initializeGame()` **before** `AppLayout`'s guard fires. While auto-loading, show a loading state. On error, clear the persisted state and fall through to Save Hub as today.
-
-Stop only when every item in **Done When** is satisfied or a **Pause Condition** is hit.
-
-## Background
-
-Sprint 3's STATUS.md identified this as pre-existing app-wide behavior surfaced during news-inbox testing:
-
-> `AppLayout` returns `<Navigate to="/" replace />` whenever `useGameStore().isInitialized` is false after a browser reload. `useGameStore` is a plain Zustand store with no persistence middleware, so `isInitialized` resets to `false` on every hard reload. This redirect fires on **every** in-game route — `/dashboard`, `/roster`, `/trade`, `/news` — not just news.
-
-Sprint 2's `BrowserRouter basename` fix solved URL parsing (`/MBD/news` now resolves to the `/news` route). Sprint 3.5 solves the next layer up: **state hydration**, so the resolved route actually renders.
-
-IndexedDB save state is already correct — the bug is purely in the boot sequence.
-
-## Baseline
-
-- This branch is built on top of Sprint 3 (`goal/sprint-3-news-inbox`, PR #76). When Sprint 3 merges to `main`, **rebase this branch onto the new main** before continuing: `git fetch origin && git rebase origin/main`.
-- Save schema: `CURRENT_GAME_SNAPSHOT_VERSION = 33`. Do not bump.
-- Test counts post-Sprint-3: web 99 files / 624 tests; sim-core 137/1610; contracts 1/20; UI 1/1.
-
-## Read first
-
-Inspect these before editing. Do not skip.
-
-**Repo orientation:**
-- `README.md`, `CHANGELOG.md`, `MASTER_CONTEXT.md`
-- `GOAL.md` (this file)
-- Sprint 3's `STATUS.md` — confirms the architectural diagnosis
-
-**Core state + boot path:**
-- `apps/web/src/shared/hooks/useGameStore.ts` — the Zustand store you'll add `persist` middleware to
-- `apps/web/src/app/App.tsx` — the BrowserRouter shell where boot logic lands (Sprint 2 added the `basename`; build on top of that)
-- `apps/web/src/app/layout/AppLayout.tsx` — confirms the `if (!isInitialized) return <Navigate to="/" replace />` redirect at line 446 and the worker-readiness gate above it
-- `apps/web/src/app/routes/index.tsx` — confirms `/` is `SetupPage` and every in-game route is nested under `AppLayout`
-- `apps/web/src/shared/lib/saveSystem.ts` — `loadSaveSafely`, `inspectSaveById`, `listSaves`, the Dexie schema. This is the I/O layer you'll call during boot.
-- `apps/web/src/shared/hooks/useWorker.ts` — the worker bridge. You'll use `importSnapshot` (or whatever the canonical "load this save into the worker" method is — confirm from current code) to hydrate the worker before flipping `isInitialized`.
-- `apps/web/src/features/setup/routes/SetupPage.tsx` — the Save Hub path that today calls `loadGameById` → worker hydrate → `initializeGame`. Read it to understand the **exact** sequence the auto-resume must mimic.
-
-**Save recovery (DO NOT break):**
-- `apps/web/src/features/save-recovery/SaveRecoveryProvider.tsx`
-- `apps/web/src/features/save-recovery/SaveLoadErrorBoundary.tsx`
-- `apps/web/src/features/save-recovery/SaveRecoveryDialog.tsx`
-- `apps/web/src/features/save-recovery/__tests__/` (if present)
-
-The recovery dialog already handles corrupt-save cases. Auto-resume must use the same path (`loadSaveSafely → SaveRecoveryProvider.showFailure on `{ ok: false }`) so corrupt saves don't crash the auto-load.
-
-**Tests to study:**
-- `apps/web/src/app/App.test.tsx`
-- `apps/web/src/app/layout/AppLayout.test.tsx`
-- `apps/web/src/features/setup/routes/SetupPage.test.tsx` — covers continue-existing-save; your auto-resume should produce the same end-state without a manual click
-- `apps/web/src/shared/lib/saveSystem.test.ts`
-
-## Product contract
-
-Build the smallest complete fix that:
-
-1. **Persists**: `useGameStore` exposes `activeSaveId`, `activeSaveSlot`, `userTeamId`, `season`, `day`, `phase`, `teamName`, `gmName`, `difficulty` to `localStorage` via Zustand's `persist` middleware. **Do not persist** `isInitialized`, `isSimulating`, `playerCount`, `gamesPlayed`, or any function-typed fields — those derive from the worker after hydration.
-2. **Auto-resumes on boot**: When the React tree mounts, if `useGameStore.activeSaveId` is non-null AND a save with that id exists in IndexedDB, kick off an auto-load. The auto-load:
-   - Calls `loadSaveSafely(activeSaveId)`.
-   - On `{ ok: true }`, calls `worker.importSnapshot(save.snapshot)` (or the equivalent canonical method), then `useGameStore.initializeGame(...)` with the post-import worker state.
-   - On `{ ok: false }`, hands off to `SaveRecoveryProvider.showFailure` (same path Save Hub uses).
-   - On any worker/IndexedDB error, clears the persisted state and falls through to Save Hub. Toast the user briefly.
-3. **Loading state**: While the auto-load is in flight, show a route-level "Resuming…" skeleton (NOT the Save Hub). When done, the user lands on the route they hard-reloaded into. If they hard-reloaded `/news`, they end up on `/news`. If they hard-reloaded `/dashboard`, they end up on `/dashboard`.
-4. **First-time and post-clear behavior unchanged**: If `useGameStore.activeSaveId` is null (no prior save, or persisted state cleared), the app boots to Save Hub as today.
-5. **SaveHub still wins manual loads**: When the user navigates to `/` and clicks a save, the existing flow runs and updates the persisted store. No regression to the manual continue path.
-
-Prefer:
-- working over broad — get one hard-reload route (e.g. `/news`) surviving end-to-end before declaring victory across all routes;
-- composition over invention — reuse `loadSaveSafely`, `SaveRecoveryProvider`, existing worker methods;
-- no new dependencies;
-- the smallest diff that satisfies the contract.
-
-## Allowed write scope
-
-Write only inside:
-- `apps/web/src/shared/hooks/useGameStore.ts` — add `persist` middleware, declare the persisted slice, write the persistence config
-- `apps/web/src/app/App.tsx` — add the boot-time auto-resume hook + a route-level loading state. May extract a small `<AppBootGate>` wrapper component if the diff stays small
-- `apps/web/src/app/layout/AppLayout.tsx` — minimal change only if necessary (e.g. to render `<Outlet />` once `isInitialized` flips). If you can avoid touching this file, prefer that.
-- New files under `apps/web/src/app/boot/` (e.g. `useAutoResumeSave.ts`, `AppBootGate.tsx`) if needed
-- Test files matching the above paths
-- `.logs/goal-progress.md`
-- `STATUS.md` (rewrite for Sprint 3.5)
-- `GOAL.md` (this file — minor edits only)
-- `apps/web/docs/screenshots/sprint-3-5/` — browser smoke evidence
-
-## Protected scope
-
-Do not modify:
-- `packages/sim-core/**`
-- `packages/contracts/**`
-- `apps/web/src/workers/**` — worker methods stay as-is; you call them, you don't change them
-- `apps/web/src/features/save-recovery/**` — the recovery dialog already does the right thing; auto-resume must integrate with it, not modify it
-- `apps/web/src/features/setup/**` — Save Hub's manual continue path stays unchanged
-- `apps/web/src/features/news/**` — Sprint 3 just shipped; preserve it
-- `apps/web/src/features/onboarding/**` — Sprint 2 just shipped; preserve it
-- `apps/web/src/shared/lib/saveSystem.ts` — read-only; persistence helpers already exist
-- `apps/web/src/shared/lib/audio.ts`, `logger.ts`, `webVitals.ts`, etc.
-- `.github/**`, `package.json` (root), `turbo.json`, `pnpm-workspace.yaml`
-- `apps/web/src/build/bundleConfig.ts`, `apps/web/docs/BUDGETS.md`
-
-## Non-negotiables
-
-- **Schema v33.** No bump, no migration.
-- **Determinism.** No `Math.random()`. No new RNG paths.
-- **No new dependencies.** Zustand's `persist` middleware ships with the `zustand` package already in `apps/web/package.json` — use `import { persist, createJSONStorage } from 'zustand/middleware'`.
-- **No emoji.** lucide-react icons only. Bloomberg Terminal aesthetic.
-- **Do not delete or weaken tests** to make checks pass. New tests required for the auto-resume flow.
-- **Save Recovery must still trigger** on corrupt saves during auto-resume.
-- **Manual Save Hub flow must be unchanged.** Existing SetupPage.test.tsx assertions still pass.
-- **localStorage namespace**: use a stable key (e.g. `mbd:game-store@v1`). If you ever need to invalidate the persisted shape, bump the suffix — do **not** silently change it.
-- **Privacy**: persist only the minimal fields above. Do NOT persist the full snapshot, player data, or any large blob in localStorage — IndexedDB owns the heavy data.
-- **No commits on `main`.** Work only on `goal/sprint-3-5-hard-reload-survival`.
-- **No `git add -A`.**
-
-## Milestone loop
-
-For each milestone: inspect → state checkpoint → smallest change → smallest validation → fix → log to `.logs/goal-progress.md`.
-
-Suggested milestones:
-
-1. **Inventory.** Read every file in "Read first." Document the exact sequence Save Hub uses today to continue a save (which worker method hydrates the snapshot? what order does `initializeGame` get called in?). Map the auto-resume to the same sequence.
-2. **Persist `useGameStore`.** Add `persist` middleware with `createJSONStorage(() => localStorage)`. `partialize` to only the persisted slice listed above. Bump the version key if needed. Confirm `useGameStore` still works in tests with a localStorage mock.
-3. **Auto-resume hook.** New `useAutoResumeSave` (or in-file hook in `App.tsx`) that runs once at app mount: read `activeSaveId` from the store, if present call `loadSaveSafely`, then hydrate the worker, then call `initializeGame`. Handle the `SaveRecoveryProvider.showFailure` case. Handle generic errors by clearing `activeSaveId` from the store.
-4. **Boot loading state.** While the auto-resume is in flight, render a small route-level "Resuming…" skeleton. Do NOT show the Save Hub. Do NOT show the dashboard half-loaded. When done, the route renders normally — react-router preserves the URL across the hydration because we never navigated.
-5. **Tests.** Add:
-   - `App.test.tsx` (or a new `useAutoResumeSave.test.ts`): with a persisted `activeSaveId` and a mock save in IndexedDB, the app hydrates and renders the in-game route, not Save Hub.
-   - With a persisted `activeSaveId` but no IndexedDB record, the persisted state clears and the user lands on Save Hub.
-   - With a corrupt save, the SaveRecoveryDialog appears.
-   - Without a persisted `activeSaveId`, behavior is unchanged (Save Hub).
-6. **Verify gate.** `pnpm typecheck`, `pnpm test`, `pnpm build`.
-7. **Browser smoke.**
-   - Start dev server.
-   - Complete onboarding into Slot 1.
-   - Land on dashboard.
-   - Hard reload `/MBD/dashboard` → should land back on dashboard (not Save Hub).
-   - Navigate to `/news`, hard reload `/MBD/news` → should land back on news.
-   - Navigate to `/roster`, hard reload → roster.
-   - Navigate to `/trade`, hard reload → trade.
-   - Clear IndexedDB → hard reload `/MBD/dashboard` → should land on Save Hub (graceful recovery).
-   - Capture screenshots for each scenario.
-8. **STATUS.md.** Rewrite for Sprint 3.5.
-
-Each `.logs/goal-progress.md` entry: timestamp, milestone, files changed, checks run, result, blocker or next step.
-
-## Validation loop
-
-Workspace root commands:
-
-```
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev
-```
-
-Targeted:
-
-```
-pnpm --filter @mbd/web test src/app/App.test.tsx
-pnpm --filter @mbd/web test src/app/layout/AppLayout.test.tsx
-pnpm --filter @mbd/web test src/features/setup/routes/SetupPage.test.tsx
-pnpm --filter @mbd/web test src/shared
-```
-
-Browser flow (full smoke):
-
-1. `pnpm --filter @mbd/web dev`
-2. Open `http://localhost:5173/MBD/`
-3. Complete a new dynasty through onboarding → land on `/dashboard`
-4. Hard-reload `/MBD/dashboard` → expect dashboard renders, not Save Hub
-5. Navigate to `/news` → confirm the unread count and items match pre-reload state
-6. Hard-reload `/MBD/news` → expect news renders, not Save Hub
-7. Repeat for `/MBD/roster`, `/MBD/trade`, `/MBD/draft`
-8. In DevTools, clear IndexedDB for `mbd-saves` → hard-reload → expect graceful fallback to Save Hub
-9. In DevTools, set `localStorage` for `mbd:game-store@v1` to point at a non-existent save id → hard-reload → expect persisted state clears + Save Hub
-10. At 375×667 viewport, hard-reload `/MBD/dashboard` → no layout shift larger than a brief skeleton
-
-## Evaluator-visible proof
-
-Before declaring done, the transcript and `STATUS.md` must contain:
-
-- Exact commands run and pass/fail
-- Output summaries (test counts, build duration, bundle sizes — bundle should be unchanged or tiny)
-- Browser steps walked with screenshots under `apps/web/docs/screenshots/sprint-3-5/`
-- A `git diff --stat origin/main..HEAD` showing changes stayed inside allowed scope
-- localStorage snapshot before/after a reload (key + minimal value, no PII)
-- Confirmation that SaveHub manual continue still works (existing SetupPage.test.tsx assertions still pass)
-
-## Autonomy rules
-
-When picking between:
-- (a) a `useAutoResumeSave` hook called inside `App.tsx`
-- (b) a wrapping `<AppBootGate>` component
-
-Pick whichever has the smaller diff in tests too. Both are valid.
-
-When designing the "Resuming…" loading state, match the existing Suspense fallback (`LoadingFallback` in `apps/web/src/app/routes/index.tsx` — the MBD pulse + "Loading route..." pattern). Don't invent new spinners.
-
-When a persisted save id doesn't resolve in IndexedDB, **clear** `useGameStore` (call a new `clearActiveSave` action or `setActiveSave(null, null)`). Do NOT keep stale ids around.
-
-When a worker error happens during hydration, route through `SaveRecoveryProvider.showFailure` with a synthetic `{ ok: false, reason: 'storage_failed', detail: ... }` so the user sees the same dialog they'd see from a manual load.
-
-Log assumptions in `.logs/goal-progress.md` and continue.
-
-## Pause conditions
-
-Pause and write the blocker into `STATUS.md` only when:
-
-- The auto-resume requires a sim-core change.
-- The auto-resume requires a worker-side method that doesn't exist.
-- A persistence-shape change requires bumping save schema (it shouldn't — localStorage is independent of `GameSnapshot`).
-- The same validation fails 3 times after serious repair attempts.
-- A protected file must be modified beyond `AppLayout.tsx`'s minimal touch (and even that touch should be avoided if possible).
-- Save Hub's manual continue path breaks and you can't restore parity in 2 fix attempts.
-
-## Done when
-
-All of the following are true:
-
-- `useGameStore` persists to `localStorage` via Zustand `persist` with a versioned key.
-- On app boot, if a persisted `activeSaveId` resolves in IndexedDB, the app auto-loads it and renders the user's previous route — **NOT** Save Hub.
-- A "Resuming…" loading state shows while auto-load is in flight.
-- Corrupt saves trigger `SaveRecoveryDialog` (unchanged from today's manual-load behavior).
-- Missing saves clear the persisted state and fall through to Save Hub.
-- The Save Hub manual continue path is unchanged (existing tests pass).
-- Hard reload at `/MBD/dashboard`, `/MBD/news`, `/MBD/roster`, `/MBD/trade` all render the route, not Save Hub.
-- `pnpm typecheck` clean (all tasks).
-- `pnpm test` clean (no test deleted or weakened; new tests added for the auto-resume flow).
-- `pnpm build` clean (bundleBudget.test.ts passes; budget journal untouched).
-- Browser smoke walked end-to-end with screenshots under `apps/web/docs/screenshots/sprint-3-5/`.
-- `.logs/goal-progress.md` contains the milestone log.
-- `STATUS.md` exists with the final report.
-- Branch is on `goal/sprint-3-5-hard-reload-survival`.
-
-## Final report
-
-`STATUS.md` (rewrite from scratch) must include, in order:
-
-1. **What shipped** — one paragraph summary.
-2. **Files changed** — `git diff --stat origin/main..HEAD` output.
-3. **Validations run** — exact commands and results.
-4. **Browser evidence** — screenshots under `apps/web/docs/screenshots/sprint-3-5/` with captions; localStorage key/value before & after; a list of routes you hard-reloaded successfully.
-5. **Save Recovery integration** — confirmation that corrupt saves still hit the dialog.
-6. **Known limitations** — anything out of scope you noticed.
-7. **Risks** — what could break in production and what to watch (e.g. quota, localStorage disabled in private mode).
-8. **Rollback notes** — revert the merge commit; localStorage entries will be ignored on the old code path.
-9. **Next /goal** — exact paste-ready prompt for **Sprint 4** (the audit's original next pick: wire orphaned player-profile + open-negotiations endpoints). Claude Code will draft that GOAL.md after Sprint 3.5 merges.
-
-## Branch + commit hygiene
-
-- Branch: `goal/sprint-3-5-hard-reload-survival` (built on top of `goal/sprint-3-news-inbox`). When Sprint 3 merges to `main`, rebase this branch.
-- Stage specific files; never `git add -A`.
-- Commit prefixes: `feat(app):` for the boot logic, `feat(store):` for `useGameStore` persistence, `test(app):` for tests, `docs(app):` for docs.
-- Co-author trailer on each commit:
-
-  ```
-  Co-Authored-By: Codex GPT-5 <noreply@openai.com>
-  ```
-
-- When done, push and open PR titled `Sprint 3.5 — Hard-reload state survival`. Body summarizes against this GOAL.md and links Sprint 3 PR #76 for lineage.
-
-## Out of scope (do not attempt this sprint)
-
-- Granular player-profile endpoints (Sprint 4)
-- Open-negotiations resume pane (Sprint 4)
-- Press conference unification (Sprint 5)
-- Invariant runtime checks in DEV (Sprint 6)
-- Moving narrative generation off main thread (Sprint 6)
-- Team logo SVGs (Sprint 7)
-- Anything that touches `packages/sim-core/` or `packages/contracts/`
-- Service worker changes
-- Adding new dependencies
+> Built on top of Sprint 3.5 ([PR #77](https://github.com/KevinBigham/MBD/pull/77)). No rebase required — branches from `main` at `93b3f5b`.
 
 ---
 
-*End of GOAL.md. Companion `/goal` slash command lives in Sprint 3.5's PR description and in Kevin's conversation with Claude Code.*
+## Mission
+
+The audit found a cluster of fully-implemented worker queries with **zero UI consumers**. They are not stubs, they are real, returning real data, sitting orphaned. Sprint 4 wires them all into a coherent Front Office experience and finishes the player-profile cross-linking that Roster, Free Agency, and Minors already have but Trade, Draft, News, Scouting, and Stats lack.
+
+This is a **marathon sprint**: 12 sequential milestones, each independently shippable. Work them in order. Commit after each. Validate after each. If you finish all 12 with time and quality to spare, the **Bonus Round** at the bottom of this file has a clearly-scoped Sprint 4.5 candidate you may pick up — but only after closing Sprint 4 cleanly.
+
+The four orphaned worker surfaces:
+
+1. **`getOpenNegotiations()`** — list of open contract negotiations league-wide. Zero consumers.
+2. **`getNegotiation(negotiationId)`** — detail view for a single negotiation. Zero consumers.
+3. **`getInteractivePressConference()`** — generates a structured press conference (questions, owner tone, prospect references) for the user's team. Zero consumers.
+4. **`getPlayerTradeValue(playerId)`** — returns `PlayerTradeValue` for any player. Zero consumers.
+
+The five cross-linking gaps (Roster/Free Agency/Minors already pass, these still ship plain text):
+
+5. **Trade page** — player names in trade-block lists are not clickable.
+6. **Draft page** — draft prospects are not clickable.
+7. **News page** — news items referencing players are not clickable.
+8. **Scouting page** — player names are not clickable.
+9. **Stats / leaderboards** — leaderboard entries are not clickable.
+
+By the time you finish, every place a player is named in the app should link to `/players/:playerId`, the Front Office should have a real Negotiations Center, the Interactive Press Conference should be reachable from the Press Room, and Trade Value should appear on the Player Profile.
+
+---
+
+## Read-First (do this before writing anything)
+
+1. `README.md`
+2. `CHANGELOG.md`
+3. `MASTER_CONTEXT.md` (architecture)
+4. The previous `STATUS.md` (Sprint 3.5 — Hard-reload state survival)
+5. This `GOAL.md`
+6. `apps/web/src/workers/sim.worker.queries.ts` — focus on `getOpenNegotiations`, `getNegotiation`, `getInteractivePressConference`, `getPlayerTradeValue`. Verify the return shapes match what you build the UI against.
+7. `apps/web/src/features/news/routes/NewsPage.tsx` — the **Sprint 3 pattern** for a worker-backed list route. Mimic this structure for `NegotiationsPage`.
+8. `apps/web/src/features/roster/routes/RosterPage.tsx` — search for `to={\`/players/${player.id}\`}`. This is the **canonical cross-link pattern**. Replicate it; do not invent a new one.
+9. `apps/web/src/features/players/routes/PlayerProfilePage.tsx` — 486 lines. Read it before adding anything. Trade Value should integrate, not displace.
+10. `apps/web/src/features/press-room/routes/PressRoomPage.tsx` — current Press Room. The new Interactive Press Conference is a **separate concept** (live, interactive, owner-tone-driven). Decide: new route or new tab inside Press Room. Either is acceptable — see Autonomy Rules.
+
+---
+
+## Allowed Write Scope
+
+You may create or modify any of:
+
+**New files (expected):**
+- `apps/web/src/features/negotiations/routes/NegotiationsPage.tsx`
+- `apps/web/src/features/negotiations/routes/NegotiationsPage.test.tsx`
+- `apps/web/src/features/negotiations/routes/NegotiationDetailPage.tsx`
+- `apps/web/src/features/negotiations/routes/NegotiationDetailPage.test.tsx`
+- `apps/web/src/features/negotiations/components/*.tsx` (whatever subcomponents you need)
+- `apps/web/src/features/press-room/routes/InteractivePressConferencePage.tsx` (if you choose new route) OR a new tab component under `apps/web/src/features/press-room/components/`
+- `apps/web/src/features/players/components/TradeValuePanel.tsx` (or similar — fit into existing tab structure)
+- `apps/web/docs/screenshots/sprint-4/*.png`
+
+**Updates (expected):**
+- `apps/web/src/app/routes/index.tsx` (add routes)
+- `apps/web/src/app/layout/Sidebar.tsx` (add Negotiations entry; possibly Press Conference entry)
+- `apps/web/src/features/trade/**` (cross-link player names — read the directory and pick the right files)
+- `apps/web/src/features/draft/**` (cross-link prospects)
+- `apps/web/src/features/news/routes/NewsPage.tsx` (cross-link players in news items, if `NewsItem` has `playerId` or similar — see Milestone 9 details)
+- `apps/web/src/features/scouting/**` (cross-link players)
+- `apps/web/src/features/stats/**` (cross-link leaderboard entries)
+- `apps/web/src/features/players/routes/PlayerProfilePage.tsx` (only to integrate Trade Value — do not refactor existing tabs)
+- `STATUS.md`
+- `.logs/goal-progress.md`
+- `GOAL.md` (only to mark milestones complete in a working scratchpad — final commit should preserve the contract, not erase it)
+
+---
+
+## Protected (DO NOT TOUCH)
+
+- `packages/sim-core/**` — sim logic stays untouched.
+- `packages/contracts/**` — no schema or version changes. Save schema stays at v33.
+- `packages/ui/**` — use existing primitives only. No new shared UI components.
+- `packages/design-tokens/**` — use existing tokens.
+- `apps/web/src/workers/sim.worker.queries.ts` — consume what exists. Do NOT add new worker methods.
+- `apps/web/src/workers/sim.worker.actions.ts` — same. Do NOT add new worker actions.
+- `apps/web/src/shared/lib/saveSystem.ts` — Sprint 3.5 territory.
+- `apps/web/src/app/boot/AppBootGate.tsx` — Sprint 3.5 territory. Do not change boot order.
+- `apps/web/src/shared/hooks/useGameStore.ts` — Sprint 3.5 territory. Do not extend the persisted shell.
+- `apps/web/src/features/save-recovery/**` — use existing API only.
+- `apps/web/src/features/onboarding/**` — Sprint 2 territory.
+- Any existing test that currently passes — do not modify to make new code work. If an existing test breaks, that is a regression — fix the new code, not the test.
+
+---
+
+## Non-Negotiables
+
+1. **No new worker methods.** If you find yourself wanting to add one, STOP — that is a Pause Condition.
+2. **No save schema changes.** Stays v33. No new fields, no version bump.
+3. **No `Math.random()` anywhere in new code.** The app is deterministic. Even in UI code, prefer no entropy. If you genuinely need pseudo-randomness for a UI affordance (you should not), use the existing seeded helpers — but ask first.
+4. **No new top-level packages.** No new dependencies. If you reach for a new npm package, STOP.
+5. **All new test files use existing harness** — `@testing-library/react`, `vitest`, and the worker-mocking patterns from `NewsPage.test.tsx` and `RosterPage.test.tsx`.
+6. **Hard reload must continue to work** at every new route. Sprint 3.5's invariant. Verify in the browser smoke.
+7. **Bundle budgets must not regress.** Check `apps/web/docs/BUDGETS.md` after the build. If any chunk exceeds its ceiling, STOP.
+8. **Mobile 375×667** — every new route must render without horizontal overflow.
+9. **No `console.log`, `console.warn`, or `console.error` left in production code.** Use `logger` from `apps/web/src/shared/lib/logger.ts` if you need diagnostic output.
+10. **Cross-links must reuse the Roster pattern.** Same `<Link>` import, same hover/focus styling. Do not invent a "clickable name" component — just wrap names in `<Link>` like Roster does.
+
+---
+
+## Milestone Loop
+
+Work milestones **in order**. After each milestone:
+
+1. Run `pnpm typecheck`.
+2. Run `pnpm test` (focused first if it's faster, then the full suite before commit).
+3. `git add` the milestone's files (specific files — no `git add -A`).
+4. Commit with the milestone's prescribed message.
+5. Append a milestone block to `.logs/goal-progress.md` (commit SHA, validation tail, scope decisions, surprises).
+6. Move to the next milestone.
+
+If a milestone's validation fails:
+
+- Fix forward. Do not commit a broken milestone.
+- If you cannot figure it out in three attempts, STOP and document under Pause Conditions.
+
+### Milestone 1 — Negotiations Center scaffolding (`/negotiations`)
+
+- Add a lazy import for `NegotiationsPage` in `apps/web/src/app/routes/index.tsx`.
+- Register `<Route path="negotiations" element={withRouteBoundary('Negotiations', <NegotiationsPage />)} />` alongside the other top-level routes.
+- Create `apps/web/src/features/negotiations/routes/NegotiationsPage.tsx`:
+  - Calls `worker.getOpenNegotiations()` on mount.
+  - Renders the list newest-first (or by deadline — your call, see Autonomy Rules).
+  - Each row shows: player name (linked to `/players/:playerId`), team, asking salary, offered terms, deadline, current status.
+  - Empty state: "No open negotiations" with a small explanation copy.
+  - Loading skeleton mimicking `NewsPage` skeleton style.
+  - Error path: toast + Save Hub fallback if the worker call throws.
+- Create `apps/web/src/features/negotiations/routes/NegotiationsPage.test.tsx`:
+  - Happy path (mock worker, render rows).
+  - Empty state.
+  - Player-name link navigates to `/players/:id` (via `useNavigate` mock or `MemoryRouter` history check — match `NewsPage.test.tsx`).
+- **DONE WHEN**: typecheck + test pass; `/MBD/negotiations` (when the dev server is up) renders the list or the empty state.
+- **COMMIT**: `feat(negotiations): add /negotiations Front Office route`
+
+### Milestone 2 — Negotiation detail (`/negotiations/:negotiationId`)
+
+- Lazy import `NegotiationDetailPage` in routes.
+- Register `<Route path="negotiations/:negotiationId" element={withRouteBoundary('Negotiation Detail', <NegotiationDetailPage />)} />`.
+- Create `apps/web/src/features/negotiations/routes/NegotiationDetailPage.tsx`:
+  - Reads `negotiationId` from `useParams`.
+  - Calls `worker.getNegotiation(negotiationId)`.
+  - Renders the negotiation in detail: player (linked), team, history of offers, current ask vs. current offer, deadlines, status, any agent commentary if present in the shape.
+  - 404-ish state if `null` is returned: "Negotiation not found" with a back link to `/negotiations`.
+- Update `NegotiationsPage` so each row also has a "View detail" link to `/negotiations/:id` (in addition to the player-name link to the profile).
+- Create `NegotiationDetailPage.test.tsx`: happy path, not-found state.
+- **DONE WHEN**: typecheck + test pass; clicking a row in `/negotiations` opens the detail page; bad ID renders not-found.
+- **COMMIT**: `feat(negotiations): add /negotiations/:id detail view`
+
+### Milestone 3 — Sidebar Negotiations entry
+
+- Add a Negotiations entry to `apps/web/src/app/layout/Sidebar.tsx`. Use a lucide icon — `Handshake`, `FileSignature`, or `Briefcase` are all reasonable. Pick one.
+- Place it in a sensible group (alongside Trade and Free Agency feels right — your call).
+- Update `Sidebar.test.tsx` to include the new entry (the existing tests likely assert the menu count or specific labels).
+- **DONE WHEN**: typecheck + test pass; sidebar shows Negotiations and navigates to `/negotiations`.
+- **COMMIT**: `feat(layout): add Negotiations entry to Sidebar`
+
+### Milestone 4 — Interactive Press Conference surface
+
+- Decide: new top-level route at `/press-conference` OR new tab inside the existing Press Room page. Pick whichever requires fewer touches. Document your choice in `.logs/goal-progress.md`.
+- Call `worker.getInteractivePressConference()`. The return shape is non-trivial — read the worker implementation and the underlying `generateInteractivePressConference` function before designing the UI.
+- Render the press conference: structured questions, owner-tone indicator (supportive / neutral / impatient), recent trade headline if present, top-prospect commentary if applicable.
+- If `null` is returned (no user team standing), render a graceful "Press conference unavailable in current game state" message.
+- Tests: happy path, null-state path.
+- **DONE WHEN**: typecheck + test pass; the press conference renders for a valid save.
+- **COMMIT**: `feat(press-room): add interactive press conference surface`
+
+### Milestone 5 — Trade page cross-linking
+
+- Find every place in `apps/web/src/features/trade/**` where a player name renders as plain text.
+- Wrap each with `<Link to={\`/players/${player.id}\`}>` (or equivalent depending on local variable name).
+- Match the styling pattern from `RosterPage.tsx:473` (read it first).
+- Update or add tests verifying the link target.
+- **DONE WHEN**: typecheck + test pass; clicking any player name in any Trade surface navigates to that player's profile.
+- **COMMIT**: `feat(trade): cross-link player names to /players/:id`
+
+### Milestone 6 — Draft page cross-linking
+
+- Same pattern in `apps/web/src/features/draft/**` for draft prospects.
+- The `to={\`/players/${entry.playerId}?tab=development\`}` pattern from `ProspectBreakoutTracker.tsx:84` is a precedent for prospects specifically — consider whether `?tab=development` is the right default for the Big Board.
+- **DONE WHEN**: typecheck + test pass; draft Big Board entries are clickable.
+- **COMMIT**: `feat(draft): cross-link prospects to /players/:id`
+
+### Milestone 7 — Scouting page cross-linking
+
+- Same pattern in `apps/web/src/features/scouting/**`.
+- **DONE WHEN**: typecheck + test pass; scouting reports' player names are clickable.
+- **COMMIT**: `feat(scouting): cross-link player names to /players/:id`
+
+### Milestone 8 — Stats / leaderboards cross-linking
+
+- Same pattern in `apps/web/src/features/stats/**`.
+- **DONE WHEN**: typecheck + test pass; leaderboard entries are clickable.
+- **COMMIT**: `feat(stats): cross-link leaderboard entries to /players/:id`
+
+### Milestone 9 — News page player references
+
+- Inspect `NewsItem` from `@mbd/contracts`. Does it carry a machine-readable player reference field (`playerId`, `relatedPlayerIds`, `entities`, etc.)?
+- If YES: render those references as `<Link>` chips below the news body. Match existing news item styling.
+- If NO: SKIP this milestone. Do **not** introduce text-parsing or regex to extract player names. Document the skip in `.logs/goal-progress.md` and the final STATUS.md.
+- Update `NewsPage.test.tsx` if you wired links.
+- **DONE WHEN**: either links work, or skip is documented.
+- **COMMIT** (if shipped): `feat(news): cross-link player references in news items`
+
+### Milestone 10 — Trade Value on Player Profile
+
+- Wire `worker.getPlayerTradeValue(playerId)` into `PlayerProfilePage.tsx`.
+- Decide placement: a small panel/widget alongside the existing tabs, or a new tab. Lean toward a small panel rather than a new tab to keep tab count stable.
+- Render the `PlayerTradeValue` shape — read the type definition before designing.
+- Loading + null-handling.
+- Add a focused test in `PlayerProfilePage.test.tsx` for the trade-value render.
+- **DONE WHEN**: typecheck + test pass; the player profile shows Trade Value for any player.
+- **COMMIT**: `feat(players): surface trade value on player profile`
+
+### Milestone 11 — Browser smoke & screenshots
+
+Run `pnpm --filter @mbd/web dev` and capture screenshots to `apps/web/docs/screenshots/sprint-4/`:
+
+1. `01-negotiations-list.png` — `/MBD/negotiations` with rows.
+2. `02-negotiations-empty.png` — empty state (delete a save or use a slot with no negotiations).
+3. `03-negotiations-detail.png` — `/MBD/negotiations/<id>` detail view.
+4. `04-press-conference.png` — interactive press conference rendered.
+5. `05-trade-clickable-name.png` — hover/focus state on a clickable player name in Trade.
+6. `06-draft-clickable-prospect.png` — same in Draft.
+7. `07-scouting-clickable-name.png` — same in Scouting.
+8. `08-stats-clickable-leader.png` — same in Stats.
+9. `09-news-player-chip.png` — only if Milestone 9 shipped.
+10. `10-player-profile-trade-value.png` — Trade Value panel on profile.
+11. `11-negotiations-mobile-375.png` — 375×667.
+12. `12-negotiations-hard-reload.png` — Sprint 3.5 invariant check.
+13. `13-press-conference-mobile-375.png`.
+
+Verify on each route:
+- Hard reload (Cmd+Shift+R) lands on the same route, not Save Hub. Sprint 3.5 invariant.
+- 375×667 viewport — no horizontal overflow.
+- No `console.error` in the browser console (existing warnings unchanged is fine — document if so).
+
+- **DONE WHEN**: all required screenshots committed; browser smoke notes appended to `.logs/goal-progress.md`.
+- **COMMIT**: `docs(sprint-4): browser smoke screenshots and notes`
+
+### Milestone 12 — STATUS.md + handoff
+
+Rewrite `STATUS.md` at repo root with:
+
+- What shipped (one-paragraph summary).
+- Files changed (`git diff --stat origin/main..HEAD`).
+- Validations run (typecheck + test + build — paste the final tail of each).
+- Browser evidence (the screenshot list with one-line captions).
+- Bundle impact (chunk sizes; any movement against `BUDGETS.md`).
+- Worker methods newly consumed (`getOpenNegotiations`, `getNegotiation`, `getInteractivePressConference`, `getPlayerTradeValue`) — confirm zero new worker methods added.
+- Sprint 3.5 invariant confirmation (hard reload works at all new routes).
+- Cross-linking coverage table (Roster ✅ / Free Agency ✅ / Minors ✅ / Trade ✅ / Draft ✅ / News ✅ or skipped / Scouting ✅ / Stats ✅).
+- Known limitations.
+- Risks.
+- Rollback notes (revert the merge commit; no schema bump).
+- Next `/goal` — recommend **Sprint 5 — Press Conference unification (deeper)** or **Sprint 6 — Hardening pass**, your call based on what felt fragile in this run.
+
+- **DONE WHEN**: STATUS.md written and committed; final `.logs/goal-progress.md` summary appended.
+- **COMMIT**: `docs(sprint-4): STATUS report and handoff`
+
+---
+
+## Validation Gates
+
+After **every** milestone:
+
+```bash
+PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck
+PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test
+```
+
+Before the final Milestone 12 commit, also run:
+
+```bash
+PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build
+```
+
+Browser smoke (Milestone 11 only):
+
+```bash
+PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev
+```
+
+…then drive the browser through the screenshots list.
+
+---
+
+## Pause Conditions
+
+**STOP and surface to Kevin** (do not push, do not improvise) if any of these happen:
+
+1. A worker method you expected does not exist or returns an unexpected shape. Do not add new worker methods.
+2. The save schema would need to bump to support new UI. Sprint 4 is **consumer-only**.
+3. A bundle budget in `apps/web/docs/BUDGETS.md` would be exceeded. Stop and let Kevin decide.
+4. Hard reload breaks at any new route. Sprint 3.5 invariant — non-negotiable.
+5. An existing test in an unrelated area starts failing because of your changes. Investigate the coupling, don't paper over it.
+6. The `NewsItem` shape has no machine-readable player references AND you can't ship Milestone 9 cleanly. Skip the milestone; document; continue.
+7. You discover the audit was wrong about a "no consumers" claim. Document the surprise, skip the redundant work, continue to the next milestone.
+8. You cannot decide between two reasonable approaches and the Autonomy Rules below don't resolve it.
+9. You realize the sprint would be cleaner split into two PRs. STOP and ask before splitting.
+
+A pause is not a failure. A bad commit shipped through quietly is a failure.
+
+---
+
+## Autonomy Rules
+
+Once the mission is clear, **do not ask for permission** on:
+
+- Component composition (table vs. card list vs. row layout).
+- Lucide icon choice for Sidebar entries.
+- Sort order for the Negotiations list (newest-first vs. by deadline — pick what reads best).
+- How to format dollar amounts ($5.5M / $5,500,000 / etc. — match what other surfaces in the app do).
+- Whether to put Interactive Press Conference at `/press-conference` or as a tab inside `/press-room`. Either is fine; pick the smaller diff.
+- Whether Trade Value on the Player Profile is a panel or a new tab. Lean panel.
+- Whether News player chips live above or below the body copy.
+- Color/spacing/typography using existing design tokens.
+- Sidebar grouping order.
+
+Use judgment. Match the existing codebase's tone. Pause only on the Pause Conditions above.
+
+---
+
+## Evaluator-Visible Proof
+
+Maintain `.logs/goal-progress.md` continuously. After each milestone, append:
+
+```markdown
+## Milestone N — <title>
+
+- Commit: <SHA> "<message>"
+- typecheck: <PASS/FAIL — last line>
+- test: <PASS/FAIL — Tasks: X successful, Y total>
+- Files touched: <list>
+- Scope decisions: <one or two sentences if any>
+- Surprises: <one or two sentences if any>
+```
+
+This file is **read by Kevin and by future agents** to understand what happened. Treat it like a journal, not an afterthought.
+
+---
+
+## Done Criteria
+
+ALL of these must be true before Milestone 12's STATUS.md commit:
+
+1. ✅ `/negotiations` renders open negotiations.
+2. ✅ `/negotiations/:id` renders detail or graceful not-found.
+3. ✅ Sidebar has a Negotiations entry.
+4. ✅ Interactive Press Conference is reachable (new route or new tab — your call) and renders for a valid save.
+5. ✅ Trade page player names link to `/players/:id`.
+6. ✅ Draft page prospects link to `/players/:id`.
+7. ✅ Scouting page player names link to `/players/:id`.
+8. ✅ Stats / leaderboards link to `/players/:id`.
+9. ✅ News page player references link to `/players/:id` OR Milestone 9 is documented as skipped with reason.
+10. ✅ Player Profile shows Trade Value.
+11. ✅ Each new route hard-reloads successfully (Sprint 3.5 invariant).
+12. ✅ Each new route renders cleanly at 375×667.
+13. ✅ All required screenshots committed under `apps/web/docs/screenshots/sprint-4/`.
+14. ✅ `pnpm typecheck` passes.
+15. ✅ `pnpm test` passes (with new tests added for negotiations, press conference, trade value).
+16. ✅ `pnpm build` passes with no new budget violations.
+17. ✅ `STATUS.md` rewritten with the full report.
+18. ✅ `.logs/goal-progress.md` has 12 milestone blocks.
+19. ✅ Final commit pushed to `goal/sprint-4-front-office`.
+20. ✅ Zero new worker methods, zero schema changes, zero new dependencies.
+
+---
+
+## Final Report
+
+When all Done Criteria are met:
+
+1. `git push origin goal/sprint-4-front-office`.
+2. Report back to Kevin (via the transcript / handoff doc you control) with:
+   - Final commit SHA.
+   - Branch name.
+   - Path to STATUS.md.
+   - Link to the draft PR (Claude Code will flip it to ready and merge once Kevin approves).
+   - The exact next `/goal` for the next sprint.
+
+---
+
+## Bonus Round (only after all 20 Done Criteria are satisfied)
+
+If Sprint 4 closes cleanly with daylight remaining, you may pick up **one** of the following clearly-scoped follow-ons. Do NOT start Bonus Round work until Milestone 12 is committed and pushed.
+
+### Bonus A — Negotiation Actions
+
+The Negotiation Detail page is read-only in Sprint 4. If a `worker.respondToNegotiation(id, terms)` or similar action exists in `sim.worker.actions.ts` (verify before starting), wire an "Accept / Counter / Decline" UI on the detail page. Same milestone discipline: separate commit, separate validation. If the action method does not exist, **DO NOT add one** — Sprint 4 stays consumer-only.
+
+### Bonus B — Negotiation in Player Profile
+
+Add a "Active Negotiation" panel to `PlayerProfilePage` that calls `worker.getOpenNegotiations()` (or a derived selector) and surfaces the player's open negotiation if any. Links to `/negotiations/:id`.
+
+### Bonus C — Press Conference History
+
+If the worker exposes a `getPressConferenceHistory()` or similar (verify — do not assume), wire a small "Past press conferences" list under Press Room.
+
+**Bonus Round non-negotiables:**
+
+- Separate commits per task (e.g. `feat(bonus-a): wire negotiation actions`).
+- Same validation gates.
+- Update `.logs/goal-progress.md` with a "Bonus Round" section.
+- Append to `STATUS.md` under a "Bonus Round" heading.
+- If a Bonus Round task hits a Pause Condition, STOP and leave the bonus uncommitted — do not block Sprint 4's merge.
+
+---
+
+## Operating Notes for Codex
+
+- This is Kevin's last sprint of the night before he sleeps. He wants Codex working the whole time. Pace yourself: 12 milestones over the night is roughly one milestone every ~40 minutes if you go steady. There is no time pressure on any individual milestone; quality > speed.
+- The `pnpm` binary lives at `/Users/tkevinbigham/.local/node-lts/bin/pnpm`. Every shell call needs `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH` prepended.
+- The working tree is `/Users/tkevinbigham/MBD-main`. The branch is `goal/sprint-4-front-office`. The base is `main` at `93b3f5b`.
+- The draft PR will already exist by the time you start. Claude Code (reviewer) will flip it to ready and merge once Kevin approves in the morning.
+- If something feels off about this contract — a milestone is over-specified, an assumption is wrong, the worker shape doesn't match — STOP and surface it. The worst outcome is silent over-improvising. The second worst is asking permission for everything. Aim for the middle: confident execution with surfaced surprises.
+
+Go.
