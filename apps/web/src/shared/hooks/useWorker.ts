@@ -88,15 +88,6 @@ const mutationMethods = new Set<WorkerMethodName>([
   'makeRule5Pick',
   'passRule5Pick',
   'resolveRule5OfferBack',
-  'advanceDayOneIntro',
-  'chooseDayOneAGM',
-  'advanceDayOneOrgReview',
-  'setDayOneSeasonGoal',
-  'setDayOneBudgetAllocation',
-  'setDayOneOpeningPlan',
-  'setDayOneDevelopmentPlan',
-  'resolveDayOneCrisis',
-  'finishDayOne',
   'completeOnboarding',
   'applyStaffHires',
   'applyScoutingHire',
@@ -872,51 +863,6 @@ export function useWorker() {
   );
   const getPlayoffMomentum = useCallback(async () => api.getPlayoffMomentum(), [api]);
 
-  // Day One front-office hook
-  const getDayOneSession = useCallback(async () => api.getDayOneSession(), [api]);
-  const advanceDayOneIntro = useCallback(
-    async () => runMutation(() => api.advanceDayOneIntro()),
-    [api, runMutation],
-  );
-  const chooseDayOneAGM = useCallback(
-    async (agmId: Parameters<typeof api.chooseDayOneAGM>[0]) =>
-      runMutation(() => api.chooseDayOneAGM(agmId)),
-    [api, runMutation],
-  );
-  const advanceDayOneOrgReview = useCallback(
-    async () => runMutation(() => api.advanceDayOneOrgReview()),
-    [api, runMutation],
-  );
-  const setDayOneSeasonGoal = useCallback(
-    async (seasonGoal: Parameters<typeof api.setDayOneSeasonGoal>[0]) =>
-      runMutation(() => api.setDayOneSeasonGoal(seasonGoal)),
-    [api, runMutation],
-  );
-  const setDayOneBudgetAllocation = useCallback(
-    async (budgetAllocation: Parameters<typeof api.setDayOneBudgetAllocation>[0]) =>
-      runMutation(() => api.setDayOneBudgetAllocation(budgetAllocation)),
-    [api, runMutation],
-  );
-  const setDayOneOpeningPlan = useCallback(
-    async (plan: Parameters<typeof api.setDayOneOpeningPlan>[0]) =>
-      runMutation(() => api.setDayOneOpeningPlan(plan)),
-    [api, runMutation],
-  );
-  const setDayOneDevelopmentPlan = useCallback(
-    async (plan: Parameters<typeof api.setDayOneDevelopmentPlan>[0]) =>
-      runMutation(() => api.setDayOneDevelopmentPlan(plan)),
-    [api, runMutation],
-  );
-  const resolveDayOneCrisis = useCallback(
-    async (responseId: Parameters<typeof api.resolveDayOneCrisis>[0]) =>
-      runMutation(() => api.resolveDayOneCrisis(responseId)),
-    [api, runMutation],
-  );
-  const finishDayOne = useCallback(
-    async () => runMutation(() => api.finishDayOne()),
-    [api, runMutation],
-  );
-
   // Onboarding (legacy procedural flow)
   const getOnboardingData = useCallback(async () => api.getOnboardingData(), [api]);
   const completeOnboarding = useCallback(
@@ -985,7 +931,6 @@ export function useWorker() {
     getTradeDeadlineDrama, getMilestoneTrackerAlerts, getChaseWatch, getPennantRaces, getPennantRaceDetail, getFreeAgencyMarketIntelligence,
     getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
     getBreakoutIntelligence, getProspectBreakoutWatch, getScoutConsensus, getPlayoffMomentum,
-    getDayOneSession, advanceDayOneIntro, chooseDayOneAGM, advanceDayOneOrgReview, setDayOneSeasonGoal, setDayOneBudgetAllocation, setDayOneOpeningPlan, setDayOneDevelopmentPlan, resolveDayOneCrisis, finishDayOne,
     getOnboardingData, completeOnboarding,
     getAGMCandidates, getRevisedOnboardingData, applyStaffHires, applyScoutingHire, completeRevisedOnboarding,
     subscribeToFlowUpdates,

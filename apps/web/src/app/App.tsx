@@ -8,6 +8,14 @@ import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 
 const HC_BASE = '#020617'; // slate-950, high-contrast mode base
 
+// Vite serves the app under `base: '/MBD/'` in production (GitHub Pages) and dev.
+// BrowserRouter needs the matching basename so hard-reloads on nested routes
+// (e.g. /MBD/dashboard) resolve to the right route table.
+// Strips trailing slash because react-router expects no trailing slash.
+// The cast matches the existing TeamLogo pattern — tsconfig does not include vite/client.
+const BASE_URL = (import.meta as unknown as { env: { BASE_URL: string } }).env.BASE_URL;
+const ROUTER_BASENAME = BASE_URL.replace(/\/$/, '') || undefined;
+
 export function App() {
   const highContrast = usePreferencesStore((state) => state.highContrast);
 
@@ -22,7 +30,7 @@ export function App() {
   return (
     <SaveRecoveryProvider>
       <SaveLoadErrorBoundary>
-        <BrowserRouter>
+        <BrowserRouter basename={ROUTER_BASENAME}>
           <AppRoutes />
           <Toaster
             position="bottom-right"
