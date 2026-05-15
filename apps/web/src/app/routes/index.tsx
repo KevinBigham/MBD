@@ -40,6 +40,9 @@ const TradePage = lazy(
 const TradeNegotiationsInboxPage = lazy(
   () => import('@/features/trade-negotiations/routes/TradeNegotiationsInboxPage')
 );
+const TradeNegotiationDetailPage = lazy(
+  () => import('@/features/trade-negotiations/routes/TradeNegotiationDetailPage')
+);
 const StandingsPage = lazy(
   () => import('@/features/league/routes/StandingsPage')
 );
@@ -146,6 +149,7 @@ export function AppRoutes() {
           <Route path="draft" element={withRouteBoundary('Draft', <DraftPage />)} />
           <Route path="trade" element={withRouteBoundary('Trade', <TradePage />)} />
           <Route path="trade-negotiations" element={withRouteBoundary('Trade Negotiations', <TradeNegotiationsInboxPage />)} />
+          <Route path="trade-negotiations/:negotiationId" element={withRouteBoundary('Trade Negotiation', <TradeNegotiationDetailPage />)} />
           <Route path="standings" element={withRouteBoundary('Standings', <StandingsPage />)} />
           <Route path="leaders" element={withRouteBoundary('Leaders', <LeadersPage />)} />
           <Route path="league">

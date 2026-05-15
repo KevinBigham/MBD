@@ -469,3 +469,12 @@ Date: 2026-05-14
 - Files touched: `STATUS.md`, `.logs/goal-progress.md`.
 - Scope decisions: Did not add worker methods, did not touch protected worker/sim/contracts/save files, and did not reinterpret contract-negotiation fields from trade package data.
 - Surprises: `getOpenNegotiations()` and `getNegotiation(id)` return `TradeNegotiationView` trade-package shapes (`offeringAssets`, `requestingAssets`, `counterOffer`, `phase`, `dialogue`, `expiresAtDay`), not contract salary asks/offered terms. Also, `getInteractivePressConference()` already has an `AppLayout` consumer through `PressConferenceModal`, so the audit's zero-consumer claim is stale.
+
+## Milestone 1 — Trade Negotiations Inbox scaffolding
+
+- Commit: c3eb524 `feat(trade-negotiations): add /trade-negotiations Inbox route`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `apps/web/src/app/routes/index.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationsInboxPage.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationsInboxPage.test.tsx`
+- Scope decisions: Built the Inbox as a read-only route against `TradeNegotiationView`, sorting open negotiations first and then by earliest `expiresAtDay`. Error handling uses the existing `logger` plus `sonner` toast and an inline retry state.
+- Surprises: Focused red failed exactly because the page did not exist yet. Full test output includes existing Recharts/React act/service-worker/scouting warning noise and the new test's intentional mocked worker failure log.
