@@ -93,6 +93,7 @@ describe('Sidebar', () => {
     expect(container.textContent).toContain('Free Agency');
     expect(container.textContent).toContain('Offseason');
     expect(container.textContent).toContain('Compare');
+    expect(container.textContent).toContain('News');
     expect(getDashboardSummary).toHaveBeenCalledTimes(1);
   });
 
