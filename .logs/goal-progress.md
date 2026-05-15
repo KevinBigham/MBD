@@ -496,3 +496,12 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/app/layout/Sidebar.tsx`, `apps/web/src/app/layout/Sidebar.test.tsx`
 - Scope decisions: Placed Trade Negotiations directly after Trades and used the lucide `Handshake` icon, avoiding the News `Inbox` icon.
 - Surprises: None; the red check failed only on the missing sidebar label as intended.
+
+## Milestone 4 — Trade page cross-linking + deep-link from Inbox
+
+- Commit: 14043ed `feat(trade): cross-link player names + accept ?negotiationId deep link`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/trade/components/DeadlineDramaPanel.tsx`, `apps/web/src/features/trade/routes/TradePage.tsx`, `apps/web/src/features/trade/routes/TradePage.test.tsx`
+- Scope decisions: Linked structured player assets in Trade rows, offer cards, active negotiation packages, package summaries, multi-team summaries, and the deadline bidding-war target using the Roster `/players/:id` pattern. Added `/trade?negotiationId=...` loading through existing `getNegotiation` and `applyNegotiationToBuilder`, with toast + param clearing for stale or closed negotiations.
+- Surprises: Trade recap/ticker prose still contains narrative player names without a safe token map; no regex parsing was added.

@@ -487,6 +487,10 @@ describe('DraftPage', () => {
     expect(container.textContent).toContain('War Room');
     expect(container.textContent).toContain('Buzz Tracker');
     expect(container.textContent).toContain('Value Slide');
+    const availableProspectLink = container.querySelector('a[href="/players/prospect-1?tab=development"]');
+    const completedPickLink = container.querySelector('a[href="/players/bos-1?tab=development"]');
+    expect(availableProspectLink?.textContent ?? '').toContain('Eli Prospect');
+    expect(completedPickLink?.textContent ?? '').toContain('Marcus Early');
 
     const watchButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Watch Draft'),
