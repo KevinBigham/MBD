@@ -21,6 +21,10 @@ vi.mock('./routes', () => ({
   },
 }));
 
+vi.mock('./boot/AppBootGate', () => ({
+  AppBootGate: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
 vi.mock('./providers/ErrorBoundary', () => ({
   ErrorBoundary: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
