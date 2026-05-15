@@ -49,6 +49,9 @@ const HistoryPage = lazy(
 const PressRoomPage = lazy(
   () => import('@/features/press-room/routes/PressRoomPage')
 );
+const NewsPage = lazy(
+  () => import('@/features/news/routes/NewsPage')
+);
 const PlayoffsPage = lazy(
   () => import('@/features/playoffs/routes/PlayoffsPage')
 );
@@ -149,6 +152,7 @@ export function AppRoutes() {
           <Route path="schedule" element={withRouteBoundary('Schedule', <SchedulePage />)} />
           <Route path="games/:gameIndex" element={withRouteBoundary('Box Score', <BoxScorePage />)} />
           <Route path="press-room" element={withRouteBoundary('Press Room', <PressRoomPage />)} />
+          <Route path="news" element={withRouteBoundary('News', <NewsPage />)} />
           <Route path="playoffs" element={withRouteBoundary('Playoffs', <PlayoffsPage />)} />
           <Route path="free-agency" element={withRouteBoundary('Free Agency', <FreeAgencyPage />)} />
           <Route path="offseason" element={withRouteBoundary('Offseason', <OffseasonPage />)} />

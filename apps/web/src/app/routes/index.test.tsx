@@ -71,6 +71,10 @@ vi.mock('@/features/press-room/routes/PressRoomPage', () => ({
   default: () => <div>Press Room Route Ready</div>,
 }));
 
+vi.mock('@/features/news/routes/NewsPage', () => ({
+  default: () => <div>News Route Ready</div>,
+}));
+
 vi.mock('@/features/playoffs/routes/PlayoffsPage', () => ({
   default: () => <div>Playoffs Route Ready</div>,
 }));
@@ -136,6 +140,21 @@ describe('AppRoutes', () => {
     });
 
     expect(container.textContent).toContain('Dashboard Route Ready');
+    expect(container.querySelector('[data-testid="layout"]')).toBeTruthy();
+  });
+
+  it('renders the news route inside the app layout', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/news']}>
+          <AppRoutes />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('News Route Ready');
     expect(container.querySelector('[data-testid="layout"]')).toBeTruthy();
   });
 });
