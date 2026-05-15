@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, GradeBar } from '@mbd/ui';
 import { AlertTriangle, CheckCircle, Scale } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
@@ -27,6 +28,12 @@ interface ScoutConflict {
   } | null;
   winningSource: string | null;
   outcomeSummary: string | null;
+}
+
+const PLAYER_PROFILE_LINK_CLASS = 'font-heading text-sm text-dynasty-textBright hover:text-accent-primary';
+
+function playerProfilePath(playerId: string): string {
+  return `/players/${playerId}`;
 }
 
 function sourceLabel(source: string): string {
@@ -119,7 +126,11 @@ function ConflictCard({ conflict }: { conflict: ScoutConflict }) {
       {/* Header */}
       <div className="flex items-center gap-2">
         <Scale className="h-4 w-4 text-dynasty-muted" />
-        <h3 className="font-heading text-sm text-dynasty-textBright">{conflict.headline}</h3>
+        <h3>
+          <Link to={playerProfilePath(conflict.prospectId)} className={PLAYER_PROFILE_LINK_CLASS}>
+            {conflict.headline}
+          </Link>
+        </h3>
         <div className="ml-auto flex items-center gap-2">
           {isDivided && !conflict.resolved && (
             <Badge className="border-accent-danger/40 bg-accent-danger/10 text-accent-danger">

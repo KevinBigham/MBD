@@ -505,3 +505,12 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/features/trade/components/DeadlineDramaPanel.tsx`, `apps/web/src/features/trade/routes/TradePage.tsx`, `apps/web/src/features/trade/routes/TradePage.test.tsx`
 - Scope decisions: Linked structured player assets in Trade rows, offer cards, active negotiation packages, package summaries, multi-team summaries, and the deadline bidding-war target using the Roster `/players/:id` pattern. Added `/trade?negotiationId=...` loading through existing `getNegotiation` and `applyNegotiationToBuilder`, with toast + param clearing for stale or closed negotiations.
 - Surprises: Trade recap/ticker prose still contains narrative player names without a safe token map; no regex parsing was added.
+
+## Milestone 5 — Draft page cross-linking
+
+- Commit: 0ad438f `feat(draft): cross-link prospects to /players/:id`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/draft/routes/DraftPage.tsx`, `apps/web/src/features/draft/routes/DraftPage.test.tsx`
+- Scope decisions: Used `/players/:playerId?tab=development` for draft prospects, matching the existing Minors prospect precedent. Linked available prospects, selected prospect card, draft ticker, board cells, post-draft best picks, and the user's draft class without parsing prose summaries.
+- Surprises: Draft commentary and buzz entries have `playerId` fields but not display-safe player names in every entry, so the milestone kept links to places where a structured player ID and visible name were already paired.
