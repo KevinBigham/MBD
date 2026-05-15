@@ -550,3 +550,13 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/features/players/routes/PlayerProfilePage.tsx`, `apps/web/src/features/players/routes/PlayerProfilePage.test.tsx`, `apps/web/src/shared/hooks/useWorker.ts`
 - Scope decisions: Rendered a compact sidebar card rather than adding another tab. The hook now forwards the existing sim-worker `getPlayerTradeValue` query; no new worker query/action was added.
 - Surprises: The sim worker already exposed `getPlayerTradeValue`, but `useWorker` did not forward it, so wiring the profile required a hook wrapper.
+
+## Milestone 10 — Browser smoke + screenshots + STATUS.md
+
+- Commit: a531964d04d9 `docs(sprint-4): browser smoke, STATUS report, and handoff`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `641 passed`
+- build: PASS — `Tasks: 5 successful, 5 total`; PWA precache `122 entries (3286.88 KiB)`
+- Files touched: `.logs/goal-progress.md`, `STATUS.md`, `apps/web/docs/screenshots/sprint-4/*.png`
+- Scope decisions: Captured the full Milestone 10 screenshot set under `apps/web/docs/screenshots/sprint-4/` and rewrote STATUS with validation tails, bundle notes, route invariants, cross-link coverage, and rollback/next-goal notes. Left the pre-existing `.claude/launch.json` change untouched.
+- Surprises: The Codex in-app browser screenshot command timed out on `Page.captureScreenshot`, so the committed evidence was captured with a Playwright Chromium fallback against the same local dev server; no repo dependencies or manifests changed.
