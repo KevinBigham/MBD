@@ -1,5 +1,126 @@
 # Sprint 2 Goal Progress
 
+## 2026-05-14 20:51 - Sprint 3.5 Milestone 1 Inventory
+
+Workspace: `/Users/tkevinbigham/MBD-main`
+Branch: `goal/sprint-3-5-hard-reload-survival`
+
+Files inspected:
+
+- Root orientation: `README.md`, `CHANGELOG.md`, `MASTER_CONTEXT.md`, prior `STATUS.md`, `GOAL.md`.
+- Boot/store/routing: `apps/web/src/shared/hooks/useGameStore.ts`, `apps/web/src/app/App.tsx`, `apps/web/src/app/layout/AppLayout.tsx`, `apps/web/src/app/routes/index.tsx`.
+- Save and worker path: `apps/web/src/shared/lib/saveSystem.ts`, `apps/web/src/shared/hooks/useWorker.ts`, `apps/web/src/workers/sim.worker.actions.ts`.
+- Manual load reference: `apps/web/src/features/setup/routes/SetupPage.tsx`, `apps/web/src/features/setup/routes/SetupPage.test.tsx`.
+- Save Recovery reference: `apps/web/src/features/save-recovery/SaveRecoveryProvider.tsx`, `SaveLoadErrorBoundary.tsx`, `SaveRecoveryDialog.tsx`, and save-recovery tests.
+
+Current manual continue sequence:
+
+- Save Hub root save path calls `loadSaveSafely(slot)`.
+- On `{ ok: false }`, it calls `SaveRecoveryProvider.showFailure(...)` with delete/retry callbacks.
+- On `{ ok: true }`, it calls `worker.importSnapshot(result.snapshot)`.
+- On import success, it calls `useGameStore.initializeGame(...)` with worker-returned season/day/phase/player/team fields plus `activeSaveId: save.id` and `activeSaveSlot: save.slotNumber`, then navigates to `/dashboard`.
+- Branch saves use `inspectSaveById(save.id)` then the same `worker.importSnapshot` and `initializeGame` shape.
+
+Sprint 3.5 implementation map:
+
+- Persist only the allowed useGameStore shell fields under `mbd:game-store@v1`.
+- Add an app boot gate that blocks route rendering with a "Resuming save..." skeleton when an active save id is present but the store is not initialized.
+- Auto-load with `loadSaveSafely(activeSaveId)`, `worker.importSnapshot(snapshot)`, then `initializeGame(...)` so `AppLayout` never redirects hard-reloaded in-game routes to `/`.
+- Missing save ids clear the active save id and fall through to the Save Hub.
+- Corrupt saves call Save Recovery through the existing provider path.
+
+Files changed:
+
+- `.logs/goal-progress.md`
+
+Checks run:
+
+- Inventory only. Next: add red tests for persistence and boot auto-resume.
+
+## 2026-05-14 20:52 - Sprint 3.5 Milestone 2 Red Tests
+
+Files changed:
+
+- `apps/web/src/shared/hooks/useGameStore.test.ts`
+- `apps/web/src/app/boot/AppBootGate.test.tsx`
+
+Red test proof:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/shared/hooks/useGameStore.test.ts src/app/boot/AppBootGate.test.tsx` -> FAIL as expected.
+- Failure 1: `useGameStore` did not expose `GAME_STORE_STORAGE_KEY` / versioned persisted state, so `persisted.version` was `undefined`.
+- Failure 2: `apps/web/src/app/boot/AppBootGate.tsx` did not exist, proving the missing boot gate.
+
+## 2026-05-14 20:54 - Sprint 3.5 Milestone 3 Persisted Store + Boot Gate
+
+Files changed:
+
+- `apps/web/src/shared/hooks/useGameStore.ts`
+- `apps/web/src/shared/hooks/useGameStore.test.ts`
+- `apps/web/src/app/boot/AppBootGate.tsx`
+- `apps/web/src/app/boot/AppBootGate.test.tsx`
+- `apps/web/src/app/App.tsx`
+- `apps/web/src/app/App.test.tsx`
+
+Implementation:
+
+- Added Zustand `persist` middleware to `useGameStore` under `mbd:game-store@v1`.
+- `partialize` persists only `activeSaveId`, `activeSaveSlot`, `userTeamId`, `season`, `day`, `phase`, `teamName`, `gmName`, and `difficulty`.
+- Added `AppBootGate` around the router. When a persisted active save id exists and the app is not initialized, it blocks route rendering with `Resuming save...`, runs `loadSaveSafely(activeSaveId)`, imports the snapshot through `worker.importSnapshot`, and calls `initializeGame(...)` before `AppLayout` can redirect.
+- Missing save ids clear `activeSaveId`/`activeSaveSlot` and fall through to Save Hub.
+- Corrupt save load results go to `SaveRecoveryProvider.showFailure(...)`; worker/import exceptions synthesize a `storage_failed` recovery failure and clear stale active-save state.
+
+Focused validation:
+
+- First focused run after implementation failed only because the store test replaced `localStorage` after Zustand captured the original jsdom storage object.
+- Fixed the test to use jsdom's actual `window.localStorage`.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/shared/hooks/useGameStore.test.ts src/app/boot/AppBootGate.test.tsx src/app/App.test.tsx` -> PASS. 3 files / 8 tests.
+
+## 2026-05-14 20:58 - Sprint 3.5 Milestone 4 Verification Gate
+
+Validation:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck` -> PASS. Turbo reported `Tasks: 9 successful, 9 total` in `5.418s`.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test` -> PASS. Turbo reported `Tasks: 8 successful, 8 total` in `1m23.712s`; web passed 101 files / 629 tests, sim-core passed 137 files / 1610 tests, contracts passed 1 file / 20 tests, UI passed 1 file / 1 test. Existing non-fatal console noise remained: Recharts zero-size warnings, React `act(...)` warnings, service worker failure-test log, and the existing ScoutingPage mock-function log.
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build` -> PASS. Turbo reported `Tasks: 5 successful, 5 total` in `4.134s`; Vite built in `3.28s`; PWA precached 120 entries.
+
+## 2026-05-14 21:03 - Sprint 3.5 Milestone 5 Browser Smoke
+
+Dev server:
+
+- `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev` -> PASS at `http://localhost:5173/MBD/`.
+
+In-app Browser smoke:
+
+- Continued existing Slot 1 from Save Hub to `/MBD/dashboard`.
+- Hard reload `/MBD/dashboard` -> stayed on dashboard, not Save Hub.
+- Hard reload `/MBD/news` -> stayed on News Inbox, not Save Hub.
+- Hard reload `/MBD/roster` -> stayed on Roster, not Save Hub.
+- Hard reload `/MBD/trade` -> stayed on Trade Center, not Save Hub.
+- Hard reload `/MBD/draft` -> stayed on Draft Room, not Save Hub.
+- Deleted the active Slot 1 save through Save Hub, then navigated to `/MBD/dashboard`; stale persisted id cleared and the app fell through to Save Hub.
+
+Screenshots:
+
+- `apps/web/docs/screenshots/sprint-3-5/01-dashboard-before-hard-reload.png`
+- `apps/web/docs/screenshots/sprint-3-5/02-dashboard-after-hard-reload.png`
+- `apps/web/docs/screenshots/sprint-3-5/03-news-before-hard-reload.png`
+- `apps/web/docs/screenshots/sprint-3-5/04-news-after-hard-reload.png`
+- `apps/web/docs/screenshots/sprint-3-5/05-roster-after-hard-reload.png`
+- `apps/web/docs/screenshots/sprint-3-5/06-trade-after-hard-reload.png`
+- `apps/web/docs/screenshots/sprint-3-5/07-draft-after-hard-reload.png`
+- `apps/web/docs/screenshots/sprint-3-5/08-save-hub-after-delete-slot.png`
+- `apps/web/docs/screenshots/sprint-3-5/09-missing-save-fallback-save-hub.png`
+- `apps/web/docs/screenshots/sprint-3-5/10-corrupt-save-recovery-dialog.png`
+- `apps/web/docs/screenshots/sprint-3-5/11-dashboard-mobile-375-after-hard-reload.png`
+
+Additional Playwright evidence:
+
+- Exact `localStorage` snapshot before and after dashboard hard reload stayed the same:
+  `{"state":{"activeSaveId":"save-slot-1","activeSaveSlot":1,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Mobile Smoke","difficulty":"standard"},"version":1}`
+- 375x667 dashboard hard reload metrics: `innerWidth=375`, `innerHeight=667`, `clientWidth=375`, `scrollWidth=375`, `hasSaveHub=false`, `hasDashboard=true`.
+- Corrupt persisted save proof: injected a malformed `save-slot-corrupt` record and matching localStorage id; reload showed the recovery dialog actions and cleared persisted active save to:
+  `{"state":{"activeSaveId":null,"activeSaveSlot":null,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Smoke Tester","difficulty":"standard"},"version":1}`
+
 Workspace: `/Users/tkevinbigham/MBD-main`
 Branch: `goal/sprint-2-revised-onboarding`
 Date: 2026-05-14
