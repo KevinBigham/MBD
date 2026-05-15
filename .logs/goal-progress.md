@@ -532,3 +532,12 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/features/league/routes/LeadersPage.test.tsx`
 - Scope decisions: Production leaderboard rows already used `/players/:id` links, so this milestone added explicit regression coverage for both WAR and FIP leaderboard states instead of changing working route code.
 - Surprises: The only actual leaderboard surface lives under `apps/web/src/features/league/routes/LeadersPage.tsx`; `apps/web/src/features/stats/**` contains the stat encyclopedia and shared quality-scale test, not player leaderboard rows.
+
+## Milestone 8 — News page player-reference chips
+
+- Commit: c088244 `feat(news): cross-link player references in news items`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `640 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/news/routes/NewsPage.tsx`, `apps/web/src/features/news/routes/NewsPage.test.tsx`
+- Scope decisions: Used the existing `relatedPlayerIds` field from `NewsItem` and resolved display labels through existing `worker.getPlayer`; unresolved or failed lookups fall back to the raw player ID. Moved related chips outside the clickable news-card button so player links are valid interactive elements.
+- Surprises: News already displayed related player IDs as plain text spans, so the milestone was a clean conversion to linked chips rather than a skip.

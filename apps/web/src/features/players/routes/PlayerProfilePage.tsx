@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton, StatLine, Tabs, TabsContent, TabsList, TabsTrigger } from '@mbd/ui';
+import type { PlayerTradeValue } from '@mbd/sim-core';
 import {
   ArrowDownCircle,
   ArrowLeft,
@@ -97,6 +98,14 @@ const TAB_COMPONENTS = {
   personality: PersonalityTab,
 } satisfies Record<PlayerProfileTab, typeof StatsTab>;
 
+const TRADE_VALUE_DIMENSION_LABELS: Array<[keyof PlayerTradeValue['dimensions'], string]> = [
+  ['currentAbility', 'Current Ability'],
+  ['futureValue', 'Future Value'],
+  ['contractValue', 'Contract Value'],
+  ['positionalScarcity', 'Positional Scarcity'],
+  ['durability', 'Durability'],
+];
+
 function PlayerProfileSkeleton() {
   return (
     <div className="space-y-6" data-testid="player-profile-loading">
@@ -143,6 +152,77 @@ function actionToneClasses(tone: ActionState['tone']): string {
   }
 }
 
+function tradeValueBarClass(score: number): string {
+  if (score >= 75) return 'bg-accent-success';
+  if (score >= 55) return 'bg-accent-primary';
+  if (score >= 35) return 'bg-accent-warning';
+  return 'bg-accent-danger';
+}
+
+function TradeValuePanel({
+  value,
+  loading,
+}: {
+  value: PlayerTradeValue | null;
+  loading: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
+          <ArrowLeftRight className="h-4 w-4 text-accent-primary" />
+          Trade Value
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-16 rounded-lg" />
+            <Skeleton className="h-3 rounded-full" />
+            <Skeleton className="h-3 rounded-full" />
+            <Skeleton className="h-3 rounded-full" />
+          </div>
+        ) : value ? (
+          <>
+            <div className="rounded-lg border border-accent-primary/30 bg-accent-primary/10 px-4 py-3">
+              <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                Overall Trade Value
+              </div>
+              <div className="mt-2 flex items-end gap-2">
+                <span className="font-data text-4xl text-dynasty-textBright">{Math.round(value.overall)}</span>
+                <span className="pb-1 font-data text-xs uppercase tracking-[0.16em] text-dynasty-muted">/ 100</span>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {TRADE_VALUE_DIMENSION_LABELS.map(([dimension, label]) => {
+                const score = Math.round(value.dimensions[dimension]);
+                return (
+                  <div key={dimension}>
+                    <div className="mb-1 flex items-center justify-between gap-3">
+                      <span className="font-heading text-xs text-dynasty-muted">{label}</span>
+                      <span className="font-data text-xs text-dynasty-text">{score}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-dynasty-elevated">
+                      <div
+                        className={`h-full rounded-full ${tradeValueBarClass(score)}`}
+                        style={{ width: `${Math.max(0, Math.min(100, score))}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-5 font-heading text-sm text-dynasty-muted">
+            Trade value is unavailable for this profile.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PlayerProfilePage() {
   const { playerId } = useParams<{ playerId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -150,7 +230,9 @@ export default function PlayerProfilePage() {
   const workerReady = worker.isReady;
   const { isInitialized, day, season, userTeamId } = useGameStore();
   const [view, setView] = useState<PlayerProfileView | null>(null);
+  const [tradeValue, setTradeValue] = useState<PlayerTradeValue | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tradeValueLoading, setTradeValueLoading] = useState(false);
   const [actionState, setActionState] = useState<ActionState | null>(null);
   const [busyAction, setBusyAction] = useState<'extend' | 'promote' | 'demote' | 'dfa' | null>(null);
 
@@ -163,11 +245,17 @@ export default function PlayerProfilePage() {
     }
 
     setLoading(true);
+    setTradeValueLoading(true);
     try {
-      const data = await worker.getPlayerProfileView(playerId);
+      const [data, value] = await Promise.all([
+        worker.getPlayerProfileView(playerId),
+        worker.getPlayerTradeValue(playerId),
+      ]);
       setView((data as PlayerProfileView | null) ?? null);
+      setTradeValue((value as PlayerTradeValue | null) ?? null);
     } finally {
       setLoading(false);
+      setTradeValueLoading(false);
     }
   }, [isInitialized, playerId, worker, workerReady]);
 
@@ -436,6 +524,8 @@ export default function PlayerProfilePage() {
                   ) : null}
                 </CardContent>
               </Card>
+
+              <TradeValuePanel value={tradeValue} loading={tradeValueLoading} />
 
               <Card>
                 <CardHeader>
