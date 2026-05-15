@@ -478,3 +478,12 @@ Date: 2026-05-14
 - Files touched: `apps/web/src/app/routes/index.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationsInboxPage.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationsInboxPage.test.tsx`
 - Scope decisions: Built the Inbox as a read-only route against `TradeNegotiationView`, sorting open negotiations first and then by earliest `expiresAtDay`. Error handling uses the existing `logger` plus `sonner` toast and an inline retry state.
 - Surprises: Focused red failed exactly because the page did not exist yet. Full test output includes existing Recharts/React act/service-worker/scouting warning noise and the new test's intentional mocked worker failure log.
+
+## Milestone 2 — Trade Negotiation detail
+
+- Commit: 3b1536d `feat(trade-negotiations): add /trade-negotiations/:id detail view`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/app/routes/index.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationDetailPage.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationDetailPage.test.tsx`
+- Scope decisions: Kept the detail surface read-only and used `getPlayer` only to resolve existing `TradeAsset` player IDs into profile links. The only action CTA deep-links to `/trade?negotiationId=...` for the existing builder to handle.
+- Surprises: `TradeCounterPackage` stores raw `TradeAsset[]`, not `TradeAssetView[]`, so the detail page formats draft picks and IFA pool space locally while resolving player names through the worker.

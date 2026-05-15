@@ -94,6 +94,8 @@ describe('Sidebar', () => {
     expect(container.textContent).toContain('Offseason');
     expect(container.textContent).toContain('Compare');
     expect(container.textContent).toContain('News');
+    expect(container.textContent).toContain('Trade Negotiations');
+    expect(container.querySelector('a[href="/trade-negotiations"]')?.textContent).toContain('Trade Negotiations');
     expect(getDashboardSummary).toHaveBeenCalledTimes(1);
   });
 
