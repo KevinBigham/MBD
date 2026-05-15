@@ -514,3 +514,12 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/features/draft/routes/DraftPage.tsx`, `apps/web/src/features/draft/routes/DraftPage.test.tsx`
 - Scope decisions: Used `/players/:playerId?tab=development` for draft prospects, matching the existing Minors prospect precedent. Linked available prospects, selected prospect card, draft ticker, board cells, post-draft best picks, and the user's draft class without parsing prose summaries.
 - Surprises: Draft commentary and buzz entries have `playerId` fields but not display-safe player names in every entry, so the milestone kept links to places where a structured player ID and visible name were already paired.
+
+## Milestone 6 — Scouting page cross-linking
+
+- Commit: 0736d0c `feat(scouting): cross-link player names to /players/:id`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `639 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/scouting/components/ScoutConflictsTab.tsx`, `apps/web/src/features/scouting/routes/ScoutingPage.tsx`, `apps/web/src/features/scouting/routes/ScoutingPage.test.tsx`
+- Scope decisions: Linked only structured scouting player/prospect identifiers: pro search results, generated pro reports, recent reports, selected IFA reports, IFA board prospects, and scout-conflict headlines. Kept action/status prose such as signing result messages as text because those strings are composed state, not structured link records.
+- Surprises: The route test mock was stale against older worker names, so the milestone updated it to the current `getScoutingStaff` / `getIFAPool` / `searchPlayers` surface before asserting the links.

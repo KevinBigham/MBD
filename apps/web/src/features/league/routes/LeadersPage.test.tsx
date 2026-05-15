@@ -144,6 +144,8 @@ describe('LeadersPage', () => {
     expect(container.textContent).toContain('wOBA');
     expect(container.textContent).toContain('wRC+');
     expect(container.textContent).toContain('5.6');
+    const judgeLink = container.querySelector<HTMLAnchorElement>('a[href="/players/p1"]');
+    expect(judgeLink?.textContent).toContain('Aaron Judge');
 
     const fipButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('FIP'),
@@ -160,5 +162,7 @@ describe('LeadersPage', () => {
     expect(container.textContent).toContain('Gerrit Cole');
     expect(container.textContent).toContain('xFIP');
     expect(container.textContent).toContain('2.83');
+    const coleLink = container.querySelector<HTMLAnchorElement>('a[href="/players/p2"]');
+    expect(coleLink?.textContent).toContain('Gerrit Cole');
   });
 });
