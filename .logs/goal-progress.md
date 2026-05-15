@@ -487,3 +487,12 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/app/routes/index.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationDetailPage.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationDetailPage.test.tsx`
 - Scope decisions: Kept the detail surface read-only and used `getPlayer` only to resolve existing `TradeAsset` player IDs into profile links. The only action CTA deep-links to `/trade?negotiationId=...` for the existing builder to handle.
 - Surprises: `TradeCounterPackage` stores raw `TradeAsset[]`, not `TradeAssetView[]`, so the detail page formats draft picks and IFA pool space locally while resolving player names through the worker.
+
+## Milestone 3 — Sidebar Trade Negotiations entry
+
+- Commit: 2b99559 `feat(layout): add Trade Negotiations entry to Sidebar`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/app/layout/Sidebar.tsx`, `apps/web/src/app/layout/Sidebar.test.tsx`
+- Scope decisions: Placed Trade Negotiations directly after Trades and used the lucide `Handshake` icon, avoiding the News `Inbox` icon.
+- Surprises: None; the red check failed only on the missing sidebar label as intended.

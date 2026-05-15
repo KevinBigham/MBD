@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Zap,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useWorker } from '@/shared/hooks/useWorker';
 
 // ---------------------------------------------------------------------------
@@ -172,7 +173,12 @@ function BiddingWarCard({ war }: { war: ActiveBiddingWar }) {
         )}
       </div>
       <div className="mt-3 font-heading text-base font-semibold text-accent-warning">
-        {war.targetPlayerName}
+        <Link
+          to={`/players/${war.targetPlayerId}`}
+          className="font-heading font-medium text-dynasty-text hover:text-accent-primary"
+        >
+          {war.targetPlayerName}
+        </Link>
       </div>
       <div className="mt-3 space-y-2">
         {sortedRounds.map((round) => {

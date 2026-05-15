@@ -14,6 +14,14 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+const toastMock = vi.hoisted(() => ({
+  error: vi.fn(),
+}));
+
+vi.mock('sonner', () => ({
+  toast: toastMock,
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 (
@@ -350,6 +358,30 @@ function createWorkerMock() {
       tradeExecuted: false,
       negotiation: null,
     }),
+    getNegotiation: vi.fn().mockResolvedValue({
+      id: 'neg-deep',
+      teamId: 'bos',
+      teamName: 'Boston Noreasters',
+      teamAbbreviation: 'BOS',
+      phase: 'counter_2',
+      roundsCompleted: 2,
+      expiresAtDay: 99,
+      dialogue: [
+        { speaker: 'rival_gm', text: 'Inbox deep link loaded into the trade builder.', tone: 'firm' },
+      ],
+      proposal: {
+        offeringAssets: [{ type: 'player', playerId: 'nyy-1' }],
+        requestingAssets: [{ type: 'player', playerId: 'bos-1' }],
+      },
+      counterOffer: {
+        offeringAssets: [{ type: 'player', playerId: 'nyy-1' }],
+        requestingAssets: [{ type: 'player', playerId: 'bos-1' }],
+      },
+      isComplete: false,
+      canAccept: true,
+      canCounter: true,
+      canReject: true,
+    }),
     resolveNegotiation: vi.fn().mockResolvedValue({
       success: true,
       decision: 'accepted',
@@ -478,6 +510,74 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.');
     expect(container.textContent).toContain('Trade History');
     expect(container.textContent).toContain('Orlando Thunder sent Drew Example to Charlotte Hornets for Chris Sample.');
+  });
+
+  it('renders trade player names as profile links', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    mockedUseWorker.mockReturnValue(createWorkerMock() as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage();
+
+    const romanLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href="/players/bos-1"]'));
+    const volpeLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href="/players/nyy-1"]'));
+
+    expect(romanLinks.some((link) => link.textContent?.includes('Roman Anthony'))).toBe(true);
+    expect(volpeLinks.some((link) => link.textContent?.includes('Anthony Volpe'))).toBe(true);
+  });
+
+  it('loads a trade negotiation from the query string into the builder', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage('/trade?negotiationId=neg-deep');
+
+    expect(worker.getNegotiation).toHaveBeenCalledWith('neg-deep');
+    expect(container.textContent).toContain('Negotiation Round');
+    expect(container.textContent).toContain('Inbox deep link loaded into the trade builder.');
+    expect(container.textContent).toContain('Send Negotiation Counter');
+    const volpeLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href="/players/nyy-1"]'));
+    const romanLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href="/players/bos-1"]'));
+    expect(volpeLinks.some((link) => link.textContent?.includes('A. Volpe'))).toBe(true);
+    expect(romanLinks.some((link) => link.textContent?.includes('R. Anthony'))).toBe(true);
   });
 
   it('renders the closed-state banner after the trade deadline', async () => {
