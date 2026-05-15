@@ -523,3 +523,12 @@ Date: 2026-05-14
 - Files touched: `.logs/goal-progress.md`, `apps/web/src/features/scouting/components/ScoutConflictsTab.tsx`, `apps/web/src/features/scouting/routes/ScoutingPage.tsx`, `apps/web/src/features/scouting/routes/ScoutingPage.test.tsx`
 - Scope decisions: Linked only structured scouting player/prospect identifiers: pro search results, generated pro reports, recent reports, selected IFA reports, IFA board prospects, and scout-conflict headlines. Kept action/status prose such as signing result messages as text because those strings are composed state, not structured link records.
 - Surprises: The route test mock was stale against older worker names, so the milestone updated it to the current `getScoutingStaff` / `getIFAPool` / `searchPlayers` surface before asserting the links.
+
+## Milestone 7 — Stats / leaderboards cross-linking
+
+- Commit: 5614f99 `feat(stats): cross-link leaderboard entries to /players/:id`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `639 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/league/routes/LeadersPage.test.tsx`
+- Scope decisions: Production leaderboard rows already used `/players/:id` links, so this milestone added explicit regression coverage for both WAR and FIP leaderboard states instead of changing working route code.
+- Surprises: The only actual leaderboard surface lives under `apps/web/src/features/league/routes/LeadersPage.tsx`; `apps/web/src/features/stats/**` contains the stat encyclopedia and shared quality-scale test, not player leaderboard rows.

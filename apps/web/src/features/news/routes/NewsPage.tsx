@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, ChevronRight, Inbox, Search } from 'lucide-react';
 import { Badge, Skeleton } from '@mbd/ui';
 import { getTeamById } from '@mbd/sim-core';
@@ -16,6 +17,7 @@ type ReadFilter = 'all' | 'unread';
 const NEWS_LIMIT = 100;
 const BODY_EXCERPT_LENGTH = 180;
 const ALL_CATEGORY = 'all';
+const PLAYER_CHIP_CLASS = 'max-w-full truncate rounded border border-dynasty-border px-2 py-1 font-data text-[10px] text-dynasty-muted hover:border-accent-primary hover:text-accent-primary';
 
 function parseTimestampRank(timestamp: string): number {
   if (timestamp === 'NOW') return Number.MAX_SAFE_INTEGER;
@@ -83,6 +85,10 @@ function teamLabel(teamId: string): string {
   return team?.abbreviation ?? teamId.toUpperCase();
 }
 
+function playerProfilePath(playerId: string): string {
+  return `/players/${playerId}`;
+}
+
 function NewsSkeleton() {
   return (
     <div className="space-y-5" data-testid="news-page-skeleton">
@@ -105,14 +111,17 @@ function NewsItemCard({
   item,
   expanded,
   marking,
+  playerLabels,
   onOpen,
 }: {
   item: NewsItem;
   expanded: boolean;
   marking: boolean;
+  playerLabels: Record<string, string>;
   onOpen: (item: NewsItem) => void;
 }) {
   const isUnread = !item.read;
+  const hasRelatedEntities = item.relatedTeamIds.length > 0 || item.relatedPlayerIds.length > 0;
 
   return (
     <article
@@ -162,33 +171,35 @@ function NewsItemCard({
           </span>
         </div>
 
-        {(item.relatedTeamIds.length > 0 || item.relatedPlayerIds.length > 0) ? (
-          <div className="flex flex-wrap gap-2">
-            {item.relatedTeamIds.map((teamId) => (
-              <span
-                key={`team-${item.id}-${teamId}`}
-                className="rounded border border-accent-primary/30 bg-accent-primary/10 px-2 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-accent-primary"
-              >
-                {teamLabel(teamId)}
-              </span>
-            ))}
-            {item.relatedPlayerIds.map((playerId) => (
-              <span
-                key={`player-${item.id}-${playerId}`}
-                className="max-w-full truncate rounded border border-dynasty-border px-2 py-1 font-data text-[10px] text-dynasty-muted"
-              >
-                {playerId}
-              </span>
-            ))}
-          </div>
-        ) : null}
-
-        {marking ? (
-          <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
-            Saving read state...
-          </div>
-        ) : null}
       </button>
+
+      {hasRelatedEntities ? (
+        <div className="flex flex-wrap gap-2 px-4 pb-4 sm:px-5">
+          {item.relatedTeamIds.map((teamId) => (
+            <span
+              key={`team-${item.id}-${teamId}`}
+              className="rounded border border-accent-primary/30 bg-accent-primary/10 px-2 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-accent-primary"
+            >
+              {teamLabel(teamId)}
+            </span>
+          ))}
+          {item.relatedPlayerIds.map((playerId) => (
+            <Link
+              key={`player-${item.id}-${playerId}`}
+              to={playerProfilePath(playerId)}
+              className={PLAYER_CHIP_CLASS}
+            >
+              {playerLabels[playerId] ?? playerId}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
+      {marking ? (
+        <div className="px-4 pb-4 font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted sm:px-5">
+          Saving read state...
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -206,6 +217,7 @@ export default function NewsPage() {
     teamName,
   } = useGameStore();
   const [items, setItems] = useState<NewsItem[]>([]);
+  const [playerLabels, setPlayerLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readFilter, setReadFilter] = useState<ReadFilter>('all');
@@ -216,6 +228,7 @@ export default function NewsPage() {
   const fetchNews = useCallback(async () => {
     if (!isInitialized || !worker.isReady) {
       setItems([]);
+      setPlayerLabels({});
       setLoading(false);
       return;
     }
@@ -224,10 +237,31 @@ export default function NewsPage() {
     setError(null);
     try {
       const nextNews = await worker.getNews(NEWS_LIMIT);
-      setItems([...(nextNews ?? [])].sort(compareNewsForInbox));
+      const sortedNews = [...(nextNews ?? [])].sort(compareNewsForInbox);
+      setItems(sortedNews);
+
+      const playerIds = Array.from(new Set(sortedNews.flatMap((item) => item.relatedPlayerIds)));
+      if (playerIds.length === 0) {
+        setPlayerLabels({});
+      } else {
+        const labels = await Promise.all(playerIds.map(async (playerId) => {
+          try {
+            const player = await worker.getPlayer(playerId);
+            return [
+              playerId,
+              player ? `${player.firstName} ${player.lastName}` : playerId,
+            ] as const;
+          } catch (err) {
+            logger.error('Failed to resolve news player label:', err);
+            return [playerId, playerId] as const;
+          }
+        }));
+        setPlayerLabels(Object.fromEntries(labels));
+      }
     } catch (err) {
       logger.error('Failed to fetch news inbox:', err);
       setError('News feed unavailable.');
+      setPlayerLabels({});
     } finally {
       setLoading(false);
     }
@@ -419,6 +453,7 @@ export default function NewsPage() {
                   item={item}
                   expanded={expandedIds.has(item.id)}
                   marking={markingIds.has(item.id)}
+                  playerLabels={playerLabels}
                   onOpen={(selected) => void markItemRead(selected)}
                 />
               ))}
