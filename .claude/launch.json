@@ -4,7 +4,7 @@
     {
       "name": "mbd-dev",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/tkevinbigham/Projects/MBD/mr-baseball-dynasty/apps/web && npx vite --port 5174 --host"],
+      "runtimeArgs": ["-c", "export PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH && cd /Users/tkevinbigham/MBD-main/apps/web && pnpm exec vite --port 5174 --host"],
       "port": 5174
     }
   ]

@@ -2,6 +2,7 @@ node_modules/
 dist/
 .turbo/
 .worktrees/
+.claude/worktrees/
 *.tsbuildinfo
 .DS_Store
 .env
