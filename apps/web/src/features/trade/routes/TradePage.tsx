@@ -12,7 +12,8 @@ import {
   X,
 } from 'lucide-react';
 import { Badge, Skeleton } from '@mbd/ui';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
@@ -152,6 +153,7 @@ const EMPTY_TRADE_ASSET_INVENTORY: TradeAssetInventoryView = {
 
 const ALL_TEAMS = TEAMS.map((t) => ({ id: t.id, name: t.name, abbr: t.abbreviation }));
 const MULTI_TEAM_ROLE_ORDER: MultiTeamRole[] = ['initiator', 'partner', 'facilitator', 'facilitator'];
+const PLAYER_PROFILE_LINK_CLASS = 'font-heading font-medium text-dynasty-text hover:text-accent-primary';
 
 function normalizeMultiTeamRoles(lanes: MultiTeamLaneState[]): MultiTeamLaneState[] {
   return lanes.map((lane, index) => ({
@@ -372,6 +374,39 @@ function buildTradeAssetLabel(
   }
 }
 
+function tradeAssetViewPlayerId(asset: TradeAssetView): string | null {
+  return asset.playerId ?? (asset.asset.type === 'player' ? asset.asset.playerId : null);
+}
+
+function renderTradeAssetViewLabel(asset: TradeAssetView) {
+  const playerId = tradeAssetViewPlayerId(asset);
+  if (!playerId) {
+    return asset.label;
+  }
+
+  return (
+    <Link to={`/players/${playerId}`} className={PLAYER_PROFILE_LINK_CLASS}>
+      {asset.label}
+    </Link>
+  );
+}
+
+function renderTradeAssetLabel(
+  asset: TradeAsset,
+  resolvePlayer: (playerId: string) => PlayerDTO | undefined,
+) {
+  const label = buildTradeAssetLabel(asset, resolvePlayer);
+  if (asset.type !== 'player') {
+    return label;
+  }
+
+  return (
+    <Link to={`/players/${asset.playerId}`} className={PLAYER_PROFILE_LINK_CLASS}>
+      {label}
+    </Link>
+  );
+}
+
 function tradeAssetValue(
   asset: TradeAsset,
   currentSeason: number,
@@ -446,7 +481,13 @@ function PlayerRow({
       } ${selected ? 'bg-accent-primary/15' : disabled ? '' : 'hover:bg-dynasty-elevated'}`}
     >
       <td className="px-3 py-1.5 font-heading font-medium text-dynasty-text">
-        {player.firstName} {player.lastName}
+        <Link
+          to={`/players/${player.id}`}
+          onClick={(event) => event.stopPropagation()}
+          className={PLAYER_PROFILE_LINK_CLASS}
+        >
+          {player.firstName} {player.lastName}
+        </Link>
       </td>
       <td className="px-2 py-1.5 font-data text-dynasty-muted">{player.position}</td>
       <td className="px-2 py-1.5 text-right font-data text-dynasty-text">{player.displayRating}</td>
@@ -524,19 +565,23 @@ function MultiTeamLaneCard({
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => onTogglePlayer(player.id)}
-                    disabled={disabled}
-                    className="focus-ring flex-1 text-left"
-                  >
-                    <div className="font-heading text-sm text-dynasty-text">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      to={`/players/${player.id}`}
+                      className={PLAYER_PROFILE_LINK_CLASS}
+                    >
                       {player.firstName} {player.lastName}
-                    </div>
-                    <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => onTogglePlayer(player.id)}
+                      disabled={disabled}
+                      className="focus-ring mt-1 block text-left font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted"
+                    >
+                      <span className="sr-only">{player.firstName} {player.lastName}</span>
                       {player.position} · {player.displayRating} OVR · Age {player.age}
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                   <Badge className={assignment ? 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary' : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted'}>
                     {assignment ? 'In Framework' : 'Available'}
                   </Badge>
@@ -639,7 +684,7 @@ function OfferCard({
           <div className="mt-2 space-y-1">
             {offer.offeringAssets.map((asset) => (
               <p key={asset.key} className="font-data text-xs text-dynasty-text">
-                {asset.label} · {asset.detail}
+                {renderTradeAssetViewLabel(asset)} · {asset.detail}
               </p>
             ))}
           </div>
@@ -649,7 +694,7 @@ function OfferCard({
           <div className="mt-2 space-y-1">
             {offer.requestingAssets.map((asset) => (
               <p key={asset.key} className="font-data text-xs text-dynasty-text">
-                {asset.label} · {asset.detail}
+                {renderTradeAssetViewLabel(asset)} · {asset.detail}
               </p>
             ))}
           </div>
@@ -762,7 +807,7 @@ function HistoryCard({ trade }: { trade: TradeHistoryView }) {
 
 export default function TradePage() {
   const worker = useWorker();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     getTeamRoster,
     getTradeHistory,
@@ -774,6 +819,7 @@ export default function TradePage() {
     generateConditionalClause,
     startNegotiation,
     advanceNegotiation,
+    getNegotiation,
     resolveNegotiation,
     proposeMultiTeam,
     executeMultiTeamTrade,
@@ -812,10 +858,12 @@ export default function TradePage() {
   const [multiTeamSubmitting, setMultiTeamSubmitting] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [activeCounterOfferId, setActiveCounterOfferId] = useState<string | null>(null);
+  const [loadedNegotiationId, setLoadedNegotiationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const workerReady = worker.isReady;
   const preselectedPlayerId = searchParams.get('playerId');
+  const negotiationIdParam = searchParams.get('negotiationId');
   const otherTeams = ALL_TEAMS.filter((team) => team.id !== userTeamId);
   const tradeMarketOpen = phase === 'regular' && (
     (deadlineState?.deadlineMode ?? false) || ((deadlineState?.daysUntilDeadline ?? -1) > 0)
@@ -1250,6 +1298,53 @@ export default function TradePage() {
     setRequestingIFAAmount(ifaAmountFromAssets(negotiation.proposal.requestingAssets));
   }, []);
 
+  useEffect(() => {
+    if (!negotiationIdParam || !isInitialized || !workerReady || loadedNegotiationId === negotiationIdParam) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadNegotiation = async () => {
+      const negotiation = await getNegotiation(negotiationIdParam) as TradeNegotiationView | null;
+      if (cancelled) {
+        return;
+      }
+
+      if (!negotiation || negotiation.expiresAtDay < day || negotiation.isComplete) {
+        toast.error('Trade negotiation could not be loaded in the Trade Builder.');
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('negotiationId');
+        setSearchParams(nextParams, { replace: true });
+        setLoadedNegotiationId(null);
+        return;
+      }
+
+      setSelectedTeam(negotiation.teamId);
+      setActiveCounterOfferId(null);
+      setActiveNegotiation(negotiation);
+      applyNegotiationToBuilder(negotiation);
+      setTradeResult(null);
+      setLoadedNegotiationId(negotiationIdParam);
+    };
+
+    void loadNegotiation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyNegotiationToBuilder,
+    day,
+    getNegotiation,
+    isInitialized,
+    loadedNegotiationId,
+    negotiationIdParam,
+    searchParams,
+    setSearchParams,
+    workerReady,
+  ]);
+
   const offeringAssets = useMemo(() => {
     const assets: TradeAsset[] = [...offering.map(playerAsset), ...offeringPicks];
     const poolAmount = parsePoolAmount(offeringIFAAmount);
@@ -1277,6 +1372,7 @@ export default function TradePage() {
             ? draftPickKey(asset)
             : `ifa:${asset.amount.toFixed(2)}`,
       label: buildTradeAssetLabel(asset, playerById),
+      playerId: asset.type === 'player' ? asset.playerId : null,
     })),
     [offeringAssets, playerById],
   );
@@ -1290,6 +1386,7 @@ export default function TradePage() {
             ? draftPickKey(asset)
             : `ifa:${asset.amount.toFixed(2)}`,
       label: buildTradeAssetLabel(asset, playerById),
+      playerId: asset.type === 'player' ? asset.playerId : null,
     })),
     [playerById, requestingAssets],
   );
@@ -1829,7 +1926,7 @@ export default function TradePage() {
                     <div className="mt-2 space-y-1">
                       {activeNegotiation.proposal.offeringAssets.map((asset) => (
                         <div key={`offer-${buildTradeAssetLabel(asset, playerById)}`} className="font-heading text-xs text-dynasty-text">
-                          {buildTradeAssetLabel(asset, playerById)}
+                          {renderTradeAssetLabel(asset, playerById)}
                         </div>
                       ))}
                     </div>
@@ -1839,7 +1936,7 @@ export default function TradePage() {
                     <div className="mt-2 space-y-1">
                       {activeNegotiation.proposal.requestingAssets.map((asset) => (
                         <div key={`request-${buildTradeAssetLabel(asset, playerById)}`} className="font-heading text-xs text-dynasty-text">
-                          {buildTradeAssetLabel(asset, playerById)}
+                          {renderTradeAssetLabel(asset, playerById)}
                         </div>
                       ))}
                     </div>
@@ -2072,7 +2169,11 @@ export default function TradePage() {
                             key={asset.key}
                             className="rounded border border-dynasty-border bg-dynasty-surface px-2 py-1 font-data text-xs text-dynasty-text"
                           >
-                            {asset.label}
+                            {asset.playerId ? (
+                              <Link to={`/players/${asset.playerId}`} className={PLAYER_PROFILE_LINK_CLASS}>
+                                {asset.label}
+                              </Link>
+                            ) : asset.label}
                           </span>
                         );
                       })
@@ -2096,7 +2197,11 @@ export default function TradePage() {
                             key={asset.key}
                             className="rounded border border-dynasty-border bg-dynasty-surface px-2 py-1 font-data text-xs text-dynasty-text"
                           >
-                            {asset.label}
+                            {asset.playerId ? (
+                              <Link to={`/players/${asset.playerId}`} className={PLAYER_PROFILE_LINK_CLASS}>
+                                {asset.label}
+                              </Link>
+                            ) : asset.label}
                           </span>
                         );
                       })
@@ -2283,7 +2388,11 @@ export default function TradePage() {
                                   const player = multiTeamRosters[team.teamId]?.find((candidate) => candidate.id === playerId);
                                   return (
                                     <span key={`${team.teamId}-send-${playerId}`} className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-xs text-dynasty-text">
-                                      {player ? `${player.firstName} ${player.lastName}` : playerId}
+                                      {player ? (
+                                        <Link to={`/players/${player.id}`} className={PLAYER_PROFILE_LINK_CLASS}>
+                                          {player.firstName} {player.lastName}
+                                        </Link>
+                                      ) : playerId}
                                     </span>
                                   );
                                 })
@@ -2296,11 +2405,18 @@ export default function TradePage() {
                               {team.receivingPlayerIds.length === 0 ? (
                                 <span className="font-heading text-xs text-dynasty-muted">No inbound players yet.</span>
                               ) : (
-                                team.receivingPlayerIds.map((playerId) => (
-                                  <span key={`${team.teamId}-receive-${playerId}`} className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-xs text-dynasty-text">
-                                    {multiTeamMovedPlayers.find((candidate) => candidate.playerId === playerId)?.label ?? playerId}
-                                  </span>
-                                ))
+                                team.receivingPlayerIds.map((playerId) => {
+                                  const movedPlayer = multiTeamMovedPlayers.find((candidate) => candidate.playerId === playerId);
+                                  return (
+                                    <span key={`${team.teamId}-receive-${playerId}`} className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-xs text-dynasty-text">
+                                      {movedPlayer ? (
+                                        <Link to={`/players/${movedPlayer.playerId}`} className={PLAYER_PROFILE_LINK_CLASS}>
+                                          {movedPlayer.label}
+                                        </Link>
+                                      ) : playerId}
+                                    </span>
+                                  );
+                                })
                               )}
                             </div>
                           </div>

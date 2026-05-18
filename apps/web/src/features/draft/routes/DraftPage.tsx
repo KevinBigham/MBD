@@ -8,6 +8,7 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
@@ -54,6 +55,12 @@ function toneClasses(tone: DraftRoomPick['tone'] | DraftBoardCell['tone']): stri
 
 function formatBonus(value: number | null | undefined): string {
   return `$${(value ?? 0).toFixed(2)}M`;
+}
+
+const DRAFT_PLAYER_LINK_CLASS = 'font-heading font-medium text-dynasty-text hover:text-accent-primary';
+
+function draftPlayerPath(playerId: string): string {
+  return `/players/${playerId}?tab=development`;
 }
 
 function compensationContextLabel(
@@ -207,7 +214,15 @@ function ProspectsPanel({
                   <td className="px-4 py-2 font-data text-dynasty-muted">
                     {prospect.bigBoardRank ?? index + 1}
                   </td>
-                  <td className="px-2 py-2 font-heading font-medium text-dynasty-textBright">{prospect.name}</td>
+                  <td className="px-2 py-2">
+                    <Link
+                      to={draftPlayerPath(prospect.playerId)}
+                      onClick={(event) => event.stopPropagation()}
+                      className={DRAFT_PLAYER_LINK_CLASS}
+                    >
+                      {prospect.name}
+                    </Link>
+                  </td>
                   <td className="px-2 py-2 font-data text-dynasty-muted">{prospect.position}</td>
                   <td className="px-2 py-2 text-right font-data text-dynasty-muted">{prospect.age}</td>
                   <td className="px-2 py-2 font-data text-dynasty-muted">{prospect.looks ?? 0}</td>
@@ -289,7 +304,11 @@ function CurrentPickPanel({
           <>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="font-heading text-lg font-semibold text-dynasty-textBright">{selectedProspect.name}</p>
+                <p className="font-heading text-lg font-semibold text-dynasty-textBright">
+                  <Link to={draftPlayerPath(selectedProspect.playerId)} className={DRAFT_PLAYER_LINK_CLASS}>
+                    {selectedProspect.name}
+                  </Link>
+                </p>
                 <p className="mt-1 font-data text-sm text-dynasty-muted">
                   {selectedProspect.position} · {selectedProspect.origin} · Age {selectedProspect.age}
                 </p>
@@ -431,7 +450,10 @@ function DraftTicker({
                     Round {pick.round} · Pick {pick.pickNumber}
                   </p>
                   <p className="mt-1 font-heading text-sm font-semibold">
-                    {pick.teamAbbreviation} selected {pick.playerName}
+                    {pick.teamAbbreviation} selected{' '}
+                    <Link to={draftPlayerPath(pick.playerId)} className={DRAFT_PLAYER_LINK_CLASS}>
+                      {pick.playerName}
+                    </Link>
                   </p>
                   <p className="mt-1 font-data text-xs text-dynasty-muted">
                     {pick.position} · {pick.origin}
@@ -510,7 +532,9 @@ function DraftBoard({ draft, visibleCount }: { draft: DraftRoomView; visibleCoun
                               )}
                             </div>
                             <div className="mt-1 font-heading text-xs font-semibold leading-tight">
-                              {visiblePick.playerName}
+                              <Link to={draftPlayerPath(visiblePick.playerId)} className={DRAFT_PLAYER_LINK_CLASS}>
+                                {visiblePick.playerName}
+                              </Link>
                             </div>
                             <div className="mt-1 font-data text-[10px] text-dynasty-muted">
                               {visiblePick.position} · {visiblePick.scoutingGrade}
@@ -718,6 +742,9 @@ function PostDraftGrades({ gradesView }: { gradesView: DraftPostDraftGradesView 
                   <span className="font-heading text-sm font-semibold text-dynasty-textBright">{grade.teamName}</span>
                 </div>
                 <p className="mt-1 font-heading text-xs text-dynasty-muted">{grade.summary}</p>
+                <Link to={draftPlayerPath(grade.bestPickPlayerId)} className={DRAFT_PLAYER_LINK_CLASS}>
+                  Best pick: {grade.bestPickPlayerName}
+                </Link>
               </div>
               <div className="text-right">
                 <p className="font-heading text-2xl font-semibold text-dynasty-textBright">{grade.grade}</p>
@@ -771,7 +798,11 @@ function DraftSummary({
           <div key={pick.playerId} className="rounded border border-dynasty-border bg-dynasty-surface px-4 py-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="font-heading text-sm font-semibold text-dynasty-textBright">{pick.playerName}</p>
+                <p className="font-heading text-sm font-semibold text-dynasty-textBright">
+                  <Link to={draftPlayerPath(pick.playerId)} className={DRAFT_PLAYER_LINK_CLASS}>
+                    {pick.playerName}
+                  </Link>
+                </p>
                 <p className="mt-1 font-data text-xs text-dynasty-muted">
                   {pick.position} · {pick.origin}
                 </p>

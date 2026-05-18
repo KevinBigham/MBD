@@ -72,6 +72,7 @@ describe('NewsPage', () => {
   let container: HTMLDivElement;
   let root: Root;
   let getNews: ReturnType<typeof vi.fn>;
+  let getPlayer: ReturnType<typeof vi.fn>;
   let markNewsRead: ReturnType<typeof vi.fn>;
   let exportSnapshot: ReturnType<typeof vi.fn>;
 
@@ -81,6 +82,11 @@ describe('NewsPage', () => {
     root = createRoot(container);
 
     getNews = vi.fn().mockResolvedValue(sampleNews);
+    getPlayer = vi.fn().mockImplementation(async (playerId: string) => {
+      if (playerId === 'player-ace') return { id: playerId, firstName: 'Casey', lastName: 'Ace' };
+      if (playerId === 'prospect-1') return { id: playerId, firstName: 'Eli', lastName: 'Prospect' };
+      return null;
+    });
     markNewsRead = vi.fn().mockResolvedValue(undefined);
     exportSnapshot = vi.fn().mockResolvedValue({
       schemaVersion: 33,
@@ -113,6 +119,7 @@ describe('NewsPage', () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       exportSnapshot,
+      getPlayer,
       getNews,
       markNewsRead,
     } as unknown as ReturnType<typeof useWorker>);
@@ -151,8 +158,22 @@ describe('NewsPage', () => {
     expect(content).toContain('Priority 5');
     expect(content).toContain('WATCH');
     expect(content).toContain('NYT');
-    expect(content).toContain('player-ace');
+    expect(content).toContain('Casey Ace');
     expect(getNews).toHaveBeenCalledWith(100);
+  });
+
+  it('links machine-readable related players as profile chips', async () => {
+    await renderPage();
+
+    const aceLink = container.querySelector<HTMLAnchorElement>('a[href="/players/player-ace"]');
+    expect(aceLink).not.toBeNull();
+    expect(aceLink!.textContent).toContain('Casey Ace');
+
+    const prospectLink = container.querySelector<HTMLAnchorElement>('a[href="/players/prospect-1"]');
+    expect(prospectLink).not.toBeNull();
+    expect(prospectLink!.textContent).toContain('Eli Prospect');
+    expect(getPlayer).toHaveBeenCalledWith('player-ace');
+    expect(getPlayer).toHaveBeenCalledWith('prospect-1');
   });
 
   it('marks an unread item read when opened', async () => {

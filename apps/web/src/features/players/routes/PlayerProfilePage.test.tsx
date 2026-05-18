@@ -367,9 +367,20 @@ describe('PlayerProfilePage', () => {
   });
 
   async function renderPage(initialEntry: string, profileView: PlayerProfileView) {
-    mockedUseWorker.mockReturnValue({
+    const worker = {
       isReady: true,
       getPlayerProfileView: vi.fn().mockResolvedValue(profileView),
+      getPlayerTradeValue: vi.fn().mockResolvedValue({
+        playerId: profileView.player?.id ?? 'player-1',
+        overall: 74,
+        dimensions: {
+          currentAbility: 68,
+          futureValue: 82,
+          contractValue: 76,
+          positionalScarcity: 75,
+          durability: 69,
+        },
+      }),
       getExtensionOffer: vi.fn().mockResolvedValue({
         years: 5,
         annualSalary: 18.2,
@@ -392,7 +403,9 @@ describe('PlayerProfilePage', () => {
       designateForAssignment: vi.fn().mockResolvedValue({ success: true }),
       getSeasonProjections: vi.fn().mockResolvedValue(null),
       getPlayerSimilarity: vi.fn().mockResolvedValue(null),
-    } as unknown as ReturnType<typeof useWorker>);
+    };
+
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
       root.render(
@@ -406,6 +419,7 @@ describe('PlayerProfilePage', () => {
       await Promise.resolve();
     });
     await settleUi();
+    return worker;
   }
 
   async function settleUi() {
@@ -465,6 +479,17 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Fan Favorite');
   });
 
+  it('renders the player trade value sidebar panel', async () => {
+    const worker = await renderPage('/players/player-1', createProfileView());
+
+    expect(worker.getPlayerTradeValue).toHaveBeenCalledWith('player-1');
+    expect(container.textContent).toContain('Trade Value');
+    expect(container.textContent).toContain('Overall Trade Value');
+    expect(container.textContent).toContain('74');
+    expect(container.textContent).toContain('Future Value');
+    expect(container.textContent).toContain('Contract Value');
+  });
+
   it('renders a read-only historical fallback and scouting availability note for retired players', async () => {
     const historicalView = createProfileView({
       player: {
@@ -514,6 +539,17 @@ describe('PlayerProfilePage', () => {
           minorLeagueLevel: null,
         },
       })),
+      getPlayerTradeValue: vi.fn().mockResolvedValue({
+        playerId: 'player-1',
+        overall: 74,
+        dimensions: {
+          currentAbility: 68,
+          futureValue: 82,
+          contractValue: 76,
+          positionalScarcity: 75,
+          durability: 69,
+        },
+      }),
       getExtensionOffer: vi.fn().mockResolvedValue({
         years: 5,
         annualSalary: 18.2,

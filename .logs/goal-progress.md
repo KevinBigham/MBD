@@ -452,3 +452,111 @@ Checks to run for Milestone 1:
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck`
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test`
 - `PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build`
+
+---
+
+# Sprint 4 Goal Progress
+
+Workspace: `/Users/tkevinbigham/MBD-main`
+Branch: `goal/sprint-4-front-office`
+Date: 2026-05-14
+
+## Pause Before Milestone 1 - Worker Shape Mismatch
+
+- Commit: none; stopped before implementation.
+- typecheck: not run; no milestone code was completed.
+- test: not run; no milestone code was completed.
+- Files touched: `STATUS.md`, `.logs/goal-progress.md`.
+- Scope decisions: Did not add worker methods, did not touch protected worker/sim/contracts/save files, and did not reinterpret contract-negotiation fields from trade package data.
+- Surprises: `getOpenNegotiations()` and `getNegotiation(id)` return `TradeNegotiationView` trade-package shapes (`offeringAssets`, `requestingAssets`, `counterOffer`, `phase`, `dialogue`, `expiresAtDay`), not contract salary asks/offered terms. Also, `getInteractivePressConference()` already has an `AppLayout` consumer through `PressConferenceModal`, so the audit's zero-consumer claim is stale.
+
+## Milestone 1 — Trade Negotiations Inbox scaffolding
+
+- Commit: c3eb524 `feat(trade-negotiations): add /trade-negotiations Inbox route`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `apps/web/src/app/routes/index.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationsInboxPage.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationsInboxPage.test.tsx`
+- Scope decisions: Built the Inbox as a read-only route against `TradeNegotiationView`, sorting open negotiations first and then by earliest `expiresAtDay`. Error handling uses the existing `logger` plus `sonner` toast and an inline retry state.
+- Surprises: Focused red failed exactly because the page did not exist yet. Full test output includes existing Recharts/React act/service-worker/scouting warning noise and the new test's intentional mocked worker failure log.
+
+## Milestone 2 — Trade Negotiation detail
+
+- Commit: 3b1536d `feat(trade-negotiations): add /trade-negotiations/:id detail view`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/app/routes/index.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationDetailPage.tsx`, `apps/web/src/features/trade-negotiations/routes/TradeNegotiationDetailPage.test.tsx`
+- Scope decisions: Kept the detail surface read-only and used `getPlayer` only to resolve existing `TradeAsset` player IDs into profile links. The only action CTA deep-links to `/trade?negotiationId=...` for the existing builder to handle.
+- Surprises: `TradeCounterPackage` stores raw `TradeAsset[]`, not `TradeAssetView[]`, so the detail page formats draft picks and IFA pool space locally while resolving player names through the worker.
+
+## Milestone 3 — Sidebar Trade Negotiations entry
+
+- Commit: 2b99559 `feat(layout): add Trade Negotiations entry to Sidebar`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/app/layout/Sidebar.tsx`, `apps/web/src/app/layout/Sidebar.test.tsx`
+- Scope decisions: Placed Trade Negotiations directly after Trades and used the lucide `Handshake` icon, avoiding the News `Inbox` icon.
+- Surprises: None; the red check failed only on the missing sidebar label as intended.
+
+## Milestone 4 — Trade page cross-linking + deep-link from Inbox
+
+- Commit: 14043ed `feat(trade): cross-link player names + accept ?negotiationId deep link`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/trade/components/DeadlineDramaPanel.tsx`, `apps/web/src/features/trade/routes/TradePage.tsx`, `apps/web/src/features/trade/routes/TradePage.test.tsx`
+- Scope decisions: Linked structured player assets in Trade rows, offer cards, active negotiation packages, package summaries, multi-team summaries, and the deadline bidding-war target using the Roster `/players/:id` pattern. Added `/trade?negotiationId=...` loading through existing `getNegotiation` and `applyNegotiationToBuilder`, with toast + param clearing for stale or closed negotiations.
+- Surprises: Trade recap/ticker prose still contains narrative player names without a safe token map; no regex parsing was added.
+
+## Milestone 5 — Draft page cross-linking
+
+- Commit: 0ad438f `feat(draft): cross-link prospects to /players/:id`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/draft/routes/DraftPage.tsx`, `apps/web/src/features/draft/routes/DraftPage.test.tsx`
+- Scope decisions: Used `/players/:playerId?tab=development` for draft prospects, matching the existing Minors prospect precedent. Linked available prospects, selected prospect card, draft ticker, board cells, post-draft best picks, and the user's draft class without parsing prose summaries.
+- Surprises: Draft commentary and buzz entries have `playerId` fields but not display-safe player names in every entry, so the milestone kept links to places where a structured player ID and visible name were already paired.
+
+## Milestone 6 — Scouting page cross-linking
+
+- Commit: 0736d0c `feat(scouting): cross-link player names to /players/:id`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `639 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/scouting/components/ScoutConflictsTab.tsx`, `apps/web/src/features/scouting/routes/ScoutingPage.tsx`, `apps/web/src/features/scouting/routes/ScoutingPage.test.tsx`
+- Scope decisions: Linked only structured scouting player/prospect identifiers: pro search results, generated pro reports, recent reports, selected IFA reports, IFA board prospects, and scout-conflict headlines. Kept action/status prose such as signing result messages as text because those strings are composed state, not structured link records.
+- Surprises: The route test mock was stale against older worker names, so the milestone updated it to the current `getScoutingStaff` / `getIFAPool` / `searchPlayers` surface before asserting the links.
+
+## Milestone 7 — Stats / leaderboards cross-linking
+
+- Commit: 5614f99 `feat(stats): cross-link leaderboard entries to /players/:id`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `639 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/league/routes/LeadersPage.test.tsx`
+- Scope decisions: Production leaderboard rows already used `/players/:id` links, so this milestone added explicit regression coverage for both WAR and FIP leaderboard states instead of changing working route code.
+- Surprises: The only actual leaderboard surface lives under `apps/web/src/features/league/routes/LeadersPage.tsx`; `apps/web/src/features/stats/**` contains the stat encyclopedia and shared quality-scale test, not player leaderboard rows.
+
+## Milestone 8 — News page player-reference chips
+
+- Commit: c088244 `feat(news): cross-link player references in news items`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `640 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/news/routes/NewsPage.tsx`, `apps/web/src/features/news/routes/NewsPage.test.tsx`
+- Scope decisions: Used the existing `relatedPlayerIds` field from `NewsItem` and resolved display labels through existing `worker.getPlayer`; unresolved or failed lookups fall back to the raw player ID. Moved related chips outside the clickable news-card button so player links are valid interactive elements.
+- Surprises: News already displayed related player IDs as plain text spans, so the milestone was a clean conversion to linked chips rather than a skip.
+
+## Milestone 9 — Trade Value on Player Profile
+
+- Commit: 0832a9b `feat(players): surface trade value on player profile`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `641 passed`
+- Files touched: `.logs/goal-progress.md`, `apps/web/src/features/players/routes/PlayerProfilePage.tsx`, `apps/web/src/features/players/routes/PlayerProfilePage.test.tsx`, `apps/web/src/shared/hooks/useWorker.ts`
+- Scope decisions: Rendered a compact sidebar card rather than adding another tab. The hook now forwards the existing sim-worker `getPlayerTradeValue` query; no new worker query/action was added.
+- Surprises: The sim worker already exposed `getPlayerTradeValue`, but `useWorker` did not forward it, so wiring the profile required a hook wrapper.
+
+## Milestone 10 — Browser smoke + screenshots + STATUS.md
+
+- Commit: a531964d04d9 `docs(sprint-4): browser smoke, STATUS report, and handoff`
+- typecheck: PASS — `Tasks: 9 successful, 9 total`
+- test: PASS — `Tasks: 8 successful, 8 total`; web suite `103 passed`, `641 passed`
+- build: PASS — `Tasks: 5 successful, 5 total`; PWA precache `122 entries (3286.88 KiB)`
+- Files touched: `.logs/goal-progress.md`, `STATUS.md`, `apps/web/docs/screenshots/sprint-4/*.png`
+- Scope decisions: Captured the full Milestone 10 screenshot set under `apps/web/docs/screenshots/sprint-4/` and rewrote STATUS with validation tails, bundle notes, route invariants, cross-link coverage, and rollback/next-goal notes. Left the pre-existing `.claude/launch.json` change untouched.
+- Surprises: The Codex in-app browser screenshot command timed out on `Page.captureScreenshot`, so the committed evidence was captured with a Playwright Chromium fallback against the same local dev server; no repo dependencies or manifests changed.

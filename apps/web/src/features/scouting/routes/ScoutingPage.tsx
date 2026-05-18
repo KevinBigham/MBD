@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Search,
   Eye,
@@ -164,6 +165,11 @@ function chemistryTone(tier: string | undefined): string {
 
 const hitterAttrs = ['Contact', 'Power', 'Eye', 'Speed', 'Defense', 'Durability'];
 const pitcherAttrs = ['Stuff', 'Control', 'Stamina', 'Velocity', 'Movement'];
+const PLAYER_PROFILE_LINK_CLASS = 'font-heading font-semibold text-dynasty-textBright hover:text-accent-primary';
+
+function playerProfilePath(playerId: string): string {
+  return `/players/${playerId}`;
+}
 
 function formatMoney(value: number): string {
   return `$${value.toFixed(2)}M`;
@@ -479,17 +485,24 @@ export default function ScoutingPage() {
             {searchResults.length > 0 && (
               <div className="mt-2 max-h-48 overflow-y-auto rounded border border-dynasty-border bg-dynasty-elevated">
                 {searchResults.map((player) => (
-                  <button
+                  <div
                     key={player.id}
-                    type="button"
-                    onClick={() => { void handleScout(player); setSearchResults([]); }}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-dynasty-surface"
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-dynasty-surface"
                   >
-                    <span className="font-heading text-sm text-dynasty-text">
-                      {player.firstName} {player.lastName}
-                    </span>
-                    <span className="font-data text-xs text-dynasty-muted">{player.position} / Age {player.age}</span>
-                  </button>
+                    <div>
+                      <Link to={playerProfilePath(player.id)} className={PLAYER_PROFILE_LINK_CLASS}>
+                        {player.firstName} {player.lastName}
+                      </Link>
+                      <div className="font-data text-xs text-dynasty-muted">{player.position} / Age {player.age}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { void handleScout(player); setSearchResults([]); }}
+                      className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-1.5 font-heading text-[11px] font-semibold text-dynasty-text hover:border-accent-primary"
+                    >
+                      Scout
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -504,7 +517,11 @@ export default function ScoutingPage() {
               <div className="mt-4 space-y-4 rounded border border-dynasty-border bg-dynasty-elevated p-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-heading text-base font-bold text-dynasty-textBright">{scoutReport.playerName}</h3>
+                    <h3 className="text-base">
+                      <Link to={playerProfilePath(scoutReport.playerId)} className={PLAYER_PROFILE_LINK_CLASS}>
+                        {scoutReport.playerName}
+                      </Link>
+                    </h3>
                     <p className="font-data text-xs text-dynasty-muted">
                       {scoutReport.position} | Age {scoutReport.age} | {scoutReport.teamName}
                     </p>
@@ -610,7 +627,11 @@ export default function ScoutingPage() {
                   <tbody>
                     {recentReports.map((report, index) => (
                       <tr key={`${report.playerId}-${index}`} className="border-b border-dynasty-border/50 hover:bg-dynasty-elevated/50">
-                        <td className="py-2 pr-4 font-heading text-sm text-dynasty-text">{report.playerName}</td>
+                        <td className="py-2 pr-4 font-heading text-sm">
+                          <Link to={playerProfilePath(report.playerId)} className={PLAYER_PROFILE_LINK_CLASS}>
+                            {report.playerName}
+                          </Link>
+                        </td>
                         <td className="py-2 pr-4 font-data text-xs text-dynasty-muted">{report.position}</td>
                         <td className="py-2 pr-4 text-right font-data text-sm text-dynasty-textBright">{report.overall}</td>
                         <td className="py-2 pr-4 text-right font-data text-xs text-dynasty-muted">&plusmn;{report.confidence}</td>
@@ -717,7 +738,9 @@ export default function ScoutingPage() {
                     {ifaReport ? (
                       <div className="space-y-3">
                         <div>
-                          <div className="font-heading text-base font-semibold text-dynasty-textBright">{ifaReport.playerName}</div>
+                          <Link to={playerProfilePath(ifaReport.playerId)} className={PLAYER_PROFILE_LINK_CLASS}>
+                            {ifaReport.playerName}
+                          </Link>
                           <div className="font-data text-xs text-dynasty-muted">
                             {ifaReport.position} | Age {ifaReport.age} | {regionLabel(ifaReport.region)} / {ifaReport.country}
                           </div>
@@ -893,7 +916,9 @@ export default function ScoutingPage() {
                     {ifaPool.prospects.map((prospect) => (
                       <tr key={prospect.id} className="border-b border-dynasty-border/50 hover:bg-dynasty-elevated/50">
                         <td className="py-2 pr-4">
-                          <div className="font-heading text-sm text-dynasty-text">{prospect.playerName}</div>
+                          <Link to={playerProfilePath(prospect.id)} className={PLAYER_PROFILE_LINK_CLASS}>
+                            {prospect.playerName}
+                          </Link>
                           <div className="font-data text-xs text-dynasty-muted">{prospect.position} / Age {prospect.age}</div>
                           {prospect.scoutConflict ? (
                             <div className="mt-1 font-data text-[10px] uppercase tracking-[0.16em] text-accent-warning">
