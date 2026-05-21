@@ -18,6 +18,7 @@ import {
   UserCog,
 } from 'lucide-react';
 import type { AGMCandidate, AGMCandidateId } from '@mbd/sim-core';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 const BACKGROUND_ICONS: Record<string, React.ReactNode> = {
   former_player: <UserCog className="h-6 w-6 text-accent-primary" />,
@@ -127,7 +128,7 @@ function CandidateCard({
 
       {/* Background label */}
       <p className="mt-1 font-data text-[11px] uppercase tracking-wider text-dynasty-muted">
-        {candidate.background.replaceAll('_', ' ')}
+        {humanizeLabel(candidate.background)}
       </p>
 
       {/* Bio */}

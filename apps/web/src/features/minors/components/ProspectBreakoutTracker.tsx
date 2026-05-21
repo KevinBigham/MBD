@@ -4,6 +4,7 @@ import { Badge } from '@mbd/ui';
 import { Rocket } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { minorLevelLabel } from '@/shared/lib/labels';
 
 interface WatchEntry {
   playerId: string;
@@ -93,7 +94,7 @@ export default function ProspectBreakoutTracker() {
                 </Badge>
               </div>
               <div className="mt-1 font-data text-xs text-dynasty-muted">
-                {entry.position} · Age {entry.age} · {entry.level}
+                {entry.position} · Age {entry.age} · {minorLevelLabel(entry.level)}
               </div>
               <div className="mt-1 font-heading text-xs text-dynasty-muted">
                 {entry.narrativeHook}

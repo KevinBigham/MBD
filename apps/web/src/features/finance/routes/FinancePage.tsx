@@ -3,6 +3,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, StatLine } from '@mbd/
 import { DollarSign, TrendingDown, TrendingUp, Users, Briefcase } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { minorLevelLabel } from '@/shared/lib/labels';
 
 interface ContractEntry {
   playerId: string;
@@ -30,6 +31,7 @@ interface FinanceData {
 
 type SortKey = 'name' | 'position' | 'annualSalary' | 'yearsRemaining';
 type SortDir = 'asc' | 'desc';
+type ContractFilter = 'mlb' | 'minors' | 'expiring' | 'high_salary' | 'clauses' | 'extension_priority' | 'all';
 
 function formatDollars(millions: number): string {
   const value = millions * 1_000_000;
@@ -55,6 +57,74 @@ function budgetStatusColor(capSpace: number): string {
   return 'text-accent-danger';
 }
 
+function contractMatchesFilter(contract: ContractEntry, filter: ContractFilter, highSalaryFloor: number): boolean {
+  switch (filter) {
+    case 'mlb':
+      return contract.rosterStatus === 'MLB';
+    case 'minors':
+      return contract.rosterStatus !== 'MLB';
+    case 'expiring':
+      return contract.yearsRemaining <= 1;
+    case 'high_salary':
+      return contract.annualSalary >= highSalaryFloor;
+    case 'clauses':
+      return contract.noTradeClause || contract.playerOption;
+    case 'extension_priority':
+      return contract.rosterStatus === 'MLB' && contract.yearsRemaining <= 2 && contract.annualSalary >= 1;
+    case 'all':
+      return true;
+  }
+}
+
+function filterLabel(filter: ContractFilter): string {
+  switch (filter) {
+    case 'mlb':
+      return 'MLB';
+    case 'minors':
+      return 'Minors';
+    case 'expiring':
+      return 'Expiring';
+    case 'high_salary':
+      return 'High Salary';
+    case 'clauses':
+      return 'NTC/PO';
+    case 'extension_priority':
+      return 'Extension Priority';
+    case 'all':
+      return 'Full List';
+  }
+}
+
+function FinanceTriageList({
+  title,
+  empty,
+  entries,
+  detail,
+}: {
+  title: string;
+  empty: string;
+  entries: ContractEntry[];
+  detail: (contract: ContractEntry) => string;
+}) {
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-3">
+      <div className="font-heading text-xs uppercase tracking-wide text-dynasty-muted">{title}</div>
+      <div className="mt-3 space-y-2">
+        {entries.length > 0 ? entries.map((contract) => (
+          <div key={`${title}-${contract.playerId}`} className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+            <div className="font-heading text-sm text-dynasty-textBright">{contract.name}</div>
+            <div className="mt-1 font-heading text-xs text-dynasty-muted">
+              {contract.position} · {minorLevelLabel(contract.rosterStatus)} · {detail(contract)}
+            </div>
+          </div>
+        )) : (
+          <div className="font-heading text-sm text-dynasty-muted">{empty}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function FinancePage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -62,6 +132,7 @@ export default function FinancePage() {
   const [data, setData] = useState<FinanceData | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('annualSalary');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [contractFilter, setContractFilter] = useState<ContractFilter>('mlb');
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -84,9 +155,20 @@ export default function FinancePage() {
     });
   }, []);
 
+  const highSalaryFloor = useMemo(() => {
+    if (!data || data.contracts.length === 0) return 15;
+    const salaries = data.contracts.map((contract) => contract.annualSalary).sort((left, right) => right - left);
+    return Math.max(8, salaries[Math.min(salaries.length - 1, 14)] ?? 15);
+  }, [data]);
+
+  const filteredContracts = useMemo(() => {
+    if (!data) return [];
+    return data.contracts.filter((contract) => contractMatchesFilter(contract, contractFilter, highSalaryFloor));
+  }, [contractFilter, data, highSalaryFloor]);
+
   const sortedContracts = useMemo(() => {
     if (!data) return [];
-    const sorted = [...data.contracts];
+    const sorted = [...filteredContracts];
     sorted.sort((a, b) => {
       let cmp: number;
       switch (sortKey) {
@@ -108,7 +190,23 @@ export default function FinancePage() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [data, sortKey, sortDir]);
+  }, [data, filteredContracts, sortKey, sortDir]);
+
+  const contractFilterCounts = useMemo(() => {
+    if (!data) {
+      return {} as Record<ContractFilter, number>;
+    }
+
+    return {
+      mlb: data.contracts.filter((contract) => contractMatchesFilter(contract, 'mlb', highSalaryFloor)).length,
+      minors: data.contracts.filter((contract) => contractMatchesFilter(contract, 'minors', highSalaryFloor)).length,
+      expiring: data.contracts.filter((contract) => contractMatchesFilter(contract, 'expiring', highSalaryFloor)).length,
+      high_salary: data.contracts.filter((contract) => contractMatchesFilter(contract, 'high_salary', highSalaryFloor)).length,
+      clauses: data.contracts.filter((contract) => contractMatchesFilter(contract, 'clauses', highSalaryFloor)).length,
+      extension_priority: data.contracts.filter((contract) => contractMatchesFilter(contract, 'extension_priority', highSalaryFloor)).length,
+      all: data.contracts.length,
+    };
+  }, [data, highSalaryFloor]);
 
   const sortIndicator = useCallback(
     (key: SortKey) => (sortKey === key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''),
@@ -124,6 +222,18 @@ export default function FinancePage() {
   }
 
   const overage = data.luxuryTaxPayroll > 230 ? data.luxuryTaxPayroll - 230 : 0;
+  const expiringContracts = data.contracts
+    .filter((contract) => contract.yearsRemaining <= 1)
+    .sort((left, right) => right.annualSalary - left.annualSalary)
+    .slice(0, 3);
+  const clauseContracts = data.contracts
+    .filter((contract) => contract.noTradeClause || contract.playerOption)
+    .sort((left, right) => right.annualSalary - left.annualSalary)
+    .slice(0, 3);
+  const extensionPriorityContracts = data.contracts
+    .filter((contract) => contractMatchesFilter(contract, 'extension_priority', highSalaryFloor))
+    .sort((left, right) => left.yearsRemaining - right.yearsRemaining || right.annualSalary - left.annualSalary)
+    .slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -249,13 +359,65 @@ export default function FinancePage() {
         </CardContent>
       </Card>
 
-      {/* Contract Table */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
-            <Users className="h-4 w-4 text-accent-info" />
-            Player Contracts ({sortedContracts.length})
+            <Briefcase className="h-4 w-4 text-accent-info" />
+            Finance Decision Desk
           </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 lg:grid-cols-3">
+            <FinanceTriageList
+              title="Expiring Money"
+              empty="No expiring contracts need attention."
+              entries={expiringContracts}
+              detail={(contract) => `${formatMoney(contract.annualSalary)} clears after this season`}
+            />
+            <FinanceTriageList
+              title="Clause Watch"
+              empty="No no-trade or player-option clauses in the current view."
+              entries={clauseContracts}
+              detail={(contract) => [
+                contract.noTradeClause ? 'No-trade protection' : null,
+                contract.playerOption ? 'Player option' : null,
+              ].filter(Boolean).join(' · ')}
+            />
+            <FinanceTriageList
+              title="Extension Priority"
+              empty="No obvious extension-priority contracts right now."
+              entries={extensionPriorityContracts}
+              detail={(contract) => `${contract.yearsRemaining} year${contract.yearsRemaining === 1 ? '' : 's'} left at ${formatMoney(contract.annualSalary)}`}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Contract Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
+              <Users className="h-4 w-4 text-accent-info" />
+              Player Contracts ({sortedContracts.length}/{data.contracts.length})
+            </CardTitle>
+            <div className="flex flex-wrap gap-2">
+              {(['mlb', 'minors', 'expiring', 'high_salary', 'clauses', 'extension_priority', 'all'] as ContractFilter[]).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setContractFilter(filter)}
+                  className={`rounded border px-3 py-1.5 font-heading text-[11px] uppercase tracking-wide transition-colors ${
+                    contractFilter === filter
+                      ? 'border-accent-info/60 bg-accent-info/10 text-accent-info'
+                      : 'border-dynasty-border text-dynasty-muted hover:border-accent-info/40 hover:text-accent-info'
+                  }`}
+                >
+                  {filterLabel(filter)} · {contractFilterCounts[filter] ?? 0}
+                </button>
+              ))}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -303,7 +465,7 @@ export default function FinancePage() {
                     <td className="px-3 py-2 text-center font-data text-sm text-dynasty-text">{c.yearsRemaining}</td>
                     <td className="px-3 py-2 text-center">
                       <Badge variant={c.rosterStatus === 'MLB' ? 'default' : 'outline'} className="text-[10px]">
-                        {c.rosterStatus}
+                        {minorLevelLabel(c.rosterStatus)}
                       </Badge>
                     </td>
                     <td className="px-3 py-2 text-center">

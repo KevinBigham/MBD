@@ -63,6 +63,7 @@ import {
   requireState,
 } from './sim.worker.helpers.js';
 import { getDifficultyAdjustedBudget, getTeamStaffBudget } from './sim.worker.setup.js';
+import { applyOnboardingIdentityBaseline } from './sim.worker.frontOfficeIdentity.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -592,6 +593,30 @@ function agmToMediaTone(agmId: AGMCandidateId | null): GMPhilosophy['mediaTone']
   return 'measured';
 }
 
+function spendingStyleToDayOneBudget(
+  spendingStyle: GMPhilosophy['spendingStyle'],
+): DayOneBudgetAllocation {
+  if (spendingStyle === 'big_spender') {
+    return 'spend_now';
+  }
+  if (spendingStyle === 'penny_pincher') {
+    return 'future_flex';
+  }
+  return 'balanced';
+}
+
+function developmentStyleToPromotionStance(
+  developmentStyle: GMPhilosophy['developmentStyle'],
+): DayOnePromotionStance {
+  if (developmentStyle === 'aggressive') {
+    return 'aggressive';
+  }
+  if (developmentStyle === 'patient') {
+    return 'patient';
+  }
+  return 'measured';
+}
+
 function inferBiggestWeakness(weaknesses: string[]) {
   return weaknesses[0] ?? 'rotation depth';
 }
@@ -989,10 +1014,23 @@ export function applyScoutingHire(scoutingDirectorId: string): WorkerMutationRes
 export function completeOnboarding(philosophy: GMPhilosophy): void {
   const s = requireState();
   s.franchise.gmPhilosophy = philosophy;
+  s.franchise.dayOne = {
+    ...s.franchise.dayOne,
+    status: 'complete',
+    currentStep: 'complete',
+    selectedAGMId: s.franchise.dayOne.selectedAGMId ?? s.franchise.assistantGMId,
+    seasonGoal: philosophy.seasonGoal,
+    budgetAllocation: spendingStyleToDayOneBudget(philosophy.spendingStyle),
+    developmentStyle: philosophy.developmentStyle,
+    promotionStance: s.franchise.dayOne.promotionStance
+      ?? developmentStyleToPromotionStance(philosophy.developmentStyle),
+    quickStartRecapSeen: true,
+  };
   s.franchise.onboarding = {
     ...s.franchise.onboarding,
     welcomeBriefingSeen: true,
   };
+  applyOnboardingIdentityBaseline(s);
 }
 
 export function completeRevisedOnboarding(result: OnboardingResult): WorkerMutationResult {
@@ -1015,10 +1053,22 @@ export function completeRevisedOnboarding(result: OnboardingResult): WorkerMutat
     ...result.gmPhilosophy,
     scoutingFocus: appliedScouting.scoutingFocus,
   };
+  s.franchise.dayOne = {
+    ...s.franchise.dayOne,
+    status: 'complete',
+    currentStep: 'complete',
+    selectedAGMId: result.selectedAGMId,
+    seasonGoal: result.gmPhilosophy.seasonGoal,
+    budgetAllocation: spendingStyleToDayOneBudget(result.gmPhilosophy.spendingStyle),
+    developmentStyle: result.gmPhilosophy.developmentStyle,
+    promotionStance: developmentStyleToPromotionStance(result.gmPhilosophy.developmentStyle),
+    quickStartRecapSeen: true,
+  };
   s.franchise.onboarding = {
     ...s.franchise.onboarding,
     welcomeBriefingSeen: true,
   };
+  applyOnboardingIdentityBaseline(s);
   revisedOnboardingDraft = null;
 
   return { success: true, flowStateChanged: true };

@@ -109,8 +109,13 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   );
 }
 
-/** Mobile bottom tab indices: Dashboard, Roster, Draft, Trade, League, More */
-const MOBILE_TAB_INDICES = [0, 2, 8, 9, 10];
+const MOBILE_PRIMARY_ROUTES = [
+  '/dashboard',
+  '/roster',
+  '/draft',
+  '/trade',
+  '/league/standings',
+] as const;
 
 function MobileTabLink({ item }: { item: NavItem }) {
   return (
@@ -196,7 +201,11 @@ function MobileMoreDrawer({
 
 export function MobileTabBar({ items }: { items: NavItem[] }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const tabItems = MOBILE_TAB_INDICES.map((i) => items[i]).filter((item): item is NavItem => item != null);
+  const tabItems = MOBILE_PRIMARY_ROUTES
+    .map((route) => items.find((item) => item.to === route))
+    .filter((item): item is NavItem => item != null);
+  const primaryRoutes = new Set<string>(MOBILE_PRIMARY_ROUTES);
+  const moreItems = items.filter((item) => !primaryRoutes.has(item.to));
 
   return (
     <>
@@ -215,7 +224,7 @@ export function MobileTabBar({ items }: { items: NavItem[] }) {
           <span>More</span>
         </button>
       </nav>
-      <MobileMoreDrawer items={items} open={moreOpen} onClose={() => setMoreOpen(false)} />
+      <MobileMoreDrawer items={moreItems} open={moreOpen} onClose={() => setMoreOpen(false)} />
     </>
   );
 }

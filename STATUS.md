@@ -1,165 +1,136 @@
-# STATUS - Sprint 3.5 Hard-Reload State Survival
+# STATUS - Onboarding Consequence Balance
 
-Status: **COMPLETE** for the hard-reload state survival mission. The active save shell state now persists to localStorage, app boot auto-loads the persisted save through the existing safe save/worker path, and hard-reloaded in-game routes render their route instead of falling back to Save Hub.
+Status: COMPLETE for the balance-tuning pass requested on 2026-05-20. No save schema/version change was made.
 
-## What shipped
+## What Changed
 
-`useGameStore` now persists only the allowed shell fields under `mbd:game-store@v1`: active save id/slot, user team id, season, day, phase, team name, GM name, and difficulty. `AppBootGate` wraps the router, shows a `Resuming save...` route-level skeleton while loading, calls `loadSaveSafely(activeSaveId)`, imports the snapshot through `worker.importSnapshot`, then calls `initializeGame(...)` before `AppLayout` can redirect. Missing save ids clear the stale persisted active-save fields and fall through to Save Hub; corrupt saves route through the existing Save Recovery dialog.
+- Added `apps/web/src/workers/sim.worker.onboardingBalance.test.ts`, a deterministic worker balance guard that completes revised onboarding across five variants covering AGM, mandate, scouting, development, spending, trade, and media choices, then sims a real regular season and compares owner/fan/front-office/prospect/scouting outcomes.
+- Tuned only modest constants in `apps/web/src/workers/sim.worker.frontOfficeIdentity.ts`:
+  - Scouting focus bonus reduced from `0.055 + 0.025` to `0.05 + 0.02`.
+  - Off-lane scouting penalty softened from `-0.01` to `-0.008`.
+  - Monthly owner consequence weights damped from `0.50 / 0.25 / 0.25` with clamp `[-6, 6]` to `0.35 / 0.18 / 0.18` with clamp `[-4, 4]`.
+- Kept save compatibility intact: no schema fields, migrations, or snapshot version changes.
 
-## Files changed
+## Balance Evidence
 
-Current implementation diff is intentionally inside the Sprint 3.5 allowed scope plus proof artifacts:
+Artifact:
 
 ```text
+.logs/onboarding-balance-sample.json
+```
+
+Seed `12701`, default one-season matrix:
+
+- Day One fan sentiment range: `47-56`, not flat and not explosive.
+- Season-end owner trust range: `65-97`.
+- Season-end front-office reputation range: `50-55`.
+- Season-end free-agent appeal range: `52-67`.
+- Prospect progress range: `8.17-13.82`.
+- Focused scouting accuracy landed at `0.761-0.803`; off-lane accuracy at `0.683-0.699`.
+- Average focused scouting lift is now about `0.096`, inside the `0.045-0.100` guard.
+- Raw season-end fan sentiment still reaches `100` for all five variants because the existing global fan model saturates on the same winning seed; the focused test therefore asserts Day One fan consequence range plus season-end free-agent appeal.
+
+Multi-season evidence:
+
+- Initial full five-variant/two-season guard timed out at `240000ms`.
+- After adding an on-demand two-season mode, the full five-variant pass timed out at `720000ms`.
+- A three-variant/two-season subset completed in `509.69s` and showed broader volatility outside the narrow onboarding layer: owner-trust spread stayed at `59`, and cross-AGM prospect outcomes flipped the simple aggressive-vs-patient ordering (`11.41` vs `12.30`).
+- Result: the modest onboarding constants are tuned for the focused season-sample guard; a performant multi-season attribution harness should be the next goal before deeper owner/prospect tuning.
+
+## Checks Run
+
+All commands used:
+
+```text
+PATH=/Users/kevin/.nvm/versions/node/v24.14.0/bin:$PATH
+```
+
+```text
+MBD_ONBOARDING_BALANCE_LOG=1 pnpm --filter @mbd/web exec vitest run src/workers/sim.worker.onboardingBalance.test.ts --reporter=verbose
+```
+
+PASS, 1 file / 3 tests.
+
+```text
+pnpm --filter @mbd/web exec vitest run src/workers/sim.worker.onboardingBalance.test.ts src/workers/sim.worker.frontOfficeIdentity.test.ts src/workers/sim.worker.onboarding.test.ts --reporter=verbose
+```
+
+PASS, 3 files / 18 tests.
+
+```text
+pnpm typecheck
+```
+
+PASS. Turbo reported `Tasks: 9 successful, 9 total`.
+
+```text
+pnpm build
+```
+
+PASS. Turbo reported `Tasks: 5 successful, 5 total`.
+
+```text
+pnpm test
+```
+
+FAILED in existing bundle budget coverage outside the onboarding balance path. Turbo reported `6 successful, 8 total`, failed `@mbd/web#test` after `4m4.507s`.
+
+Current isolated bundle-budget failure:
+
+```text
+pnpm --filter @mbd/web exec vitest run src/build/bundleBudget.test.ts --reporter=verbose
+```
+
+FAILED:
+
+- `game-engine-core-BfRj55UX.js`: gzip `146443`, budget `146432` (`+11` bytes); raw `451188`, budget `456704`.
+- `game-engine-story-D0fw_gN6.js`: raw `474921`, budget `456704` (`+18217` bytes); gzip `141187`, budget `146432`.
+
+No focused onboarding consequence or onboarding balance test failed in the final default verification.
+
+Publish-checkout verification before GitHub push:
+
+- `pnpm install --frozen-lockfile` initially hit pnpm's reinstall prompt; rerun as `CI=true pnpm install --frozen-lockfile` to recreate workspace dependency links without lockfile changes.
+- First focused Git checkout run hit the one-season balance sample hook timeout at `240000ms`; the test harness timeout was raised from `240000ms` to `360000ms` so the deterministic sample can complete on this checkout without changing runtime behavior or save shape.
+- Rerun `pnpm --filter @mbd/web exec vitest run src/workers/sim.worker.onboardingBalance.test.ts src/workers/sim.worker.frontOfficeIdentity.test.ts src/workers/sim.worker.onboarding.test.ts --reporter=verbose`: PASS, 3 files / 18 tests, `136.17s`.
+- Rerun `pnpm typecheck`: PASS, Turbo `9 successful, 9 total`.
+- Rerun `pnpm build`: PASS, Turbo `5 successful, 5 total`.
+
+Remote-branch integration before GitHub push:
+
+- Fetched `origin/goal/tutorial-assistant-v1` at commit `3f28275` and merged it with the local build-round commit instead of overwriting remote tutorial-assistant work.
+- Resolved conflicts in `apps/web/src/app/routes/index.tsx` by keeping the pre-game Assistant mount and the newer News route inside `AppLayout`.
+- Resolved `docs/goals/MBD_TUTORIAL_ASSISTANT_V1_PROGRESS.md` by preserving the completed tutorial-assistant evidence while updating stale repo-health status.
+- `pnpm --filter @mbd/web exec vitest run src/app/routes/index.test.tsx src/app/layout/AppLayout.test.tsx src/features/assistant/lib/assistantState.test.ts src/features/assistant/data/assistantGuidance.test.ts src/features/assistant/components/AssistantPanel.test.tsx --reporter=verbose`: PASS, 5 files / 26 tests, `3.04s`.
+- Post-merge `pnpm typecheck`: PASS, Turbo `9 successful, 9 total`.
+- Post-merge `pnpm build`: PASS, Turbo `5 successful, 5 total`.
+
+Main-branch integration before PR:
+
+- Fetched `origin/main` at `93b3f5b` and merged it into `goal/tutorial-assistant-v1` so the branch carries current main history before PR/merge.
+- Resolved overlapping Sprint 1-3.5 history by keeping the latest build-round/onboarding status docs, preserving `main`'s removed in-app feedback feature, and removing the remaining Settings feedback hook/assertions from the branch.
+- `pnpm --filter @mbd/web exec vitest run src/app/boot/AppBootGate.test.tsx src/app/routes/index.test.tsx src/app/layout/AppLayout.test.tsx src/features/settings/routes/SettingsPage.test.tsx src/workers/sim.worker.onboarding.test.ts src/features/assistant/lib/assistantState.test.ts src/features/assistant/data/assistantGuidance.test.ts src/features/assistant/components/AssistantPanel.test.tsx --reporter=verbose`: PASS, 8 files / 41 tests, `6.29s`.
+- Post-main-merge `pnpm typecheck`: PASS, Turbo `9 successful, 9 total`.
+- Post-main-merge `pnpm build`: PASS, Turbo `5 successful, 5 total`.
+
+## Files Changed
+
+```text
+apps/web/src/workers/sim.worker.frontOfficeIdentity.ts
+apps/web/src/workers/sim.worker.onboardingBalance.test.ts
+.logs/onboarding-balance-sample.json
 .logs/goal-progress.md
 STATUS.md
-apps/web/docs/screenshots/sprint-3-5/*.png
-apps/web/src/app/App.test.tsx
-apps/web/src/app/App.tsx
-apps/web/src/app/boot/AppBootGate.test.tsx
-apps/web/src/app/boot/AppBootGate.tsx
-apps/web/src/shared/hooks/useGameStore.test.ts
-apps/web/src/shared/hooks/useGameStore.ts
 ```
 
-Pre-existing local dirt left untouched:
+## Known Limitations
+
+- This folder is not a git repository, so changed-file inventory is manual.
+- The default automated balance guard uses one real regular-season sim per variant. The true two-season path is currently too slow/volatile to serve as a normal test gate.
+- Season-end raw fan sentiment is dominated by the existing global fan model on seed `12701`; Day One fan deltas and free-agent appeal remain the cleaner onboarding-layer fan signals.
+
+## Next Goal
 
 ```text
-.claude/launch.json
-.claude/scheduled_tasks.lock
-```
-
-`git diff --stat origin/main..HEAD`:
-
-```text
- .logs/goal-progress.md                             | 121 +++++++
- GOAL.md                                            | 355 ++++++++++-----------
- STATUS.md                                          | 180 ++++++-----
- .../sprint-3-5/01-dashboard-before-hard-reload.png | Bin 0 -> 156026 bytes
- .../sprint-3-5/02-dashboard-after-hard-reload.png  | Bin 0 -> 139473 bytes
- .../sprint-3-5/03-news-before-hard-reload.png      | Bin 0 -> 126471 bytes
- .../sprint-3-5/04-news-after-hard-reload.png       | Bin 0 -> 103543 bytes
- .../sprint-3-5/05-roster-after-hard-reload.png     | Bin 0 -> 135451 bytes
- .../sprint-3-5/06-trade-after-hard-reload.png      | Bin 0 -> 150587 bytes
- .../sprint-3-5/07-draft-after-hard-reload.png      | Bin 0 -> 93716 bytes
- .../sprint-3-5/08-save-hub-after-delete-slot.png   | Bin 0 -> 135242 bytes
- .../09-missing-save-fallback-save-hub.png          | Bin 0 -> 138231 bytes
- .../sprint-3-5/10-corrupt-save-recovery-dialog.png | Bin 0 -> 89768 bytes
- .../11-dashboard-mobile-375-after-hard-reload.png  | Bin 0 -> 32785 bytes
- apps/web/src/app/App.test.tsx                      |   4 +
- apps/web/src/app/App.tsx                           |  33 +-
- apps/web/src/app/boot/AppBootGate.test.tsx         | 283 ++++++++++++++++
- apps/web/src/app/boot/AppBootGate.tsx              | 171 ++++++++++
- apps/web/src/shared/hooks/useGameStore.test.ts     |  72 +++++
- apps/web/src/shared/hooks/useGameStore.ts          | 118 ++++---
- 20 files changed, 1008 insertions(+), 329 deletions(-)
-```
-
-## Validations run
-
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/shared/hooks/useGameStore.test.ts src/app/boot/AppBootGate.test.tsx
-```
-
-Red proof: FAIL as expected before implementation. The store persistence test saw `persisted.version` as `undefined`, and `AppBootGate.tsx` did not exist.
-
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web test src/shared/hooks/useGameStore.test.ts src/app/boot/AppBootGate.test.tsx src/app/App.test.tsx
-```
-
-Latest focused result: PASS, 3 files / 8 tests.
-
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm typecheck
-```
-
-PASS. Turbo reported `Tasks: 9 successful, 9 total` in `5.418s`.
-
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm test
-```
-
-PASS. Turbo reported `Tasks: 8 successful, 8 total` in `1m23.712s`. Web passed 101 files / 629 tests, sim-core passed 137 files / 1610 tests, contracts passed 1 file / 20 tests, and UI passed 1 file / 1 test. Existing non-fatal console noise remained: Recharts zero-size warnings, React `act(...)` warnings, service worker failure-test log, and the existing ScoutingPage mock-function log.
-
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm build
-```
-
-PASS. Turbo reported `Tasks: 5 successful, 5 total` in `4.134s`; Vite built in `3.28s`; PWA precached 120 entries. Bundle budget stayed green. Main app chunk: `index-jENJPu8m.js` 205.74 KB raw / 58.38 KB gzip. Worker chunks remained `game-engine-core` 450.75 KB raw and `game-engine-story` 452.10 KB raw.
-
-## Browser evidence
-
-Dev server:
-
-```text
-PATH=/Users/tkevinbigham/.local/node-lts/bin:$PATH pnpm --filter @mbd/web dev
-```
-
-PASS at `http://localhost:5173/MBD/`.
-
-Screenshots under `apps/web/docs/screenshots/sprint-3-5/`:
-
-- `01-dashboard-before-hard-reload.png` - dashboard loaded from Save Hub continue.
-- `02-dashboard-after-hard-reload.png` - `/MBD/dashboard` after hard reload, dashboard rendered.
-- `03-news-before-hard-reload.png` - News Inbox before hard reload.
-- `04-news-after-hard-reload.png` - `/MBD/news` after hard reload, News Inbox rendered.
-- `05-roster-after-hard-reload.png` - `/MBD/roster` after hard reload, Roster rendered.
-- `06-trade-after-hard-reload.png` - `/MBD/trade` after hard reload, Trade Center rendered.
-- `07-draft-after-hard-reload.png` - `/MBD/draft` after hard reload, Draft Room rendered.
-- `08-save-hub-after-delete-slot.png` - active Slot 1 deleted for missing-save fallback.
-- `09-missing-save-fallback-save-hub.png` - stale persisted id fell through to Save Hub.
-- `10-corrupt-save-recovery-dialog.png` - corrupt persisted save hit Save Recovery actions.
-- `11-dashboard-mobile-375-after-hard-reload.png` - 375x667 dashboard hard reload rendered dashboard with `scrollWidth=375`.
-
-Routes hard-reloaded successfully without Save Hub redirect:
-
-```text
-/MBD/dashboard
-/MBD/news
-/MBD/roster
-/MBD/trade
-/MBD/draft
-```
-
-localStorage before dashboard reload:
-
-```json
-{"state":{"activeSaveId":"save-slot-1","activeSaveSlot":1,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Mobile Smoke","difficulty":"standard"},"version":1}
-```
-
-localStorage after dashboard reload:
-
-```json
-{"state":{"activeSaveId":"save-slot-1","activeSaveSlot":1,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Mobile Smoke","difficulty":"standard"},"version":1}
-```
-
-Missing-save fallback cleared the stale active save id and rendered Save Hub. Corrupt-save fallback cleared the stale active save id and showed the existing Save Recovery action surface; post-recovery storage was:
-
-```json
-{"state":{"activeSaveId":null,"activeSaveSlot":null,"userTeamId":"nym","season":1,"day":1,"phase":"preseason","teamName":"New York Tycoons","gmName":"Smoke Tester","difficulty":"standard"},"version":1}
-```
-
-## Save Recovery integration
-
-Auto-resume uses `loadSaveSafely(activeSaveId)`. Non-missing `{ ok: false }` results call `SaveRecoveryProvider.showFailure(...)` with a retry callback, matching the manual Save Hub load path. `AppBootGate.test.tsx` covers the corrupt-save branch, and browser evidence `10-corrupt-save-recovery-dialog.png` confirms the recovery action surface appears for a malformed persisted save.
-
-## Known limitations
-
-- The in-app Browser read-only page scope did not expose `localStorage` or `indexedDB`, so exact storage snapshots and 375x667 viewport metrics were captured in a separate Playwright context against the same dev server.
-- Auto-resume intentionally does not persist or duplicate snapshots in localStorage. IndexedDB remains the source of truth for heavy save data.
-- If localStorage is disabled, the app behaves like the old flow and falls back to Save Hub on hard reload.
-
-## Risks
-
-- Browser storage edge cases remain the main risk: localStorage denied, IndexedDB blocked, quota pressure, or a stale persisted id after manual browser data cleanup. The implemented behavior clears stale active-save state and falls back to Save Hub.
-- Worker import failures now surface through Save Recovery as `storage_failed`; watch production telemetry/manual reports for any confusing copy if a future worker compatibility error is not truly storage-related.
-
-## Rollback notes
-
-Revert the Sprint 3.5 merge commit. No save schema bump, no migration, no worker/sim-core/contracts changes, no new dependencies. Existing `mbd:game-store@v1` localStorage entries become inert on the old code path; users can also remove that key manually if needed.
-
-## Next /goal
-
-```text
-/goal Implement Sprint 4: wire orphaned player-profile + open-negotiations endpoints. Read README.md, CHANGELOG.md, MASTER_CONTEXT.md, STATUS.md, GOAL.md, the player profile route/tests, trade negotiation route/tests, useWorker, and worker query/action surfaces first. Keep save schema v33 and do not touch sim-core/contracts unless GOAL.md explicitly allows it. Wire the existing worker endpoints into the player profile and open-negotiations UI so hard-reloaded long-running saves can inspect a player and resume active trade talks without dead controls. Add focused tests for player-profile endpoint wiring and open-negotiations resume behavior, then validate with pnpm typecheck + pnpm test + pnpm build and a dev-server browser smoke. Keep proof in .logs/goal-progress.md and finish with STATUS.md.
+/goal Build a performant multi-season onboarding balance attribution harness: run two-season deterministic samples across all Day One variants without timeouts; separate onboarding-layer deltas from global owner/fan/prospect systems; tune only justified constants if owner/prospect volatility remains too wide; address or re-baseline the current game-engine-core/story bundle budget failures; keep save compatibility; run typecheck/build/targeted/full tests; update .logs/goal-progress.md plus STATUS.md with evidence and the exact next /goal.
 ```

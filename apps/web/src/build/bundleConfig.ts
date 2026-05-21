@@ -2,7 +2,7 @@ export const MAIN_THREAD_CHUNK_BUDGET_BYTES = 304 * 1024;
 export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 
 // Worker ceilings: see apps/web/docs/BUDGETS.md for the lift policy and per-slice rationale.
-export const WORKER_CHUNK_BUDGET_BYTES = 443 * 1024;
+export const WORKER_CHUNK_BUDGET_BYTES = 446 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 143 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */

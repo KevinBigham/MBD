@@ -21,6 +21,7 @@ import {
   type SaveData,
   type LoadSaveSafelyResult,
 } from '@/shared/lib/saveSystem';
+import { humanizeLabel } from '@/shared/lib/labels';
 import type { PerformanceDiagnosticsView } from '@/workers/sim.worker.diagnostics';
 
 const WHAT_IF_BRANCH_LIMIT = 3;
@@ -690,7 +691,7 @@ export default function SettingsPage() {
 
         <SettingsSection
           title="Data / Install"
-          description={`Current session: Season ${season}, Day ${day}, ${phase.toUpperCase()} as ${userTeamId.toUpperCase()}.`}
+          description={`Current session: Season ${season}, Day ${day}, ${humanizeLabel(phase)} as ${userTeamId.toUpperCase()}.`}
           open={openSections.data}
           onToggle={() => toggleSection('data')}
         >
@@ -798,7 +799,7 @@ export default function SettingsPage() {
                           {branch.branchMeta?.description ?? branch.name}
                         </div>
                         <div className="mt-1 font-data text-xs text-dynasty-muted">
-                          S{branch.season} D{branch.day} | {branch.phase.toUpperCase()} | Updated {new Date(branch.updatedAt).toLocaleString()}
+                          S{branch.season} D{branch.day} | {humanizeLabel(branch.phase)} | Updated {new Date(branch.updatedAt).toLocaleString()}
                         </div>
                       </div>
                       <button
@@ -844,7 +845,7 @@ export default function SettingsPage() {
                           {save.name}
                         </div>
                         <div className="font-data text-xs text-dynasty-muted">
-                          S{save.season} D{save.day} | {save.phase.toUpperCase()} | Updated {new Date(save.updatedAt).toLocaleString()}
+                          S{save.season} D{save.day} | {humanizeLabel(save.phase)} | Updated {new Date(save.updatedAt).toLocaleString()}
                         </div>
                         {!save.hasSnapshot && (
                           <div className="font-heading text-xs text-accent-warning">

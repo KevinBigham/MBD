@@ -1,0 +1,80 @@
+- generic [ref=e2]:
+  - generic [ref=e5]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]: v1.0.0 Launch
+        - heading "Mr. Baseball Dynasty" [level=1] [ref=e10]
+        - paragraph [ref=e11]: A browser-based baseball franchise dynasty sim built for long saves, front-office decisions, and seasons that leave a record.
+        - generic [ref=e12]:
+          - generic [ref=e13]:
+            - generic [ref=e14]: What it is
+            - paragraph [ref=e15]: Draft, trade, develop, spend, and manage a club through years of roster pressure.
+          - generic [ref=e16]:
+            - generic [ref=e17]: What it is not
+            - paragraph [ref=e18]: Not a live MLB roster app, fantasy tool, betting product, or pay-to-win loop.
+          - generic [ref=e19]:
+            - generic [ref=e20]: Who it is for
+            - paragraph [ref=e21]: Players who like contracts, prospects, arcs, and multi-season consequences.
+          - generic [ref=e22]:
+            - generic [ref=e23]: Start with New Dynasty
+            - paragraph [ref=e24]: Pick a slot, choose a club and mode, then enter Day One or quick-start into Season 1.
+      - button "New Dynasty" [ref=e26] [cursor=pointer]:
+        - img [ref=e27]
+        - text: New Dynasty
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - heading "Save Slots" [level=2] [ref=e32]
+          - paragraph [ref=e33]: Five dynasty slots. Continue, replace, or clear them from one hub.
+        - button "Refresh" [ref=e34] [cursor=pointer]
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: Slot 1
+            - generic [ref=e40]: Empty Slot
+          - generic [ref=e42]: Reserved for a fresh dynasty build.
+          - button "Use This Slot" [ref=e44] [cursor=pointer]:
+            - img [ref=e45]
+            - text: Use This Slot
+        - generic [ref=e47]:
+          - generic [ref=e49]:
+            - generic [ref=e50]: Slot 2
+            - generic [ref=e51]: Empty Slot
+          - generic [ref=e53]: Reserved for a fresh dynasty build.
+          - button "Use This Slot" [ref=e55] [cursor=pointer]:
+            - img [ref=e56]
+            - text: Use This Slot
+        - generic [ref=e58]:
+          - generic [ref=e60]:
+            - generic [ref=e61]: Slot 3
+            - generic [ref=e62]: Empty Slot
+          - generic [ref=e64]: Reserved for a fresh dynasty build.
+          - button "Use This Slot" [ref=e66] [cursor=pointer]:
+            - img [ref=e67]
+            - text: Use This Slot
+        - generic [ref=e69]:
+          - generic [ref=e71]:
+            - generic [ref=e72]: Slot 4
+            - generic [ref=e73]: Empty Slot
+          - generic [ref=e75]: Reserved for a fresh dynasty build.
+          - button "Use This Slot" [ref=e77] [cursor=pointer]:
+            - img [ref=e78]
+            - text: Use This Slot
+        - generic [ref=e80]:
+          - generic [ref=e82]:
+            - generic [ref=e83]: Slot 5
+            - generic [ref=e84]: Empty Slot
+          - generic [ref=e86]: Reserved for a fresh dynasty build.
+          - button "Use This Slot" [ref=e88] [cursor=pointer]:
+            - img [ref=e89]
+            - text: Use This Slot
+  - complementary [ref=e91]:
+    - button "Open Assistant" [ref=e92] [cursor=pointer]:
+      - img [ref=e94]
+      - generic [ref=e96]:
+        - generic [ref=e97]:
+          - text: Assistant
+          - generic [ref=e98]: Newcomer
+        - generic [ref=e99]: What now? Setup - Start the dynasty cleanly
+      - img [ref=e100]
+  - region "Notifications alt+T"

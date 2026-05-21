@@ -16,6 +16,10 @@ vi.mock('./CommandPalette', () => ({
   CommandPalette: () => null,
 }));
 
+vi.mock('@/features/assistant/components/AssistantPanel', () => ({
+  AssistantPanel: () => <div data-testid="assistant-panel">Assistant</div>,
+}));
+
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
 }));
@@ -25,11 +29,19 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 }));
 
 vi.mock('@/shared/lib/saveSystem', () => ({
+  loadGameById: vi.fn().mockResolvedValue(undefined),
+  saveGameById: vi.fn().mockResolvedValue(undefined),
   scheduleAutoSave: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/shared/lib/audio', () => ({
   getAudioEngine: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/logger', () => ({
+  logger: {
+    error: vi.fn(),
+  },
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);
@@ -174,6 +186,7 @@ describe('AppLayout', () => {
     });
 
     expect(container.textContent).toContain('Sim to Playoffs');
+    expect(container.textContent).toContain('Assistant');
 
     const simToPlayoffsButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Sim to Playoffs'),
@@ -774,6 +787,84 @@ describe('AppLayout', () => {
     expect(worker.importSnapshot).not.toHaveBeenCalled();
   });
 
+  it('disables global sim controls while the worker is not ready', async () => {
+    const worker = createWorkerMock({
+      status: 'regular',
+      season: 1,
+      phaseLabel: 'Season 1 - Day 1/162',
+      detailLabel: 'Ready',
+      progress: 0,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: null,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    });
+    worker.isReady = false;
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+    mockedUseGameStore.mockReturnValue({
+      season: 1,
+      day: 1,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      playerCount: 780,
+      gamesPlayed: 0,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const simDayButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Sim Day'),
+    ) as HTMLButtonElement | undefined;
+
+    expect(container.textContent).toContain('Preparing simulation');
+    expect(simDayButton?.disabled).toBe(true);
+
+    await act(async () => {
+      simDayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(worker.simDay).not.toHaveBeenCalled();
+    expect(worker.exportSnapshot).not.toHaveBeenCalled();
+    expect(mockedScheduleAutoSave).not.toHaveBeenCalled();
+  });
+
   it('maps ambient audio to the requested route contexts', async () => {
     mockedUseGameStore.mockReturnValue({
       season: 3,
@@ -1021,5 +1112,262 @@ describe('AppLayout', () => {
 
     expect(worker.exportSnapshot).toHaveBeenCalled();
     expect(mockedScheduleAutoSave).toHaveBeenCalledWith(3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+  });
+
+  it('auto-saves active-slot day and week advances from the global controls', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 87,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock({
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 - Day 87/162',
+      detailLabel: 'Regular Season',
+      progress: 87 / 162,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 33,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const simDayButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Sim Day'),
+    );
+    const simWeekButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Sim Week'),
+    );
+
+    await act(async () => {
+      simDayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      simWeekButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.simDay).toHaveBeenCalledTimes(1);
+    expect(worker.simWeek).toHaveBeenCalledTimes(1);
+    expect(worker.exportSnapshot).toHaveBeenCalledTimes(2);
+    expect(mockedScheduleAutoSave).toHaveBeenNthCalledWith(1, 3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+    expect(mockedScheduleAutoSave).toHaveBeenNthCalledWith(2, 3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+  });
+
+  it('preserves the autosave even when a post-sim shell refresh fails', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 87,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock({
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 - Day 87/162',
+      detailLabel: 'Regular Season',
+      progress: 87 / 162,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 33,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    });
+    worker.getTickerFeed = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('Ticker refresh failed'));
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const simDayButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Sim Day'),
+    );
+
+    await act(async () => {
+      simDayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.simDay).toHaveBeenCalledTimes(1);
+    expect(worker.exportSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+  });
+
+  it('ignores rapid duplicate global sim input while a worker mutation is in flight', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 87,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      difficulty: 'standard',
+      activeSaveId: null,
+      activeSaveSlot: null,
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock({
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 - Day 87/162',
+      detailLabel: 'Regular Season',
+      progress: 87 / 162,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 33,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    });
+    let finishSimDay: ((value: { season: number; day: number; phase: string; gamesPlayed: number }) => void) | null = null;
+    worker.simDay = vi.fn().mockImplementation(() => new Promise((resolve) => {
+      finishSimDay = resolve;
+    }));
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const simDayButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Sim Day'),
+    );
+
+    await act(async () => {
+      simDayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      simDayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(worker.simDay).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishSimDay?.({ season: 3, day: 88, phase: 'regular', gamesPlayed: 1 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      simDayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(worker.simDay).toHaveBeenCalledTimes(2);
   });
 });

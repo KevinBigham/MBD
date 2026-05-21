@@ -11,7 +11,7 @@ import {
   readGuidedStartNudgeRecord,
   registerGuidedStartSave,
 } from '@/features/onboarding/nudges';
-import { exportSnapshotToJson } from '@/shared/lib/saveSystem';
+import { exportSnapshotToJson, scheduleAutoSave } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -23,11 +23,15 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 
 vi.mock('@/shared/lib/saveSystem', () => ({
   exportSnapshotToJson: vi.fn().mockReturnValue('{"kind":"mbd-save-export"}'),
+  loadGameById: vi.fn().mockResolvedValue(undefined),
+  saveGameById: vi.fn().mockResolvedValue(undefined),
+  scheduleAutoSave: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedExportSnapshotToJson = vi.mocked(exportSnapshotToJson);
+const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -198,6 +202,7 @@ describe('DashboardPage', () => {
       isInitialized: true,
       userTeamId: 'nym',
       teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -426,6 +431,10 @@ describe('DashboardPage', () => {
         availableJobs: [],
       }),
       applyForJob: vi.fn().mockResolvedValue({ success: true, teamId: 'bos', teamName: 'Boston Noreasters' }),
+      simDay: vi.fn().mockResolvedValue({ season: 4, day: 89, phase: 'regular', gamesPlayed: 1 }),
+      simWeek: vi.fn().mockResolvedValue({ season: 4, day: 95, phase: 'regular', gamesPlayed: 7 }),
+      simMonth: vi.fn().mockResolvedValue({ season: 4, day: 118, phase: 'regular', gamesPlayed: 30 }),
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 33, season: 4, day: 89, phase: 'regular' }),
     } as unknown as ReturnType<typeof useWorker>);
   });
 
@@ -474,7 +483,7 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Spencer Jones');
     expect(container.textContent).toContain('Aaron Judge');
     expect(container.textContent).toContain('dynasty cornerstone');
-    expect(container.textContent).toContain('climax');
+    expect(container.textContent).toContain('Climax');
     expect(container.textContent).toContain('Press Room');
     expect(container.textContent).toContain('BREAKING');
     expect(container.textContent).toContain('Deadline buzz is building.');
@@ -492,6 +501,62 @@ describe('DashboardPage', () => {
     });
 
     expect(container.textContent).toContain('Boston grabs the lead late.');
+  });
+
+  it('autosaves after a dashboard quick sim completes', async () => {
+    const updateFromSim = vi.fn();
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 88,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Alex Rivera',
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim,
+      initializeGame: vi.fn(),
+    });
+    const worker = mockedUseWorker();
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+    });
+
+    const simDayButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Sim Day'),
+    );
+
+    await act(async () => {
+      simDayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.exportSnapshot).toHaveBeenCalled();
+    expect(updateFromSim).toHaveBeenCalledWith(expect.objectContaining({ day: 89 }));
+    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining('Alex Rivera'),
+      expect.objectContaining({ schemaVersion: 33 }),
+    );
   });
 
   it('shows the first-series pointer once on the first season opening series', async () => {
@@ -860,6 +925,7 @@ describe('DashboardPage', () => {
         ],
       }),
       applyForJob,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 33, season: 4, day: 88, phase: 'regular' }),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {

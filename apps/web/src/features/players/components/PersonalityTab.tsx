@@ -51,7 +51,7 @@ export default function PersonalityTab({
                 {personalityProfile.summary}
               </div>
               <div className="mt-3 font-data text-xs text-dynasty-muted">
-                {personalityProfile.morale.trend.toUpperCase()} · Updated {personalityProfile.morale.lastUpdated}
+                {labelize(personalityProfile.morale.trend)} · Updated {personalityProfile.morale.lastUpdated}
               </div>
             </div>
           </CardContent>

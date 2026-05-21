@@ -6,6 +6,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 interface Scenario {
   id: string;
@@ -60,6 +61,29 @@ function teamDisplayName(teamId: string | null): string {
   return team ? `${team.city} ${team.name}` : teamId;
 }
 
+function scenarioStrategicHook(scenario: Scenario): string {
+  if (/rebuild|farm|prospect/i.test(`${scenario.name} ${scenario.description}`)) {
+    return 'Protect the pipeline and let the window arrive on your terms.';
+  }
+  if (/budget|payroll|small/i.test(`${scenario.name} ${scenario.description}`)) {
+    return 'Create surplus value before the budget ceiling starts making the decisions for you.';
+  }
+  if (/title|championship|contend|window/i.test(`${scenario.name} ${scenario.description}`)) {
+    return 'Spend the present window wisely before attrition closes it.';
+  }
+  return 'Turn the opening constraint into a front-office identity.';
+}
+
+function scenarioObjectivePreview(scenario: Scenario): string[] {
+  return [
+    scenario.description,
+    `Complete the challenge within ${scenario.maxSeasons} season${scenario.maxSeasons === 1 ? '' : 's'}.`,
+    scenario.requiresCareerMode
+      ? 'Career mode required; job-market survival is part of the challenge.'
+      : 'Career mode optional; standard dynasty rules can apply.',
+  ];
+}
+
 function ScenarioCard({ scenario, isActive }: { scenario: Scenario; isActive: boolean }) {
   return (
     <div
@@ -72,9 +96,20 @@ function ScenarioCard({ scenario, isActive }: { scenario: Scenario; isActive: bo
     >
       <div className="flex items-start justify-between">
         <h3 className="font-heading text-sm text-dynasty-textBright">{scenario.name}</h3>
-        <Badge className={difficultyTone(scenario.difficulty)}>{scenario.difficulty}</Badge>
+        <Badge className={difficultyTone(scenario.difficulty)}>{humanizeLabel(scenario.difficulty)}</Badge>
       </div>
       <p className="mt-1.5 font-data text-xs text-dynasty-muted">{scenario.description}</p>
+      <div className="mt-3 rounded border border-dynasty-border bg-dynasty-base px-3 py-2">
+        <div className="font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">Strategic Hook</div>
+        <div className="mt-1 font-heading text-xs text-dynasty-text">{scenarioStrategicHook(scenario)}</div>
+      </div>
+      <div className="mt-3 space-y-1">
+        {scenarioObjectivePreview(scenario).map((objective) => (
+          <div key={objective} className="font-heading text-xs text-dynasty-muted">
+            {objective}
+          </div>
+        ))}
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="rounded border border-dynasty-border bg-dynasty-base px-2 py-0.5 font-data text-[10px] text-dynasty-muted">
@@ -84,7 +119,7 @@ function ScenarioCard({ scenario, isActive }: { scenario: Scenario; isActive: bo
           {teamDisplayName(scenario.startingTeamId)}
         </span>
         {scenario.requiresCareerMode && (
-          <Badge className="border-purple-400/30 bg-purple-400/10 text-purple-400">Career Mode</Badge>
+          <Badge className="border-accent-info/30 bg-accent-info/10 text-accent-info">Career Mode</Badge>
         )}
         {isActive && (
           <Badge className="border-accent-primary/40 bg-accent-primary/10 text-accent-primary">ACTIVE</Badge>
@@ -151,7 +186,7 @@ export default function ScenarioCatalogPage() {
               <Trophy className="h-5 w-5 text-accent-primary" />
               <h2 className="font-heading text-sm text-dynasty-textBright">Active Challenge</h2>
               <Badge className="ml-auto border-accent-primary/40 bg-accent-primary/10 text-accent-primary">
-                {progress.status}
+                {humanizeLabel(progress.status)}
               </Badge>
             </div>
             <p className="mt-1 font-data text-xs text-dynasty-muted">{progress.summary}</p>

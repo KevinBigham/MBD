@@ -49,6 +49,19 @@ function minorLeaguers(players: readonly GeneratedPlayer[]): GeneratedPlayer[] {
   return players.filter((player) => player.rosterStatus !== 'MLB');
 }
 
+function isFuturePiece(player: GeneratedPlayer): boolean {
+  const ceiling = player.ceiling ?? player.potentialRating ?? player.overallRating;
+  return hasFutureValue(player.age, ceiling);
+}
+
+function isFutureProfile(profile: ProspectProfile): boolean {
+  return hasFutureValue(profile.age, profile.ceiling);
+}
+
+function hasFutureValue(age: number, ceiling: number): boolean {
+  return age < 28 || ceiling >= 360;
+}
+
 function getLevel(player: GeneratedPlayer): string {
   return player.minorLeagueLevel ?? player.rosterStatus;
 }
@@ -112,7 +125,7 @@ function buildProspectProfile(
     archetype,
     readiness,
     breakoutProbability: breakout.probability,
-    spotlight: `${getPlayerFullName(player)} carries a ${archetype.toLowerCase()} profile with a ${breakout.probability}% breakout indicator and a projected peak around ${projectedCeiling.projectedPeak}.`,
+    spotlight: `${getPlayerFullName(player)}: ${archetype.toLowerCase()} profile, ${breakout.probability}% breakout, projected peak ${projectedCeiling.projectedPeak}.`,
   };
 }
 
@@ -123,6 +136,7 @@ export function profileTopProspects(
 ): ProspectProfile[] {
   return minorLeaguers(players)
     .map((player) => buildProspectProfile(rng.fork(), player, []))
+    .filter(isFutureProfile)
     .sort((left, right) => {
       if (right.ceiling !== left.ceiling) {
         return right.ceiling - left.ceiling;
@@ -133,7 +147,7 @@ export function profileTopProspects(
 }
 
 export function assessPipelineHealth(players: GeneratedPlayer[]): PipelineHealth {
-  const prospects = minorLeaguers(players);
+  const prospects = minorLeaguers(players).filter(isFuturePiece);
   const profiles = prospects.map((player) => ({
     readiness: classifyReadiness(player),
     position: player.position,
@@ -160,10 +174,10 @@ export function assessPipelineHealth(players: GeneratedPlayer[]): PipelineHealth
     positionBalance,
     depthDescription:
       grade === 'A'
-        ? 'The system can send credible help to the majors quickly.'
+        ? 'The system can send credible MLB help quickly.'
         : grade === 'F'
-          ? 'The system is thin and long on projection only.'
-          : 'The pipeline has usable talent, but not all of it is close to conversion.',
+          ? 'The system is thin and mostly projection.'
+          : 'The pipeline has usable talent, but conversion is uneven.',
   };
 }
 
@@ -175,7 +189,7 @@ export function generateFarmNarrative(
   const closest = assessment.closestToMLB?.name ?? 'No immediate call-up';
   const ceiling = assessment.highestCeiling?.name ?? 'No premium ceiling prospect';
 
-  return `${opener} ${closest} is the closest major-league reinforcement, while ${ceiling} carries the highest long-term ceiling. The pipeline grades out at ${assessment.pipeline.grade} with a ${assessment.pipeline.positionBalance.replace('_', ' ')} balance.`;
+  return `${opener} ${closest} is closest to MLB; ${ceiling} has the top ceiling. Pipeline grade: ${assessment.pipeline.grade}, ${assessment.pipeline.positionBalance.replace('_', ' ')} balance.`;
 }
 
 export function assessFarmSystem(
@@ -185,6 +199,7 @@ export function assessFarmSystem(
 ): FarmAssessment {
   const topProspects = minorLeaguers(minorLeaguePlayers)
     .map((player) => buildProspectProfile(rng.fork(), player, coaches))
+    .filter(isFutureProfile)
     .sort((left, right) => {
       if (right.ceiling !== left.ceiling) {
         return right.ceiling - left.ceiling;
@@ -213,17 +228,17 @@ export function assessFarmSystem(
       {
         id: 'aggressive',
         label: 'Aggressive Promotions',
-        description: 'Promote faster and accept short-term volatility if the upside justifies it.',
+        description: 'Promote faster and accept volatility when upside justifies it.',
       },
       {
         id: 'patient',
         label: 'Patient Development',
-        description: 'Let prospects dominate each level before exposing them to the next challenge.',
+        description: 'Let prospects dominate one level before the next challenge.',
       },
       {
         id: 'balanced',
         label: 'Balanced Development',
-        description: 'Promote when the performance and underlying tools both support the move.',
+        description: 'Promote when performance and tools both support the move.',
       },
     ],
     closestToMLB,

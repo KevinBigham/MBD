@@ -14,6 +14,7 @@ import { getAudioEngine } from '@/shared/lib/audio';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { PageHelp } from '@/shared/components/PageHelp';
 import { GuidedStartNudgeCard, useNudges } from '@/features/onboarding/nudges';
+import { sourceLabel } from '@/shared/lib/labels';
 import type { WorkerApi } from '@/workers/sim.worker';
 import type {
   DraftActionResult,
@@ -330,7 +331,7 @@ function CurrentPickPanel({
                   {selectedProspect.scoutConflict.opinions.map((opinion) => (
                     <div key={`${selectedProspect.id}-${opinion.source}`} className="rounded border border-dynasty-border bg-dynasty-surface p-3">
                       <div className="font-heading text-xs uppercase tracking-[0.16em] text-dynasty-muted">
-                        {opinion.source.replace(/_/g, ' ')}
+                        {sourceLabel(opinion.source)}
                       </div>
                       <div className={`mt-2 font-data text-2xl ${gradeTextClass(opinion.overallGrade)}`}>
                         {opinion.overallGrade}

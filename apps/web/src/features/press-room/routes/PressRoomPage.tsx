@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Bookmark,
+  CheckCheck,
   ChevronDown,
   ChevronRight,
   Mic,
@@ -13,6 +15,7 @@ import { getTeamById } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
+import { categoryLabel, sourceLabel } from '@/shared/lib/labels';
 import { logger } from '@/shared/lib/logger';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 
@@ -71,6 +74,35 @@ const DEFAULT_OPEN_SECTIONS: Record<SectionKey, boolean> = {
   scouting: true,
 };
 
+const PRESS_READ_STORAGE_KEY = 'mbd-press-room-read-ids';
+const PRESS_PINNED_STORAGE_KEY = 'mbd-press-room-pinned-ids';
+
+function entryKey(entry: PressRoomEntry): string {
+  return `${entry.source}:${entry.id}:${entry.timestamp}`;
+}
+
+function readStoredIdSet(key: string): Set<string> {
+  if (typeof window === 'undefined') {
+    return new Set();
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(key);
+    const parsed = rawValue ? JSON.parse(rawValue) as unknown : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeStoredIdSet(key: string, values: Set<string>) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(key, JSON.stringify(Array.from(values).slice(-300)));
+}
+
 function parseTimestamp(timestamp: string): number {
   if (timestamp === 'NOW') return Number.MAX_SAFE_INTEGER;
   const match = /^S(\d+)D(\d+)$/.exec(timestamp);
@@ -117,7 +149,7 @@ function tagTone(tag: PressRoomEntry['tag']): string {
 }
 
 function formatCategory(category: string): string {
-  return category.replace(/_/g, ' ');
+  return categoryLabel(category);
 }
 
 function formatTimestampLabel(timestamp: string): string {
@@ -157,6 +189,8 @@ export default function PressRoomPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedTag, setSelectedTag] = useState<'all' | PressRoomEntry['tag']>('all');
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>(DEFAULT_OPEN_SECTIONS);
+  const [readIds, setReadIds] = useState<Set<string>>(() => readStoredIdSet(PRESS_READ_STORAGE_KEY));
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIdSet(PRESS_PINNED_STORAGE_KEY));
 
   const fetchFeed = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -173,6 +207,14 @@ export default function PressRoomPage() {
   }, [fetchFeed, day, season, phase]);
 
   useEffect(() => {
+    writeStoredIdSet(PRESS_READ_STORAGE_KEY, readIds);
+  }, [readIds]);
+
+  useEffect(() => {
+    writeStoredIdSet(PRESS_PINNED_STORAGE_KEY, pinnedIds);
+  }, [pinnedIds]);
+
+  useEffect(() => {
     if (feed.length === 0) {
       return;
     }
@@ -187,12 +229,15 @@ export default function PressRoomPage() {
   }, [feed, lastVisitedPressRoomAt, setLastVisitedPressRoomAt]);
 
   const isUnread = useCallback((entry: PressRoomEntry) => {
+    if (readIds.has(entryKey(entry))) {
+      return false;
+    }
     const visitBaseline = visitBaselineRef.current;
     if (!visitBaseline) {
       return true;
     }
     return parseTimestamp(entry.timestamp) > parseTimestamp(visitBaseline);
-  }, []);
+  }, [readIds]);
 
   const briefingCount = feed.filter((entry) => entry.source === 'briefing' && entry.category !== 'development').length;
   const scoutingCount = feed.filter((entry) => entry.category === 'development').length;
@@ -209,6 +254,10 @@ export default function PressRoomPage() {
     const tagMatch = selectedTag === 'all' || entry.tag === selectedTag;
     return teamMatch && categoryMatch && tagMatch;
   });
+  const pinnedFeed = useMemo(
+    () => feed.filter((entry) => pinnedIds.has(entryKey(entry))).slice(0, 8),
+    [feed, pinnedIds],
+  );
 
   const groupedFeed = useMemo<FeedSection[]>(() => SECTION_DEFINITIONS
     .map((section) => {
@@ -225,6 +274,38 @@ export default function PressRoomPage() {
     .filter((section) => section.groups.length > 0), [filteredFeed, isUnread]);
 
   const transactionFeed = filteredFeed.filter(isTransactionEntry).slice(0, 12);
+
+  const markAllRead = useCallback(() => {
+    setReadIds((current) => {
+      const next = new Set(current);
+      for (const entry of filteredFeed) {
+        next.add(entryKey(entry));
+      }
+      return next;
+    });
+
+    if (filteredFeed.length > 0) {
+      const latestTimestamp = filteredFeed.reduce(
+        (latest, entry) => (parseTimestamp(entry.timestamp) > parseTimestamp(latest) ? entry.timestamp : latest),
+        filteredFeed[0]!.timestamp,
+      );
+      visitBaselineRef.current = latestTimestamp;
+      setLastVisitedPressRoomAt(latestTimestamp);
+    }
+  }, [filteredFeed, setLastVisitedPressRoomAt]);
+
+  const togglePinned = useCallback((entry: PressRoomEntry) => {
+    const key = entryKey(entry);
+    setPinnedIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   function toggleSection(section: SectionKey) {
     setOpenSections((current) => ({
@@ -287,7 +368,18 @@ export default function PressRoomPage() {
               Collapsible source desks with unread highlights, urgency framing, and archive filters.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={markAllRead}
+                className="inline-flex items-center gap-2 rounded border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-info hover:bg-accent-info/20"
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                Mark All Read
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
             <label className="grid gap-1">
               <span className="font-heading text-[10px] uppercase text-dynasty-muted">Team</span>
               <select
@@ -313,7 +405,7 @@ export default function PressRoomPage() {
                 <option value="all">All types</option>
                 {categoryOptions.map((category) => (
                   <option key={category} value={category}>
-                    {formatCategory(category)}
+                    {categoryLabel(category)}
                   </option>
                 ))}
               </select>
@@ -334,8 +426,37 @@ export default function PressRoomPage() {
                 <option value="RUMOR">RUMOR</option>
               </select>
             </label>
+            </div>
           </div>
         </div>
+
+        {pinnedFeed.length > 0 ? (
+          <section className="mb-4 rounded-lg border border-accent-warning/30 bg-accent-warning/5 p-4">
+            <div className="flex items-center gap-2">
+              <Bookmark className="h-4 w-4 text-accent-warning" />
+              <h3 className="font-heading text-sm font-semibold text-dynasty-textBright">Read Later</h3>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              {pinnedFeed.map((entry) => (
+                <article key={`pinned-${entryKey(entry)}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-heading text-sm text-dynasty-textBright">{entry.headline}</div>
+                    <button
+                      type="button"
+                      onClick={() => togglePinned(entry)}
+                      className="rounded border border-dynasty-border px-2 py-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted hover:text-accent-warning"
+                    >
+                      Unpin
+                    </button>
+                  </div>
+                  <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                    {sourceLabel(entry.source)} · {categoryLabel(entry.category)} · {formatTimestampLabel(entry.timestamp)}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <div className="space-y-4">
           {groupedFeed.length > 0 ? groupedFeed.map((section) => {
@@ -400,8 +521,8 @@ export default function PressRoomPage() {
                                 <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${tagTone(entry.tag)}`}>
                                   {entry.tag}
                                 </span>
-                                <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(entry.source)}`}>
-                                  {entry.source}
+                        <span className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${sourceTone(entry.source)}`}>
+                                  {sourceLabel(entry.source)}
                                 </span>
                                 <span className="rounded border border-dynasty-border px-2 py-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
                                   {formatCategory(entry.category)}
@@ -414,6 +535,17 @@ export default function PressRoomPage() {
                                     Unread
                                   </span>
                                 ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => togglePinned(entry)}
+                                  className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide ${
+                                    pinnedIds.has(entryKey(entry))
+                                      ? 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning'
+                                      : 'border-dynasty-border text-dynasty-muted hover:text-accent-warning'
+                                  }`}
+                                >
+                                  {pinnedIds.has(entryKey(entry)) ? 'Pinned' : 'Read Later'}
+                                </button>
                                 <span className="ml-auto font-data text-[11px] uppercase text-dynasty-muted">
                                   {entry.timestamp}
                                 </span>

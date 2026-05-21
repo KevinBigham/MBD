@@ -9,6 +9,7 @@ interface SimControlsProps {
   onSimMonth: () => void;
   onSimToPlayoffs: () => void;
   onFlowAction: () => void;
+  disabled?: boolean;
   flow: SeasonFlowState | null;
 }
 
@@ -46,19 +47,27 @@ export function SimControls({
   onSimMonth,
   onSimToPlayoffs,
   onFlowAction,
+  disabled = false,
   flow,
 }: SimControlsProps) {
   const { isSimulating, season } = useGameStore();
   const progress = Math.round((flow?.progress ?? 0) * 100);
   const showRegularControls = flow?.canUseRegularSimControls ?? true;
+  const controlsDisabled = disabled || isSimulating;
 
   return (
-    <footer data-tour="sim-controls" className="border-t border-dynasty-border bg-dynasty-surface px-3 py-2 pb-2 md:px-4 md:pb-2">
+    <footer
+      data-tour="sim-controls"
+      aria-busy={controlsDisabled}
+      className="mb-[calc(3.5rem+env(safe-area-inset-bottom))] border-t border-dynasty-border bg-dynasty-surface px-3 py-2 pb-2 md:mb-0 md:px-4 md:pb-2"
+    >
       <div className="flex items-center gap-2 md:gap-3">
         {/* Status display */}
         <div className="hidden min-w-[140px] md:block" aria-live="polite">
           <div className="font-data text-xs text-dynasty-muted">{flow?.phaseLabel ?? `Season ${season}`}</div>
-          <div className="font-data text-xs uppercase text-accent-info">{flow?.detailLabel ?? 'Simulation ready'}</div>
+          <div className="font-data text-xs uppercase text-accent-info">
+            {disabled ? 'Preparing simulation' : (flow?.detailLabel ?? 'Simulation ready')}
+          </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-dynasty-border">
             <div
               className="h-full bg-accent-primary transition-all duration-300"
@@ -71,7 +80,7 @@ export function SimControls({
           <div className="grid flex-1 grid-cols-2 gap-1.5 sm:flex sm:gap-2">
             <SimButton
               onClick={onSimDay}
-              disabled={isSimulating}
+              disabled={controlsDisabled}
               icon={<Play className="h-4 w-4" />}
               label="Sim Day"
               shortLabel="Day"
@@ -79,7 +88,7 @@ export function SimControls({
             />
             <SimButton
               onClick={onSimWeek}
-              disabled={isSimulating}
+              disabled={controlsDisabled}
               icon={<FastForward className="h-4 w-4" />}
               label="Sim Week"
               shortLabel="Week"
@@ -87,7 +96,7 @@ export function SimControls({
             />
             <SimButton
               onClick={onSimMonth}
-              disabled={isSimulating}
+              disabled={controlsDisabled}
               icon={<SkipForward className="h-4 w-4" />}
               label="Next Month"
               shortLabel="Month"
@@ -95,7 +104,7 @@ export function SimControls({
             />
             <SimButton
               onClick={onSimToPlayoffs}
-              disabled={isSimulating}
+              disabled={controlsDisabled}
               icon={<Zap className="h-4 w-4" />}
               label="Sim to Playoffs"
               shortLabel="Playoffs"
@@ -109,7 +118,7 @@ export function SimControls({
                 getAudioEngine().playEffect('button_click');
                 onFlowAction();
               }}
-              disabled={isSimulating || !flow?.actionLabel}
+              disabled={controlsDisabled || !flow?.actionLabel}
               className="focus-ring flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Zap className="h-4 w-4" />

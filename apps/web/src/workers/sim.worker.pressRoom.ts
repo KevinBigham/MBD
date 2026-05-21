@@ -20,6 +20,22 @@ function compareSource(left: PressRoomSource, right: PressRoomSource): number {
   return priority[left] - priority[right];
 }
 
+function cleanPressText(value: string): string {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/\b([A-Z]{2,4} and [A-Z]{2,4}) keep running into meaningful stakes\. \1 keep meeting with stakes\./g, '$1 keep meeting with stakes.')
+    .replace(/\.{2,}/g, '.')
+    .trim();
+}
+
+function cleanPressEntry(entry: PressRoomEntry): PressRoomEntry {
+  return {
+    ...entry,
+    headline: cleanPressText(entry.headline),
+    body: cleanPressText(entry.body),
+  };
+}
+
 function inferNewsSource(item: FullGameState['news'][number]): PressRoomSource {
   if (item.category === 'press_conference' || item.id.startsWith('press-conference-')) {
     return 'press_conference';
@@ -220,6 +236,7 @@ export function buildPressRoomFeed(
   );
 
   return [...syntheticEntries, ...briefingEntries, ...newsEntries]
+    .map(cleanPressEntry)
     .sort((left, right) => {
       const timestampDelta = parseTimestamp(right.timestamp) - parseTimestamp(left.timestamp);
       if (timestampDelta !== 0) return timestampDelta;

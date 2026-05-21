@@ -7,10 +7,18 @@ interface ServiceWorkerRegisterOptions {
   scope?: string;
 }
 
+interface RegisterMbdServiceWorkerOptions {
+  mode?: string;
+}
+
 type RegisterServiceWorker = (
   scriptUrl: string,
   options?: ServiceWorkerRegisterOptions,
 ) => Promise<ServiceWorkerRegistration>;
+
+function viteMode() {
+  return (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE;
+}
 
 export function showServiceWorkerUpdatedToast(
   reload: () => void = () => window.location.reload(),
@@ -26,8 +34,13 @@ export function showServiceWorkerUpdatedToast(
 
 export function registerMbdServiceWorker(
   register?: RegisterServiceWorker,
+  options: RegisterMbdServiceWorkerOptions = {},
 ) {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return;
+  }
+
+  if ((options.mode ?? viteMode()) === 'development') {
     return;
   }
 

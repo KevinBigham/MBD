@@ -15,25 +15,22 @@
     },
     "packages/contracts": {
       "entry": [
-        "src/index.ts",
         "tests/**/*.test.ts"
       ],
       "project": ["src/**/*.ts"]
     },
     "packages/design-tokens": {
-      "entry": ["src/index.ts"],
+      "entry": [],
       "project": ["src/**/*.ts"]
     },
     "packages/sim-core": {
       "entry": [
-        "src/index.ts",
         "tests/**/*.test.ts"
       ],
       "project": ["src/**/*.ts"]
     },
     "packages/ui": {
       "entry": [
-        "src/index.ts",
         "src/**/*.test.{ts,tsx}"
       ],
       "project": ["src/**/*.{ts,tsx}"]

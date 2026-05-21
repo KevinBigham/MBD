@@ -65,6 +65,7 @@ describe('FreeAgencyPage', () => {
       getFreeAgents: vi.fn().mockResolvedValue([]),
       getTeamFinances: vi.fn().mockResolvedValue({ payroll: 100, budget: 150, luxuryTax: 200 }),
       getLeagueLeaders: vi.fn().mockResolvedValue([]),
+      getFreeAgencyMarketIntelligence: vi.fn().mockResolvedValue(null),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -78,5 +79,79 @@ describe('FreeAgencyPage', () => {
     });
 
     expect(container.textContent).toContain('Free Agen');
+  });
+
+  it('filters the market and previews offer budget impact', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getFreeAgents: vi.fn().mockResolvedValue([
+        {
+          id: 'fa-1',
+          firstName: 'Power',
+          lastName: 'Bat',
+          position: '1B',
+          age: 31,
+          displayRating: 66,
+          letterGrade: 'A',
+          marketValue: 22,
+          demandLevel: 'elite',
+        },
+        {
+          id: 'fa-2',
+          firstName: 'Depth',
+          lastName: 'Arm',
+          position: 'SP',
+          age: 35,
+          displayRating: 51,
+          letterGrade: 'C',
+          marketValue: 5,
+          demandLevel: 'low',
+        },
+      ]),
+      getFinanceOverview: vi.fn().mockResolvedValue({
+        totalPayroll: 120,
+        budget: 160,
+        capSpace: 30,
+      }),
+      makeContractOffer: vi.fn().mockResolvedValue({ accepted: false, reason: 'Needs more years.' }),
+      getLeagueLeaders: vi.fn().mockResolvedValue([]),
+      getFreeAgencyMarketIntelligence: vi.fn().mockResolvedValue(null),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <FreeAgencyPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+    });
+
+    expect(container.textContent).toContain('Power Bat');
+    expect(container.textContent).toContain('Depth Arm');
+
+    const search = container.querySelector('input[placeholder="Search name or position..."]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, 'power');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Power Bat');
+    expect(container.textContent).not.toContain('Depth Arm');
+
+    const powerRow = Array.from(container.querySelectorAll('tr')).find((row) =>
+      row.textContent?.includes('Power Bat'),
+    );
+    await act(async () => {
+      powerRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Projected payroll');
+    expect(container.textContent).toContain('$130.0M');
+    expect(container.querySelector('a[href="/players/fa-1"]')).toBeTruthy();
   });
 });

@@ -1,4 +1,5 @@
 import type { SeasonStrategyBriefing } from '@mbd/sim-core';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 interface Props {
   data: SeasonStrategyBriefing;
@@ -20,13 +21,13 @@ export function SeasonStrategyView({ data }: Props) {
             <p className="font-data text-xs text-dynasty-muted">
               Recommended Goal:{' '}
               <span className="capitalize text-dynasty-text">
-                {data.recommendedSeasonGoal.replace(/_/g, ' ')}
+                {humanizeLabel(data.recommendedSeasonGoal)}
               </span>
             </p>
             <p className="font-data text-xs text-dynasty-muted">
               Recommended Approach:{' '}
               <span className="capitalize text-dynasty-text">
-                {data.recommendedTradeApproach}
+                {humanizeLabel(data.recommendedTradeApproach)}
               </span>
             </p>
           </div>
@@ -74,7 +75,7 @@ function WindowBadge({ window: win }: { window: string }) {
   };
   return (
     <span className={`rounded-lg border px-3 py-1.5 font-heading text-sm font-medium capitalize ${styles[win] ?? ''}`}>
-      {win.replace(/_/g, ' ')}
+      {humanizeLabel(win)}
     </span>
   );
 }

@@ -14,6 +14,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 const HASH_MULTIPLIER = 31;
 
@@ -249,7 +250,7 @@ function LeagueEventsSection({ events }: { events: LeagueEvent[] }) {
                   </p>
                 </div>
                 <Badge className="border-accent-info/30 bg-accent-info/10 text-accent-info">
-                  {event.type.replaceAll('_', ' ')}
+                  {humanizeLabel(event.type)}
                 </Badge>
               </div>
               <p className="mt-3 font-data text-sm text-dynasty-text">{narrative}</p>

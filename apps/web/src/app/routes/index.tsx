@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppLayout } from '@/app/layout/AppLayout';
 import { RouteErrorBoundary } from '@/app/providers/RouteErrorBoundary';
+import { AssistantPanel } from '@/features/assistant/components/AssistantPanel';
 
 // Lazy-loaded route components
 const DashboardPage = lazy(
@@ -108,7 +109,7 @@ function LoadingFallback() {
         <div className="mb-3 font-brand text-2xl text-accent-primary motion-safe:animate-pulse">
           MBD
         </div>
-        <div className="font-data text-sm text-dynasty-muted">Loading route...</div>
+        <div className="font-data text-sm text-dynasty-muted">Routing the front office...</div>
         <div className="mx-auto mt-4 h-0.5 w-16 overflow-hidden rounded-full bg-dynasty-border">
           <div className="h-full w-8 rounded-full bg-accent-primary motion-safe:animate-[shimmer_1.2s_ease-in-out_infinite]" />
         </div>
@@ -125,52 +126,64 @@ function withRouteBoundary(routeLabel: string, element: JSX.Element) {
   );
 }
 
+function PreGameAssistantMount() {
+  const location = useLocation();
+  if (location.pathname !== '/' && location.pathname !== '/onboarding') {
+    return null;
+  }
+
+  return <AssistantPanel />;
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <Routes>
-        <Route path="/" element={withRouteBoundary('Save Hub', <SetupPage />)} />
-        <Route path="onboarding" element={withRouteBoundary('Onboarding', <RevisedOnboardingPage />)} />
-        <Route element={<AppLayout />}>
-          <Route path="dashboard" element={withRouteBoundary('Dashboard', <DashboardPage />)} />
-          <Route path="roster" element={withRouteBoundary('Roster', <RosterPage />)} />
-          <Route path="minors" element={withRouteBoundary('Minors', <MinorsPage />)} />
-          <Route path="players" element={withRouteBoundary('Players', <PlayersPage />)} />
-          <Route path="players/compare" element={withRouteBoundary('Player Comparison', <PlayerComparisonPage />)} />
-          <Route path="players/:playerId" element={withRouteBoundary('Player Profile', <PlayerProfilePage />)} />
-          <Route path="scouting" element={withRouteBoundary('Scouting', <ScoutingPage />)} />
-          <Route path="staff" element={withRouteBoundary('Staff', <StaffPage />)} />
-          <Route path="draft" element={withRouteBoundary('Draft', <DraftPage />)} />
-          <Route path="trade" element={withRouteBoundary('Trade', <TradePage />)} />
-          <Route path="standings" element={withRouteBoundary('Standings', <StandingsPage />)} />
-          <Route path="leaders" element={withRouteBoundary('Leaders', <LeadersPage />)} />
-          <Route path="league">
+      <>
+        <Routes>
+          <Route path="/" element={withRouteBoundary('Save Hub', <SetupPage />)} />
+          <Route path="onboarding" element={withRouteBoundary('Onboarding', <RevisedOnboardingPage />)} />
+          <Route element={<AppLayout />}>
+            <Route path="dashboard" element={withRouteBoundary('Dashboard', <DashboardPage />)} />
+            <Route path="roster" element={withRouteBoundary('Roster', <RosterPage />)} />
+            <Route path="minors" element={withRouteBoundary('Minors', <MinorsPage />)} />
+            <Route path="players" element={withRouteBoundary('Players', <PlayersPage />)} />
+            <Route path="players/compare" element={withRouteBoundary('Player Comparison', <PlayerComparisonPage />)} />
+            <Route path="players/:playerId" element={withRouteBoundary('Player Profile', <PlayerProfilePage />)} />
+            <Route path="scouting" element={withRouteBoundary('Scouting', <ScoutingPage />)} />
+            <Route path="staff" element={withRouteBoundary('Staff', <StaffPage />)} />
+            <Route path="draft" element={withRouteBoundary('Draft', <DraftPage />)} />
+            <Route path="trade" element={withRouteBoundary('Trade', <TradePage />)} />
             <Route path="standings" element={withRouteBoundary('Standings', <StandingsPage />)} />
             <Route path="leaders" element={withRouteBoundary('Leaders', <LeadersPage />)} />
-            <Route index element={<Navigate to="standings" replace />} />
+            <Route path="league">
+              <Route path="standings" element={withRouteBoundary('Standings', <StandingsPage />)} />
+              <Route path="leaders" element={withRouteBoundary('Leaders', <LeadersPage />)} />
+              <Route index element={<Navigate to="standings" replace />} />
+            </Route>
+            <Route path="schedule" element={withRouteBoundary('Schedule', <SchedulePage />)} />
+            <Route path="games/:gameIndex" element={withRouteBoundary('Box Score', <BoxScorePage />)} />
+            <Route path="press-room" element={withRouteBoundary('Press Room', <PressRoomPage />)} />
+            <Route path="news" element={withRouteBoundary('News', <NewsPage />)} />
+            <Route path="playoffs" element={withRouteBoundary('Playoffs', <PlayoffsPage />)} />
+            <Route path="free-agency" element={withRouteBoundary('Free Agency', <FreeAgencyPage />)} />
+            <Route path="offseason" element={withRouteBoundary('Offseason', <OffseasonPage />)} />
+            <Route path="finance" element={withRouteBoundary('Finance', <FinancePage />)} />
+            <Route path="career" element={withRouteBoundary('GM Career', <GMCareerPage />)} />
+            <Route path="history" element={withRouteBoundary('History', <HistoryPage />)} />
+            <Route path="achievements" element={withRouteBoundary('Achievements', <AchievementsPage />)} />
+            <Route path="rivalries" element={withRouteBoundary('Rivalries', <RivalriesPage />)} />
+            <Route path="front-office" element={withRouteBoundary('Owner Intel', <FrontOfficePage />)} />
+            <Route path="pulse" element={withRouteBoundary('Pulse', <PulsePage />)} />
+            <Route path="scenarios" element={withRouteBoundary('Challenges', <ScenarioCatalogPage />)} />
+            <Route path="stats" element={withRouteBoundary('Stats Encyclopedia', <StatsEncyclopediaPage />)} />
+            <Route path="records" element={withRouteBoundary('Record Watch', <RecordWatchPage />)} />
+            <Route path="settings" element={withRouteBoundary('Settings', <SettingsPage />)} />
+            {/* Catch-all redirect */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
-          <Route path="schedule" element={withRouteBoundary('Schedule', <SchedulePage />)} />
-          <Route path="games/:gameIndex" element={withRouteBoundary('Box Score', <BoxScorePage />)} />
-          <Route path="press-room" element={withRouteBoundary('Press Room', <PressRoomPage />)} />
-          <Route path="news" element={withRouteBoundary('News', <NewsPage />)} />
-          <Route path="playoffs" element={withRouteBoundary('Playoffs', <PlayoffsPage />)} />
-          <Route path="free-agency" element={withRouteBoundary('Free Agency', <FreeAgencyPage />)} />
-          <Route path="offseason" element={withRouteBoundary('Offseason', <OffseasonPage />)} />
-          <Route path="finance" element={withRouteBoundary('Finance', <FinancePage />)} />
-          <Route path="career" element={withRouteBoundary('GM Career', <GMCareerPage />)} />
-          <Route path="history" element={withRouteBoundary('History', <HistoryPage />)} />
-          <Route path="achievements" element={withRouteBoundary('Achievements', <AchievementsPage />)} />
-          <Route path="rivalries" element={withRouteBoundary('Rivalries', <RivalriesPage />)} />
-          <Route path="front-office" element={withRouteBoundary('Owner Intel', <FrontOfficePage />)} />
-          <Route path="pulse" element={withRouteBoundary('Pulse', <PulsePage />)} />
-          <Route path="scenarios" element={withRouteBoundary('Challenges', <ScenarioCatalogPage />)} />
-          <Route path="stats" element={withRouteBoundary('Stats Encyclopedia', <StatsEncyclopediaPage />)} />
-          <Route path="records" element={withRouteBoundary('Record Watch', <RecordWatchPage />)} />
-          <Route path="settings" element={withRouteBoundary('Settings', <SettingsPage />)} />
-          {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Route>
-      </Routes>
+        </Routes>
+        <PreGameAssistantMount />
+      </>
     </Suspense>
   );
 }

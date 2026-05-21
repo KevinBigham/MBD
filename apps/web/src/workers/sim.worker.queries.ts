@@ -165,6 +165,10 @@ import {
   getMinorLeagueProgressionView,
   getProspectBondView,
 } from './sim.worker.farm.js';
+import {
+  buildFrontOfficeIdentityView,
+  getEffectiveScoutingAccuracy,
+} from './sim.worker.frontOfficeIdentity.js';
 import { exportGameSnapshot } from './snapshot.js';
 import {
   listBranches,
@@ -306,6 +310,16 @@ function buildStableScoutReportView(
     player,
     timestamp(),
   );
+  const proAccuracy = getEffectiveScoutingAccuracy(s, 'pro', report.reliability);
+  const proFocused = s.franchise.scoutingDirector?.specialty === 'pro_scouting'
+    || s.franchise.gmPhilosophy?.scoutingFocus === 'pro_scouting';
+  const confidenceBonus = Math.max(0, proAccuracy.confidenceBonus, proFocused ? 1 : 0);
+  const reliabilityBonus = Math.max(proAccuracy.effectiveAccuracy - proAccuracy.baseAccuracy, proFocused ? 0.04 : 0);
+  const confidence = Math.max(1, report.confidence - confidenceBonus);
+  const reliability = Math.max(
+    0,
+    Math.min(1, report.reliability + reliabilityBonus),
+  );
   const team = getTeamById(player.teamId);
 
   return {
@@ -316,14 +330,14 @@ function buildStableScoutReportView(
     teamName: team?.abbreviation ?? player.teamId.toUpperCase(),
     isPitcher: player.pitcherAttributes != null,
     grades: report.observedRatings,
-    confidence: report.confidence,
+    confidence,
     overall: report.overallGrade,
     ceiling: report.ceiling,
     floor: report.floor,
-    notes: report.notes,
+    notes: `${report.notes} ${proAccuracy.summary}`,
     scoutName: staff[0]!.name,
     date: report.reportDate,
-    reliability: Math.max(1, Math.min(5, Math.round(report.reliability * 5))),
+    reliability: Math.max(1, Math.min(5, Math.round(reliability * 5))),
   };
 }
 
@@ -869,7 +883,7 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
           playerId: prospect.playerId,
           name: prospect.playerName,
           position: prospect.position,
-          level: prospect.levelLabel,
+          level: prospect.level,
           readiness: prospect.overallRating,
           trend: mapProspectTrend(latestReport?.trajectory),
           latestLineSummary: prospect.latestLineSummary,
@@ -2734,6 +2748,10 @@ export const queryApi = {
   getFrontOfficeState(teamId?: string) {
     const s = requireState();
     return s.frontOfficeState.get(teamId ?? s.userTeamId) ?? null;
+  },
+
+  getFrontOfficeIdentity() {
+    return buildFrontOfficeIdentityView(requireState());
   },
 
   getGMCareer() {

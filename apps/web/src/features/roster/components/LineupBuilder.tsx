@@ -3,7 +3,7 @@
  * 9 lineup slots (+ DH), drag-and-drop reordering with click fallback.
  * Local state only — no worker mutation. GM planning tool.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -37,6 +37,11 @@ export interface LineupPlayer {
 interface LineupBuilderProps {
   players: LineupPlayer[];
   onReorder?: (orderedIds: string[]) => void;
+  ariaLabel?: string;
+  emptyLabel?: string;
+  instructionsId?: string;
+  instructionsText?: string;
+  slotLabel?: (slot: number) => string;
 }
 
 /* ── sortable item ────���───────────────────────────────────── */
@@ -48,6 +53,7 @@ function SortableSlot({
   onMoveDown,
   isFirst,
   isLast,
+  slotLabel,
 }: {
   player: LineupPlayer;
   slot: number;
@@ -55,6 +61,7 @@ function SortableSlot({
   onMoveDown: () => void;
   isFirst: boolean;
   isLast: boolean;
+  slotLabel: (slot: number) => string;
 }) {
   const {
     attributes,
@@ -81,7 +88,7 @@ function SortableSlot({
           ? 'border border-accent-primary bg-dynasty-elevated'
           : 'border border-dynasty-border bg-dynasty-surface'
       }`}
-      aria-label={`Batting ${slot}: ${player.firstName} ${player.lastName}`}
+      aria-label={`${slotLabel(slot)}: ${player.firstName} ${player.lastName}`}
     >
       {/* Drag handle */}
       <button
@@ -136,8 +143,24 @@ function SortableSlot({
 
 /* ── main component ────���──────────────────────────────────── */
 
-export default function LineupBuilder({ players: initialPlayers, onReorder }: LineupBuilderProps) {
+export default function LineupBuilder({
+  players: initialPlayers,
+  onReorder,
+  ariaLabel = 'Batting order',
+  emptyLabel = 'No players available for lineup',
+  instructionsId = 'lineup-instructions',
+  instructionsText = 'Drag players to reorder, or use the up/down buttons to adjust batting position.',
+  slotLabel = (slot) => `Batting ${slot}`,
+}: LineupBuilderProps) {
   const [order, setOrder] = useState<LineupPlayer[]>(initialPlayers);
+  const initialPlayerKey = useMemo(
+    () => initialPlayers.map((player) => player.id).join('|'),
+    [initialPlayers],
+  );
+
+  useEffect(() => {
+    setOrder(initialPlayers);
+  }, [initialPlayerKey, initialPlayers]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -194,7 +217,7 @@ export default function LineupBuilder({ players: initialPlayers, onReorder }: Li
   if (order.length === 0) {
     return (
       <div className="text-center font-body text-sm text-dynasty-muted">
-        No players available for lineup
+        {emptyLabel}
       </div>
     );
   }
@@ -203,11 +226,11 @@ export default function LineupBuilder({ players: initialPlayers, onReorder }: Li
     <div
       className="space-y-1"
       role="list"
-      aria-label="Batting order"
-      aria-describedby="lineup-instructions"
+      aria-label={ariaLabel}
+      aria-describedby={instructionsId}
     >
-      <p id="lineup-instructions" className="sr-only">
-        Drag players to reorder, or use the up/down buttons to adjust batting position.
+      <p id={instructionsId} className="sr-only">
+        {instructionsText}
       </p>
       <DndContext
         sensors={sensors}
@@ -220,6 +243,7 @@ export default function LineupBuilder({ players: initialPlayers, onReorder }: Li
               key={player.id}
               player={player}
               slot={index + 1}
+              slotLabel={slotLabel}
               onMoveUp={() => moveUp(index)}
               onMoveDown={() => moveDown(index)}
               isFirst={index === 0}

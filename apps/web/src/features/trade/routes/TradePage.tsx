@@ -22,6 +22,9 @@ import DeadlineDramaPanel from '../components/DeadlineDramaPanel';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { gradeBadgeColor } from '@/shared/lib/grade';
+import { logger } from '@/shared/lib/logger';
+import { loadGameById, saveGameById, scheduleAutoSave } from '@/shared/lib/saveSystem';
+import { humanizeLabel } from '@/shared/lib/labels';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 import type {
   TradeAssetView,
@@ -90,6 +93,7 @@ interface RelationshipView {
 }
 
 type MultiTeamRole = 'initiator' | 'partner' | 'facilitator';
+type AssetFilter = 'all' | 'mlb' | 'prospects' | 'pitchers' | 'hitters' | 'selected';
 
 interface MultiTeamLaneState {
   laneId: string;
@@ -282,6 +286,87 @@ function relationshipLabel(tier: RelationshipView['tier']): string {
   }
 }
 
+function assetFilterLabel(filter: AssetFilter): string {
+  switch (filter) {
+    case 'mlb':
+      return 'MLB';
+    case 'prospects':
+      return 'Prospects';
+    case 'pitchers':
+      return 'Pitchers';
+    case 'hitters':
+      return 'Hitters';
+    case 'selected':
+      return 'Selected';
+    case 'all':
+      return 'All';
+  }
+}
+
+function playerMatchesAssetFilter(player: PlayerDTO, filter: AssetFilter, selectedIds: string[]): boolean {
+  switch (filter) {
+    case 'mlb':
+      return player.rosterStatus === 'MLB';
+    case 'prospects':
+      return player.age <= 25 || ((player.ceiling ?? player.displayRating) - player.displayRating >= 8);
+    case 'pitchers':
+      return player.position === 'SP' || player.position === 'RP' || player.position === 'CL';
+    case 'hitters':
+      return player.position !== 'SP' && player.position !== 'RP' && player.position !== 'CL';
+    case 'selected':
+      return selectedIds.includes(player.id);
+    case 'all':
+      return true;
+  }
+}
+
+function buildMarketPhaseCopy(
+  currentPhase: string,
+  deadlineState: TradeDeadlineStateView | null,
+  tradeMarketOpen: boolean,
+): { headline: string; detail: string; disabledReason: string } {
+  if (tradeMarketOpen) {
+    const days = deadlineState?.daysUntilDeadline ?? 0;
+    return {
+      headline: `${days} days until trade deadline`,
+      detail: deadlineState?.deadlineMode
+        ? 'Phones are hot. Formal proposals, counters, and multi-team frameworks are available.'
+        : 'Regular-season trade calls are open. Shape a package or resume an active talk.',
+      disabledReason: '',
+    };
+  }
+
+  if (currentPhase === 'spring_training') {
+    return {
+      headline: 'Spring Training trade desk',
+      detail: 'Clubs are listening and scouting fits. Formal trade proposals unlock on Opening Day.',
+      disabledReason: 'Formal offers unlock on Opening Day.',
+    };
+  }
+
+  if (currentPhase === 'offseason') {
+    return {
+      headline: 'Offseason roster market',
+      detail: 'Use free agency and offseason tools now. Regular-season trade calls open after camp.',
+      disabledReason: 'Use offseason roster tools until the regular-season trade market opens.',
+    };
+  }
+
+  if (currentPhase === 'playoffs') {
+    return {
+      headline: 'Postseason roster freeze',
+      detail: 'The postseason locks trade activity. Review history and prepare offseason targets.',
+      disabledReason: 'Postseason trade activity is frozen.',
+    };
+  }
+
+  return {
+    headline: 'Deadline has passed',
+    detail: 'The regular-season trade deadline has passed. Talks reopen after the season.',
+    disabledReason: 'The trade deadline has passed.',
+  };
+}
+
 function modeBadgeClass(mode: TradeDialogueView['mode'] | TradeChatterItem['mode']): string {
   switch (mode) {
     case 'buyer':
@@ -460,6 +545,36 @@ function PlayerRow({
   );
 }
 
+function AssetFilterBar({
+  value,
+  onChange,
+  selectedCount,
+}: {
+  value: AssetFilter;
+  onChange: (filter: AssetFilter) => void;
+  selectedCount: number;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {(['all', 'mlb', 'prospects', 'pitchers', 'hitters', 'selected'] as AssetFilter[]).map((filter) => (
+        <button
+          key={filter}
+          type="button"
+          onClick={() => onChange(filter)}
+          className={`rounded border px-2 py-1 font-heading text-[10px] uppercase tracking-wide transition-colors ${
+            value === filter
+              ? 'border-accent-info/50 bg-accent-info/10 text-accent-info'
+              : 'border-dynasty-border text-dynasty-muted hover:border-accent-info/40 hover:text-accent-info'
+          }`}
+        >
+          {assetFilterLabel(filter)}
+          {filter === 'selected' ? ` · ${selectedCount}` : ''}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function MultiTeamLaneCard({
   lane,
   roster,
@@ -620,7 +735,7 @@ function OfferCard({
         <div className="flex items-center justify-between gap-3">
           <p className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">GM Dialogue</p>
           <span className={`rounded border px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${modeBadgeClass(offer.dialogue.mode)}`}>
-            {offer.dialogue.urgency}
+            {humanizeLabel(offer.dialogue.urgency)}
           </span>
         </div>
         <p className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">{offer.dialogue.headline}</p>
@@ -760,9 +875,79 @@ function HistoryCard({ trade }: { trade: TradeHistoryView }) {
   );
 }
 
+function NegotiationSummaryCard({
+  active,
+  negotiation,
+  onResume,
+  playerById,
+}: {
+  active: boolean;
+  negotiation: TradeNegotiationView;
+  onResume: () => void;
+  playerById: (id: string) => PlayerDTO | undefined;
+}) {
+  const lastLine = negotiation.dialogue.at(-1)?.text ?? 'The front office is waiting on your next move.';
+  const offeringLabels = negotiation.proposal.offeringAssets
+    .map((asset) => buildTradeAssetLabel(asset, playerById))
+    .slice(0, 3);
+  const requestingLabels = negotiation.proposal.requestingAssets
+    .map((asset) => buildTradeAssetLabel(asset, playerById))
+    .slice(0, 3);
+
+  return (
+    <div
+      className={[
+        'rounded-lg border px-3 py-3 transition-colors',
+        active
+          ? 'border-accent-info/50 bg-accent-info/10'
+          : 'border-dynasty-border bg-dynasty-elevated',
+      ].join(' ')}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-heading text-sm font-semibold text-dynasty-textBright">
+            {negotiation.teamAbbreviation} · Round {Math.max(1, negotiation.roundsCompleted)}
+          </div>
+          <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            {humanizeLabel(negotiation.phase)} · expires D{negotiation.expiresAtDay}
+          </div>
+        </div>
+        <Badge className={active ? 'border-accent-info/40 bg-accent-info/10 text-accent-info' : 'border-dynasty-border text-dynasty-muted'}>
+          {active ? 'Loaded' : 'Open'}
+        </Badge>
+      </div>
+
+      <p className="mt-3 font-heading text-xs text-dynasty-text">{lastLine}</p>
+
+      <div className="mt-3 grid gap-2">
+        <div className="rounded border border-dynasty-border/70 bg-dynasty-surface/70 px-2 py-2">
+          <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">You Send</div>
+          <div className="mt-1 font-heading text-xs text-dynasty-text">
+            {offeringLabels.join(', ') || 'No outgoing assets'}
+          </div>
+        </div>
+        <div className="rounded border border-dynasty-border/70 bg-dynasty-surface/70 px-2 py-2">
+          <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">You Receive</div>
+          <div className="mt-1 font-heading text-xs text-dynasty-text">
+            {requestingLabels.join(', ') || 'No incoming assets'}
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onResume}
+        className="focus-ring mt-3 w-full rounded-md border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs font-semibold uppercase tracking-[0.18em] text-accent-info transition-colors hover:bg-accent-info/20"
+      >
+        Resume Talk
+      </button>
+    </div>
+  );
+}
+
 export default function TradePage() {
   const worker = useWorker();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     getTeamRoster,
     getTradeHistory,
@@ -770,6 +955,7 @@ export default function TradePage() {
     getTradeDialogue,
     getTradeAssetInventory,
     getRelationships,
+    getOpenNegotiations,
     evaluateMultiTeamFairness,
     generateConditionalClause,
     startNegotiation,
@@ -779,8 +965,20 @@ export default function TradePage() {
     executeMultiTeamTrade,
     proposeTrade,
     respondToTradeOffer,
+    exportSnapshot,
+    getSeasonFlowState,
   } = worker;
-  const { userTeamId, isInitialized, day, season, phase } = useGameStore();
+  const {
+    userTeamId,
+    isInitialized,
+    day,
+    season,
+    phase,
+    activeSaveId,
+    activeSaveSlot,
+    gmName,
+    teamName,
+  } = useGameStore();
 
   const [selectedTeam, setSelectedTeam] = useState('');
   const [yourRoster, setYourRoster] = useState<PlayerDTO[]>([]);
@@ -795,7 +993,10 @@ export default function TradePage() {
   const [requestingIFAAmount, setRequestingIFAAmount] = useState('');
   const [incomingOffers, setIncomingOffers] = useState<HotTradeOfferView[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryView[]>([]);
+  const [openNegotiations, setOpenNegotiations] = useState<TradeNegotiationView[]>([]);
+  const [openNegotiationsLoading, setOpenNegotiationsLoading] = useState(false);
   const [deadlineState, setDeadlineState] = useState<TradeDeadlineStateView | null>(null);
+  const [seasonFlowStatus, setSeasonFlowStatus] = useState<string | null>(null);
   const [relationships, setRelationships] = useState<RelationshipView[]>([]);
   const [gmDialogue, setGmDialogue] = useState<TradeDialogueView | null>(null);
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
@@ -813,18 +1014,34 @@ export default function TradePage() {
   const [proposing, setProposing] = useState(false);
   const [activeCounterOfferId, setActiveCounterOfferId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [yourAssetFilter, setYourAssetFilter] = useState<AssetFilter>('all');
+  const [targetAssetFilter, setTargetAssetFilter] = useState<AssetFilter>('all');
 
   const workerReady = worker.isReady;
   const preselectedPlayerId = searchParams.get('playerId');
+  const linkedNegotiationId = searchParams.get('negotiationId');
   const otherTeams = ALL_TEAMS.filter((team) => team.id !== userTeamId);
-  const tradeMarketOpen = phase === 'regular' && (
+  const effectivePhase = seasonFlowStatus === 'preseason' ? 'spring_training' : (deadlineState?.currentPhase ?? phase);
+  const tradeMarketOpen = effectivePhase === 'regular' && (
     (deadlineState?.deadlineMode ?? false) || ((deadlineState?.daysUntilDeadline ?? -1) > 0)
+  );
+  const marketCopy = useMemo(
+    () => buildMarketPhaseCopy(effectivePhase, deadlineState, tradeMarketOpen),
+    [deadlineState, effectivePhase, tradeMarketOpen],
   );
   const relationshipsByTeamId = useMemo(
     () => new Map(relationships.map((relationship) => [relationship.teamId, relationship])),
     [relationships],
   );
   const selectedRelationship = selectedTeam ? (relationshipsByTeamId.get(selectedTeam) ?? null) : null;
+  const filteredYourRoster = useMemo(
+    () => yourRoster.filter((player) => playerMatchesAssetFilter(player, yourAssetFilter, offering)),
+    [offering, yourAssetFilter, yourRoster],
+  );
+  const filteredTargetRoster = useMemo(
+    () => targetRoster.filter((player) => playerMatchesAssetFilter(player, targetAssetFilter, requesting)),
+    [requesting, targetAssetFilter, targetRoster],
+  );
   const multiTeamProposal = useMemo(
     () => multiTeamProposalFromLanes(multiTeamLanes, multiTeamConditions),
     [multiTeamConditions, multiTeamLanes],
@@ -882,23 +1099,65 @@ export default function TradePage() {
     if (!isInitialized || !workerReady) return;
     setLoading(true);
     try {
-      const [history, deadline] = await Promise.all([
+      const [history, deadline, flow] = await Promise.all([
         getTradeHistory(),
         getTradeDeadlineState(),
+        getSeasonFlowState?.() ?? Promise.resolve(null),
       ]);
       setTradeHistory((history as TradeHistoryView[]) ?? []);
       setDeadlineState((deadline as TradeDeadlineStateView) ?? null);
+      setSeasonFlowStatus((flow as { status?: string } | null)?.status ?? null);
       setIncomingOffers(((deadline as TradeDeadlineStateView | null)?.hotOffers ?? []) as HotTradeOfferView[]);
     } finally {
       setLoading(false);
     }
-  }, [getTradeDeadlineState, getTradeHistory, isInitialized, workerReady]);
+  }, [getSeasonFlowState, getTradeDeadlineState, getTradeHistory, isInitialized, workerReady]);
 
   const loadRelationshipData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
     const data = await getRelationships();
     setRelationships((data as RelationshipView[]) ?? []);
   }, [getRelationships, isInitialized, workerReady]);
+
+  const loadOpenNegotiations = useCallback(async () => {
+    if (!isInitialized || !workerReady) {
+      setOpenNegotiations([]);
+      return;
+    }
+    setOpenNegotiationsLoading(true);
+    try {
+      const data = await getOpenNegotiations();
+      setOpenNegotiations((data as TradeNegotiationView[]) ?? []);
+    } finally {
+      setOpenNegotiationsLoading(false);
+    }
+  }, [getOpenNegotiations, isInitialized, workerReady]);
+
+  const persistTradeSnapshot = useCallback(async () => {
+    if (!activeSaveId) {
+      return;
+    }
+
+    try {
+      const snapshot = await exportSnapshot();
+      const saveName = `${gmName || 'General Manager'} • ${teamName || 'Franchise'} • Season ${season}`;
+
+      if (activeSaveSlot != null) {
+        await scheduleAutoSave(activeSaveSlot, saveName, snapshot);
+        return;
+      }
+
+      const existing = await loadGameById(activeSaveId);
+      await saveGameById(activeSaveId, saveName, snapshot, {
+        slotNumber: existing?.slotNumber ?? null,
+        parentSaveId: existing?.parentSaveId ?? null,
+        isRootSave: existing?.isRootSave ?? false,
+        branchMeta: existing?.branchMeta ?? null,
+      });
+    } catch (error) {
+      logger.error('Failed to autosave trade negotiation state:', error);
+    }
+  }, [activeSaveId, activeSaveSlot, exportSnapshot, gmName, season, teamName]);
 
   useEffect(() => {
     void loadUserRoster();
@@ -923,6 +1182,10 @@ export default function TradePage() {
   useEffect(() => {
     void loadRelationshipData();
   }, [loadRelationshipData, day, season, phase]);
+
+  useEffect(() => {
+    void loadOpenNegotiations();
+  }, [loadOpenNegotiations, day, season, phase]);
 
   useEffect(() => {
     if (!multiTeamOpen || !isInitialized || !workerReady) {
@@ -1217,6 +1480,16 @@ export default function TradePage() {
     setRequesting((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   };
 
+  const updateNegotiationDeepLink = useCallback((negotiationId: string | null) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (negotiationId) {
+      nextParams.set('negotiationId', negotiationId);
+    } else {
+      nextParams.delete('negotiationId');
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const resetBuilder = () => {
     setOffering([]);
     setRequesting([]);
@@ -1226,6 +1499,7 @@ export default function TradePage() {
     setRequestingIFAAmount('');
     setActiveCounterOfferId(null);
     setActiveNegotiation(null);
+    updateNegotiationDeepLink(null);
   };
 
   const clearTrade = () => {
@@ -1249,6 +1523,18 @@ export default function TradePage() {
     setOfferingIFAAmount(ifaAmountFromAssets(negotiation.proposal.offeringAssets));
     setRequestingIFAAmount(ifaAmountFromAssets(negotiation.proposal.requestingAssets));
   }, []);
+
+  const resumeNegotiation = useCallback((negotiation: TradeNegotiationView) => {
+    setSelectedTeam(negotiation.teamId);
+    setActiveCounterOfferId(null);
+    setActiveNegotiation(negotiation);
+    setTradeResult({
+      status: 'counter',
+      message: `Resumed active talks with ${negotiation.teamName}. Adjust the package or use the negotiation controls.`,
+    });
+    applyNegotiationToBuilder(negotiation);
+    updateNegotiationDeepLink(negotiation.id);
+  }, [applyNegotiationToBuilder, updateNegotiationDeepLink]);
 
   const offeringAssets = useMemo(() => {
     const assets: TradeAsset[] = [...offering.map(playerAsset), ...offeringPicks];
@@ -1343,6 +1629,22 @@ export default function TradePage() {
     workerReady,
   ]);
 
+  useEffect(() => {
+    if (!linkedNegotiationId || openNegotiationsLoading || activeNegotiation?.id === linkedNegotiationId) {
+      return;
+    }
+    const match = openNegotiations.find((negotiation) => negotiation.id === linkedNegotiationId);
+    if (match) {
+      resumeNegotiation(match);
+    }
+  }, [
+    activeNegotiation?.id,
+    linkedNegotiationId,
+    openNegotiations,
+    openNegotiationsLoading,
+    resumeNegotiation,
+  ]);
+
   const multiTeamConditionTargets = useMemo(
     () => [...multiTeamMovedPlayers].sort((left, right) => left.label.localeCompare(right.label) || left.playerId.localeCompare(right.playerId)),
     [multiTeamMovedPlayers],
@@ -1398,6 +1700,7 @@ export default function TradePage() {
         });
         setActiveNegotiation(result.negotiation);
         applyNegotiationToBuilder(result.negotiation);
+        updateNegotiationDeepLink(result.negotiation?.id ?? null);
         if (result.tradeExecuted) {
           resetBuilder();
         }
@@ -1419,6 +1722,7 @@ export default function TradePage() {
         });
         setActiveNegotiation(result.negotiation);
         applyNegotiationToBuilder(result.negotiation);
+        updateNegotiationDeepLink(result.negotiation?.id ?? null);
         if (result.tradeExecuted) {
           resetBuilder();
         }
@@ -1430,6 +1734,8 @@ export default function TradePage() {
         loadUserInventory(),
         loadTargetInventory(),
         loadTradeActivity(),
+        loadOpenNegotiations(),
+        persistTradeSnapshot(),
       ]);
     } finally {
       setProposing(false);
@@ -1448,6 +1754,7 @@ export default function TradePage() {
         message: result.message,
       });
       setActiveNegotiation(result.negotiation);
+      updateNegotiationDeepLink(result.negotiation?.id ?? null);
       if (result.tradeExecuted || action === 'reject') {
         resetBuilder();
       }
@@ -1457,6 +1764,8 @@ export default function TradePage() {
         loadUserInventory(),
         loadTargetInventory(),
         loadTradeActivity(),
+        loadOpenNegotiations(),
+        persistTradeSnapshot(),
       ]);
     } finally {
       setProposing(false);
@@ -1468,7 +1777,10 @@ export default function TradePage() {
     loadTradeActivity,
     loadUserInventory,
     loadUserRoster,
+    loadOpenNegotiations,
+    persistTradeSnapshot,
     resolveNegotiation,
+    updateNegotiationDeepLink,
   ]);
 
   const handleAcceptOffer = async (offerId: string) => {
@@ -1516,19 +1828,6 @@ export default function TradePage() {
     setTradeResult(null);
   };
 
-  const marketMessage = useMemo(() => {
-    if (phase !== 'regular') {
-      return 'Trade market closed — reopens in offseason';
-    }
-    if ((deadlineState?.daysUntilDeadline == null) && !(deadlineState?.deadlineMode ?? false)) {
-      return 'Deadline has passed';
-    }
-    if (!tradeMarketOpen) {
-      return 'Trade market closed — reopens in offseason';
-    }
-    return `${deadlineState?.daysUntilDeadline ?? 0} days until trade deadline`;
-  }, [deadlineState?.daysUntilDeadline, phase, tradeMarketOpen]);
-
   useEffect(() => {
     if (tradeResult?.status === 'accepted') {
       getAudioEngine().playEffect('trade_completed');
@@ -1554,8 +1853,9 @@ export default function TradePage() {
           : 'border-dynasty-border bg-dynasty-surface'
       }`}>
         <p className={`font-heading text-sm ${tradeMarketOpen ? 'text-accent-warning' : 'text-dynasty-text'}`}>
-          {marketMessage}
+          {marketCopy.headline}
         </p>
+        <p className="mt-1 font-heading text-xs text-dynasty-muted">{marketCopy.detail}</p>
       </div>
 
       <DeadlineTheatreCard deadlineState={deadlineState} />
@@ -1575,7 +1875,7 @@ export default function TradePage() {
                           ? 'border-accent-success/40 text-accent-success'
                           : 'border-accent-warning/40 text-accent-warning'
                       }`}>
-                        {item.outcome}
+                        {humanizeLabel(item.outcome)}
                       </span>
                     </div>
                     <p className="mt-2 font-heading text-sm text-dynasty-text">{item.summary}</p>
@@ -1631,6 +1931,36 @@ export default function TradePage() {
                     onAccept={() => void handleAcceptOffer(offer.id)}
                     onCounter={() => handleCounterOffer(offer)}
                     onDecline={() => void handleDeclineOffer(offer.id)}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+            <div className="flex items-center gap-2 border-b border-dynasty-border px-4 py-3">
+              <Scale className="h-4 w-4 text-dynasty-muted" />
+              <div>
+                <h2 className="font-heading text-sm font-semibold text-dynasty-text">Active Talks</h2>
+                <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  {openNegotiationsLoading ? 'Refreshing room' : `${openNegotiations.length} open negotiation${openNegotiations.length === 1 ? '' : 's'}`}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 px-3 py-3">
+              {openNegotiations.length === 0 ? (
+                <EmptyStatePanel
+                  description="Open multi-round talks will stay here after a reload so you can pick the call back up."
+                  title="No active talks"
+                />
+              ) : (
+                openNegotiations.map((negotiation) => (
+                  <NegotiationSummaryCard
+                    key={negotiation.id}
+                    active={activeNegotiation?.id === negotiation.id}
+                    negotiation={negotiation}
+                    onResume={() => resumeNegotiation(negotiation)}
+                    playerById={playerById}
                   />
                 ))
               )}
@@ -1714,6 +2044,7 @@ export default function TradePage() {
                   type="button"
                   onClick={openMultiTeamBuilder}
                   disabled={!tradeMarketOpen}
+                  title={!tradeMarketOpen ? marketCopy.disabledReason : 'Build a three- or four-team framework'}
                   className="focus-ring inline-flex items-center gap-2 rounded-md border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs font-semibold uppercase tracking-[0.18em] text-accent-info transition-colors hover:bg-accent-info/20 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ArrowLeftRight className="h-4 w-4" />
@@ -1776,6 +2107,28 @@ export default function TradePage() {
               })}
             </div>
 
+            {selectedRelationship ? (
+              <div className="mb-4 rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="font-heading text-xs uppercase tracking-[0.18em] text-dynasty-muted">GM personality and memory</div>
+                    <div className="mt-2 font-heading text-sm text-dynasty-textBright">
+                      {selectedRelationship.teamName} front office: {relationshipLabel(selectedRelationship.tier)} room
+                    </div>
+                    <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                      {selectedRelationship.latestMemoryDescription ?? 'No prior trade memory is influencing this call yet.'}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 text-right">
+                    <div className="font-data text-lg text-dynasty-textBright">{selectedRelationship.score}</div>
+                    <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
+                      {selectedRelationship.lastEventLabel} · S{selectedRelationship.lastInteractionSeason}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {gmDialogue ? (
               <div className={`mb-4 rounded-lg border px-4 py-3 ${dialogueUrgencyClass(gmDialogue.urgency)}`}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1805,7 +2158,7 @@ export default function TradePage() {
                     {Math.max(1, activeNegotiation.roundsCompleted)}
                   </Badge>
                   <Badge className={modeBadgeClass(gmDialogue?.mode ?? 'buyer')}>
-                    {activeNegotiation.phase.replace(/_/g, ' ')}
+                    {humanizeLabel(activeNegotiation.phase)}
                   </Badge>
                 </div>
 
@@ -1880,8 +2233,18 @@ export default function TradePage() {
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated">
-                <div className="border-b border-dynasty-border px-4 py-3">
-                  <h3 className="font-heading text-sm font-semibold text-dynasty-text">Your Assets</h3>
+                <div className="space-y-3 border-b border-dynasty-border px-4 py-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="font-heading text-sm font-semibold text-dynasty-text">Your Assets</h3>
+                    <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
+                      {filteredYourRoster.length}/{yourRoster.length}
+                    </div>
+                  </div>
+                  <AssetFilterBar
+                    value={yourAssetFilter}
+                    onChange={setYourAssetFilter}
+                    selectedCount={offering.length}
+                  />
                 </div>
                 <div className="max-h-[22rem] overflow-y-auto">
                   <table className="w-full">
@@ -1895,7 +2258,7 @@ export default function TradePage() {
                       </tr>
                     </thead>
                     <tbody>
-                    {yourRoster.map((player) => (
+                    {filteredYourRoster.map((player) => (
                         <PlayerRow
                           key={player.id}
                           player={player}
@@ -1924,6 +2287,7 @@ export default function TradePage() {
                                 setOfferingPicks((current) => toggleDraftPickAsset(current, pick.asset));
                               }}
                               disabled={!tradeMarketOpen}
+                              title={!tradeMarketOpen ? marketCopy.disabledReason : pick.detail}
                               className={`rounded border px-2 py-1 text-left font-data text-xs transition-colors ${
                                 selected
                                   ? 'border-accent-primary bg-accent-primary/15 text-accent-primary'
@@ -1950,6 +2314,7 @@ export default function TradePage() {
                       step="0.1"
                       value={offeringIFAAmount}
                       disabled={!tradeMarketOpen}
+                      title={!tradeMarketOpen ? marketCopy.disabledReason : 'Offer international pool space'}
                       onInput={(event) => {
                         setTradeResult(null);
                         setOfferingIFAAmount((event.target as HTMLInputElement).value);
@@ -1966,8 +2331,18 @@ export default function TradePage() {
               </div>
 
               <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated">
-                <div className="border-b border-dynasty-border px-4 py-3">
-                  <h3 className="font-heading text-sm font-semibold text-dynasty-text">Target Roster</h3>
+                <div className="space-y-3 border-b border-dynasty-border px-4 py-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="font-heading text-sm font-semibold text-dynasty-text">Target Roster</h3>
+                    <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
+                      {filteredTargetRoster.length}/{targetRoster.length}
+                    </div>
+                  </div>
+                  <AssetFilterBar
+                    value={targetAssetFilter}
+                    onChange={setTargetAssetFilter}
+                    selectedCount={requesting.length}
+                  />
                 </div>
                 <div className="max-h-[22rem] overflow-y-auto">
                   <table className="w-full">
@@ -1981,7 +2356,7 @@ export default function TradePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {targetRoster.map((player) => (
+                      {filteredTargetRoster.map((player) => (
                         <PlayerRow
                           key={player.id}
                           player={player}
@@ -2012,6 +2387,7 @@ export default function TradePage() {
                                 setRequestingPicks((current) => toggleDraftPickAsset(current, pick.asset));
                               }}
                               disabled={!tradeMarketOpen}
+                              title={!tradeMarketOpen ? marketCopy.disabledReason : pick.detail}
                               className={`rounded border px-2 py-1 text-left font-data text-xs transition-colors ${
                                 selected
                                   ? 'border-accent-info bg-accent-info/15 text-accent-info'
@@ -2038,6 +2414,7 @@ export default function TradePage() {
                       step="0.1"
                       value={requestingIFAAmount}
                       disabled={!tradeMarketOpen || !selectedTeam}
+                      title={!tradeMarketOpen ? marketCopy.disabledReason : !selectedTeam ? 'Select a team first.' : 'Request international pool space'}
                       onInput={(event) => {
                         setTradeResult(null);
                         setRequestingIFAAmount((event.target as HTMLInputElement).value);
@@ -2107,6 +2484,16 @@ export default function TradePage() {
 
               {(offeringAssets.length > 0 || requestingAssets.length > 0) && (
                 <div className="mt-4 space-y-2">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <div className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+                      <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">You Send Value</div>
+                      <div className="mt-1 font-data text-lg text-dynasty-textBright">{offerTotal.toFixed(1)}</div>
+                    </div>
+                    <div className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+                      <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">You Receive Value</div>
+                      <div className="mt-1 font-data text-lg text-dynasty-textBright">{requestTotal.toFixed(1)}</div>
+                    </div>
+                  </div>
                   <ProgressFill
                     toneClassName={
                       fairnessRatio(offerTotal, requestTotal) >= 0.4 && fairnessRatio(offerTotal, requestTotal) <= 0.6
@@ -2129,6 +2516,13 @@ export default function TradePage() {
                 <button
                   onClick={() => void submitTrade()}
                   disabled={!tradeMarketOpen || !selectedTeam || offeringAssets.length === 0 || requestingAssets.length === 0 || proposing}
+                  title={!tradeMarketOpen
+                    ? marketCopy.disabledReason
+                    : !selectedTeam
+                      ? 'Select a target club first.'
+                      : offeringAssets.length === 0 || requestingAssets.length === 0
+                        ? 'Select at least one outgoing and one incoming asset.'
+                        : 'Send this package to the other GM.'}
                   className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ArrowRight className="h-4 w-4" />
@@ -2347,7 +2741,7 @@ export default function TradePage() {
                           multiTeamConditions.map((condition, index) => (
                             <div key={`${condition.playerId}-${condition.type}-${index}`} className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
                               <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
-                                {condition.type.replace('_', ' ')} · Deadline {condition.deadline}
+                                {humanizeLabel(condition.type)} · Deadline {condition.deadline}
                               </div>
                               <p className="mt-1 font-heading text-xs text-dynasty-text">{condition.description}</p>
                             </div>

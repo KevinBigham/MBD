@@ -6,6 +6,7 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { categoryLabel } from '@/shared/lib/labels';
 
 const AwardCeremonyModal = lazy(() => import('../components/AwardCeremonyModal'));
 
@@ -49,7 +50,7 @@ function AchievementCard({ a }: { a: AchievementView }) {
               <p className="mt-1.5 font-data text-xs italic text-accent-warning/80">{a.unlockSummary}</p>
             )}
             <div className="mt-2 flex items-center gap-2">
-              <Badge className={categoryTone(a.category)}>{a.category}</Badge>
+              <Badge className={categoryTone(a.category)}>{categoryLabel(a.category)}</Badge>
               {a.unlockedAt != null && (
                 <span className="font-data text-[10px] text-dynasty-muted">Season {a.unlockedAt}</span>
               )}
@@ -81,7 +82,7 @@ function AchievementCard({ a }: { a: AchievementView }) {
             </div>
           )}
           <div className="mt-2">
-            <Badge className={categoryTone(a.category)}>{a.category}</Badge>
+            <Badge className={categoryTone(a.category)}>{categoryLabel(a.category)}</Badge>
           </div>
         </div>
       </div>

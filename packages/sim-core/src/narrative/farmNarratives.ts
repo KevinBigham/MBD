@@ -268,6 +268,8 @@ export interface PressConferenceResponse {
   moraleDelta: number;
   /** Owner satisfaction delta (-8 to +8) */
   ownerDelta: number;
+  /** Fan sentiment delta (-8 to +8) */
+  fanSentimentDelta: number;
   /** Whether this generates a follow-up news story */
   generatesNews: boolean;
 }
@@ -284,9 +286,9 @@ export interface InteractivePressConference {
 }
 
 const RESPONSE_TEMPLATES: Record<string, {
-  confident: { label: string; quote: string; moraleDelta: number; ownerDelta: number };
-  measured: { label: string; quote: string; moraleDelta: number; ownerDelta: number };
-  deflect: { label: string; quote: string; moraleDelta: number; ownerDelta: number };
+  confident: { label: string; quote: string; moraleDelta: number; ownerDelta: number; fanSentimentDelta: number };
+  measured: { label: string; quote: string; moraleDelta: number; ownerDelta: number; fanSentimentDelta: number };
+  deflect: { label: string; quote: string; moraleDelta: number; ownerDelta: number; fanSentimentDelta: number };
 }> = {
   first_place: {
     confident: {
@@ -294,18 +296,21 @@ const RESPONSE_TEMPLATES: Record<string, {
       quote: 'This roster was assembled to win, and that\'s exactly what we\'re doing. No one should be surprised.',
       moraleDelta: 5,
       ownerDelta: 3,
+      fanSentimentDelta: 4,
     },
     measured: {
       label: 'Stay focused',
       quote: 'We appreciate the recognition, but there\'s a lot of baseball left. We\'re taking it one series at a time.',
       moraleDelta: 2,
       ownerDelta: 1,
+      fanSentimentDelta: 1,
     },
     deflect: {
       label: 'Credit the players',
       quote: 'I\'m just putting the pieces in place. The guys in that clubhouse are the ones making it happen every night.',
       moraleDelta: 4,
       ownerDelta: 0,
+      fanSentimentDelta: 2,
     },
   },
   trade_reaction: {
@@ -314,18 +319,21 @@ const RESPONSE_TEMPLATES: Record<string, {
       quote: 'We did our homework. I\'d make that deal again tomorrow. The numbers backed us up.',
       moraleDelta: 1,
       ownerDelta: 4,
+      fanSentimentDelta: 1,
     },
     measured: {
       label: 'Time will tell',
       quote: 'Every trade is a calculated risk. We\'re confident in the process, but we\'ll let the results speak for themselves.',
       moraleDelta: 0,
       ownerDelta: 2,
+      fanSentimentDelta: 0,
     },
     deflect: {
       label: 'Next question',
       quote: 'I\'m not going to relitigate every deal with the press. We\'re focused on winning games.',
       moraleDelta: -2,
       ownerDelta: -1,
+      fanSentimentDelta: -2,
     },
   },
   rebuild: {
@@ -334,18 +342,21 @@ const RESPONSE_TEMPLATES: Record<string, {
       quote: 'We have a clear plan. The farm system is loaded, and the payoff is closer than people think.',
       moraleDelta: 3,
       ownerDelta: -2,
+      fanSentimentDelta: 3,
     },
     measured: {
       label: 'Honest assessment',
       quote: 'We\'re not where we want to be yet, but the foundation is being laid. Patience will be rewarded.',
       moraleDelta: 1,
       ownerDelta: 1,
+      fanSentimentDelta: 0,
     },
     deflect: {
       label: 'Blame injuries',
       quote: 'A healthy roster looks very different from what we\'re putting out there right now. Context matters.',
       moraleDelta: -1,
       ownerDelta: -3,
+      fanSentimentDelta: -1,
     },
   },
   farm_pipeline: {
@@ -354,18 +365,21 @@ const RESPONSE_TEMPLATES: Record<string, {
       quote: 'Some of these kids are closer than people realize. Don\'t be surprised if you see fresh faces soon.',
       moraleDelta: 4,
       ownerDelta: 2,
+      fanSentimentDelta: 3,
     },
     measured: {
       label: 'Development takes time',
       quote: 'We won\'t rush anyone. When they\'re ready, they\'ll get their shot. Not a day before.',
       moraleDelta: 1,
       ownerDelta: 3,
+      fanSentimentDelta: 1,
     },
     deflect: {
       label: 'Keep expectations low',
       quote: 'Prospect rankings are fun for the fans, but they don\'t win games. We\'ll see what happens.',
       moraleDelta: -2,
       ownerDelta: 0,
+      fanSentimentDelta: -2,
     },
   },
 };
@@ -401,6 +415,7 @@ export function generateInteractivePressConference(
         quote: templates.confident.quote,
         moraleDelta: templates.confident.moraleDelta,
         ownerDelta: templates.confident.ownerDelta,
+        fanSentimentDelta: templates.confident.fanSentimentDelta,
         generatesNews: true,
       },
       {
@@ -410,6 +425,7 @@ export function generateInteractivePressConference(
         quote: templates.measured.quote,
         moraleDelta: templates.measured.moraleDelta,
         ownerDelta: templates.measured.ownerDelta,
+        fanSentimentDelta: templates.measured.fanSentimentDelta,
         generatesNews: false,
       },
       {
@@ -419,6 +435,7 @@ export function generateInteractivePressConference(
         quote: templates.deflect.quote,
         moraleDelta: templates.deflect.moraleDelta,
         ownerDelta: templates.deflect.ownerDelta,
+        fanSentimentDelta: templates.deflect.fanSentimentDelta,
         generatesNews: true,
       },
     ],

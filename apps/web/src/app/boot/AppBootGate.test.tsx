@@ -183,7 +183,7 @@ describe('AppBootGate', () => {
       await flushAsync();
     });
 
-    expect(container.textContent).toContain('Resuming save...');
+    expect(container.textContent).toContain('Reopening the front office');
     expect(container.textContent).not.toContain('Dashboard Route');
 
     await act(async () => {

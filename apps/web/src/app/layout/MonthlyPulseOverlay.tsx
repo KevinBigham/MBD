@@ -5,6 +5,7 @@ import { AnimatedNumber } from '@/shared/components/AnimatedNumber';
 import { useEffectiveReducedMotion } from '@/shared/hooks/useEffectiveReducedMotion';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 interface MonthlyPulseOverlayProps {
   report: MonthlyReport | null;
@@ -12,6 +13,7 @@ interface MonthlyPulseOverlayProps {
   onboardingGuide?: string | null;
   busy: boolean;
   onContinue: () => void;
+  onReportAction?: (route: string) => void;
   onDecisionDismiss: () => void;
   onDecisionAction: () => void;
 }
@@ -27,12 +29,47 @@ function urgencyTone(urgency: DecisionSpotlightItem['urgency']): string {
   }
 }
 
+function recommendedReportAction(report: MonthlyReport): { label: string; route: string; reason: string } {
+  const keyInjuries = report.keyInjuries ?? [];
+  const scheduleDifficulty = report.upcomingScheduleDifficulty ?? {
+    label: 'Balanced',
+    summary: 'Schedule difficulty will update after the next monthly advance.',
+  };
+  if (report.tradeDeadlineCountdown != null && report.tradeDeadlineCountdown <= 35) {
+    return {
+      label: 'Open Trade Center',
+      route: '/trade',
+      reason: `${report.tradeDeadlineCountdown} days remain before the trade deadline.`,
+    };
+  }
+  if (keyInjuries.length > 0) {
+    return {
+      label: 'Open Roster',
+      route: '/roster',
+      reason: 'New injury pressure should be checked against depth and roles.',
+    };
+  }
+  if (scheduleDifficulty.label === 'Grueling' || scheduleDifficulty.label === 'Challenging') {
+    return {
+      label: 'Open Schedule',
+      route: '/schedule',
+      reason: scheduleDifficulty.summary,
+    };
+  }
+  return {
+    label: 'Open Dashboard',
+    route: '/dashboard',
+    reason: 'No emergency surfaced, so review the main decision desk before simming on.',
+  };
+}
+
 export function MonthlyPulseOverlay({
   report,
   decision,
   onboardingGuide,
   busy,
   onContinue,
+  onReportAction,
   onDecisionDismiss,
   onDecisionAction,
 }: MonthlyPulseOverlayProps) {
@@ -64,6 +101,7 @@ export function MonthlyPulseOverlay({
   };
   const keyInjuries = report?.keyInjuries ?? [];
   const keyReturns = report?.keyReturns ?? [];
+  const reportAction = report ? recommendedReportAction(report) : null;
 
   return (
     <div ref={trapRef} data-overlay="monthly-pulse" className="fixed inset-0 z-40 flex items-center justify-center p-4">
@@ -158,7 +196,24 @@ export function MonthlyPulseOverlay({
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end">
+            {reportAction ? (
+              <div className="mt-4 rounded-lg border border-accent-info/30 bg-accent-info/10 p-4">
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Recommended Action</div>
+                <div className="mt-2 font-heading text-sm leading-6 text-dynasty-text">{reportAction.reason}</div>
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              {reportAction && onReportAction ? (
+                <button
+                  onClick={() => onReportAction(reportAction.route)}
+                  disabled={busy}
+                  className="inline-flex items-center gap-2 rounded-md border border-accent-info/40 bg-accent-info/10 px-4 py-2 font-heading text-sm font-semibold text-accent-info transition-colors hover:bg-accent-info/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {reportAction.label}
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              ) : null}
               <button
                 onClick={onContinue}
                 disabled={busy}
@@ -180,7 +235,7 @@ export function MonthlyPulseOverlay({
                 <h2 className="mt-2 font-brand text-3xl text-dynasty-textBright">{decision.title}</h2>
               </div>
               <span className={`rounded border px-3 py-1 font-data text-[11px] uppercase tracking-[0.18em] ${urgencyTone(decision.urgency)}`}>
-                {decision.urgency}
+                {humanizeLabel(decision.urgency)}
               </span>
             </div>
 

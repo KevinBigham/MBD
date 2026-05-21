@@ -46,6 +46,7 @@ import {
 import type { FullGameState } from './sim.worker.helpers';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers';
 import { getDifficultyAdjustedBudget } from './sim.worker.setup.js';
+import { getOwnerAlignmentDecisionScore } from './sim.worker.frontOfficeIdentity.js';
 
 export interface PersonalityProfileDTO {
   playerId: string;
@@ -1104,7 +1105,7 @@ export function refreshNarrativeState(
         losses: record?.losses ?? 0,
         payroll,
         chemistryScore,
-        recentDecisionScore: 0,
+        recentDecisionScore: team.id === state.userTeamId ? getOwnerAlignmentDecisionScore(state) : 0,
         madePlayoffs: Boolean(state.playoffBracket?.seeds.some((seed) => seed.teamId === team.id)),
       }),
     );

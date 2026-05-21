@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar } from '@mbd/ui';
-import { Building2, Clock, Coins, TrendingUp, Users, Zap } from 'lucide-react';
+import { Building2, Clock, Coins, Compass, Radio, ShieldCheck, TrendingUp, Users, Zap } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
@@ -43,6 +43,52 @@ interface RelationshipView {
   lastInteractionSeason: number;
   lastEventLabel: string;
   latestMemoryDescription: string | null;
+}
+
+interface AlignmentScore {
+  score: number;
+  impact: number;
+  label: 'strong' | 'steady' | 'watch' | 'strained';
+  summary: string;
+}
+
+interface FrontOfficeIdentityView {
+  assistantGM: {
+    id: string | null;
+    name: string;
+    focus: string;
+    upside: string;
+    watchout: string;
+  };
+  scoutingDirector: {
+    name: string;
+    focus: string;
+    draftAccuracy: number;
+    internationalAccuracy: number;
+    proAccuracy: number;
+  } | null;
+  philosophy: {
+    seasonGoal: string;
+    developmentStyle: string;
+    scoutingFocus: string;
+    spendingStyle: string;
+    tradeApproach: string;
+    mediaTone: string;
+  };
+  alignment: {
+    overall: AlignmentScore;
+    mandate: AlignmentScore;
+    spending: AlignmentScore;
+    trade: AlignmentScore;
+    development: AlignmentScore;
+    media: AlignmentScore;
+  };
+  visibleEffects: string[];
+  recentConsequence: {
+    headline: string;
+    body: string;
+    timestamp: string;
+  } | null;
 }
 
 function archetypeIcon(archetype: string) {
@@ -104,6 +150,24 @@ function relationshipLabel(tier: RelationshipView['tier']): string {
     default:
       return 'Neutral';
   }
+}
+
+function alignmentTone(label: AlignmentScore['label']): string {
+  switch (label) {
+    case 'strong':
+      return 'border-accent-success/40 bg-accent-success/10 text-accent-success';
+    case 'steady':
+      return 'border-accent-info/40 bg-accent-info/10 text-accent-info';
+    case 'watch':
+      return 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
+    case 'strained':
+    default:
+      return 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger';
+  }
+}
+
+function formatAccuracy(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatMoney(n: number): string {
@@ -211,6 +275,109 @@ function ReputationCard({ fo }: { fo: FrontOfficeState }) {
         </div>
 
         <p className="font-data text-xs italic text-dynasty-muted">{fo.summary}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function IdentityCard({ identity }: { identity: FrontOfficeIdentityView }) {
+  const philosophyRows = [
+    ['Mandate', identity.philosophy.seasonGoal],
+    ['Development', identity.philosophy.developmentStyle],
+    ['Scouting', identity.philosophy.scoutingFocus],
+    ['Spending', identity.philosophy.spendingStyle],
+    ['Trades', identity.philosophy.tradeApproach],
+    ['Media', identity.philosophy.mediaTone],
+  ];
+  const alignmentRows = [
+    ['Mandate', identity.alignment.mandate],
+    ['Spending', identity.alignment.spending],
+    ['Trade', identity.alignment.trade],
+    ['Development', identity.alignment.development],
+    ['Media', identity.alignment.media],
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Compass className="h-4 w-4" />
+          Front Office Identity
+          <Badge className={`ml-auto ${alignmentTone(identity.alignment.overall.label)}`}>
+            {identity.alignment.overall.score}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-md border border-dynasty-border bg-dynasty-base p-3">
+            <div className="flex items-center gap-2 font-heading text-sm text-dynasty-textBright">
+              <ShieldCheck className="h-4 w-4 text-accent-primary" />
+              {identity.assistantGM.name}
+            </div>
+            <p className="mt-2 font-data text-xs text-dynasty-muted">{identity.assistantGM.upside}</p>
+            <p className="mt-1 font-data text-xs text-accent-warning">{identity.assistantGM.watchout}</p>
+          </div>
+
+          <div className="rounded-md border border-dynasty-border bg-dynasty-base p-3">
+            <div className="flex items-center gap-2 font-heading text-sm text-dynasty-textBright">
+              <Radio className="h-4 w-4 text-accent-info" />
+              {identity.scoutingDirector?.name ?? 'Scouting Director'}
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 font-data text-[10px] text-dynasty-muted">
+              <div>
+                <div>Draft</div>
+                <div className="text-xs text-dynasty-textBright">{identity.scoutingDirector ? formatAccuracy(identity.scoutingDirector.draftAccuracy) : 'Base'}</div>
+              </div>
+              <div>
+                <div>IFA</div>
+                <div className="text-xs text-dynasty-textBright">{identity.scoutingDirector ? formatAccuracy(identity.scoutingDirector.internationalAccuracy) : 'Base'}</div>
+              </div>
+              <div>
+                <div>Pro</div>
+                <div className="text-xs text-dynasty-textBright">{identity.scoutingDirector ? formatAccuracy(identity.scoutingDirector.proAccuracy) : 'Base'}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
+            <span>Overall Alignment</span><span>{identity.alignment.overall.label}</span>
+          </div>
+          <GradeBar grade={identity.alignment.overall.score} />
+          <p className="mt-2 font-data text-xs text-dynasty-muted">{identity.alignment.overall.summary}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {philosophyRows.map(([label, value]) => (
+            <div key={label} className="rounded-md border border-dynasty-border bg-dynasty-base p-2">
+              <div className="font-data text-[10px] text-dynasty-muted">{label}</div>
+              <div className="mt-0.5 font-heading text-xs text-dynasty-textBright">{value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-5">
+          {alignmentRows.map(([label, score]) => (
+            <div key={label as string} className="rounded-md border border-dynasty-border bg-dynasty-base p-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-data text-[10px] text-dynasty-muted">{label as string}</span>
+                <Badge className={alignmentTone((score as AlignmentScore).label)}>
+                  {(score as AlignmentScore).impact >= 0 ? '+' : ''}{(score as AlignmentScore).impact}
+                </Badge>
+              </div>
+              <div className="mt-1 font-brand text-xl text-dynasty-textBright">{(score as AlignmentScore).score}</div>
+            </div>
+          ))}
+        </div>
+
+        {identity.recentConsequence ? (
+          <div className="rounded-md border border-accent-primary/25 bg-accent-primary/10 p-3">
+            <div className="font-heading text-sm text-dynasty-textBright">{identity.recentConsequence.headline}</div>
+            <p className="mt-1 font-data text-xs text-dynasty-muted">{identity.recentConsequence.body}</p>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -394,21 +561,24 @@ export default function FrontOfficePage() {
   const [owner, setOwner] = useState<OwnerState | null>(null);
   const [fo, setFO] = useState<FrontOfficeState | null>(null);
   const [chem, setChem] = useState<TeamChemistry | null>(null);
+  const [identity, setIdentity] = useState<FrontOfficeIdentityView | null>(null);
   const [relationships, setRelationships] = useState<RelationshipView[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
     setLoading(true);
-    const [ownerData, foData, chemData, relationshipData] = await Promise.all([
+    const [ownerData, foData, chemData, identityData, relationshipData] = await Promise.all([
       worker.getOwnerState(),
       worker.getFrontOfficeState(),
       worker.getTeamChemistry(),
+      worker.getFrontOfficeIdentity(),
       worker.getRelationships(),
     ]);
     setOwner((ownerData ?? null) as OwnerState | null);
     setFO((foData ?? null) as FrontOfficeState | null);
     setChem((chemData ?? null) as TeamChemistry | null);
+    setIdentity((identityData ?? null) as FrontOfficeIdentityView | null);
     setRelationships((relationshipData as RelationshipView[]) ?? []);
     setLoading(false);
   }, [isInitialized, worker, workerReady]);
@@ -429,6 +599,8 @@ export default function FrontOfficePage() {
         </div>
 
         {/* Two-column grid */}
+        {identity && <IdentityCard identity={identity} />}
+
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="space-y-4">
             {owner && <OwnerProfileCard owner={owner} />}

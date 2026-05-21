@@ -69,6 +69,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'executeMultiTeamTrade',
   'respondToTradeOffer',
   'markNewsRead',
+  'updateRosterPlan',
   'promotePlayer',
   'demotePlayer',
   'designateForAssignment',
@@ -586,6 +587,12 @@ export function useWorker() {
   );
   const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
   const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
+  const getRosterPlan = useCallback(async () => api.getRosterPlan(), [api]);
+  const updateRosterPlan = useCallback(
+    async (patch: Parameters<typeof api.updateRosterPlan>[0]) =>
+      runMutation(() => api.updateRosterPlan(patch)),
+    [api, runMutation],
+  );
   const promotePlayer = useCallback(
     async (playerId: string) => runMutation(() => api.promotePlayer(playerId)),
     [api, runMutation],
@@ -807,6 +814,7 @@ export function useWorker() {
   );
   const getFinanceOverview = useCallback(async () => api.getFinanceOverview(), [api]);
   const getSpringTrainingView = useCallback(async () => api.getSpringTrainingView(), [api]);
+  const getFrontOfficeIdentity = useCallback(async () => api.getFrontOfficeIdentity(), [api]);
 
   // Round 1 API integration
   const getEnhancedPressConference = useCallback(async () => api.getEnhancedPressConference(), [api]);
@@ -913,14 +921,14 @@ export function useWorker() {
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, getNegotiation, getOpenNegotiations, evaluateMultiTeamFairness, generateConditionalClause, proposeTrade, startNegotiation, advanceNegotiation, resolveNegotiation, proposeMultiTeam, executeMultiTeamTrade, respondToTradeOffer,
-    getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, makeContractOffer,
+    getNews, markNewsRead, getRosterPlan, updateRosterPlan, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, makeContractOffer,
     getPromotionCandidates, getProspectPipeline, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,
     getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
     getCoachingStaff, getCoachFreeAgents, getCoachMarket, hireCoach, fireCoach,
     getDevelopmentReport, getDevelopmentReports, getCoachingImpact, getStaffBudget, getDevelopmentPipeline,
     proceedToOffseason, startNextSeason,
-    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getFrontOfficeState, getGMCareer, getCareerRetrospective, getSeasonStoryReel, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
+    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getFrontOfficeState, getFrontOfficeIdentity, getGMCareer, getCareerRetrospective, getSeasonStoryReel, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
     getPersonalityProfile, getAwardRaces, getAwardRaceBoards, getAwardRaceDetail, getRivalries,
     getAwardHistory, getSeasonHistory, getSeasonArchive, compareSeasons, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames, getAllTimeLeaders,
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,

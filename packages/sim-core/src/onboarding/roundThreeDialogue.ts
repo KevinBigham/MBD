@@ -25,14 +25,14 @@ export const ROUND_THREE_DIALOGUE = {
       line('Good. My model gave you a 67% chance of picking me. Updating priors.', 'informative'),
     ],
     owners_office: [
-      line("Owner is [OWNER_NAME]. Net worth $[NET_WORTH]B. Made money in [INDUSTRY]. Bought the team in [YEAR].", 'informative'),
+      line('Owner profile is on the board: deep pockets, short patience for vague plans, and a habit of asking for the math behind every promise.', 'informative'),
       line("Spending pattern: payroll correlates to projected wins at r=0.73. He'll spend if he thinks you'll win. He won't if he thinks you'll lose.", 'informative'),
-      line("He's saying 'compete.' That means payroll stays at $[PAYROLL]M. Listen for the number, not the word.", 'cautionary'),
+      line("He's saying 'compete.' Translate that as a conditional budget: win curve first, payroll second. Listen for the number, not the adjective.", 'cautionary'),
     ],
     roster_review: [
-      line('Roster has [TOTAL_WAR] WAR projected. That is [WINS] wins. Payroll is $[PAYROLL]M. Efficiency matters here.', 'informative'),
-      line('We have [STARS] players above 3 WAR, [REGULARS] between 1 and 3, and [REPLACEMENTS] below 1. That is your distribution.', 'informative'),
-      line('Biggest gaps: [POSITION] is -1.2 WAR below average. [POSITION2] is -0.8. Everything else is inside half a win.', 'serious'),
+      line('Roster projects near the middle of the league. Payroll is already meaningful, so efficiency matters here.', 'informative'),
+      line('You have a handful of real anchors, a wider middle class, and a few replaceable spots. That is your distribution.', 'informative'),
+      line('Biggest gaps are up the middle and in strike-throwing depth. Everything else is manageable if roles stay clean.', 'serious'),
     ],
     hire_coaches: [
       line('Three coaching positions are open. Combined, they influence roughly 12 wins per season through decision-making and development.', 'informative'),
@@ -40,7 +40,7 @@ export const ROUND_THREE_DIALOGUE = {
       line('Approach coach versus power coach is close, but patience scales a little better over a full season.', 'cautionary'),
     ],
     farm_system: [
-      line('Farm ranked [RANK]. Total prospect value: [VALUE] WAR. Top three account for 68 percent.', 'informative'),
+      line('Farm system has a few real pieces, but the top of the list carries most of the value.', 'informative'),
       line('Patient development is the cleanest path. Fast-tracking prospects reduces peak WAR by an average of 0.8.', 'cautionary'),
     ],
     hire_scouts: [
@@ -48,12 +48,12 @@ export const ROUND_THREE_DIALOGUE = {
       line('Draft is usually the most efficient market. International is high variance. Pro coverage helps faster, but the long-term value is thinner.', 'informative'),
     ],
     financial_plan: [
-      line('Payroll is $[PAYROLL]M. Committed money runs through [YEAR]. Flexibility is [AMOUNT]M.', 'informative'),
-      line('Efficiency matters more than amount. [TEAM] spent $180M last year and won 74 games.', 'informative'),
+      line('Payroll is already committed into the next planning window. Flexibility exists, but not enough to waste it.', 'informative'),
+      line('Efficiency matters more than amount. Rich clubs can still buy the wrong wins and call it ambition.', 'informative'),
       line('If expected value points toward a championship, spend. If we are rebuilding, do not buy noise.', 'serious'),
     ],
     season_strategy: [
-      line('Competitive window: [WINDOW]. Expected playoff probability: [PROB]%.', 'informative'),
+      line('Competitive window is narrow enough to matter and wide enough to require discipline.', 'informative'),
       line('Buyer if the math supports it. Seller if future value clearly beats present value. Opportunistic is optimal under uncertainty.', 'informative'),
     ],
     press_conference: [
@@ -69,14 +69,14 @@ export const ROUND_THREE_DIALOGUE = {
       line("Gracias. You won't regret this. Well, you might, but we'll figure it out together.", 'excited'),
     ],
     owners_office: [
-      line("Owner is [OWNER_NAME]. I met him once at a charity event. Nice suit, firm handshake. He asks about your family before he asks about baseball.", 'encouraging'),
-      line('He is patient, mostly. He fired the last GM because the clubhouse was toxic, not just because they lost. He cares about culture.', 'informative'),
-      line("He's saying the right things about building something sustainable. That means he probably will not force you to trade prospects for a rental.", 'encouraging'),
+      line('The owner asks family before baseball. That tells you how he wants this club to feel.', 'encouraging'),
+      line('He fired the last GM over a toxic clubhouse, not just losses. Culture matters here.', 'informative'),
+      line("He's talking sustainable, so he probably will not force a prospect-for-rental panic move.", 'encouraging'),
     ],
     roster_review: [
       line("Okay, let's meet your guys. I've watched most of these kids come up. Some I signed myself.", 'encouraging'),
       line("You've got some talent here. Not a finished product, but there are pieces to work with.", 'encouraging'),
-      line('We need help at [POSITION], and we could use a veteran in the rotation to show the young guys how to be pros.', 'concerned'),
+      line('We need help up the middle, and we could use a veteran in the rotation to show the young guys how to be pros.', 'concerned'),
     ],
     hire_coaches: [
       line('These hires shape your culture. Players spend more time with coaches than they do with family during the season.', 'encouraging'),
@@ -113,14 +113,14 @@ export const ROUND_THREE_DIALOGUE = {
       line("Good choice, kid. Let's get to work.", 'serious'),
     ],
     owners_office: [
-      line("Owner's [OWNER_NAME]. Made his money in [INDUSTRY]. Doesn't know much about baseball, knows a lot about winning.", 'serious'),
+      line("Owner made his money elsewhere. Doesn't know every detail of baseball, knows plenty about winning.", 'serious'),
       line('Last GM got fired because he lost the clubhouse. Nobody looked the owner in the eye. That is when he knew.', 'serious'),
       line("He's talking about doing things the right way. Hustle, fundamentals, no excuses. Old school. Good.", 'encouraging'),
     ],
     roster_review: [
       line("Here's your roster. Some can play, some can't. Let's figure out which is which.", 'serious'),
       line("Paper doesn't matter. I've seen 90-win teams on paper win 70, and vice versa.", 'serious'),
-      line('Need a guy at [POSITION] who can pick it, and we need a starter who throws strikes. Too many walks on this staff.', 'informative'),
+      line('Need a defender up the middle who can pick it, and we need a starter who throws strikes. Too many walks on this staff.', 'informative'),
     ],
     hire_coaches: [
       line("Need a manager, pitching coach, hitting coach. Previous staff got fired with the old GM. Clean slate.", 'serious'),

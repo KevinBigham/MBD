@@ -14,17 +14,17 @@ export interface ProspectPipelineView {
     readyNow: number;
     nextWave: number;
     longTerm: number;
-    summary: string;
+    organizationalDepth: number;
   };
   prospects: Array<{
     playerId: string;
     playerName: string;
     position: string;
     level: string;
-    levelLabel: string;
     age: number;
     overallRating: number;
     ceiling: number;
+    prospectTier: 'impact' | 'ready_depth' | 'future' | 'organizational_depth';
     bondStrength: number;
     eta: string;
     trend: 'surging' | 'steady' | 'setback';
@@ -35,17 +35,6 @@ export interface ProspectPipelineView {
     } | null;
     milestones: string[];
   }>;
-}
-
-function formatMinorLevel(level: string): string {
-  switch (level) {
-    case 'A_PLUS':
-      return 'A+';
-    case 'ROOKIE':
-      return 'Rookie';
-    default:
-      return level;
-  }
 }
 
 function buildMinorLeagueLineSummary(
@@ -79,7 +68,12 @@ function etaForProspect(
   overallRating: number,
   ceiling: number,
   setback: DevelopmentSetback | null,
+  isOrganizationalDepth: boolean,
 ): string {
+  if (isOrganizationalDepth) {
+    return 'Depth option';
+  }
+
   const delayed = setback != null && setback.type !== 'hot_streak';
   const accelerated = setback?.type === 'hot_streak';
 
@@ -101,14 +95,23 @@ function etaForProspect(
   return delayed ? '3+ seasons' : '3 seasons';
 }
 
+function prospectTierFor(age: number, overallRating: number, ceiling: number, eta: string): ProspectPipelineView['prospects'][number]['prospectTier'] {
+  if (age >= 28 && ceiling < 68 && overallRating < 62) {
+    return 'organizational_depth';
+  }
+  if (ceiling >= 72) {
+    return 'impact';
+  }
+  if (eta === 'Ready now' || overallRating >= 60) {
+    return 'ready_depth';
+  }
+  return 'future';
+}
+
 function healthLabel(score: number): string {
   if (score >= 75) return 'surging';
   if (score >= 58) return 'stable';
   return 'fragile';
-}
-
-function healthSummary(readyNow: number, nextWave: number, longTerm: number): string {
-  return `${readyNow} near-term option${readyNow === 1 ? '' : 's'}, ${nextWave} in the next wave, ${longTerm} long-view prospect${longTerm === 1 ? '' : 's'}.`;
 }
 
 function bondMilestones(bond: ProspectBond | null): string[] {
@@ -122,6 +125,7 @@ const ETA_ORDER = new Map([
   ['2 seasons', 3],
   ['3 seasons', 4],
   ['3+ seasons', 5],
+  ['Depth option', 6],
 ]);
 
 export function buildProspectPipelineView(
@@ -139,24 +143,28 @@ export function buildProspectPipelineView(
       const progression = getMinorLeagueProgressionView(state, player.id);
       const latestLine = progression.at(-1) ?? null;
       const ceiling = player.ceiling ?? player.overallRating;
+      const isOrganizationalDepth = player.age >= 28 && ceiling < 68 && player.overallRating < 62;
+      const eta = etaForProspect(
+        player.rosterStatus,
+        player.age,
+        player.overallRating,
+        ceiling,
+        setback,
+        isOrganizationalDepth,
+      );
+      const prospectTier = prospectTierFor(player.age, player.overallRating, ceiling, eta);
 
       return {
         playerId: player.id,
         playerName: `${player.firstName} ${player.lastName}`,
         position: player.position,
         level: player.rosterStatus,
-        levelLabel: formatMinorLevel(player.rosterStatus),
         age: player.age,
         overallRating: player.overallRating,
         ceiling,
+        prospectTier,
         bondStrength: bond?.bondStrength ?? 0,
-        eta: etaForProspect(
-          player.rosterStatus,
-          player.age,
-          player.overallRating,
-          ceiling,
-          setback,
-        ),
+        eta,
         trend: trendForSetback(setback),
         latestLineSummary: buildMinorLeagueLineSummary(Boolean(player.pitcherAttributes), latestLine),
         activeSetback: setback
@@ -169,21 +177,25 @@ export function buildProspectPipelineView(
       };
     })
     .sort((left, right) =>
+      Number(left.prospectTier === 'organizational_depth') - Number(right.prospectTier === 'organizational_depth')
+      ||
       (ETA_ORDER.get(left.eta) ?? 99) - (ETA_ORDER.get(right.eta) ?? 99)
       || right.ceiling - left.ceiling
       || right.overallRating - left.overallRating
       || left.playerName.localeCompare(right.playerName),
     );
 
-  const readyNow = prospects.filter((prospect) => prospect.eta === 'Ready now').length;
-  const nextWave = prospects.filter((prospect) =>
+  const prospectOnly = prospects.filter((prospect) => prospect.prospectTier !== 'organizational_depth');
+  const readyNow = prospectOnly.filter((prospect) => prospect.eta === 'Ready now').length;
+  const nextWave = prospectOnly.filter((prospect) =>
     prospect.eta === 'This season' || prospect.eta === 'Next season',
   ).length;
-  const longTerm = prospects.length - readyNow - nextWave;
-  const averageCeiling = prospects.length > 0
-    ? prospects.reduce((total, prospect) => total + prospect.ceiling, 0) / prospects.length
+  const longTerm = prospectOnly.length - readyNow - nextWave;
+  const organizationalDepth = prospects.length - prospectOnly.length;
+  const averageCeiling = prospectOnly.length > 0
+    ? prospectOnly.reduce((total, prospect) => total + prospect.ceiling, 0) / prospectOnly.length
     : 0;
-  const activeSetbacks = prospects.filter((prospect) => prospect.activeSetback != null && prospect.activeSetback.type !== 'hot_streak').length;
+  const activeSetbacks = prospectOnly.filter((prospect) => prospect.activeSetback != null && prospect.activeSetback.type !== 'hot_streak').length;
   const score = Math.max(
     0,
     Math.min(
@@ -199,7 +211,7 @@ export function buildProspectPipelineView(
       readyNow,
       nextWave,
       longTerm,
-      summary: healthSummary(readyNow, nextWave, longTerm),
+      organizationalDepth,
     },
     prospects,
   };

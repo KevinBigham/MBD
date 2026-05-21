@@ -1,5 +1,6 @@
 import type { OwnerMeetingBriefing } from '@mbd/sim-core';
 import { GradeBadge } from '../shared';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 interface Props {
   data: OwnerMeetingBriefing;
@@ -18,7 +19,7 @@ export function OwnerMeetingView({ data }: Props) {
         </p>
         <div className="mt-3 flex gap-3">
           <StatChip label="Expectations" value={data.ownerPersonality.expectationLevel} />
-          <StatChip label="Archetype" value={data.ownerPersonality.archetype.replace(/_/g, ' ')} />
+          <StatChip label="Archetype" value={humanizeLabel(data.ownerPersonality.archetype)} />
         </div>
       </div>
 

@@ -1,9 +1,11 @@
-import { Suspense, lazy, useEffect, useState, useCallback } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  DollarSign, TrendingUp, User, Filter,
+  ArrowUpDown, DollarSign, Search, TrendingUp, User, Filter,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { gradeTextColor } from '@/shared/lib/grade';
 
@@ -21,7 +23,35 @@ interface FreeAgentRow {
   demandLevel: string;
 }
 
+interface RawFreeAgentRow {
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+  position?: string;
+  age?: number;
+  displayRating?: number;
+  letterGrade?: string;
+  marketValue?: number;
+  demandLevel?: string;
+  player?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    position: string;
+    age: number;
+    overallRating: number;
+  };
+}
+
+interface FinanceOverview {
+  totalPayroll: number;
+  budget: number;
+  capSpace: number;
+}
+
 type PositionFilter = 'all' | 'hitters' | 'pitchers';
+type DemandFilter = 'all' | 'elite' | 'high' | 'moderate' | 'low' | 'fringe';
+type SortKey = 'marketValue' | 'displayRating' | 'age' | 'name';
 
 const HITTER_POS = new Set(['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']);
 
@@ -35,12 +65,50 @@ function demandColor(level: string): string {
   }
 }
 
+function normalizeFreeAgent(row: RawFreeAgentRow): FreeAgentRow {
+  if (row.player) {
+    return {
+      id: row.player.id,
+      firstName: row.player.firstName,
+      lastName: row.player.lastName,
+      position: row.player.position,
+      age: row.player.age,
+      displayRating: Math.round(row.player.overallRating / 5),
+      letterGrade: row.letterGrade ?? 'B',
+      marketValue: row.marketValue ?? 0,
+      demandLevel: row.demandLevel ?? 'moderate',
+    };
+  }
+
+  return {
+    id: row.id ?? '',
+    firstName: row.firstName ?? 'Unknown',
+    lastName: row.lastName ?? 'Player',
+    position: row.position ?? 'UTIL',
+    age: row.age ?? 0,
+    displayRating: row.displayRating ?? 0,
+    letterGrade: row.letterGrade ?? 'C',
+    marketValue: row.marketValue ?? 0,
+    demandLevel: row.demandLevel ?? 'moderate',
+  };
+}
+
+function money(value: number): string {
+  return `$${value.toFixed(1)}M`;
+}
+
 export default function FreeAgencyPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { phase, isInitialized } = useGameStore();
+  const { phase, isInitialized, season } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
   const [agents, setAgents] = useState<FreeAgentRow[]>([]);
   const [filter, setFilter] = useState<PositionFilter>('all');
+  const [demandFilter, setDemandFilter] = useState<DemandFilter>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('marketValue');
+  const [sortDesc, setSortDesc] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [finance, setFinance] = useState<FinanceOverview | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<FreeAgentRow | null>(null);
   const [offerYears, setOfferYears] = useState(3);
   const [offerSalary, setOfferSalary] = useState(10);
@@ -51,21 +119,53 @@ export default function FreeAgencyPage() {
     try {
       const api = worker as Record<string, unknown>;
       if (typeof api.getFreeAgents === 'function') {
-        const data = await (api.getFreeAgents as (limit?: number) => Promise<FreeAgentRow[]>)(50);
-        setAgents(data);
+        const data = await (api.getFreeAgents as (limit?: number) => Promise<RawFreeAgentRow[]>)(200);
+        setAgents(data.map(normalizeFreeAgent).filter((agent) => agent.id));
+      }
+      if (typeof api.getFinanceOverview === 'function') {
+        const nextFinance = await (api.getFinanceOverview as () => Promise<FinanceOverview>)();
+        setFinance(nextFinance);
       }
     } catch {
       // Worker method not available yet
     }
-  }, [isInitialized, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isInitialized, worker, workerReady]);
 
   useEffect(() => { fetchFreeAgents(); }, [fetchFreeAgents, phase]);
 
-  const filteredAgents = agents.filter(a => {
-    if (filter === 'hitters') return HITTER_POS.has(a.position);
-    if (filter === 'pitchers') return !HITTER_POS.has(a.position);
-    return true;
-  });
+  const filteredAgents = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return agents
+      .filter((agent) => {
+        if (filter === 'hitters' && !HITTER_POS.has(agent.position)) return false;
+        if (filter === 'pitchers' && HITTER_POS.has(agent.position)) return false;
+        if (demandFilter !== 'all' && agent.demandLevel !== demandFilter) return false;
+        if (query) {
+          const haystack = `${agent.firstName} ${agent.lastName} ${agent.position}`.toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+        return true;
+      })
+      .sort((left, right) => {
+        let cmp = 0;
+        if (sortKey === 'name') {
+          cmp = `${left.lastName}, ${left.firstName}`.localeCompare(`${right.lastName}, ${right.firstName}`);
+        } else {
+          cmp = left[sortKey] - right[sortKey];
+        }
+        return sortDesc ? -cmp : cmp;
+      });
+  }, [agents, demandFilter, filter, searchQuery, sortDesc, sortKey]);
+
+  const offerBudget = useMemo(() => {
+    if (!finance) return null;
+    const projectedPayroll = finance.totalPayroll + offerSalary;
+    return {
+      projectedPayroll,
+      budgetRoom: finance.budget - projectedPayroll,
+      taxRoom: finance.capSpace - offerSalary,
+    };
+  }, [finance, offerSalary]);
 
   const handleOffer = async () => {
     if (!selectedPlayer) return;
@@ -82,6 +182,8 @@ export default function FreeAgencyPage() {
           getAudioEngine().playEffect('free_agent_signed');
           setAgents(prev => prev.filter(a => a.id !== selectedPlayer.id));
           setSelectedPlayer(null);
+          await autosaveActiveGame({ season });
+          await fetchFreeAgents();
         }
       }
     } catch {
@@ -129,7 +231,7 @@ export default function FreeAgencyPage() {
             Sign available free agents to strengthen your roster.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {(['all', 'hitters', 'pitchers'] as PositionFilter[]).map(f => (
             <button
               key={f}
@@ -145,6 +247,58 @@ export default function FreeAgencyPage() {
             >
               <Filter className="mr-1 inline h-3 w-3" />
               {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 rounded-lg border border-dynasty-border bg-dynasty-surface p-4 lg:grid-cols-[1fr_auto_auto]">
+        <label className="relative block">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-dynasty-muted" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search name or position..."
+            className="w-full rounded border border-dynasty-border bg-dynasty-elevated py-2 pl-9 pr-3 font-heading text-sm text-dynasty-text outline-none focus:border-accent-primary"
+          />
+        </label>
+        <select
+          value={demandFilter}
+          onChange={(event) => setDemandFilter(event.target.value as DemandFilter)}
+          className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-sm text-dynasty-text outline-none focus:border-accent-primary"
+        >
+          {(['all', 'elite', 'high', 'moderate', 'low', 'fringe'] as DemandFilter[]).map((value) => (
+            <option key={value} value={value}>{value === 'all' ? 'All demand' : value}</option>
+          ))}
+        </select>
+        <div className="flex gap-2">
+          {([
+            ['marketValue', 'Value'],
+            ['displayRating', 'OVR'],
+            ['age', 'Age'],
+            ['name', 'Name'],
+          ] as Array<[SortKey, string]>).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                setSortKey((current) => {
+                  if (current === key) {
+                    setSortDesc((value) => !value);
+                    return current;
+                  }
+                  setSortDesc(key !== 'name');
+                  return key;
+                });
+              }}
+              className={`rounded border px-3 py-2 font-heading text-xs ${
+                sortKey === key
+                  ? 'border-accent-primary bg-accent-primary/10 text-accent-primary'
+                  : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted hover:text-dynasty-text'
+              }`}
+            >
+              <ArrowUpDown className="mr-1 inline h-3 w-3" />
+              {label}
             </button>
           ))}
         </div>
@@ -180,7 +334,13 @@ export default function FreeAgencyPage() {
                     }`}
                   >
                     <td className="px-4 py-2 font-heading font-medium text-dynasty-text">
-                      {agent.firstName} {agent.lastName}
+                      <Link
+                        to={`/players/${agent.id}`}
+                        onClick={(event) => event.stopPropagation()}
+                        className="hover:text-accent-primary"
+                      >
+                        {agent.firstName} {agent.lastName}
+                      </Link>
                     </td>
                     <td className="px-2 py-2 font-data text-dynasty-muted">{agent.position}</td>
                     <td className={`px-2 py-2 text-right font-data font-bold ${gradeTextColor(agent.letterGrade)}`}>
@@ -268,8 +428,25 @@ export default function FreeAgencyPage() {
                 </div>
 
                 <div className="rounded border border-dynasty-border/50 bg-dynasty-elevated p-2 font-data text-xs text-dynasty-muted">
-                  Total: ${(offerYears * offerSalary).toFixed(1)}M / {offerYears}yr
+                  Total: {money(offerYears * offerSalary)} / {offerYears}yr
                 </div>
+
+                {offerBudget && (
+                  <div className="grid gap-2 rounded border border-dynasty-border/50 bg-dynasty-elevated p-3 font-data text-xs">
+                    <div className="flex justify-between gap-3 text-dynasty-muted">
+                      <span>Projected payroll</span>
+                      <span className="text-dynasty-text">{money(offerBudget.projectedPayroll)}</span>
+                    </div>
+                    <div className={`flex justify-between gap-3 ${offerBudget.budgetRoom >= 0 ? 'text-accent-success' : 'text-accent-danger'}`}>
+                      <span>Budget room</span>
+                      <span>{offerBudget.budgetRoom >= 0 ? money(offerBudget.budgetRoom) : `${money(Math.abs(offerBudget.budgetRoom))} over`}</span>
+                    </div>
+                    <div className={`flex justify-between gap-3 ${offerBudget.taxRoom >= 0 ? 'text-accent-info' : 'text-accent-warning'}`}>
+                      <span>Tax room after offer</span>
+                      <span>{offerBudget.taxRoom >= 0 ? money(offerBudget.taxRoom) : `${money(Math.abs(offerBudget.taxRoom))} over`}</span>
+                    </div>
+                  </div>
+                )}
 
                 <button
                   onClick={handleOffer}

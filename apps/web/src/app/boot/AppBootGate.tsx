@@ -36,13 +36,23 @@ function storageFailure(saveId: string, slotNumber: number | null, message: stri
 function ResumeFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-dynasty-base px-6 py-24 text-dynasty-text">
-      <div className="text-center" role="status" aria-live="polite">
-        <div className="mb-3 font-brand text-2xl text-accent-primary motion-safe:animate-pulse">
-          MBD
+      <div className="w-full max-w-3xl rounded-2xl border border-dynasty-border bg-dynasty-surface p-6 shadow-2xl" role="status" aria-live="polite">
+        <div className="flex items-center justify-between gap-4 border-b border-dynasty-border pb-4">
+          <div>
+            <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-info">Save Hub Relay</div>
+            <div className="mt-2 font-brand text-3xl text-dynasty-textBright">Reopening the front office</div>
+          </div>
+          <div className="font-brand text-2xl text-accent-primary motion-safe:animate-pulse">MBD</div>
         </div>
-        <div className="font-data text-sm text-dynasty-muted">Resuming save...</div>
-        <div className="mx-auto mt-4 h-0.5 w-16 overflow-hidden rounded-full bg-dynasty-border">
-          <div className="h-full w-8 rounded-full bg-accent-primary motion-safe:animate-[shimmer_1.2s_ease-in-out_infinite]" />
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          {['Loading roster desk', 'Restoring league wire', 'Checking autosave'].map((label) => (
+            <div key={label} className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-xs uppercase tracking-wide text-dynasty-muted">{label}</div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-dynasty-border">
+                <div className="h-full w-1/2 rounded-full bg-accent-primary motion-safe:animate-[shimmer_1.2s_ease-in-out_infinite]" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

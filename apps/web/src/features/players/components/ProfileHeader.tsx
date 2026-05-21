@@ -9,6 +9,7 @@ import {
   badgeVariantForStoryPhase,
   badgeVariantForTrajectory,
   displayBand,
+  formatMinorLevel,
   isPitcherProfile,
   labelize,
   type PlayerProfileView,
@@ -55,7 +56,7 @@ export default function ProfileHeader({
           <div>
             <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
               <TeamLogo teamId={player.teamId} size="xs" />
-              {player.teamId.toUpperCase()} · {player.rosterStatus}
+              {player.teamId.toUpperCase()} · {formatMinorLevel(player.rosterStatus)}
             </div>
             {primaryNickname ? (
               <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-accent-warning/30 bg-accent-warning/10 px-3 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">

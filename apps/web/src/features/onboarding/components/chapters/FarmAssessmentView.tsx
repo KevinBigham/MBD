@@ -1,5 +1,6 @@
 import type { FarmAssessment } from '@mbd/sim-core';
 import { GradeBadge } from '../shared';
+import { humanizeLabel, minorLevelLabel } from '@/shared/lib/labels';
 
 interface Props {
   data: FarmAssessment;
@@ -27,7 +28,7 @@ export function FarmAssessmentView({ data }: Props) {
           </div>
         </div>
         <p className="mt-2 font-data text-xs capitalize text-dynasty-muted">
-          Balance: {data.pipeline.positionBalance.replace(/_/g, ' ')}
+          Balance: {humanizeLabel(data.pipeline.positionBalance)}
         </p>
       </div>
 
@@ -48,7 +49,7 @@ export function FarmAssessmentView({ data }: Props) {
                     {prospect.name}
                   </span>
                   <span className="ml-2 font-data text-xs text-dynasty-muted">
-                    {prospect.position} &middot; {prospect.level} &middot; Age {prospect.age}
+                    {prospect.position} &middot; {minorLevelLabel(prospect.level)} &middot; Age {prospect.age}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -82,10 +83,10 @@ function ReadinessBadge({ readiness }: { readiness: string }) {
     raw: 'bg-dynasty-muted/15 text-dynasty-muted',
   };
   const labels: Record<string, string> = {
-    ready_now: 'Ready',
-    one_year: '1 Year',
-    developing: 'Dev',
-    raw: 'Raw',
+    ready_now: 'Ready Now',
+    one_year: 'Next Year',
+    developing: 'Developing',
+    raw: 'Long View',
   };
   return (
     <span className={`rounded px-1.5 py-0.5 font-data text-[10px] uppercase ${styles[readiness] ?? ''}`}>

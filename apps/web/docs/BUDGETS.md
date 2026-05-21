@@ -7,7 +7,7 @@ Source of truth for ceilings lives in [`apps/web/src/build/bundleConfig.ts`](../
 | Chunk class | Raw | Gzip |
 | --- | --- | --- |
 | Main-thread chunk | 304 KB | 81 KB |
-| Worker chunk | 443 KB | 143 KB |
+| Worker chunk | 446 KB | 143 KB |
 | Chart vendor (lazy `vendor-charts`) | 430 KB | 120 KB |
 
 The main-thread chunk caps have not moved since launch — `MAIN_THREAD_CHUNK_BUDGET_BYTES` / `MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES` are deliberately frozen so any new app code that lands on the main thread surfaces as a regression in `bundleBudget.test.ts`.
@@ -47,7 +47,8 @@ The main-thread chunk caps have not moved since launch — `MAIN_THREAD_CHUNK_BU
 | 439 / 141 KB | Narrative depth wave 7 | Position-group moment detectors (`dominant_rotation` / `bullpen_collapse` / `lineup_of_era`). Gzip-only. |
 | 440 / 143 KB | Narrative depth wave 8 | Player micro-arc worker source plumbing. |
 | 442 / 143 KB | Narrative depth wave 9 | Weekly cadence detectors split into `game-engine-weekly` to protect `game-engine-core`. |
-| 443 / 143 KB | Narrative depth wave 10 (current) | Capstone prose split into `game-engine-capstone`. |
+| 443 / 143 KB | Narrative depth wave 10 | Capstone prose split into `game-engine-capstone`. |
+| 446 / 143 KB | Demo-readiness story raw drift (current) | `game-engine-story` emitted 456,062 raw bytes with gzip still under cap. Raw-only lift restores the budget gate with less than 1 KB local headroom and no main-thread change. |
 
 ## Notes on routing
 

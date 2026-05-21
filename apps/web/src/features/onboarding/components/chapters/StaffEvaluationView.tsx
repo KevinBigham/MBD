@@ -1,5 +1,6 @@
 import type { StaffEvaluation } from '@mbd/sim-core';
 import { GradeBadge } from '../shared';
+import { roleLabel } from '@/shared/lib/labels';
 
 interface Props {
   data: StaffEvaluation;
@@ -46,7 +47,7 @@ export function StaffEvaluationView({ data }: Props) {
               <div className="min-w-0 flex-1">
                 <span className="font-heading text-sm font-medium text-dynasty-text">{coach.name}</span>
                 <span className="ml-2 font-data text-xs capitalize text-dynasty-muted">
-                  {coach.role.replace(/_/g, ' ')}
+                  {roleLabel(coach.role)}
                 </span>
               </div>
               <div className="flex items-center gap-2">

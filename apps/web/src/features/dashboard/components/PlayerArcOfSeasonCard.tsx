@@ -5,6 +5,7 @@ import { getTeamById } from '@mbd/sim-core';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 // "Player Arcs of the Season" — surfaces the three player-scoped season
 // narrative detectors (redemption_arc / late_career_peak / rookie_breakout)
@@ -43,7 +44,7 @@ function arcTypeLabel(type: string): string {
   if (type === 'redemption_arc' || type === 'late_career_peak' || type === 'rookie_breakout') {
     return ARC_LABELS[type];
   }
-  return type.replace(/_/g, ' ');
+  return humanizeLabel(type);
 }
 
 function teamDisplayName(teamId: string): string {

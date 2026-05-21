@@ -217,7 +217,7 @@ const STANDINGS_TEMPLATES = [
 
 const MILESTONE_TEMPLATES = [
   '{player} hits career home run #{count}',
-  '{player} records {count}th career strikeout',
+  '{player} records career strikeout #{count}',
   '{player} joins the 3,000-hit club',
   '{player} earns career win #{count}',
   '{player} reaches {count} career hits',
@@ -927,11 +927,15 @@ function generateMilestoneNews(
   const data = event.data;
   const playerId = data['playerId'] as string | undefined;
   const player = lookupPlayer(players, playerId);
-  const milestoneType = (data['milestoneType'] as string) ?? 'achievement';
-  const count = (data['count'] as number) ?? 0;
+  const milestoneType = typeof data['milestoneType'] === 'string' ? data['milestoneType'] : null;
+  const count = typeof data['count'] === 'number' && Number.isFinite(data['count']) ? data['count'] : null;
+
+  if (!playerId || !player || !milestoneType || count == null || count <= 0) {
+    return [];
+  }
 
   const vars: Record<string, string | number> = {
-    player: player ? playerName(player) : 'Unknown',
+    player: playerName(player),
     count,
   };
 
@@ -945,7 +949,8 @@ function generateMilestoneNews(
           ? [MILESTONE_TEMPLATES[4]!]
           : MILESTONE_TEMPLATES;
   const headline = fillTemplate(pickTemplate(rng, milestoneTemplatePool), vars);
-  const body = `${player ? playerName(player) : 'A player'} has reached a career ${milestoneType} milestone. ${buildContextClause(data)}`;
+  const body = `${playerName(player)} has reached a career ${milestoneType} milestone. ${buildContextClause(data)}`;
+  const teamId = typeof data['teamId'] === 'string' ? data['teamId'] : player.teamId;
 
   // Major milestones (round numbers, large totals) get higher priority
   const isLandmark = count >= 500 || count % 100 === 0;
@@ -959,7 +964,7 @@ function generateMilestoneNews(
       category: 'milestone',
       timestamp,
       relatedPlayerIds: playerId ? [playerId] : [],
-      relatedTeamIds: [],
+      relatedTeamIds: [teamId],
       read: false,
     }),
   ];
