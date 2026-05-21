@@ -93,6 +93,7 @@ describe('Sidebar', () => {
     expect(container.textContent).toContain('Free Agency');
     expect(container.textContent).toContain('Offseason');
     expect(container.textContent).toContain('Compare');
+    expect(container.textContent).toContain('News');
     expect(getDashboardSummary).toHaveBeenCalledTimes(1);
   });
 
@@ -123,5 +124,27 @@ describe('Sidebar', () => {
     });
 
     expect(container.textContent).not.toContain('Navigation');
+  });
+
+  it('puts Trades and League in the primary mobile tab loop', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <Sidebar />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const mobileNav = container.querySelector('nav[aria-label="Mobile navigation"]');
+    expect(mobileNav?.textContent).toContain('Front O.');
+    expect(mobileNav?.textContent).toContain('Roster');
+    expect(mobileNav?.textContent).toContain('Draft');
+    expect(mobileNav?.textContent).toContain('Trades');
+    expect(mobileNav?.textContent).toContain('League');
+    expect(mobileNav?.textContent).not.toContain('Free Ag.');
+    expect(mobileNav?.textContent).not.toContain('Offseas.');
   });
 });

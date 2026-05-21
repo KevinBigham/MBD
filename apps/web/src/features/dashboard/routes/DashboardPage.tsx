@@ -18,7 +18,9 @@ import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { logger } from '@/shared/lib/logger';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import { exportSnapshotToJson } from '@/shared/lib/saveSystem';
+import { divisionLabel, humanizeLabel } from '@/shared/lib/labels';
 import { GuidedStartNudgeCard, useNudges, type GuidedStartNudgeId } from '@/features/onboarding/nudges';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 import type { GamePlayByPlayView, GameRecapView } from '../components/gameDayBroadcast';
@@ -245,10 +247,6 @@ function fanTrendTone(trend: DashboardSummary['fanSentiment']['trend'] | undefin
   }
 }
 
-function labelize(value: string): string {
-  return value.replaceAll('_', ' ');
-}
-
 function storyPhaseTone(phase: DashboardSummary['storylinesToWatch'][number]['phase']): string {
   switch (phase) {
     case 'climax':
@@ -285,6 +283,120 @@ function quickActionLabel(action: Exclude<SimAction, null>): string {
       return 'Sim Month';
   }
 }
+
+type AttentionTone = 'danger' | 'warning' | 'info' | 'success';
+
+interface AttentionItem {
+  id: string;
+  title: string;
+  detail: string;
+  to: string;
+  tone: AttentionTone;
+}
+
+function buildAttentionItems(
+  summary: DashboardSummary | null,
+  currentPhase: string,
+  completedUserGames: number,
+  hasCurrentDayGame: boolean,
+): AttentionItem[] {
+  if (!summary) {
+    return [];
+  }
+
+  const items: AttentionItem[] = [];
+  const fatigueWarnings = summary.roster?.fatigueWarnings ?? [];
+  const injuredCount = summary.roster?.injuredCount ?? 0;
+  const fatigueCount = fatigueWarnings.length;
+  const healthCount = injuredCount + fatigueCount;
+
+  if (healthCount > 0) {
+    items.push({
+      id: 'roster-health',
+      title: 'Roster health needs attention',
+      detail: `${injuredCount} injured, ${fatigueCount} fatigue flag${fatigueCount === 1 ? '' : 's'}.`,
+      to: '/roster',
+      tone: 'warning',
+    });
+  }
+
+  const activeTradeOffers = summary.tradeIntel?.activeTradeOffers ?? 0;
+  if (activeTradeOffers > 0) {
+    items.push({
+      id: 'trade-inbox',
+      title: 'Trade inbox is active',
+      detail: `${activeTradeOffers} offer${activeTradeOffers === 1 ? '' : 's'} waiting for a front-office call.`,
+      to: '/trade',
+      tone: 'info',
+    });
+  }
+
+  const unreadPressCount = summary.pressRoom?.unreadCount ?? 0;
+  if (unreadPressCount > 0) {
+    items.push({
+      id: 'press-room',
+      title: 'Press room has fresh noise',
+      detail: `${unreadPressCount} unread item${unreadPressCount === 1 ? '' : 's'} on the wire.`,
+      to: '/press-room',
+      tone: 'info',
+    });
+  }
+
+  const expiringContracts = summary.intel?.expiringContracts ?? [];
+  if (expiringContracts.length > 0) {
+    const first = expiringContracts[0];
+    const remaining = Math.max(0, expiringContracts.length - 1);
+    items.push({
+      id: 'contract-clock',
+      title: 'Contract clock is ticking',
+      detail: remaining > 0
+        ? `${first?.name ?? 'Key contributors'} and ${remaining} more expiring deal${remaining === 1 ? '' : 's'}.`
+        : `${first?.name ?? 'A key contributor'} is on an expiring deal.`,
+      to: '/finance',
+      tone: 'warning',
+    });
+  }
+
+  const topProspect = summary.intel?.topProspect;
+  if (topProspect && topProspect.readiness >= 60) {
+    items.push({
+      id: 'prospect-ready',
+      title: 'Prospect pipeline has a near-term piece',
+      detail: `${topProspect.name} is tracking at ${topProspect.readiness}% readiness in ${humanizeLabel(topProspect.level)}.`,
+      to: '/minors',
+      tone: 'success',
+    });
+  }
+
+  if (summary.challenge && !summary.challenge.completed && !summary.challenge.failed) {
+    items.push({
+      id: 'challenge',
+      title: 'Challenge objective is live',
+      detail: summary.challenge.summary,
+      to: '/scenarios',
+      tone: 'info',
+    });
+  }
+
+  if (summary.franchise?.season === 1 && currentPhase === 'regular' && completedUserGames === 0 && hasCurrentDayGame) {
+    items.push({
+      id: 'first-sim',
+      title: 'Opening Day is ready',
+      detail: 'Run the first day once roster, staff, trade posture, and press room checks feel clean.',
+      to: '/dashboard',
+      tone: 'success',
+    });
+  }
+
+  return items.slice(0, 5);
+}
+
+const attentionToneClass: Record<AttentionTone, string> = {
+  danger: 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger',
+  warning: 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning',
+  info: 'border-accent-info/40 bg-accent-info/10 text-accent-info',
+  success: 'border-accent-success/40 bg-accent-success/10 text-accent-success',
+};
 
 function DashboardSkeleton() {
   return (
@@ -349,6 +461,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [applyingTeamId, setApplyingTeamId] = useState<string | null>(null);
   const [simAction, setSimAction] = useState<SimAction>(null);
+  const autosaveActiveGame = useActiveSaveAutosave();
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
@@ -446,13 +559,14 @@ export default function DashboardPage() {
           activeSaveSlot,
         });
         await fetchData();
+        await autosaveActiveGame({ season });
       }
     } catch (error) {
       logger.error('Failed to apply for job:', error);
     } finally {
       setApplyingTeamId(null);
     }
-  }, [activeSaveId, activeSaveSlot, day, fetchData, initializeGame, phase, playerCount, season, summary, worker]);
+  }, [activeSaveId, activeSaveSlot, autosaveActiveGame, day, fetchData, initializeGame, phase, playerCount, season, summary, worker]);
 
   const handleSim = useCallback(async (
     action: Exclude<SimAction, null>,
@@ -463,12 +577,13 @@ export default function DashboardPage() {
       const result = await run();
       updateFromSim(result);
       await fetchData();
+      await autosaveActiveGame({ season: result.season });
     } catch (error) {
       logger.error(`Failed to ${quickActionLabel(action).toLowerCase()}:`, error);
     } finally {
       setSimAction(null);
     }
-  }, [fetchData, updateFromSim]);
+  }, [autosaveActiveGame, fetchData, updateFromSim]);
 
   const ownerMeterValue = summary?.franchise.owner?.satisfaction ?? summary?.franchise.owner?.patience ?? 0;
   const topRivalry = summary?.intel.rivalries?.[0] ?? null;
@@ -488,6 +603,17 @@ export default function DashboardPage() {
   const hasFutureScheduledGame = useMemo(
     () => scheduleEntries?.some((entry) => entry.day > day) ?? false,
     [day, scheduleEntries],
+  );
+  const attentionItems = useMemo(
+    () => buildAttentionItems(summary, phase, completedUserGames, hasCurrentDayGame),
+    [completedUserGames, hasCurrentDayGame, phase, summary],
+  );
+  const showOpeningDayChecklist = Boolean(
+    summary
+      && summary.franchise.season === 1
+      && phase !== 'offseason'
+      && phase !== 'playoffs'
+      && (phase !== 'regular' || completedUserGames === 0),
   );
   const dashboardNudgeTriggers = useMemo<GuidedStartNudgeId[]>(() => {
     if (!isInitialized || season !== 1 || phase !== 'regular' || scheduleEntries == null) {
@@ -581,7 +707,7 @@ export default function DashboardPage() {
                 <span>GM {summary?.franchise.gmName ?? 'General Manager'}</span>
                 <span>Season {season}</span>
                 <span>{summary?.franchise.record ?? '0-0'}</span>
-                <span>{summary?.franchise.division ?? 'Division'} · {summary?.franchise.divisionRank ?? 1} place</span>
+                <span>{divisionLabel(summary?.franchise.division ?? 'Division')} · {summary?.franchise.divisionRank ?? 1} place</span>
               </div>
             </div>
 
@@ -637,14 +763,14 @@ export default function DashboardPage() {
                 </p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Link
-                    to="/MBD/roster"
+                    to="/roster"
                     className="focus-ring inline-flex items-center gap-2 rounded-md border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs text-accent-info transition-colors hover:bg-accent-info/20"
                   >
                     <Users className="h-3.5 w-3.5" />
                     Check Your Roster
                   </Link>
                   <Link
-                    to="/MBD/trade"
+                    to="/trade"
                     className="focus-ring inline-flex items-center gap-2 rounded-md border border-accent-info/40 bg-accent-info/10 px-3 py-2 font-heading text-xs text-accent-info transition-colors hover:bg-accent-info/20"
                   >
                     <Handshake className="h-3.5 w-3.5" />
@@ -658,7 +784,10 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => {
-                  void worker.dismissWelcomeBriefing().then(() => fetchData());
+                  void worker.dismissWelcomeBriefing().then(async () => {
+                    await fetchData();
+                    await autosaveActiveGame({ season });
+                  });
                 }}
                 className="rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
               >
@@ -672,6 +801,16 @@ export default function DashboardPage() {
         <Suspense fallback={null}>
           <GameAdvisor />
         </Suspense>
+
+        {attentionItems.length > 0 ? <AttentionDesk items={attentionItems} /> : null}
+
+        {showOpeningDayChecklist ? (
+          <OpeningDayChecklist
+            activeTradeOffers={summary?.tradeIntel.activeTradeOffers ?? 0}
+            pressUnreadCount={summary?.pressRoom.unreadCount ?? 0}
+            topProspectName={summary?.intel.topProspect?.name ?? null}
+          />
+        ) : null}
 
         {career?.jobSearchActive && (jobMarket?.availableJobs.length ?? 0) > 0 ? (
           <section className="rounded-xl border border-accent-warning/40 bg-accent-warning/10 p-5">
@@ -797,7 +936,7 @@ export default function DashboardPage() {
                 title="No recent user-team games"
                 description="Sim a few regular-season days and the broadcast booth will start collecting fresh recaps and highlight reels."
                 actionLabel="View Roster"
-                actionHref="/MBD/roster"
+                actionHref="/roster"
               />
             )}
           </section>
@@ -821,6 +960,7 @@ export default function DashboardPage() {
           <Suspense fallback={<CardFallback title="Trade Intel" />}>
             <TradeIntelCard
               daysUntilDeadline={summary?.tradeIntel.daysUntilDeadline ?? null}
+              phase={phase}
               activeTradeOffers={summary?.tradeIntel.activeTradeOffers ?? 0}
               recentSummary={summary?.tradeIntel.recentSummary ?? null}
               recentTrades={summary?.tradeIntel.recentTrades ?? []}
@@ -899,11 +1039,11 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-heading text-sm text-dynasty-textBright">{storyline.playerName}</div>
                       <span className={`rounded border px-2 py-0.5 font-heading text-[10px] uppercase tracking-wide ${storyPhaseTone(storyline.phase)}`}>
-                        {storyline.phase}
+                        {humanizeLabel(storyline.phase)}
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2 font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
-                      <span>{labelize(storyline.arcType)}</span>
+                      <span>{humanizeLabel(storyline.arcType)}</span>
                       <span>{storyline.teamId.toUpperCase()}</span>
                     </div>
                     <div className="mt-3">
@@ -977,6 +1117,125 @@ export default function DashboardPage() {
         onExportBackup={handleExportGuidedStartBackup}
       />
     </PageShell>
+  );
+}
+
+function AttentionDesk({ items }: { items: AttentionItem[] }) {
+  return (
+    <section className="rounded-xl border border-accent-primary/30 bg-dynasty-surface p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-primary">Decision Desk</div>
+          <h2 className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">What needs attention</h2>
+        </div>
+        <span className="rounded-full border border-dynasty-border px-3 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
+          Top {items.length}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => (
+          <Link
+            key={item.id}
+            to={item.to}
+            className={`group rounded-lg border p-3 transition-colors hover:border-accent-primary/50 ${attentionToneClass[item.tone]}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-heading text-sm text-dynasty-textBright">{item.title}</div>
+                <div className="mt-1 font-heading text-xs leading-5 text-dynasty-muted">{item.detail}</div>
+              </div>
+              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OpeningDayChecklist({
+  activeTradeOffers,
+  pressUnreadCount,
+  topProspectName,
+}: {
+  activeTradeOffers: number;
+  pressUnreadCount: number;
+  topProspectName: string | null;
+}) {
+  const checklist = [
+    {
+      id: 'roster',
+      label: 'Roster compliance',
+      detail: 'Confirm 26-man and 40-man limits before the first sim.',
+      to: '/roster',
+    },
+    {
+      id: 'lineup',
+      label: 'Lineup and rotation',
+      detail: 'Review roles, fatigue, injuries, and depth before Opening Day.',
+      to: '/roster',
+    },
+    {
+      id: 'staff-finance',
+      label: 'Staff, scouting, finance',
+      detail: topProspectName
+        ? `${topProspectName} is the first pipeline name to keep on your radar.`
+        : 'Check staff fit and budget posture before the calendar starts moving.',
+      to: '/staff',
+    },
+    {
+      id: 'trade',
+      label: 'Trade posture',
+      detail: activeTradeOffers > 0
+        ? `${activeTradeOffers} live offer${activeTradeOffers === 1 ? '' : 's'} need a verdict.`
+        : 'Set the tone before the market starts calling.',
+      to: '/trade',
+    },
+    {
+      id: 'press',
+      label: 'Press room',
+      detail: pressUnreadCount > 0
+        ? `${pressUnreadCount} unread item${pressUnreadCount === 1 ? '' : 's'} before the first pitch.`
+        : 'Scan the public narrative before the first pitch.',
+      to: '/press-room',
+    },
+    {
+      id: 'sim',
+      label: 'First sim',
+      detail: 'When the desk is clean, run Sim Day from the dashboard controls.',
+      to: '/dashboard',
+    },
+  ];
+
+  return (
+    <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Opening Day Checklist</div>
+          <h2 className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">Six checks before first pitch</h2>
+        </div>
+        <span className="rounded-full border border-accent-success/40 bg-accent-success/10 px-3 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-accent-success">
+          Demo desk ready
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {checklist.map((item, index) => (
+          <Link
+            key={item.id}
+            to={item.to}
+            className="rounded-lg border border-dynasty-border/70 bg-dynasty-elevated p-3 transition-colors hover:border-accent-info/50 hover:bg-dynasty-surface"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-data text-[11px] text-accent-info">{String(index + 1).padStart(2, '0')}</span>
+              <span className="font-heading text-sm text-dynasty-textBright">{item.label}</span>
+            </div>
+            <div className="mt-2 font-heading text-xs leading-5 text-dynasty-muted">{item.detail}</div>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

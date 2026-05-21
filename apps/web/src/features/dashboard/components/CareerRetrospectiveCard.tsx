@@ -164,7 +164,7 @@ export default function CareerRetrospectiveCard() {
           <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Career Retrospective</h2>
         </div>
         <Link
-          to="/gm-career"
+          to="/career"
           className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary"
         >
           GM dossier <ChevronRight className="h-3 w-3" />

@@ -23,6 +23,7 @@ import { getTeamById } from '@mbd/sim-core';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import type { SeasonRecapView, OffseasonHeadlineView } from '@/workers/sim.worker.seasonNarrative';
@@ -253,6 +254,7 @@ function playerLine(player: Rule5PlayerView): string {
 export default function OffseasonPage() {
   const worker = useWorker();
   const { phase, season, isInitialized, userTeamId } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
   const [offseason, setOffseason] = useState<OffseasonData | null>(null);
   const [seasonRecap, setSeasonRecap] = useState<SeasonRecapView | null>(null);
   const [offseasonHeadline, setOffseasonHeadline] = useState<OffseasonHeadlineView | null>(null);
@@ -332,6 +334,7 @@ export default function OffseasonPage() {
       const data = await worker.advanceOffseason();
       if (isOffseasonData(data)) {
         applyOffseasonData(data);
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -344,6 +347,7 @@ export default function OffseasonPage() {
       const data = await worker.skipOffseasonPhase();
       if (isOffseasonData(data)) {
         applyOffseasonData(data);
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -356,6 +360,7 @@ export default function OffseasonPage() {
       const result = await worker.issueQualifyingOffer(playerId);
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -367,6 +372,7 @@ export default function OffseasonPage() {
     try {
       await worker.resolveQualifyingOffers();
       await fetchOffseason();
+      await autosaveActiveGame({ season });
     } finally {
       setAdvancing(false);
     }
@@ -378,6 +384,7 @@ export default function OffseasonPage() {
       const result = await worker.toggleRule5Protection(playerId);
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -390,6 +397,7 @@ export default function OffseasonPage() {
       const data = await worker.lockRule5Protection();
       if (isOffseasonData(data)) {
         applyOffseasonData(data);
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -402,6 +410,7 @@ export default function OffseasonPage() {
       const result = await worker.makeRule5Pick(playerId);
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -414,6 +423,7 @@ export default function OffseasonPage() {
       const result = await worker.passRule5Pick();
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -426,6 +436,7 @@ export default function OffseasonPage() {
       const result = await worker.resolveRule5OfferBack(playerId, acceptReturn);
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);

@@ -83,7 +83,7 @@ const RIVALRY_MATCHUP_HEADLINE_VARIANTS: ReadonlyArray<
 const RIVALRY_MATCHUP_BODY_VARIANTS: ReadonlyArray<
   (context: RivalryNarrativeRenderContext) => string
 > = [
-  ({ teamALabel, teamBLabel, summary }) => `${teamALabel} and ${teamBLabel} keep running into meaningful stakes. ${summary}`,
+  ({ summary }) => summary,
   ({ teamALabel, teamBLabel, summary }) => `The room already knows this matchup carries old noise and fresh pressure. ${summary}`,
   ({ teamALabel, teamBLabel, summary }) => `${teamALabel} and ${teamBLabel} have real carryover heat again. ${summary}`,
 ];
@@ -162,13 +162,13 @@ function summarizeRivalry(rivalry: Rivalry): string {
     ? `${abbreviate(rivalry.teamA)} leads ${rivalry.currentSeasonWinsA ?? 0}-${rivalry.currentSeasonWinsB ?? 0}`
     : (rivalry.historicalWinsA ?? 0) + (rivalry.historicalWinsB ?? 0) > 0
       ? `Tracked head-to-head: ${abbreviate(rivalry.teamA)} ${(rivalry.historicalWinsA ?? 0)}-${(rivalry.historicalWinsB ?? 0)} ${abbreviate(rivalry.teamB)}`
-      : 'Bad blood is still building.';
+      : 'The first flashpoint is still forming';
 
   if (rivalry.intensity >= 80) {
     return `${abbreviate(rivalry.teamA)} and ${abbreviate(rivalry.teamB)} are running hot. ${headToHead}.`;
   }
   if (rivalry.intensity >= 60) {
-    return `${abbreviate(rivalry.teamA)} and ${abbreviate(rivalry.teamB)} keep colliding in meaningful spots. ${headToHead}.`;
+    return `${abbreviate(rivalry.teamA)} and ${abbreviate(rivalry.teamB)} keep meeting with stakes. ${headToHead}.`;
   }
   if (rivalry.intensity >= 40) {
     return `${abbreviate(rivalry.teamA)} and ${abbreviate(rivalry.teamB)} are starting to circle each other. ${headToHead}.`;

@@ -3,7 +3,7 @@
  * Grouped by position, no cross-group dragging.
  * Starter vs backup visual distinction.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -153,6 +153,14 @@ function PositionGroupPanel({
   onReorder?: (position: string, orderedIds: string[]) => void;
 }) {
   const [players, setPlayers] = useState(group.players);
+  const playerKey = useMemo(
+    () => group.players.map((player) => player.id).join('|'),
+    [group.players],
+  );
+
+  useEffect(() => {
+    setPlayers(group.players);
+  }, [group.players, playerKey]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

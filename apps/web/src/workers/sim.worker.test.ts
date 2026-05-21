@@ -27,7 +27,7 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
 }));
 
 import { api } from './sim.worker';
-import { requireState, setState } from './sim.worker.helpers';
+import { processDayInjuriesAndNews, requireState, setState } from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
 import { refreshTickerFeed } from './sim.worker.ticker';
 import {
@@ -153,7 +153,6 @@ interface ProspectPipelineView {
     readyNow: number;
     nextWave: number;
     longTerm: number;
-    summary: string;
   };
   prospects: Array<{
     playerId: string;
@@ -1186,8 +1185,8 @@ describe('sim worker narrative APIs', () => {
     const waltIntro = walt.script.chapters.owners_office.intro.map((line) => line.text).join(' ');
 
     expect(marcusIntro).toContain("Spending pattern: payroll correlates");
-    expect(elenaIntro).toContain("He asks about your family before he asks about baseball.");
-    expect(waltIntro).toContain("Doesn't know much about baseball, knows a lot about winning.");
+    expect(elenaIntro).toContain('The owner asks family before baseball.');
+    expect(waltIntro).toContain("Doesn't know every detail of baseball, knows plenty about winning.");
     expect(new Set([marcusIntro, elenaIntro, waltIntro]).size).toBe(3);
   });
 
@@ -2089,6 +2088,36 @@ describe('sim worker narrative APIs', () => {
     expect(affiliateOverview.affiliates.some((affiliate) => affiliate.level === 'AAA' && affiliate.gamesPlayed > 0)).toBe(true);
     expect(affiliateOverview.recentBoxScores.length).toBeGreaterThan(0);
     expect(latestBoxScore?.id).toBe(affiliateOverview.recentBoxScores[0]!.id);
+  });
+
+  it('persists user roster plans in the existing opening-day plan field', () => {
+    startGame(111, 'nym');
+    const hitters = api.getTeamRoster('nym')
+      .filter((player) => !['SP', 'RP', 'CL'].includes(player.position))
+      .slice(0, 9);
+    const starters = api.getTeamRoster('nym')
+      .filter((player) => player.position === 'SP')
+      .slice(0, 5);
+
+    const lineupPlayerIds = hitters.map((player) => player.id).reverse();
+    const rotationPlayerIds = starters.map((player) => player.id).reverse();
+    const result = api.updateRosterPlan({
+      lineupPlayerIds,
+      rotationPlayerIds,
+      bullpen: {
+        closerId: null,
+        setupIds: [],
+        longReliefId: null,
+      },
+    });
+    const snapshot = api.exportSnapshot();
+
+    expect(result.success).toBe(true);
+    expect(api.getRosterPlan().lineupPlayerIds.slice(0, lineupPlayerIds.length)).toEqual(lineupPlayerIds);
+    expect(api.getRosterPlan().rotationPlayerIds.slice(0, rotationPlayerIds.length)).toEqual(rotationPlayerIds);
+    expect(snapshot.schemaVersion).toBe(33);
+    expect(snapshot.franchise.dayOne.openingDayPlan?.lineupPlayerIds.slice(0, lineupPlayerIds.length)).toEqual(lineupPlayerIds);
+    expect(snapshot.franchise.dayOne.openingDayPlan?.rotationPlayerIds.slice(0, rotationPlayerIds.length)).toEqual(rotationPlayerIds);
   });
 
   it('routes out-of-options demotions through waivers and allows the priority team to claim the player', () => {
@@ -5577,6 +5606,115 @@ describe('sim worker narrative APIs', () => {
     expect(state.tickerFeed[0]?.relatedPlayerIds).toContain(hitter.id);
     expect(highlightNews?.headline.toLowerCase()).toContain('walk-off');
     expect(highlightNews?.body).toContain('WALK-OFF HOME RUN');
+  });
+
+  it('publishes career milestone news with structured cumulative totals', () => {
+    startGame(7803, 'nym');
+    const state = requireState();
+    state.day = 72;
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const playerName = `${hitter.firstName} ${hitter.lastName}`;
+
+    state.careerStats.push({
+      playerId: hitter.id,
+      playerName,
+      position: hitter.position,
+      seasonsPlayed: 8,
+      teamIds: [hitter.teamId],
+      peakOverall: 78,
+      championshipRings: 0,
+      allStarSelections: 4,
+      gamesPlayed: 1100,
+      saves: 0,
+      war: 36.4,
+      batting: {
+        hits: 1400,
+        hr: 400,
+        rbi: 940,
+      },
+      pitching: null,
+    });
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      gamesPlayed: 72,
+      pa: 310,
+      ab: 276,
+      hits: 100,
+      hr: 100,
+      rbi: 128,
+    }));
+
+    processDayInjuriesAndNews(state);
+
+    const milestoneText = state.news
+      .filter((item) => item.category === 'milestone')
+      .map((item) => `${item.headline} ${item.body}`)
+      .join('\n');
+
+    expect(milestoneText).toContain(playerName);
+    expect(milestoneText).toContain('500');
+    expect(milestoneText).not.toMatch(/Unknown|#0|0th|undefined/);
+  });
+
+  it('feeds ticker milestone entries from career totals instead of season totals', () => {
+    startGame(7804, 'nym');
+    const state = requireState();
+    state.day = 72;
+    const hitter = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const playerName = `${hitter.firstName} ${hitter.lastName}`;
+
+    state.careerStats.push({
+      playerId: hitter.id,
+      playerName,
+      position: hitter.position,
+      seasonsPlayed: 8,
+      teamIds: [hitter.teamId],
+      peakOverall: 78,
+      championshipRings: 0,
+      allStarSelections: 4,
+      gamesPlayed: 1100,
+      saves: 0,
+      war: 36.4,
+      batting: {
+        hits: 1400,
+        hr: 400,
+        rbi: 940,
+      },
+      pitching: null,
+    });
+    state.seasonState.playerSeasonStats.set(hitter.id, createPlayerStats({
+      playerId: hitter.id,
+      teamId: hitter.teamId,
+      gamesPlayed: 72,
+      pa: 310,
+      ab: 276,
+      hits: 100,
+      hr: 100,
+      rbi: 128,
+    }));
+
+    refreshTickerFeed(state, {
+      simDay: state.day,
+      games: [],
+      previousStandings: state.seasonState.standings.serialize(),
+      previousInjuryIds: new Set(),
+      previousTradeCount: state.tradeState.tradeHistory.length,
+    });
+
+    const milestoneTickerText = state.tickerFeed
+      .filter((entry) => entry.category === 'milestone')
+      .map((entry) => entry.text)
+      .join('\n');
+
+    expect(milestoneTickerText).toContain(playerName);
+    expect(milestoneTickerText).toContain('#500');
+    expect(milestoneTickerText).not.toContain('#100');
+    expect(milestoneTickerText).not.toMatch(/Unknown|#0|0th|undefined/);
   });
 
   it('returns advanced stat lines and advanced leaderboard results', () => {

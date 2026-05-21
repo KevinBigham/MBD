@@ -23,6 +23,7 @@ import { ProgressFill } from '@/shared/components/ProgressFill';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { listLeaderboardEntries, type LeaderboardEntry } from '@/shared/lib/saveSystem';
+import { categoryLabel, humanizeLabel } from '@/shared/lib/labels';
 import { DynastyTimelineChapterCard } from '../components/DynastyTimelineChapterCard';
 import { TimelineComparisonPanel } from '../components/TimelineComparisonPanel';
 import { SeasonRecapModal, type SeasonRecapData } from '../components/SeasonRecapModal';
@@ -153,12 +154,12 @@ function intensityTone(intensity: number): string {
 }
 
 function formatAwardLabel(value: string): string {
-  return value.replace(/_/g, ' ');
+  return humanizeLabel(value);
 }
 
 function formatRivalryOrigin(origin: Rivalry['origin']): string {
   if (!origin) return 'Emergent';
-  return origin.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+  return humanizeLabel(origin);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -1253,7 +1254,7 @@ export default function HistoryPage() {
                   description="Complete a season to unlock the full archive browser."
                   title="No archived seasons yet"
                   actionLabel="Back to Dashboard"
-                  actionHref="/MBD/dashboard"
+                  actionHref="/dashboard"
                 />
               )}
             </section>
@@ -1481,7 +1482,7 @@ export default function HistoryPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="font-heading text-sm text-dynasty-textBright">{selectedAchievement.name}</div>
-                      <div className="mt-1 font-heading text-xs uppercase text-dynasty-muted">{selectedAchievement.category}</div>
+                      <div className="mt-1 font-heading text-xs uppercase text-dynasty-muted">{categoryLabel(selectedAchievement.category)}</div>
                     </div>
                     <div className={`font-data text-xs ${selectedAchievement.unlocked ? 'text-accent-warning' : 'text-dynasty-muted'}`}>
                       {selectedAchievement.unlocked ? (selectedAchievement.unlockedAt ?? 'Unlocked') : 'Locked'}
@@ -1520,7 +1521,7 @@ export default function HistoryPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-heading text-sm text-dynasty-text">{achievement.name}</div>
-                      <div className="font-data text-[10px] uppercase text-dynasty-muted">{achievement.category}</div>
+                      <div className="font-data text-[10px] uppercase text-dynasty-muted">{categoryLabel(achievement.category)}</div>
                     </div>
                     <div className="mt-2 font-heading text-xs text-dynasty-muted">{achievement.description}</div>
                     <div className="mt-3 font-data text-xs text-dynasty-muted">

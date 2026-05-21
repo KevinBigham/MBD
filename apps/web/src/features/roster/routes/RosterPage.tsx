@@ -1,14 +1,17 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, Skeleton, StatLine, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
 import { Clock3, DollarSign, FileSignature, GripVertical, ShieldCheck } from 'lucide-react';
-import { PITCHER_POSITIONS } from '@mbd/sim-core';
+import { AFFILIATE_LEVELS, PITCHER_POSITIONS } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { PageHelp } from '@/shared/components/PageHelp';
+import { ResponsiveTable, type ColumnDef } from '@/shared/components/ResponsiveTable';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import { gradeBadgeColor } from '@/shared/lib/grade';
+import { humanizeLabel, minorLevelLabel } from '@/shared/lib/labels';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
-import type { TeamChemistry } from '@mbd/contracts';
+import type { DayOneOpeningPlan, TeamChemistry } from '@mbd/contracts';
 
 const LineupBuilder = lazy(() => import('../components/LineupBuilder'));
 const DepthChartDnD = lazy(() => import('../components/DepthChartDnD'));
@@ -112,6 +115,20 @@ interface ExtensionResponseView {
   counterOffer?: ExtensionOfferView;
 }
 
+type RosterPlanView = DayOneOpeningPlan;
+
+interface PendingRosterAction {
+  kind: 'promote' | 'demote' | 'dfa';
+  playerId: string;
+  playerName: string;
+  position: string;
+  detail: string;
+  consequence: string;
+  confirmLabel: string;
+  actionId: string;
+  run: () => Promise<unknown>;
+}
+
 function chemistryTone(tier: string): string {
   switch (tier) {
     case 'electric': return 'text-accent-success';
@@ -126,17 +143,6 @@ function issueTone(severity: 'error' | 'warning'): string {
   return severity === 'error'
     ? 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger'
     : 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
-}
-
-function minorLevelLabel(level: string): string {
-  switch (level) {
-    case 'A_PLUS':
-      return 'A+';
-    case 'ROOKIE':
-      return 'Rookie';
-    default:
-      return level;
-  }
 }
 
 function formatServiceTime(serviceTimeDays: number): string {
@@ -161,19 +167,98 @@ function gradeFromValue(value: number, floor: number, ceiling: number): number {
   return Math.round(20 + (clamped * 60));
 }
 
+function dfaRiskLabel(candidate: DFACandidateView): { label: string; tone: string } {
+  if (candidate.score >= 95) {
+    return { label: 'Low roster risk', tone: 'text-accent-success' };
+  }
+  if (candidate.score >= 70) {
+    return { label: 'Moderate roster risk', tone: 'text-accent-warning' };
+  }
+  return { label: 'Review before cutting', tone: 'text-accent-danger' };
+}
+
+function dfaSafeAction(candidate: DFACandidateView): string {
+  if (candidate.salary >= 8) {
+    return 'Shop salary first, then DFA if no market forms.';
+  }
+  if (candidate.age <= 25) {
+    return 'Check options and depth chart before exposing upside.';
+  }
+  return 'DFA is the cleanest compliance move if the roster stays over the line.';
+}
+
 const PITCHER_POSITIONS_SET = new Set<string>(PITCHER_POSITIONS);
 
 // UI depth chart order — intentionally different from sim-core ALL_POSITIONS
 // (SS/3B swapped) to match baseball scorecard visual layout.
 const ALL_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'] as const;
 
-function buildDepthChartGroups(roster: PlayerDTO[]) {
+function orderPlayersByPlan<T extends { id: string; displayRating: number }>(players: T[], orderedIds: string[] = []): T[] {
+  const byId = new Map(players.map((player) => [player.id, player]));
+  const ordered = orderedIds
+    .map((playerId) => byId.get(playerId))
+    .filter((player): player is T => player != null);
+  const remaining = players
+    .filter((player) => !orderedIds.includes(player.id))
+    .sort((left, right) => right.displayRating - left.displayRating);
+  return [...ordered, ...remaining];
+}
+
+function buildBullpenPlanFromDepth(
+  roster: PlayerDTO[],
+  depthPlan: Record<string, string[]>,
+  rotationPlayerIds: string[],
+): NonNullable<DayOneOpeningPlan['bullpen']> {
+  const relievers = orderPlayersByPlan(
+    roster.filter((player) => player.position === 'RP' || player.position === 'CL'),
+    [...(depthPlan.RP ?? []), ...(depthPlan.CL ?? [])],
+  );
+  const closers = orderPlayersByPlan(
+    roster.filter((player) => player.position === 'CL'),
+    depthPlan.CL ?? [],
+  );
+  const starters = orderPlayersByPlan(
+    roster.filter((player) => player.position === 'SP'),
+    depthPlan.SP ?? rotationPlayerIds,
+  );
+  const closerId = closers[0]?.id ?? relievers[0]?.id ?? null;
+  const setupIds = relievers
+    .filter((player) => player.id !== closerId && !rotationPlayerIds.includes(player.id))
+    .slice(0, 2)
+    .map((player) => player.id);
+  const longReliefId = [
+    ...starters.filter((player) => !rotationPlayerIds.includes(player.id)),
+    ...relievers,
+  ].find((player) => player.id !== closerId && !setupIds.includes(player.id))?.id ?? null;
+
+  return { closerId, setupIds, longReliefId };
+}
+
+function buildDepthPlanFromRosterPlan(plan: RosterPlanView | null): Record<string, string[]> {
+  if (!plan) {
+    return {};
+  }
+
+  return {
+    SP: plan.rotationPlayerIds,
+    RP: [
+      plan.bullpen?.longReliefId,
+      ...(plan.bullpen?.setupIds ?? []),
+    ].filter((playerId): playerId is string => Boolean(playerId)),
+    CL: plan.bullpen?.closerId ? [plan.bullpen.closerId] : [],
+  };
+}
+
+function buildDepthChartGroups(roster: PlayerDTO[], depthPlan: Record<string, string[]> = {}) {
   return ALL_POSITIONS
     .map((pos) => ({
       position: pos,
-      players: roster
+      players: orderPlayersByPlan(
+        roster
         .filter((p) => p.position === pos)
-        .sort((a, b) => b.displayRating - a.displayRating)
+        .sort((a, b) => b.displayRating - a.displayRating),
+        depthPlan[pos] ?? [],
+      )
         .map((p) => ({
           id: p.id,
           firstName: p.firstName,
@@ -186,22 +271,28 @@ function buildDepthChartGroups(roster: PlayerDTO[]) {
     .filter((g) => g.players.length > 0);
 }
 
-const MINOR_LEVELS = [
-  { key: 'AAA', label: 'AAA' },
-  { key: 'AA', label: 'AA' },
-  { key: 'A_PLUS', label: 'A+' },
-  { key: 'A', label: 'A' },
-  { key: 'ROOKIE', label: 'Rookie' },
-  { key: 'INTERNATIONAL', label: 'International' },
-] as const;
+function rosterActionFailed(result: unknown): result is { success: false; error?: string } {
+  return typeof result === 'object'
+    && result !== null
+    && 'success' in result
+    && (result as { success?: unknown }).success === false;
+}
+
+const MINOR_LEVELS = [...AFFILIATE_LEVELS, 'INTERNATIONAL'].map((key) => ({
+  key,
+  label: minorLevelLabel(key),
+}));
 
 export default function RosterPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { day, season, phase, userTeamId, isInitialized } = useGameStore();
+  const { day, season, phase, userTeamId, isInitialized, activeSaveId, activeSaveSlot } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
   const [mlbRoster, setMlbRoster] = useState<PlayerDTO[]>([]);
   const [minors, setMinors] = useState<Record<string, PlayerDTO[]>>({});
   const [chemistry, setChemistry] = useState<TeamChemistry | null>(null);
+  const [rosterPlan, setRosterPlan] = useState<RosterPlanView | null>(null);
+  const [depthPlan, setDepthPlan] = useState<Record<string, string[]>>({});
   const [promotionCandidates, setPromotionCandidates] = useState<PromotionCandidateView[]>([]);
   const [compliance, setCompliance] = useState<RosterComplianceView | null>(null);
   const [affiliateOverview, setAffiliateOverview] = useState<AffiliateOverviewView | null>(null);
@@ -216,6 +307,13 @@ export default function RosterPage() {
   const [offerNoTrade, setOfferNoTrade] = useState(false);
   const [offerOptOut, setOfferOptOut] = useState(false);
   const [negotiationResponse, setNegotiationResponse] = useState<ExtensionResponseView | null>(null);
+  const [pendingRosterAction, setPendingRosterAction] = useState<PendingRosterAction | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  const depthPlanStorageKey = useMemo(() => {
+    const saveKey = activeSaveSlot != null ? `slot-${activeSaveSlot}` : (activeSaveId ?? 'unsaved');
+    return `mbd:roster-depth-plan:${saveKey}:${userTeamId}`;
+  }, [activeSaveId, activeSaveSlot, userTeamId]);
 
   const fetchRoster = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
@@ -227,6 +325,7 @@ export default function RosterPage() {
       complianceData,
       affiliateData,
       extensionData,
+      planData,
     ] = await Promise.all([
       worker.getFullRoster(userTeamId),
       worker.getTeamChemistry(userTeamId),
@@ -234,6 +333,9 @@ export default function RosterPage() {
       worker.getRosterComplianceIssues(userTeamId),
       worker.getAffiliateOverview(userTeamId),
       worker.getExtensionCandidates(userTeamId),
+      typeof (worker as Record<string, unknown>).getRosterPlan === 'function'
+        ? worker.getRosterPlan()
+        : Promise.resolve(null),
     ]);
 
     if (rosterData) {
@@ -246,24 +348,128 @@ export default function RosterPage() {
     setCompliance((complianceData ?? null) as RosterComplianceView | null);
     setAffiliateOverview((affiliateData ?? null) as AffiliateOverviewView | null);
     setExtensionCandidates((extensionData ?? []) as ExtensionCandidateView[]);
+    setRosterPlan((planData ?? null) as RosterPlanView | null);
   }, [isInitialized, userTeamId, worker, workerReady]);
 
   useEffect(() => {
     void fetchRoster();
   }, [fetchRoster, day, season, phase]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem(depthPlanStorageKey);
+    if (!raw) {
+      setDepthPlan({});
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      setDepthPlan(typeof parsed === 'object' && parsed !== null ? parsed as Record<string, string[]> : {});
+    } catch {
+      setDepthPlan({});
+    }
+  }, [depthPlanStorageKey]);
+
+  const persistDepthPlan = useCallback((nextDepthPlan: Record<string, string[]>) => {
+    setDepthPlan(nextDepthPlan);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(depthPlanStorageKey, JSON.stringify(nextDepthPlan));
+    }
+  }, [depthPlanStorageKey]);
+
+  const persistRosterPlan = useCallback(async (patch: Partial<DayOneOpeningPlan>) => {
+    if (typeof (worker as Record<string, unknown>).updateRosterPlan !== 'function') {
+      return;
+    }
+
+    const result = await worker.updateRosterPlan(patch);
+    if (result?.success) {
+      setRosterPlan(result.plan as RosterPlanView);
+      await autosaveActiveGame({ season });
+    }
+  }, [autosaveActiveGame, season, worker]);
+
   const runRosterAction = useCallback(async (actionId: string, operation: () => Promise<unknown>) => {
     setBusyAction(actionId);
+    setActionMessage(null);
     try {
-      await operation();
+      const result = await operation();
+      if (rosterActionFailed(result)) {
+        setActionMessage(result.error ?? 'That roster move could not be completed.');
+        return;
+      }
       await fetchRoster();
+      await autosaveActiveGame({ season });
     } finally {
       setBusyAction(null);
     }
-  }, [fetchRoster]);
+  }, [autosaveActiveGame, fetchRoster, season]);
 
   const hitters = mlbRoster.filter((player) => !PITCHER_POSITIONS_SET.has(player.position));
   const pitchers = mlbRoster.filter((player) => PITCHER_POSITIONS_SET.has(player.position));
+  const lineupPlayers = useMemo(
+    () => orderPlayersByPlan(hitters, rosterPlan?.lineupPlayerIds ?? []).slice(0, 9),
+    [hitters, rosterPlan?.lineupPlayerIds],
+  );
+  const rotationPlayers = useMemo(
+    () => orderPlayersByPlan(
+      pitchers.filter((player) => player.position === 'SP'),
+      rosterPlan?.rotationPlayerIds ?? [],
+    ).slice(0, 5),
+    [pitchers, rosterPlan?.rotationPlayerIds],
+  );
+  const effectiveDepthPlan = useMemo(
+    () => ({
+      ...buildDepthPlanFromRosterPlan(rosterPlan),
+      ...depthPlan,
+    }),
+    [depthPlan, rosterPlan],
+  );
+  const depthChartGroups = useMemo(
+    () => buildDepthChartGroups(mlbRoster ?? [], effectiveDepthPlan),
+    [effectiveDepthPlan, mlbRoster],
+  );
+
+  const handleLineupReorder = useCallback((orderedIds: string[]) => {
+    void persistRosterPlan({ lineupPlayerIds: orderedIds.slice(0, 9) });
+  }, [persistRosterPlan]);
+
+  const handleRotationReorder = useCallback((orderedIds: string[]) => {
+    void persistRosterPlan({ rotationPlayerIds: orderedIds.slice(0, 5) });
+  }, [persistRosterPlan]);
+
+  const handleDepthReorder = useCallback((position: string, orderedIds: string[]) => {
+    const nextDepthPlan = {
+      ...depthPlan,
+      [position]: orderedIds,
+    };
+    persistDepthPlan(nextDepthPlan);
+
+    if (!PITCHER_POSITIONS_SET.has(position)) {
+      return;
+    }
+
+    const rotationPlayerIds = position === 'SP'
+      ? orderedIds.slice(0, 5)
+      : rosterPlan?.rotationPlayerIds ?? rotationPlayers.map((player) => player.id);
+    void persistRosterPlan({
+      rotationPlayerIds,
+      bullpen: buildBullpenPlanFromDepth(mlbRoster, nextDepthPlan, rotationPlayerIds),
+    });
+  }, [depthPlan, mlbRoster, persistDepthPlan, persistRosterPlan, rosterPlan?.rotationPlayerIds, rotationPlayers]);
+
+  const confirmRosterAction = useCallback(async () => {
+    if (!pendingRosterAction) {
+      return;
+    }
+
+    try {
+      await runRosterAction(pendingRosterAction.actionId, pendingRosterAction.run);
+    } finally {
+      setPendingRosterAction(null);
+    }
+  }, [pendingRosterAction, runRosterAction]);
 
   const openNegotiation = useCallback(async (candidate: ExtensionCandidateView) => {
     const offer = await worker.getExtensionOffer(candidate.playerId, 5);
@@ -301,6 +507,9 @@ export default function RosterPage() {
         optOutYears: offerOptOut ? [Math.max(2, offerYears - 1)] : [],
       });
       setNegotiationResponse((response ?? null) as ExtensionResponseView | null);
+      if (response) {
+        await autosaveActiveGame({ season });
+      }
       if ((response as ExtensionResponseView | null)?.status === 'accepted') {
         await fetchRoster();
       }
@@ -308,6 +517,7 @@ export default function RosterPage() {
       setBusyAction(null);
     }
   }, [
+    autosaveActiveGame,
     extensionOffer,
     fetchRoster,
     offerNoTrade,
@@ -316,8 +526,285 @@ export default function RosterPage() {
     offerSigningBonus,
     offerYears,
     selectedExtension,
+    season,
     worker,
   ]);
+
+  const openDemoteAction = useCallback((player: PlayerDTO) => {
+    setPendingRosterAction({
+      kind: 'demote',
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      detail: `${player.position} | ${player.letterGrade} | Options used ${player.optionYearsUsed}${player.isOutOfOptions ? ' | Out of options' : ''}`,
+      consequence: player.isOutOfOptions
+        ? 'This player is out of options and may need to clear waivers before reaching the minors.'
+        : 'This uses a minor-league assignment path and can change active-roster depth immediately.',
+      confirmLabel: 'Confirm Demotion',
+      actionId: `demote-${player.id}`,
+      run: () => worker.demotePlayer(player.id),
+    });
+  }, [worker]);
+
+  const openPromoteAction = useCallback((player: PlayerDTO, levelLabel: string) => {
+    setPendingRosterAction({
+      kind: 'promote',
+      playerId: player.id,
+      playerName: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      detail: `${levelLabel} | ${player.letterGrade} | OVR ${player.displayRating}`,
+      consequence: 'This moves the player up the ladder immediately and may change 40-man or active-roster pressure.',
+      confirmLabel: 'Confirm Promotion',
+      actionId: `promote-${player.id}`,
+      run: () => worker.promotePlayer(player.id),
+    });
+  }, [worker]);
+
+  const renderPlayerName = useCallback((player: PlayerDTO) => (
+    <Link
+      to={`/players/${player.id}`}
+      className="font-heading font-medium text-dynasty-text hover:text-accent-primary"
+    >
+      {player.firstName} {player.lastName}
+    </Link>
+  ), []);
+
+  const renderGrade = useCallback((player: PlayerDTO) => (
+    <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
+      {player.letterGrade}
+    </span>
+  ), []);
+
+  const renderDemoteButton = useCallback((player: PlayerDTO) => (
+    <button
+      type="button"
+      onClick={() => openDemoteAction(player)}
+      disabled={busyAction === `demote-${player.id}`}
+      className="w-full rounded border border-dynasty-border px-3 py-2 font-heading text-xs text-dynasty-muted transition-colors hover:border-accent-primary hover:text-accent-primary disabled:opacity-50 md:w-auto md:px-2 md:py-1"
+    >
+      Demote
+    </button>
+  ), [busyAction, openDemoteAction]);
+
+  const renderPromoteButton = useCallback((player: PlayerDTO, levelLabel: string) => (
+    <button
+      type="button"
+      onClick={() => openPromoteAction(player, levelLabel)}
+      disabled={busyAction === `promote-${player.id}`}
+      className="w-full rounded border border-accent-success/50 px-3 py-2 font-heading text-xs text-accent-success transition-colors hover:bg-accent-success/10 disabled:opacity-50 md:w-auto md:px-2 md:py-1"
+    >
+      Promote
+    </button>
+  ), [busyAction, openPromoteAction]);
+
+  const hitterColumns = useMemo<ColumnDef<PlayerDTO>[]>(() => [
+    {
+      key: 'player',
+      label: 'Player',
+      primary: true,
+      render: renderPlayerName,
+    },
+    {
+      key: 'position',
+      label: 'POS',
+      render: (player) => player.position,
+    },
+    {
+      key: 'overall',
+      label: 'OVR',
+      className: 'text-right',
+      highlight: true,
+      render: (player) => player.displayRating,
+    },
+    {
+      key: 'grade',
+      label: 'GRD',
+      className: 'text-center',
+      render: renderGrade,
+    },
+    {
+      key: 'age',
+      label: 'AGE',
+      className: 'text-right',
+      render: (player) => player.age,
+    },
+    {
+      key: 'service',
+      label: 'SVC',
+      className: 'text-right',
+      render: (player) => formatServiceTime(player.serviceTimeDays),
+    },
+    {
+      key: 'options',
+      label: 'OPT',
+      className: 'text-right',
+      render: (player) => `${player.optionYearsUsed}${player.isOutOfOptions ? ' / OOO' : ''}`,
+    },
+    {
+      key: 'plate-appearances',
+      label: 'PA',
+      className: 'text-right',
+      hideOnMobile: true,
+      render: (player) => player.stats?.pa ?? '-',
+    },
+    {
+      key: 'average',
+      label: 'AVG',
+      className: 'text-right',
+      render: (player) => player.stats?.avg ?? '-',
+    },
+    {
+      key: 'home-runs',
+      label: 'HR',
+      className: 'text-right',
+      render: (player) => player.stats?.hr ?? '-',
+    },
+    {
+      key: 'rbi',
+      label: 'RBI',
+      className: 'text-right',
+      render: (player) => player.stats?.rbi ?? '-',
+    },
+    {
+      key: 'war',
+      label: 'WAR',
+      className: 'text-right',
+      highlight: true,
+      render: (player) => player.advanced?.war?.toFixed(1) ?? '-',
+    },
+    {
+      key: 'action',
+      label: 'Action',
+      className: 'text-right',
+      mobileClassName: 'col-span-3',
+      render: renderDemoteButton,
+    },
+  ], [renderDemoteButton, renderGrade, renderPlayerName]);
+
+  const pitcherColumns = useMemo<ColumnDef<PlayerDTO>[]>(() => [
+    {
+      key: 'player',
+      label: 'Player',
+      primary: true,
+      render: renderPlayerName,
+    },
+    {
+      key: 'position',
+      label: 'POS',
+      render: (player) => player.position,
+    },
+    {
+      key: 'overall',
+      label: 'OVR',
+      className: 'text-right',
+      highlight: true,
+      render: (player) => player.displayRating,
+    },
+    {
+      key: 'grade',
+      label: 'GRD',
+      className: 'text-center',
+      render: renderGrade,
+    },
+    {
+      key: 'age',
+      label: 'AGE',
+      className: 'text-right',
+      render: (player) => player.age,
+    },
+    {
+      key: 'service',
+      label: 'SVC',
+      className: 'text-right',
+      render: (player) => formatServiceTime(player.serviceTimeDays),
+    },
+    {
+      key: 'options',
+      label: 'OPT',
+      className: 'text-right',
+      render: (player) => `${player.optionYearsUsed}${player.isOutOfOptions ? ' / OOO' : ''}`,
+    },
+    {
+      key: 'era',
+      label: 'ERA',
+      className: 'text-right',
+      render: (player) => player.stats?.era ?? '-',
+    },
+    {
+      key: 'strikeouts',
+      label: 'K',
+      className: 'text-right',
+      render: (player) => player.stats?.strikeouts ?? '-',
+    },
+    {
+      key: 'walks',
+      label: 'BB',
+      className: 'text-right',
+      render: (player) => player.stats?.walks ?? '-',
+    },
+    {
+      key: 'war',
+      label: 'WAR',
+      className: 'text-right',
+      highlight: true,
+      render: (player) => player.advanced?.war?.toFixed(1) ?? '-',
+    },
+    {
+      key: 'action',
+      label: 'Action',
+      className: 'text-right',
+      mobileClassName: 'col-span-3',
+      render: renderDemoteButton,
+    },
+  ], [renderDemoteButton, renderGrade, renderPlayerName]);
+
+  const buildMinorColumns = useCallback((levelKey: string, levelLabel: string): ColumnDef<PlayerDTO>[] => [
+    {
+      key: 'player',
+      label: 'Player',
+      primary: true,
+      render: renderPlayerName,
+    },
+    {
+      key: 'position',
+      label: 'POS',
+      render: (player) => player.position,
+    },
+    {
+      key: 'overall',
+      label: 'OVR',
+      className: 'text-right',
+      highlight: true,
+      render: (player) => player.displayRating,
+    },
+    {
+      key: 'grade',
+      label: 'GRD',
+      className: 'text-center',
+      render: renderGrade,
+    },
+    {
+      key: 'age',
+      label: 'AGE',
+      className: 'text-right',
+      render: (player) => player.age,
+    },
+    {
+      key: 'options',
+      label: 'OPT',
+      className: 'text-right',
+      render: (player) => `${player.optionYearsUsed}${player.isOutOfOptions ? ' / OOO' : ''}`,
+    },
+    {
+      key: 'action',
+      label: 'Action',
+      className: 'text-right',
+      mobileClassName: 'col-span-3',
+      render: (player) => levelKey !== 'INTERNATIONAL'
+        ? renderPromoteButton(player, levelLabel)
+        : <span className="font-heading text-xs text-dynasty-muted">Intake only</span>,
+    },
+  ], [renderGrade, renderPlayerName, renderPromoteButton]);
 
   return (
     <div className="space-y-6">
@@ -331,6 +818,12 @@ export default function RosterPage() {
         <PageHelp pageKey="roster" />
       </div>
 
+      {actionMessage ? (
+        <div className="rounded-lg border border-accent-warning/40 bg-accent-warning/10 px-4 py-3 font-heading text-sm text-accent-warning">
+          {actionMessage}
+        </div>
+      ) : null}
+
       {chemistry && (
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -341,7 +834,7 @@ export default function RosterPage() {
                   {chemistry.score}
                 </div>
                 <div className="pb-1 font-heading text-sm text-dynasty-muted">
-                  {chemistry.tier.toUpperCase()} | {chemistry.trend.toUpperCase()}
+                  {humanizeLabel(chemistry.tier)} | {humanizeLabel(chemistry.trend)}
                 </div>
               </div>
               <div className="mt-2 font-heading text-sm text-dynasty-text">
@@ -376,18 +869,27 @@ export default function RosterPage() {
             <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:justify-between">
                 <div>
-                  <div className="font-heading text-xs uppercase text-dynasty-muted">Roster compliance</div>
+                  <div className="font-heading text-xs uppercase text-dynasty-muted">Roster Compliance War Room</div>
+                  <div className="mt-1 font-heading text-sm text-dynasty-text">
+                    Active limits, 40-man pressure, and the safest next move in one place.
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-3">
                     <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
                       <div className="font-heading text-xs uppercase text-dynasty-muted">Active</div>
                       <div className="font-data text-lg text-dynasty-text">
                         {compliance.activeRosterCount}/{compliance.activeRosterLimit}
                       </div>
+                      <div className="mt-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
+                        {Math.max(0, compliance.activeRosterCount - compliance.activeRosterLimit)} over
+                      </div>
                     </div>
                     <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
                       <div className="font-heading text-xs uppercase text-dynasty-muted">40-Man</div>
                       <div className="font-data text-lg text-dynasty-text">
                         {compliance.fortyManCount}/40
+                      </div>
+                      <div className="mt-1 font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">
+                        {Math.max(0, compliance.fortyManCount - 40)} over
                       </div>
                     </div>
                   </div>
@@ -410,30 +912,58 @@ export default function RosterPage() {
 
               {compliance.dfaRecommendations.length > 0 && (
                 <div className="mt-4 border-t border-dynasty-border pt-4">
-                  <div className="font-heading text-xs uppercase text-dynasty-muted">40-man pressure relief</div>
+                  <div className="font-heading text-xs uppercase text-dynasty-muted">Recommended cuts</div>
+                  <div className="mt-1 font-heading text-sm text-dynasty-muted">
+                    Showing the three cleanest pressure-release options first. Keep the full roster tables below for deeper review.
+                  </div>
                   <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                    {compliance.dfaRecommendations.map((candidate) => (
-                      <div key={candidate.playerId} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-heading text-sm text-dynasty-text">{candidate.playerName}</div>
-                            <div className="font-data text-xs text-dynasty-muted">
-                              {candidate.position} | Age {candidate.age} | ${candidate.salary.toFixed(1)}M
+                    {compliance.dfaRecommendations.slice(0, 3).map((candidate) => {
+                      const risk = dfaRiskLabel(candidate);
+                      return (
+                        <div key={candidate.playerId} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-heading text-sm text-dynasty-text">{candidate.playerName}</div>
+                              <div className="font-data text-xs text-dynasty-muted">
+                                {candidate.position} | Age {candidate.age} | ${candidate.salary.toFixed(1)}M
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-data text-sm text-accent-warning">Cut score {candidate.score}</div>
+                              <div className={`mt-1 font-heading text-[10px] uppercase tracking-wide ${risk.tone}`}>{risk.label}</div>
                             </div>
                           </div>
-                          <div className="font-data text-sm text-accent-warning">Score {candidate.score}</div>
+                          <div className="mt-3 grid gap-2">
+                            <div className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+                              <div className="font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">Reason</div>
+                              <div className="mt-1 text-sm text-dynasty-muted">{candidate.reason}</div>
+                            </div>
+                            <div className="rounded border border-accent-info/30 bg-accent-info/5 px-3 py-2">
+                              <div className="font-heading text-[10px] uppercase tracking-wide text-accent-info">Safe next action</div>
+                              <div className="mt-1 text-sm text-dynasty-text">{dfaSafeAction(candidate)}</div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPendingRosterAction({
+                              kind: 'dfa',
+                              playerId: candidate.playerId,
+                              playerName: candidate.playerName,
+                              position: candidate.position,
+                              detail: `${candidate.position} | Age ${candidate.age} | ${moneyLabel(candidate.salary)}`,
+                              consequence: 'This removes the player from the active/40-man picture and exposes him to waiver-claim risk.',
+                              confirmLabel: `Confirm DFA`,
+                              actionId: `dfa-${candidate.playerId}`,
+                              run: () => worker.designateForAssignment(candidate.playerId),
+                            })}
+                            disabled={busyAction === `dfa-${candidate.playerId}`}
+                            className="mt-3 rounded border border-accent-danger/50 px-3 py-1.5 font-heading text-xs text-accent-danger transition-colors hover:bg-accent-danger/10 disabled:opacity-50"
+                          >
+                            DFA {candidate.playerName}
+                          </button>
                         </div>
-                        <div className="mt-2 text-sm text-dynasty-muted">{candidate.reason}</div>
-                        <button
-                          type="button"
-                          onClick={() => void runRosterAction(`dfa-${candidate.playerId}`, () => worker.designateForAssignment(candidate.playerId))}
-                          disabled={busyAction === `dfa-${candidate.playerId}`}
-                          className="mt-3 rounded border border-accent-danger/50 px-3 py-1.5 font-heading text-xs text-accent-danger transition-colors hover:bg-accent-danger/10 disabled:opacity-50"
-                        >
-                          DFA {candidate.playerName}
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -446,69 +976,13 @@ export default function RosterPage() {
                 Position Players ({hitters.length})
               </h2>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                    <th className="px-4 py-2 text-left font-heading">Player</th>
-                    <th className="px-2 py-2 text-left font-heading">POS</th>
-                    <th className="px-2 py-2 text-right font-data">OVR</th>
-                    <th className="px-2 py-2 text-center font-heading">GRD</th>
-                    <th className="px-2 py-2 text-right font-data">AGE</th>
-                    <th className="px-2 py-2 text-right font-data">SVC</th>
-                    <th className="px-2 py-2 text-right font-data">OPT</th>
-                    <th className="px-2 py-2 text-right font-data">PA</th>
-                    <th className="px-2 py-2 text-right font-data">AVG</th>
-                    <th className="px-2 py-2 text-right font-data">HR</th>
-                    <th className="px-2 py-2 text-right font-data">RBI</th>
-                    <th className="px-2 py-2 text-right font-data">WAR</th>
-                    <th className="px-4 py-2 text-right font-heading">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {hitters.map((player) => (
-                    <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
-                      <td className="px-4 py-2">
-                        <Link
-                          to={`/players/${player.id}`}
-                          className="font-heading font-medium text-dynasty-text hover:text-accent-primary"
-                        >
-                          {player.firstName} {player.lastName}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
-                      <td className="px-2 py-2 text-center">
-                        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
-                          {player.letterGrade}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.age}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">{formatServiceTime(player.serviceTimeDays)}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">
-                        {player.optionYearsUsed}{player.isOutOfOptions ? ' / OOO' : ''}
-                      </td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.stats?.pa ?? '-'}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.avg ?? '-'}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.hr ?? '-'}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.rbi ?? '-'}</td>
-                      <td className="px-2 py-2 text-right font-data text-accent-primary">
-                        {player.advanced?.war?.toFixed(1) ?? '-'}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void runRosterAction(`demote-${player.id}`, () => worker.demotePlayer(player.id))}
-                          disabled={busyAction === `demote-${player.id}`}
-                          className="rounded border border-dynasty-border px-2 py-1 font-heading text-xs text-dynasty-muted transition-colors hover:border-accent-primary hover:text-accent-primary disabled:opacity-50"
-                        >
-                          Demote
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="p-3 md:p-0">
+              <ResponsiveTable
+                data={hitters}
+                columns={hitterColumns}
+                keyExtractor={(player) => player.id}
+                emptyMessage="No position players on the active roster."
+              />
             </div>
           </div>
 
@@ -518,67 +992,13 @@ export default function RosterPage() {
                 Pitchers ({pitchers.length})
               </h2>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                    <th className="px-4 py-2 text-left font-heading">Player</th>
-                    <th className="px-2 py-2 text-left font-heading">POS</th>
-                    <th className="px-2 py-2 text-right font-data">OVR</th>
-                    <th className="px-2 py-2 text-center font-heading">GRD</th>
-                    <th className="px-2 py-2 text-right font-data">AGE</th>
-                    <th className="px-2 py-2 text-right font-data">SVC</th>
-                    <th className="px-2 py-2 text-right font-data">OPT</th>
-                    <th className="px-2 py-2 text-right font-data">ERA</th>
-                    <th className="px-2 py-2 text-right font-data">K</th>
-                    <th className="px-2 py-2 text-right font-data">BB</th>
-                    <th className="px-2 py-2 text-right font-data">WAR</th>
-                    <th className="px-4 py-2 text-right font-heading">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pitchers.map((player) => (
-                    <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
-                      <td className="px-4 py-2">
-                        <Link
-                          to={`/players/${player.id}`}
-                          className="font-heading font-medium text-dynasty-text hover:text-accent-primary"
-                        >
-                          {player.firstName} {player.lastName}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
-                      <td className="px-2 py-2 text-center">
-                        <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
-                          {player.letterGrade}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.age}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">{formatServiceTime(player.serviceTimeDays)}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">
-                        {player.optionYearsUsed}{player.isOutOfOptions ? ' / OOO' : ''}
-                      </td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.era ?? '-'}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.strikeouts ?? '-'}</td>
-                      <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.stats?.walks ?? '-'}</td>
-                      <td className="px-2 py-2 text-right font-data text-accent-primary">
-                        {player.advanced?.war?.toFixed(1) ?? '-'}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void runRosterAction(`demote-${player.id}`, () => worker.demotePlayer(player.id))}
-                          disabled={busyAction === `demote-${player.id}`}
-                          className="rounded border border-dynasty-border px-2 py-1 font-heading text-xs text-dynasty-muted transition-colors hover:border-accent-primary hover:text-accent-primary disabled:opacity-50"
-                        >
-                          Demote
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="p-3 md:p-0">
+              <ResponsiveTable
+                data={pitchers}
+                columns={pitcherColumns}
+                keyExtractor={(player) => player.id}
+                emptyMessage="No pitchers on the active roster."
+              />
             </div>
           </div>
         </div>
@@ -613,7 +1033,17 @@ export default function RosterPage() {
                   <div className="mt-2 text-sm text-dynasty-muted">{candidate.reason}</div>
                   <button
                     type="button"
-                    onClick={() => void runRosterAction(`promote-${candidate.playerId}`, () => worker.promotePlayer(candidate.playerId))}
+                    onClick={() => setPendingRosterAction({
+                      kind: 'promote',
+                      playerId: candidate.playerId,
+                      playerName: candidate.playerName,
+                      position: candidate.position,
+                      detail: `${minorLevelLabel(candidate.currentLevel)} to ${minorLevelLabel(candidate.targetLevel)} | Score ${candidate.score}`,
+                      consequence: 'This changes the player assignment now and can start service-time, option, and active-depth consequences.',
+                      confirmLabel: 'Confirm Promotion',
+                      actionId: `promote-${candidate.playerId}`,
+                      run: () => worker.promotePlayer(candidate.playerId),
+                    })}
                     disabled={busyAction === `promote-${candidate.playerId}`}
                     className="mt-3 rounded border border-accent-success/50 px-3 py-1.5 font-heading text-xs text-accent-success transition-colors hover:bg-accent-success/10 disabled:opacity-50"
                   >
@@ -665,7 +1095,7 @@ export default function RosterPage() {
                       <div key={`${claim.playerId}-${claim.status}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
                         <div className="font-heading text-sm text-dynasty-text">{claim.playerName}</div>
                         <div className="mt-1 text-xs text-dynasty-muted">
-                          {claim.status === 'pending' ? 'Pending claim' : claim.status.toUpperCase()} | {claim.fromTeamName}
+                          {claim.status === 'pending' ? 'Pending claim' : humanizeLabel(claim.status)} | {claim.fromTeamName}
                         </div>
                         <div className="mt-2 text-xs text-dynasty-muted">
                           ${claim.salary.toFixed(1)}M
@@ -727,59 +1157,13 @@ export default function RosterPage() {
                     {level.label} ({players.length})
                   </h2>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                        <th className="px-4 py-2 text-left font-heading">Player</th>
-                        <th className="px-2 py-2 text-left font-heading">POS</th>
-                        <th className="px-2 py-2 text-right font-data">OVR</th>
-                        <th className="px-2 py-2 text-center font-heading">GRD</th>
-                        <th className="px-2 py-2 text-right font-data">AGE</th>
-                        <th className="px-2 py-2 text-right font-data">OPT</th>
-                        <th className="px-4 py-2 text-right font-heading">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {players.slice(0, 12).map((player) => (
-                        <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
-                          <td className="px-4 py-2">
-                            <Link
-                              to={`/players/${player.id}`}
-                              className="font-heading font-medium text-dynasty-text hover:text-accent-primary"
-                            >
-                              {player.firstName} {player.lastName}
-                            </Link>
-                          </td>
-                          <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
-                          <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
-                          <td className="px-2 py-2 text-center">
-                            <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeBadgeColor(player.letterGrade)}`}>
-                              {player.letterGrade}
-                            </span>
-                          </td>
-                          <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.age}</td>
-                          <td className="px-2 py-2 text-right font-data text-dynasty-muted">
-                            {player.optionYearsUsed}{player.isOutOfOptions ? ' / OOO' : ''}
-                          </td>
-                          <td className="px-4 py-2 text-right">
-                            {level.key !== 'INTERNATIONAL' ? (
-                              <button
-                                type="button"
-                                onClick={() => void runRosterAction(`promote-${player.id}`, () => worker.promotePlayer(player.id))}
-                                disabled={busyAction === `promote-${player.id}`}
-                                className="rounded border border-accent-success/50 px-2 py-1 font-heading text-xs text-accent-success transition-colors hover:bg-accent-success/10 disabled:opacity-50"
-                              >
-                                Promote
-                              </button>
-                            ) : (
-                              <span className="font-heading text-xs text-dynasty-muted">Intake only</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="p-3 md:p-0">
+                  <ResponsiveTable
+                    data={players.slice(0, 12)}
+                    columns={buildMinorColumns(level.key, level.label)}
+                    keyExtractor={(player) => player.id}
+                    emptyMessage={`No players listed at ${level.label}.`}
+                  />
                 </div>
               </div>
             );
@@ -846,6 +1230,46 @@ export default function RosterPage() {
                   No extension files are open for this roster right now.
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {pendingRosterAction && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 p-6">
+          <Card className="w-full max-w-xl border-accent-warning/40 shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="font-heading text-dynasty-text">Confirm Roster Move</CardTitle>
+                <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  {pendingRosterAction.kind} | {pendingRosterAction.position}
+                </div>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setPendingRosterAction(null)}>
+                Cancel
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="font-heading text-base text-dynasty-textBright">{pendingRosterAction.playerName}</div>
+                <div className="mt-1 font-data text-xs text-dynasty-muted">{pendingRosterAction.detail}</div>
+              </div>
+              <div className="rounded-lg border border-accent-warning/30 bg-accent-warning/10 px-4 py-3 font-heading text-sm text-accent-warning">
+                {pendingRosterAction.consequence}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setPendingRosterAction(null)}>
+                  Keep Current Roster
+                </Button>
+                <Button
+                  type="button"
+                  variant={pendingRosterAction.kind === 'dfa' ? 'destructive' : 'default'}
+                  loading={busyAction === pendingRosterAction.actionId}
+                  onClick={() => void confirmRosterAction()}
+                >
+                  {pendingRosterAction.confirmLabel}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -982,9 +1406,7 @@ export default function RosterPage() {
             <CardContent>
               <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
                 <LineupBuilder
-                  players={(mlbRoster ?? [])
-                    .filter((p) => !PITCHER_POSITIONS_SET.has(p.position))
-                    .slice(0, 9)
+                  players={lineupPlayers
                     .map((p) => ({
                       id: p.id,
                       firstName: p.firstName,
@@ -993,6 +1415,33 @@ export default function RosterPage() {
                       displayRating: p.displayRating,
                       letterGrade: p.letterGrade,
                     }))}
+                  onReorder={handleLineupReorder}
+                />
+              </Suspense>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-heading text-dynasty-text">Starting Rotation</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<Skeleton className="h-72 rounded-lg" />}>
+                <LineupBuilder
+                  players={rotationPlayers.map((p) => ({
+                    id: p.id,
+                    firstName: p.firstName,
+                    lastName: p.lastName,
+                    position: p.position,
+                    displayRating: p.displayRating,
+                    letterGrade: p.letterGrade,
+                  }))}
+                  onReorder={handleRotationReorder}
+                  ariaLabel="Starting rotation"
+                  emptyLabel="No starting pitchers available for rotation"
+                  instructionsId="rotation-instructions"
+                  instructionsText="Drag pitchers to reorder the rotation, or use the up/down buttons."
+                  slotLabel={(slot) => `Rotation ${slot}`}
                 />
               </Suspense>
             </CardContent>
@@ -1005,7 +1454,8 @@ export default function RosterPage() {
             <CardContent>
               <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
                 <DepthChartDnD
-                  groups={buildDepthChartGroups(mlbRoster ?? [])}
+                  groups={depthChartGroups}
+                  onReorder={handleDepthReorder}
                 />
               </Suspense>
             </CardContent>

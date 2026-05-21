@@ -1,134 +1,102 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowRight,
   BriefcaseBusiness,
-  ChartNoAxesCombined,
-  ShieldAlert,
+  CheckCircle2,
+  ClipboardList,
   Users,
-  WalletCards,
 } from 'lucide-react';
-import type { AGMCandidate, GMPhilosophy } from '@mbd/sim-core';
-import type { DayOneSession } from '@/workers/sim.worker.onboarding';
+import {
+  REVISED_CHAPTER_ORDER,
+  advanceRevisedChapter,
+  createRevisedOnboardingState,
+  getOnboardingResult,
+  selectAGMInFlow,
+  setPhilosophyChoiceInFlow,
+  setScoutingHireInFlow,
+  setStaffHiresInFlow,
+  type AGMCandidate,
+  type AGMCandidateId,
+  type GMPhilosophy,
+  type OnboardingFlowState,
+  type RevisedChapterId,
+  type RevisedChapterScript,
+  type StaffHireChoices,
+} from '@mbd/sim-core';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
+import type { RevisedOnboardingData } from '@/workers/sim.worker.onboarding';
 import { AGMRuntimePanel } from '../components/AGMRuntimePanel';
+import { AGMSelectionPanel } from '../components/AGMSelectionPanel';
+import { AssessmentPanel } from '../components/AssessmentPanel';
+import { ChapterProgress } from '../components/ChapterProgress';
+import { HireCoachesView } from '../components/chapters/HireCoachesView';
+import { HireScoutsView } from '../components/chapters/HireScoutsView';
 import { GuidedStartNudgeCard, useNudges } from '../nudges';
 
-type OpeningPlanDraft = NonNullable<DayOneSession['choices']['openingDayPlan']>;
-type OpeningPlanOption = NonNullable<DayOneSession['openingPlanView']>['lineupOptions'][number];
+type ChoiceField =
+  | 'seasonGoal'
+  | 'developmentStyle'
+  | 'spendingStyle'
+  | 'tradeApproach'
+  | 'mediaTone';
 
-interface OpeningPlanWarnings {
-  lineup: string[];
-  rotation: string[];
-  bullpen: string[];
+interface ChoiceOption {
+  id: string;
+  label: string;
+  description: string;
 }
 
-const STEP_LABELS: Record<DayOneSession['currentStep'], string> = {
-  owner_intro: 'Owner Intro',
-  agm_select: 'Choose AGM',
-  org_review: 'Org Review',
-  season_goal: 'Season Goal',
-  budget: 'Budget Allocation',
-  opening_day_plan: 'Opening Day Plan',
-  development: 'Development Philosophy',
-  crisis: 'First Crisis',
-  recap: 'Recap',
-  complete: 'Ready',
-};
-
-const SEASON_GOAL_OPTIONS: Array<{
-  id: GMPhilosophy['seasonGoal'];
-  title: string;
-  summary: string;
-}> = [
-  { id: 'championship', title: 'Championship', summary: 'Treat the roster like a title threat from day one.' },
-  { id: 'playoff', title: 'Playoff Push', summary: 'Expect October baseball and manage the room accordingly.' },
-  { id: 'compete', title: 'Compete', summary: 'Push for traction without sacrificing every future edge.' },
-  { id: 'rebuild', title: 'Rebuild', summary: 'Protect runway and force the long view to stay honest.' },
-];
-
-const BUDGET_OPTIONS = [
-  { id: 'spend_now' as const, title: 'Spend Now', summary: 'Front-load support and treat the current roster as urgent.' },
-  { id: 'balanced' as const, title: 'Balanced', summary: 'Support the club while preserving some in-season maneuvering.' },
-  { id: 'future_flex' as const, title: 'Future Flex', summary: 'Keep powder dry for injuries, trades, and opportunistic moves.' },
-];
-
-const DEVELOPMENT_OPTIONS: Array<{
-  id: NonNullable<DayOneSession['choices']['developmentStyle']>;
-  title: string;
-  summary: string;
-}> = [
-  { id: 'aggressive', title: 'Aggressive', summary: 'Push prospects fast and tolerate more development risk.' },
-  { id: 'balanced', title: 'Balanced', summary: 'Blend urgency and patience without locking into either extreme.' },
-  { id: 'patient', title: 'Patient', summary: 'Protect development time and trust the longer runway.' },
-];
-
-const PROMOTION_OPTIONS = [
-  { id: 'aggressive' as const, title: 'Aggressive Promotions', summary: 'Great minor-league performance triggers fast call-up pressure.' },
-  { id: 'measured' as const, title: 'Measured Promotions', summary: 'Promotions stay available, but only when the timing is clean.' },
-  { id: 'patient' as const, title: 'Patient Promotions', summary: 'Prospects need clear proof before they move.' },
-];
-
-function buildPlanOptionLabel(option: { name: string; position: string }) {
-  return `${option.name} · ${option.position}`;
+interface WorkerMutationResult {
+  success: boolean;
+  flowStateChanged: boolean;
 }
 
-function buildOpeningPlanWarnings(
-  plan: OpeningPlanDraft | null,
-  view: DayOneSession['openingPlanView'],
-): OpeningPlanWarnings {
-  if (plan == null || view == null) {
-    return { lineup: [], rotation: [], bullpen: [] };
+function readErrorMessage(caughtError: unknown, fallback: string) {
+  return caughtError instanceof Error ? caughtError.message : fallback;
+}
+
+function requireSnapshotObject(snapshot: unknown): object {
+  if (snapshot == null || typeof snapshot !== 'object') {
+    throw new Error('Worker did not return a valid snapshot object.');
   }
 
-  const optionLookup = new Map<string, OpeningPlanOption>();
-  for (const option of [...view.lineupOptions, ...view.rotationOptions, ...view.bullpenOptions]) {
-    optionLookup.set(option.playerId, option);
-  }
-
-  const playerLabel = (playerId: string) => optionLookup.get(playerId)?.name ?? playerId;
-  const duplicateLabels = (playerIds: Array<string | null | undefined>) => {
-    const counts = new Map<string, number>();
-    for (const playerId of playerIds) {
-      if (!playerId) {
-        continue;
-      }
-      counts.set(playerId, (counts.get(playerId) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .filter(([, count]) => count > 1)
-      .map(([playerId]) => playerLabel(playerId));
-  };
-
-  const lineupDuplicates = duplicateLabels(plan.lineupPlayerIds);
-  const rotationDuplicates = duplicateLabels(plan.rotationPlayerIds);
-  const bullpenRoles = [
-    plan.bullpen?.closerId ?? null,
-    ...(plan.bullpen?.setupIds ?? []),
-    plan.bullpen?.longReliefId ?? null,
-  ];
-  const bullpenDuplicates = duplicateLabels(bullpenRoles);
-  const starterOverlap = [...new Set(
-    bullpenRoles
-      .filter((playerId): playerId is string => Boolean(playerId))
-      .filter((playerId) => plan.rotationPlayerIds.includes(playerId)),
-  )].map(playerLabel);
-
-  return {
-    lineup: lineupDuplicates.map((label) => `${label} is assigned to multiple lineup spots.`),
-    rotation: rotationDuplicates.map((label) => `${label} is assigned to multiple rotation spots.`),
-    bullpen: [
-      ...bullpenDuplicates.map((label) => `${label} is assigned to multiple bullpen roles.`),
-      ...starterOverlap.map((label) => `${label} is assigned in both the rotation and the bullpen.`),
-    ],
-  };
+  return snapshot;
 }
 
-function hasOpeningPlanWarnings(warnings: OpeningPlanWarnings) {
-  return warnings.lineup.length > 0 || warnings.rotation.length > 0 || warnings.bullpen.length > 0;
+function getCurrentChapter(state: OnboardingFlowState) {
+  return REVISED_CHAPTER_ORDER[state.currentChapter] ?? REVISED_CHAPTER_ORDER[0]!;
+}
+
+function buildDialogueText(chapter: RevisedChapterScript | null, key: 'intro' | 'reaction') {
+  return chapter?.[key].map((line) => line.text).join(' ') ?? '';
+}
+
+function buildFallbackBody(chapterId: RevisedChapterId) {
+  switch (chapterId) {
+    case 'owners_office':
+      return 'The owner is setting the mandate. Pick the operating target your front office will answer to.';
+    case 'roster_review':
+      return 'Review the major-league room before you start assigning people to fix it.';
+    case 'hire_coaches':
+      return 'Fill the manager, pitching coach, and hitting coach offices before the season starts moving.';
+    case 'farm_system':
+      return 'Set the development posture that will shape promotions and prospect patience.';
+    case 'hire_scouts':
+      return 'Pick the scouting director whose specialty becomes the organization acquisition lens.';
+    case 'financial_plan':
+      return 'Choose how aggressively this front office should use payroll flexibility.';
+    case 'season_strategy':
+      return 'Set the trade-market posture for the first competitive window.';
+    case 'press_conference':
+      return 'Decide how directly you want to set public expectations.';
+    case 'agm_selection':
+    default:
+      return 'Choose the assistant GM who will narrate the rest of Day One.';
+  }
 }
 
 export default function RevisedOnboardingPage() {
@@ -142,74 +110,42 @@ export default function RevisedOnboardingPage() {
     saveSlotId,
     triggers: ['intro_scroll'],
   });
-  const [session, setSession] = useState<DayOneSession | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [developmentStyle, setDevelopmentStyle] = useState<NonNullable<DayOneSession['choices']['developmentStyle']>>('balanced');
-  const [promotionStance, setPromotionStance] = useState<NonNullable<DayOneSession['choices']['promotionStance']>>('measured');
-  const [openingPlanDraft, setOpeningPlanDraft] = useState<OpeningPlanDraft | null>(null);
 
-  const refreshSession = useCallback(async () => {
+  const [candidates, setCandidates] = useState<AGMCandidate[]>([]);
+  const [data, setData] = useState<RevisedOnboardingData | null>(null);
+  const [flowState, setFlowState] = useState<OnboardingFlowState>(() => createRevisedOnboardingState());
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const hasSaveTarget = Boolean(activeSaveId) || activeSaveSlot != null;
+  const currentChapter = getCurrentChapter(flowState);
+  const currentScript = data?.script.chapters[currentChapter.id] ?? null;
+  const selectedAGM = data?.script.agm ?? candidates.find((candidate) => candidate.id === flowState.selectedAGMId) ?? null;
+  const isBusy = loading || submitting;
+
+  const loadCandidates = useCallback(async () => {
     if (!worker.isReady) {
       return;
     }
+
     setLoading(true);
     try {
-      const nextSession = await worker.getDayOneSession();
-      setSession(nextSession);
+      const nextCandidates = await worker.getAGMCandidates();
+      setCandidates(nextCandidates);
       setError(null);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Failed to load Day One.');
+      setError(readErrorMessage(caughtError, 'Failed to load AGM candidates.'));
     } finally {
       setLoading(false);
     }
   }, [worker]);
 
   useEffect(() => {
-    void refreshSession();
-  }, [refreshSession]);
+    void loadCandidates();
+  }, [loadCandidates]);
 
-  useEffect(() => {
-    if (session?.currentStep !== 'development') {
-      return;
-    }
-    setDevelopmentStyle(session.choices.developmentStyle ?? 'balanced');
-    setPromotionStance(session.choices.promotionStance ?? 'measured');
-  }, [session]);
-
-  useEffect(() => {
-    if (session?.currentStep !== 'opening_day_plan' || session.choices.openingDayPlan == null) {
-      return;
-    }
-    setOpeningPlanDraft({
-      lineupPlayerIds: [...session.choices.openingDayPlan.lineupPlayerIds],
-      rotationPlayerIds: [...session.choices.openingDayPlan.rotationPlayerIds],
-      bullpen: session.choices.openingDayPlan.bullpen == null
-        ? null
-        : {
-          closerId: session.choices.openingDayPlan.bullpen.closerId,
-          setupIds: [...session.choices.openingDayPlan.bullpen.setupIds],
-          longReliefId: session.choices.openingDayPlan.bullpen.longReliefId,
-        },
-    });
-  }, [session]);
-
-  const performAction = useCallback(async (action: () => Promise<unknown>) => {
-    setLoading(true);
-    try {
-      await action();
-      const nextSession = await worker.getDayOneSession();
-      setSession(nextSession);
-      setError(null);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Day One action failed.');
-    } finally {
-      setLoading(false);
-    }
-  }, [worker]);
-
-  const persistDayOneCompletion = useCallback(async () => {
-    const snapshot = await worker.exportSnapshot();
+  const persistCompletion = useCallback(async (snapshot: object) => {
     if (activeSaveId) {
       const existingSave = await loadGameById(activeSaveId);
       if (existingSave) {
@@ -224,951 +160,545 @@ export default function RevisedOnboardingPage() {
     }
 
     if (activeSaveSlot != null) {
-      const teamName = session?.teamCard.teamName ?? 'Franchise';
-      await saveGame(activeSaveSlot, `${gmName} • ${teamName}`, snapshot);
+      await saveGame(activeSaveSlot, `${gmName} • Franchise`, snapshot);
     }
-  }, [activeSaveId, activeSaveSlot, gmName, session, worker]);
+  }, [activeSaveId, activeSaveSlot, gmName]);
 
-  const enterFrontOffice = useCallback(async () => {
-    setLoading(true);
+  const handleSelectAGM = useCallback(async (agmId: AGMCandidateId) => {
+    setSubmitting(true);
     try {
-      await worker.finishDayOne();
-      await persistDayOneCompletion();
+      const nextData = await worker.getRevisedOnboardingData(agmId);
+      setData(nextData);
+      setFlowState(selectAGMInFlow(createRevisedOnboardingState(), agmId));
+      setError(null);
+    } catch (caughtError) {
+      setError(readErrorMessage(caughtError, 'Failed to load revised onboarding.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [worker]);
+
+  const completeLocalChapter = useCallback((nextState: OnboardingFlowState) => {
+    setFlowState(nextState);
+    setError(null);
+  }, []);
+
+  const handleChoice = useCallback(<K extends ChoiceField>(field: K, value: GMPhilosophy[K]) => {
+    completeLocalChapter(setPhilosophyChoiceInFlow(flowState, field, value));
+  }, [completeLocalChapter, flowState]);
+
+  const handleRosterAdvance = useCallback(() => {
+    completeLocalChapter(advanceRevisedChapter(flowState));
+  }, [completeLocalChapter, flowState]);
+
+  const handleStaffHires = useCallback(async (hires: StaffHireChoices) => {
+    setSubmitting(true);
+    try {
+      await worker.applyStaffHires(hires) as WorkerMutationResult;
+      setFlowState(setStaffHiresInFlow(flowState, hires));
+      setError(null);
+    } catch (caughtError) {
+      setError(readErrorMessage(caughtError, 'Failed to apply staff hires.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [flowState, worker]);
+
+  const handleScoutingHire = useCallback(async (scoutingDirectorId: string) => {
+    setSubmitting(true);
+    try {
+      await worker.applyScoutingHire(scoutingDirectorId) as WorkerMutationResult;
+      setFlowState(setScoutingHireInFlow(flowState, scoutingDirectorId));
+      setError(null);
+    } catch (caughtError) {
+      setError(readErrorMessage(caughtError, 'Failed to apply scouting hire.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [flowState, worker]);
+
+  const handleEnterFrontOffice = useCallback(async () => {
+    if (data == null) {
+      setError('Revised onboarding data is missing.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = getOnboardingResult(flowState, data.scoutingSlate);
+      await worker.completeRevisedOnboarding(result) as WorkerMutationResult;
+      const snapshot = requireSnapshotObject(await worker.exportSnapshot());
+      await persistCompletion(snapshot);
       setError(null);
       navigate('/dashboard');
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Failed to enter the front office.');
+      setError(readErrorMessage(caughtError, 'Failed to complete revised onboarding.'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
-  }, [navigate, persistDayOneCompletion, worker]);
-
-  const updateOpeningPlanDraft = useCallback((updater: (current: OpeningPlanDraft) => OpeningPlanDraft) => {
-    setOpeningPlanDraft((current) => {
-      const baseline = current ?? session?.choices.openingDayPlan;
-      return baseline ? updater(baseline) : current;
-    });
-  }, [session]);
-
-  const updateLineupSlot = useCallback((index: number, playerId: string) => {
-    updateOpeningPlanDraft((current) => {
-      const next = [...current.lineupPlayerIds];
-      next[index] = playerId;
-      return {
-        ...current,
-        lineupPlayerIds: next,
-      };
-    });
-  }, [updateOpeningPlanDraft]);
-
-  const updateRotationSlot = useCallback((index: number, playerId: string) => {
-    updateOpeningPlanDraft((current) => {
-      const next = [...current.rotationPlayerIds];
-      next[index] = playerId;
-      return {
-        ...current,
-        rotationPlayerIds: next,
-      };
-    });
-  }, [updateOpeningPlanDraft]);
-
-  const updateBullpenRole = useCallback((role: 'closer' | 'longRelief' | 'setup0' | 'setup1', playerId: string) => {
-    updateOpeningPlanDraft((current) => {
-      const bullpen = current.bullpen ?? {
-        closerId: null,
-        setupIds: ['', ''],
-        longReliefId: null,
-      };
-      const nextSetupIds = [...bullpen.setupIds];
-      if (role === 'closer') {
-        return {
-          ...current,
-          bullpen: {
-            ...bullpen,
-            closerId: playerId,
-            setupIds: nextSetupIds,
-          },
-        };
-      }
-      if (role === 'longRelief') {
-        return {
-          ...current,
-          bullpen: {
-            ...bullpen,
-            longReliefId: playerId,
-            setupIds: nextSetupIds,
-          },
-        };
-      }
-      nextSetupIds[role === 'setup0' ? 0 : 1] = playerId;
-      return {
-        ...current,
-        bullpen: {
-          ...bullpen,
-          setupIds: nextSetupIds,
-        },
-      };
-    });
-  }, [updateOpeningPlanDraft]);
-
-  const openingPlanWarnings = useMemo(
-    () => buildOpeningPlanWarnings(openingPlanDraft, session?.openingPlanView ?? null),
-    [openingPlanDraft, session?.openingPlanView],
-  );
-  const openingPlanHasWarnings = hasOpeningPlanWarnings(openingPlanWarnings);
-
-  const resetLineupToRecommended = useCallback(() => {
-    const recommendedPlan = session?.choices.openingDayPlan;
-    if (recommendedPlan == null) {
-      return;
-    }
-    updateOpeningPlanDraft((current) => ({
-      ...current,
-      lineupPlayerIds: [...recommendedPlan.lineupPlayerIds],
-    }));
-  }, [session?.choices.openingDayPlan, updateOpeningPlanDraft]);
-
-  const resetRotationToRecommended = useCallback(() => {
-    const recommendedPlan = session?.choices.openingDayPlan;
-    if (recommendedPlan == null) {
-      return;
-    }
-    updateOpeningPlanDraft((current) => ({
-      ...current,
-      rotationPlayerIds: [...recommendedPlan.rotationPlayerIds],
-    }));
-  }, [session?.choices.openingDayPlan, updateOpeningPlanDraft]);
-
-  const resetBullpenToRecommended = useCallback(() => {
-    const recommendedBullpen = session?.choices.openingDayPlan?.bullpen;
-    if (recommendedBullpen == null) {
-      return;
-    }
-    updateOpeningPlanDraft((current) => ({
-      ...current,
-      bullpen: {
-        closerId: recommendedBullpen.closerId,
-        setupIds: [...recommendedBullpen.setupIds],
-        longReliefId: recommendedBullpen.longReliefId,
-      },
-    }));
-  }, [session?.choices.openingDayPlan, updateOpeningPlanDraft]);
+  }, [data, flowState, navigate, persistCompletion, worker]);
 
   const agmPanel = useMemo(() => {
-    if (!session?.selectedAGM) {
+    if (selectedAGM == null || data == null) {
       return null;
     }
 
-    const expression = session.currentStep === 'crisis'
-      ? 'concerned'
-      : session.currentStep === 'complete' || session.currentStep === 'recap'
-        ? 'confident'
-        : session.currentStep === 'opening_day_plan' || session.currentStep === 'development'
-          ? 'focused'
-          : 'neutral';
-
-    const eyebrow = session.currentStep === 'crisis'
-      ? 'Crisis Beat'
-      : session.currentStep === 'complete' || session.currentStep === 'recap'
-        ? 'Day One Recap'
-        : session.currentStep === 'org_review'
-          ? 'Org Diagnosis'
-          : 'Desk-Side AGM';
-
-    const headline = session.currentStep === 'crisis'
-      ? (session.crisis?.title ?? 'The room needs a call.')
-      : session.currentStep === 'recap' || session.currentStep === 'complete'
-        ? 'The room has its marching orders.'
-        : session.currentStep === 'org_review'
-          ? `${session.teamCard.teamName} is ${session.orgReview.mlbTier} now and ${session.orgReview.farmTier} underneath.`
-          : `${session.selectedAGM.name} is guiding Day One.`;
-
-    const body = session.currentStep === 'crisis'
-      ? (session.crisis?.summary ?? 'Your first real test is already on the desk.')
-      : session.currentStep === 'recap' || session.currentStep === 'complete'
-        ? (session.recap?.summary ?? 'Day One decisions are locked in and the front office is live.')
-        : session.currentStep === 'org_review'
-          ? session.orgReview.inheritedStory
-          : `Your AGM is framing each decision around Season 1 pressure, organizational leverage, and what kind of franchise you want to become.`;
+    const introText = buildDialogueText(currentScript, 'intro');
+    const reactionText = buildDialogueText(currentScript, 'reaction');
 
     return (
       <AGMRuntimePanel
-        candidate={session.selectedAGM}
-        mode={session.currentStep === 'crisis' || session.currentStep === 'recap' || session.currentStep === 'complete' ? 'chapter' : 'desk'}
-        expression={expression}
-        eyebrow={session.stepCopy.eyebrow || eyebrow}
-        headline={session.stepCopy.headline || headline}
-        body={session.stepCopy.body || body}
+        candidate={selectedAGM}
+        mode={flowState.isComplete ? 'chapter' : 'desk'}
+        expression={flowState.isComplete ? 'confident' : currentChapter.isHiring ? 'focused' : 'neutral'}
+        eyebrow={flowState.isComplete ? 'Front Office Ready' : currentChapter.label}
+        headline={introText || `${selectedAGM.name} is guiding the room.`}
+        body={reactionText || introText || buildFallbackBody(currentChapter.id)}
       />
     );
-  }, [session]);
+  }, [currentChapter, currentScript, data, flowState.isComplete, selectedAGM]);
 
-  if (loading && session == null) {
-    return <LoadingState label="Preparing Day One..." />;
+  const nudgeCard = (
+    <GuidedStartNudgeCard
+      current={introNudges.current}
+      onDismiss={introNudges.dismiss}
+    />
+  );
+
+  if (loading && candidates.length === 0) {
+    return (
+      <>
+        <LoadingState label="Loading AGM candidates..." />
+        {nudgeCard}
+      </>
+    );
   }
 
-  if (!session) {
-    return <LoadingState label="Loading front office..." />;
+  if (!hasSaveTarget) {
+    return (
+      <>
+        <PageShell>
+          <EmptyState
+            title="No active save selected"
+            body="Revised onboarding needs an active save slot so the final front-office snapshot can be preserved."
+            actionLabel="Return to Save Hub"
+            onAction={() => navigate('/')}
+          />
+        </PageShell>
+        {nudgeCard}
+      </>
+    );
+  }
+
+  if (data == null) {
+    return (
+      <>
+        <PageShell>
+          <Header
+            eyebrow="Revised Day One"
+            title="Choose Your Assistant GM"
+            body="The revised onboarding path starts with the AGM candidates from the worker, then builds every assessment, hire, and final save from that selection."
+          />
+          {error ? <ErrorBanner message={error} /> : null}
+          <AGMSelectionPanel
+            candidates={candidates}
+            onSelect={handleSelectAGM}
+            isLoading={isBusy}
+          />
+        </PageShell>
+        {nudgeCard}
+      </>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-dynasty-base px-6 py-8 text-dynasty-text">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-warning">
-                {session.mode === 'quick' ? 'Quick Start' : 'Full Day One'}
-              </div>
-              <h1 className="mt-3 font-brand text-4xl text-dynasty-textBright">
-                {session.teamCard.teamName}
-              </h1>
-              <p className="mt-3 max-w-4xl font-heading text-sm leading-6 text-dynasty-muted">
-                {session.teamCard.franchiseHook}
-              </p>
-            </div>
-            <div className="rounded-xl border border-dynasty-border bg-dynasty-base/50 px-4 py-3">
-              <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Current Step</div>
-              <div className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">
-                {STEP_LABELS[session.currentStep]}
+    <>
+      <PageShell>
+        <Header
+          eyebrow="Revised Day One"
+          title={flowState.isComplete ? 'Front Office Ready' : currentChapter.label}
+          body={flowState.isComplete
+            ? 'Your AGM, staff hires, scouting director, and operating philosophy are ready to write back to the save.'
+            : buildFallbackBody(currentChapter.id)}
+          aside={(
+            <div className="rounded-lg border border-dynasty-border bg-dynasty-base/50 px-4 py-3">
+              <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Progress</div>
+              <div className="mt-2">
+                <ChapterProgress
+                  currentChapter={flowState.currentChapter}
+                  totalChapters={REVISED_CHAPTER_ORDER.length}
+                  chapters={REVISED_CHAPTER_ORDER}
+                />
               </div>
             </div>
-          </div>
+          )}
+        />
 
-          {session.projectedImpacts.length > 0 ? (
-            <div className="mt-5 grid gap-3 lg:grid-cols-4">
-              {session.projectedImpacts.map((impact) => (
-                <ImpactCard key={impact.label} label={impact.label} direction={impact.direction} summary={impact.summary} />
-              ))}
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="mt-4 rounded-xl border border-accent-danger/40 bg-accent-danger/10 px-4 py-3 font-heading text-sm text-accent-danger">
-              {error}
-            </div>
-          ) : null}
-        </section>
+        {error ? <ErrorBanner message={error} /> : null}
 
         <section className={`grid gap-6 ${agmPanel ? 'xl:grid-cols-[1.1fr_0.9fr]' : ''}`}>
-          <div className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
-            {renderCurrentStep({
-              session,
-              loading,
-              onAdvanceIntro: () => performAction(() => worker.advanceDayOneIntro()),
-              onChooseAGM: (agmId) => performAction(() => worker.chooseDayOneAGM(agmId)),
-              onAdvanceOrgReview: () => performAction(() => worker.advanceDayOneOrgReview()),
-              onSetSeasonGoal: (seasonGoal) => performAction(() => worker.setDayOneSeasonGoal(seasonGoal)),
-              onSetBudget: (budgetAllocation) => performAction(() => worker.setDayOneBudgetAllocation(budgetAllocation)),
-              onLockOpeningPlan: () => performAction(() => worker.setDayOneOpeningPlan(openingPlanDraft ?? session.choices.openingDayPlan!)),
-              onSetDevelopmentPlan: () => performAction(() => worker.setDayOneDevelopmentPlan({
-                developmentStyle,
-                promotionStance,
-              })),
-              onResolveCrisis: (responseId) => performAction(() => worker.resolveDayOneCrisis(responseId)),
-              onEnterFrontOffice: enterFrontOffice,
-              developmentStyle,
-              promotionStance,
-              openingPlanDraft,
-              onPickDevelopmentStyle: setDevelopmentStyle,
-              onPickPromotionStance: setPromotionStance,
-              onUpdateLineupSlot: updateLineupSlot,
-              onUpdateRotationSlot: updateRotationSlot,
-              onUpdateBullpenRole: updateBullpenRole,
-              onResetLineup: resetLineupToRecommended,
-              onResetRotation: resetRotationToRecommended,
-              onResetBullpen: resetBullpenToRecommended,
-              openingPlanWarnings,
-              openingPlanHasWarnings,
-            })}
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
+            {flowState.isComplete ? (
+              <CompletionPanel
+                data={data}
+                isSubmitting={submitting}
+                onEnterFrontOffice={handleEnterFrontOffice}
+              />
+            ) : (
+              <ChapterBody
+                chapterId={currentChapter.id}
+                script={currentScript}
+                data={data}
+                isSubmitting={submitting}
+                onChoice={handleChoice}
+                onRosterAdvance={handleRosterAdvance}
+                onStaffHires={handleStaffHires}
+                onScoutingHire={handleScoutingHire}
+              />
+            )}
           </div>
 
           {agmPanel}
         </section>
-      </div>
-      <GuidedStartNudgeCard
-        current={introNudges.current}
-        onDismiss={introNudges.dismiss}
-      />
+      </PageShell>
+      {nudgeCard}
+    </>
+  );
+}
+
+function ChapterBody({
+  chapterId,
+  script,
+  data,
+  isSubmitting,
+  onChoice,
+  onRosterAdvance,
+  onStaffHires,
+  onScoutingHire,
+}: {
+  chapterId: RevisedChapterId;
+  script: RevisedChapterScript | null;
+  data: RevisedOnboardingData;
+  isSubmitting: boolean;
+  onChoice: <K extends ChoiceField>(field: K, value: GMPhilosophy[K]) => void;
+  onRosterAdvance: () => void;
+  onStaffHires: (hires: StaffHireChoices) => void;
+  onScoutingHire: (scoutingDirectorId: string) => void;
+}) {
+  switch (chapterId) {
+    case 'owners_office':
+      return (
+        <ChapterLayout script={script}>
+          {script ? <AssessmentPanel chapter={script} /> : null}
+          <ChoiceGrid
+            title="Choose the season mandate"
+            options={data.chapterData.owner.seasonGoalOptions}
+            onSelect={(id) => onChoice('seasonGoal', id as GMPhilosophy['seasonGoal'])}
+            disabled={isSubmitting}
+          />
+        </ChapterLayout>
+      );
+    case 'roster_review':
+      return (
+        <ChapterLayout script={script}>
+          {script ? <AssessmentPanel chapter={script} /> : null}
+          <ActionFooter>
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={onRosterAdvance}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
+            >
+              Continue Roster Review
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </ActionFooter>
+        </ChapterLayout>
+      );
+    case 'hire_coaches':
+      return (
+        <ChapterLayout script={script}>
+          <HireCoachesView
+            slate={data.staffSlate}
+            opinions={data.script.staffOpinions}
+            onConfirm={onStaffHires}
+            isSubmitting={isSubmitting}
+          />
+        </ChapterLayout>
+      );
+    case 'farm_system':
+      return (
+        <ChapterLayout script={script}>
+          {script ? <AssessmentPanel chapter={script} /> : null}
+          <ChoiceGrid
+            title="Choose the development posture"
+            options={data.chapterData.farm.developmentOptions}
+            onSelect={(id) => onChoice('developmentStyle', id as GMPhilosophy['developmentStyle'])}
+            disabled={isSubmitting}
+          />
+        </ChapterLayout>
+      );
+    case 'hire_scouts':
+      return (
+        <ChapterLayout script={script}>
+          <HireScoutsView
+            slate={data.scoutingSlate}
+            opinions={data.script.scoutOpinions}
+            onConfirm={onScoutingHire}
+            isSubmitting={isSubmitting}
+          />
+        </ChapterLayout>
+      );
+    case 'financial_plan':
+      return (
+        <ChapterLayout script={script}>
+          {script ? <AssessmentPanel chapter={script} /> : null}
+          <ChoiceGrid
+            title="Choose the spending posture"
+            options={data.chapterData.financial.spendingOptions}
+            onSelect={(id) => onChoice('spendingStyle', id as GMPhilosophy['spendingStyle'])}
+            disabled={isSubmitting}
+          />
+        </ChapterLayout>
+      );
+    case 'season_strategy':
+      return (
+        <ChapterLayout script={script}>
+          {script ? <AssessmentPanel chapter={script} /> : null}
+          <ChoiceGrid
+            title="Choose the trade posture"
+            options={data.chapterData.strategy.strategyOptions}
+            onSelect={(id) => onChoice('tradeApproach', id as GMPhilosophy['tradeApproach'])}
+            disabled={isSubmitting}
+          />
+        </ChapterLayout>
+      );
+    case 'press_conference':
+      return (
+        <ChapterLayout script={script}>
+          {script ? <AssessmentPanel chapter={script} /> : null}
+          <ChoiceGrid
+            title="Choose the first public tone"
+            options={data.chapterData.press.openingStatementOptions.map((option) => ({
+              id: option.id,
+              label: option.label,
+              description: option.statement,
+            }))}
+            onSelect={(id) => onChoice('mediaTone', id as GMPhilosophy['mediaTone'])}
+            disabled={isSubmitting}
+          />
+        </ChapterLayout>
+      );
+    case 'agm_selection':
+    default:
+      return null;
+  }
+}
+
+function PageShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-dynasty-base px-6 py-8 text-dynasty-text">
+      <div className="mx-auto max-w-7xl space-y-6">{children}</div>
     </div>
   );
 }
 
-function renderCurrentStep(args: {
-  session: DayOneSession;
-  loading: boolean;
-  onAdvanceIntro: () => void;
-  onChooseAGM: (agmId: AGMCandidate['id']) => void;
-  onAdvanceOrgReview: () => void;
-  onSetSeasonGoal: (seasonGoal: GMPhilosophy['seasonGoal']) => void;
-  onSetBudget: (budgetAllocation: 'spend_now' | 'balanced' | 'future_flex') => void;
-  onLockOpeningPlan: () => void;
-  onSetDevelopmentPlan: () => void;
-  onResolveCrisis: (responseId: string) => void;
-  onEnterFrontOffice: () => void;
-  developmentStyle: NonNullable<DayOneSession['choices']['developmentStyle']>;
-  promotionStance: NonNullable<DayOneSession['choices']['promotionStance']>;
-  openingPlanDraft: OpeningPlanDraft | null;
-  onPickDevelopmentStyle: (value: NonNullable<DayOneSession['choices']['developmentStyle']>) => void;
-  onPickPromotionStance: (value: NonNullable<DayOneSession['choices']['promotionStance']>) => void;
-  onUpdateLineupSlot: (index: number, playerId: string) => void;
-  onUpdateRotationSlot: (index: number, playerId: string) => void;
-  onUpdateBullpenRole: (role: 'closer' | 'longRelief' | 'setup0' | 'setup1', playerId: string) => void;
-  onResetLineup: () => void;
-  onResetRotation: () => void;
-  onResetBullpen: () => void;
-  openingPlanWarnings: OpeningPlanWarnings;
-  openingPlanHasWarnings: boolean;
+function Header({
+  eyebrow,
+  title,
+  body,
+  aside,
+}: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  aside?: ReactNode;
 }) {
-  const {
-    session,
-    loading,
-    onAdvanceIntro,
-    onChooseAGM,
-    onAdvanceOrgReview,
-    onSetSeasonGoal,
-    onSetBudget,
-    onLockOpeningPlan,
-    onSetDevelopmentPlan,
-    onResolveCrisis,
-    onEnterFrontOffice,
-    developmentStyle,
-    promotionStance,
-    openingPlanDraft,
-    onPickDevelopmentStyle,
-    onPickPromotionStance,
-    onUpdateLineupSlot,
-    onUpdateRotationSlot,
-    onUpdateBullpenRole,
-    onResetLineup,
-    onResetRotation,
-    onResetBullpen,
-    openingPlanWarnings,
-    openingPlanHasWarnings,
-  } = args;
+  return (
+    <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-warning">
+            {eyebrow}
+          </div>
+          <h1 className="mt-3 font-brand text-4xl text-dynasty-textBright">
+            {title}
+          </h1>
+          <p className="mt-3 max-w-4xl font-heading text-sm leading-6 text-dynasty-muted">
+            {body}
+          </p>
+        </div>
+        {aside}
+      </div>
+    </section>
+  );
+}
 
-  switch (session.currentStep) {
-    case 'owner_intro':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={BriefcaseBusiness}
-            title={session.ownerScene.title}
-            body={session.ownerScene.summary}
-          />
-          <div className="grid gap-4 lg:grid-cols-2">
-            <NarrativeCard title="Expectation" body={session.ownerScene.expectation} />
-            <NarrativeCard title="Stakes" body={session.ownerScene.stakes} />
+function ChapterLayout({ script, children }: { script: RevisedChapterScript | null; children: ReactNode }) {
+  const intro = buildDialogueText(script, 'intro');
+
+  return (
+    <div className="space-y-6">
+      {script ? (
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-base/50 p-4">
+          <div className="font-data text-[10px] uppercase tracking-[0.2em] text-accent-primary">
+            {script.chapter.label}
           </div>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={onAdvanceIntro}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
-          >
-            Meet The AGM Candidates
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      );
-    case 'agm_select':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={Users}
-            title="Choose Your Assistant GM"
-            body={session.mode === 'quick'
-              ? 'Pick the lieutenant you trust. Quick Start will auto-resolve the rest of Day One immediately after this choice.'
-              : 'Each AGM will frame the organization differently. Pick the one you want beside you for every Day One decision.'}
-          />
-          <div className="grid gap-4 xl:grid-cols-3">
-            {session.agmCandidates.map((candidate) => (
-              <button
-                key={candidate.id}
-                type="button"
-                disabled={loading}
-                onClick={() => onChooseAGM(candidate.id)}
-                className="rounded-2xl border border-dynasty-border bg-dynasty-base/50 p-4 text-left transition-colors hover:border-accent-primary hover:bg-accent-primary/10 disabled:opacity-50"
-              >
-                <div className="font-heading text-lg font-semibold text-dynasty-textBright">{candidate.name}</div>
-                <div className="mt-1 font-data text-[10px] uppercase tracking-[0.18em] text-accent-warning">{candidate.nickname}</div>
-                <p className="mt-3 font-heading text-sm leading-6 text-dynasty-muted">{candidate.selectionScreenBio}</p>
-                <div className="mt-4 font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">Strengths</div>
-                <div className="mt-2 space-y-2">
-                  {candidate.strengths.slice(0, 3).map((strength) => (
-                    <div key={strength} className="rounded-lg border border-dynasty-border/70 px-3 py-2 font-heading text-xs text-dynasty-text">
-                      {strength}
-                    </div>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-    case 'org_review':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={ChartNoAxesCombined}
-            title="Your Inherited Organization"
-            body={session.orgReview.inheritedStory}
-          />
-          <div className="grid gap-4 md:grid-cols-3">
-            <MetricCard label="Projected Record" value={session.teamCard.projectedRecord} />
-            <MetricCard label="MLB Rank" value={`#${session.orgReview.mlbRank}`} />
-            <MetricCard label="Farm Rank" value={`#${session.orgReview.farmRank}`} />
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ListBlock title="Core Strengths" items={session.orgReview.strengths} />
-            <ListBlock title="Pressure Points" items={session.orgReview.weaknesses} />
-          </div>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={onAdvanceOrgReview}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
-          >
-            Set The Season Goal
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      );
-    case 'season_goal':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={ShieldAlert}
-            title="Owner Mandate"
-            body="Lock the posture you want the room to feel immediately. This is the first sentence in your Season 1 story."
-          />
-          <div className="grid gap-4 lg:grid-cols-2">
-            {SEASON_GOAL_OPTIONS.map((option) => (
-              <DecisionCard
-                key={option.id}
-                title={option.title}
-                summary={option.summary}
-                onClick={() => onSetSeasonGoal(option.id)}
-                disabled={loading}
-              />
-            ))}
-          </div>
-        </div>
-      );
-    case 'budget':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={WalletCards}
-            title="Budget Allocation"
-            body="Decide how aggressive you want the front office to feel in Season 1. This is about baseball ops and in-season flexibility, not fake admin work."
-          />
-          <div className="grid gap-4 lg:grid-cols-3">
-            {BUDGET_OPTIONS.map((option) => (
-              <DecisionCard
-                key={option.id}
-                title={option.title}
-                summary={option.summary}
-                onClick={() => onSetBudget(option.id)}
-                disabled={loading}
-              />
-            ))}
-          </div>
-        </div>
-      );
-    case 'opening_day_plan':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={ChartNoAxesCombined}
-            title="Opening Day Plan"
-            body="Your AGM has loaded the recommended lineup, rotation, and bullpen ladder. Change the slots you want, then lock the real Season 1 opening plan."
-          />
-          <div className="grid gap-4 lg:grid-cols-3">
-            <PlanEditorBlock
-              title="Lineup"
-              labels={['1', '2', '3', '4', '5', '6', '7', '8', '9']}
-              values={openingPlanDraft?.lineupPlayerIds ?? session.choices.openingDayPlan?.lineupPlayerIds ?? []}
-              recommendedValues={session.choices.openingDayPlan?.lineupPlayerIds ?? []}
-              options={session.openingPlanView?.lineupOptions ?? []}
-              onChange={onUpdateLineupSlot}
-              onReset={onResetLineup}
-              warnings={openingPlanWarnings.lineup}
-            />
-            <PlanEditorBlock
-              title="Rotation"
-              labels={['SP1', 'SP2', 'SP3', 'SP4', 'SP5']}
-              values={openingPlanDraft?.rotationPlayerIds ?? session.choices.openingDayPlan?.rotationPlayerIds ?? []}
-              recommendedValues={session.choices.openingDayPlan?.rotationPlayerIds ?? []}
-              options={session.openingPlanView?.rotationOptions ?? []}
-              onChange={onUpdateRotationSlot}
-              onReset={onResetRotation}
-              warnings={openingPlanWarnings.rotation}
-            />
-            <BullpenEditorBlock
-              values={{
-                closerId: openingPlanDraft?.bullpen?.closerId ?? session.choices.openingDayPlan?.bullpen?.closerId ?? null,
-                setupIds: openingPlanDraft?.bullpen?.setupIds ?? session.choices.openingDayPlan?.bullpen?.setupIds ?? [],
-                longReliefId: openingPlanDraft?.bullpen?.longReliefId ?? session.choices.openingDayPlan?.bullpen?.longReliefId ?? null,
-              }}
-              recommendedValues={{
-                closerId: session.choices.openingDayPlan?.bullpen?.closerId ?? null,
-                setupIds: session.choices.openingDayPlan?.bullpen?.setupIds ?? [],
-                longReliefId: session.choices.openingDayPlan?.bullpen?.longReliefId ?? null,
-              }}
-              options={session.openingPlanView?.bullpenOptions ?? []}
-              onChange={onUpdateBullpenRole}
-              onReset={onResetBullpen}
-              warnings={openingPlanWarnings.bullpen}
-            />
-          </div>
-          <div className="rounded-xl border border-dynasty-border bg-dynasty-base/40 p-4 font-heading text-sm text-dynasty-muted">
-            Pressure points today: {session.orgReview.weaknesses.join(' · ')}.
-          </div>
-          {openingPlanHasWarnings ? (
-            <div className="rounded-xl border border-accent-danger/40 bg-accent-danger/10 p-4 font-heading text-sm text-accent-danger">
-              Fix the duplicate role warnings before locking the Opening Day plan.
-            </div>
+          {intro ? (
+            <p className="mt-2 font-heading text-sm leading-6 text-dynasty-muted">
+              {intro}
+            </p>
           ) : null}
-          <button
-            type="button"
-            disabled={loading || session.choices.openingDayPlan == null || openingPlanHasWarnings}
-            onClick={onLockOpeningPlan}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
-          >
-            Lock Opening Day Plan
-            <ArrowRight className="h-4 w-4" />
-          </button>
         </div>
-      );
-    case 'development':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={Users}
-            title="Development Philosophy"
-            body="Set how aggressively the organization develops talent, then separately decide how quickly prospects get promoted when they force the issue."
-          />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="space-y-3">
-              <div className="font-heading text-sm font-semibold text-dynasty-textBright">Development Style</div>
-              {DEVELOPMENT_OPTIONS.map((option) => (
-                <ToggleCard
-                  key={option.id}
-                  active={developmentStyle === option.id}
-                  title={option.title}
-                  summary={option.summary}
-                  onClick={() => onPickDevelopmentStyle(option.id)}
-                />
-              ))}
-            </div>
-            <div className="space-y-3">
-              <div className="font-heading text-sm font-semibold text-dynasty-textBright">Promotion Stance</div>
-              {PROMOTION_OPTIONS.map((option) => (
-                <ToggleCard
-                  key={option.id}
-                  active={promotionStance === option.id}
-                  title={option.title}
-                  summary={option.summary}
-                  onClick={() => onPickPromotionStance(option.id)}
-                />
-              ))}
-            </div>
-          </div>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
+function ChoiceGrid({
+  title,
+  options,
+  onSelect,
+  disabled,
+}: {
+  title: string;
+  options: readonly ChoiceOption[];
+  onSelect: (id: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-dynasty-muted">{title}</div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {options.map((option) => (
           <button
+            key={option.id}
             type="button"
-            disabled={loading}
-            onClick={onSetDevelopmentPlan}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
+            disabled={disabled}
+            onClick={() => onSelect(option.id)}
+            className="rounded-lg border border-dynasty-border bg-dynasty-base/50 p-4 text-left transition-colors hover:border-accent-primary hover:bg-accent-primary/10 disabled:opacity-50"
           >
-            Lock Development Posture
-            <ArrowRight className="h-4 w-4" />
+            <div className="font-heading text-sm font-semibold text-dynasty-textBright">{option.label}</div>
+            <p className="mt-2 font-data text-xs leading-5 text-dynasty-muted">{option.description}</p>
           </button>
-        </div>
-      );
-    case 'crisis':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={AlertTriangle}
-            title={session.crisis?.title ?? 'Roster Crisis'}
-            body={session.crisis?.summary ?? 'The roster is already forcing a hard call.'}
-          />
-          <div className="grid gap-4 lg:grid-cols-3">
-            {(session.crisis?.responseOptions ?? []).map((option) => (
-              <DecisionCard
-                key={option.id}
-                title={option.label}
-                summary={option.summary}
-                onClick={() => onResolveCrisis(option.id)}
-                disabled={loading}
-              />
-            ))}
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompletionPanel({
+  data,
+  isSubmitting,
+  onEnterFrontOffice,
+}: {
+  data: RevisedOnboardingData;
+  isSubmitting: boolean;
+  onEnterFrontOffice: () => void;
+}) {
+  const farewell = data.script.farewell.map((line) => line.text).join(' ');
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-accent-success/40 bg-accent-success/10 p-5">
+        <div className="flex items-center gap-3">
+          <CheckCircle2 className="h-5 w-5 text-accent-success" />
+          <div>
+            <div className="font-heading text-lg font-semibold text-dynasty-textBright">Revised onboarding complete</div>
+            <p className="mt-1 font-heading text-sm leading-6 text-dynasty-muted">
+              {farewell || 'Your front office is ready for the dashboard.'}
+            </p>
           </div>
         </div>
-      );
-    case 'recap':
-    case 'complete':
-      return (
-        <div className="space-y-6">
-          <StepHeading
-            icon={BriefcaseBusiness}
-            title={session.recap?.title ?? 'Day One Complete'}
-            body={session.recap?.summary ?? 'The front office is ready.'}
-          />
-          {session.teaser ? (
-            <TeaserBeat teaser={session.teaser} />
-          ) : null}
-          <ListBlock title="What You Locked In" items={session.recap?.bullets ?? []} />
-          <button
-            type="button"
-            disabled={loading}
-            onClick={onEnterFrontOffice}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
-          >
-            Enter The Front Office
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      );
-  }
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <SummaryCard label="Assistant GM" value={data.script.agm.name} />
+        <SummaryCard label="Staff Choices" value="Manager, pitching coach, hitting coach" />
+        <SummaryCard label="Scouting Director" value="Ready to write to save" />
+      </div>
+
+      <ActionFooter>
+        <button
+          type="button"
+          disabled={isSubmitting}
+          onClick={onEnterFrontOffice}
+          className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:opacity-50"
+        >
+          Enter the Front Office
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </ActionFooter>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-base/50 px-4 py-3">
+      <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">{label}</div>
+      <div className="mt-2 font-heading text-sm font-semibold text-dynasty-textBright">{value}</div>
+    </div>
+  );
+}
+
+function ActionFooter({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-end border-t border-dynasty-border pt-5">
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({
+  title,
+  body,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  body: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8 text-center">
+      <BriefcaseBusiness className="mx-auto h-8 w-8 text-accent-warning" />
+      <h1 className="mt-4 font-heading text-2xl font-semibold text-dynasty-textBright">{title}</h1>
+      <p className="mx-auto mt-3 max-w-2xl font-heading text-sm leading-6 text-dynasty-muted">{body}</p>
+      <button
+        type="button"
+        onClick={onAction}
+        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover"
+      >
+        {actionLabel}
+        <ArrowRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="rounded-lg border border-accent-danger/40 bg-accent-danger/10 px-4 py-3 font-heading text-sm text-accent-danger">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>{message}</span>
+      </div>
+    </div>
+  );
 }
 
 function LoadingState({ label }: { label: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-dynasty-base">
-      <div className="rounded-2xl border border-dynasty-border bg-dynasty-surface px-6 py-5">
-        <div className="font-brand text-3xl text-dynasty-textBright">MBD</div>
-        <div className="mt-2 font-heading text-sm text-dynasty-muted">{label}</div>
-      </div>
-    </div>
-  );
-}
-
-function StepHeading({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: typeof BriefcaseBusiness;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.2em] text-accent-warning">
-        <Icon className="h-4 w-4" />
-        Day One
-      </div>
-      <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">{title}</h2>
-      <p className="mt-3 max-w-3xl font-heading text-sm leading-6 text-dynasty-muted">{body}</p>
-    </div>
-  );
-}
-
-function DecisionCard({
-  title,
-  summary,
-  disabled,
-  onClick,
-}: {
-  title: string;
-  summary: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="rounded-2xl border border-dynasty-border bg-dynasty-base/50 p-4 text-left transition-colors hover:border-accent-primary hover:bg-accent-primary/10 disabled:opacity-50"
-    >
-      <div className="font-heading text-base font-semibold text-dynasty-textBright">{title}</div>
-      <div className="mt-2 font-heading text-sm leading-6 text-dynasty-muted">{summary}</div>
-    </button>
-  );
-}
-
-function ToggleCard({
-  active,
-  title,
-  summary,
-  onClick,
-}: {
-  active: boolean;
-  title: string;
-  summary: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full rounded-2xl border p-4 text-left transition-colors ${
-        active
-          ? 'border-accent-primary bg-accent-primary/10'
-          : 'border-dynasty-border bg-dynasty-base/50 hover:bg-dynasty-elevated'
-      }`}
-    >
-      <div className="font-heading text-sm font-semibold text-dynasty-textBright">{title}</div>
-      <div className="mt-2 font-heading text-xs leading-5 text-dynasty-muted">{summary}</div>
-    </button>
-  );
-}
-
-function NarrativeCard({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="rounded-2xl border border-dynasty-border bg-dynasty-base/40 p-4">
-      <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">{title}</div>
-      <div className="mt-2 font-heading text-sm leading-6 text-dynasty-text">{body}</div>
-    </div>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-dynasty-border bg-dynasty-base/40 p-4">
-      <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">{label}</div>
-      <div className="mt-2 font-brand text-3xl text-dynasty-textBright">{value}</div>
-    </div>
-  );
-}
-
-function PlanSelectControl({
-  label,
-  value,
-  recommendedPlayerId,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string | null | undefined;
-  recommendedPlayerId?: string | null;
-  options: Array<{ playerId: string; name: string; position: string }>;
-  onChange: (playerId: string) => void;
-}) {
-  const recommendedOption = recommendedPlayerId
-    ? options.find((option) => option.playerId === recommendedPlayerId) ?? null
-    : null;
-
-  return (
-    <label className="block">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">{label}</div>
-        {recommendedOption ? (
-          <div className={`rounded-full px-2 py-1 font-data text-[9px] uppercase tracking-[0.14em] ${
-            value === recommendedPlayerId
-              ? 'bg-accent-success/15 text-accent-success'
-              : 'bg-accent-warning/15 text-accent-warning'
-          }`}>
-            {value === recommendedPlayerId ? 'AGM Recommended' : `AGM: ${recommendedOption.name}`}
-          </div>
-        ) : null}
-      </div>
-      <select
-        value={value ?? ''}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-dynasty-border bg-dynasty-base px-3 py-2 font-heading text-sm text-dynasty-textBright"
-      >
-        {options.map((option) => (
-          <option key={option.playerId} value={option.playerId}>
-            {buildPlanOptionLabel(option)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function PlanEditorBlock({
-  title,
-  labels,
-  values,
-  recommendedValues,
-  options,
-  onChange,
-  onReset,
-  warnings,
-}: {
-  title: string;
-  labels: string[];
-  values: string[];
-  recommendedValues: string[];
-  options: Array<{ playerId: string; name: string; position: string }>;
-  onChange: (index: number, playerId: string) => void;
-  onReset: () => void;
-  warnings: string[];
-}) {
-  return (
-    <div className="rounded-2xl border border-dynasty-border bg-dynasty-base/40 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-heading text-sm font-semibold text-dynasty-textBright">{title}</div>
-        <button
-          type="button"
-          onClick={onReset}
-          className="rounded-lg border border-dynasty-border px-3 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted transition-colors hover:border-accent-primary hover:text-dynasty-textBright"
-        >
-          Reset {title}
-        </button>
-      </div>
-      <div className="mt-3 space-y-3">
-        {labels.map((label, index) => (
-          <PlanSelectControl
-            key={label}
-            label={label}
-            value={values[index]}
-            recommendedPlayerId={recommendedValues[index]}
-            options={options}
-            onChange={(playerId) => onChange(index, playerId)}
-          />
-        ))}
-      </div>
-      <WarningList warnings={warnings} />
-    </div>
-  );
-}
-
-function BullpenEditorBlock({
-  values,
-  recommendedValues,
-  options,
-  onChange,
-  onReset,
-  warnings,
-}: {
-  values: {
-    closerId: string | null;
-    setupIds: string[];
-    longReliefId: string | null;
-  };
-  recommendedValues: {
-    closerId: string | null;
-    setupIds: string[];
-    longReliefId: string | null;
-  };
-  options: Array<{ playerId: string; name: string; position: string }>;
-  onChange: (role: 'closer' | 'longRelief' | 'setup0' | 'setup1', playerId: string) => void;
-  onReset: () => void;
-  warnings: string[];
-}) {
-  return (
-    <div className="rounded-2xl border border-dynasty-border bg-dynasty-base/40 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-heading text-sm font-semibold text-dynasty-textBright">Bullpen Roles</div>
-        <button
-          type="button"
-          onClick={onReset}
-          className="rounded-lg border border-dynasty-border px-3 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted transition-colors hover:border-accent-primary hover:text-dynasty-textBright"
-        >
-          Reset Bullpen
-        </button>
-      </div>
-      <div className="mt-3 space-y-3">
-        <PlanSelectControl
-          label="Closer"
-          value={values.closerId}
-          recommendedPlayerId={recommendedValues.closerId}
-          options={options}
-          onChange={(playerId) => onChange('closer', playerId)}
-        />
-        <PlanSelectControl
-          label="Setup 1"
-          value={values.setupIds[0]}
-          recommendedPlayerId={recommendedValues.setupIds[0]}
-          options={options}
-          onChange={(playerId) => onChange('setup0', playerId)}
-        />
-        <PlanSelectControl
-          label="Setup 2"
-          value={values.setupIds[1]}
-          recommendedPlayerId={recommendedValues.setupIds[1]}
-          options={options}
-          onChange={(playerId) => onChange('setup1', playerId)}
-        />
-        <PlanSelectControl
-          label="Long Relief"
-          value={values.longReliefId}
-          recommendedPlayerId={recommendedValues.longReliefId}
-          options={options}
-          onChange={(playerId) => onChange('longRelief', playerId)}
-        />
-      </div>
-      <WarningList warnings={warnings} />
-    </div>
-  );
-}
-
-function ListBlock({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="rounded-2xl border border-dynasty-border bg-dynasty-base/40 p-4">
-      <div className="font-heading text-sm font-semibold text-dynasty-textBright">{title}</div>
-      <div className="mt-3 space-y-2">
-        {items.map((item) => (
-          <div key={item} className="rounded-lg border border-dynasty-border/70 px-3 py-2 font-heading text-sm text-dynasty-text">
-            {item}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ImpactCard({
-  label,
-  direction,
-  summary,
-}: {
-  label: string;
-  direction: 'up' | 'down' | 'neutral';
-  summary: string;
-}) {
-  const accent = direction === 'up'
-    ? 'border-accent-success/40 bg-accent-success/10'
-    : direction === 'down'
-      ? 'border-accent-danger/40 bg-accent-danger/10'
-      : 'border-accent-info/40 bg-accent-info/10';
-
-  return (
-    <div className={`rounded-xl border px-4 py-3 ${accent}`}>
-      <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">{label}</div>
-      <div className="mt-2 font-heading text-xs leading-5 text-dynasty-text">{summary}</div>
-    </div>
-  );
-}
-
-function WarningList({ warnings }: { warnings: string[] }) {
-  if (warnings.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-4 space-y-2 rounded-xl border border-accent-danger/40 bg-accent-danger/10 p-3">
-      {warnings.map((warning) => (
-        <div key={warning} className="font-heading text-xs leading-5 text-accent-danger">
-          {warning}
+    <div className="flex min-h-screen items-center justify-center bg-dynasty-base text-dynasty-text">
+      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-6 py-5">
+        <div className="flex items-center gap-3">
+          <Users className="h-5 w-5 text-accent-primary" />
+          <ClipboardList className="h-5 w-5 text-accent-warning" />
+          <span className="font-heading text-sm text-dynasty-muted">{label}</span>
         </div>
-      ))}
-    </div>
-  );
-}
-
-function TeaserBeat({ teaser }: { teaser: NonNullable<DayOneSession['teaser']> }) {
-  return (
-    <div className="rounded-2xl border border-accent-warning/30 bg-accent-warning/8 p-5">
-      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-accent-warning">April Watch</div>
-      <h3 className="mt-2 font-heading text-lg font-semibold text-dynasty-textBright">{teaser.headline}</h3>
-      <p className="mt-3 font-heading text-sm leading-6 text-dynasty-text">{teaser.agmReaction}</p>
-      <p className="mt-3 font-heading text-sm leading-6 text-dynasty-muted">{teaser.localPressNote}</p>
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        {teaser.aprilWatchItems.map((item) => (
-          <div key={item} className="rounded-xl border border-dynasty-border/80 bg-dynasty-base/50 px-3 py-3 font-heading text-sm text-dynasty-text">
-            {item}
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 rounded-xl border border-dynasty-border/80 bg-dynasty-base/40 px-4 py-3 font-heading text-sm text-dynasty-textBright">
-        {teaser.openingDayPrompt}
       </div>
     </div>
   );

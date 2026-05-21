@@ -17,7 +17,9 @@ import { TEAMS, estimateProjectedWarRange, getTeamById } from '@mbd/sim-core';
 import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import { logger } from '@/shared/lib/logger';
+import { sourceLabel } from '@/shared/lib/labels';
 import { ScoutConflictsTab } from '../components/ScoutConflictsTab';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 import type { TeamChemistry } from '@mbd/contracts';
@@ -192,7 +194,8 @@ function projectedWarLabels(overall: number, floor: number | null, ceiling: numb
 export default function ScoutingPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { userTeamId, isInitialized } = useGameStore();
+  const { userTeamId, isInitialized, season } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
 
   const [activeView, setActiveView] = useState<'pro' | 'international' | 'conflicts'>('international');
   const [scouts, setScouts] = useState<Scout[]>([]);
@@ -261,12 +264,13 @@ export default function ScoutingPage() {
       if (report) {
         setScoutReport(report as ScoutReportView);
         setRecentReports((prev) => [report as ScoutReportView, ...prev].slice(0, 20));
+        await autosaveActiveGame({ season });
       }
     } catch (err) {
       logger.error('Failed to scout player:', err);
     }
     setLoading(false);
-  }, [workerReady, worker]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autosaveActiveGame, season, workerReady, worker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleScoutIFA = useCallback(async (prospect: IFAProspectView) => {
     setActionMessage(null);
@@ -282,13 +286,14 @@ export default function ScoutingPage() {
       setIFAReport(result.report);
       setIFABonus(result.report.expectedBonus.toFixed(2));
       await refreshIFAPool();
+      await autosaveActiveGame({ season });
     } catch (err) {
       logger.error('Failed to scout IFA player:', err);
       setActionMessage('Unable to scout that prospect right now.');
     } finally {
       setIFALoading(false);
     }
-  }, [refreshIFAPool, worker]);
+  }, [autosaveActiveGame, refreshIFAPool, season, worker]);
 
   const handleSignIFA = useCallback(async () => {
     if (!ifaReport) return;
@@ -306,13 +311,14 @@ export default function ScoutingPage() {
       setActionMessage(`Signed ${ifaReport.playerName}. Remaining pool: ${formatMoney(result.remainingBudget)}.`);
       await refreshIFAPool();
       setIFAReport(null);
+      await autosaveActiveGame({ season });
     } catch (err) {
       logger.error('Failed to sign IFA player:', err);
       setActionMessage('Unable to finalize that signing.');
     } finally {
       setIFALoading(false);
     }
-  }, [ifaBonus, ifaReport, refreshIFAPool, worker]);
+  }, [autosaveActiveGame, ifaBonus, ifaReport, refreshIFAPool, season, worker]);
 
   const handleTradeIFAPool = useCallback(async () => {
     setActionMessage(null);
@@ -328,13 +334,14 @@ export default function ScoutingPage() {
       }
       setActionMessage(`Transferred ${formatMoney(amount)} of pool space. Remaining pool: ${formatMoney(result.remainingBudget)}.`);
       await refreshIFAPool();
+      await autosaveActiveGame({ season });
     } catch (err) {
       logger.error('Failed to trade IFA pool space:', err);
       setActionMessage('Unable to move pool space right now.');
     } finally {
       setIFALoading(false);
     }
-  }, [refreshIFAPool, tradeAmount, tradeTarget, worker]);
+  }, [autosaveActiveGame, refreshIFAPool, season, tradeAmount, tradeTarget, worker]);
 
   const attrs = scoutReport?.isPitcher ? pitcherAttrs : hitterAttrs;
   const ifaAttrs = ifaReport && ['SP', 'RP', 'CL'].includes(ifaReport.position) ? pitcherAttrs : hitterAttrs;
@@ -799,7 +806,7 @@ export default function ScoutingPage() {
                               {ifaReport.scoutConflict.opinions.map((opinion) => (
                                 <div key={`${ifaReport.playerId}-${opinion.source}`} className="rounded border border-dynasty-border bg-dynasty-surface p-3">
                                   <div className="font-heading text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
-                                    {opinion.source.replace(/_/g, ' ')}
+                                    {sourceLabel(opinion.source)}
                                   </div>
                                   <div className="mt-2 font-data text-xl text-dynasty-textBright">{opinion.overallGrade}</div>
                                   <div className="mt-1 font-data text-[10px] text-dynasty-muted">

@@ -27,6 +27,14 @@ describe('rivalry engine', () => {
     expect(getRivalry(rivalries, 'chi', 'det')).toBeTruthy();
   });
 
+  it('keeps rivalry summaries free of duplicate punctuation and rough placeholder phrasing', () => {
+    const summaries = Array.from(baseRivalries().values()).map((rivalry) => rivalry.summary);
+
+    expect(summaries).not.toContainEqual(expect.stringMatching(/\.\./));
+    expect(summaries).not.toContainEqual(expect.stringContaining('Bad blood is still building'));
+    expect(summaries).not.toContainEqual(expect.stringContaining('keep colliding'));
+  });
+
   it('looks up the same rivalry regardless of team-id argument order', () => {
     const rivalries = baseRivalries();
 

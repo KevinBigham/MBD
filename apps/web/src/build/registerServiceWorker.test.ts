@@ -40,6 +40,15 @@ describe('registerMbdServiceWorker', () => {
     expect(register).toHaveBeenCalledWith('/MBD/sw.js', { scope: '/MBD/' });
   });
 
+  it('skips service worker registration while running under the Vite dev server', () => {
+    const register = vi.fn().mockResolvedValue({ update: vi.fn() });
+
+    registerMbdServiceWorker(register, { mode: 'development' });
+
+    expect(register).not.toHaveBeenCalled();
+    expect(navigator.serviceWorker.addEventListener).not.toHaveBeenCalled();
+  });
+
   it('polls for SW updates on an interval after registration', async () => {
     const mockRegistration = { update: vi.fn().mockResolvedValue(undefined) };
     const register = vi.fn().mockResolvedValue(mockRegistration);

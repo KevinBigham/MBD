@@ -22,6 +22,7 @@ import {
   TrendingUp,
   CalendarDays,
   CalendarRange,
+  Inbox,
   Newspaper,
   History,
   Settings,
@@ -63,6 +64,7 @@ const baseMainNavItems: NavItem[] = [
   { to: '/pulse', label: 'Pulse', icon: <Activity className="h-5 w-5" /> },
   { to: '/playoffs', label: 'Playoffs', icon: <CalendarRange className="h-5 w-5" /> },
   { to: '/press-room', label: 'Press Room', icon: <Newspaper className="h-5 w-5" /> },
+  { to: '/news', label: 'News', icon: <Inbox className="h-5 w-5" /> },
   { to: '/history', label: 'History', icon: <History className="h-5 w-5" /> },
   { to: '/career', label: 'GM Career', icon: <Award className="h-5 w-5" /> },
   { to: '/achievements', label: 'Trophies', icon: <Trophy className="h-5 w-5" /> },
@@ -107,8 +109,13 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   );
 }
 
-/** Mobile bottom tab indices: Dashboard, Roster, Draft, Trade, League, More */
-const MOBILE_TAB_INDICES = [0, 2, 8, 9, 10];
+const MOBILE_PRIMARY_ROUTES = [
+  '/dashboard',
+  '/roster',
+  '/draft',
+  '/trade',
+  '/league/standings',
+] as const;
 
 function MobileTabLink({ item }: { item: NavItem }) {
   return (
@@ -194,7 +201,11 @@ function MobileMoreDrawer({
 
 export function MobileTabBar({ items }: { items: NavItem[] }) {
   const [moreOpen, setMoreOpen] = useState(false);
-  const tabItems = MOBILE_TAB_INDICES.map((i) => items[i]).filter((item): item is NavItem => item != null);
+  const tabItems = MOBILE_PRIMARY_ROUTES
+    .map((route) => items.find((item) => item.to === route))
+    .filter((item): item is NavItem => item != null);
+  const primaryRoutes = new Set<string>(MOBILE_PRIMARY_ROUTES);
+  const moreItems = items.filter((item) => !primaryRoutes.has(item.to));
 
   return (
     <>
@@ -213,7 +224,7 @@ export function MobileTabBar({ items }: { items: NavItem[] }) {
           <span>More</span>
         </button>
       </nav>
-      <MobileMoreDrawer items={items} open={moreOpen} onClose={() => setMoreOpen(false)} />
+      <MobileMoreDrawer items={moreItems} open={moreOpen} onClose={() => setMoreOpen(false)} />
     </>
   );
 }

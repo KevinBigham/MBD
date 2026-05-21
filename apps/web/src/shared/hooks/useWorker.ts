@@ -69,6 +69,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'executeMultiTeamTrade',
   'respondToTradeOffer',
   'markNewsRead',
+  'updateRosterPlan',
   'promotePlayer',
   'demotePlayer',
   'designateForAssignment',
@@ -88,15 +89,6 @@ const mutationMethods = new Set<WorkerMethodName>([
   'makeRule5Pick',
   'passRule5Pick',
   'resolveRule5OfferBack',
-  'advanceDayOneIntro',
-  'chooseDayOneAGM',
-  'advanceDayOneOrgReview',
-  'setDayOneSeasonGoal',
-  'setDayOneBudgetAllocation',
-  'setDayOneOpeningPlan',
-  'setDayOneDevelopmentPlan',
-  'resolveDayOneCrisis',
-  'finishDayOne',
   'completeOnboarding',
   'applyStaffHires',
   'applyScoutingHire',
@@ -595,6 +587,12 @@ export function useWorker() {
   );
   const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
   const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
+  const getRosterPlan = useCallback(async () => api.getRosterPlan(), [api]);
+  const updateRosterPlan = useCallback(
+    async (patch: Parameters<typeof api.updateRosterPlan>[0]) =>
+      runMutation(() => api.updateRosterPlan(patch)),
+    [api, runMutation],
+  );
   const promotePlayer = useCallback(
     async (playerId: string) => runMutation(() => api.promotePlayer(playerId)),
     [api, runMutation],
@@ -816,6 +814,7 @@ export function useWorker() {
   );
   const getFinanceOverview = useCallback(async () => api.getFinanceOverview(), [api]);
   const getSpringTrainingView = useCallback(async () => api.getSpringTrainingView(), [api]);
+  const getFrontOfficeIdentity = useCallback(async () => api.getFrontOfficeIdentity(), [api]);
 
   // Round 1 API integration
   const getEnhancedPressConference = useCallback(async () => api.getEnhancedPressConference(), [api]);
@@ -872,51 +871,6 @@ export function useWorker() {
   );
   const getPlayoffMomentum = useCallback(async () => api.getPlayoffMomentum(), [api]);
 
-  // Day One front-office hook
-  const getDayOneSession = useCallback(async () => api.getDayOneSession(), [api]);
-  const advanceDayOneIntro = useCallback(
-    async () => runMutation(() => api.advanceDayOneIntro()),
-    [api, runMutation],
-  );
-  const chooseDayOneAGM = useCallback(
-    async (agmId: Parameters<typeof api.chooseDayOneAGM>[0]) =>
-      runMutation(() => api.chooseDayOneAGM(agmId)),
-    [api, runMutation],
-  );
-  const advanceDayOneOrgReview = useCallback(
-    async () => runMutation(() => api.advanceDayOneOrgReview()),
-    [api, runMutation],
-  );
-  const setDayOneSeasonGoal = useCallback(
-    async (seasonGoal: Parameters<typeof api.setDayOneSeasonGoal>[0]) =>
-      runMutation(() => api.setDayOneSeasonGoal(seasonGoal)),
-    [api, runMutation],
-  );
-  const setDayOneBudgetAllocation = useCallback(
-    async (budgetAllocation: Parameters<typeof api.setDayOneBudgetAllocation>[0]) =>
-      runMutation(() => api.setDayOneBudgetAllocation(budgetAllocation)),
-    [api, runMutation],
-  );
-  const setDayOneOpeningPlan = useCallback(
-    async (plan: Parameters<typeof api.setDayOneOpeningPlan>[0]) =>
-      runMutation(() => api.setDayOneOpeningPlan(plan)),
-    [api, runMutation],
-  );
-  const setDayOneDevelopmentPlan = useCallback(
-    async (plan: Parameters<typeof api.setDayOneDevelopmentPlan>[0]) =>
-      runMutation(() => api.setDayOneDevelopmentPlan(plan)),
-    [api, runMutation],
-  );
-  const resolveDayOneCrisis = useCallback(
-    async (responseId: Parameters<typeof api.resolveDayOneCrisis>[0]) =>
-      runMutation(() => api.resolveDayOneCrisis(responseId)),
-    [api, runMutation],
-  );
-  const finishDayOne = useCallback(
-    async () => runMutation(() => api.finishDayOne()),
-    [api, runMutation],
-  );
-
   // Onboarding (legacy procedural flow)
   const getOnboardingData = useCallback(async () => api.getOnboardingData(), [api]);
   const completeOnboarding = useCallback(
@@ -967,14 +921,14 @@ export function useWorker() {
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, getNegotiation, getOpenNegotiations, evaluateMultiTeamFairness, generateConditionalClause, proposeTrade, startNegotiation, advanceNegotiation, resolveNegotiation, proposeMultiTeam, executeMultiTeamTrade, respondToTradeOffer,
-    getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, makeContractOffer,
+    getNews, markNewsRead, getRosterPlan, updateRosterPlan, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, makeContractOffer,
     getPromotionCandidates, getProspectPipeline, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,
     getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
     getCoachingStaff, getCoachFreeAgents, getCoachMarket, hireCoach, fireCoach,
     getDevelopmentReport, getDevelopmentReports, getCoachingImpact, getStaffBudget, getDevelopmentPipeline,
     proceedToOffseason, startNextSeason,
-    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getFrontOfficeState, getGMCareer, getCareerRetrospective, getSeasonStoryReel, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
+    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState, getFrontOfficeState, getFrontOfficeIdentity, getGMCareer, getCareerRetrospective, getSeasonStoryReel, getJobMarket, getScoutConflicts, getScoutConflict, getDynastyCards, getDynastyLeaderboard, getScenarioCatalog, getScenarioProgress, applyForJob,
     getPersonalityProfile, getAwardRaces, getAwardRaceBoards, getAwardRaceDetail, getRivalries,
     getAwardHistory, getSeasonHistory, getSeasonArchive, compareSeasons, getRecordBook, getRecordWatchList, resolveHistoryDisplayNames, getAllTimeLeaders,
     searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,
@@ -985,7 +939,6 @@ export function useWorker() {
     getTradeDeadlineDrama, getMilestoneTrackerAlerts, getChaseWatch, getPennantRaces, getPennantRaceDetail, getFreeAgencyMarketIntelligence,
     getPlayerComparison, getSeasonProjections, getPlayerSimilarity, getEnhancedGamePlayByPlay, getAwardCeremony,
     getBreakoutIntelligence, getProspectBreakoutWatch, getScoutConsensus, getPlayoffMomentum,
-    getDayOneSession, advanceDayOneIntro, chooseDayOneAGM, advanceDayOneOrgReview, setDayOneSeasonGoal, setDayOneBudgetAllocation, setDayOneOpeningPlan, setDayOneDevelopmentPlan, resolveDayOneCrisis, finishDayOne,
     getOnboardingData, completeOnboarding,
     getAGMCandidates, getRevisedOnboardingData, applyStaffHires, applyScoutingHire, completeRevisedOnboarding,
     subscribeToFlowUpdates,

@@ -3,16 +3,8 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { PageHelp } from '@/shared/components/PageHelp';
+import { divisionLabel } from '@/shared/lib/labels';
 import type { TeamStandingsDTO } from '@/workers/sim.worker.helpers';
-
-const DIVISION_LABELS: Record<string, string> = {
-  AL_EAST: 'AL East',
-  AL_CENTRAL: 'AL Central',
-  AL_WEST: 'AL West',
-  NL_EAST: 'NL East',
-  NL_CENTRAL: 'NL Central',
-  NL_WEST: 'NL West',
-};
 
 function DivisionCard({ divKey, teams, userTeamId }: {
   divKey: string;
@@ -23,7 +15,7 @@ function DivisionCard({ divKey, teams, userTeamId }: {
     <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
       <div className="border-b border-dynasty-border px-4 py-3">
         <h2 className="font-heading text-sm font-semibold text-dynasty-text">
-          {DIVISION_LABELS[divKey] ?? divKey}
+          {divisionLabel(divKey)}
         </h2>
       </div>
 
@@ -145,7 +137,7 @@ export default function StandingsPage() {
     fetchStandings();
   }, [fetchStandings, day, season, phase]);
 
-  const divisionOrder = ['AL_EAST', 'AL_CENTRAL', 'AL_WEST', 'NL_EAST', 'NL_CENTRAL', 'NL_WEST'];
+  const divisionOrder = Object.keys(standings).sort((left, right) => divisionLabel(left).localeCompare(divisionLabel(right)));
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,7 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { humanizeLabel, minorLevelLabel } from '@/shared/lib/labels';
 import PipelineView, { type ProspectPipelineView } from '../components/PipelineView';
 
 const ProspectBreakoutTracker = lazy(() => import('../components/ProspectBreakoutTracker'));
@@ -85,6 +86,36 @@ interface AffiliateBoxScoreView {
   }>;
 }
 
+type PipelineProspect = ProspectPipelineView['prospects'][number];
+
+function PipelineTriageColumn({
+  title,
+  empty,
+  prospects,
+}: {
+  title: string;
+  empty: string;
+  prospects: PipelineProspect[];
+}) {
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-3">
+      <div className="font-heading text-xs uppercase tracking-wide text-dynasty-muted">{title}</div>
+      <div className="mt-3 space-y-2">
+        {prospects.length > 0 ? prospects.slice(0, 4).map((prospect) => (
+          <div key={`${title}-${prospect.playerId}`} className="rounded border border-dynasty-border bg-dynasty-surface px-3 py-2">
+            <div className="font-heading text-sm text-dynasty-textBright">{prospect.playerName}</div>
+            <div className="mt-1 font-heading text-xs text-dynasty-muted">
+              {prospect.position} · {minorLevelLabel(prospect.level)} · Age {prospect.age} · {humanizeLabel(prospect.prospectTier)}
+            </div>
+          </div>
+        )) : (
+          <div className="font-heading text-sm text-dynasty-muted">{empty}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MinorsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -122,6 +153,21 @@ export default function MinorsPage() {
       setSelectedBoxScore((boxScore ?? null) as AffiliateBoxScoreView | null);
     });
   }, [isInitialized, selectedBoxScoreId, worker, workerReady]);
+
+  const pipelineTriage = useMemo(() => {
+    const prospects = pipeline?.prospects ?? [];
+    return {
+      risers: prospects.filter((prospect) => prospect.prospectTier !== 'organizational_depth' && prospect.trend === 'surging'),
+      fallers: prospects.filter((prospect) => prospect.prospectTier !== 'organizational_depth' && prospect.trend === 'setback'),
+      readyNow: prospects.filter((prospect) => prospect.prospectTier !== 'organizational_depth' && prospect.eta === 'Ready now'),
+      nextWave: prospects.filter((prospect) =>
+        prospect.prospectTier !== 'organizational_depth' && (prospect.eta === 'This season' || prospect.eta === 'Next season'),
+      ),
+      longView: prospects.filter((prospect) =>
+        prospect.prospectTier !== 'organizational_depth' && prospect.eta !== 'Ready now' && prospect.eta !== 'This season' && prospect.eta !== 'Next season',
+      ),
+    };
+  }, [pipeline]);
 
   return (
     <div className="space-y-6">
@@ -167,7 +213,7 @@ export default function MinorsPage() {
               <div key={`${claim.playerId}-${claim.status}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
                 <div className="font-heading text-sm text-dynasty-text">{claim.playerName}</div>
                 <div className="mt-1 text-xs text-dynasty-muted">
-                  {claim.status.toUpperCase()} | {claim.fromTeamName}
+                  {humanizeLabel(claim.status)} | {claim.fromTeamName}
                 </div>
                 <div className="mt-2 text-xs text-dynasty-muted">
                   ${claim.salary.toFixed(1)}M
@@ -187,9 +233,11 @@ export default function MinorsPage() {
           <div className="mt-3 font-data text-3xl text-dynasty-text">
             {pipeline?.health.score ?? 0}
           </div>
-          <div className="mt-2 font-heading text-sm capitalize text-dynasty-text">{pipeline?.health.label ?? 'building'}</div>
+          <div className="mt-2 font-heading text-sm text-dynasty-text">{humanizeLabel(pipeline?.health.label ?? 'building')}</div>
           <div className="mt-3 text-sm text-dynasty-muted">
-            {pipeline?.health.summary ?? 'Prospect depth will populate as the system develops.'}
+            {pipeline
+              ? `${pipeline.health.readyNow} ready / ${pipeline.health.nextWave} next / ${pipeline.health.longTerm} long / ${pipeline.health.organizationalDepth} depth`
+              : 'Prospect depth will populate as the system develops.'}
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <div className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-2">
@@ -207,6 +255,27 @@ export default function MinorsPage() {
           </div>
         </div>
       </div>
+
+      <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="font-heading text-xs uppercase text-dynasty-muted">Prospect Pipeline Triage</div>
+            <div className="mt-1 font-data text-sm text-dynasty-muted">
+              Risers, fallers, ready-now names, next wave, and long-view bets before the full list.
+            </div>
+          </div>
+          <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
+            {pipeline?.health.organizationalDepth ?? 0} depth profiles separated
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-5">
+          <PipelineTriageColumn title="Risers" empty="No clear risers this cycle." prospects={pipelineTriage.risers} />
+          <PipelineTriageColumn title="Fallers" empty="No active setback flags." prospects={pipelineTriage.fallers} />
+          <PipelineTriageColumn title="Ready Now" empty="No prospect is ready right now." prospects={pipelineTriage.readyNow} />
+          <PipelineTriageColumn title="Next Wave" empty="No next-wave group is separated yet." prospects={pipelineTriage.nextWave} />
+          <PipelineTriageColumn title="Long View" empty="No long-view upside group yet." prospects={pipelineTriage.longView} />
+        </div>
+      </section>
 
       <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

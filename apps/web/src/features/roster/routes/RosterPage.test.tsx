@@ -14,6 +14,35 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('../components/LineupBuilder', () => ({
+  default: ({
+    players,
+    onReorder,
+  }: {
+    players: Array<{ id: string; firstName: string; lastName: string }>;
+    onReorder?: (orderedIds: string[]) => void;
+  }) => (
+    <div>
+      {players.map((player) => (
+        <span key={player.id}>{player.firstName} {player.lastName}</span>
+      ))}
+      {players.length > 1 ? (
+        <button
+          type="button"
+          aria-label={`Move ${players[0]!.firstName} ${players[0]!.lastName} down`}
+          onClick={() => onReorder?.(players.map((player) => player.id).reverse())}
+        >
+          Move {players[0]!.firstName} {players[0]!.lastName} down
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
+vi.mock('../components/DepthChartDnD', () => ({
+  default: () => <div>Depth chart mock</div>,
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 (
@@ -190,6 +219,19 @@ describe('RosterPage', () => {
       await Promise.resolve();
     });
 
+    expect(container.textContent).toContain('Confirm Roster Move');
+    expect(container.textContent).toContain('waiver-claim risk');
+
+    let confirmButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Confirm DFA'),
+    );
+
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
     buttons = Array.from(container.querySelectorAll('button'));
     const minorsTab = buttons.find((button) => button.textContent?.includes('Minor Leagues'));
 
@@ -209,7 +251,19 @@ describe('RosterPage', () => {
 
     await act(async () => {
       promoteButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Confirm Promotion');
+
+    confirmButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Confirm Promotion'),
+    );
+
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       claimButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
       await Promise.resolve();
     });
 
@@ -325,5 +379,110 @@ describe('RosterPage', () => {
 
     expect(negotiateExtension).toHaveBeenCalled();
     expect(container.textContent).toContain('countered');
+  });
+
+  it('persists lineup planning through the roster plan worker action', async () => {
+    const updateRosterPlan = vi.fn().mockResolvedValue({
+      success: true,
+      plan: {
+        lineupPlayerIds: ['bat-2', 'bat-1'],
+        rotationPlayerIds: [],
+        bullpen: null,
+      },
+    });
+
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getFullRoster: vi.fn().mockResolvedValue({
+        mlb: [
+          {
+            id: 'bat-1',
+            firstName: 'First',
+            lastName: 'Bat',
+            age: 28,
+            position: 'CF',
+            overallRating: 70,
+            displayRating: 60,
+            letterGrade: 'B',
+            rosterStatus: 'MLB',
+            teamId: 'nym',
+            serviceTimeDays: 401,
+            optionYearsUsed: 0,
+            isOutOfOptions: false,
+            minorLeagueLevel: null,
+            stats: null,
+            advanced: null,
+          },
+          {
+            id: 'bat-2',
+            firstName: 'Second',
+            lastName: 'Bat',
+            age: 29,
+            position: 'SS',
+            overallRating: 68,
+            displayRating: 58,
+            letterGrade: 'B',
+            rosterStatus: 'MLB',
+            teamId: 'nym',
+            serviceTimeDays: 402,
+            optionYearsUsed: 0,
+            isOutOfOptions: false,
+            minorLeagueLevel: null,
+            stats: null,
+            advanced: null,
+          },
+        ],
+        minors: { AAA: [], AA: [], A_PLUS: [], A: [], ROOKIE: [], INTERNATIONAL: [] },
+      }),
+      getTeamChemistry: vi.fn().mockResolvedValue(null),
+      getPromotionCandidates: vi.fn().mockResolvedValue([]),
+      getRosterComplianceIssues: vi.fn().mockResolvedValue(null),
+      getAffiliateOverview: vi.fn().mockResolvedValue(null),
+      getExtensionCandidates: vi.fn().mockResolvedValue([]),
+      getRosterPlan: vi.fn().mockResolvedValue({
+        lineupPlayerIds: ['bat-1', 'bat-2'],
+        rotationPlayerIds: [],
+        bullpen: null,
+      }),
+      updateRosterPlan,
+      getExtensionOffer: vi.fn().mockResolvedValue(null),
+      negotiateExtension: vi.fn().mockResolvedValue(null),
+      promotePlayer: vi.fn(),
+      designateForAssignment: vi.fn(),
+      claimOffWaivers: vi.fn(),
+      demotePlayer: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <RosterPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+    });
+
+    const lineupTab = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Lineup Builder'),
+    );
+
+    await act(async () => {
+      lineupTab?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await vi.dynamicImportSettled();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain('First Bat');
+    const moveDown = container.querySelector('[aria-label="Move First Bat down"]') as HTMLButtonElement | null;
+    expect(moveDown).not.toBeNull();
+    await act(async () => {
+      moveDown?.click();
+      await Promise.resolve();
+    });
+
+    expect(updateRosterPlan).toHaveBeenCalledWith({ lineupPlayerIds: ['bat-2', 'bat-1'] });
   });
 });

@@ -1,6 +1,5 @@
 import type { TradeAsset } from '@mbd/contracts';
 import {
-  checkMilestones,
   deduplicateNews,
   describeInjury,
   GameRNG,
@@ -15,6 +14,7 @@ import {
   type GameBoxScore,
 } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
+import { buildCareerMilestoneEvents } from './sim.worker.milestones.js';
 import { previewRecordWatchList } from './sim.worker.records.js';
 
 const HIT_OUTCOMES = new Set(['SINGLE', 'DOUBLE', 'TRIPLE', 'HR']);
@@ -228,41 +228,18 @@ function buildInjuryContexts(state: FullGameState, previousInjuryIds: Set<string
 }
 
 function buildMilestoneContexts(state: FullGameState, simDay: number) {
-  return checkMilestones(state.seasonState.playerSeasonStats, state.players, state.season, simDay)
-    .map((moment) => {
-      const playerId = moment.playerIds[0];
-      if (!playerId) {
-        return null;
-      }
-
-      const player = state.players.find((entry) => entry.id === playerId);
-      if (!player) {
-        return null;
-      }
-
-      let text = moment.headline;
-      if (moment.type === 'milestone_hit') {
-        const match = /(\d+) career hits/.exec(moment.headline);
-        text = `records career hit #${match?.[1] ?? ''}`.trim();
-      } else if (moment.type === 'milestone_hr') {
-        const match = /home run #(\d+)/.exec(moment.headline);
-        text = `hits career home run #${match?.[1] ?? ''}`.trim();
-      } else if (moment.type === 'milestone_k') {
-        const match = /strikeout #(\d+)/.exec(moment.headline);
-        text = `records career strikeout #${match?.[1] ?? ''}`.trim();
-      } else if (moment.type === 'milestone_win') {
-        const match = /win #(\d+)/.exec(moment.headline);
-        text = `earns career win #${match?.[1] ?? ''}`.trim();
-      }
-
-      return {
-        playerId,
-        playerName: `${player.firstName} ${player.lastName}`,
-        teamId: player.teamId,
-        text,
-      };
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => entry != null);
+  return buildCareerMilestoneEvents(state, simDay)
+    .filter((milestone) => !state.tickerFeed.some((entry) => (
+      entry.category === 'milestone'
+      && entry.relatedPlayerIds.includes(milestone.playerId)
+      && entry.text.includes(String(milestone.count))
+    )))
+    .map((milestone) => ({
+      playerId: milestone.playerId,
+      playerName: milestone.playerName,
+      teamId: milestone.teamId,
+      text: milestone.tickerText,
+    }));
 }
 
 function buildTradeContexts(state: FullGameState, previousTradeCount: number) {

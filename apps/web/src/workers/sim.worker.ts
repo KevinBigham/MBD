@@ -1,37 +1,17 @@
 import * as Comlink from 'comlink';
 import { actionApi } from './sim.worker.actions.js';
 import {
-  advanceDayOneIntro,
-  advanceDayOneOrgReview,
   applyScoutingHire,
   applyStaffHires,
-  chooseDayOneAGM,
   completeOnboarding,
   completeRevisedOnboarding,
-  finishDayOne,
   getAGMCandidates,
-  getDayOneSession,
   getOnboardingData,
   getRevisedOnboardingData,
-  resolveDayOneCrisis,
-  setDayOneBudgetAllocation,
-  setDayOneDevelopmentPlan,
-  setDayOneOpeningPlan,
-  setDayOneSeasonGoal,
 } from './sim.worker.onboarding.js';
 import { queryApi } from './sim.worker.queries.js';
 
 const onboardingApi = {
-  getDayOneSession,
-  advanceDayOneIntro,
-  chooseDayOneAGM,
-  advanceDayOneOrgReview,
-  setDayOneSeasonGoal,
-  setDayOneBudgetAllocation,
-  setDayOneOpeningPlan,
-  setDayOneDevelopmentPlan,
-  resolveDayOneCrisis,
-  finishDayOne,
   getOnboardingData,
   completeOnboarding,
   getAGMCandidates,

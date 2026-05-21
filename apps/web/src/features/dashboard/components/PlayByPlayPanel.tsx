@@ -1,5 +1,6 @@
 import { Mic2, RadioTower } from 'lucide-react';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { humanizeLabel } from '@/shared/lib/labels';
 import {
   buildPlayByPlayGroups,
   deriveLineScore,
@@ -85,7 +86,7 @@ export default function PlayByPlayPanel({
           {detail.highlights.map((highlight, index) => (
             <div key={`${highlight.type}-${index}`} className="rounded-lg border border-dynasty-border bg-dynasty-surface p-3">
               <div className="font-data text-[10px] uppercase tracking-[0.16em] text-accent-warning">
-                {highlight.type.replaceAll('_', ' ')}
+                {humanizeLabel(highlight.type)}
               </div>
               <div className="mt-2 font-heading text-sm text-dynasty-text">{highlight.text}</div>
             </div>

@@ -19,7 +19,9 @@ import {
 import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import {
+  formatMinorLevel,
   moneyLabel,
   normalizePlayerProfileTab,
   type PlayerProfileTab,
@@ -65,6 +67,13 @@ interface RosterActionView {
 interface ActionState {
   tone: 'success' | 'error' | 'info';
   message: string;
+}
+
+interface PendingProfileRosterAction {
+  action: 'promote' | 'demote' | 'dfa';
+  title: string;
+  detail: string;
+  consequence: string;
 }
 
 const TAB_LABELS: Record<PlayerProfileTab, string> = {
@@ -149,10 +158,12 @@ export default function PlayerProfilePage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
   const { isInitialized, day, season, userTeamId } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
   const [view, setView] = useState<PlayerProfileView | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionState, setActionState] = useState<ActionState | null>(null);
   const [busyAction, setBusyAction] = useState<'extend' | 'promote' | 'demote' | 'dfa' | null>(null);
+  const [pendingRosterAction, setPendingRosterAction] = useState<PendingProfileRosterAction | null>(null);
 
   const activeTab = normalizePlayerProfileTab(searchParams.get('tab'));
   const ActiveTabComponent = useMemo(() => TAB_COMPONENTS[activeTab], [activeTab]);
@@ -225,10 +236,42 @@ export default function PlayerProfilePage() {
             : 'Player designated for assignment and profile refreshed.',
       });
       await fetchProfile();
+      await autosaveActiveGame({ season });
     } finally {
       setBusyAction(null);
     }
-  }, [fetchProfile, player, worker]);
+  }, [autosaveActiveGame, fetchProfile, player, season, worker]);
+
+  const requestRosterAction = useCallback((action: 'promote' | 'demote' | 'dfa') => {
+    if (!player) {
+      return;
+    }
+
+    setPendingRosterAction({
+      action,
+      title: action === 'promote'
+        ? 'Promote to MLB'
+        : action === 'demote'
+          ? 'Option to Minors'
+          : 'Designate for Assignment',
+      detail: `${player.position} | ${formatMinorLevel(player.rosterStatus)} | Options used ${player.optionYearsUsed}${player.isOutOfOptions ? ' | Out of options' : ''}`,
+      consequence: action === 'dfa'
+        ? 'This removes the player from your roster picture and exposes him to waiver-claim risk.'
+        : action === 'demote' && player.isOutOfOptions
+          ? 'This player is out of options and may need to clear waivers before reaching the minors.'
+          : 'This updates the live roster assignment and can change active-depth, service-time, and option consequences.',
+    });
+  }, [player]);
+
+  const confirmPendingRosterAction = useCallback(async () => {
+    if (!pendingRosterAction) {
+      return;
+    }
+
+    const action = pendingRosterAction.action;
+    setPendingRosterAction(null);
+    await handleRosterAction(action);
+  }, [handleRosterAction, pendingRosterAction]);
 
   const handleExtend = useCallback(async () => {
     if (!player) {
@@ -277,10 +320,11 @@ export default function PlayerProfilePage() {
       }
 
       await fetchProfile();
+      await autosaveActiveGame({ season });
     } finally {
       setBusyAction(null);
     }
-  }, [fetchProfile, player, worker]);
+  }, [autosaveActiveGame, fetchProfile, player, season, worker]);
 
   if (!loading && !player) {
     return (
@@ -395,7 +439,7 @@ export default function PlayerProfilePage() {
                         className="w-full justify-start"
                         loading={busyAction === 'promote'}
                         disabled={!canPromote}
-                        onClick={() => void handleRosterAction('promote')}
+                        onClick={() => requestRosterAction('promote')}
                       >
                         <ArrowUpCircle className="h-4 w-4" />
                         Promote to MLB
@@ -406,7 +450,7 @@ export default function PlayerProfilePage() {
                         className="w-full justify-start"
                         loading={busyAction === 'demote'}
                         disabled={!canDemote}
-                        onClick={() => void handleRosterAction('demote')}
+                        onClick={() => requestRosterAction('demote')}
                       >
                         <ArrowDownCircle className="h-4 w-4" />
                         Option to Minors
@@ -417,7 +461,7 @@ export default function PlayerProfilePage() {
                         className="w-full justify-start"
                         loading={busyAction === 'dfa'}
                         disabled={!canDfa}
-                        onClick={() => void handleRosterAction('dfa')}
+                        onClick={() => requestRosterAction('dfa')}
                       >
                         <ClipboardX className="h-4 w-4" />
                         Designate for Assignment
@@ -432,6 +476,32 @@ export default function PlayerProfilePage() {
                   {actionState ? (
                     <div className={`rounded-lg border px-4 py-3 font-heading text-sm ${actionToneClasses(actionState.tone)}`}>
                       {actionState.message}
+                    </div>
+                  ) : null}
+
+                  {pendingRosterAction ? (
+                    <div className="rounded-lg border border-accent-warning/40 bg-accent-warning/10 p-4">
+                      <div className="font-heading text-sm font-semibold text-dynasty-textBright">
+                        Confirm {pendingRosterAction.title}
+                      </div>
+                      <div className="mt-1 font-data text-xs text-dynasty-muted">{pendingRosterAction.detail}</div>
+                      <div className="mt-3 font-heading text-sm text-accent-warning">
+                        {pendingRosterAction.consequence}
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setPendingRosterAction(null)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={pendingRosterAction.action === 'dfa' ? 'destructive' : 'default'}
+                          size="sm"
+                          loading={busyAction === pendingRosterAction.action}
+                          onClick={() => void confirmPendingRosterAction()}
+                        >
+                          Confirm
+                        </Button>
+                      </div>
                     </div>
                   ) : null}
                 </CardContent>
@@ -461,9 +531,9 @@ export default function PlayerProfilePage() {
                       Roster Context
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <Badge variant="outline">{player.rosterStatus}</Badge>
+                      <Badge variant="outline">{formatMinorLevel(player.rosterStatus)}</Badge>
                       {player.minorLeagueLevel ? (
-                        <Badge variant="outline">{player.minorLeagueLevel}</Badge>
+                        <Badge variant="outline">{formatMinorLevel(player.minorLeagueLevel)}</Badge>
                       ) : null}
                       {player.isOutOfOptions ? (
                         <Badge variant="warning">Out of Options</Badge>

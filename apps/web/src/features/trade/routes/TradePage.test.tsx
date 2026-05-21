@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import TradePage from './TradePage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { loadGameById, saveGameById, scheduleAutoSave } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -14,11 +15,48 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/lib/saveSystem', () => ({
+  loadGameById: vi.fn().mockResolvedValue(undefined),
+  saveGameById: vi.fn().mockResolvedValue(undefined),
+  scheduleAutoSave: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedLoadGameById = vi.mocked(loadGameById);
+const mockedSaveGameById = vi.mocked(saveGameById);
+const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+function createNegotiationView() {
+  return {
+    id: 'neg-open',
+    teamId: 'bos',
+    teamName: 'Boston Noreasters',
+    teamAbbreviation: 'BOS',
+    phase: 'counter_1',
+    roundsCompleted: 2,
+    expiresAtDay: 101,
+    dialogue: [
+      { speaker: 'rival_gm', text: 'Boston left the counter on the table overnight.', tone: 'firm' },
+      { speaker: 'agm_advisor', text: 'This is still close enough to keep alive if the package stays focused.', tone: 'firm' },
+    ],
+    proposal: {
+      offeringAssets: [{ type: 'player', playerId: 'nyy-1' }],
+      requestingAssets: [{ type: 'player', playerId: 'bos-1' }],
+    },
+    counterOffer: {
+      offeringAssets: [{ type: 'player', playerId: 'nyy-1' }],
+      requestingAssets: [{ type: 'player', playerId: 'bos-1' }],
+    },
+    isComplete: false,
+    canAccept: true,
+    canCounter: true,
+    canReject: true,
+  };
+}
 
 function createWorkerMock() {
   const gmDialogue = {
@@ -150,6 +188,7 @@ function createWorkerMock() {
         ],
       },
     ]),
+    getOpenNegotiations: vi.fn().mockResolvedValue([]),
     getTradeAssetInventory: vi.fn().mockImplementation(async (teamId: string) => (
       teamId === 'nym'
         ? {
@@ -399,6 +438,7 @@ function createWorkerMock() {
         },
       ],
     }),
+    exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 33, season: 4, day: 95, phase: 'regular' }),
     proposeTrade: vi.fn().mockResolvedValue({ decision: 'accepted', reason: 'Deal works.' }),
     respondToTradeOffer: vi.fn().mockResolvedValue({ decision: 'accepted', message: 'Accepted.' }),
   };
@@ -444,6 +484,10 @@ describe('TradePage', () => {
       isInitialized: true,
       userTeamId: 'nym',
       teamName: 'Tycoons',
+      gmName: 'Taylor Bennett',
+      difficulty: 'standard',
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
       playerCount: 780,
       gamesPlayed: 95,
       isSimulating: false,
@@ -453,6 +497,8 @@ describe('TradePage', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -472,6 +518,8 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('Roman Anthony');
     expect(container.textContent).toContain('EXPIRING SOON');
     expect(container.textContent).toContain('3 clubs are in on Anthony Volpe.');
+    expect(container.textContent).toContain('Active Talks');
+    expect(container.textContent).toContain('No active talks');
     expect(container.textContent).toContain('GM Dialogue');
     expect(container.textContent).toContain('Right now the offer is light for what you are asking us to surrender.');
     expect(container.textContent).toContain('League Trade Ticker');
@@ -497,6 +545,8 @@ describe('TradePage', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -532,7 +582,7 @@ describe('TradePage', () => {
 
     await renderPage();
 
-    expect(container.textContent).toContain('Trade market closed — reopens in offseason');
+    expect(container.textContent).toContain('Deadline has passed');
     expect(container.textContent).toContain('No trade offers right now');
     expect(container.textContent).toContain('No trades completed yet this season.');
     expect(container.textContent).toContain('Deadline winners and losers');
@@ -584,6 +634,53 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('No ticker moves are active right now');
   });
 
+  it('uses phase-aware Spring Training copy instead of deadline-passed language', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 1,
+      day: 18,
+      phase: 'spring_training',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Taylor Bennett',
+      difficulty: 'standard',
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      playerCount: 780,
+      gamesPlayed: 0,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    worker.getTradeDeadlineState.mockResolvedValue({
+      deadlineDay: 122,
+      daysUntilDeadline: null,
+      deadlineMode: false,
+      teamMode: 'standing_pat',
+      modeSummary: 'Camp calls are posture checks, not formal deadline pressure.',
+      countdownLabel: 'Spring Training',
+      hotOffers: [],
+      ticker: [],
+      chatter: [],
+      recap: null,
+    });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Spring Training trade desk');
+    expect(container.textContent).toContain('Formal trade proposals unlock on Opening Day');
+    expect(container.textContent).not.toContain('Regular-season deadline has passed');
+  });
+
   it('opens the negotiation response pane after starting a trade negotiation', async () => {
     mockedUseGameStore.mockReturnValue({
       season: 4,
@@ -592,6 +689,10 @@ describe('TradePage', () => {
       isInitialized: true,
       userTeamId: 'nym',
       teamName: 'Tycoons',
+      gmName: 'Taylor Bennett',
+      difficulty: 'standard',
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
       playerCount: 780,
       gamesPlayed: 95,
       isSimulating: false,
@@ -601,6 +702,8 @@ describe('TradePage', () => {
       setSimulating: vi.fn(),
       setInitialized: vi.fn(),
       setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(),
+      setActiveSaveSlot: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
     });
@@ -647,6 +750,97 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('Negotiation Round');
     expect(container.textContent).toContain('Boston kicked back a firmer counter and asked for a cleaner fit.');
     expect(worker.startNegotiation).toHaveBeenCalled();
+    expect(worker.getOpenNegotiations).toHaveBeenCalledTimes(2);
+    expect(worker.exportSnapshot).toHaveBeenCalled();
+    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(1, 'Taylor Bennett • Tycoons • Season 4', {
+      schemaVersion: 33,
+      season: 4,
+      day: 95,
+      phase: 'regular',
+    });
+    expect(mockedLoadGameById).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+  });
+
+  it('discovers persisted open negotiations and resumes them into the builder', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    worker.getOpenNegotiations.mockResolvedValue([createNegotiationView()]);
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Active Talks');
+    expect(container.textContent).toContain('1 open negotiation');
+    expect(container.textContent).toContain('This is still close enough to keep alive');
+
+    const resumeButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Resume Talk'));
+    expect(resumeButton).toBeTruthy();
+
+    await act(async () => {
+      resumeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const teamSelect = container.querySelector('select');
+    expect(teamSelect instanceof HTMLSelectElement ? teamSelect.value : '').toBe('bos');
+    expect(container.textContent).toContain('Negotiation Round');
+    expect(container.textContent).toContain('Resumed active talks with Boston Noreasters');
+    expect(container.textContent).toContain('Anthony Volpe');
+    expect(container.textContent).toContain('Roman Anthony');
+  });
+
+  it('auto-resumes an open negotiation from a negotiationId deep link', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    worker.getOpenNegotiations.mockResolvedValue([createNegotiationView()]);
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage('/trade?negotiationId=neg-open');
+
+    expect(container.textContent).toContain('Negotiation Round');
+    expect(container.textContent).toContain('This is still close enough to keep alive');
+    expect(container.textContent).toContain('Loaded');
   });
 
   it('includes draft picks and IFA pool space when proposing an asset-based trade', async () => {

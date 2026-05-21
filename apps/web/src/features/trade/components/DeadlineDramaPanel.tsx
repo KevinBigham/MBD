@@ -10,6 +10,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { useGameStore } from '@/shared/hooks/useGameStore';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -211,6 +212,7 @@ function BiddingWarCard({ war }: { war: ActiveBiddingWar }) {
 
 export default function DeadlineDramaPanel() {
   const { getTradeDeadlineDrama, isReady } = useWorker();
+  const { phase } = useGameStore();
   const [drama, setDrama] = useState<TradeDeadlineDrama | null>(null);
   const [loading, setLoading] = useState(true);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
@@ -258,6 +260,14 @@ export default function DeadlineDramaPanel() {
 
   // ---- Empty / wrong phase state ----
   if (drama == null) {
+    const emptyCopy = phase === 'spring_training'
+      ? 'Spring training is for scouting fits. Deadline drama starts once the regular-season market opens.'
+      : phase === 'offseason'
+        ? 'Offseason roster work lives in free agency. Deadline drama returns during the regular season.'
+        : phase === 'playoffs'
+          ? 'Postseason roster rules freeze trade drama until the offseason resets.'
+          : 'Trade deadline drama heats up during the regular season.';
+
     return (
       <section className="rounded-lg border border-dynasty-border bg-dynasty-surface overflow-hidden">
         <div className="p-4">
@@ -270,7 +280,7 @@ export default function DeadlineDramaPanel() {
           <div className="mt-4 rounded-lg border border-dynasty-border/70 bg-dynasty-elevated p-4 text-center">
             <Zap className="mx-auto h-6 w-6 text-dynasty-muted" />
             <div className="mt-2 font-heading text-sm text-dynasty-muted">
-              Trade deadline drama heats up during the regular season
+              {emptyCopy}
             </div>
           </div>
         </div>

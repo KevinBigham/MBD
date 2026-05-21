@@ -14,6 +14,7 @@ import type {
   StaffHireChoices,
   StaffHiringSlate,
 } from '@mbd/sim-core';
+import { humanizeLabel } from '@/shared/lib/labels';
 
 interface Props {
   slate: StaffHiringSlate;
@@ -179,7 +180,7 @@ function CandidateCard({ candidate, opinion, isSelected, onSelect }: CandidateCa
         <div className="min-w-0 flex-1">
           <h5 className="font-heading text-sm font-bold text-dynasty-text">{candidate.name}</h5>
           <p className="mt-0.5 font-data text-[10px] uppercase tracking-wider text-accent-primary">
-            {candidate.style.replaceAll('_', ' ')} &middot; Age {candidate.age}
+            {humanizeLabel(candidate.style)} &middot; Age {candidate.age}
           </p>
         </div>
         <div className="text-center">

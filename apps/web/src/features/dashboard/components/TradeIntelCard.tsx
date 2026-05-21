@@ -8,13 +8,32 @@ interface TradeTickerItemView {
 
 interface TradeIntelCardProps {
   daysUntilDeadline: number | null;
+  phase: string;
   activeTradeOffers: number;
   recentSummary: string | null;
   recentTrades: TradeTickerItemView[];
 }
 
+function deadlineCopy(daysUntilDeadline: number | null, phase: string): string {
+  if (daysUntilDeadline != null) {
+    return 'Days until the regular-season market locks.';
+  }
+
+  switch (phase) {
+    case 'spring_training':
+      return 'Spring training calls are mostly posture and scouting checks.';
+    case 'offseason':
+      return 'Offseason roster work runs through free agency before the deadline clock starts.';
+    case 'playoffs':
+      return 'Postseason roster rules have the trade desk frozen.';
+    default:
+      return 'No active regular-season deadline clock right now.';
+  }
+}
+
 export default function TradeIntelCard({
   daysUntilDeadline,
+  phase,
   activeTradeOffers,
   recentSummary,
   recentTrades,
@@ -33,7 +52,7 @@ export default function TradeIntelCard({
             {daysUntilDeadline != null ? daysUntilDeadline : '--'}
           </div>
           <div className="mt-2 font-heading text-xs text-dynasty-muted">
-            {daysUntilDeadline != null ? 'Days until the market locks.' : 'Regular-season deadline has passed.'}
+            {deadlineCopy(daysUntilDeadline, phase)}
           </div>
         </div>
         <div className="rounded-lg border border-dynasty-border/70 bg-dynasty-surface/70 p-3">

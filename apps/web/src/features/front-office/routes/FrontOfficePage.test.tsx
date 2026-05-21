@@ -81,6 +81,45 @@ const MOCK_RELATIONSHIPS = [
   },
 ];
 
+const MOCK_IDENTITY = {
+  assistantGM: {
+    id: 'elena_vargas',
+    name: 'Elena Vargas',
+    focus: 'Elena improves development and international looks.',
+    upside: 'Player development, international scouting, prospect trust',
+    watchout: 'Homegrown prospect selloffs carry extra heat.',
+  },
+  scoutingDirector: {
+    name: 'Avery Solis',
+    focus: 'International',
+    draftAccuracy: 0.71,
+    internationalAccuracy: 0.82,
+    proAccuracy: 0.7,
+  },
+  philosophy: {
+    seasonGoal: 'Rebuild',
+    developmentStyle: 'Patient',
+    scoutingFocus: 'International',
+    spendingStyle: 'Penny Pincher',
+    tradeApproach: 'Seller',
+    mediaTone: 'Measured',
+  },
+  alignment: {
+    overall: { score: 72, impact: 3, label: 'strong', summary: 'Overall identity alignment is 72.' },
+    mandate: { score: 76, impact: 3, label: 'strong', summary: 'Rebuild mandate is aligned.' },
+    spending: { score: 68, impact: 2, label: 'steady', summary: 'Spending is coherent.' },
+    trade: { score: 71, impact: 3, label: 'strong', summary: 'Trade posture is coherent.' },
+    development: { score: 74, impact: 3, label: 'strong', summary: 'Development posture is coherent.' },
+    media: { score: 69, impact: 2, label: 'steady', summary: 'Media posture is steady.' },
+  },
+  visibleEffects: [],
+  recentConsequence: {
+    headline: 'Day One identity is now on the ledger.',
+    body: 'The scouting and development lanes are visible to the room.',
+    timestamp: 'S1D1',
+  },
+};
+
 describe('FrontOfficePage', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -126,6 +165,7 @@ describe('FrontOfficePage', () => {
       getOwnerState: vi.fn().mockResolvedValue(MOCK_OWNER),
       getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
+      getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),
       getRelationships: vi.fn().mockResolvedValue(MOCK_RELATIONSHIPS),
     } as unknown as ReturnType<typeof useWorker>);
 
@@ -158,6 +198,14 @@ describe('FrontOfficePage', () => {
     expect(container.textContent).toContain('connected');
     expect(container.textContent).toContain('Strong veteran leadership');
 
+    // Identity
+    expect(container.textContent).toContain('Front Office Identity');
+    expect(container.textContent).toContain('Elena Vargas');
+    expect(container.textContent).toContain('Overall Alignment');
+    expect(container.textContent).toContain('Rebuild');
+    expect(container.textContent).toContain('International');
+    expect(container.textContent).toContain('Day One identity is now on the ledger.');
+
     // Budget
     expect(container.textContent).toContain('$200.0M');
     expect(container.textContent).toContain('$180.0M');
@@ -174,6 +222,7 @@ describe('FrontOfficePage', () => {
       getOwnerState: vi.fn().mockResolvedValue(calmOwner),
       getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
+      getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),
       getRelationships: vi.fn().mockResolvedValue(MOCK_RELATIONSHIPS),
     } as unknown as ReturnType<typeof useWorker>);
 

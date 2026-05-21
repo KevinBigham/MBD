@@ -17,7 +17,8 @@ import { useAudioPreferencesStore } from '@/shared/hooks/useAudioPreferencesStor
 import { logger } from '@/shared/lib/logger';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
-import { loadGameById, saveGameById, scheduleAutoSave } from '@/shared/lib/saveSystem';
+import { humanizeLabel } from '@/shared/lib/labels';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import type { CeremonyMoment, MonthlyPulseState, TickerEntry } from '@mbd/contracts';
 
 interface MonthlyPulseView extends MonthlyPulseState {
@@ -104,10 +105,6 @@ export function AppLayout() {
     season,
     day,
     userTeamId,
-    teamName,
-    gmName,
-    activeSaveId,
-    activeSaveSlot,
     setSimulating,
     updateFromSim,
     isInitialized,
@@ -120,32 +117,8 @@ export function AppLayout() {
   const commandPaletteOpenRef = useRef<boolean | null>(null);
   const previousPhaseRef = useRef(phase);
   const pendingWorldSeriesWinRef = useRef(false);
-
-  const persistActiveSave = useCallback(async (targetSeason: number) => {
-    if (activeSaveId == null) {
-      return;
-    }
-
-    const snapshot = await worker.exportSnapshot();
-    const saveName = `${gmName} • ${teamName} • Season ${targetSeason}`;
-
-    if (activeSaveSlot != null) {
-      void scheduleAutoSave(activeSaveSlot, saveName, snapshot).catch((error) => {
-        logger.error('Failed to autosave snapshot:', error);
-      });
-      return;
-    }
-
-    const existing = await loadGameById(activeSaveId);
-    void saveGameById(activeSaveId, saveName, snapshot, {
-      slotNumber: existing?.slotNumber ?? null,
-      parentSaveId: existing?.parentSaveId ?? null,
-      isRootSave: existing?.isRootSave ?? false,
-      branchMeta: existing?.branchMeta ?? null,
-    }).catch((error) => {
-      logger.error('Failed to autosave snapshot:', error);
-    });
-  }, [activeSaveId, activeSaveSlot, gmName, teamName, worker]);
+  const simInFlightRef = useRef(false);
+  const persistActiveSave = useActiveSaveAutosave();
 
   const refreshSeasonFlow = useCallback(async () => {
     if (!workerReady) return;
@@ -206,24 +179,23 @@ export function AppLayout() {
   const handleSim = useCallback(
     async (
       simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>,
-      options: { autoSave?: boolean } = {},
     ) => {
-      if (!workerReady || !isInitialized) return;
+      if (!workerReady || !isInitialized || simInFlightRef.current) return;
+      simInFlightRef.current = true;
       setSimulating(true);
       try {
         const result = await simFn();
         updateFromSim(result);
+        await persistActiveSave({ season: result.season });
         await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse(), refreshTickerFeed()]);
-        if (options.autoSave || result.phase !== phase || result.season !== season) {
-          await persistActiveSave(result.season);
-        }
       } catch (err) {
         logger.error('Simulation error:', err);
       } finally {
+        simInFlightRef.current = false;
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, persistActiveSave, phase, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, season, setSimulating, updateFromSim]
+    [workerReady, isInitialized, persistActiveSave, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, refreshTickerFeed, setSimulating, updateFromSim]
   );
 
   const activeReport = activeMoment ? null : (monthlyPulse?.pendingReport ?? null);
@@ -307,6 +279,20 @@ export function AppLayout() {
       setMonthlyPulseBusy(false);
     }
   }, [activeReport, refreshMonthlyPulse, worker]);
+
+  const handleMonthlyReportAction = useCallback(async (route: string) => {
+    if (!activeReport) return;
+    setMonthlyPulseBusy(true);
+    try {
+      await worker.acknowledgeMonthlyReport(activeReport.id);
+      await refreshMonthlyPulse();
+      navigate(route);
+    } catch (err) {
+      logger.error('Failed to route from monthly report:', err);
+    } finally {
+      setMonthlyPulseBusy(false);
+    }
+  }, [activeReport, navigate, refreshMonthlyPulse, worker]);
 
   const handleMomentDismiss = useCallback(async (momentId: string) => {
     setMonthlyPulseBusy(true);
@@ -430,7 +416,7 @@ export function AppLayout() {
       }
 
       if (event.ctrlKey || event.metaKey) {
-        void handleSim(() => worker.simMonth(), { autoSave: true });
+        void handleSim(() => worker.simMonth());
         return;
       }
 
@@ -459,7 +445,7 @@ export function AppLayout() {
       <div className="sr-only" aria-live="polite">
         {seasonFlow?.phaseLabel ?? `Season ${season}, Day ${day}`}
         {' '}
-        {seasonFlow?.detailLabel ?? phase}
+        {seasonFlow?.detailLabel ?? humanizeLabel(phase)}
       </div>
       {/* Top bar */}
       <TopBar onOpenCommandPalette={() => setCommandPaletteOpen(true)} flow={seasonFlow} />
@@ -488,9 +474,10 @@ export function AppLayout() {
       <SimControls
         onSimDay={() => handleSim(() => worker.simDay())}
         onSimWeek={() => handleSim(() => worker.simWeek())}
-        onSimMonth={() => handleSim(() => worker.simMonth(), { autoSave: true })}
-        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs(), { autoSave: true })}
+        onSimMonth={() => handleSim(() => worker.simMonth())}
+        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs())}
         onFlowAction={() => void handleFlowAction()}
+        disabled={!workerReady}
         flow={seasonFlow}
       />
 
@@ -512,6 +499,7 @@ export function AppLayout() {
         onboardingGuide={activeReport ? monthlyPulse?.onboardingGuide ?? null : null}
         busy={isSimulating || monthlyPulseBusy}
         onContinue={() => void handleMonthlyReportContinue()}
+        onReportAction={(route) => void handleMonthlyReportAction(route)}
         onDecisionDismiss={() => void handleDecisionDismiss()}
         onDecisionAction={() => void handleDecisionAction()}
       />

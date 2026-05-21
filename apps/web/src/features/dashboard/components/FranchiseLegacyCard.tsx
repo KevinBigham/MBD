@@ -67,7 +67,7 @@ export default function FranchiseLegacyCard() {
           <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Franchise Legacy</h2>
         </div>
         <Link
-          to="/gm-career"
+          to="/career"
           className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary"
         >
           Full timeline <ChevronRight className="h-3 w-3" />

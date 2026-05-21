@@ -4,7 +4,7 @@
  */
 import { useMemo } from 'react';
 import { CHART_COLORS } from './chartTheme';
-import { ResponsiveContainer, LineChart, Line } from 'recharts';
+import { LineChart, Line } from 'recharts';
 
 /* ── pure data types ──────────────────────────────────────── */
 
@@ -48,18 +48,16 @@ export default function Sparkline({ values, width = 80, height = 24, color }: Sp
 
   return (
     <div style={{ width, height }} role="img" aria-label="Trend sparkline">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={strokeColor}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <LineChart width={width} height={height} data={data} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+        <Line
+          type="monotone"
+          dataKey="value"
+          stroke={strokeColor}
+          strokeWidth={1.5}
+          dot={false}
+          isAnimationActive={false}
+        />
+      </LineChart>
     </div>
   );
 }

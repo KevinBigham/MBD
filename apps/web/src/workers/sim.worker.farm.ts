@@ -1,6 +1,7 @@
 import type {
   AwardHistoryEntry,
   DevelopmentSetback,
+  FranchiseState,
   MinorLeagueSeasonLine,
   PlayerOrigin,
   ProspectBond,
@@ -25,6 +26,7 @@ import {
   type PlayerGameStats,
 } from '@mbd/sim-core';
 import type { MinorLeagueState } from '@mbd/contracts';
+import { adjustDevelopmentSetbackForIdentity } from './sim.worker.frontOfficeIdentity.js';
 
 interface ProspectFarmState {
   season: number;
@@ -35,6 +37,8 @@ interface ProspectFarmState {
     playerSeasonStats: Map<string, PlayerGameStats>;
   };
   minorLeagueState: MinorLeagueState;
+  userTeamId?: string;
+  franchise?: FranchiseState;
   prospectBonds: ProspectBond[];
   playerOrigins: Map<string, PlayerOrigin>;
   awardHistory: AwardHistoryEntry[];
@@ -319,12 +323,23 @@ export function applyDevelopmentSetbackCheckpoint(
     if (!setback) {
       continue;
     }
+    const adjustedSetback = state.userTeamId && state.franchise
+      ? adjustDevelopmentSetbackForIdentity(
+        state as ProspectFarmState & { userTeamId: string; franchise: FranchiseState },
+        player,
+        setback,
+        month,
+      )
+      : setback;
+    if (!adjustedSetback) {
+      continue;
+    }
 
-    carriedSetbacks.push(setback);
+    carriedSetbacks.push(adjustedSetback);
     activeSetbackIds.add(player.id);
-    playerMap.set(player.id, applyDevelopmentSetback(player, setback));
-    nextNews.push(buildSetbackNews(state, player, setback));
-    nextTicker.push(buildSetbackTicker(state, player, setback));
+    playerMap.set(player.id, applyDevelopmentSetback(player, adjustedSetback));
+    nextNews.push(buildSetbackNews(state, player, adjustedSetback));
+    nextTicker.push(buildSetbackTicker(state, player, adjustedSetback));
   }
 
   state.players.splice(0, state.players.length, ...state.players.map((player) => playerMap.get(player.id) ?? player));

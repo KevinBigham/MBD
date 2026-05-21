@@ -82,7 +82,11 @@ import type {
   PlayoffSeriesState,
   TradeProposal,
 } from '@mbd/sim-core';
-import type { SignatureMoment as PersistedSignatureMoment, TradeAsset } from '@mbd/contracts';
+import type {
+  DayOneOpeningPlan,
+  SignatureMoment as PersistedSignatureMoment,
+  TradeAsset,
+} from '@mbd/contracts';
 import {
   createEmptyDraftState,
   createEmptyInternationalScoutingState,
@@ -222,6 +226,11 @@ import {
   recordProspectBondDebuts,
 } from './sim.worker.farm.js';
 import {
+  applyMonthlyDevelopmentIdentity,
+  applyMonthlyFrontOfficeConsequences,
+  applyPressToneConsequences,
+} from './sim.worker.frontOfficeIdentity.js';
+import {
   applyBreakoutCountdowns,
   applyDebutFlashbacks,
   applyMonthlyNarrativeHooks,
@@ -297,6 +306,127 @@ const AT_BAT_OUTCOMES = new Set([
   'LD_OUT',
   'DOUBLE_PLAY',
 ]);
+
+const ROSTER_PLAN_HITTER_POSITIONS = new Set(['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']);
+const ROSTER_PLAN_PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
+
+function uniqueRosterPlanIds(playerIds: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const playerId of playerIds) {
+    if (!playerId || seen.has(playerId)) {
+      continue;
+    }
+    seen.add(playerId);
+    ordered.push(playerId);
+  }
+  return ordered;
+}
+
+function playerRatingDesc(left: { overallRating: number }, right: { overallRating: number }): number {
+  return right.overallRating - left.overallRating;
+}
+
+function buildDefaultRosterPlan(s: FullGameState): DayOneOpeningPlan {
+  const mlbPlayers = s.players.filter((player) =>
+    player.teamId === s.userTeamId && player.rosterStatus === 'MLB',
+  );
+  const hitters = mlbPlayers
+    .filter((player) => ROSTER_PLAN_HITTER_POSITIONS.has(player.position))
+    .sort(playerRatingDesc);
+  const starters = mlbPlayers
+    .filter((player) => player.position === 'SP')
+    .sort(playerRatingDesc);
+  const relievers = mlbPlayers
+    .filter((player) => player.position === 'RP' || player.position === 'CL')
+    .sort(playerRatingDesc);
+  const closer = relievers.find((player) => player.position === 'CL') ?? relievers[0] ?? null;
+  const setupIds = relievers
+    .filter((player) => player.id !== closer?.id)
+    .slice(0, 2)
+    .map((player) => player.id);
+  const longRelief = [
+    ...starters.slice(5),
+    ...relievers,
+  ].find((player) => player.id !== closer?.id && !setupIds.includes(player.id)) ?? null;
+
+  return {
+    lineupPlayerIds: hitters.slice(0, 9).map((player) => player.id),
+    rotationPlayerIds: starters.slice(0, 5).map((player) => player.id),
+    bullpen: {
+      closerId: closer?.id ?? null,
+      setupIds,
+      longReliefId: longRelief?.id ?? null,
+    },
+  };
+}
+
+function normalizeRosterPlan(s: FullGameState, plan: DayOneOpeningPlan): DayOneOpeningPlan {
+  const defaults = buildDefaultRosterPlan(s);
+  const playerById = new Map(
+    s.players
+      .filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB')
+      .map((player) => [player.id, player]),
+  );
+  const isHitter = (playerId: string) => {
+    const player = playerById.get(playerId);
+    return player != null && ROSTER_PLAN_HITTER_POSITIONS.has(player.position);
+  };
+  const isStarter = (playerId: string) => playerById.get(playerId)?.position === 'SP';
+  const isPitcher = (playerId: string) => {
+    const player = playerById.get(playerId);
+    return player != null && ROSTER_PLAN_PITCHER_POSITIONS.has(player.position);
+  };
+
+  const lineupPlayerIds = uniqueRosterPlanIds([
+    ...plan.lineupPlayerIds.filter(isHitter),
+    ...defaults.lineupPlayerIds,
+  ]).slice(0, Math.min(9, defaults.lineupPlayerIds.length || 9));
+
+  const rotationPlayerIds = uniqueRosterPlanIds([
+    ...plan.rotationPlayerIds.filter(isStarter),
+    ...defaults.rotationPlayerIds,
+  ]).slice(0, Math.min(5, defaults.rotationPlayerIds.length || 5));
+
+  const candidateBullpen = plan.bullpen ?? defaults.bullpen;
+  if (candidateBullpen == null) {
+    return {
+      lineupPlayerIds,
+      rotationPlayerIds,
+      bullpen: null,
+    };
+  }
+
+  const closerId = uniqueRosterPlanIds([
+    candidateBullpen.closerId,
+    defaults.bullpen?.closerId,
+  ]).find((playerId) => isPitcher(playerId) && !rotationPlayerIds.includes(playerId)) ?? null;
+  const setupIds = uniqueRosterPlanIds([
+    ...candidateBullpen.setupIds,
+    ...(defaults.bullpen?.setupIds ?? []),
+  ])
+    .filter((playerId) => isPitcher(playerId) && playerId !== closerId && !rotationPlayerIds.includes(playerId))
+    .slice(0, 2);
+  const longReliefId = uniqueRosterPlanIds([
+    candidateBullpen.longReliefId,
+    defaults.bullpen?.longReliefId,
+  ]).find((playerId) =>
+    isPitcher(playerId)
+    && playerId !== closerId
+    && !setupIds.includes(playerId)
+    && !rotationPlayerIds.includes(playerId),
+  ) ?? null;
+
+  return {
+    lineupPlayerIds,
+    rotationPlayerIds,
+    bullpen: {
+      closerId,
+      setupIds,
+      longReliefId,
+    },
+  };
+}
 
 function parseSimDayFromTimestamp(value: string): number | null {
   const match = /D(\d+)$/.exec(value);
@@ -1371,7 +1501,9 @@ function applyMonthlyDevelopmentCheckpoints(
     );
     s.players = checkpoint.players;
     s.minorLeagueState = checkpoint.state;
+    applyMonthlyDevelopmentIdentity(s, month);
     applyDevelopmentSetbackCheckpoint(s, month);
+    applyMonthlyFrontOfficeConsequences(s, { month });
     advanceMonthlyStoryArcs(s, s.season, currentDay);
     applyBreakoutCountdowns(s);
     applyMonthlyPressConference(s);
@@ -1980,11 +2112,14 @@ export const actionApi = {
       });
     }
 
+    applyPressToneConsequences(s, conferenceId, response);
+
     return {
       success: true as const,
       tone: response.tone,
       moraleDelta: response.moraleDelta,
       ownerDelta: response.ownerDelta,
+      fanSentimentDelta: response.fanSentimentDelta,
     };
   },
 
@@ -2200,6 +2335,34 @@ export const actionApi = {
       seasonComplete: s.phase !== 'regular',
       flowStateChanged: true,
     };
+  },
+
+  getRosterPlan() {
+    const s = requireState();
+    const plan = s.franchise.dayOne.openingDayPlan ?? buildDefaultRosterPlan(s);
+    return normalizeRosterPlan(s, plan);
+  },
+
+  updateRosterPlan(patch: Partial<DayOneOpeningPlan>) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return {
+        success: false as const,
+        error: franchiseLockMessage(s),
+        plan: normalizeRosterPlan(s, s.franchise.dayOne.openingDayPlan ?? buildDefaultRosterPlan(s)),
+      };
+    }
+    const current = s.franchise.dayOne.openingDayPlan ?? buildDefaultRosterPlan(s);
+    const next = normalizeRosterPlan(s, {
+      lineupPlayerIds: patch.lineupPlayerIds ?? current.lineupPlayerIds,
+      rotationPlayerIds: patch.rotationPlayerIds ?? current.rotationPlayerIds,
+      bullpen: patch.bullpen === undefined ? current.bullpen : patch.bullpen,
+    });
+    s.franchise.dayOne = {
+      ...s.franchise.dayOne,
+      openingDayPlan: next,
+    };
+    return { success: true as const, plan: next };
   },
 
   exportSnapshot() {

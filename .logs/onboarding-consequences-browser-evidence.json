@@ -1,0 +1,71 @@
+{
+  "devServer": {
+    "command": "PATH=/Users/kevin/.nvm/versions/node/v24.14.0/bin:$PATH pnpm --filter @mbd/web dev --host 127.0.0.1 --port 5174",
+    "actualUrl": "http://127.0.0.1:5175/MBD/",
+    "note": "Vite reported port 5174 in use and served the app on 5175."
+  },
+  "flowVerified": {
+    "newSave": "Created a revised onboarding save in slot 3.",
+    "revisedOnboardingChoices": {
+      "assistantGM": "Elena Vargas",
+      "seasonMandate": "Compete",
+      "manager": "Mark Reed",
+      "pitchingCoach": "Pete Rivera",
+      "hittingCoach": "Tom Bennett",
+      "developmentPosture": "Balanced Development",
+      "scoutingDirector": "Tony Campanella",
+      "scoutingFocus": "International",
+      "spendingPosture": "Balanced",
+      "tradePosture": "Opportunistic",
+      "mediaTone": "Measured"
+    },
+    "dashboardAfterOnboarding": {
+      "url": "http://127.0.0.1:5175/MBD/dashboard",
+      "visibleState": [
+        "Season 1 Spring Training dashboard loaded.",
+        "Fan Mood showed 51 with copy: Fans read the new front office as Measured and Balanced.",
+        "Owner Heat showed 62 with copy: Compete mandate established with a Balanced resource posture.",
+        "Press Digest showed Day One identity is now on the ledger with Elena Vargas, Compete, International, Balanced, Opportunistic, Balanced development, and Measured media."
+      ]
+    },
+    "frontOfficeIdentity": {
+      "url": "http://127.0.0.1:5175/MBD/front-office",
+      "beforeMonth": [
+        "Front Office Identity card rendered with score 60.",
+        "Assistant GM Elena Vargas rendered with prospect/development focus and homegrown watchout.",
+        "Scouting Director Tony Campanella rendered with Draft 70%, IFA 81%, Pro 70%.",
+        "Mandate Compete, Development Balanced, Scouting International, Spending Balanced, Trades Opportunistic, Media Measured rendered.",
+        "Recent consequence rendered: Day One identity is now on the ledger."
+      ],
+      "afterMonth": [
+        "Front Office Identity card still rendered after a real Sim Month.",
+        "Identity score changed to 58 with updated mandate/spending/trade/development/media alignment values.",
+        "Owner Intel showed Day 31/162 May pulse context after monthly advancement."
+      ]
+    },
+    "monthlyAdvance": {
+      "action": "Clicked Sim Month on the dashboard.",
+      "afterUrl": "http://127.0.0.1:5175/MBD/dashboard",
+      "visibleState": [
+        "Header advanced to Season 1 - Day 31/162, May pulse.",
+        "Record changed to 12-14.",
+        "Fan Mood changed to 88.",
+        "Owner Heat changed to 68.",
+        "Active story arcs changed from 0 to 3.",
+        "Press Room unread count changed from 5 to 12."
+      ],
+      "targetedMonthlyProof": "Focused worker coverage in src/workers/sim.worker.frontOfficeIdentity.test.ts verifies applyMonthlyFrontOfficeConsequences updates owner/fan/front-office/team state, writes front_office_monthly_* story flags, emits briefing/news when meaningful, and dedupes repeat month application."
+    },
+    "console": {
+      "errorOrWarningCount": 0,
+      "logs": []
+    }
+  },
+  "screenshots": [
+    ".logs/screenshots/onboarding-consequences-front-office.png",
+    ".logs/screenshots/onboarding-consequences-dashboard-before-month.png",
+    ".logs/screenshots/onboarding-consequences-dashboard-after-month.png",
+    ".logs/screenshots/onboarding-consequences-front-office-after-month.png",
+    ".logs/screenshots/onboarding-consequences-news-after-month.png"
+  ]
+}

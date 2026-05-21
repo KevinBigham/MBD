@@ -10,6 +10,7 @@ export const dynasty = {
   overlay: '#1A2D5A',
   border: '#1E3A6E',
   muted: '#8A9BB5',
+  textSecondary: '#8A9BB5',
   text: '#E2E8F0',
   textBright: '#F8FAFC',
 } as const;

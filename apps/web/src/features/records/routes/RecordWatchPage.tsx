@@ -7,6 +7,7 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
 import { ProgressFill } from '@/shared/components/ProgressFill';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
+import { categoryLabel } from '@/shared/lib/labels';
 
 /* ---------- types ---------- */
 
@@ -154,7 +155,7 @@ function RecordBookTable({ entries, scope }: { entries: RecordBookEntry[]; scope
       {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([category, records]) => (
         <div key={category}>
           <h3 className="mb-3 font-heading text-xs uppercase tracking-wider text-dynasty-muted">
-            {category}
+            {categoryLabel(category)}
           </h3>
           <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
             <table className="w-full">
@@ -176,7 +177,7 @@ function RecordBookTable({ entries, scope }: { entries: RecordBookEntry[]; scope
                     >
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
-                          <Badge className={categoryColor(record.category)}>{record.category}</Badge>
+                          <Badge className={categoryColor(record.category)}>{categoryLabel(record.category)}</Badge>
                           <span className="font-heading text-sm text-dynasty-text">{record.label}</span>
                         </div>
                       </td>

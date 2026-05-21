@@ -119,7 +119,7 @@ export const AGM_CANDIDATES: readonly [AGMCandidate, AGMCandidate, AGMCandidate]
       "Kid's got...",
       'Plays the game the right way',
       "I've seen this before",
-      'Back in [YEAR]...',
+      'Back when travel days were travel days...',
       "Baseball's a funny game",
     ],
     bio: 'Walter Kowalski played twelve seasons as a first baseman, mostly with Detroit Motor Kings. .271 lifetime, 187 home runs, one World Series appearance (lost). Coached eight years, managed four in the minors, scouted six. Last team was Milwaukee Suds -- they hired a 32-year-old GM who wanted a more modern voice in the front office. Walt took it personally.',

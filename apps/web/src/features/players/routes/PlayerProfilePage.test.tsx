@@ -15,6 +15,10 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
+  useActiveSaveAutosave: () => vi.fn().mockResolvedValue({ saved: true, saveName: 'Test Save' }),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 
@@ -366,7 +370,11 @@ describe('PlayerProfilePage', () => {
     vi.clearAllMocks();
   });
 
-  async function renderPage(initialEntry: string, profileView: PlayerProfileView) {
+  async function renderPage(
+    initialEntry: string,
+    profileView: PlayerProfileView,
+    workerOverrides: Record<string, unknown> = {},
+  ) {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       getPlayerProfileView: vi.fn().mockResolvedValue(profileView),
@@ -392,6 +400,9 @@ describe('PlayerProfilePage', () => {
       designateForAssignment: vi.fn().mockResolvedValue({ success: true }),
       getSeasonProjections: vi.fn().mockResolvedValue(null),
       getPlayerSimilarity: vi.fn().mockResolvedValue(null),
+      getBreakoutIntelligence: vi.fn().mockResolvedValue(null),
+      getScoutConsensus: vi.fn().mockResolvedValue(null),
+      ...workerOverrides,
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -504,6 +515,149 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Historical scouting snapshots are not tracked in v15.');
   });
 
+  it('renders worker-backed projection, similarity, breakout, and consensus panels', async () => {
+    await renderPage('/players/player-1', createProfileView(), {
+      getSeasonProjections: vi.fn().mockResolvedValue({
+        projection: {
+          playerId: 'player-1',
+          gamesPlayed: 92,
+          gamesRemaining: 70,
+          projectedStats: {
+            pa: 612,
+            hits: 172,
+            hr: 31,
+            rbi: 104,
+            bb: 68,
+            k: 121,
+            avg: '.304',
+            obp: '.371',
+            slg: '.518',
+            ops: '.889',
+          },
+          paceLabel: 'On pace for a 30-HR, 100-RBI season.',
+          confidenceLevel: 'high',
+        },
+        notableProjections: [{
+          playerId: 'player-1',
+          category: 'Power Pace',
+          projectedValue: '31 HR',
+          benchmark: '30 HR',
+          paceDescription: 'Clearing the power checkpoint.',
+        }],
+        teamNotableCount: 1,
+      }),
+    });
+
+    expect(container.textContent).toContain('Season Projections');
+    expect(container.textContent).toContain('On pace for a 30-HR, 100-RBI season.');
+    expect(container.textContent).toContain('Power Pace');
+
+    await renderPage('/players/player-1?tab=development', createProfileView(), {
+      getBreakoutIntelligence: vi.fn().mockResolvedValue({
+        assessment: {
+          playerId: 'player-1',
+          probability: 72,
+          factors: [{
+            name: 'Approach gains',
+            weight: 10,
+            contribution: 7.2,
+            description: 'Chase rate is moving in the right direction.',
+          }],
+          riskLevel: 'high',
+          narrativeHook: 'The swing decisions are starting to turn tools into damage.',
+        },
+        ceiling: {
+          projectedPeak: 79,
+          confidenceLevel: 'high',
+          comparisonArchetype: 'impact middle infielder',
+          timelineSeasons: 2,
+        },
+        regression: {
+          riskLevel: 'stable',
+          declineRate: 0.1,
+          projectedFloor: 55,
+          warningSignals: [],
+        },
+        trajectory: 'rocket',
+        scoutReport: 'Scouts see a playable path to an everyday role.',
+        playerName: 'Marco Ascension',
+        position: 'SS',
+        age: 23,
+        developmentPhase: 'Ascent',
+      }),
+    });
+
+    expect(container.textContent).toContain('Breakout Intelligence');
+    expect(container.textContent).toContain('The swing decisions are starting to turn tools into damage.');
+    expect(container.textContent).toContain('Scouts see a playable path to an everyday role.');
+
+    await renderPage('/players/player-1?tab=scouting', createProfileView({
+      scoutConflict: null,
+      scoutingReport: {
+        playerId: 'player-1',
+        playerName: 'Marco Ascension',
+        position: 'SS',
+        age: 23,
+        teamName: 'New York Tycoons',
+        isPitcher: false,
+        grades: { contact: 62, power: 58, defense: 64 },
+        confidence: 12,
+        overall: 61,
+        ceiling: 73,
+        floor: 52,
+        notes: 'Live look confirms the profile is trending up.',
+        scoutName: 'Mina Park',
+        date: 'S5D92',
+        reliability: 4,
+      },
+    }), {
+      getPlayerSimilarity: vi.fn().mockResolvedValue({
+        archetype: {
+          archetype: 'Two-way table setter',
+          description: 'Contact-first infielder with enough power to punish mistakes.',
+        },
+        similarPlayers: [{
+          playerId: 'player-2',
+          playerName: 'Jon Signal',
+          similarityScore: 87,
+          sharedStrengths: ['Contact', 'Defense'],
+          primaryDifference: 'More power variance',
+          position: '2B',
+          teamId: 'bos',
+          age: 24,
+        }],
+      }),
+      getScoutConsensus: vi.fn().mockResolvedValue({
+        consensus: {
+          playerId: 'player-1',
+          consensusRating: 64,
+          confidenceInterval: { low: 58, high: 70 },
+          agreementLevel: 'majority',
+          outlierScoutIds: ['scout-2'],
+        },
+        attributeEstimates: [{
+          attribute: 'contact',
+          pointEstimate: 332,
+          low: 300,
+          high: 360,
+          confidence: 78,
+        }],
+        scoutCount: 3,
+        observations: [
+          { scoutId: 'scout-1', scoutName: 'Mina Park', observedRating: 65, confidence: 82 },
+          { scoutId: 'scout-2', scoutName: 'Tomas Gray', observedRating: 58, confidence: 66 },
+        ],
+      }),
+    });
+
+    expect(container.textContent).toContain('Current Scouting Report');
+    expect(container.textContent).toContain('Live look confirms the profile is trending up.');
+    expect(container.textContent).toContain('Scout Consensus');
+    expect(container.textContent).toContain('Mina Park');
+    expect(container.textContent).toContain('Two-way table setter');
+    expect(container.textContent).toContain('Jon Signal');
+  });
+
   it('runs the five-year extension quick action from the sidebar', async () => {
     const worker = {
       isReady: true,
@@ -536,6 +690,8 @@ describe('PlayerProfilePage', () => {
       designateForAssignment: vi.fn().mockResolvedValue({ success: true }),
       getSeasonProjections: vi.fn().mockResolvedValue(null),
       getPlayerSimilarity: vi.fn().mockResolvedValue(null),
+      getBreakoutIntelligence: vi.fn().mockResolvedValue(null),
+      getScoutConsensus: vi.fn().mockResolvedValue(null),
     };
 
     mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);

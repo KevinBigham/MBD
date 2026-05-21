@@ -49,6 +49,9 @@ const HistoryPage = lazy(
 const PressRoomPage = lazy(
   () => import('@/features/press-room/routes/PressRoomPage')
 );
+const NewsPage = lazy(
+  () => import('@/features/news/routes/NewsPage')
+);
 const PlayoffsPage = lazy(
   () => import('@/features/playoffs/routes/PlayoffsPage')
 );
@@ -105,7 +108,7 @@ function LoadingFallback() {
         <div className="mb-3 font-brand text-2xl text-accent-primary motion-safe:animate-pulse">
           MBD
         </div>
-        <div className="font-data text-sm text-dynasty-muted">Loading route...</div>
+        <div className="font-data text-sm text-dynasty-muted">Routing the front office...</div>
         <div className="mx-auto mt-4 h-0.5 w-16 overflow-hidden rounded-full bg-dynasty-border">
           <div className="h-full w-8 rounded-full bg-accent-primary motion-safe:animate-[shimmer_1.2s_ease-in-out_infinite]" />
         </div>
@@ -149,6 +152,7 @@ export function AppRoutes() {
           <Route path="schedule" element={withRouteBoundary('Schedule', <SchedulePage />)} />
           <Route path="games/:gameIndex" element={withRouteBoundary('Box Score', <BoxScorePage />)} />
           <Route path="press-room" element={withRouteBoundary('Press Room', <PressRoomPage />)} />
+          <Route path="news" element={withRouteBoundary('News', <NewsPage />)} />
           <Route path="playoffs" element={withRouteBoundary('Playoffs', <PlayoffsPage />)} />
           <Route path="free-agency" element={withRouteBoundary('Free Agency', <FreeAgencyPage />)} />
           <Route path="offseason" element={withRouteBoundary('Offseason', <OffseasonPage />)} />

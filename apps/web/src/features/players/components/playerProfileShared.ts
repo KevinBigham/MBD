@@ -8,6 +8,7 @@ import type {
 import { PITCHER_POSITIONS, toDisplayRating, type MilestoneAlert } from '@mbd/sim-core';
 import type { PlayerAdvancedStatsDTO as PlayerAdvancedStatsView } from '@/workers/sim.worker.stats';
 import type { PersonalityProfileDTO as PersonalityProfileView } from '@/workers/sim.worker.narrative';
+import { humanizeLabel, minorLevelLabel } from '@/shared/lib/labels';
 
 export type { PlayerAdvancedStatsView, PersonalityProfileView };
 
@@ -222,7 +223,7 @@ export function normalizePlayerProfileTab(value: string | null): PlayerProfileTa
 }
 
 export function labelize(value: string): string {
-  return value.replaceAll('_', ' ');
+  return humanizeLabel(value);
 }
 
 export function moneyLabel(value: number): string {
@@ -298,7 +299,7 @@ export function formatMonth(month: number): string {
 }
 
 export function formatMinorLevel(level: string): string {
-  return level === 'A_PLUS' ? 'A+' : labelize(level);
+  return minorLevelLabel(level);
 }
 
 export function formatDecimal(value: number | null | undefined, digits: number): string {

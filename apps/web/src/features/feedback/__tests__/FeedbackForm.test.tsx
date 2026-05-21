@@ -2,189 +2,111 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { FeedbackForm } from '../FeedbackForm';
-import { createMailtoFeedbackSubmitter } from '../feedbackSubmit';
+import { buildFeedbackIssueUrl, buildFeedbackMailtoUrl } from '../feedbackSubmit';
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const VALID_BODY = [
-  'The standings panel is clear, but the modal close behavior felt hard to discover on mobile.',
-  'I expected the same escape hatch on every report surface after advancing several weeks.',
-  'This is reproducible from a new save after opening the pennant race panel twice.',
-].join(' ');
+describe('feedbackSubmit', () => {
+  it('builds issue and mailto drafts from explicit user input only', () => {
+    const draft = {
+      type: 'bug' as const,
+      message: 'Trade Center resume button did not load the active offer.',
+      contact: 'Kevin',
+    };
 
-function setFieldValue(
-  field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
-  value: string,
-) {
-  const valueSetter = Object.getOwnPropertyDescriptor(field.constructor.prototype, 'value')?.set;
-  valueSetter?.call(field, value);
-  field.dispatchEvent(new Event('input', { bubbles: true }));
-  field.dispatchEvent(new Event('change', { bubbles: true }));
-}
+    const issueUrl = buildFeedbackIssueUrl(draft);
+    const mailtoUrl = buildFeedbackMailtoUrl(draft);
+
+    expect(issueUrl).toContain('github.com/KevinBigham/MBD/issues/new');
+    expect(decodeURIComponent(issueUrl).replaceAll('+', ' ')).toContain('Trade Center resume button');
+    expect(mailtoUrl).toContain('mailto:');
+    expect(decodeURIComponent(mailtoUrl).replaceAll('+', ' ')).toContain('Contact: Kevin');
+  });
+});
 
 describe('FeedbackForm', () => {
   let container: HTMLDivElement;
   let root: Root;
+  let openSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    openSpy = vi.fn();
+    Object.defineProperty(window, 'open', {
+      value: openSpy,
+      configurable: true,
+    });
   });
 
   afterEach(async () => {
-    vi.useRealTimers();
     await act(async () => {
       root.unmount();
     });
     container.remove();
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
-  it('validates feedback type and body before submitting', async () => {
-    const submitFeedback = vi.fn().mockResolvedValue(undefined);
-
+  it('validates short reports before opening a draft', async () => {
     await act(async () => {
-      root.render(
-        <FeedbackForm
-          onClose={vi.fn()}
-          submitFeedback={submitFeedback}
-        />,
-      );
+      root.render(<FeedbackForm />);
     });
 
-    const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Send Feedback'),
-    );
+    const button = Array.from(container.querySelectorAll('button')).find((entry) =>
+      entry.textContent?.includes('Open Issue Draft'));
+    expect(button).toBeTruthy();
 
     await act(async () => {
-      submitButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(container.textContent).toContain('Choose a feedback type.');
-    expect(container.textContent).toContain('Write 200-500 characters so the report is actionable.');
-    expect(submitFeedback).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Add a little more detail');
   });
 
-  it('opens the mailto fallback with explicit form fields only', async () => {
-    const openMailto = vi.fn();
-    const submitFeedback = createMailtoFeedbackSubmitter({
-      openMailto,
-      to: 'feedback@example.test',
+  it('opens a GitHub issue draft and keeps a mailto fallback link current', async () => {
+    await act(async () => {
+      root.render(<FeedbackForm />);
     });
+
+    const textarea = container.querySelector('textarea');
+    const contact = container.querySelector('input');
+    expect(textarea).toBeTruthy();
+    expect(contact).toBeTruthy();
 
     await act(async () => {
-      root.render(
-        <FeedbackForm
-          onClose={vi.fn()}
-          submitFeedback={submitFeedback}
-        />,
-      );
+      if (textarea instanceof HTMLTextAreaElement) {
+        const setTextAreaValue = Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          'value',
+        )?.set;
+        setTextAreaValue?.call(textarea, 'The milestone ticker showed the wrong career total after simming a week.');
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (contact instanceof HTMLInputElement) {
+        const setInputValue = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          'value',
+        )?.set;
+        setInputValue?.call(contact, 'demo@example.com');
+        contact.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     });
 
-    const typeSelect = container.querySelector('select[name="feedback-type"]') as HTMLSelectElement;
-    const bodyField = container.querySelector('textarea[name="feedback-body"]') as HTMLTextAreaElement;
+    const mailto = container.querySelector('a[href^="mailto:"]');
+    expect(decodeURIComponent(mailto?.getAttribute('href') ?? '').replaceAll('+', ' ')).toContain('demo@example.com');
 
+    const button = Array.from(container.querySelectorAll('button')).find((entry) =>
+      entry.textContent?.includes('Open Issue Draft'));
     await act(async () => {
-      setFieldValue(typeSelect, 'bug');
-      setFieldValue(bodyField, VALID_BODY);
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Send Feedback'),
-    );
-
-    await act(async () => {
-      submitButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(openMailto).toHaveBeenCalledTimes(1);
-    const href = decodeURIComponent(openMailto.mock.calls[0]?.[0] ?? '');
-    expect(href).toContain('mailto:feedback@example.test');
-    expect(href).toContain('MBD Feedback: bug');
-    expect(href).toContain('Type: bug');
-    expect(href).toContain(VALID_BODY);
-    expect(href).not.toContain('Reach me:');
-    expect(href).not.toContain(window.location.href);
-    expect(href).not.toContain(navigator.userAgent);
-    expect(href).not.toContain('fingerprint');
-  });
-
-  it('includes optional contact only when the user types it', async () => {
-    const openMailto = vi.fn();
-    const submitFeedback = createMailtoFeedbackSubmitter({
-      openMailto,
-      to: 'feedback@example.test',
-    });
-
-    await act(async () => {
-      root.render(
-        <FeedbackForm
-          onClose={vi.fn()}
-          submitFeedback={submitFeedback}
-        />,
-      );
-    });
-
-    await act(async () => {
-      setFieldValue(container.querySelector('select[name="feedback-type"]') as HTMLSelectElement, 'question');
-      setFieldValue(container.querySelector('textarea[name="feedback-body"]') as HTMLTextAreaElement, VALID_BODY);
-      setFieldValue(container.querySelector('input[name="feedback-contact"]') as HTMLInputElement, 'tester@example.test');
-    });
-
-    const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Send Feedback'),
-    );
-
-    await act(async () => {
-      submitButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    const href = decodeURIComponent(openMailto.mock.calls[0]?.[0] ?? '');
-    expect(href).toContain('Type: question');
-    expect(href).toContain('Reach me: tester@example.test');
-  });
-
-  it('shows success and auto-dismisses after submit', async () => {
-    vi.useFakeTimers();
-    const onClose = vi.fn();
-
-    await act(async () => {
-      root.render(
-        <FeedbackForm
-          autoDismissMs={3000}
-          onClose={onClose}
-          submitFeedback={vi.fn().mockResolvedValue(undefined)}
-        />,
-      );
-    });
-
-    await act(async () => {
-      setFieldValue(container.querySelector('select[name="feedback-type"]') as HTMLSelectElement, 'suggestion');
-      setFieldValue(container.querySelector('textarea[name="feedback-body"]') as HTMLTextAreaElement, VALID_BODY);
-    });
-
-    const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Send Feedback'),
-    );
-
-    await act(async () => {
-      submitButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(container.textContent).toContain('Thanks — sent.');
-    expect(onClose).not.toHaveBeenCalled();
-
-    await act(async () => {
-      vi.advanceTimersByTime(3000);
-    });
-
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy.mock.calls[0]?.[0]).toContain('github.com/KevinBigham/MBD/issues/new');
+    expect(container.textContent).toContain('Opened a GitHub issue draft');
   });
 });

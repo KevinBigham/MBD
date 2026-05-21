@@ -1,56 +1,58 @@
-export type FeedbackType = 'bug' | 'suggestion' | 'question';
+export type FeedbackType = 'bug' | 'balance' | 'idea' | 'other';
 
-export interface FeedbackPayload {
+export interface FeedbackDraft {
   type: FeedbackType;
-  body: string;
+  message: string;
   contact?: string;
 }
 
-export type FeedbackSubmitter = (payload: FeedbackPayload) => Promise<void>;
+const FEEDBACK_ISSUE_URL = 'https://github.com/KevinBigham/MBD/issues/new';
+const FEEDBACK_MAILTO = 'mailto:';
 
-export const FEEDBACK_BODY_MIN_LENGTH = 200;
-export const FEEDBACK_BODY_MAX_LENGTH = 500;
-export const DEFAULT_FEEDBACK_EMAIL = 'feedback@mrbaseballdynasty.com';
+const TYPE_LABELS: Record<FeedbackType, string> = {
+  bug: 'Bug report',
+  balance: 'Balance note',
+  idea: 'Feature idea',
+  other: 'General feedback',
+};
 
-export function formatFeedbackType(value: FeedbackType): string {
-  if (value === 'bug') return 'Bug';
-  if (value === 'suggestion') return 'Suggestion';
-  return 'Question';
+export function feedbackTypeLabel(type: FeedbackType): string {
+  return TYPE_LABELS[type] ?? TYPE_LABELS.other;
 }
 
-export function buildMailtoFeedbackHref(
-  payload: FeedbackPayload,
-  to = DEFAULT_FEEDBACK_EMAIL,
-): string {
-  const bodyLines = [
-    `Type: ${payload.type}`,
+export function validateFeedbackDraft(draft: FeedbackDraft): string | null {
+  if (draft.message.trim().length < 12) {
+    return 'Add a little more detail before opening the draft.';
+  }
+  return null;
+}
+
+function feedbackBody(draft: FeedbackDraft): string {
+  const lines = [
+    `Type: ${feedbackTypeLabel(draft.type)}`,
     '',
     'Report:',
-    payload.body.trim(),
+    draft.message.trim(),
   ];
-
-  const contact = payload.contact?.trim();
+  const contact = draft.contact?.trim();
   if (contact) {
-    bodyLines.push('', `Reach me: ${contact}`);
+    lines.push('', `Contact: ${contact}`);
   }
-
-  const subject = encodeURIComponent(`MBD Feedback: ${payload.type}`);
-  const body = encodeURIComponent(bodyLines.join('\n'));
-
-  return `mailto:${to}?subject=${subject}&body=${body}`;
+  return lines.join('\n');
 }
 
-export function createMailtoFeedbackSubmitter(options: {
-  openMailto: (href: string) => void;
-  to?: string;
-}): FeedbackSubmitter {
-  return async (payload) => {
-    options.openMailto(buildMailtoFeedbackHref(payload, options.to));
-  };
+export function buildFeedbackIssueUrl(draft: FeedbackDraft): string {
+  const params = new URLSearchParams({
+    title: `[${feedbackTypeLabel(draft.type)}] Demo feedback`,
+    body: feedbackBody(draft),
+  });
+  return `${FEEDBACK_ISSUE_URL}?${params.toString()}`;
 }
 
-export const submitFeedbackWithFallback: FeedbackSubmitter = createMailtoFeedbackSubmitter({
-  openMailto: (href) => {
-    window.location.href = href;
-  },
-});
+export function buildFeedbackMailtoUrl(draft: FeedbackDraft): string {
+  const params = new URLSearchParams({
+    subject: `[Mr. Baseball Dynasty] ${feedbackTypeLabel(draft.type)}`,
+    body: feedbackBody(draft),
+  });
+  return `${FEEDBACK_MAILTO}?${params.toString()}`;
+}

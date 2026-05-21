@@ -77,7 +77,7 @@ export function getTeamIFABonusPool(
 }
 
 export function getTeamFreeAgencyAppealScore(
-  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState' | 'fanSentiment' | 'userTeamId'>>,
+  state: Pick<FullGameState, 'teamChemistry'> & Partial<Pick<FullGameState, 'frontOfficeState' | 'fanSentiment' | 'userTeamId' | 'franchise'>>,
   teamId: string,
 ): number {
   const chemistryScore = state.teamChemistry.get(teamId)?.score ?? 50;
@@ -85,5 +85,12 @@ export function getTeamFreeAgencyAppealScore(
   const fanModifier = state.userTeamId === teamId && state.fanSentiment
     ? Math.max(-3, Math.min(3, Math.round((state.fanSentiment.score - 50) / 16)))
     : 0;
-  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3) + fanModifier)));
+  const spendingModifier = state.userTeamId === teamId
+    ? state.franchise?.gmPhilosophy?.spendingStyle === 'big_spender'
+      ? 5
+      : state.franchise?.gmPhilosophy?.spendingStyle === 'penny_pincher'
+        ? -5
+        : 1
+    : 0;
+  return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3) + fanModifier + spendingModifier)));
 }

@@ -16,6 +16,8 @@ export interface ColumnDef<T> {
   readonly render: (row: T, index: number) => ReactNode;
   /** Optional: column class for desktop table (e.g., 'text-right w-16') */
   readonly className?: string;
+  /** Optional class for mobile card cell layout */
+  readonly mobileClassName?: string;
   /** If true, this is the primary identifier shown as card title on mobile */
   readonly primary?: boolean;
   /** If true, hide this column on mobile cards (it's shown as the title) */
@@ -110,13 +112,13 @@ export function ResponsiveTable<T>({
             )}
 
             {/* Card body — grid of key-value pairs */}
-            <div className="grid grid-cols-3 gap-x-3 gap-y-1.5">
+            <div className="grid grid-cols-3 gap-x-3 gap-y-2">
               {mobileColumns.map((col) => (
-                <div key={col.key} className={col.highlight ? 'col-span-1' : ''}>
+                <div key={col.key} className={`min-w-0 ${col.highlight ? 'col-span-1' : ''} ${col.mobileClassName ?? ''}`}>
                   <div className="text-[10px] uppercase tracking-wider text-dynasty-muted">
                     {col.label}
                   </div>
-                  <div className={`font-data text-xs ${col.highlight ? 'text-accent-primary font-semibold' : 'text-dynasty-text'}`}>
+                  <div className={`break-words font-data text-xs ${col.highlight ? 'text-accent-primary font-semibold' : 'text-dynasty-text'}`}>
                     {col.render(row, idx)}
                   </div>
                 </div>

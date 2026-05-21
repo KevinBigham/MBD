@@ -44,7 +44,7 @@ export default function StoryArcsTab({
                   </div>
                 </div>
                 <Badge variant={badgeVariantForStoryPhase(arc.phase)}>
-                  {arc.phase}
+                  {labelize(arc.phase)}
                 </Badge>
               </div>
 

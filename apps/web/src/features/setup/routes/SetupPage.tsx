@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, PlusCircle, Shield, Trash2, Trophy } from 'lucide-react';
 import { PageShell } from '@/shared/components/PageShell';
@@ -6,6 +6,7 @@ import { TeamLogo } from '@/shared/components/TeamLogo';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
+import { humanizeLabel } from '@/shared/lib/labels';
 import { useSaveRecovery } from '@/features/save-recovery';
 import { registerGuidedStartSave } from '@/features/onboarding/nudges';
 import {
@@ -24,6 +25,7 @@ import {
 type SetupDifficulty = 'easy' | 'standard' | 'hard';
 type SetupPlayMode = 'standard' | 'career';
 type SetupWizardMode = 'dynasty' | 'scenario';
+type TeamPreviewFilter = string;
 
 interface SetupPreview {
   teamId: string;
@@ -101,6 +103,40 @@ const GM_FIRST_NAMES = ['Alex', 'Jordan', 'Jamie', 'Taylor', 'Morgan', 'Casey'] 
 const GM_LAST_NAMES = ['Rivera', 'Porter', 'Sullivan', 'Hughes', 'Bennett', 'Foster'] as const;
 const WHAT_IF_BRANCH_LIMIT = 3;
 
+function uniquePreviewOptions(previews: SetupPreview[], key: keyof Pick<SetupPreview, 'timeline' | 'marketSize' | 'payrollTier' | 'farmSystemRating' | 'archetype'>): string[] {
+  return Array.from(new Set(previews.map((preview) => String(preview[key])).filter(Boolean))).sort();
+}
+
+function scenarioStrategicHook(scenario: ScenarioCatalogEntry | null): string {
+  if (!scenario) {
+    return 'Pick the challenge, then review the opening club and constraints before launch.';
+  }
+  if (/rebuild|farm|prospect/i.test(`${scenario.name} ${scenario.description}`)) {
+    return 'Win the long game: protect the pipeline, time promotions, and avoid buying short-term noise.';
+  }
+  if (/budget|payroll|small/i.test(`${scenario.name} ${scenario.description}`)) {
+    return 'Every marginal dollar matters. Build surplus value before ownership runs out of patience.';
+  }
+  if (/title|championship|contend|window/i.test(`${scenario.name} ${scenario.description}`)) {
+    return 'The window is open now. Convert present talent into a finish before the clock closes.';
+  }
+  return 'Read the constraint, choose the club posture, and turn the first season into leverage.';
+}
+
+function scenarioObjectives(scenario: ScenarioCatalogEntry | null): string[] {
+  if (!scenario) {
+    return ['Select a scenario to load objectives.'];
+  }
+
+  return [
+    scenario.description,
+    `Resolve the challenge inside ${scenario.maxSeasons} season${scenario.maxSeasons === 1 ? '' : 's'}.`,
+    scenario.requiresCareerMode
+      ? 'Career mode is required; firing routes you through the job market.'
+      : 'Standard dynasty rules apply unless the scenario changes them.',
+  ];
+}
+
 function generateDefaultGMName(seed: number): string {
   const first = GM_FIRST_NAMES[Math.abs(seed) % GM_FIRST_NAMES.length] ?? 'Alex';
   const last = GM_LAST_NAMES[Math.abs(Math.floor(seed / GM_FIRST_NAMES.length)) % GM_LAST_NAMES.length] ?? 'Rivera';
@@ -142,6 +178,12 @@ export default function SetupPage() {
   const [previewMap, setPreviewMap] = useState<Record<string, SetupPreview>>({});
   const [scenarioCatalog, setScenarioCatalog] = useState<ScenarioCatalogEntry[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<TeamPreviewFilter>('all');
+  const [marketFilter, setMarketFilter] = useState<TeamPreviewFilter>('all');
+  const [payrollFilter, setPayrollFilter] = useState<TeamPreviewFilter>('all');
+  const [farmFilter, setFarmFilter] = useState<TeamPreviewFilter>('all');
+  const [archetypeFilter, setArchetypeFilter] = useState<TeamPreviewFilter>('all');
+  const wizardRef = useRef<HTMLElement | null>(null);
   const selectedScenario = scenarioCatalog.find((entry) => entry.id === selectedScenarioId) ?? null;
   const preview = previewMap[teamId] ?? null;
   const activePreview = wizardMode === 'scenario'
@@ -216,10 +258,47 @@ export default function SetupPage() {
     });
   }, [selectedScenarioId, worker, wizardOpen]);
 
+  useEffect(() => {
+    if (!wizardOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const targetTop = Math.max(0, (wizardRef.current?.offsetTop ?? 0) - 16);
+      const scrollingElement = document.scrollingElement;
+      if (scrollingElement && typeof scrollingElement.scrollTo === 'function') {
+        scrollingElement.scrollTo({ top: targetTop, behavior: 'auto' });
+      } else if (scrollingElement) {
+        scrollingElement.scrollTop = targetTop;
+      }
+      if (typeof wizardRef.current?.scrollIntoView === 'function') {
+        wizardRef.current.scrollIntoView({
+          block: 'start',
+          behavior: 'auto',
+        });
+      }
+      wizardRef.current?.focus({ preventScroll: true });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [wizardOpen]);
+
   const saveMap = useMemo(
     () => new Map(saveTree.map((entry) => [entry.save.slotNumber, entry])),
     [saveTree],
   );
+  const loadedPreviews = useMemo(() => Object.values(previewMap), [previewMap]);
+  const filteredTeamOptions = useMemo(() => TEAM_OPTIONS.filter((option) => {
+    const teamPreview = previewMap[option.id];
+    if (!teamPreview) {
+      return true;
+    }
+    return (timelineFilter === 'all' || teamPreview.timeline === timelineFilter)
+      && (marketFilter === 'all' || teamPreview.marketSize === marketFilter)
+      && (payrollFilter === 'all' || teamPreview.payrollTier === payrollFilter)
+      && (farmFilter === 'all' || teamPreview.farmSystemRating === farmFilter)
+      && (archetypeFilter === 'all' || teamPreview.archetype === archetypeFilter);
+  }), [archetypeFilter, farmFilter, marketFilter, payrollFilter, previewMap, timelineFilter]);
 
   async function handleContinueSave(save: SaveData): Promise<boolean> {
     if (!worker.isReady) {
@@ -314,6 +393,11 @@ export default function SetupPage() {
     setDayOneExperience('full');
     setWizardMode('dynasty');
     setPreviewMap({});
+    setTimelineFilter('all');
+    setMarketFilter('all');
+    setPayrollFilter('all');
+    setFarmFilter('all');
+    setArchetypeFilter('all');
     setWizardOpen(true);
     setStatus('');
   }
@@ -370,40 +454,14 @@ export default function SetupPage() {
     <PageShell>
       <div className="min-h-screen bg-dynasty-base px-6 py-8 text-dynasty-text">
       <div className="mx-auto max-w-6xl space-y-8">
-        <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6 sm:p-8">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-info">v1.0.0 Launch</div>
               <h1 className="mt-3 font-brand text-5xl text-dynasty-textBright">Mr. Baseball Dynasty</h1>
               <p className="mt-4 max-w-3xl font-heading text-sm leading-6 text-dynasty-muted">
                 A browser-based baseball franchise dynasty sim built for long saves, front-office decisions, and seasons that leave a record.
               </p>
-              <div className="mt-6 grid gap-5 font-heading text-sm leading-6 md:grid-cols-2 xl:grid-cols-4">
-                <div className="border-l border-accent-info/50 pl-4">
-                  <div className="font-semibold text-dynasty-textBright">What it is</div>
-                  <p className="mt-1 text-dynasty-muted">
-                    Draft, trade, develop, spend, and manage a club through years of roster pressure.
-                  </p>
-                </div>
-                <div className="border-l border-accent-warning/50 pl-4">
-                  <div className="font-semibold text-dynasty-textBright">What it is not</div>
-                  <p className="mt-1 text-dynasty-muted">
-                    Not a live MLB roster app, fantasy tool, betting product, or pay-to-win loop.
-                  </p>
-                </div>
-                <div className="border-l border-accent-success/50 pl-4">
-                  <div className="font-semibold text-dynasty-textBright">Who it is for</div>
-                  <p className="mt-1 text-dynasty-muted">
-                    Players who like contracts, prospects, arcs, and multi-season consequences.
-                  </p>
-                </div>
-                <div className="border-l border-dynasty-border pl-4">
-                  <div className="font-semibold text-dynasty-textBright">Start with New Dynasty</div>
-                  <p className="mt-1 text-dynasty-muted">
-                    Pick a slot, choose a club and mode, then enter Day One or quick-start into Season 1.
-                  </p>
-                </div>
-              </div>
             </div>
             <div className="flex flex-wrap gap-3">
               {isInitialized ? (
@@ -423,6 +481,32 @@ export default function SetupPage() {
                 <PlusCircle className="h-4 w-4" />
                 New Dynasty
               </button>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-5 font-heading text-sm leading-6 md:grid-cols-2 xl:grid-cols-4">
+            <div className="border-l border-accent-info/50 pl-4">
+              <div className="font-semibold text-dynasty-textBright">What it is</div>
+              <p className="mt-1 text-dynasty-muted">
+                Draft, trade, develop, spend, and manage a club through years of roster pressure.
+              </p>
+            </div>
+            <div className="border-l border-accent-warning/50 pl-4">
+              <div className="font-semibold text-dynasty-textBright">What it is not</div>
+              <p className="mt-1 text-dynasty-muted">
+                Not a live MLB roster app, fantasy tool, betting product, or pay-to-win loop.
+              </p>
+            </div>
+            <div className="border-l border-accent-success/50 pl-4">
+              <div className="font-semibold text-dynasty-textBright">Who it is for</div>
+              <p className="mt-1 text-dynasty-muted">
+                Players who like contracts, prospects, arcs, and multi-season consequences.
+              </p>
+            </div>
+            <div className="border-l border-dynasty-border pl-4">
+              <div className="font-semibold text-dynasty-textBright">Start with New Dynasty</div>
+              <p className="mt-1 text-dynasty-muted">
+                Pick a slot, choose a club and mode, then enter Day One or quick-start into Season 1.
+              </p>
             </div>
           </div>
       {status ? (
@@ -480,7 +564,7 @@ export default function SetupPage() {
                     {save ? (
                       <>
                         <div>Season {save.season} · {snapshotRecord(save) ?? `${save.day} days logged`}</div>
-                        <div>{save.phase.toUpperCase()} · Updated {new Date(save.updatedAt).toLocaleString()}</div>
+                        <div>{humanizeLabel(save.phase)} · Updated {new Date(save.updatedAt).toLocaleString()}</div>
                       </>
                     ) : (
                       <div>Reserved for a fresh dynasty build.</div>
@@ -545,7 +629,7 @@ export default function SetupPage() {
                                     {branch.branchMeta?.description ?? branch.name}
                                   </div>
                                   <div className="mt-1 font-heading text-[11px] text-dynasty-muted">
-                                    Season {branch.season} · {branch.phase.toUpperCase()} · Updated {new Date(branch.updatedAt).toLocaleString()}
+                                    Season {branch.season} · {humanizeLabel(branch.phase)} · Updated {new Date(branch.updatedAt).toLocaleString()}
                                   </div>
                                 </div>
                                 <button
@@ -574,7 +658,12 @@ export default function SetupPage() {
         </section>
 
         {wizardOpen ? (
-          <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <section
+            id="new-dynasty-setup"
+            ref={wizardRef}
+            tabIndex={-1}
+            className="grid scroll-mt-4 gap-6 outline-none xl:grid-cols-[0.95fr_1.05fr]"
+          >
             <div className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-success">New Dynasty</div>
               <h2 className="mt-3 font-brand text-3xl text-dynasty-textBright">Start in Slot {selectedSlot}</h2>
@@ -635,7 +724,7 @@ export default function SetupPage() {
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-heading text-sm text-dynasty-textBright">{scenario.name}</div>
                             <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                              {scenario.difficulty} · {scenario.maxSeasons} seasons
+                              {humanizeLabel(scenario.difficulty)} · {scenario.maxSeasons} seasons
                             </div>
                           </div>
                           <div className="mt-1 font-heading text-xs text-dynasty-muted">
@@ -650,11 +739,43 @@ export default function SetupPage() {
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-heading text-sm text-dynasty-textBright">Team</span>
                       <span className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
-                        Full League View
+                        {filteredTeamOptions.length}/{TEAM_OPTIONS.length} clubs
                       </span>
                     </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+                      <TeamFilterSelect
+                        label="Timeline"
+                        value={timelineFilter}
+                        options={uniquePreviewOptions(loadedPreviews, 'timeline')}
+                        onChange={setTimelineFilter}
+                      />
+                      <TeamFilterSelect
+                        label="Market"
+                        value={marketFilter}
+                        options={uniquePreviewOptions(loadedPreviews, 'marketSize')}
+                        onChange={setMarketFilter}
+                      />
+                      <TeamFilterSelect
+                        label="Payroll"
+                        value={payrollFilter}
+                        options={uniquePreviewOptions(loadedPreviews, 'payrollTier')}
+                        onChange={setPayrollFilter}
+                      />
+                      <TeamFilterSelect
+                        label="Farm"
+                        value={farmFilter}
+                        options={uniquePreviewOptions(loadedPreviews, 'farmSystemRating')}
+                        onChange={setFarmFilter}
+                      />
+                      <TeamFilterSelect
+                        label="Archetype"
+                        value={archetypeFilter}
+                        options={uniquePreviewOptions(loadedPreviews, 'archetype')}
+                        onChange={setArchetypeFilter}
+                      />
+                    </div>
                     <div className="mt-3 grid max-h-[34rem] gap-3 overflow-y-auto pr-1">
-                      {TEAM_OPTIONS.map((option) => {
+                      {filteredTeamOptions.map((option) => {
                         const teamPreview = previewMap[option.id];
                         const selected = option.id === teamId;
                         return (
@@ -714,6 +835,11 @@ export default function SetupPage() {
                           </button>
                         );
                       })}
+                      {filteredTeamOptions.length === 0 ? (
+                        <div className="rounded-xl border border-dynasty-border bg-dynasty-base px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
+                          No clubs match the current filters.
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
@@ -865,6 +991,48 @@ export default function SetupPage() {
                   : (activePreview?.teamIdentityBlurb ?? 'Running the numbers on your opening roster and division outlook.')}
               </p>
 
+              {wizardMode === 'scenario' ? (
+                <div className="mt-4 rounded-lg border border-accent-warning/30 bg-accent-warning/5 p-4">
+                  <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Challenge Preview</div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div className="rounded border border-dynasty-border bg-dynasty-base/40 px-3 py-2">
+                      <div className="font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">Starting Club</div>
+                      <div className="mt-1 font-heading text-sm text-dynasty-text">
+                        {activePreview?.teamName ?? selectedScenario?.startingTeamId?.toUpperCase() ?? 'TBD'}
+                      </div>
+                    </div>
+                    <div className="rounded border border-dynasty-border bg-dynasty-base/40 px-3 py-2">
+                      <div className="font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">Career Requirement</div>
+                      <div className="mt-1 font-heading text-sm text-dynasty-text">
+                        {selectedScenario?.requiresCareerMode ? 'Career mode required' : 'Not required'}
+                      </div>
+                    </div>
+                    <div className="rounded border border-dynasty-border bg-dynasty-base/40 px-3 py-2">
+                      <div className="font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">Max Seasons</div>
+                      <div className="mt-1 font-heading text-sm text-dynasty-text">
+                        {selectedScenario?.maxSeasons ?? '--'}
+                      </div>
+                    </div>
+                    <div className="rounded border border-dynasty-border bg-dynasty-base/40 px-3 py-2">
+                      <div className="font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">Strategic Hook</div>
+                      <div className="mt-1 font-heading text-sm text-dynasty-text">
+                        {scenarioStrategicHook(selectedScenario)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded border border-dynasty-border bg-dynasty-base/40 px-3 py-3">
+                    <div className="font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">Objectives</div>
+                    <div className="mt-2 space-y-2">
+                      {scenarioObjectives(selectedScenario).map((objective) => (
+                        <div key={objective} className="font-heading text-sm text-dynasty-text">
+                          {objective}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {wizardMode === 'dynasty' && activePreview ? (
                 <div className="mt-4 rounded-lg border border-dynasty-border bg-dynasty-base/40 p-4">
                   <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">
@@ -949,5 +1117,35 @@ function PreviewStat({ label, value }: { label: string; value: string }) {
       <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">{label}</div>
       <div className="mt-2 font-brand text-3xl text-dynasty-textBright">{value}</div>
     </div>
+  );
+}
+
+function TeamFilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-1">
+      <span className="font-heading text-[10px] uppercase tracking-wide text-dynasty-muted">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="rounded border border-dynasty-border bg-dynasty-base px-2 py-2 font-heading text-xs text-dynasty-text"
+      >
+        <option value="all">All</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {humanizeLabel(option)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

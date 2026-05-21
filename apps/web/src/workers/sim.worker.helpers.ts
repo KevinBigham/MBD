@@ -46,7 +46,6 @@ import {
   advanceInjury,
   describeInjury,
   processInjuries,
-  checkMilestones,
   generateNews,
   getRelationship,
   deduplicateNews,
@@ -203,6 +202,7 @@ import type {
 } from '@mbd/contracts';
 import type { PlayerAdvancedStatsDTO } from './sim.worker.stats.js';
 import { queueCareerMilestoneMoments } from './sim.worker.ceremony.js';
+import { buildCareerMilestoneEvents } from './sim.worker.milestones.js';
 // Imported directly from ./sim.worker.budget.js (rather than ./sim.worker.setup.js,
 // which re-exports them) so loading helpers.ts does not statically pull in
 // setup.ts. setup.ts imports `createEmpty*` factories back from helpers.ts; the
@@ -214,6 +214,10 @@ import {
   registerInternationalProspectAcquisition,
   syncMinorLeagueStatHistory,
 } from './sim.worker.farm.js';
+import {
+  adjustPromotionCandidateForIdentity,
+  getEffectiveScoutingAccuracy,
+} from './sim.worker.frontOfficeIdentity.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -965,7 +969,13 @@ export function getPromotionCandidatesForTeam(
   s: FullGameState,
   teamId: string,
 ): PromotionCandidate[] {
-  return getPromotionCandidatesCore(s.players, s.minorLeagueState, teamId);
+  const candidates = getPromotionCandidatesCore(s.players, s.minorLeagueState, teamId);
+  if (teamId !== s.userTeamId) {
+    return candidates;
+  }
+  return candidates
+    .map((candidate) => adjustPromotionCandidateForIdentity(s, candidate))
+    .sort((left, right) => right.score - left.score || left.playerId.localeCompare(right.playerId));
 }
 
 export function getRosterComplianceIssuesForTeam(
@@ -2332,9 +2342,10 @@ export function buildIFAPoolView(s: FullGameState): IFAPoolView {
   const reportsByPlayerId = new Map(
     scoutingHistory.map((entry) => [entry.playerId, entry] as const),
   );
-  const staffAccuracy = getInternationalScoutAccuracy(
+  const baseStaffAccuracy = getInternationalScoutAccuracy(
     s.scoutingStaffs.get(s.userTeamId) ?? [],
   );
+  const staffAccuracy = getEffectiveScoutingAccuracy(s, 'international', baseStaffAccuracy).effectiveAccuracy;
   const scoutConflicts = ensureIFAScoutConflicts(s, internationalState.ifaPool);
 
   return {
@@ -2402,9 +2413,10 @@ export function scoutUserIFAPlayer(
   const historyEntry = getTeamIFAScoutingHistory(s, s.userTeamId)
     .find((entry) => entry.playerId === playerId);
   const looks = (historyEntry?.looks ?? 0) + 1;
-  const accuracy = getInternationalScoutAccuracy(
+  const baseAccuracy = getInternationalScoutAccuracy(
     s.scoutingStaffs.get(s.userTeamId) ?? [],
   );
+  const accuracy = getEffectiveScoutingAccuracy(s, 'international', baseAccuracy).effectiveAccuracy;
   const report = scoutIFAProspect(
     s.rng.fork(),
     prospect,
@@ -2513,7 +2525,8 @@ export function scoutUserDraftPlayer(
   }
 
   const staff = s.scoutingStaffs.get(s.userTeamId) ?? [];
-  const accuracy = getInternationalScoutAccuracy(staff);
+  const baseAccuracy = getInternationalScoutAccuracy(staff);
+  const accuracy = getEffectiveScoutingAccuracy(s, 'draft', baseAccuracy).effectiveAccuracy;
   const previousReport = getTeamDraftScoutingReports(s, s.userTeamId)
     .find((report) => report.playerId === playerId);
   const report = scoutDraftProspect(s.rng.fork(), prospect, accuracy, previousReport);
@@ -3631,12 +3644,26 @@ export function processDayInjuriesAndNews(s: FullGameState): void {
     }
   }
 
-  // Check milestones
-  const milestones = checkMilestones(s.seasonState.playerSeasonStats, s.players, s.season, s.day);
-  for (const m of milestones) {
+  // Check career milestones using cumulative career totals, not current-season lines.
+  const milestones = buildCareerMilestoneEvents(s, s.day);
+  for (const milestone of milestones) {
+    const alreadyPublished = s.news.some((item) => (
+      item.category === 'milestone'
+      && item.relatedPlayerIds.includes(milestone.playerId)
+      && item.headline.includes(String(milestone.count))
+    ));
+    if (alreadyPublished) {
+      continue;
+    }
     const mNews = generateNews(s.rng.fork(), {
       type: 'milestone', season: s.season, day: s.day,
-      data: m as unknown as Record<string, unknown>,
+      data: {
+        playerId: milestone.playerId,
+        milestoneType: milestone.milestoneType,
+        count: milestone.count,
+        teamId: milestone.teamId,
+        context: milestone.moment.description,
+      },
     }, s.players, s.season, s.day);
     s.news.push(...mNews);
   }

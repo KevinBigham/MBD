@@ -1,5 +1,7 @@
 import type { TickerEntry } from '@mbd/contracts';
 import { Newspaper } from 'lucide-react';
+import { useState } from 'react';
+import { useEffectiveReducedMotion } from '@/shared/hooks/useEffectiveReducedMotion';
 
 interface TickerBarProps {
   entries: TickerEntry[];
@@ -23,19 +25,31 @@ function priorityClass(priority: TickerEntry['priority']) {
 }
 
 export function TickerBar({ entries, onSelectEntry }: TickerBarProps) {
+  const [paused, setPaused] = useState(false);
+  const reducedMotion = useEffectiveReducedMotion();
+
   if (entries.length === 0) {
     return null;
   }
 
-  const marqueeEntries = entries.length > 1 ? [...entries, ...entries] : entries;
-
   const topHeadline = entries[0]?.text ?? '';
+  const srSummary = entries.slice(0, 3).map((entry) => entry.text).join(' | ');
+  const shouldAnimate = entries.length > 1 && !reducedMotion;
+  const marqueeEntries = shouldAnimate ? [...entries, ...entries] : entries;
 
   return (
-    <div className="border-t border-dynasty-border bg-dynasty-surface/95" role="complementary" aria-label="League news ticker">
+    <div
+      className="border-t border-dynasty-border bg-dynasty-surface/95"
+      role="complementary"
+      aria-label="League news ticker"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
+    >
       {/* Screen reader summary — hidden visually, read by assistive tech */}
       <div className="sr-only" aria-live="polite">
-        {entries.length} league updates. Latest: {topHeadline}
+        {entries.length} league updates. Latest: {topHeadline}. Summary: {srSummary}
       </div>
       <style>{`
         @keyframes mbd-ticker-scroll {
@@ -51,7 +65,12 @@ export function TickerBar({ entries, onSelectEntry }: TickerBarProps) {
         <div className="overflow-hidden" role="list" aria-label="League headlines">
           <div
             className="flex min-w-max items-center gap-3"
-            style={entries.length > 1 ? { animation: 'mbd-ticker-scroll 28s linear infinite' } : undefined}
+            style={shouldAnimate
+              ? {
+                animation: 'mbd-ticker-scroll 28s linear infinite',
+                animationPlayState: paused ? 'paused' : 'running',
+              }
+              : undefined}
           >
             {marqueeEntries.map((entry, index) => (
               <button

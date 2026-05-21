@@ -149,6 +149,7 @@ export interface TradeDeadlineRecapView {
 }
 
 export interface TradeDeadlineStateView {
+  currentPhase: string;
   deadlineDay: number;
   daysUntilDeadline: number | null;
   deadlineMode: boolean;
@@ -1976,6 +1977,7 @@ export function buildTradeDeadlineStateView(state: FullGameState): TradeDeadline
   const ticker = buildTickerItems(state.tradeState.tradeHistory);
 
   return {
+    currentPhase: state.phase,
     deadlineDay: TRADE_DEADLINE_DAY,
     daysUntilDeadline:
       state.phase === 'regular' && state.day <= TRADE_DEADLINE_DAY

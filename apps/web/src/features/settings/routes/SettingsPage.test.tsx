@@ -231,29 +231,9 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('Display');
     expect(container.textContent).toContain('Accessibility');
     expect(container.textContent).toContain('Data / Install');
-    expect(container.textContent).toContain('Send Feedback');
     expect(container.textContent).toContain('Mr. Baseball Dynasty v1.0.0');
-  });
-
-  it('opens the feedback form from the settings page', async () => {
-    await act(async () => {
-      root.render(<SettingsPage />);
-      await Promise.resolve();
-    });
-
-    const feedbackButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Send Feedback'),
-    );
-
-    await act(async () => {
-      feedbackButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(container.textContent).toContain('Send feedback');
-    expect(container.textContent).toContain('Bug');
-    expect(container.textContent).toContain('Suggestion');
-    expect(container.textContent).toContain('Question');
+    expect(container.textContent).toContain('Feedback');
+    expect(container.textContent).toContain('Open Issue Draft');
   });
 
   it('updates the mute toggle and volume slider through the page controls', async () => {

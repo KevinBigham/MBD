@@ -148,7 +148,7 @@ describe('MinorsPage', () => {
           readyNow: 1,
           nextWave: 2,
           longTerm: 1,
-          summary: 'One prospect is knocking on the MLB door and two more sit in the next wave.',
+          organizationalDepth: 0,
         },
         prospects: [
           {
@@ -156,10 +156,10 @@ describe('MinorsPage', () => {
             playerName: 'Marco Ascension',
             position: 'SS',
             level: 'AAA',
-            levelLabel: 'AAA',
             age: 22,
             overallRating: 61,
             ceiling: 74,
+            prospectTier: 'ready_depth',
             bondStrength: 42,
             eta: 'Ready now',
             trend: 'surging',
@@ -180,7 +180,7 @@ describe('MinorsPage', () => {
     expect(container.textContent).toContain('Minor League Hub');
     expect(container.textContent).toContain('Farm report');
     expect(container.textContent).toContain('Pipeline Health');
-    expect(container.textContent).toContain('surging');
+    expect(container.textContent).toContain('Surging');
     expect(container.textContent).toContain('Ready now');
     expect(container.textContent).toContain('bonded prospects');
     expect(container.textContent).toContain('Breakout candidates');

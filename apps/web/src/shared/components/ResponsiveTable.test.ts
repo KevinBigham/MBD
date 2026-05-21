@@ -25,11 +25,13 @@ describe('ResponsiveTable', () => {
       label: 'Value',
       render: (row) => row.val,
       className: 'text-right',
+      mobileClassName: 'col-span-3',
       primary: true,
       hideOnMobile: false,
       highlight: true,
     };
     expect(col.primary).toBe(true);
     expect(col.highlight).toBe(true);
+    expect(col.mobileClassName).toBe('col-span-3');
   });
 });

@@ -204,6 +204,48 @@ describe('generateNews', () => {
     expect(item.body).toContain('free agency');
   });
 
+  it('does not emit malformed milestone copy when structured data is missing', () => {
+    const player = makePlayer(45);
+    const malformedEvents: GameEvent[] = [
+      makeEvent('milestone', {}, 3, 44),
+      makeEvent('milestone', {
+        playerId: player.id,
+        milestoneType: 'strikeouts',
+      }, 3, 45),
+      makeEvent('milestone', {
+        playerId: 'missing-player',
+        milestoneType: 'home runs',
+        count: 500,
+      }, 3, 46),
+    ];
+
+    for (const event of malformedEvents) {
+      expect(generateNews(new GameRNG(900), event, [player], event.season, event.day)).toEqual([]);
+    }
+  });
+
+  it('uses structured milestone data for player, count, and team references', () => {
+    const player = makePlayer(46);
+    const event = makeEvent('milestone', {
+      playerId: player.id,
+      milestoneType: 'strikeouts',
+      count: 1000,
+      teamId: 'NYT',
+    }, 3, 46);
+
+    const [item] = generateNews(new GameRNG(901), event, [player], event.season, event.day);
+    const combined = `${item?.headline ?? ''} ${item?.body ?? ''}`;
+
+    expect(item).toMatchObject({
+      category: 'milestone',
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: ['NYT'],
+      timestamp: 'S3D46',
+    });
+    expect(combined).toContain('1000');
+    expect(combined).not.toMatch(/Unknown|#0|0th|undefined/);
+  });
+
   it('generates coaching coverage with analysis tagging', () => {
     const rng = new GameRNG(503);
     const event = makeEvent('coaching', {

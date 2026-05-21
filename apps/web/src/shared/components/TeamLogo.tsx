@@ -3,7 +3,7 @@
  * to a procedurally generated monogram badge with team-specific colors.
  *
  * Logo assets are expected at `/logos/{teamId}.svg` (or .png).
- * Kevin is creating these - as they land in public/logos/ they'll appear automatically.
+ * Fictional team SVG assets live in public/logos and are covered by a smoke test.
  */
 
 import { useEffect, useState } from 'react';
@@ -128,7 +128,7 @@ function MonogramBadge({
         fontFamily="'Bebas Neue', 'Space Grotesk', system-ui, sans-serif"
         fontSize={fontSize}
         fontWeight="bold"
-        letterSpacing={size === 'xs' ? '0' : '0.5'}
+        letterSpacing="0"
       >
         {abbrev}
       </text>

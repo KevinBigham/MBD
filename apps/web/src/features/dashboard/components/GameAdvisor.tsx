@@ -45,12 +45,15 @@ export default function GameAdvisor() {
     const recs: Recommendation[] = [];
 
     try {
-      // Check roster compliance
-      const dashSummary = await worker.getDashboardSummary();
+      const [dashSummary, compliance, tradeState, pipeline] = await Promise.all([
+        worker.getDashboardSummary(),
+        worker.getRosterComplianceIssues(),
+        worker.getTradeDeadlineState(),
+        worker.getProspectPipeline(),
+      ]);
       const summary = dashSummary as Record<string, unknown> | null;
 
-      // Check for roster issues
-      const rosterIssues = (summary?.roster as { complianceIssueCount?: number } | undefined)?.complianceIssueCount ?? 0;
+      const rosterIssues = (compliance as { issues?: unknown[] } | null)?.issues?.length ?? 0;
       if (rosterIssues > 0) {
         recs.push({
           id: 'roster-compliance',
@@ -61,8 +64,6 @@ export default function GameAdvisor() {
         });
       }
 
-      // Check for pending trade offers
-      const tradeState = await worker.getTradeDeadlineState();
       const hotOffers = (tradeState as { hotOffers?: unknown[] } | null)?.hotOffers ?? [];
       if (hotOffers.length > 0) {
         recs.push({
@@ -87,13 +88,12 @@ export default function GameAdvisor() {
 
       // Check for promotion candidates
       if (phase === 'regular') {
-        const pipeline = await worker.getProspectPipeline();
-        const candidates = Array.isArray(pipeline) ? pipeline.filter((p: { readyForPromotion?: boolean }) => p.readyForPromotion) : [];
-        if (candidates.length > 0) {
+        const candidates = (pipeline as { health?: { readyNow?: number } } | null)?.health?.readyNow ?? 0;
+        if (candidates > 0) {
           recs.push({
             id: 'promotion-candidates',
             priority: 'medium',
-            title: `${candidates.length} prospect${candidates.length > 1 ? 's' : ''} ready for promotion`,
+            title: `${candidates} prospect${candidates > 1 ? 's' : ''} ready for promotion`,
             description: 'Your farm system has players ready for the next level.',
             route: '/minors',
           });
@@ -123,8 +123,8 @@ export default function GameAdvisor() {
       }
 
       // Always suggest checking press room if there are unread items
-      const pressCount = (summary?.pressRoom as { briefingCount?: number; newsCount?: number } | undefined);
-      const totalPress = (pressCount?.briefingCount ?? 0) + (pressCount?.newsCount ?? 0);
+      const pressCount = (summary?.pressRoom as { unreadCount?: number } | undefined);
+      const totalPress = pressCount?.unreadCount ?? 0;
       if (totalPress > 5) {
         recs.push({
           id: 'press-room',

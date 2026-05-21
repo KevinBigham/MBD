@@ -131,15 +131,15 @@ describe('ScenarioCatalogPage', () => {
 
     // Scenarios
     expect(container.textContent).toContain('The Underdog');
-    expect(container.textContent).toContain('hard');
+    expect(container.textContent).toContain('Hard');
     expect(container.textContent).toContain('The Rebuild');
-    expect(container.textContent).toContain('standard');
+    expect(container.textContent).toContain('Standard');
     expect(container.textContent).toContain('The Dynasty');
-    expect(container.textContent).toContain('legendary');
+    expect(container.textContent).toContain('Legendary');
 
     // Active progress
     expect(container.textContent).toContain('Active Challenge');
-    expect(container.textContent).toContain('in_progress');
+    expect(container.textContent).toContain('In Progress');
     expect(container.textContent).toContain('2/5 objectives');
     expect(container.textContent).toContain('Making progress');
   });
