@@ -105,6 +105,14 @@ Remote-branch integration before GitHub push:
 - Post-merge `pnpm typecheck`: PASS, Turbo `9 successful, 9 total`.
 - Post-merge `pnpm build`: PASS, Turbo `5 successful, 5 total`.
 
+Main-branch integration before PR:
+
+- Fetched `origin/main` at `93b3f5b` and merged it into `goal/tutorial-assistant-v1` so the branch carries current main history before PR/merge.
+- Resolved overlapping Sprint 1-3.5 history by keeping the latest build-round/onboarding status docs, preserving `main`'s removed in-app feedback feature, and removing the remaining Settings feedback hook/assertions from the branch.
+- `pnpm --filter @mbd/web exec vitest run src/app/boot/AppBootGate.test.tsx src/app/routes/index.test.tsx src/app/layout/AppLayout.test.tsx src/features/settings/routes/SettingsPage.test.tsx src/workers/sim.worker.onboarding.test.ts src/features/assistant/lib/assistantState.test.ts src/features/assistant/data/assistantGuidance.test.ts src/features/assistant/components/AssistantPanel.test.tsx --reporter=verbose`: PASS, 8 files / 41 tests, `6.29s`.
+- Post-main-merge `pnpm typecheck`: PASS, Turbo `9 successful, 9 total`.
+- Post-main-merge `pnpm build`: PASS, Turbo `5 successful, 5 total`.
+
 ## Files Changed
 
 ```text

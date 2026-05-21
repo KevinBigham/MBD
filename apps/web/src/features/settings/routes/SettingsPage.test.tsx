@@ -232,8 +232,6 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('Accessibility');
     expect(container.textContent).toContain('Data / Install');
     expect(container.textContent).toContain('Mr. Baseball Dynasty v1.0.0');
-    expect(container.textContent).toContain('Feedback');
-    expect(container.textContent).toContain('Open Issue Draft');
   });
 
   it('updates the mute toggle and volume slider through the page controls', async () => {

@@ -693,3 +693,14 @@ Final browser checks:
   - `pnpm typecheck` -> PASS, Turbo `9 successful, 9 total`.
   - `pnpm build` -> PASS, Turbo `5 successful, 5 total`.
 - Blocker or next step: No local blocker. Finish merge commit, push `goal/tutorial-assistant-v1`, then create/merge PR if GitHub tooling is available.
+
+## 2026-05-20 22:53 CDT - Main Branch Integration
+
+- Milestone: Bring `goal/tutorial-assistant-v1` up to current `origin/main` before PR/merge.
+- Files changed: `apps/web/src/features/settings/routes/SettingsPage.tsx`, `apps/web/src/features/settings/routes/SettingsPage.test.tsx`, removed `apps/web/src/features/feedback/*`, `STATUS.md`, `.logs/goal-progress.md`.
+- Implementation: Fetched and merged `origin/main` (`93b3f5b`) into the goal branch after GitHub compare reported the branch was behind current main by four commits. Resolved the history overlap by keeping the later build-round/onboarding docs, preserving main's feedback feature deletion, and removing the remaining Settings feedback import/render/test expectations from the branch.
+- Checks run:
+  - `pnpm --filter @mbd/web exec vitest run src/app/boot/AppBootGate.test.tsx src/app/routes/index.test.tsx src/app/layout/AppLayout.test.tsx src/features/settings/routes/SettingsPage.test.tsx src/workers/sim.worker.onboarding.test.ts src/features/assistant/lib/assistantState.test.ts src/features/assistant/data/assistantGuidance.test.ts src/features/assistant/components/AssistantPanel.test.tsx --reporter=verbose` -> PASS, 8 files / 41 tests, `Duration 6.29s`.
+  - `pnpm typecheck` -> PASS, Turbo `9 successful, 9 total`.
+  - `pnpm build` -> PASS, Turbo `5 successful, 5 total`.
+- Blocker or next step: No local blocker. Commit the main-merge resolution, push the updated branch, then open/merge the PR if GitHub accepts it.

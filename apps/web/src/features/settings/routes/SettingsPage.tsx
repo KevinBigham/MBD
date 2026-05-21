@@ -7,7 +7,6 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { useTour } from '@/shared/components/TourProvider';
 import { useSaveRecovery } from '@/features/save-recovery';
-import { FeedbackButton } from '@/features/feedback';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { logger } from '@/shared/lib/logger';
 import {
@@ -1002,7 +1001,6 @@ export default function SettingsPage() {
             <div className="flex flex-wrap gap-2">
               <TutorialRestartButton />
             </div>
-            <FeedbackButton />
           </div>
         </SettingsSection>
       </div>
