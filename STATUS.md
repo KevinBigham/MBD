@@ -96,6 +96,15 @@ Publish-checkout verification before GitHub push:
 - Rerun `pnpm typecheck`: PASS, Turbo `9 successful, 9 total`.
 - Rerun `pnpm build`: PASS, Turbo `5 successful, 5 total`.
 
+Remote-branch integration before GitHub push:
+
+- Fetched `origin/goal/tutorial-assistant-v1` at commit `3f28275` and merged it with the local build-round commit instead of overwriting remote tutorial-assistant work.
+- Resolved conflicts in `apps/web/src/app/routes/index.tsx` by keeping the pre-game Assistant mount and the newer News route inside `AppLayout`.
+- Resolved `docs/goals/MBD_TUTORIAL_ASSISTANT_V1_PROGRESS.md` by preserving the completed tutorial-assistant evidence while updating stale repo-health status.
+- `pnpm --filter @mbd/web exec vitest run src/app/routes/index.test.tsx src/app/layout/AppLayout.test.tsx src/features/assistant/lib/assistantState.test.ts src/features/assistant/data/assistantGuidance.test.ts src/features/assistant/components/AssistantPanel.test.tsx --reporter=verbose`: PASS, 5 files / 26 tests, `3.04s`.
+- Post-merge `pnpm typecheck`: PASS, Turbo `9 successful, 9 total`.
+- Post-merge `pnpm build`: PASS, Turbo `5 successful, 5 total`.
+
 ## Files Changed
 
 ```text

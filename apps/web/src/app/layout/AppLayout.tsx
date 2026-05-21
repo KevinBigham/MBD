@@ -9,6 +9,7 @@ import { SeasonFlowCard } from './SeasonFlowCard';
 import { MonthlyPulseOverlay } from './MonthlyPulseOverlay';
 import { TickerBar } from './TickerBar';
 import { PressConferenceModal } from '@/features/press-room/components/PressConferenceModal';
+import { AssistantPanel } from '@/features/assistant/components/AssistantPanel';
 import { TourProvider } from '@/shared/components/TourProvider';
 import { KeyboardShortcutsPanel } from '@/shared/components/KeyboardShortcutsPanel';
 import type { SeasonFlowState } from './seasonFlow';
@@ -480,6 +481,8 @@ export function AppLayout() {
         disabled={!workerReady}
         flow={seasonFlow}
       />
+
+      <AssistantPanel tickerFeed={tickerFeed} />
 
       {/* Command palette overlay */}
       <CommandPalette

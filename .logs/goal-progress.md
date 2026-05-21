@@ -682,3 +682,14 @@ Final browser checks:
   - `pnpm --filter @mbd/web exec vitest run src/workers/sim.worker.onboardingBalance.test.ts src/workers/sim.worker.frontOfficeIdentity.test.ts src/workers/sim.worker.onboarding.test.ts --reporter=verbose` -> PASS after timeout bump, 3 files / 18 tests, `Duration 136.17s`.
   - `pnpm build` -> PASS, Turbo `5 successful, 5 total`.
 - Blocker or next step: No local blocker. Commit and push staged build-round changes from `/Users/kevin/Documents/GitHub/MBD`; the exact next `/goal` remains recorded in `STATUS.md`.
+
+## 2026-05-20 22:48 CDT - Remote Branch Integration
+
+- Milestone: Merge remote tutorial-assistant branch before push.
+- Files changed: `apps/web/src/app/routes/index.tsx`, `docs/goals/MBD_TUTORIAL_ASSISTANT_V1_PROGRESS.md`, `docs/tutorial-assistant/claude-code-audit-2026-05-05.md`, `docs/tutorial-assistant/release-gate.md`, `STATUS.md`, `.logs/goal-progress.md`.
+- Implementation: Fetched `origin/goal/tutorial-assistant-v1` (`3f28275`) after push was rejected for non-fast-forward history. Merged that remote commit with the local build-round commit instead of overwriting it. Resolved the route conflict by keeping the pre-game Assistant mount and the newer News route inside the app layout; resolved the progress-doc conflict by preserving completed tutorial-assistant evidence and updating stale repo-health wording.
+- Checks run:
+  - `pnpm --filter @mbd/web exec vitest run src/app/routes/index.test.tsx src/app/layout/AppLayout.test.tsx src/features/assistant/lib/assistantState.test.ts src/features/assistant/data/assistantGuidance.test.ts src/features/assistant/components/AssistantPanel.test.tsx --reporter=verbose` -> PASS, 5 files / 26 tests, `Duration 3.04s`.
+  - `pnpm typecheck` -> PASS, Turbo `9 successful, 9 total`.
+  - `pnpm build` -> PASS, Turbo `5 successful, 5 total`.
+- Blocker or next step: No local blocker. Finish merge commit, push `goal/tutorial-assistant-v1`, then create/merge PR if GitHub tooling is available.

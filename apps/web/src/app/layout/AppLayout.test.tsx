@@ -16,6 +16,10 @@ vi.mock('./CommandPalette', () => ({
   CommandPalette: () => null,
 }));
 
+vi.mock('@/features/assistant/components/AssistantPanel', () => ({
+  AssistantPanel: () => <div data-testid="assistant-panel">Assistant</div>,
+}));
+
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
 }));
@@ -182,6 +186,7 @@ describe('AppLayout', () => {
     });
 
     expect(container.textContent).toContain('Sim to Playoffs');
+    expect(container.textContent).toContain('Assistant');
 
     const simToPlayoffsButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Sim to Playoffs'),
