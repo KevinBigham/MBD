@@ -124,6 +124,51 @@ export interface PlayerProfilePlayerView {
 
 export interface DevelopmentReportsView {
   playerId: string;
+  developmentDecision?: {
+    plan: {
+      label: string;
+      summary: string;
+    };
+    risk: {
+      level: 'low' | 'medium' | 'high';
+      summary: string;
+    };
+    coachFit: {
+      coachName: string | null;
+      summary: string;
+      score: number | null;
+    };
+    mentorship: {
+      mentorName: string | null;
+      partnerName?: string | null;
+      partnerPlayerId?: string | null;
+      relationshipRole?: 'mentor' | 'protegee' | null;
+      summary: string;
+      startedSeason: number | null;
+    };
+    nextMilestone: {
+      label: string;
+      summary: string;
+    };
+    evidence: string[];
+  } | null;
+  draftOutcome: {
+    acquisitionType: 'draft';
+    teamId: string;
+    teamName: string;
+    season: number;
+    round: number | null;
+    pickNumber: number | null;
+    originalGrade: number | null;
+    signed: boolean | null;
+    bonusAmount: number | null;
+    currentStatus: string;
+    currentLevel: string | null;
+    bondStrength: number | null;
+    loyaltyModifier: number | null;
+    summary: string;
+    milestones: string[];
+  } | null;
   history: Array<{
     season: number;
     month: number;

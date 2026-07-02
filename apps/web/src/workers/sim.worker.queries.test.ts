@@ -1,8 +1,8 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SignatureMoment } from '@mbd/contracts';
-import { SEASON_GAMES, getTeamById } from '@mbd/sim-core';
+import type { ArchivedGameBoxScore, Rivalry, SignatureMoment } from '@mbd/contracts';
+import { SEASON_GAMES, getTeamById, type GameBoxScore } from '@mbd/sim-core';
 
 vi.mock('comlink', () => ({
   expose: () => {},
@@ -28,6 +28,261 @@ function startGame(seed: number, userTeamId: string = 'nym') {
     saveSlot: 1,
   });
 }
+
+function makeBoxScore(overrides: Partial<GameBoxScore> = {}): GameBoxScore {
+  return {
+    homeTeamId: 'nym',
+    awayTeamId: 'bos',
+    homeScore: 5,
+    awayScore: 4,
+    innings: 9,
+    homeHits: 8,
+    awayHits: 7,
+    paResults: [],
+    winningPitcherId: undefined,
+    losingPitcherId: undefined,
+    savePitcherId: null,
+    date: 'S1D1',
+    isPlayoff: false,
+    ...overrides,
+  };
+}
+
+function makeArchivedGame(overrides: Partial<ArchivedGameBoxScore> = {}): ArchivedGameBoxScore {
+  return {
+    id: 'archived-game-s6-d120-nym-bos-rivalry',
+    season: 6,
+    day: 120,
+    date: 'S6D120',
+    kind: 'rivalry',
+    label: 'Rivalry Chapter',
+    homeTeamId: 'nym',
+    awayTeamId: 'bos',
+    homeScore: 5,
+    awayScore: 4,
+    homeHits: 8,
+    awayHits: 7,
+    innings: 9,
+    isPlayoff: false,
+    round: null,
+    gameNumber: null,
+    winningPitcherId: null,
+    losingPitcherId: null,
+    savePitcherId: null,
+    teamIds: ['nym', 'bos'],
+    playerIds: [],
+    teamNameFallbacks: { nym: 'New York Tycoons', bos: 'Boston Noreasters' },
+    playerNameFallbacks: {},
+    lineScore: [
+      { inning: 9, awayRuns: 0, homeRuns: 1 },
+    ],
+    highlights: [
+      { inning: 9, halfInning: 'bottom', text: 'The Tycoons finished a rivalry classic.' },
+    ],
+    recap: 'The Tycoons beat Boston in a rivalry game worth saving.',
+    ...overrides,
+  };
+}
+
+describe('worker press conference API surface', () => {
+  it('exposes only the app-owned interactive press conference flow', () => {
+    expect(api).toHaveProperty('getInteractivePressConference');
+    expect(api).toHaveProperty('respondToPressConference');
+    expect(api).not.toHaveProperty('getEnhancedPressConference');
+    expect(api).not.toHaveProperty('respondToEnhancedPressConference');
+  });
+});
+
+describe('worker mentorship query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  it('prefers saved active mentor lanes over fresh recommendations', () => {
+    startGame(7312, 'nym');
+    const state = requireState();
+    const teamPlayers = state.players.filter((player) => player.teamId === 'nym');
+    const veteran = teamPlayers[0]!;
+    const rookie = teamPlayers[1]!;
+    const suggestedMentor = teamPlayers[2]!;
+    const suggestedProtegee = teamPlayers[3]!;
+    const targetIds = new Set([veteran.id, rookie.id, suggestedMentor.id, suggestedProtegee.id]);
+
+    for (const player of teamPlayers) {
+      if (targetIds.has(player.id)) {
+        continue;
+      }
+      player.rosterStatus = 'MLB';
+      player.minorLeagueLevel = null;
+      player.age = 27;
+      player.developmentPhase = 'Prime';
+      player.personality.leadership = 35;
+      player.personalityTraits = [];
+      player.pitcherAttributes = null;
+    }
+
+    veteran.firstName = 'Elias';
+    veteran.lastName = 'Anchor';
+    veteran.rosterStatus = 'MLB';
+    veteran.minorLeagueLevel = null;
+    veteran.position = 'SS';
+    veteran.age = 28;
+    veteran.personality.leadership = 42;
+    veteran.personalityTraits = [];
+    veteran.pitcherAttributes = null;
+
+    rookie.firstName = 'Milo';
+    rookie.lastName = 'Spark';
+    rookie.rosterStatus = 'MLB';
+    rookie.minorLeagueLevel = null;
+    rookie.position = 'SS';
+    rookie.age = 22;
+    rookie.developmentPhase = 'Prospect';
+    rookie.pitcherAttributes = null;
+
+    suggestedMentor.firstName = 'Manny';
+    suggestedMentor.lastName = 'Steady';
+    suggestedMentor.rosterStatus = 'MLB';
+    suggestedMentor.minorLeagueLevel = null;
+    suggestedMentor.position = 'CF';
+    suggestedMentor.age = 35;
+    suggestedMentor.personality.leadership = 98;
+    suggestedMentor.personalityTraits = ['Leader', 'Mentor', 'Team First'];
+    suggestedMentor.pitcherAttributes = null;
+
+    suggestedProtegee.firstName = 'Omar';
+    suggestedProtegee.lastName = 'Prospect';
+    suggestedProtegee.rosterStatus = 'MLB';
+    suggestedProtegee.minorLeagueLevel = null;
+    suggestedProtegee.position = 'CF';
+    suggestedProtegee.age = 23;
+    suggestedProtegee.developmentPhase = 'Prospect';
+    suggestedProtegee.pitcherAttributes = null;
+    suggestedProtegee.personalityTraits = ['Hard Worker'];
+
+    state.mentorRelationships = [{
+      veteranPlayerId: veteran.id,
+      rookiePlayerId: rookie.id,
+      teamId: 'nym',
+      startedSeason: state.season,
+      summary: 'Elias Anchor has taken Milo Spark under wing.',
+    }];
+
+    const workerApi = api as typeof api & {
+      getMentorships: () => {
+        activePairingCount: number;
+        recommendedPairingCount: number;
+        pairings: Array<{
+          mentorId: string;
+          protegeeId: string;
+          status: 'active' | 'recommended';
+          summary?: string;
+        }>;
+      };
+    };
+    const view = workerApi.getMentorships();
+
+    expect(view.activePairingCount).toBe(1);
+    expect(view.recommendedPairingCount).toBeGreaterThan(0);
+    expect(view.pairings[0]).toMatchObject({
+      mentorId: veteran.id,
+      protegeeId: rookie.id,
+      status: 'active',
+      summary: 'Elias Anchor has taken Milo Spark under wing.',
+    });
+    expect(view.pairings.some((pairing) =>
+      pairing.mentorId === suggestedMentor.id
+      && pairing.protegeeId === suggestedProtegee.id
+      && pairing.status === 'recommended',
+    )).toBe(true);
+  });
+
+  it('derives clubhouse leaders and conflict risks from current roster personality', () => {
+    startGame(7311, 'nym');
+    const state = requireState();
+    const leader = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    const stabilizer = state.players.find((player) =>
+      player.teamId === 'nym'
+      && player.rosterStatus === 'MLB'
+      && player.id !== leader.id,
+    )!;
+    const conflict = state.players.find((player) =>
+      player.teamId === 'nym'
+      && player.rosterStatus === 'AAA',
+    )!;
+
+    for (const player of state.players.filter((candidate) =>
+      candidate.teamId === 'nym'
+      && candidate.id !== leader.id
+      && candidate.id !== stabilizer.id
+      && candidate.id !== conflict.id,
+    )) {
+      player.personality = {
+        workEthic: 50,
+        mentalToughness: 50,
+        leadership: 40,
+        competitiveness: 50,
+      };
+      player.personalityTraits = [];
+    }
+
+    leader.firstName = 'Elias';
+    leader.lastName = 'Anchor';
+    leader.age = 34;
+    leader.personality = {
+      workEthic: 88,
+      mentalToughness: 91,
+      leadership: 96,
+      competitiveness: 84,
+    };
+    leader.personalityTraits = ['Leader', 'Mentor', 'Team First'];
+
+    stabilizer.firstName = 'Mina';
+    stabilizer.lastName = 'Stone';
+    stabilizer.age = 31;
+    stabilizer.personality = {
+      workEthic: 90,
+      mentalToughness: 80,
+      leadership: 86,
+      competitiveness: 74,
+    };
+    stabilizer.personalityTraits = ['Hard Worker', 'Veteran Presence'];
+
+    conflict.firstName = 'Rico';
+    conflict.lastName = 'Flash';
+    conflict.age = 22;
+    conflict.personality = {
+      workEthic: 35,
+      mentalToughness: 30,
+      leadership: 18,
+      competitiveness: 97,
+    };
+    conflict.personalityTraits = ['Hot Head'];
+
+    const workerApi = api as typeof api & {
+      getMentorships: () => {
+        leaders: Array<{ playerId: string; playerName: string; role: string; summary: string }>;
+        conflictRisks: Array<{ playerId: string; playerName: string; severity: string; reason: string }>;
+      };
+    };
+    const view = workerApi.getMentorships();
+
+    expect(view.leaders[0]).toMatchObject({
+      playerId: leader.id,
+      playerName: 'Elias Anchor',
+      role: 'Clubhouse captain',
+    });
+    expect(view.leaders.map((entry) => entry.playerId)).toContain(stabilizer.id);
+    expect(view.leaders[0]?.summary).toContain('96 leadership');
+    expect(view.conflictRisks[0]).toMatchObject({
+      playerId: conflict.id,
+      playerName: 'Rico Flash',
+      severity: 'high',
+    });
+    expect(view.conflictRisks[0]?.reason).toContain('97 competitiveness');
+  });
+});
 
 describe('worker team moments query', () => {
   afterEach(() => {
@@ -96,6 +351,45 @@ describe('worker team moments query', () => {
     expect(first).not.toBe(storedMoments);
     expect(state.teamMoments.get('nym')).toEqual(storedMoments);
     expect(workerApi.getTeamMoments('unknown')).toEqual([]);
+  });
+});
+
+describe('worker archived game query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  it('returns compact archived box scores by stable archived game id', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    const archivedGame = makeArchivedGame();
+    state.archivedGames = [archivedGame];
+
+    const workerApi = api as typeof api & {
+      getGamePlayByPlay: (gameRef: number | string) => unknown;
+    };
+    const detail = workerApi.getGamePlayByPlay(archivedGame.id);
+
+    expect(detail).toMatchObject({
+      archivedGameId: archivedGame.id,
+      recap: archivedGame.recap,
+      lineScore: archivedGame.lineScore,
+      boxScore: {
+        homeTeamId: 'nym',
+        awayTeamId: 'bos',
+        homeScore: 5,
+        awayScore: 4,
+      },
+      plays: [
+        {
+          inning: 9,
+          halfInning: 'bottom',
+          text: 'The Tycoons finished a rivalry classic.',
+          isHighlight: true,
+        },
+      ],
+    });
   });
 });
 
@@ -306,6 +600,676 @@ describe('worker getThisWeekInHistory query', () => {
     const view = workerApi.getThisWeekInHistory(0);
     expect(view.teamMoments).toHaveLength(1);
     expect(view.teamMoments[0]?.moment.description).toBe('Exact match.');
+  });
+});
+
+describe('worker getFranchiseTimeline query', () => {
+  afterEach(() => {
+    setState(null);
+    vi.clearAllMocks();
+  });
+
+  function makeMoment(season: number, day: number, type: string, description: string, relevance: number): SignatureMoment {
+    return {
+      season,
+      day,
+      timestamp: `S${season}D${day}`,
+      type: type as SignatureMoment['type'],
+      description,
+      impact: 10,
+      relevance,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    };
+  }
+
+  it('derives deterministic player moment beats for signature achievements, injury returns, and rookie breakouts', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    const breakout = state.players.find((player) => player.teamId === 'nym')!;
+    const injuryHero = state.players.find((player) => player.teamId === 'nym' && player.id !== breakout.id)!;
+    const noHitter = state.players.find((player) => player.teamId === 'nym' && ![breakout.id, injuryHero.id].includes(player.id))!;
+
+    state.franchiseTimeline = [{
+      season: 6,
+      teamId: 'nym',
+      record: '90-72',
+      winTotal: 90,
+      playoffResult: 'Division Series exit',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 150,
+    }];
+    state.playerMoments.set(breakout.id, [
+      makeMoment(6, 162, 'rookie_breakout', 'A rookie forced his way into the long-term core.', 0.97),
+      makeMoment(5, 162, 'rookie_breakout', 'Prior season should not leak into this timeline entry.', 0.99),
+    ]);
+    state.playerMoments.set(injuryHero.id, [
+      makeMoment(6, 152, 'injury_return_hero', 'A veteran came back from injury and carried September.', 0.94),
+    ]);
+    state.playerMoments.set(noHitter.id, [
+      makeMoment(6, 120, 'no_hitter', 'Historic no-hit bid became a franchise memory.', 1),
+    ]);
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        playerMomentBeats: Array<{
+          playerId: string;
+          teamId: string;
+          type: SignatureMoment['type'];
+          label: string;
+          summary: string;
+          relevance: number;
+          day: number | null;
+        }>;
+      }>;
+    };
+    const first = workerApi.getFranchiseTimeline();
+    const second = workerApi.getFranchiseTimeline();
+
+    expect(first).toEqual(second);
+    expect(first[0]?.playerMomentBeats).toEqual([
+      {
+        playerId: noHitter.id,
+        teamId: 'nym',
+        type: 'no_hitter',
+        label: 'No-Hitter',
+        summary: 'Historic no-hit bid became a franchise memory.',
+        relevance: 1,
+        day: 120,
+        playerNameFallback: `${noHitter.firstName} ${noHitter.lastName}`,
+      },
+      {
+        playerId: breakout.id,
+        teamId: 'nym',
+        type: 'rookie_breakout',
+        label: 'Breakout Season',
+        summary: 'A rookie forced his way into the long-term core.',
+        relevance: 0.97,
+        day: 162,
+        playerNameFallback: `${breakout.firstName} ${breakout.lastName}`,
+      },
+      {
+        playerId: injuryHero.id,
+        teamId: 'nym',
+        type: 'injury_return_hero',
+        label: 'Injury Return',
+        summary: 'A veteran came back from injury and carried September.',
+        relevance: 0.94,
+        day: 152,
+        playerNameFallback: `${injuryHero.firstName} ${injuryHero.lastName}`,
+      },
+    ]);
+    expect(state.franchiseTimeline[0]).not.toHaveProperty('playerMomentBeats');
+  });
+
+  it('links current-season player moment beats to matching live box scores', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    const breakout = state.players.find((player) => player.teamId === 'nym')!;
+    const otherPlayer = state.players.find((player) => player.teamId === 'nym' && player.id !== breakout.id)!;
+
+    state.season = 6;
+    state.franchiseTimeline = [{
+      season: 6,
+      teamId: 'nym',
+      record: '90-72',
+      winTotal: 90,
+      playoffResult: 'Division Series exit',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 150,
+    }];
+    state.seasonState.gameLog.splice(0, state.seasonState.gameLog.length,
+      makeBoxScore({
+        date: 'S6D119',
+        paResults: [{
+          inning: 9,
+          halfInning: 'bottom',
+          batterId: otherPlayer.id,
+          pitcherId: 'bos-pitcher',
+          outcome: 'SINGLE',
+          outs: 2,
+          runnersOn: 0,
+          scoreBefore: [4, 4],
+          scoreAfter: [4, 4],
+          rbiOnPlay: 0,
+          isWalkOff: false,
+        }],
+      }),
+      makeBoxScore({
+        date: 'S6D120',
+        paResults: [{
+          inning: 9,
+          halfInning: 'bottom',
+          batterId: breakout.id,
+          pitcherId: 'bos-pitcher',
+          outcome: 'HR',
+          outs: 2,
+          runnersOn: 0,
+          scoreBefore: [4, 4],
+          scoreAfter: [4, 5],
+          rbiOnPlay: 1,
+          isWalkOff: true,
+        }],
+      }),
+    );
+    state.playerMoments.set(breakout.id, [
+      makeMoment(6, 120, 'rookie_breakout', 'A rookie forced his way into the long-term core.', 0.97),
+    ]);
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        playerMomentBeats: Array<{
+          playerId: string;
+          gameIndex?: number;
+        }>;
+      }>;
+    };
+
+    expect(workerApi.getFranchiseTimeline()[0]?.playerMomentBeats[0]).toMatchObject({
+      playerId: breakout.id,
+      gameIndex: 1,
+    });
+  });
+
+  it('links archived-season player and team moment beats to compact archived games', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    const breakout = state.players.find((player) => player.teamId === 'nym')!;
+    const archivedGame = makeArchivedGame({
+      playerIds: [breakout.id],
+      playerNameFallbacks: { [breakout.id]: `${breakout.firstName} ${breakout.lastName}` },
+    });
+
+    state.season = 7;
+    state.franchiseTimeline = [{
+      season: 6,
+      teamId: 'nym',
+      record: '90-72',
+      winTotal: 90,
+      playoffResult: 'Division Series exit',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 150,
+    }];
+    state.archivedGames = [archivedGame];
+    state.playerMoments.set(breakout.id, [
+      makeMoment(6, 120, 'rookie_breakout', 'A rookie forced his way into the long-term core.', 0.97),
+    ]);
+    state.teamMoments.set('nym', [
+      makeMoment(6, 120, 'rivalry_renewed', 'The Boston rivalry became central to the season again.', 0.91),
+    ]);
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        playerMomentBeats: Array<{ playerId: string; archivedGameId?: string; gameIndex?: number }>;
+        teamMomentBeats: Array<{ teamId: string; archivedGameId?: string; gameIndex?: number }>;
+      }>;
+    };
+    const [entry] = workerApi.getFranchiseTimeline();
+
+    expect(entry?.playerMomentBeats[0]).toMatchObject({
+      playerId: breakout.id,
+      archivedGameId: archivedGame.id,
+    });
+    expect(entry?.playerMomentBeats[0]?.gameIndex).toBeUndefined();
+    expect(entry?.teamMomentBeats[0]).toMatchObject({
+      teamId: 'nym',
+      archivedGameId: archivedGame.id,
+    });
+    expect(entry?.teamMomentBeats[0]?.gameIndex).toBeUndefined();
+  });
+
+  it('links current-season playoff timeline entries to matching live box scores without persisting derived fields', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+
+    state.season = 6;
+    state.franchiseTimeline = [{
+      season: 6,
+      teamId: 'nym',
+      record: '95-67',
+      winTotal: 95,
+      playoffResult: 'Championship Series exit',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 181,
+    }];
+    state.seasonState.gameLog.splice(0, state.seasonState.gameLog.length,
+      makeBoxScore({
+        date: 'S6D170',
+        homeTeamId: 'lad',
+        awayTeamId: 'bos',
+        isPlayoff: true,
+      }),
+      makeBoxScore({
+        date: 'S6D171',
+        homeTeamId: 'nym',
+        awayTeamId: 'bos',
+        isPlayoff: true,
+      }),
+      makeBoxScore({
+        date: 'S6D172',
+        homeTeamId: 'nym',
+        awayTeamId: 'bos',
+        isPlayoff: false,
+      }),
+    );
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        playoffGameIndex?: number;
+      }>;
+    };
+    const rngCallsBefore = state.rng.getState().callCount;
+    const first = workerApi.getFranchiseTimeline();
+    const second = workerApi.getFranchiseTimeline();
+
+    expect(second).toEqual(first);
+    expect(state.rng.getState().callCount).toBe(rngCallsBefore);
+    expect(first[0]).toMatchObject({
+      season: 6,
+      playoffGameIndex: 1,
+    });
+    expect(state.franchiseTimeline[0]).not.toHaveProperty('playoffGameIndex');
+  });
+
+  it('derives deterministic team moment beats for dynasty timeline seasons', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+
+    state.franchiseTimeline = [{
+      season: 7,
+      teamId: 'nym',
+      record: '93-69',
+      winTotal: 93,
+      playoffResult: 'Division Series exit',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 166,
+    }];
+    state.teamMoments.set('nym', [
+      makeMoment(7, 161, 'dominant_rotation', 'The rotation gave the club a real October identity.', 0.84),
+      makeMoment(7, 120, 'rivalry_renewed', 'The Boston rivalry became central to the season again.', 0.91),
+      makeMoment(6, 150, 'lineup_of_era', 'Prior season should not leak into this timeline entry.', 0.99),
+    ]);
+    state.teamMoments.set('bos', [
+      makeMoment(7, 120, 'rivalry_renewed', 'Opponent moments should not leak into the user timeline.', 0.99),
+    ]);
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        teamMomentBeats: Array<{
+          teamId: string;
+          type: SignatureMoment['type'];
+          label: string;
+          summary: string;
+          relevance: number;
+          day: number | null;
+        }>;
+      }>;
+    };
+    const first = workerApi.getFranchiseTimeline();
+    const second = workerApi.getFranchiseTimeline();
+
+    expect(first).toEqual(second);
+    expect(first[0]?.teamMomentBeats).toEqual([
+      {
+        teamId: 'nym',
+        type: 'rivalry_renewed',
+        label: 'Rivalry Renewed',
+        summary: 'The Boston rivalry became central to the season again.',
+        relevance: 0.91,
+        day: 120,
+      },
+      {
+        teamId: 'nym',
+        type: 'dominant_rotation',
+        label: 'Dominant Rotation',
+        summary: 'The rotation gave the club a real October identity.',
+        relevance: 0.84,
+        day: 161,
+      },
+    ]);
+    expect(state.franchiseTimeline[0]).not.toHaveProperty('teamMomentBeats');
+  });
+
+  it('derives non-persisted mentorship timeline beats from saved mentor relationships', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+    const veteran = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    const protege = state.players.find((player) =>
+      player.teamId === 'nym'
+      && player.rosterStatus !== 'MLB'
+      && player.id !== veteran.id,
+    )!;
+
+    veteran.firstName = 'Elias';
+    veteran.lastName = 'Anchor';
+    protege.firstName = 'Milo';
+    protege.lastName = 'Spark';
+    state.franchiseTimeline = [{
+      season: 8,
+      teamId: 'nym',
+      record: '88-74',
+      winTotal: 88,
+      playoffResult: 'Missed playoffs',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: false,
+      divisionTitle: false,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 144,
+    }];
+    state.mentorRelationships = [{
+      veteranPlayerId: veteran.id,
+      rookiePlayerId: protege.id,
+      teamId: 'nym',
+      startedSeason: 8,
+      summary: 'Elias Anchor made Milo Spark the next player-development bet.',
+    }, {
+      veteranPlayerId: veteran.id,
+      rookiePlayerId: protege.id,
+      teamId: 'nym',
+      startedSeason: 7,
+      summary: 'Prior season should not leak into this timeline entry.',
+    }];
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        teamMomentBeats: Array<{
+          teamId: string;
+          type: string;
+          label: string;
+          summary: string;
+          relevance: number;
+          day: number | null;
+          playerIds?: string[];
+          playerNameFallbacks?: Record<string, string>;
+        }>;
+      }>;
+    };
+    const rngCallsBefore = state.rng.getState().callCount;
+    const first = workerApi.getFranchiseTimeline();
+    const second = workerApi.getFranchiseTimeline();
+
+    expect(second).toEqual(first);
+    expect(state.rng.getState().callCount).toBe(rngCallsBefore);
+    expect(first[0]?.teamMomentBeats).toEqual([
+      {
+        teamId: 'nym',
+        type: 'clubhouse_mentorship',
+        label: 'Mentorship Lane',
+        summary: 'Elias Anchor made Milo Spark the next player-development bet.',
+        relevance: 0.82,
+        day: null,
+        playerIds: [veteran.id, protege.id],
+        playerNameFallbacks: {
+          [veteran.id]: 'Elias Anchor',
+          [protege.id]: 'Milo Spark',
+        },
+      },
+    ]);
+    expect(state.franchiseTimeline[0]).not.toHaveProperty('teamMomentBeats');
+  });
+
+  it('derives rivalry event beats for dynasty timeline seasons from saved rivalry history', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+
+    state.franchiseTimeline = [{
+      season: 9,
+      teamId: 'nym',
+      record: '96-66',
+      winTotal: 96,
+      playoffResult: 'Won Division Series',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 189,
+    }];
+    state.rivalries.set('bos:nym', {
+      id: 'bos:nym',
+      teamA: 'bos',
+      teamB: 'nym',
+      intensity: 82,
+      summary: 'BOS and NYM are running hot.',
+      reasons: ['October history'],
+      origin: 'playoff',
+      active: true,
+      eventHistory: [
+        { season: 9, type: 'playoff', summary: 'NYM finally took a playoff series from BOS.' },
+        { season: 9, type: 'series_result', summary: 'BOS took another regular-season chapter.' },
+        { season: 8, type: 'trade', summary: 'Prior season should not leak into this timeline entry.' },
+      ],
+    } satisfies Rivalry);
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        teamMomentBeats: Array<{
+          teamId: string;
+          teamIds?: string[];
+          type: string;
+          label: string;
+          summary: string;
+          relevance: number;
+          day: number | null;
+        }>;
+      }>;
+    };
+    const first = workerApi.getFranchiseTimeline();
+    const second = workerApi.getFranchiseTimeline();
+
+    expect(first).toEqual(second);
+    expect(first[0]?.teamMomentBeats).toEqual([
+      {
+        teamId: 'nym',
+        teamIds: ['bos', 'nym'],
+        type: 'rivalry_playoff',
+        label: 'Rivalry October',
+        summary: 'NYM finally took a playoff series from BOS.',
+        relevance: 0.94,
+        day: null,
+      },
+      {
+        teamId: 'nym',
+        teamIds: ['bos', 'nym'],
+        type: 'rivalry_series_result',
+        label: 'Rivalry Chapter',
+        summary: 'BOS took another regular-season chapter.',
+        relevance: 0.86,
+        day: null,
+      },
+    ]);
+    expect(state.franchiseTimeline[0]).not.toHaveProperty('teamMomentBeats');
+  });
+
+  it('derives playoff comeback and heartbreak timeline beats from saved playoff series history', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+
+    state.franchiseTimeline = [{
+      season: 10,
+      teamId: 'nym',
+      record: '97-65',
+      winTotal: 97,
+      playoffResult: 'Championship Series exit',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 192,
+    }];
+    state.playoffSeriesHistory = [
+      {
+        season: 10,
+        round: 'CS',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'bos',
+        bestOf: 7,
+        deficitReached: '1-3',
+        deficitTeamId: 'nym',
+        winnerTeamId: 'nym',
+      },
+      {
+        season: 10,
+        round: 'DS',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'tor',
+        bestOf: 5,
+        deficitReached: '0-2',
+        deficitTeamId: 'tor',
+        winnerTeamId: 'tor',
+      },
+      {
+        season: 9,
+        round: 'DS',
+        higherSeedTeamId: 'nym',
+        lowerSeedTeamId: 'bal',
+        bestOf: 5,
+        deficitReached: '0-2',
+        deficitTeamId: 'nym',
+        winnerTeamId: 'nym',
+      },
+    ];
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        teamMomentBeats: Array<{
+          teamId: string;
+          teamIds?: string[];
+          type: string;
+          label: string;
+          summary: string;
+          relevance: number;
+          day: number | null;
+        }>;
+      }>;
+    };
+    const rngCallsBefore = state.rng.getState().callCount;
+    const first = workerApi.getFranchiseTimeline();
+    const second = workerApi.getFranchiseTimeline();
+
+    expect(second).toEqual(first);
+    expect(state.rng.getState().callCount).toBe(rngCallsBefore);
+    expect(first[0]?.teamMomentBeats).toEqual([
+      {
+        teamId: 'nym',
+        teamIds: ['nym', 'bos'],
+        type: 'playoff_series_comeback',
+        label: 'Playoff Comeback',
+        summary: 'New York Tycoons survived down 3-1 in the CS against Boston Noreasters.',
+        relevance: 0.96,
+        day: null,
+      },
+      {
+        teamId: 'nym',
+        teamIds: ['nym', 'tor'],
+        type: 'playoff_series_heartbreak',
+        label: 'Playoff Heartbreak',
+        summary: 'TOR came back from down 0-2 to steal the DS from New York Tycoons.',
+        relevance: 0.92,
+        day: null,
+      },
+    ]);
+    expect(state.franchiseTimeline[0]).not.toHaveProperty('teamMomentBeats');
+  });
+
+  it('carries player moment fallback names from historical player state', () => {
+    startGame(2211, 'nym');
+    const state = requireState();
+
+    state.franchiseTimeline = [{
+      season: 8,
+      teamId: 'nym',
+      record: '88-74',
+      winTotal: 88,
+      playoffResult: 'Division Series exit',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: false,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 142,
+    }];
+    state.historicalPlayers.push({
+      playerId: 'historical-breakout',
+      fullName: 'Sammy Archive',
+      firstName: 'Sammy',
+      lastName: 'Archive',
+      position: 'CF',
+      lastKnownTeamId: 'nym',
+      active: false,
+      retiredSeason: 9,
+      seasonsPlayed: 4,
+      peakOverall: 82,
+      personalityTraits: [],
+    });
+    state.playerMoments.set('historical-breakout', [
+      makeMoment(8, 151, 'rookie_breakout', 'A buried prospect became part of the next core.', 0.93),
+    ]);
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        season: number;
+        playerMomentBeats: Array<{
+          playerId: string;
+          playerNameFallback?: string;
+        }>;
+      }>;
+    };
+
+    expect(workerApi.getFranchiseTimeline()[0]?.playerMomentBeats[0]).toMatchObject({
+      playerId: 'historical-breakout',
+      playerNameFallback: 'Sammy Archive',
+    });
   });
 });
 

@@ -10,6 +10,12 @@ export interface AssistantState {
   seenStoryCallbacks: Record<string, true>;
 }
 
+export interface AssistantGuidanceReplaySummary {
+  dismissedRoutes: number;
+  completedRoutes: number;
+  seenStoryCallbacks: number;
+}
+
 export type AssistantStateEvent =
   | { type: 'setMode'; mode: AssistantMode }
   | { type: 'dismissRoute'; routeKey: string }
@@ -147,4 +153,22 @@ export function writeAssistantState(saveId: AssistantSaveId, state: AssistantSta
   } catch {
     // localStorage is optional; the Assistant remains usable without persistence.
   }
+}
+
+export function resetAssistantGuidanceProgress(saveId: AssistantSaveId): AssistantGuidanceReplaySummary {
+  const current = readAssistantState(saveId);
+  const summary: AssistantGuidanceReplaySummary = {
+    dismissedRoutes: Object.keys(current.dismissedRoutes).length,
+    completedRoutes: Object.keys(current.completedRoutes).length,
+    seenStoryCallbacks: Object.keys(current.seenStoryCallbacks).length,
+  };
+
+  writeAssistantState(saveId, {
+    ...current,
+    dismissedRoutes: {},
+    completedRoutes: {},
+    seenStoryCallbacks: {},
+  });
+
+  return summary;
 }

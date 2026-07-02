@@ -9,6 +9,8 @@ import {
   useAudioPreferencesStore,
 } from '@/shared/hooks/useAudioPreferencesStore';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
+import { assistantStorageKey } from '@/features/assistant/lib/assistantState';
+import { guidedStartNudgeStorageKey } from '@/features/onboarding/nudges';
 import { resetAudioEngineForTest } from '@/shared/lib/audio';
 import { listSaves, loadGameSafe, loadSaveSafely, repairSave } from '@/shared/lib/saveSystem';
 
@@ -434,6 +436,21 @@ describe('SettingsPage', () => {
         lastSaveMs: 11.2,
         lastLoadMs: 6.8,
       },
+      queryTimings: {
+        enabled: true,
+        warningCount: 1,
+        topSlowQueries: [
+          {
+            name: 'getDashboardSummary',
+            callCount: 2,
+            latestMs: 95,
+            averageMs: 70,
+            maxMs: 95,
+            budgetMs: 80,
+            overBudget: true,
+          },
+        ],
+      },
     });
     const archiveOldSeasons = vi.fn().mockResolvedValue({
       success: true,
@@ -506,6 +523,10 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('Diagnostics');
     expect(container.textContent).toContain('Runtime');
     expect(container.textContent).toContain('524.3 KB');
+    expect(container.textContent).toContain('Worker Query Diagnostics');
+    expect(container.textContent).toContain('getDashboardSummary');
+    expect(container.textContent).toContain('95.0 ms max');
+    expect(container.textContent).toContain('Over 80.0 ms budget');
 
     const archiveButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Archive Older Seasons'),
@@ -529,5 +550,51 @@ describe('SettingsPage', () => {
 
     expect(pruneStaleData).toHaveBeenCalledWith('save-slot-1');
     expect(container.textContent).toContain('Pruned 3 stale entries');
+  });
+
+  it('replays assistant and guided-start guidance from Settings without editing saves', async () => {
+    window.localStorage.setItem(assistantStorageKey(1), JSON.stringify({
+      version: 1,
+      mode: 'hardcore',
+      dismissedRoutes: { dashboard: true, trade: true },
+      completedRoutes: { dashboard: true },
+      seenStoryCallbacks: { 'story-1': true },
+    }));
+    window.localStorage.setItem(guidedStartNudgeStorageKey(1), JSON.stringify({
+      createdByGuidedStart: true,
+      seen: {
+        intro_scroll: true,
+        first_series_pointer: true,
+      },
+    }));
+
+    await act(async () => {
+      root.render(<SettingsPage />);
+      await Promise.resolve();
+    });
+
+    const assistantReplayButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Replay Assistant Help'),
+    );
+    const guidedStartReplayButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Replay Guided-Start Nudges'),
+    );
+
+    await act(async () => {
+      assistantReplayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      guidedStartReplayButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(JSON.parse(window.localStorage.getItem(assistantStorageKey(1)) ?? '{}')).toMatchObject({
+      mode: 'hardcore',
+      dismissedRoutes: {},
+      completedRoutes: {},
+      seenStoryCallbacks: {},
+    });
+    expect(JSON.parse(window.localStorage.getItem(guidedStartNudgeStorageKey(1)) ?? '{}')).toEqual({
+      createdByGuidedStart: true,
+      seen: {},
+    });
+    expect(container.textContent).toContain('Guided-start nudges reset');
   });
 });

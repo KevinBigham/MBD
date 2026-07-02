@@ -82,6 +82,13 @@ function resolveAmbientMode(
   return 'office';
 }
 
+function workerMutationSucceeded(result: unknown): boolean {
+  return !(result != null
+    && typeof result === 'object'
+    && 'success' in result
+    && (result as { success?: unknown }).success === false);
+}
+
 export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -207,6 +214,9 @@ export function AppLayout() {
     activeReport != null || activeDecision != null,
     activeMoment != null,
   );
+  const persistShellMutation = useCallback(async () => {
+    await persistActiveSave({ season });
+  }, [persistActiveSave, season]);
 
   useEffect(() => {
     getAudioEngine().setVolume(audioVolume);
@@ -272,20 +282,26 @@ export function AppLayout() {
     if (!activeReport) return;
     setMonthlyPulseBusy(true);
     try {
-      await worker.acknowledgeMonthlyReport(activeReport.id);
+      const result = await worker.acknowledgeMonthlyReport(activeReport.id);
+      if (workerMutationSucceeded(result)) {
+        await persistShellMutation();
+      }
       await refreshMonthlyPulse();
     } catch (err) {
       logger.error('Failed to acknowledge monthly report:', err);
     } finally {
       setMonthlyPulseBusy(false);
     }
-  }, [activeReport, refreshMonthlyPulse, worker]);
+  }, [activeReport, persistShellMutation, refreshMonthlyPulse, worker]);
 
   const handleMonthlyReportAction = useCallback(async (route: string) => {
     if (!activeReport) return;
     setMonthlyPulseBusy(true);
     try {
-      await worker.acknowledgeMonthlyReport(activeReport.id);
+      const result = await worker.acknowledgeMonthlyReport(activeReport.id);
+      if (workerMutationSucceeded(result)) {
+        await persistShellMutation();
+      }
       await refreshMonthlyPulse();
       navigate(route);
     } catch (err) {
@@ -293,38 +309,47 @@ export function AppLayout() {
     } finally {
       setMonthlyPulseBusy(false);
     }
-  }, [activeReport, navigate, refreshMonthlyPulse, worker]);
+  }, [activeReport, navigate, persistShellMutation, refreshMonthlyPulse, worker]);
 
   const handleMomentDismiss = useCallback(async (momentId: string) => {
     setMonthlyPulseBusy(true);
     try {
-      await worker.dismissCeremonyMoment(momentId);
+      const result = await worker.dismissCeremonyMoment(momentId);
+      if (workerMutationSucceeded(result)) {
+        await persistShellMutation();
+      }
       await Promise.all([refreshCeremony(), refreshMonthlyPulse()]);
     } catch (err) {
       logger.error('Failed to dismiss ceremony moment:', err);
     } finally {
       setMonthlyPulseBusy(false);
     }
-  }, [refreshCeremony, refreshMonthlyPulse, worker]);
+  }, [persistShellMutation, refreshCeremony, refreshMonthlyPulse, worker]);
 
   const handleDecisionDismiss = useCallback(async () => {
     if (!activeDecision) return;
     setMonthlyPulseBusy(true);
     try {
-      await worker.dismissDecisionSpotlight(activeDecision.id);
+      const result = await worker.dismissDecisionSpotlight(activeDecision.id);
+      if (workerMutationSucceeded(result)) {
+        await persistShellMutation();
+      }
       await refreshMonthlyPulse();
     } catch (err) {
       logger.error('Failed to dismiss decision spotlight:', err);
     } finally {
       setMonthlyPulseBusy(false);
     }
-  }, [activeDecision, refreshMonthlyPulse, worker]);
+  }, [activeDecision, persistShellMutation, refreshMonthlyPulse, worker]);
 
   const handleDecisionAction = useCallback(async () => {
     if (!activeDecision) return;
     setMonthlyPulseBusy(true);
     try {
-      await worker.dismissDecisionSpotlight(activeDecision.id);
+      const result = await worker.dismissDecisionSpotlight(activeDecision.id);
+      if (workerMutationSucceeded(result)) {
+        await persistShellMutation();
+      }
       await refreshMonthlyPulse();
       navigate(activeDecision.route);
     } catch (err) {
@@ -332,7 +357,14 @@ export function AppLayout() {
     } finally {
       setMonthlyPulseBusy(false);
     }
-  }, [activeDecision, navigate, refreshMonthlyPulse, worker]);
+  }, [activeDecision, navigate, persistShellMutation, refreshMonthlyPulse, worker]);
+
+  const handlePressConferenceResponse = useCallback(async (conferenceId: string, responseId: string) => {
+    const result = await worker.respondToPressConference(conferenceId, responseId);
+    if (workerMutationSucceeded(result)) {
+      await persistShellMutation();
+    }
+  }, [persistShellMutation, worker]);
 
   const handleFlowAction = useCallback(async (actionOverride?: SeasonFlowState['action']) => {
     const nextAction = actionOverride ?? seasonFlow?.action;
@@ -482,12 +514,17 @@ export function AppLayout() {
         flow={seasonFlow}
       />
 
-      <AssistantPanel tickerFeed={tickerFeed} />
+      <AssistantPanel
+        tickerFeed={tickerFeed}
+        pendingMonthlyReport={activeReport != null}
+        decisionQueue={monthlyPulse?.decisionQueue ?? []}
+      />
 
       {/* Command palette overlay */}
       <CommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
+        onOpenShortcuts={() => setShortcutsPanelOpen(true)}
       />
 
       <MomentCardOverlay
@@ -512,9 +549,7 @@ export function AppLayout() {
       {pressConference && !activeMoment && !activeReport && !activeDecision && (
         <PressConferenceModal
           conference={pressConference}
-          onRespond={async (confId, respId) => {
-            await worker.respondToPressConference(confId, respId);
-          }}
+          onRespond={handlePressConferenceResponse}
           onDismiss={() => setPressConference(null)}
         />
       )}

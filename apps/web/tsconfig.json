@@ -11,5 +11,6 @@
       "@mbd/ui": ["../../packages/ui/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/**/*.audit.test.ts"]
 }

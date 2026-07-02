@@ -13,7 +13,12 @@ import { PITCHER_POSITIONS } from '../player/generation.js';
 import { hitterOverall, pitcherOverall, toDisplayRating } from '../player/attributes.js';
 import { RATING_MAX } from '../player/attributes.js';
 import { serviceDaysToYears } from '../finance/contracts.js';
-import { adjustFABidForRelationship, type GMRelationship } from '../league/index.js';
+import {
+  adjustFABidForRelationship,
+  teamBuildingFreeAgencyAggression,
+  type GMRelationship,
+  type TeamBuildingArchetype,
+} from '../league/index.js';
 import type { GMPersonality } from '../trade/tradeAI.js';
 
 // ---------------------------------------------------------------------------
@@ -509,6 +514,7 @@ export function generateAIOffer(
     personality: GMPersonality;
     isTargetedByUser: boolean;
   },
+  teamBuildingArchetype: TeamBuildingArchetype = 'balanced',
 ): ContractOffer | null {
   const baseValue = calculateMarketValue(player);
   const availableBudget = teamBudget * spendingComfortFactor(teamBudget) - currentPayroll;
@@ -529,7 +535,8 @@ export function generateAIOffer(
 
   // Need adjustment: teams that need this position bid higher.
   const needMultiplier = 0.92 + (teamNeed / 100) * NEED_BONUS_FACTOR;
-  const budgetMultiplier = marketAggressionFactor(teamBudget);
+  const budgetMultiplier = marketAggressionFactor(teamBudget)
+    * teamBuildingFreeAgencyAggression(teamBuildingArchetype);
 
   // Jitter: each team's valuation varies slightly
   const jitterPct = rng.nextInt(OFFER_JITTER_MIN, OFFER_JITTER_MAX) / 100;
@@ -588,6 +595,7 @@ export function simulateFADay(
   teamAttractiveness: FreeAgencyAttractiveness = new Map(),
   relationshipContexts: Map<string, RelationshipBidContext> = new Map(),
   userTeamNeeds: Map<string, number> = new Map(),
+  teamBuildingArchetypes: Map<string, TeamBuildingArchetype> = new Map(),
 ): FreeAgencyMarket {
   const nextDay = market.day + 1;
   const stillAvailable: FreeAgent[] = [];
@@ -642,6 +650,7 @@ export function simulateFADay(
       const posNeeds = teamNeeds.get(teamId);
       const need = posNeeds?.get(fa.player.position) ?? 50; // default moderate need
       const relationshipContext = relationshipContexts.get(teamId);
+      const teamBuildingArchetype = teamBuildingArchetypes.get(teamId) ?? 'balanced';
 
       const offer = generateAIOffer(
         rng,
@@ -656,6 +665,7 @@ export function simulateFADay(
             isTargetedByUser: (userTeamNeeds.get(fa.player.position) ?? 0) >= USER_TARGET_NEED_THRESHOLD,
           }
           : undefined,
+        teamBuildingArchetype,
       );
       if (offer !== null) {
         offers.push(offer);
@@ -743,6 +753,7 @@ export function simulateFullFreeAgency(
   userTeamId: string,
   userOffers?: ContractOffer[],
   teamAttractiveness: FreeAgencyAttractiveness = new Map(),
+  teamBuildingArchetypes: Map<string, TeamBuildingArchetype> = new Map(),
 ): FreeAgencyMarket {
   let current = { ...market, day: 0, freeAgents: [...market.freeAgents], signedPlayers: [...market.signedPlayers] };
   const workingPayrolls = new Map(teamPayrolls);
@@ -776,6 +787,8 @@ export function simulateFullFreeAgency(
   aiBudgets.delete(userTeamId);
   const aiNeeds = new Map(teamNeeds);
   aiNeeds.delete(userTeamId);
+  const aiTeamBuildingArchetypes = new Map(teamBuildingArchetypes);
+  aiTeamBuildingArchetypes.delete(userTeamId);
   const aiAttractiveness: FreeAgencyAttractiveness = typeof teamAttractiveness === 'function'
     ? (teamId: string, playerId: string) =>
       teamId === userTeamId ? 0 : teamAttractiveness(teamId, playerId)
@@ -785,7 +798,17 @@ export function simulateFullFreeAgency(
 
   // Simulate each day
   for (let day = 0; day < MARKET_DURATION_DAYS; day++) {
-    current = simulateFADay(rng, current, aiBudgets, workingPayrolls, aiNeeds, aiAttractiveness);
+    current = simulateFADay(
+      rng,
+      current,
+      aiBudgets,
+      workingPayrolls,
+      aiNeeds,
+      aiAttractiveness,
+      new Map(),
+      new Map(),
+      aiTeamBuildingArchetypes,
+    );
   }
 
   // Force-sign anyone still unsigned with minor league deals

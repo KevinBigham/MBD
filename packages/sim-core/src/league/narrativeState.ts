@@ -382,6 +382,16 @@ export function evaluateOwnerState(
   const recentDecisionImpact = context.recentDecisionScore * 0.9;
   const attendanceProxy = clamp((context.wins - context.losses) / 4, -18, 18);
   const expectationBonus = context.madePlayoffs ? 10 : owner.expectations.playoffTarget ? 0 : 4;
+  const winNowPressure = owner.winNowPressure ?? 50;
+  const competitiveNearMissRelief =
+    winNowPressure >= 85
+      && !context.madePlayoffs
+      && context.wins >= 84
+      && payrollOverage <= 10
+      && context.chemistryScore >= 60
+      ? 6
+      : 0;
+  const winNowPressurePenalty = Math.max(0, (winNowPressure * 0.12) - competitiveNearMissRelief);
   const satisfaction = clampScore(
     55
       - (winGap * 1.4)
@@ -394,19 +404,21 @@ export function evaluateOwnerState(
       + expectationBonus,
   );
 
-  const patience = clampScore(
+  // Regular-season evaluation should leave room for explicit postseason/title deltas.
+  const maxRegularSeasonTrust = satisfaction >= 80 ? 94 : 100;
+  const patience = Math.min(maxRegularSeasonTrust, clampScore(
     (owner.patience * 0.45)
       + (satisfaction * 0.55)
-      - ((owner.winNowPressure ?? 50) * 0.12)
+      - winNowPressurePenalty
       + ((owner.spendingWillingness === 'cheap' ? 5 : owner.spendingWillingness === 'lavish' ? -2 : 0)),
-  );
+  ));
 
-  const confidence = clampScore(
+  const confidence = Math.min(maxRegularSeasonTrust, clampScore(
     (owner.confidence * 0.35)
       + (satisfaction * 0.65)
       + (context.recentDecisionScore * 0.3)
       - (payrollOverage * 0.25),
-  );
+  ));
 
   const hotSeat = satisfaction < 50 || patience < 45 || confidence < 45;
   const budgets = budgetOutputsFromOwner(

@@ -1099,6 +1099,60 @@ export const ArchivedSeasonSchema = z.object({
 });
 export type ArchivedSeason = z.infer<typeof ArchivedSeasonSchema>;
 
+export const ArchivedGameKindEnum = z.enum([
+  "postseason",
+  "championship",
+  "no_hitter",
+  "perfect_game",
+  "milestone",
+  "rivalry",
+]);
+export type ArchivedGameKind = z.infer<typeof ArchivedGameKindEnum>;
+
+export const ArchivedGameLineScoreSchema = z.object({
+  inning: z.number().int().min(1),
+  awayRuns: z.number().int().min(0),
+  homeRuns: z.number().int().min(0),
+});
+export type ArchivedGameLineScore = z.infer<typeof ArchivedGameLineScoreSchema>;
+
+export const ArchivedGameHighlightSchema = z.object({
+  inning: z.number().int().min(1),
+  halfInning: z.enum(["top", "bottom"]),
+  text: z.string().min(1),
+});
+export type ArchivedGameHighlight = z.infer<typeof ArchivedGameHighlightSchema>;
+
+export const ArchivedGameBoxScoreSchema = z.object({
+  id: z.string().min(1),
+  season: z.number().int().min(1),
+  day: z.number().int().min(1).nullable(),
+  date: z.string().min(1),
+  kind: ArchivedGameKindEnum,
+  label: z.string().min(1),
+  homeTeamId: z.string().min(1),
+  awayTeamId: z.string().min(1),
+  homeScore: z.number().int().min(0),
+  awayScore: z.number().int().min(0),
+  homeHits: z.number().int().min(0),
+  awayHits: z.number().int().min(0),
+  innings: z.number().int().min(1),
+  isPlayoff: z.boolean(),
+  round: z.string().nullable(),
+  gameNumber: z.number().int().min(1).nullable(),
+  winningPitcherId: z.string().nullable(),
+  losingPitcherId: z.string().nullable(),
+  savePitcherId: z.string().nullable(),
+  teamIds: z.array(z.string()).default([]),
+  playerIds: z.array(z.string()).default([]),
+  teamNameFallbacks: z.record(z.string(), z.string()).default({}),
+  playerNameFallbacks: z.record(z.string(), z.string()).default({}),
+  lineScore: z.array(ArchivedGameLineScoreSchema).default([]),
+  highlights: z.array(ArchivedGameHighlightSchema).default([]),
+  recap: z.string().min(1),
+});
+export type ArchivedGameBoxScore = z.infer<typeof ArchivedGameBoxScoreSchema>;
+
 export const WhatIfBranchMetaSchema = z.object({
   id: z.string().min(1),
   saveId: z.string().min(1),

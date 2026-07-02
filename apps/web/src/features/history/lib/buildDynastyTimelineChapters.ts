@@ -1,6 +1,46 @@
-import type { ArchivedSeason, SeasonArchiveEntry, SeasonHistoryEntry } from '@mbd/contracts';
+import type { ArchivedSeason, SeasonArchiveEntry, SeasonHistoryEntry, SeasonStatLeader, SeasonStatLeaders } from '@mbd/contracts';
 
 export type DynastyEraState = 'rebuild' | 'ascent' | 'contention' | 'peak' | 'reset';
+export type DynastyTimelineMemoryBeatKind = 'playoff' | 'trade' | 'draft' | 'award' | 'stat' | 'retirement' | 'rivalry' | 'breakout' | 'injury' | 'identity' | 'story';
+
+export interface DynastyTimelineMemoryBeat {
+  id: string;
+  kind: DynastyTimelineMemoryBeatKind;
+  label: string;
+  summary: string;
+  playerIds: string[];
+  playerNameFallbacks?: Record<string, string>;
+  teamIds: string[];
+  gameIndex?: number;
+  archivedGameId?: string;
+}
+
+export interface DynastyTimelinePlayerMomentBeat {
+  playerId: string;
+  teamId: string;
+  type: string;
+  label: string;
+  summary: string;
+  relevance: number;
+  day: number | null;
+  playerNameFallback?: string;
+  gameIndex?: number;
+  archivedGameId?: string;
+}
+
+export interface DynastyTimelineTeamMomentBeat {
+  teamId: string;
+  teamIds?: string[];
+  type: string;
+  label: string;
+  summary: string;
+  relevance: number;
+  day: number | null;
+  playerIds?: string[];
+  playerNameFallbacks?: Record<string, string>;
+  gameIndex?: number;
+  archivedGameId?: string;
+}
 
 export interface DynastyTimelineEntryLike {
   season: number;
@@ -12,6 +52,10 @@ export interface DynastyTimelineEntryLike {
   keyDepartures: string[];
   worldSeriesAppearance?: boolean;
   playoffAppearance?: boolean;
+  playoffGameIndex?: number;
+  playoffArchivedGameId?: string;
+  playerMomentBeats?: DynastyTimelinePlayerMomentBeat[];
+  teamMomentBeats?: DynastyTimelineTeamMomentBeat[];
 }
 
 export type DynastyTimelineSeasonView = SeasonArchiveEntry | ArchivedSeason;
@@ -29,6 +73,7 @@ export interface DynastyTimelineSeasonSummary {
   keyAcquisitions: string[];
   keyDepartures: string[];
   storylineHook: string | null;
+  memoryBeats: DynastyTimelineMemoryBeat[];
   state: DynastyEraState;
 }
 
@@ -63,6 +108,7 @@ const LARGE_WIN_SWING = 12;
 const RESET_WIN_DROP = -10;
 const MAX_CHAPTER_SIZE = 5;
 const TARGET_MIN_CHAPTER_SIZE = 3;
+const STAT_LEADER_ORDER = ['hr', 'rbi', 'avg', 'era', 'k', 'w'] as const satisfies readonly (keyof SeasonStatLeaders)[];
 
 function parseRecord(record: string): { wins: number; losses: number } {
   const match = /^(\d+)-(\d+)$/.exec(record.trim());
@@ -78,6 +124,10 @@ function parseRecord(record: string): { wins: number; losses: number } {
 
 function isArchivedSeasonView(view: DynastyTimelineSeasonView | null | undefined): view is ArchivedSeason {
   return view != null && !('playoffSeries' in view);
+}
+
+function isFullSeasonArchive(view: DynastyTimelineSeasonView | null | undefined): view is SeasonArchiveEntry {
+  return view != null && 'playoffSeries' in view;
 }
 
 function seasonViewTeamId(view: DynastyTimelineSeasonView | null | undefined, history: SeasonHistoryEntry | undefined): string | null {
@@ -184,6 +234,441 @@ function hasRosterPivot(entry: DynastyTimelineEntryLike): boolean {
   return entry.keyAcquisitions.length + entry.keyDepartures.length >= 2;
 }
 
+function awardLabel(league: string, award: string): string {
+  return `${league} ${award.replace(/_/g, ' ')}`.trim();
+}
+
+function statLeaderLabel(stat: keyof SeasonStatLeaders): string {
+  switch (stat) {
+    case 'hr':
+      return 'Home Run Leader';
+    case 'rbi':
+      return 'RBI Leader';
+    case 'avg':
+      return 'Batting Average Leader';
+    case 'era':
+      return 'ERA Leader';
+    case 'k':
+      return 'Strikeout Leader';
+    case 'w':
+      return 'Wins Leader';
+    default:
+      return 'League Leader';
+  }
+}
+
+function statLeaderSummary(stat: keyof SeasonStatLeaders, leader: SeasonStatLeader): string {
+  const summary = leader.summary.trim();
+  return summary.length > 0
+    ? summary
+    : `${leader.playerId} led the league in ${statLeaderLabel(stat).toLowerCase()} with ${leader.value}.`;
+}
+
+function retirementPlayerNameFallback(summary: string): string | null {
+  const match = /^(.+?) retired after \d+ seasons\b/i.exec(summary.trim());
+  const name = match?.[1]?.trim() ?? '';
+  return name.length > 0 ? name : null;
+}
+
+function awardPlayerNameFallback(summary: string | null | undefined): string | null {
+  if (typeof summary !== 'string') {
+    return null;
+  }
+
+  const [first = '', second = ''] = summary.trim().split(/\s+/);
+  if (!/^[A-Z][A-Za-z'-]*$/.test(first) || !/^[A-Z][A-Za-z'-]*$/.test(second)) {
+    return null;
+  }
+
+  return `${first} ${second}`;
+}
+
+function statLeaderPlayerNameFallback(summary: string): string | null {
+  return awardPlayerNameFallback(summary);
+}
+
+function collectStatLeaderMemorySources(
+  view: DynastyTimelineSeasonView | null | undefined,
+  history: SeasonHistoryEntry | undefined,
+  teamId: string | null,
+): Array<{ stat: keyof SeasonStatLeaders; leader: SeasonStatLeader }> {
+  const sources = [view?.statLeaders, history?.statLeaders].filter((source): source is SeasonStatLeaders => source != null);
+  const leaders: Array<{ stat: keyof SeasonStatLeaders; leader: SeasonStatLeader }> = [];
+  const seen = new Set<string>();
+
+  for (const source of sources) {
+    for (const stat of STAT_LEADER_ORDER) {
+      for (const leader of source[stat] ?? []) {
+        if (teamId != null && leader.teamId !== teamId) {
+          continue;
+        }
+
+        const key = `${stat}:${leader.playerId}`;
+        if (seen.has(key)) {
+          continue;
+        }
+
+        seen.add(key);
+        leaders.push({ stat, leader });
+      }
+    }
+  }
+
+  return leaders;
+}
+
+function compactRosterMoveMemoryKind(summary: string): DynastyTimelineMemoryBeatKind {
+  return /\b(acquired|acquisition|blockbuster|deadline|deal|flipped|swap|trade|traded)\b/i.test(summary)
+    ? 'trade'
+    : 'story';
+}
+
+function classifyStoryMemoryLabel(summary: string): { kind: DynastyTimelineMemoryBeatKind; label: string } {
+  const normalized = summary.toLowerCase();
+  if (normalized.includes('rivalry') || /^[a-z]{2,4}-[a-z]{2,4}:/i.test(summary)) {
+    return { kind: 'rivalry', label: 'Rivalry Turn' };
+  }
+  if (normalized.includes('injur') || normalized.includes(' injured') || normalized.includes(' il ')) {
+    return { kind: 'injury', label: 'Injury Watch' };
+  }
+  if (normalized.includes('breakout') || normalized.includes('rookie') || normalized.includes('emerged')) {
+    return { kind: 'breakout', label: 'Breakout Season' };
+  }
+  return { kind: 'story', label: 'Season Memory' };
+}
+
+function playerMomentBeatKind(type: string, label: string): DynastyTimelineMemoryBeatKind {
+  const normalizedLabel = label.toLowerCase();
+  if (
+    type === 'no_hitter'
+    || type === 'perfect_game'
+    || type === 'cycle'
+    || type === 'milestone_500hr'
+    || type === 'milestone_3000h'
+    || type === 'milestone_300w'
+    || normalizedLabel.includes('no-hitter')
+    || normalizedLabel.includes('perfect game')
+    || normalizedLabel.includes('cycle')
+    || normalizedLabel.includes('milestone')
+  ) {
+    return 'stat';
+  }
+  if (type === 'injury_return_hero' || normalizedLabel.includes('injur')) {
+    return 'injury';
+  }
+  if (type === 'rookie_breakout' || normalizedLabel.includes('breakout')) {
+    return 'breakout';
+  }
+  return 'story';
+}
+
+function teamMomentBeatKind(type: string, label: string): DynastyTimelineMemoryBeatKind {
+  const normalized = `${type} ${label}`.toLowerCase();
+  if (normalized.includes('rivalry')) {
+    return 'rivalry';
+  }
+  if (normalized.includes('trade') || normalized.includes('deadline') || normalized.includes('fire_sale')) {
+    return 'trade';
+  }
+  if (
+    normalized.includes('championship')
+    || normalized.includes('playoff')
+    || normalized.includes('three_peat')
+    || normalized.includes('contender')
+  ) {
+    return 'playoff';
+  }
+  if (normalized.includes('breakout')) {
+    return 'breakout';
+  }
+  if (normalized.includes('injur')) {
+    return 'injury';
+  }
+  if (
+    normalized.includes('dominant_rotation')
+    || normalized.includes('lineup_of_era')
+    || normalized.includes('hot_streak')
+    || normalized.includes('cold_snap')
+    || normalized.includes('closer_lights_out')
+    || normalized.includes('closer_meltdown')
+    || normalized.includes('bench_clutch')
+    || normalized.includes('bullpen_collapse')
+    || normalized.includes('bullpen_overwork')
+    || normalized.includes('dominant rotation')
+    || normalized.includes('lineup of era')
+    || normalized.includes('hot streak')
+    || normalized.includes('cold snap')
+    || normalized.includes('closer lockdown')
+    || normalized.includes('closer meltdown')
+    || normalized.includes('bench spark')
+    || normalized.includes('bullpen workload')
+    || normalized.includes('mentorship')
+  ) {
+    return 'identity';
+  }
+  return 'story';
+}
+
+function playoffMemoryLabel(championship: boolean, userTeamLostSeries: boolean, worldSeriesRunnerUp: boolean): string {
+  if (championship) {
+    return 'Championship';
+  }
+
+  if (worldSeriesRunnerUp) {
+    return 'World Series Run';
+  }
+
+  return userTeamLostSeries ? 'Playoff Collapse' : 'October Turn';
+}
+
+function worldSeriesRunnerUpMemory(
+  history: SeasonHistoryEntry | undefined,
+  teamId: string | null,
+): { summary: string; teamIds: string[] } | null {
+  if (!teamId || history?.runnerUpTeamId !== teamId) {
+    return null;
+  }
+
+  return {
+    summary: history.worldSeriesRecord
+      ? `World Series ended ${history.worldSeriesRecord}`
+      : 'World Series runner-up finish',
+    teamIds: unique([history.championTeamId ?? '', history.runnerUpTeamId ?? '']),
+  };
+}
+
+function buildMemoryBeats(
+  entry: DynastyTimelineEntryLike,
+  view: DynastyTimelineSeasonView | null | undefined,
+  history: SeasonHistoryEntry | undefined,
+  teamId: string | null,
+  playoffResult: string,
+  playoffAppearance: boolean,
+): DynastyTimelineMemoryBeat[] {
+  const fullArchive = isFullSeasonArchive(view) ? view : null;
+  const beats: DynastyTimelineMemoryBeat[] = [];
+  const seen = new Set<string>();
+  const addBeat = (beat: Omit<DynastyTimelineMemoryBeat, 'id'>) => {
+    const summary = beat.summary.trim();
+    if (!summary) {
+      return;
+    }
+
+    const key = `${beat.kind}:${beat.label}:${summary}`;
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    const playerIds = unique(beat.playerIds);
+    const playerNameFallbacks = Object.fromEntries(
+      Object.entries(beat.playerNameFallbacks ?? {})
+        .map(([playerId, playerName]) => [playerId, playerName.trim()] as const)
+        .filter(([playerId, playerName]) => playerIds.includes(playerId) && playerName.length > 0),
+    );
+
+    beats.push({
+      id: `memory-${entry.season}-${beats.length + 1}`,
+      ...beat,
+      summary,
+      playerIds,
+      ...(Object.keys(playerNameFallbacks).length > 0 ? { playerNameFallbacks } : {}),
+      teamIds: unique(beat.teamIds),
+    });
+  };
+
+  if (playoffAppearance) {
+    const userSeries = teamId
+      ? fullArchive?.playoffSeries.find((series) => series.loserTeamId === teamId)
+      : null;
+    const runnerUpMemory = userSeries == null ? worldSeriesRunnerUpMemory(history, teamId) : null;
+    const normalizedResult = playoffResult.toLowerCase();
+    const championship = entry.championship
+      || normalizedResult === 'champion'
+      || normalizedResult.includes('won world series')
+      || normalizedResult.includes('world series champion');
+    addBeat({
+      kind: 'playoff',
+      label: playoffMemoryLabel(championship, userSeries != null, runnerUpMemory != null),
+      summary: userSeries?.round && userSeries.result
+        ? `${userSeries.round} ended ${userSeries.result}`
+        : (runnerUpMemory?.summary ?? playoffResult),
+      playerIds: [],
+      teamIds: runnerUpMemory?.teamIds
+        ?? unique([userSeries?.winnerTeamId ?? '', userSeries?.loserTeamId ?? '', teamId ?? '']),
+      ...(entry.playoffGameIndex != null ? { gameIndex: entry.playoffGameIndex } : {}),
+      ...(entry.playoffArchivedGameId != null ? { archivedGameId: entry.playoffArchivedGameId } : {}),
+    });
+  }
+
+  for (const trade of history?.blockbusterTrades ?? []) {
+    addBeat({
+      kind: 'trade',
+      label: 'Defining Trade',
+      summary: trade.summary || trade.headline,
+      playerIds: trade.playerIds,
+      teamIds: trade.teamIds,
+    });
+  }
+
+  for (const transaction of [...(fullArchive?.transactions ?? [])]
+    .sort((left, right) => right.impactScore - left.impactScore || left.headline.localeCompare(right.headline))
+    .slice(0, 2)) {
+    const tradeLike = /trade|deal|blockbuster|deadline/i.test(`${transaction.headline} ${transaction.summary}`);
+    addBeat({
+      kind: tradeLike ? 'trade' : 'story',
+      label: tradeLike ? 'Defining Trade' : 'Roster Pivot',
+      summary: transaction.summary || transaction.headline,
+      playerIds: transaction.playerIds,
+      teamIds: transaction.teamIds,
+    });
+  }
+
+  if ((fullArchive?.transactions.length ?? 0) === 0) {
+    for (const summary of entry.keyAcquisitions.slice(0, 2)) {
+      addBeat({
+        kind: compactRosterMoveMemoryKind(summary),
+        label: 'Key Addition',
+        summary,
+        playerIds: [],
+        teamIds: [teamId ?? ''],
+      });
+    }
+
+    for (const summary of entry.keyDepartures.slice(0, 2)) {
+      addBeat({
+        kind: compactRosterMoveMemoryKind(summary),
+        label: 'Key Departure',
+        summary,
+        playerIds: [],
+        teamIds: [teamId ?? ''],
+      });
+    }
+  }
+
+  for (const pick of (fullArchive?.draftClass ?? [])
+    .filter((pick) => teamId == null || pick.teamId === teamId)
+    .sort((left, right) => left.pickNumber - right.pickNumber)
+    .slice(0, 2)) {
+    addBeat({
+      kind: 'draft',
+      label: `Draft Pick #${pick.pickNumber}`,
+      summary: `${pick.playerName} joined the system and is now ${pick.currentStatus}.`,
+      playerIds: [pick.playerId],
+      playerNameFallbacks: { [pick.playerId]: pick.playerName },
+      teamIds: [pick.teamId],
+    });
+  }
+
+  for (const award of [...(history?.awards ?? []), ...(fullArchive?.awards ?? [])]
+    .filter((award, index, awards) =>
+      (teamId == null || award.teamId === teamId)
+      && awards.findIndex((candidate) =>
+        candidate.season === award.season
+        && candidate.award === award.award
+        && candidate.league === award.league
+        && candidate.playerId === award.playerId,
+      ) === index)
+    .slice(0, 2)) {
+    const playerName = awardPlayerNameFallback(award.summary);
+    addBeat({
+      kind: 'award',
+      label: awardLabel(award.league, award.award),
+      summary: award.summary || `${award.playerId} won ${awardLabel(award.league, award.award)}.`,
+      playerIds: [award.playerId],
+      playerNameFallbacks: playerName ? { [award.playerId]: playerName } : {},
+      teamIds: [award.teamId],
+    });
+  }
+
+  for (const retirement of history?.notableRetirements ?? []) {
+    const playerName = retirementPlayerNameFallback(retirement.summary);
+    addBeat({
+      kind: 'retirement',
+      label: 'Retirement',
+      summary: retirement.summary,
+      playerIds: [retirement.playerId],
+      playerNameFallbacks: playerName ? { [retirement.playerId]: playerName } : {},
+      teamIds: [retirement.teamId],
+    });
+  }
+
+  for (const momentBeat of [...(entry.playerMomentBeats ?? [])]
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || (right.day ?? 0) - (left.day ?? 0)
+      || left.label.localeCompare(right.label)
+      || left.playerId.localeCompare(right.playerId),
+    )
+    .slice(0, 3)) {
+    addBeat({
+      kind: playerMomentBeatKind(momentBeat.type, momentBeat.label),
+      label: momentBeat.label,
+      summary: momentBeat.summary,
+      playerIds: [momentBeat.playerId],
+      playerNameFallbacks: momentBeat.playerNameFallback
+        ? { [momentBeat.playerId]: momentBeat.playerNameFallback }
+        : {},
+      teamIds: [momentBeat.teamId],
+      ...(momentBeat.gameIndex != null ? { gameIndex: momentBeat.gameIndex } : {}),
+      ...(momentBeat.archivedGameId != null ? { archivedGameId: momentBeat.archivedGameId } : {}),
+    });
+  }
+
+  for (const momentBeat of [...(entry.teamMomentBeats ?? [])]
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || (right.day ?? 0) - (left.day ?? 0)
+      || left.label.localeCompare(right.label)
+      || left.teamId.localeCompare(right.teamId),
+    )
+    .slice(0, 3)) {
+    const teamIds = unique(momentBeat.teamIds ?? [momentBeat.teamId]);
+    addBeat({
+      kind: teamMomentBeatKind(momentBeat.type, momentBeat.label),
+      label: momentBeat.label,
+      summary: momentBeat.summary,
+      playerIds: momentBeat.playerIds ?? [],
+      teamIds,
+      ...(momentBeat.playerNameFallbacks ? { playerNameFallbacks: momentBeat.playerNameFallbacks } : {}),
+      ...(momentBeat.gameIndex != null ? { gameIndex: momentBeat.gameIndex } : {}),
+      ...(momentBeat.archivedGameId != null ? { archivedGameId: momentBeat.archivedGameId } : {}),
+    });
+  }
+
+  for (const { stat, leader } of collectStatLeaderMemorySources(view, history, teamId).slice(0, 2)) {
+    const summary = statLeaderSummary(stat, leader);
+    const playerName = statLeaderPlayerNameFallback(summary);
+    addBeat({
+      kind: 'stat',
+      label: statLeaderLabel(stat),
+      summary,
+      playerIds: [leader.playerId],
+      playerNameFallbacks: playerName ? { [leader.playerId]: playerName } : {},
+      teamIds: [leader.teamId],
+    });
+  }
+
+  for (const summary of [
+    ...(fullArchive?.timelineEvents ?? []),
+    ...(history?.keyMoments ?? []),
+    ...(history?.userSeason?.storylines ?? []),
+    ...(fullArchive?.userSummary?.storylines ?? []),
+    history?.summary ?? '',
+  ]) {
+    const { kind, label } = classifyStoryMemoryLabel(summary);
+    addBeat({
+      kind,
+      label,
+      summary,
+      playerIds: [],
+      teamIds: [teamId ?? ''],
+    });
+  }
+
+  return beats.slice(0, 8);
+}
+
 function classifySeasonState(
   entry: DynastyTimelineEntryLike,
   previous: DynastyTimelineSeasonSummary | null,
@@ -267,6 +752,7 @@ export function buildDynastyTimelineSeasonSummaries({
       keyAcquisitions: entry.keyAcquisitions,
       keyDepartures: entry.keyDepartures,
       storylineHook: getStorylineHook(entry, view, history),
+      memoryBeats: buildMemoryBeats(entry, view, history, teamId, playoffResult, playoffAppearance),
       state,
     });
   }

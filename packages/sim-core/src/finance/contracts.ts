@@ -8,6 +8,10 @@ import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { PITCHER_POSITIONS } from '../player/generation.js';
 import { hitterOverall, pitcherOverall } from '../player/attributes.js';
+import {
+  teamBuildingExtensionPriorityAdjustment,
+  type TeamBuildingArchetype,
+} from '../league/frontOffice.js';
 
 // ---------------------------------------------------------------------------
 // Financial Constants
@@ -104,14 +108,14 @@ export const TEAM_MARKETS: Record<string, MarketConfig> = {
   nym: LARGE_MARKET,   // New York Tycoons
   chi: LARGE_MARKET,   // Chicago Deep Dish
   lax: LARGE_MARKET,   // Los Angeles Sunset Strip
-  hou: LARGE_MARKET,   // Houston Space Cowboys
+  hou: LARGE_MARKET,   // Houston Starliners
   dal: LARGE_MARKET,   // Dallas Lone Stars
   phi: LARGE_MARKET,   // Philadelphia Liberty Bells
   bos: LARGE_MARKET,   // Boston Noreasters
   sfb: LARGE_MARKET,   // San Francisco Sourdoughs
   // Medium markets
   wsh: MEDIUM_MARKET,  // Washington Monuments
-  mia: MEDIUM_MARKET,  // Miami Hurricanes
+  mia: MEDIUM_MARKET,  // Miami Palms
   atl: MEDIUM_MARKET,  // Atlanta Peach Kings
   det: MEDIUM_MARKET,  // Detroit Motor Kings
   cle: MEDIUM_MARKET,  // Cleveland Forge
@@ -119,7 +123,7 @@ export const TEAM_MARKETS: Record<string, MarketConfig> = {
   stl: MEDIUM_MARKET,  // St. Louis Archers
   sea: MEDIUM_MARKET,  // Seattle Drizzle
   den: MEDIUM_MARKET,  // Denver Altitude
-  phx: MEDIUM_MARKET,  // Phoenix Dust Devils
+  phx: MEDIUM_MARKET,  // Phoenix Copperbirds
   sdg: MEDIUM_MARKET,  // San Diego Surf Hounds
   kc:  MEDIUM_MARKET,  // Kansas City BBQ Fountains
   nas: MEDIUM_MARKET,  // Nashville Honky Tonks
@@ -127,11 +131,11 @@ export const TEAM_MARKETS: Record<string, MarketConfig> = {
   // Small markets
   bal: SMALL_MARKET,   // Baltimore Crab Cakes
   pit: SMALL_MARKET,   // Pittsburgh Smokestack
-  col: SMALL_MARKET,   // Columbus Buckeyes
+  col: SMALL_MARKET,   // Columbus Wayfinders
   mil: SMALL_MARKET,   // Milwaukee Suds
   ind: SMALL_MARKET,   // Indianapolis Speedsters
-  cha: SMALL_MARKET,   // Charlotte Hornets
-  orl: SMALL_MARKET,   // Orlando Thunder
+  cha: SMALL_MARKET,   // Charlotte Weavers
+  orl: SMALL_MARKET,   // Orlando Sunbursts
   ral: SMALL_MARKET,   // Raleigh Pines
   aus: SMALL_MARKET,   // Austin Bat Colony
   por: SMALL_MARKET,   // Portland Sasquatch
@@ -196,6 +200,7 @@ export interface ExtensionTeamContext {
   controlYearsByPlayer: Map<string, number>;
   serviceYearsByPlayer: Map<string, number>;
   moraleByPlayer: Map<string, number>;
+  teamBuildingArchetype?: TeamBuildingArchetype;
 }
 
 export interface ExtensionContractTerms {
@@ -397,8 +402,21 @@ function shouldPursueExtensionCandidate(
   const controlYears = controlYearsForPlayer(player, context);
   const overall = getPlayerOverall(player);
   const franchiseTarget = isFranchiseExtensionTarget(player, teamPlayers);
+  const teamBuildingAdjustment = teamBuildingExtensionPriorityAdjustment(
+    context.teamBuildingArchetype ?? 'balanced',
+    {
+      age: player.age,
+      overallRating: overall,
+      controlYears,
+      annualSalary: player.contract.annualSalary,
+    },
+  );
 
   if (overall < 270 && !franchiseTarget) {
+    return false;
+  }
+
+  if (context.teamBuildingArchetype === 'budget_constrained' && teamBuildingAdjustment < -20) {
     return false;
   }
 
@@ -433,6 +451,12 @@ function extensionCandidateScore(
     + (controlYears <= 1 ? 60 : controlYears <= 3 && franchiseTarget && player.age <= 29 ? 95 : controlYears === 2 ? 25 : 0)
     + (player.age <= 27 ? 25 : player.age <= 29 ? 12 : 0)
     + (player.position === 'SP' ? 18 : 0)
+    + teamBuildingExtensionPriorityAdjustment(context.teamBuildingArchetype ?? 'balanced', {
+      age: player.age,
+      overallRating: overall,
+      controlYears,
+      annualSalary: player.contract.annualSalary,
+    })
     - Math.max(0, player.age - 32) * 28
     - (overall < 295 ? 35 : 0);
 }
@@ -1053,6 +1077,7 @@ export function processTeamExtensions(
   const results: TeamExtensionProcessResult['results'] = [];
   let workingPayroll = context.currentPayroll;
   const teamPlayers = players.filter((player) => player.teamId === context.teamId && player.rosterStatus === 'MLB');
+  const candidateLimit = context.teamBuildingArchetype === 'budget_constrained' ? 1 : 2;
 
   const candidates = players
     .filter((player) =>
@@ -1070,7 +1095,7 @@ export function processTeamExtensions(
       }
       return left.id.localeCompare(right.id);
     })
-    .slice(0, 2);
+    .slice(0, candidateLimit);
 
   for (const player of candidates) {
     const controlYears = controlYearsForPlayer(player, context);

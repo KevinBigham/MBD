@@ -14,6 +14,11 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
+function isVisibleFocusableElement(element: HTMLElement): boolean {
+  const style = window.getComputedStyle(element);
+  return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
 export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(active: boolean) {
   const containerRef = useRef<T | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -21,7 +26,7 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(active: boo
   const getFocusableElements = useCallback(() => {
     if (!containerRef.current) return [];
     return Array.from(containerRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      .filter((el) => el.offsetParent !== null); // visible only
+      .filter(isVisibleFocusableElement);
   }, []);
 
   useEffect(() => {

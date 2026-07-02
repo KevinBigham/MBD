@@ -277,6 +277,56 @@ describe('generateAITradeOffers', () => {
     expect(proposals[0]?.playersOffered).toContain(rentalStarter.id);
     expect(proposals[0]?.playersRequested).toContain(buyerProspect.id);
   });
+
+  it('lets a rebuilding identity shop rentals even when its current record looks competitive', () => {
+    const rentalStarter = {
+      ...makePlayer(3021, 'POR'),
+      position: 'SP' as const,
+      age: 32,
+      overallRating: 340,
+      contract: {
+        ...makePlayer(3021, 'POR').contract,
+        years: 1,
+        annualSalary: 16,
+        totalValue: 16,
+      },
+    };
+    const buyerProspect = {
+      ...makePlayer(3022, 'BOS'),
+      age: 22,
+      position: 'SP' as const,
+      rosterStatus: 'AAA' as const,
+      minorLeagueLevel: 'AAA' as const,
+      potentialRating: 318,
+      overallRating: 250,
+    };
+    const buyerStarter = {
+      ...makePlayer(3023, 'BOS'),
+      position: 'SP' as const,
+      overallRating: 238,
+      age: 29,
+    };
+
+    const proposals = generateAITradeOffers(
+      new GameRNG(3024),
+      'POR',
+      [rentalStarter],
+      [rentalStarter, buyerProspect, buyerStarter],
+      'analytical',
+      true,
+      {
+        currentDay: 112,
+        contenderTeamIds: ['BOS'],
+        teamBuildingArchetype: 'rebuilding',
+      },
+    );
+
+    expect(proposals.length).toBeGreaterThan(0);
+    expect(proposals[0]?.fromTeamId).toBe('POR');
+    expect(proposals[0]?.toTeamId).toBe('BOS');
+    expect(proposals[0]?.playersOffered).toContain(rentalStarter.id);
+    expect(proposals[0]?.playersRequested).toContain(buyerProspect.id);
+  });
 });
 
 describe('executeTrade', () => {

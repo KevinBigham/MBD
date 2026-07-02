@@ -31,6 +31,7 @@ export type {
   RosterState,
   RosterValidation,
   RosterActionResult,
+  AutoFillRosterOptions,
 } from './rosterManager.js';
 
 // Offseason
@@ -124,6 +125,7 @@ export {
   SEPTEMBER_EXPANDED_ROSTER_DAYS,
   ROOKIE_AFFILIATE_START_DAY,
   createMinorLeagueState,
+  accrueServiceTimeDays,
   accrueServiceTimeDay,
   consumeOptionYear,
   buildWaiverPriority,

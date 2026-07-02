@@ -93,3 +93,21 @@ export function markGuidedStartNudgeSeen(
     },
   });
 }
+
+export interface GuidedStartNudgeResetResult {
+  reset: boolean;
+  seenNudges: number;
+}
+
+export function resetGuidedStartNudges(saveSlotId: GuidedStartSaveSlotId | null): GuidedStartNudgeResetResult {
+  const current = readGuidedStartNudgeRecord(saveSlotId);
+  if (saveSlotId == null || !current) {
+    return { reset: false, seenNudges: 0 };
+  }
+
+  writeGuidedStartNudgeRecord(saveSlotId, seenRecordFor([]));
+  return {
+    reset: true,
+    seenNudges: Object.keys(current.seen).length,
+  };
+}

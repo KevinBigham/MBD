@@ -6,7 +6,7 @@
 
 import type { TeamTenureEntry } from '@mbd/contracts';
 import { GameRNG } from '../math/prng.js';
-import { clampRating } from './attributes.js';
+import { clampRating, toInternalRating } from './attributes.js';
 import type { HitterAttributes, PitcherAttributes } from './attributes.js';
 import { calculateRule5EligibleAfterSeason } from '../roster/rule5.js';
 import { assignPersonalityTraits } from './personalityTraits.js';
@@ -54,6 +54,57 @@ export const DEVELOPMENT_TRAJECTORIES = [
   'bust_risk',
 ] as const;
 export type DevelopmentTrajectory = (typeof DEVELOPMENT_TRAJECTORIES)[number];
+
+export type MinorLeagueRosterLevel = Exclude<RosterLevel, 'MLB'>;
+
+interface AuthoredPlayerRatingsContent {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly age: number;
+  readonly position: Position;
+  readonly currentDisplayOVR: number;
+  readonly floorDisplay: number;
+  readonly ceilingDisplay: number;
+  readonly contact: number | null;
+  readonly power: number | null;
+  readonly eye: number | null;
+  readonly speed: number | null;
+  readonly defense: number | null;
+  readonly durability: number | null;
+  readonly stuff: number | null;
+  readonly control: number | null;
+  readonly stamina: number | null;
+  readonly velocity: number | null;
+  readonly movement: number | null;
+  readonly workEthic: number;
+  readonly mentalToughness: number;
+  readonly leadership: number;
+  readonly competitiveness: number;
+  readonly developmentProgram: DevelopmentProgram;
+  readonly developmentTrajectory: DevelopmentTrajectory;
+}
+
+export interface AuthoredRosterPlayerContent extends AuthoredPlayerRatingsContent {
+  readonly contentId?: string;
+  readonly teamId: string;
+  readonly rosterLevel: RosterLevel;
+}
+
+export interface AuthoredMinorLeaguePlayerContent extends AuthoredPlayerRatingsContent {
+  readonly contentId?: string;
+  readonly teamId: string;
+  readonly affiliateLevel: MinorLeagueRosterLevel;
+}
+
+export interface GenerateTeamRosterOptions {
+  readonly authoredPlayers?: readonly AuthoredRosterPlayerContent[];
+  readonly minorLeaguePlayers?: readonly AuthoredMinorLeaguePlayerContent[];
+}
+
+export interface GenerateLeaguePlayersOptions {
+  readonly authoredPlayersByTeam?: ReadonlyMap<string, readonly AuthoredRosterPlayerContent[]>;
+  readonly minorLeaguePlayersByTeam?: ReadonlyMap<string, readonly AuthoredMinorLeaguePlayerContent[]>;
+}
 
 export const NO_TRADE_CLAUSE_TYPES = ['none', 'partial', 'full'] as const;
 export type NoTradeClauseType = (typeof NO_TRADE_CLAUSE_TYPES)[number];
@@ -656,6 +707,109 @@ function seedOpeningDayMlbContracts(
   });
 }
 
+function ratingFromDisplay(display: number | null, fallback: number): number {
+  return display == null ? fallback : toInternalRating(display);
+}
+
+function isPitcherPosition(position: string): boolean {
+  return (PITCHER_POSITIONS as readonly string[]).includes(position);
+}
+
+type AnyAuthoredRosterPlayerContent = AuthoredRosterPlayerContent | AuthoredMinorLeaguePlayerContent;
+
+function authoredRosterLevel(content: AnyAuthoredRosterPlayerContent): RosterLevel {
+  return 'rosterLevel' in content ? content.rosterLevel : content.affiliateLevel;
+}
+
+function applyAuthoredRosterPlayer(
+  player: GeneratedPlayer,
+  content: AnyAuthoredRosterPlayerContent,
+): GeneratedPlayer {
+  const pitcher = isPitcherPosition(content.position);
+  const rosterLevel = authoredRosterLevel(content);
+  const hitterAttributes: HitterAttributes = {
+    contact: ratingFromDisplay(content.contact, player.hitterAttributes.contact),
+    power: ratingFromDisplay(content.power, player.hitterAttributes.power),
+    eye: ratingFromDisplay(content.eye, player.hitterAttributes.eye),
+    speed: ratingFromDisplay(content.speed, player.hitterAttributes.speed),
+    defense: ratingFromDisplay(content.defense, player.hitterAttributes.defense),
+    durability: ratingFromDisplay(content.durability, player.hitterAttributes.durability),
+  };
+  const pitcherAttributes: PitcherAttributes | null = pitcher
+    ? {
+      stuff: ratingFromDisplay(content.stuff, player.pitcherAttributes?.stuff ?? 0),
+      control: ratingFromDisplay(content.control, player.pitcherAttributes?.control ?? 0),
+      stamina: ratingFromDisplay(content.stamina, player.pitcherAttributes?.stamina ?? 0),
+      velocity: ratingFromDisplay(content.velocity, player.pitcherAttributes?.velocity ?? 0),
+      movement: ratingFromDisplay(content.movement, player.pitcherAttributes?.movement ?? 0),
+    }
+    : null;
+
+  return {
+    ...player,
+    id: content.contentId ?? player.id,
+    firstName: content.firstName,
+    lastName: content.lastName,
+    age: content.age,
+    position: content.position,
+    hitterAttributes,
+    pitcherAttributes,
+    rosterStatus: rosterLevel,
+    developmentPhase: getDevPhase(content.age),
+    overallRating: toInternalRating(content.currentDisplayOVR),
+    rule5EligibleAfterSeason: calculateRule5EligibleAfterSeason(1, content.age),
+    minorLeagueLevel: rosterLevel === 'MLB' ? null : rosterLevel,
+    floor: toInternalRating(content.floorDisplay),
+    ceiling: toInternalRating(content.ceilingDisplay),
+    developmentProgram: content.developmentProgram,
+    developmentTrajectory: content.developmentTrajectory,
+    personality: {
+      workEthic: content.workEthic,
+      mentalToughness: content.mentalToughness,
+      leadership: content.leadership,
+      competitiveness: content.competitiveness,
+    },
+  };
+}
+
+function applyAuthoredRosterContent(
+  players: GeneratedPlayer[],
+  teamId: string,
+  authoredRows: readonly AnyAuthoredRosterPlayerContent[],
+): GeneratedPlayer[] {
+  if (authoredRows.length === 0) {
+    return players;
+  }
+
+  const nextPlayers = [...players];
+  const usedPlayerIndexes = new Set<number>();
+  for (const content of authoredRows) {
+    const rosterLevel = authoredRosterLevel(content);
+    const matchingIndex = nextPlayers.findIndex((player, index) =>
+      !usedPlayerIndexes.has(index)
+      && player.teamId === teamId
+      && player.rosterStatus === rosterLevel
+      && player.position === content.position,
+    );
+    const fallbackIndex = matchingIndex >= 0
+      ? matchingIndex
+      : nextPlayers.findIndex((player, index) =>
+        !usedPlayerIndexes.has(index)
+        && player.teamId === teamId
+        && player.rosterStatus === rosterLevel,
+      );
+
+    if (fallbackIndex < 0) {
+      continue;
+    }
+
+    usedPlayerIndexes.add(fallbackIndex);
+    nextPlayers[fallbackIndex] = applyAuthoredRosterPlayer(nextPlayers[fallbackIndex]!, content);
+  }
+
+  return nextPlayers;
+}
+
 // ---------------------------------------------------------------------------
 // Talent multiplier by roster level
 // ---------------------------------------------------------------------------
@@ -750,7 +904,11 @@ export function generatePlayer(
  * Generate a full roster for a team: MLB active roster + full minor league system.
  * Returns ~170 players per team.
  */
-export function generateTeamRoster(rng: GameRNG, teamId: string): GeneratedPlayer[] {
+export function generateTeamRoster(
+  rng: GameRNG,
+  teamId: string,
+  options: GenerateTeamRosterOptions = {},
+): GeneratedPlayer[] {
   const players: GeneratedPlayer[] = [];
 
   // MLB roster: use position template
@@ -769,12 +927,22 @@ export function generateTeamRoster(rng: GameRNG, teamId: string): GeneratedPlaye
     }
   }
 
-  // KC BBQ Fountains special overrides — slightly overpowered franchise
+  const authoredRows: AnyAuthoredRosterPlayerContent[] = [
+    ...(options.minorLeaguePlayers ?? []),
+    ...(options.authoredPlayers ?? []),
+  ];
+
+  const roster = applyAuthoredRosterContent(players, teamId, authoredRows);
+
+  // KC BBQ Fountains — deliberately overpowered flagship franchise, the
+  // league bully every dynasty has to dethrone. Applied AFTER authored
+  // roster content so the phenoms and staff boosts ship in real games
+  // instead of being overwritten by the content pack's MLB rows.
   if (teamId === 'kc') {
-    applyKCOverrides(players);
+    applyKCOverrides(roster);
   }
 
-  return seedOpeningDayMlbContracts(rng.getSeed(), teamId, players);
+  return seedOpeningDayMlbContracts(rng.getSeed(), teamId, roster);
 }
 
 // ---------------------------------------------------------------------------
@@ -785,8 +953,8 @@ const KC_SP_DH_OVERALL = 504;    // ~75 display
 const KC_SP_DH_CEILING = 550;    // ~80 display
 const KC_SS_OVERALL = 458;       // ~70 display
 const KC_SS_CEILING = 550;       // ~80 display
-const KC_PITCHING_BOOST = 40;    // +5-8 display points to SP staff
-const KC_DEFENSE_BOOST = 35;     // +5-6 display points to infield defense
+const KC_PITCHING_BOOST = 40;    // internal points (~+4 display) to SP staff
+const KC_DEFENSE_BOOST = 35;     // internal points (~+4 display) to infield defense
 
 function applyKCOverrides(players: GeneratedPlayer[]): void {
   // Find the first SP on the MLB roster — make them the 23yo SP/DH phenom
@@ -799,16 +967,16 @@ function applyKCOverrides(players: GeneratedPlayer[]): void {
     mlbSP.ceiling = KC_SP_DH_CEILING;
     mlbSP.developmentPhase = 'Ascent';
     if (mlbSP.pitcherAttributes) {
-      mlbSP.pitcherAttributes.stuff = 78;
-      mlbSP.pitcherAttributes.control = 72;
-      mlbSP.pitcherAttributes.stamina = 70;
-      mlbSP.pitcherAttributes.velocity = 76;
-      mlbSP.pitcherAttributes.movement = 74;
+      mlbSP.pitcherAttributes.stuff = toInternalRating(78);
+      mlbSP.pitcherAttributes.control = toInternalRating(72);
+      mlbSP.pitcherAttributes.stamina = toInternalRating(70);
+      mlbSP.pitcherAttributes.velocity = toInternalRating(76);
+      mlbSP.pitcherAttributes.movement = toInternalRating(74);
     }
     // Also a DH-caliber bat
-    mlbSP.hitterAttributes.contact = 65;
-    mlbSP.hitterAttributes.power = 70;
-    mlbSP.hitterAttributes.eye = 60;
+    mlbSP.hitterAttributes.contact = toInternalRating(65);
+    mlbSP.hitterAttributes.power = toInternalRating(70);
+    mlbSP.hitterAttributes.eye = toInternalRating(60);
   }
 
   // Find the first SS on the MLB roster — make them the 25yo A-Rod archetype
@@ -820,30 +988,30 @@ function applyKCOverrides(players: GeneratedPlayer[]): void {
     mlbSS.overallRating = KC_SS_OVERALL;
     mlbSS.ceiling = KC_SS_CEILING;
     mlbSS.developmentPhase = 'Ascent';
-    mlbSS.hitterAttributes.contact = 72;
-    mlbSS.hitterAttributes.power = 74;
-    mlbSS.hitterAttributes.eye = 68;
-    mlbSS.hitterAttributes.speed = 70;
-    mlbSS.hitterAttributes.defense = 75;
-    mlbSS.hitterAttributes.durability = 72;
+    mlbSS.hitterAttributes.contact = toInternalRating(72);
+    mlbSS.hitterAttributes.power = toInternalRating(74);
+    mlbSS.hitterAttributes.eye = toInternalRating(68);
+    mlbSS.hitterAttributes.speed = toInternalRating(70);
+    mlbSS.hitterAttributes.defense = toInternalRating(75);
+    mlbSS.hitterAttributes.durability = toInternalRating(72);
   }
 
   // Boost all MLB starting pitchers
   for (const p of players) {
     if (p.rosterStatus === 'MLB' && p.position === 'SP' && p.pitcherAttributes && p !== mlbSP) {
-      p.pitcherAttributes.stuff = Math.min(80, p.pitcherAttributes.stuff + Math.round(KC_PITCHING_BOOST / 8));
-      p.pitcherAttributes.control = Math.min(80, p.pitcherAttributes.control + Math.round(KC_PITCHING_BOOST / 8));
-      p.pitcherAttributes.velocity = Math.min(80, p.pitcherAttributes.velocity + Math.round(KC_PITCHING_BOOST / 8));
-      p.pitcherAttributes.movement = Math.min(80, p.pitcherAttributes.movement + Math.round(KC_PITCHING_BOOST / 8));
-      p.overallRating = Math.min(550, p.overallRating + KC_PITCHING_BOOST);
+      p.pitcherAttributes.stuff = clampRating(p.pitcherAttributes.stuff + KC_PITCHING_BOOST);
+      p.pitcherAttributes.control = clampRating(p.pitcherAttributes.control + KC_PITCHING_BOOST);
+      p.pitcherAttributes.velocity = clampRating(p.pitcherAttributes.velocity + KC_PITCHING_BOOST);
+      p.pitcherAttributes.movement = clampRating(p.pitcherAttributes.movement + KC_PITCHING_BOOST);
+      p.overallRating = clampRating(p.overallRating + KC_PITCHING_BOOST);
     }
   }
 
   // Boost infield defense across the board
   const infieldPositions = new Set(['SS', '2B', '3B', '1B', 'C']);
   for (const p of players) {
-    if (p.rosterStatus === 'MLB' && infieldPositions.has(p.position)) {
-      p.hitterAttributes.defense = Math.min(80, p.hitterAttributes.defense + Math.round(KC_DEFENSE_BOOST / 6));
+    if (p.rosterStatus === 'MLB' && infieldPositions.has(p.position) && p !== mlbSS) {
+      p.hitterAttributes.defense = clampRating(p.hitterAttributes.defense + KC_DEFENSE_BOOST);
     }
   }
 }
@@ -852,10 +1020,17 @@ function applyKCOverrides(players: GeneratedPlayer[]): void {
  * Generate all players for the entire league (32 teams).
  * Returns ~5,400 total players.
  */
-export function generateLeaguePlayers(rng: GameRNG, teamIds: string[]): GeneratedPlayer[] {
+export function generateLeaguePlayers(
+  rng: GameRNG,
+  teamIds: string[],
+  options: GenerateLeaguePlayersOptions = {},
+): GeneratedPlayer[] {
   const allPlayers: GeneratedPlayer[] = [];
   for (const teamId of teamIds) {
-    const roster = generateTeamRoster(rng, teamId);
+    const roster = generateTeamRoster(rng, teamId, {
+      authoredPlayers: options.authoredPlayersByTeam?.get(teamId) ?? [],
+      minorLeaguePlayers: options.minorLeaguePlayersByTeam?.get(teamId) ?? [],
+    });
     allPlayers.push(...roster);
   }
   return allPlayers;

@@ -1,0 +1,613 @@
+{
+  "schema": "codex_gpt55_claude_code_handoff.v1",
+  "created_at": "2026-04-24T00:00:00-05:00",
+  "title": "Claude Code Handoff: How to Work Best With Codex running GPT-5.5",
+  "audience": "Claude Code or another coding-agent orchestrator that can delegate to the OpenAI Codex CLI / Claude Code Codex plugin",
+  "mission": "Use Claude Code as the primary orchestrator and Codex GPT-5.5 as an independent second engineer for difficult implementation, debugging, review, testing, validation, and repo-scale reasoning.",
+  "source_notes": {
+    "verified_on": "2026-04-24",
+    "official_sources_used": [
+      {
+        "title": "Introducing GPT-5.5",
+        "url": "https://openai.com/index/introducing-gpt-5-5/",
+        "supports": [
+          "GPT-5.5 availability in Codex",
+          "400K Codex context window",
+          "Fast mode at 1.5x token generation speed for 2.5x cost",
+          "coding/tool-use benchmark improvements",
+          "agentic coding strengths"
+        ]
+      },
+      {
+        "title": "Codex Models",
+        "url": "https://developers.openai.com/codex/models",
+        "supports": [
+          "gpt-5.5 is recommended for most Codex tasks when available",
+          "Codex gpt-5.5 requires ChatGPT sign-in and is not currently available with API-key authentication",
+          "gpt-5.4 fallback if gpt-5.5 is unavailable",
+          "model selection via config.toml, /model, and codex -m gpt-5.5",
+          "Codex cloud default model cannot currently be changed"
+        ]
+      },
+      {
+        "title": "Codex CLI",
+        "url": "https://developers.openai.com/codex/cli",
+        "supports": [
+          "Codex CLI reads, changes, and runs code locally in selected directory",
+          "Codex CLI install and authentication basics"
+        ]
+      },
+      {
+        "title": "Codex CLI Features",
+        "url": "https://developers.openai.com/codex/cli/features",
+        "supports": [
+          "codex exec non-interactive workflows",
+          "codex cloud exec and --attempts",
+          "MCP and terminal tips"
+        ]
+      },
+      {
+        "title": "Codex Prompting Guide",
+        "url": "https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide",
+        "supports": [
+          "autonomy and persistence prompting",
+          "use rg, apply_patch, update_plan, shell workdir discipline",
+          "parallel file reads and tool calls",
+          "AGENTS.md injection behavior",
+          "plan closure and review-first response norms"
+        ]
+      },
+      {
+        "title": "AGENTS.md guide",
+        "url": "https://developers.openai.com/codex/guides/agents-md",
+        "supports": [
+          "Codex reads AGENTS.md before work",
+          "global and project-scope instruction precedence",
+          "repo-specific durable guidance"
+        ]
+      },
+      {
+        "title": "Codex plugin for Claude Code",
+        "url": "https://github.com/openai/codex-plugin-cc",
+        "supports": [
+          "Claude Code plugin install",
+          "/codex:review, /codex:adversarial-review, /codex:rescue, /codex:status, /codex:result, /codex:cancel",
+          "plugin delegates through local Codex CLI, local auth, local repo checkout, and local Codex config"
+        ]
+      },
+      {
+        "title": "Codex sandboxing",
+        "url": "https://developers.openai.com/codex/concepts/sandboxing",
+        "supports": [
+          "sandbox boundaries for local commands",
+          "sandbox and approval policy relationship"
+        ]
+      },
+      {
+        "title": "Agent approvals and security",
+        "url": "https://developers.openai.com/codex/agent-approvals-security",
+        "supports": [
+          "approval reviewer setup",
+          "auto_review policy checks for risky actions"
+        ]
+      },
+      {
+        "title": "Codex changelog",
+        "url": "https://developers.openai.com/codex/changelog",
+        "supports": [
+          "2026-04-23 GPT-5.5 Codex update",
+          "latest CLI 0.124.0 features",
+          "browser use in Codex app",
+          "automatic approval reviews"
+        ]
+      }
+    ]
+  },
+  "non_negotiable_facts": {
+    "model_to_prefer": "gpt-5.5",
+    "codex_context_window": "400K in Codex",
+    "gpt_5_5_pro_note": "GPT-5.5 Pro is a ChatGPT option, not the default Codex model name. Do not ask Codex to use 'gpt-5.5-pro' unless the local Codex model picker/config explicitly exposes it.",
+    "auth_note": "For current Codex docs, gpt-5.5 is available in Codex when signed in with ChatGPT and is not currently available through API-key authentication. If Claude Code sees API-key auth or model rejection, fall back to gpt-5.4 or ask the user to sign in to Codex with ChatGPT.",
+    "cloud_note": "Codex cloud tasks currently do not let you choose a different default model. Local CLI and IDE model selection are the controllable paths.",
+    "fast_mode_note": "GPT-5.5 Fast mode exists in Codex and generates tokens faster at higher cost. Use only when latency matters more than usage efficiency.",
+    "main_strengths": [
+      "agentic coding",
+      "multi-file debugging",
+      "implementation and refactors",
+      "testing and validation",
+      "holding context across large systems",
+      "reasoning through ambiguous failures",
+      "checking assumptions with tools",
+      "carrying changes through surrounding codebase",
+      "knowledge-work artifacts such as docs, spreadsheets, and reports"
+    ]
+  },
+  "role_split": {
+    "claude_code_owns": [
+      "understanding user intent",
+      "protecting user work and repo state",
+      "task scoping and delegation",
+      "final judgment",
+      "choosing what Codex output to accept",
+      "running or verifying tests",
+      "explaining results to the user",
+      "refusing or escalating unsafe/destructive requests"
+    ],
+    "codex_gpt55_owns_when_delegated": [
+      "deep repo investigation",
+      "root-cause analysis",
+      "implementation attempts",
+      "multi-file refactors",
+      "test creation",
+      "test execution when permitted",
+      "normal code review",
+      "adversarial design review",
+      "large-context synthesis",
+      "independent second-opinion engineering"
+    ],
+    "default_posture": "Claude Code is the accountable lead. Codex GPT-5.5 is a strong second engineer, not an automatic source of truth."
+  },
+  "setup_checklist": [
+    {
+      "step": "Check whether the Claude Code Codex plugin is available.",
+      "command": "/codex:setup"
+    },
+    {
+      "step": "Install plugin if missing.",
+      "commands": [
+        "/plugin marketplace add openai/codex-plugin-cc",
+        "/plugin install codex@openai-codex",
+        "/reload-plugins",
+        "/codex:setup"
+      ]
+    },
+    {
+      "step": "If Codex is installed but not authenticated, log in.",
+      "command": "!codex login"
+    },
+    {
+      "step": "Verify expected plugin commands exist.",
+      "expected_commands": [
+        "/codex:review",
+        "/codex:adversarial-review",
+        "/codex:rescue",
+        "/codex:status",
+        "/codex:result",
+        "/codex:cancel",
+        "/codex:setup"
+      ]
+    },
+    {
+      "step": "Verify current model and config from Codex.",
+      "commands": [
+        "codex --version",
+        "codex -m gpt-5.5",
+        "Inside an active Codex session: /model and /status"
+      ],
+      "fallback": "If gpt-5.5 is unavailable or rejected, use gpt-5.4 and note the reason."
+    }
+  ],
+  "recommended_codex_config": {
+    "file": ".codex/config.toml",
+    "use_case": "Project-specific default for local Codex CLI / IDE / Claude Code plugin, only after confirming gpt-5.5 is available.",
+    "toml": "model = \"gpt-5.5\"\nmodel_reasoning_effort = \"high\"\nmodel_reasoning_summary = \"concise\"\n",
+    "reasoning_effort_policy": {
+      "minimal_or_low": "Tiny edits, mechanical changes, quick scans.",
+      "medium": "Normal feature work, local bug fixes, test generation, simple reviews.",
+      "high": "Default for gpt-5.5 on hard tasks, multi-file bugs, refactors, ambiguous failures, architecture, security-sensitive changes.",
+      "xhigh": "Use only if the local Codex model supports it and the user wants maximum depth for high-consequence work."
+    },
+    "fast_mode_policy": {
+      "default": "off",
+      "turn_on_when": [
+        "interactive iteration speed matters more than usage cost",
+        "exploration or draft implementation is more important than final verification",
+        "user explicitly wants speed"
+      ],
+      "keep_off_when": [
+        "security-sensitive work",
+        "data-loss risk",
+        "auth/payment/database migration work",
+        "final pre-ship review",
+        "usage limits are tight"
+      ]
+    }
+  },
+  "preflight_before_delegation": {
+    "commands": [
+      "git status --short",
+      "git diff --stat",
+      "git diff --name-only"
+    ],
+    "checks": [
+      "Identify dirty worktree state before Codex edits.",
+      "Do not overwrite or revert user changes.",
+      "Do not run destructive commands without explicit user approval.",
+      "Read AGENTS.md, package manager files, test scripts, and relevant config before asking Codex to change code.",
+      "Prefer a feature branch or worktree for risky changes.",
+      "For large delegated work, recommend a checkpoint branch or commit before starting."
+    ],
+    "never_without_user_approval": [
+      "git reset --hard",
+      "git checkout -- <file>",
+      "rm -rf",
+      "database destructive migrations",
+      "production deploys",
+      "secret rotation or credential changes",
+      "broad dependency upgrades",
+      "full-access/yolo permissions"
+    ]
+  },
+  "delegation_decision_matrix": {
+    "delegate_to_codex_gpt55_when": [
+      "Task spans multiple files or packages.",
+      "Root cause is unclear.",
+      "Tests are failing and need reproduction.",
+      "Refactor affects behavior, types, or public APIs.",
+      "Need independent review before shipping.",
+      "Need adversarial review for hidden assumptions.",
+      "Need frontend UI polish plus verification.",
+      "Need to inspect lots of context, logs, or docs.",
+      "Need runnable patch, not just advice."
+    ],
+    "solve_directly_in_claude_code_when": [
+      "One-line or obvious small edit.",
+      "User asks for explanation only.",
+      "Repo state is too dirty or sensitive to delegate safely.",
+      "Task requires private context Codex cannot see.",
+      "User explicitly does not want Codex used.",
+      "Delegation overhead is larger than the task."
+    ],
+    "use_adversarial_review_when": [
+      "auth, permissions, payments, data deletion, migrations, concurrency, caching, retries, rate limits, security, rollback, production deploys",
+      "implementation direction might be wrong even if code compiles",
+      "Claude and Codex disagree",
+      "user is about to ship"
+    ],
+    "use_subagents_when": [
+      "work is read-heavy and separable",
+      "security, tests, and maintainability can be reviewed in parallel",
+      "large logs or documents need independent summaries",
+      "several hypotheses can be explored without write conflicts"
+    ],
+    "avoid_subagents_when": [
+      "multiple agents would edit same files",
+      "token/usage limits are tight",
+      "coordination complexity exceeds task complexity"
+    ]
+  },
+  "model_routing": {
+    "gpt-5.5": {
+      "use_for": [
+        "default for most Codex tasks when available",
+        "demanding implementation",
+        "ambiguous debugging",
+        "multi-file refactors",
+        "validation and testing",
+        "architecture-sensitive changes",
+        "large-context repo reasoning",
+        "knowledge-work artifacts"
+      ],
+      "example_invocations": [
+        "codex -m gpt-5.5",
+        "codex --model gpt-5.5",
+        "/codex:rescue --model gpt-5.5 --effort high investigate the failing integration tests"
+      ]
+    },
+    "gpt-5.4": {
+      "use_for": [
+        "fallback when gpt-5.5 is not available",
+        "cloud/model-picker limitations",
+        "API-key workflows where gpt-5.5 is unavailable"
+      ]
+    },
+    "gpt-5.4-mini": {
+      "use_for": [
+        "faster/lower-cost scans",
+        "read-heavy subagents",
+        "large-file review",
+        "supporting document summarization",
+        "low-risk mechanical tasks"
+      ]
+    },
+    "gpt-5.3-codex-spark": {
+      "use_for": [
+        "near-instant text-only coding iteration when available to ChatGPT Pro users",
+        "quick brainstorming or local code review drafts"
+      ],
+      "do_not_use_for": [
+        "large context multimodal tasks",
+        "final high-stakes verification"
+      ]
+    }
+  },
+  "codex_prompt_contract": {
+    "required_sections": [
+      "Task",
+      "Current evidence",
+      "Relevant files or repo areas",
+      "Constraints",
+      "Forbidden changes",
+      "Verification commands",
+      "Deliverable format",
+      "Risk areas"
+    ],
+    "default_template": "Use Codex GPT-5.5 if available. If unavailable, use GPT-5.4 and report that fallback.\n\nTask:\n[Exact task.]\n\nCurrent evidence:\n[Failing command, error, user report, logs, or observed behavior.]\n\nRepo scope:\n[Relevant files, folders, packages, modules.]\n\nConstraints:\n- Make the smallest safe change that solves the root cause.\n- Preserve public APIs and existing behavior unless the task explicitly requires a change.\n- Follow existing codebase conventions.\n- Do not add dependencies unless clearly necessary.\n- Do not rewrite unrelated code.\n- Do not touch secrets, credentials, production config, unrelated migrations, or unrelated files.\n\nVerification:\n- Run: [primary test/build/lint command]\n- If that passes, run: [secondary broader check]\n- If a command cannot be run, explain why.\n\nDeliverable:\n- Root cause\n- Files changed\n- Patch summary\n- Tests/checks run and results\n- Any remaining risks or follow-up needed",
+    "prompting_rules": [
+      "Ask Codex for working code, not just a plan, unless the user explicitly asks for planning.",
+      "Give exact verification commands when known.",
+      "Name what not to change.",
+      "Prefer smallest safe patch over broad rewrite.",
+      "Ask Codex to reproduce failures before fixing when debugging.",
+      "Ask Codex to explain any test it could not run.",
+      "For review, ask for findings first, ordered by severity, with file/line references."
+    ],
+    "anti_patterns": [
+      "Fix everything.",
+      "Make it better.",
+      "Clean up the repo.",
+      "Find all bugs.",
+      "Refactor this whole app.",
+      "Do whatever you think is best.",
+      "Update dependencies broadly.",
+      "Ship it if tests pass."
+    ]
+  },
+  "codex_tool_use_instructions": {
+    "search_and_reading": [
+      "Use rg or rg --files for search when available.",
+      "Read enough context before editing.",
+      "Batch independent file reads/searches instead of one-by-one exploration.",
+      "Use /mention or explicit file paths when Claude already knows relevant files."
+    ],
+    "editing": [
+      "Prefer apply_patch for surgical single-file edits.",
+      "Use formatter/generator commands only for generated or formatting-driven changes.",
+      "Avoid many tiny edit thrashes; batch coherent changes.",
+      "Default to ASCII unless the file already uses Unicode or there is a clear reason."
+    ],
+    "planning": [
+      "Use plan mode for complex tasks only.",
+      "Do not end with only a plan unless explicitly asked.",
+      "Before finishing, reconcile every todo as Done, Blocked, or Cancelled."
+    ],
+    "verification": [
+      "Run targeted tests first, then broader checks if feasible.",
+      "For flaky tests, run repeated attempts if practical.",
+      "Use /diff to inspect local changes.",
+      "Use /status to confirm model, permissions, writable roots, context, and rate info."
+    ],
+    "context_management": [
+      "Use /compact after long sessions to preserve key state and free context.",
+      "Move noisy exploration into subagents when appropriate.",
+      "Return distilled summaries from subagents, not raw logs."
+    ]
+  },
+  "claude_code_plugin_commands": {
+    "/codex:review": {
+      "purpose": "Read-only review of current uncommitted changes or branch vs base.",
+      "use_when": [
+        "pre-commit review",
+        "PR review",
+        "multi-file diff sanity check",
+        "need Codex to find bugs, regressions, missing tests"
+      ],
+      "examples": [
+        "/codex:review",
+        "/codex:review --base main",
+        "/codex:review --background"
+      ],
+      "notes": [
+        "Not steerable; use adversarial-review for custom risk focus.",
+        "Read-only; does not fix code."
+      ]
+    },
+    "/codex:adversarial-review": {
+      "purpose": "Read-only challenge review focused on assumptions, tradeoffs, failure modes, simpler alternatives, and risk.",
+      "use_when": [
+        "before shipping risky changes",
+        "design may be flawed",
+        "auth/data/security/concurrency/migration/caching/retry concerns"
+      ],
+      "examples": [
+        "/codex:adversarial-review --base main challenge whether this caching and retry design is safe",
+        "/codex:adversarial-review --background look for race conditions, rollback risks, and data consistency bugs"
+      ],
+      "notes": [
+        "It can take custom focus text.",
+        "It does not fix code."
+      ]
+    },
+    "/codex:rescue": {
+      "purpose": "Delegate investigation, fixing, continuing, or scoped implementation to Codex.",
+      "use_when": [
+        "failing tests",
+        "CI/build failures",
+        "bug investigation",
+        "small-to-medium implementation",
+        "continue previous Codex task"
+      ],
+      "examples": [
+        "/codex:rescue --model gpt-5.5 --effort high investigate why npm test -- auth.spec.ts fails",
+        "/codex:rescue fix the failing test with the smallest safe patch",
+        "/codex:rescue --background investigate the flaky integration test",
+        "/codex:rescue --resume apply the top fix from the last run",
+        "/codex:rescue --fresh re-check the issue from scratch"
+      ]
+    },
+    "/codex:status": {
+      "purpose": "Check running/recent Codex jobs for the current repository.",
+      "examples": [
+        "/codex:status",
+        "/codex:status task-abc123"
+      ]
+    },
+    "/codex:result": {
+      "purpose": "Retrieve final stored Codex output from a finished job; may include session ID for codex resume.",
+      "examples": [
+        "/codex:result",
+        "/codex:result task-abc123"
+      ]
+    },
+    "/codex:cancel": {
+      "purpose": "Cancel active background Codex job.",
+      "examples": [
+        "/codex:cancel",
+        "/codex:cancel task-abc123"
+      ]
+    },
+    "/codex:setup": {
+      "purpose": "Check install/auth and optionally manage review gate.",
+      "examples": [
+        "/codex:setup",
+        "/codex:setup --enable-review-gate",
+        "/codex:setup --disable-review-gate"
+      ],
+      "review_gate_policy": "Do not enable review gate by default. It can create long Claude/Codex loops and drain usage. Enable only when user wants active gating and is monitoring."
+    }
+  },
+  "direct_codex_cli_commands": {
+    "model_selection": [
+      "codex -m gpt-5.5",
+      "codex --model gpt-5.5",
+      "Inside Codex: /model"
+    ],
+    "session_control": [
+      "/status",
+      "/permissions",
+      "/fast status",
+      "/fast on",
+      "/fast off",
+      "/diff",
+      "/review",
+      "/compact",
+      "/plan",
+      "/mention path/to/file",
+      "/agent",
+      "/ps",
+      "/stop"
+    ],
+    "non_interactive": [
+      "codex exec \"fix the CI failure\""
+    ],
+    "cloud": [
+      "codex cloud",
+      "codex cloud exec --env ENV_ID \"Summarize open bugs\"",
+      "codex cloud exec --env ENV_ID --attempts 3 \"Investigate the flaky test\""
+    ]
+  },
+  "AGENTS_md_recommendation": {
+    "use": "Create or update AGENTS.md for durable repo guidance when tasks will recur.",
+    "global_location": "~/.codex/AGENTS.md",
+    "repo_location": "AGENTS.md at repo root or subdirectory-specific AGENTS.md",
+    "notes": [
+      "Codex reads AGENTS.md before doing work.",
+      "Project guidance closer to the working directory overrides earlier guidance.",
+      "Keep AGENTS.md concise enough to avoid bloating context."
+    ],
+    "starter_content": "# AGENTS.md\n\n## Working agreements\n- Make the smallest safe change that solves the root cause.\n- Preserve public APIs and existing behavior unless explicitly requested.\n- Follow existing project conventions for naming, formatting, tests, and error handling.\n- Search for existing helpers before adding new helpers.\n- Do not add production dependencies without explicit approval.\n- Do not touch secrets, credentials, production config, or unrelated files.\n- Never use destructive Git commands unless explicitly approved.\n\n## Verification\n- Run the most targeted relevant test first.\n- If the targeted test passes, run the broader suite listed in package/build config when feasible.\n- Report commands run and pass/fail results.\n- If a command cannot be run, say why.\n\n## Output format\n- Root cause\n- What changed\n- Files changed\n- Verification\n- Remaining risks\n"
+  },
+  "safety_and_permissions": {
+    "default": [
+      "Keep Codex sandbox and approvals tight by default.",
+      "Loosen permissions only for trusted repos or specific workflows after the need is clear.",
+      "Do not assume Claude Code permission rules automatically constrain Codex; Codex uses local Codex CLI config and sandboxing.",
+      "Use Codex's /permissions and /status to inspect actual permission state.",
+      "Consider approvals_reviewer = auto_review for risky approval prompts when available, but remember it consumes extra model usage."
+    ],
+    "risk_areas_requiring_extra_care": [
+      "credentials and secrets",
+      "auth and permissions",
+      "payment/billing",
+      "production config",
+      "database migrations",
+      "data deletion",
+      "PII or sensitive user data",
+      "network access",
+      "package installs",
+      "supply-chain updates",
+      "CI/CD changes",
+      "destructive file operations"
+    ],
+    "automatic_approval_review_config_example": "approval_policy = \"on-request\"\napprovals_reviewer = \"auto_review\"\n"
+  },
+  "post_codex_verification_protocol": [
+    "Read Codex result fully.",
+    "Run git status --short.",
+    "Run git diff --stat.",
+    "Inspect git diff, including untracked files.",
+    "Check whether Codex stayed in scope.",
+    "Check whether it touched secrets, configs, migrations, generated files, or unrelated files.",
+    "Run targeted tests listed in the task.",
+    "Run broader tests/typecheck/lint when feasible.",
+    "If risky, run /codex:adversarial-review before accepting.",
+    "Accept, edit, or reject Codex changes based on evidence, not confidence.",
+    "Summarize to the user in plain English."
+  ],
+  "conflict_resolution_order": [
+    "Explicit user requirement",
+    "Passing targeted and broader verification",
+    "Smallest safe patch",
+    "Existing project conventions",
+    "Lower rollback/data/security risk",
+    "Clearer maintainability",
+    "Codex or Claude opinion"
+  ],
+  "workflow_recipes": {
+    "review_before_shipping": {
+      "command": "/codex:review --base main --background",
+      "after": [
+        "/codex:status",
+        "/codex:result",
+        "Confirm each issue against code.",
+        "Fix only confirmed issues.",
+        "Run tests."
+      ]
+    },
+    "adversarial_pre_ship_review": {
+      "command": "/codex:adversarial-review --base main --background challenge the design, look for hidden assumptions, rollback risks, data-loss paths, race conditions, security issues, and missing tests",
+      "after": [
+        "Classify findings as confirmed, plausible, or rejected.",
+        "Fix confirmed high-impact issues.",
+        "Document residual risks."
+      ]
+    },
+    "bug_rescue": {
+      "command": "/codex:rescue --model gpt-5.5 --effort high --background",
+      "prompt": "Investigate the failing command `[COMMAND]`. Reproduce the failure first. Identify the root cause. Make the smallest safe patch. Run `[COMMAND]` after the fix. Do not rewrite unrelated code. Report root cause, files changed, commands run, and remaining risks."
+    },
+    "flaky_test_investigation": {
+      "command": "/codex:rescue --model gpt-5.5 --effort high --background",
+      "prompt": "Investigate flaky test `[TEST NAME]`. Look for timing issues, shared state, order dependence, mocks, async cleanup, environment assumptions, and resource leaks. Prefer fixing the real cause over increasing timeouts. Run the test multiple times if feasible."
+    },
+    "scoped_feature_implementation": {
+      "command": "/codex:rescue --model gpt-5.5 --effort high --background",
+      "prompt": "Implement `[FEATURE]` with the smallest complete patch. Follow existing patterns. Preserve public APIs unless explicitly needed. Add focused tests. Run `[TEST COMMAND]`. Report files changed, verification, and risks."
+    },
+    "test_generation": {
+      "command": "/codex:rescue --model gpt-5.5 --effort medium --background",
+      "prompt": "Add focused tests for `[BEHAVIOR]`. Do not change production code unless needed to make behavior testable. Match existing test style. Run relevant test command and report coverage gaps."
+    },
+    "refactor_with_guardrails": {
+      "command": "/codex:rescue --model gpt-5.5 --effort high --background",
+      "prompt": "Refactor `[MODULE]` to improve readability and reduce duplication. Preserve behavior and public APIs. Avoid broad rewrites. Add or update tests only if needed. Run `[TEST COMMAND]`. Keep patch reviewable."
+    },
+    "frontend_polish": {
+      "command": "/codex:rescue --model gpt-5.5 --effort high --background",
+      "prompt": "Improve `[SCREEN/COMPONENT]`. Match existing design system. Preserve accessibility and responsive behavior. Do not introduce new libraries. Use browser/app verification if available. Run lint/tests if available."
+    },
+    "dependency_or_build_failure": {
+      "command": "/codex:rescue --model gpt-5.5 --effort high --background",
+      "prompt": "Investigate this build failure. Determine whether the cause is dependency mismatch, config, generated files, environment, or source code. Prefer smallest safe fix. Do not upgrade major dependencies unless necessary.\n\nFailure:\n[PASTE ERROR]"
+    },
+    "security_review": {
+      "command": "/codex:adversarial-review --base main --background",
+      "prompt": "Use a repo-specific threat model. Look for auth bypasses, data exfiltration, credential exposure, insecure defaults, injection, SSRF, unsafe deserialization, privilege escalation, and risky dependencies. Return findings by severity with file/line evidence and suggested fixes."
+    },
+    "parallel_subagent_review": {
+      "direct_codex_prompt": "Review this branch with parallel subagents. Spawn one subagent for security risks, one for test gaps, and one for maintainability. Use lighter models only for low-risk read-heavy scans if appropriate. Wait for all agents, then summarize findings by category with file references and severity."
+    }
+  },
+  "final_user_summary_template": "Done.\n\nWhat changed:\n- [Plain-English summary]\n\nWhy:\n- [Root cause / reason]\n\nFiles touched:\n- [File list]\n\nVerification:\n- [Commands run and pass/fail results]\n\nCodex notes:\n- [Useful Codex findings Claude confirmed]\n- [Useful Codex findings Claude rejected, if relevant]\n\nRemaining risk:\n- [Only real risks]\n\nRecommended next step:\n- [One concrete action]",
+  "claude_code_system_instruction": "You are Claude Code. You own orchestration, repo safety, final judgment, and user communication. Use Codex GPT-5.5 as an independent second engineer for hard implementation, debugging, review, testing, and validation. Before delegation, inspect repo state and protect user changes. Give Codex scoped prompts with task, evidence, scope, constraints, forbidden changes, verification commands, and deliverable format. After Codex returns, inspect diffs, run tests, reconcile findings, and never blindly accept output. Prefer small, safe, tested patches. Use gpt-5.5 when available through ChatGPT sign-in; fall back to gpt-5.4 if unavailable or API-key auth rejects gpt-5.5. Use gpt-5.4-mini only for lower-risk light scans or subagents. Use adversarial review before risky changes ship."
+}

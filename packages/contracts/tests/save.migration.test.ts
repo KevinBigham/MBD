@@ -10,8 +10,8 @@ function loadFixture(pathname: string) {
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v33', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(33);
+  it('tracks the current additive save schema as v34', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(34);
   });
 
   it('migrates the v17 fixture into the additive v25 shape', () => {
@@ -327,8 +327,30 @@ describe('save schema migration', () => {
     ]);
   });
 
-  it('parses a current-schema v33 fixture without applying a migration', () => {
+  it('migrates the v33 fixture into the additive v34 archived-game shape', () => {
     const fixture = loadFixture('./fixtures/save/v33/core.json');
+
+    const migrated = parseGameSnapshot(fixture);
+
+    expect(fixture.schemaVersion).toBe(33);
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(migrated.narrative.archivedGames).toEqual([]);
+  });
+
+  it('migrates an explicit Season 10 v33 save without fabricating archived games', () => {
+    const fixture = loadFixture('./fixtures/save/v33/season10.json');
+
+    const migrated = parseGameSnapshot(fixture);
+
+    expect(fixture.schemaVersion).toBe(33);
+    expect(fixture.season).toBe(10);
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(migrated.season).toBe(10);
+    expect(migrated.narrative.archivedGames).toEqual([]);
+  });
+
+  it('parses a current-schema v34 fixture without applying a migration', () => {
+    const fixture = loadFixture('./fixtures/save/v34/core.json');
 
     const parsed = parseGameSnapshot(fixture);
 
@@ -337,7 +359,7 @@ describe('save schema migration', () => {
   });
 
   it('round-trips a current-schema snapshot through JSON without drift', () => {
-    const fixture = loadFixture('./fixtures/save/v33/core.json');
+    const fixture = loadFixture('./fixtures/save/v34/core.json');
 
     const first = parseGameSnapshot(fixture);
     const second = parseGameSnapshot(JSON.parse(JSON.stringify(first)));

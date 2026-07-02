@@ -1,4 +1,5 @@
 import { Mic2, RadioTower } from 'lucide-react';
+import { DensePanel } from '@/shared/components/DensePanel';
 import { EmptyStatePanel } from '@/shared/components/EmptyStatePanel';
 import { humanizeLabel } from '@/shared/lib/labels';
 import {
@@ -20,29 +21,29 @@ export default function PlayByPlayPanel({
 }: PlayByPlayPanelProps) {
   if (loading && detail == null) {
     return (
-      <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
-        <div className="flex items-center gap-2">
-          <Mic2 className="h-4 w-4 text-accent-info" />
-          <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Broadcast Booth</h2>
-        </div>
-        <div className="mt-4 font-heading text-sm text-dynasty-muted">Loading the latest call sheet...</div>
-      </section>
+      <DensePanel
+        title="Broadcast Booth"
+        icon={<Mic2 className="h-4 w-4 text-accent-info" />}
+        titleClassName="text-dynasty-textBright"
+      >
+        <div className="font-heading text-sm text-dynasty-muted">Loading the latest call sheet...</div>
+      </DensePanel>
     );
   }
 
   if (detail == null) {
     return (
-      <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
-        <div className="flex items-center gap-2">
-          <Mic2 className="h-4 w-4 text-accent-info" />
-          <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Broadcast Booth</h2>
-        </div>
+      <DensePanel
+        title="Broadcast Booth"
+        icon={<Mic2 className="h-4 w-4 text-accent-info" />}
+        titleClassName="text-dynasty-textBright"
+      >
         <EmptyStatePanel
-          className="mt-4 border-dynasty-border/60 bg-dynasty-elevated"
+          className="border-dynasty-border/60 bg-dynasty-elevated"
           title="No game selected"
           description="Pick one of the recent recaps to load the booth feed, highlight reel, and inning-by-inning call."
         />
-      </section>
+      </DensePanel>
     );
   }
 
@@ -51,19 +52,11 @@ export default function PlayByPlayPanel({
   const inningHeaders = Array.from({ length: detail.boxScore.innings }, (_, index) => index + 1);
 
   return (
-    <section className="rounded-xl border border-dynasty-border bg-dynasty-surface p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Mic2 className="h-4 w-4 text-accent-info" />
-            <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Broadcast Booth</h2>
-          </div>
-          <div className="mt-2 font-heading text-lg text-dynasty-textBright">
-            {teamAbbreviation(detail.boxScore.awayTeamId)} {detail.boxScore.awayScore} at {teamAbbreviation(detail.boxScore.homeTeamId)} {detail.boxScore.homeScore}
-          </div>
-          <div className="mt-2 font-heading text-sm text-dynasty-muted">{detail.recap}</div>
-        </div>
-
+    <DensePanel
+      title="Broadcast Booth"
+      icon={<Mic2 className="h-4 w-4 text-accent-info" />}
+      titleClassName="text-dynasty-textBright"
+      meta={
         <div className="flex flex-wrap gap-2">
           <span className="rounded-full border border-dynasty-border px-3 py-1 font-data text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
             {formatInningsLabel(detail.boxScore.innings)}
@@ -75,6 +68,13 @@ export default function PlayByPlayPanel({
             {detail.plays.length} calls
           </span>
         </div>
+      }
+    >
+      <div>
+        <div className="font-heading text-lg text-dynasty-textBright">
+          {teamAbbreviation(detail.boxScore.awayTeamId)} {detail.boxScore.awayScore} at {teamAbbreviation(detail.boxScore.homeTeamId)} {detail.boxScore.homeScore}
+        </div>
+        <div className="mt-2 font-heading text-sm text-dynasty-muted">{detail.recap}</div>
       </div>
 
       <div className="mt-5 rounded-xl border border-dynasty-border/70 bg-dynasty-elevated p-4">
@@ -152,6 +152,6 @@ export default function PlayByPlayPanel({
           </section>
         ))}
       </div>
-    </section>
+    </DensePanel>
   );
 }

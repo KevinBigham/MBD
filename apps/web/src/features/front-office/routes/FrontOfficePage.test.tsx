@@ -81,6 +81,45 @@ const MOCK_RELATIONSHIPS = [
   },
 ];
 
+const MOCK_MENTORSHIP = {
+  mentorCount: 2,
+  protegeeCount: 3,
+  leaders: [
+    {
+      playerId: 'leader-1',
+      playerName: 'Elias Anchor',
+      position: 'SS',
+      role: 'Clubhouse captain',
+      leadership: 96,
+      score: 98,
+      summary: 'Elias Anchor sets the room with 96 leadership.',
+      traits: ['Leader', 'Mentor'],
+    },
+  ],
+  conflictRisks: [
+    {
+      playerId: 'risk-1',
+      playerName: 'Rico Flash',
+      position: 'CF',
+      severity: 'high',
+      riskScore: 84,
+      reason: 'Rico Flash brings elite competitiveness with low leadership support.',
+      mitigation: 'Pair with a veteran leader before role changes.',
+    },
+  ],
+  pairings: [
+    {
+      mentorId: 'mentor-1',
+      protegeeId: 'protegee-1',
+      mentorName: 'Elias Anchor',
+      protegeeName: 'Milo Spark',
+      quality: 88,
+      compatibilityFactors: ['Shared traits: Leader.', 'Same team context.'],
+      developmentBonus: 0.13,
+    },
+  ],
+};
+
 const MOCK_IDENTITY = {
   assistantGM: {
     id: 'elena_vargas',
@@ -167,6 +206,7 @@ describe('FrontOfficePage', () => {
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
       getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),
       getRelationships: vi.fn().mockResolvedValue(MOCK_RELATIONSHIPS),
+      getMentorships: vi.fn().mockResolvedValue(MOCK_MENTORSHIP),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -214,6 +254,40 @@ describe('FrontOfficePage', () => {
     expect(container.textContent).toContain('Friendly');
   });
 
+  it('renders a front-office clubhouse web summary from mentorship intelligence', async () => {
+    const getMentorships = vi.fn().mockResolvedValue(MOCK_MENTORSHIP);
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getOwnerState: vi.fn().mockResolvedValue(MOCK_OWNER),
+      getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
+      getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
+      getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),
+      getRelationships: vi.fn().mockResolvedValue(MOCK_RELATIONSHIPS),
+      getMentorships,
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <FrontOfficePage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getMentorships).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Clubhouse Web');
+    expect(container.textContent).toContain('Mentor Lane');
+    expect(container.textContent).toContain('Elias Anchor');
+    expect(container.textContent).toContain('mentoring Milo Spark');
+    expect(container.textContent).toContain('13% lift');
+    expect(container.textContent).toContain('Room Captain');
+    expect(container.textContent).toContain('Conflict Watch');
+    expect(container.textContent).toContain('Rico Flash');
+    expect(container.textContent).toContain('Pair with a veteran leader before role changes.');
+  });
+
   it('renders without hot seat when not on hot seat', async () => {
     const calmOwner = { ...MOCK_OWNER, hotSeat: false };
 
@@ -224,6 +298,7 @@ describe('FrontOfficePage', () => {
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
       getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),
       getRelationships: vi.fn().mockResolvedValue(MOCK_RELATIONSHIPS),
+      getMentorships: vi.fn().mockResolvedValue(null),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {

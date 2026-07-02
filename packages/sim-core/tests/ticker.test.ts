@@ -86,7 +86,7 @@ describe('ticker engine', () => {
         acquiringTeamId: 'lax',
         acquiringTeamName: 'Sunset Strip',
         fromTeamId: 'mia',
-        fromTeamName: 'Hurricanes',
+        fromTeamName: 'Palms',
         acquiredPlayerId: 'player-10',
         acquiredPlayerName: 'Carlos Trade',
         returnPlayerId: 'player-11',
@@ -102,7 +102,7 @@ describe('ticker engine', () => {
         playerId: 'player-30',
         playerName: 'Danny Prospect',
         teamId: 'mia',
-        teamName: 'Hurricanes',
+        teamName: 'Palms',
         fromLevel: 'AAA',
       }],
       recordWatches: [{

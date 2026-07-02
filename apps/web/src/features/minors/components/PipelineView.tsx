@@ -108,6 +108,12 @@ export default function PipelineView({
                     <div className="mt-3 text-sm text-dynasty-muted">
                       {prospect.latestLineSummary ?? 'No recent minor-league line available.'}
                     </div>
+                    {prospect.role ? (
+                      <div className="mt-2 font-heading text-xs text-dynasty-text">{prospect.role}</div>
+                    ) : null}
+                    {prospect.scoutingNote ? (
+                      <div className="mt-2 text-xs text-dynasty-muted">{prospect.scoutingNote}</div>
+                    ) : null}
                     {prospect.activeSetback ? (
                       <div className="mt-3 rounded border border-dynasty-border bg-dynasty-surface px-3 py-2 text-xs text-dynasty-muted">
                         {prospect.activeSetback.summary}

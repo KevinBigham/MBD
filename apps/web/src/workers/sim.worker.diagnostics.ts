@@ -15,6 +15,22 @@ export interface RuntimeDiagnosticsState {
   lastLoadMs: number | null;
 }
 
+export interface WorkerQueryTimingView {
+  name: string;
+  callCount: number;
+  latestMs: number;
+  averageMs: number;
+  maxMs: number;
+  budgetMs: number | null;
+  overBudget: boolean;
+}
+
+export interface WorkerQueryDiagnosticsView {
+  enabled: boolean;
+  warningCount: number;
+  topSlowQueries: WorkerQueryTimingView[];
+}
+
 export interface PerformanceDiagnosticsView {
   totals: {
     totalSeasons: number;
@@ -32,6 +48,7 @@ export interface PerformanceDiagnosticsView {
     scoutConflicts: number;
   };
   runtime: RuntimeDiagnosticsState;
+  queryTimings: WorkerQueryDiagnosticsView;
 }
 
 const runtimeDiagnostics: RuntimeDiagnosticsState = {
@@ -39,6 +56,26 @@ const runtimeDiagnostics: RuntimeDiagnosticsState = {
   lastSaveMs: null,
   lastLoadMs: null,
 };
+
+const WORKER_QUERY_TIMING_LIMIT = 5;
+const WORKER_QUERY_BUDGET_MS: Record<string, number> = {
+  getDashboardSummary: 80,
+  getFullRoster: 80,
+  getHistoryOverview: 120,
+  getPlayerProfileView: 100,
+  getTradeDeadlineState: 100,
+  exportSnapshot: 150,
+};
+
+interface WorkerQueryTimingState {
+  callCount: number;
+  totalMs: number;
+  latestMs: number;
+  maxMs: number;
+  budgetMs: number | null;
+}
+
+const workerQueryTimings = new Map<string, WorkerQueryTimingState>();
 
 function nowMs(): number {
   return typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -117,6 +154,97 @@ export function recordRuntimeDiagnostic(metric: keyof RuntimeDiagnosticsState, v
   runtimeDiagnostics[metric] = value;
 }
 
+export function isWorkerQueryProfilingEnabled(): boolean {
+  const globalFlag = (globalThis as typeof globalThis & {
+    __MBD_PROFILE_WORKER_QUERIES__?: boolean;
+  }).__MBD_PROFILE_WORKER_QUERIES__;
+  const envFlag = (import.meta as ImportMeta & {
+    env?: Record<string, string | boolean | undefined>;
+  }).env?.VITE_MBD_PROFILE_WORKER_QUERIES;
+  return globalFlag === true || envFlag === '1' || envFlag === 'true';
+}
+
+export function recordWorkerQueryTiming(name: string, durationMs: number): void {
+  if (!isWorkerQueryProfilingEnabled()) {
+    return;
+  }
+
+  const roundedDuration = roundMs(Math.max(0, durationMs));
+  const current = workerQueryTimings.get(name);
+  const budgetMs = WORKER_QUERY_BUDGET_MS[name] ?? null;
+
+  if (!current) {
+    workerQueryTimings.set(name, {
+      callCount: 1,
+      totalMs: roundedDuration,
+      latestMs: roundedDuration,
+      maxMs: roundedDuration,
+      budgetMs,
+    });
+    return;
+  }
+
+  current.callCount += 1;
+  current.totalMs += roundedDuration;
+  current.latestMs = roundedDuration;
+  current.maxMs = Math.max(current.maxMs, roundedDuration);
+  current.budgetMs = budgetMs;
+}
+
+export function measureWorkerQuerySync<T>(name: string, operation: () => T): T {
+  if (!isWorkerQueryProfilingEnabled()) {
+    return operation();
+  }
+
+  const startedAt = nowMs();
+  try {
+    return operation();
+  } finally {
+    recordWorkerQueryTiming(name, nowMs() - startedAt);
+  }
+}
+
+export function buildWorkerQueryDiagnosticsView(): WorkerQueryDiagnosticsView {
+  const enabled = isWorkerQueryProfilingEnabled();
+  if (!enabled) {
+    return {
+      enabled: false,
+      warningCount: 0,
+      topSlowQueries: [],
+    };
+  }
+
+  const queryRows = Array.from(workerQueryTimings.entries())
+    .map(([name, timing]) => {
+      const averageMs = roundMs(timing.totalMs / Math.max(1, timing.callCount));
+      return {
+        name,
+        callCount: timing.callCount,
+        latestMs: timing.latestMs,
+        averageMs,
+        maxMs: timing.maxMs,
+        budgetMs: timing.budgetMs,
+        overBudget: timing.budgetMs != null && timing.maxMs > timing.budgetMs,
+      };
+    })
+    .sort((left, right) =>
+      Number(right.overBudget) - Number(left.overBudget)
+      || right.maxMs - left.maxMs
+      || right.averageMs - left.averageMs
+      || left.name.localeCompare(right.name),
+    );
+
+  return {
+    enabled: true,
+    warningCount: queryRows.filter((entry) => entry.overBudget).length,
+    topSlowQueries: queryRows.slice(0, WORKER_QUERY_TIMING_LIMIT),
+  };
+}
+
+export function clearWorkerQueryTimingsForTest(): void {
+  workerQueryTimings.clear();
+}
+
 export function measureRuntimeSync<T>(
   metric: keyof RuntimeDiagnosticsState,
   operation: () => T,
@@ -175,6 +303,7 @@ export function buildPerformanceDiagnosticsView(state: FullGameState): Performan
       scoutConflicts: state.scoutConflicts.length,
     },
     runtime: { ...runtimeDiagnostics },
+    queryTimings: buildWorkerQueryDiagnosticsView(),
   };
 }
 

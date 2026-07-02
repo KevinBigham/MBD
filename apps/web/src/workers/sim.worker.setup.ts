@@ -37,6 +37,7 @@ import {
   createEmptyTradeState,
   ensurePlayersHaveRule5Eligibility,
 } from './sim.worker.helpers.js';
+import { getMinorLeaguePlayerGenerationContent } from './content/minorLeagueContent.js';
 import type { FullGameState } from './sim.worker.helpers.js';
 import {
   createDefaultFranchiseState,
@@ -154,24 +155,77 @@ function payrollTierForBudget(budget: number): string {
 }
 
 function farmSystemRatingForPlayers(players: FullGameState['players'], teamId: string): string {
-  const topMinors = players
-    .filter((player) => player.teamId === teamId && player.rosterStatus !== 'MLB')
-    .sort((left, right) => right.overallRating - left.overallRating)
-    .slice(0, 8);
-  const average = topMinors.length > 0
-    ? topMinors.reduce((sum, player) => sum + toDisplayRating(player.overallRating), 0) / topMinors.length
-    : 40;
+  const scores = TEAMS.map((team) => ({
+    teamId: team.id,
+    score: farmSystemScoreForPlayers(players, team.id),
+  })).sort((left, right) =>
+    right.score - left.score || left.teamId.localeCompare(right.teamId),
+  );
+  const rank = scores.findIndex((entry) => entry.teamId === teamId);
+  if (rank < 0) {
+    return gradeFarmScore(farmSystemScoreForPlayers(players, teamId));
+  }
+  return farmGradeForRank(rank, scores.length);
+}
 
-  if (average >= 68) {
+function farmSystemScoreForPlayers(players: FullGameState['players'], teamId: string): number {
+  const topProspects = players
+    .filter((player) => player.teamId === teamId && player.rosterStatus !== 'MLB')
+    .map((player) => {
+      const current = toDisplayRating(player.overallRating);
+      const ceiling = toDisplayRating(player.ceiling ?? player.potentialRating ?? player.overallRating);
+      const levelBonus = player.rosterStatus === 'AAA' ? 2.4
+        : player.rosterStatus === 'AA' ? 1.6
+          : player.rosterStatus === 'A_PLUS' ? 0.9
+            : player.rosterStatus === 'A' ? 0.4
+              : player.rosterStatus === 'INTERNATIONAL' ? -0.6
+                : 0;
+      const ageBonus = Math.max(-2, Math.min(3, (22 - player.age) * 0.45));
+      const trajectoryBonus = player.developmentTrajectory === 'ahead_of_curve' ? 2
+        : player.developmentTrajectory === 'bust_risk' ? -2
+          : player.developmentTrajectory === 'below_expectations' ? -1
+            : 0;
+      return (current * 0.32) + (ceiling * 0.50) + levelBonus + ageBonus + trajectoryBonus;
+    })
+    .sort((left, right) => right - left)
+    .slice(0, 12);
+
+  if (topProspects.length === 0) {
+    return 40;
+  }
+  const topAverage = topProspects.reduce((sum, value) => sum + value, 0) / topProspects.length;
+  const starPower = topProspects.slice(0, 3).reduce((sum, value) => sum + value, 0) / Math.max(1, Math.min(3, topProspects.length));
+  return Number(((topAverage * 0.72) + (starPower * 0.28)).toFixed(3));
+}
+
+function farmGradeForRank(rank: number, teamCount: number): string {
+  const percentile = rank / Math.max(1, teamCount - 1);
+  if (percentile <= 0.10) {
     return 'A';
   }
-  if (average >= 61) {
+  if (percentile <= 0.28) {
     return 'B+';
   }
-  if (average >= 55) {
+  if (percentile <= 0.55) {
     return 'B';
   }
-  if (average >= 49) {
+  if (percentile <= 0.78) {
+    return 'C+';
+  }
+  return 'C';
+}
+
+function gradeFarmScore(score: number): string {
+  if (score >= 62) {
+    return 'A';
+  }
+  if (score >= 58) {
+    return 'B+';
+  }
+  if (score >= 54) {
+    return 'B';
+  }
+  if (score >= 50) {
     return 'C+';
   }
   return 'C';
@@ -258,7 +312,9 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
   const developmentRng = new GameRNG(options.seed + 10_001);
   const coachingRng = new GameRNG(options.seed + 20_001);
   const coachPoolRng = new GameRNG(options.seed + 30_001);
-  const players = generateLeaguePlayers(rng.fork(), teamIds)
+  const players = generateLeaguePlayers(rng.fork(), teamIds, {
+    authoredPlayersByTeam: getMinorLeaguePlayerGenerationContent(),
+  })
     .map((player) => seedInitialTeamTenure(
       initializePlayerDevelopmentProfile(developmentRng.fork(), player),
       1,
@@ -359,6 +415,7 @@ export function buildNewGameState(options: NewGameOptions): FullGameState {
     rookieOfTheYearVoting: [],
     seasonArchive: [],
     archivedSeasons: [],
+    archivedGames: [],
     historicalPlayers: [],
     mentorRelationships: [],
     frontOfficeState,

@@ -95,7 +95,7 @@ Routes are defined in `apps/web/src/app/routes/index.tsx`.
 
 ## Persistence / Save Safety
 
-- Current save schema version: `CURRENT_GAME_SNAPSHOT_VERSION = 33` in `packages/contracts/src/schemas/save.ts`.
+- Historical note: Tutorial Assistant V1 was built when `CURRENT_GAME_SNAPSHOT_VERSION` was 33; check `packages/contracts/src/schemas/save.ts` for the current version before new save work.
 - Migration tests live in `packages/contracts/tests/save.migration.test.ts`.
 - Existing guided-start nudge persistence uses localStorage keys under `mbd:nudges:<save-slot-id>` and explicitly avoids changing `GameSnapshot`.
 - Tutorial Assistant V1 should prefer localStorage keyed by active save id/slot for tutorial progress and cooldowns. Any future `GameSnapshot` persistence requires a version bump, migration, and sample fixture update.

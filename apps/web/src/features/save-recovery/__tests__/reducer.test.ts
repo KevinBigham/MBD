@@ -16,7 +16,7 @@ function failure(reason: SaveLoadFailureReason): Extract<LoadSaveSafelyResult, {
       slotNumber: 2,
       message: `Failure: ${reason}`,
       rawJson: '{"id":"save-slot-2"}',
-      schemaVersion: reason === 'version_too_new' ? 999 : 33,
+      schemaVersion: reason === 'version_too_new' ? 999 : 34,
       currentVersion: 33,
       minimumSupportedVersion: 2,
     },

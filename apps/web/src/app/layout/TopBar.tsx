@@ -3,10 +3,31 @@ import { Settings, Command, Inbox, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
+import { useActiveSavePersistenceStatus } from '@/shared/hooks/useActiveSavePersistenceStatus';
 import { TeamLogo } from '@/shared/components/TeamLogo';
-import { ContextualHelp, PAGE_HELP } from '@/shared/components/ContextualHelp';
+import { ContextualHelp } from '@/shared/components/ContextualHelp';
+import { getContextualHelpForPath } from '@/shared/lib/routeGuidanceRegistry';
 import { subscribeToNewsReadEvents } from '@/features/news/lib/newsEvents';
+import {
+  retryActiveSavePersistence,
+  type ActiveSavePersistenceFailureKind,
+} from '@/shared/lib/activeSavePersistence';
 import type { SeasonFlowState } from './seasonFlow';
+
+function describeSaveFailure(failureKind: ActiveSavePersistenceFailureKind | null): string {
+  switch (failureKind) {
+    case 'quota':
+      return 'Save failed — storage full';
+    case 'indexeddb':
+      return 'Save failed — browser database error';
+    case 'storage':
+      return 'Save failed — storage error';
+    case 'export':
+      return 'Save failed — could not read game';
+    default:
+      return 'Save failed';
+  }
+}
 
 function useOnlineStatus(): boolean {
   const [online, setOnline] = useState(
@@ -31,16 +52,26 @@ interface TopBarProps {
 }
 
 export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
-  const { season, day, phase, teamName, userTeamId, isInitialized } = useGameStore();
+  const { season, day, phase, teamName, userTeamId, isInitialized, activeSaveId } = useGameStore();
   const worker = useWorker();
   const location = useLocation();
   const online = useOnlineStatus();
+  const saveStatus = useActiveSavePersistenceStatus(activeSaveId);
   const [unreadNewsIds, setUnreadNewsIds] = useState<Set<string>>(() => new Set());
-  const helpContent = PAGE_HELP[location.pathname] ?? null;
+  const helpContent = getContextualHelpForPath(location.pathname);
   const phaseLabel = flow?.phaseLabel ?? `Season ${season} — Day ${day}`;
   const detailLabel = flow?.detailLabel ?? phase;
   const progress = Math.round((flow?.progress ?? 0) * 100);
   const unreadNewsCount = unreadNewsIds.size;
+  const saveStatusVisible = saveStatus.state !== 'idle';
+  const saveStatusLabel = saveStatus.state === 'saving'
+    ? 'Saving...'
+    : saveStatus.state === 'failed'
+      ? describeSaveFailure(saveStatus.failureKind)
+      : 'Saved';
+  const saveStatusPositionClass = saveStatus.state === 'failed'
+    ? 'fixed right-3 top-3 z-[80] shadow-2xl shadow-black/30 sm:right-4'
+    : '';
 
   const refreshUnreadNews = useCallback(async () => {
     if (!isInitialized || !worker.isReady || typeof worker.getNews !== 'function') {
@@ -105,6 +136,36 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
 
       {/* Right: Help + Command palette trigger + Settings */}
       <div className="flex items-center gap-2">
+        {saveStatusVisible && (
+          <span
+            data-testid="save-persistence-status"
+            data-failure-kind={saveStatus.state === 'failed' ? saveStatus.failureKind ?? 'unknown' : undefined}
+            title={saveStatus.state === 'failed' ? saveStatus.errorMessage ?? undefined : undefined}
+            role="status"
+            aria-live={saveStatus.state === 'failed' ? 'assertive' : 'polite'}
+            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-data text-[11px] ${saveStatusPositionClass} ${
+              saveStatus.state === 'failed'
+                ? 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger'
+                : saveStatus.state === 'saving'
+                  ? 'border-accent-info/35 bg-accent-info/10 text-accent-info'
+                  : 'border-accent-success/35 bg-accent-success/10 text-accent-success'
+            }`}
+          >
+            <span>{saveStatusLabel}</span>
+            {saveStatus.state === 'failed' && saveStatus.canRetry ? (
+              <button
+                type="button"
+                aria-label="Retry failed save"
+                className="rounded border border-current px-1.5 py-0.5 font-heading text-[10px] uppercase"
+                onClick={() => {
+                  void retryActiveSavePersistence(activeSaveId);
+                }}
+              >
+                Retry
+              </button>
+            ) : null}
+          </span>
+        )}
         {!online && (
           <span
             className="flex items-center gap-1 rounded-md bg-accent-warning/10 px-2 py-1 font-data text-[11px] text-accent-warning"

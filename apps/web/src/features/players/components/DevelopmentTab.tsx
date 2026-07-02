@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
-import { estimateProjectedWarRange } from '@mbd/sim-core';
-import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar, Skeleton, StatLine } from '@mbd/ui';
+import { Badge, Card, CardContent, CardHeader, CardTitle, Skeleton, StatLine } from '@mbd/ui';
+import DevelopmentDecisionPanel from './DevelopmentDecisionPanel';
+import DevelopmentTrajectoryPanel from './DevelopmentTrajectoryPanel';
 import type { PlayerProfileView } from './playerProfileShared';
 import {
   badgeVariantForSetback,
@@ -12,7 +13,6 @@ import {
   labelize,
 } from './playerProfileShared';
 
-const DevCurveChart = lazy(() => import('@/shared/components/charts/DevCurveChart'));
 const CareerArcChart = lazy(() => import('@/shared/components/charts/CareerArcChart'));
 const BreakoutIntelligencePanel = lazy(() => import('./BreakoutIntelligencePanel'));
 
@@ -27,66 +27,15 @@ export default function DevelopmentTab({
 
   const { player, developmentReports } = view;
   const isPitcher = isPitcherProfile(player);
-  const projectedWar = estimateProjectedWarRange({
-    overall: player.displayRating,
-    floor: displayBand(player.floor),
-    ceiling: displayBand(player.ceiling),
-    isPitcher,
-  });
 
   return (
     <div className="space-y-6">
+      {developmentReports?.developmentDecision ? (
+        <DevelopmentDecisionPanel decision={developmentReports.developmentDecision} />
+      ) : null}
+
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading text-dynasty-text">Development Trajectory</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
-                  Current Program
-                </div>
-                <div className="mt-1 font-heading text-sm text-dynasty-text">
-                  {player.developmentProgram ? labelize(player.developmentProgram) : 'No assignment'}
-                </div>
-              </div>
-              <Badge variant={badgeVariantForTrajectory(player.developmentTrajectory)}>
-                {labelize(player.developmentTrajectory)}
-              </Badge>
-            </div>
-            <div className="space-y-3">
-              <GradeBar label="Floor" grade={displayBand(player.floor)} />
-              <GradeBar label="Current" grade={player.displayRating} />
-              <GradeBar label="Ceiling" grade={displayBand(player.ceiling)} />
-            </div>
-            <StatLine
-              stats={[
-                { label: 'Floor', value: displayBand(player.floor) || '--' },
-                { label: 'Current', value: player.displayRating },
-                { label: 'Ceiling', value: displayBand(player.ceiling) || '--' },
-              ]}
-            />
-            <StatLine
-              stats={[
-                { label: 'WAR Floor', value: projectedWar.floorWar?.toFixed(1) ?? '--' },
-                { label: 'WAR Now', value: projectedWar.currentWar.toFixed(1) },
-                { label: 'WAR Ceiling', value: projectedWar.ceilingWar?.toFixed(1) ?? '--' },
-              ]}
-            />
-            {developmentReports?.history.length ? (
-              <Suspense fallback={<Skeleton className="h-48 rounded-lg" />}>
-                <div className="mt-2" data-testid="dev-curve-chart">
-                  <DevCurveChart
-                    history={developmentReports.history}
-                    floor={displayBand(player.floor)}
-                    ceiling={displayBand(player.ceiling)}
-                  />
-                </div>
-              </Suspense>
-            ) : null}
-          </CardContent>
-        </Card>
+        <DevelopmentTrajectoryPanel player={player} history={developmentReports?.history ?? []} />
 
         <Card>
           <CardHeader>

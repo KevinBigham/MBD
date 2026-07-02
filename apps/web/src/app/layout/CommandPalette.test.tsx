@@ -16,6 +16,15 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const navigateSpy = vi.hoisted(() => vi.fn());
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => navigateSpy,
+  };
+});
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -77,6 +86,7 @@ describe('CommandPalette', () => {
       isReady: true,
       exportSnapshot: vi.fn(),
     } as unknown as ReturnType<typeof useWorker>);
+    navigateSpy.mockClear();
   });
 
   afterEach(async () => {
@@ -105,7 +115,72 @@ describe('CommandPalette', () => {
     expect(container.textContent).toContain('Achievements');
     expect(container.textContent).toContain('Scenarios');
     expect(container.textContent).toContain('Start Negotiation');
+    expect(container.textContent).toContain('Review Roster Needs');
+    expect(container.textContent).toContain('Review Trade Market');
+    expect(container.textContent).toContain('Scout Draft Class');
+    expect(container.textContent).toContain('Review Free Agent Market');
+    expect(container.textContent).toContain('Review Offseason Plan');
+    expect(container.textContent).toContain('Study Franchise History');
+    expect(container.textContent).toContain('Open Keyboard Shortcuts');
     expect(container.textContent).toContain('View Signature Moments');
+    expect(container.textContent).toContain('What Now: Review Front Office');
+    expect(container.textContent).toContain('Review Budget');
+    expect(container.textContent).toContain('Open Reports');
+  });
+
+  it('searches common GM intent aliases from the shared navigation registry', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <CommandPalette open onOpenChange={vi.fn()} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const input = container.querySelector('input[placeholder="Type a command or search..."]') as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    await act(async () => {
+      valueSetter?.call(input, 'shop player');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Trade Center');
+    expect(container.textContent).toContain('Start Negotiation');
+  });
+
+  it('routes trade commands to distinct quick and market lanes', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <CommandPalette open onOpenChange={vi.fn()} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const startNegotiation = Array.from(container.querySelectorAll('[cmdk-item]')).find((item) =>
+      item.textContent?.includes('Start Negotiation'),
+    ) as HTMLElement | undefined;
+    const reviewMarket = Array.from(container.querySelectorAll('[cmdk-item]')).find((item) =>
+      item.textContent?.includes('Review Trade Market'),
+    ) as HTMLElement | undefined;
+
+    expect(startNegotiation).toBeTruthy();
+    expect(reviewMarket).toBeTruthy();
+
+    await act(async () => {
+      startNegotiation?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(navigateSpy).toHaveBeenLastCalledWith('/trade?mode=quick');
+
+    await act(async () => {
+      reviewMarket?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(navigateSpy).toHaveBeenLastCalledWith('/trade?mode=market');
   });
 
   it('renders as a mobile-safe dialog with a 16px command input', async () => {

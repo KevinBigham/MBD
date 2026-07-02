@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Badge, Card, CardContent, CardHeader, CardTitle, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
+import { Badge, Tabs, TabsList, TabsTrigger } from '@mbd/ui';
 import type { SignatureMoment } from '@mbd/contracts';
 import { GameRNG, formatMomentDescription, getTeamById } from '@mbd/sim-core';
 import { AlertTriangle, Sparkles } from 'lucide-react';
+import { DensePanel } from '@/shared/components/DensePanel';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { momentTypeLabel } from '@/shared/lib/labels';
 
@@ -59,14 +60,11 @@ export default function TeamIdentityCard({
   const showTypeFilters = typeOptions.length > 1;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 font-heading text-dynasty-text">
-          <TeamLogo teamId={teamId} size="sm" />
-          {teamName}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <DensePanel
+      title={teamName}
+      icon={<TeamLogo teamId={teamId} size="sm" />}
+      bodyClassName="space-y-3"
+    >
         {moments.length === 0 ? (
           <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
             No team identity moments yet. Deadline seller/buyer beats will appear here after your first trade deadline.
@@ -200,7 +198,6 @@ export default function TeamIdentityCard({
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+    </DensePanel>
   );
 }

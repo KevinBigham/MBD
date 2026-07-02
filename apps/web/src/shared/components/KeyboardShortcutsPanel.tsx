@@ -1,4 +1,4 @@
-import { type FC, useEffect } from 'react';
+import { type FC, useEffect, useRef } from 'react';
 import { Keyboard, X } from 'lucide-react';
 
 interface KeyboardShortcutsPanelProps {
@@ -49,20 +49,71 @@ function Kbd({ children }: { children: string }) {
   );
 }
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
 export const KeyboardShortcutsPanel: FC<KeyboardShortcutsPanelProps> = ({
   open,
   onClose,
 }) => {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    closeButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [],
+    ).filter((element) => element.offsetParent !== null || element === document.activeElement);
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
+        return;
+      }
+
+      if (e.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = getFocusableElements();
+      const firstElement = focusableElements[0] ?? dialogRef.current;
+      const lastElement = focusableElements[focusableElements.length - 1] ?? dialogRef.current;
+
+      if (!firstElement || !lastElement) {
+        return;
+      }
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement || !dialogRef.current?.contains(document.activeElement)) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+        return;
+      }
+
+      if (document.activeElement === lastElement || !dialogRef.current?.contains(document.activeElement)) {
+        e.preventDefault();
+        firstElement.focus();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus();
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -73,6 +124,11 @@ export const KeyboardShortcutsPanel: FC<KeyboardShortcutsPanelProps> = ({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-shortcuts-title"
+        tabIndex={-1}
         className="relative w-full max-w-md bg-dynasty-surface border border-dynasty-border rounded-lg shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -80,13 +136,17 @@ export const KeyboardShortcutsPanel: FC<KeyboardShortcutsPanelProps> = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-dynasty-border">
           <div className="flex items-center gap-2">
             <Keyboard className="h-5 w-5 text-accent-primary" />
-            <h2 className="text-dynasty-text font-display text-lg font-semibold">
+            <h2
+              id="keyboard-shortcuts-title"
+              className="text-dynasty-text font-display text-lg font-semibold"
+            >
               Keyboard Shortcuts
             </h2>
           </div>
           <button
+            ref={closeButtonRef}
             onClick={onClose}
-            className="text-dynasty-muted hover:text-dynasty-text transition-colors"
+            className="flex min-h-11 min-w-11 items-center justify-center text-dynasty-muted transition-colors hover:text-dynasty-text"
             aria-label="Close keyboard shortcuts panel"
           >
             <X className="h-5 w-5" />

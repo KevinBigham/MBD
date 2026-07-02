@@ -252,6 +252,76 @@ describe('processTeamExtensions', () => {
     expect(result.results.some((entry) => entry.playerId === decliningVeteran.id)).toBe(false);
     expect(result.results.some((entry) => entry.playerId === journeyman.id)).toBe(false);
   });
+
+  it('uses team-building identity to change extension priority and budget appetite', () => {
+    const winNowStar = {
+      ...setHitterRatings(makePlayer(47), 420),
+      id: 'current-star',
+      age: 31,
+      developmentTrajectory: 'on_track' as const,
+      contract: {
+        ...makePlayer(47).contract,
+        years: 1,
+        annualSalary: 24,
+        totalValue: 24,
+      },
+    };
+    const youngCornerstone = {
+      ...setHitterRatings(makePlayer(48), 360),
+      id: 'young-cornerstone',
+      age: 24,
+      developmentTrajectory: 'ahead_of_curve' as const,
+      contract: {
+        ...makePlayer(48).contract,
+        years: 3,
+        annualSalary: 7,
+        totalValue: 21,
+      },
+    };
+    const bridgeVeteran = {
+      ...setHitterRatings(makePlayer(49), 335),
+      id: 'bridge-veteran',
+      age: 33,
+      developmentTrajectory: 'on_track' as const,
+      contract: {
+        ...makePlayer(49).contract,
+        years: 1,
+        annualSalary: 15,
+        totalValue: 15,
+      },
+    };
+    const players = [winNowStar, youngCornerstone, bridgeVeteran];
+    const context = createTeamContext();
+    context.controlYearsByPlayer.set(winNowStar.id, 1);
+    context.controlYearsByPlayer.set(youngCornerstone.id, 3);
+    context.controlYearsByPlayer.set(bridgeVeteran.id, 1);
+    context.serviceYearsByPlayer.set(winNowStar.id, 6);
+    context.serviceYearsByPlayer.set(youngCornerstone.id, 2);
+    context.serviceYearsByPlayer.set(bridgeVeteran.id, 6);
+    context.moraleByPlayer.set(winNowStar.id, 70);
+    context.moraleByPlayer.set(youngCornerstone.id, 70);
+    context.moraleByPlayer.set(bridgeVeteran.id, 64);
+
+    const rebuilding = processTeamExtensions(
+      { ...context, teamBuildingArchetype: 'rebuilding' },
+      players,
+      new GameRNG(147),
+    );
+    const winNow = processTeamExtensions(
+      { ...context, teamBuildingArchetype: 'win_now' },
+      players,
+      new GameRNG(147),
+    );
+    const budgetConstrained = processTeamExtensions(
+      { ...context, teamBuildingArchetype: 'budget_constrained' },
+      players,
+      new GameRNG(147),
+    );
+
+    expect(rebuilding.results[0]?.playerId).toBe(youngCornerstone.id);
+    expect(winNow.results[0]?.playerId).toBe(winNowStar.id);
+    expect(budgetConstrained.results).toHaveLength(1);
+  });
 });
 
 describe('qualifying offers', () => {

@@ -325,5 +325,11 @@ describe('front office press identity', () => {
     expect(state.fanSentiment.score).toBeGreaterThan(fanBefore);
     expect(state.storyFlags.get(state.userTeamId)?.some((flag) => flag.startsWith('press_tone_backlash_'))).toBe(true);
     expect(state.briefingQueue.some((item) => item.id.startsWith('front-office-press-tone-'))).toBe(true);
+    expect(api.getInteractivePressConference()).toBeNull();
+
+    const fanAfterResponse = state.fanSentiment.score;
+    const duplicate = api.respondToPressConference(conference!.id, confident!.id);
+    expect(duplicate.success).toBe(false);
+    expect(state.fanSentiment.score).toBe(fanAfterResponse);
   });
 });

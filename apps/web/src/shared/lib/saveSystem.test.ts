@@ -689,7 +689,7 @@ describe('saveSystem helpers', () => {
       phase: 'regular',
       schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
       hasSnapshot: true,
-      snapshot: '{"schemaVersion":33,' as unknown as GameSnapshot,
+      snapshot: '{"schemaVersion":34,' as unknown as GameSnapshot,
       legacyState: null,
       createdAt: '2026-04-01T00:00:00.000Z',
       updatedAt: '2026-04-01T00:00:00.000Z',

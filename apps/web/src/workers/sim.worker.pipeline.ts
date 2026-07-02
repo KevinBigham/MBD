@@ -1,5 +1,8 @@
-import { AFFILIATE_LEVELS } from '@mbd/sim-core';
+import {
+  AFFILIATE_LEVELS,
+} from '@mbd/sim-core';
 import type { DevelopmentSetback, MinorLeagueSeasonLine, ProspectBond } from '@mbd/contracts';
+import { getMinorLeaguePlayerContentByIdentity } from './content/minorLeagueContent.js';
 import type { FullGameState } from './sim.worker.helpers';
 import {
   getActiveDevelopmentSetbackView,
@@ -15,6 +18,19 @@ export interface ProspectPipelineView {
     nextWave: number;
     longTerm: number;
     organizationalDepth: number;
+  };
+  developmentFocus: {
+    summary: string;
+    priorities: Array<{
+      playerId: string;
+      playerName: string;
+      level: string;
+      category: 'promotion_window' | 'recalibrate_plan' | 'accelerate_challenge' | 'protect_runway';
+      label: string;
+      action: string;
+      reason: string;
+      evidence: string[];
+    }>;
   };
   prospects: Array<{
     playerId: string;
@@ -34,6 +50,8 @@ export interface ProspectPipelineView {
       summary: string;
     } | null;
     milestones: string[];
+    role?: string | null;
+    scoutingNote?: string | null;
   }>;
 }
 
@@ -128,6 +146,130 @@ const ETA_ORDER = new Map([
   ['Depth option', 6],
 ]);
 
+function latestDevelopmentReportsByPlayer(state: FullGameState) {
+  const reports = new Map<string, FullGameState['minorLeagueState']['developmentReports'][number]>();
+  for (const report of state.minorLeagueState.developmentReports) {
+    const current = reports.get(report.playerId);
+    if (
+      !current
+      || report.season > current.season
+      || (report.season === current.season && report.month > current.month)
+    ) {
+      reports.set(report.playerId, report);
+    }
+  }
+  return reports;
+}
+
+function trajectoryLabel(value: string | null | undefined): string {
+  if (!value) return 'on track';
+  return value.replaceAll('_', ' ');
+}
+
+function uniqueEvidence(items: Array<string | null | undefined>): string[] {
+  return [...new Set(items.filter((item): item is string => Boolean(item)))].slice(0, 3);
+}
+
+function summarizeDevelopmentFocus(
+  priorities: ProspectPipelineView['developmentFocus']['priorities'],
+): string {
+  if (priorities.length === 0) {
+    return 'No urgent development decisions are separated from the full pipeline right now.';
+  }
+
+  const promotionWindows = priorities.filter((priority) => priority.category === 'promotion_window').length;
+  const recalibrations = priorities.filter((priority) => priority.category === 'recalibrate_plan').length;
+  const runwayCalls = priorities.filter((priority) => priority.category === 'protect_runway').length;
+  const challengeCalls = priorities.filter((priority) => priority.category === 'accelerate_challenge').length;
+
+  return `${promotionWindows} promotion window, ${recalibrations} recalibration, ${challengeCalls} challenge lane, and ${runwayCalls} long-runway priority need attention.`;
+}
+
+function buildDevelopmentFocus(
+  state: FullGameState,
+  prospects: ProspectPipelineView['prospects'],
+): ProspectPipelineView['developmentFocus'] {
+  const latestReports = latestDevelopmentReportsByPlayer(state);
+  const allPriorities = prospects
+    .filter((prospect) => prospect.prospectTier !== 'organizational_depth')
+    .map((prospect) => {
+      const report = latestReports.get(prospect.playerId) ?? null;
+      const trajectory = trajectoryLabel(report?.trajectory ?? null);
+      const evidence = uniqueEvidence([
+        prospect.latestLineSummary,
+        report?.summary,
+        prospect.activeSetback?.summary,
+        prospect.milestones.at(-1),
+      ]);
+
+      if (prospect.eta === 'Ready now') {
+        return {
+          playerId: prospect.playerId,
+          playerName: prospect.playerName,
+          level: prospect.level,
+          category: 'promotion_window' as const,
+          label: 'Promotion Window',
+          action: 'Evaluate MLB fit during the next roster checkpoint.',
+          reason: `${prospect.playerName} is a ready-now ${prospect.level} option with enough current form to force a roster decision.`,
+          evidence,
+        };
+      }
+
+      if (prospect.activeSetback || trajectory === 'below expectations' || trajectory === 'bust risk') {
+        return {
+          playerId: prospect.playerId,
+          playerName: prospect.playerName,
+          level: prospect.level,
+          category: 'recalibrate_plan' as const,
+          label: 'Recalibrate Plan',
+          action: 'Reset the current development plan before the next checkpoint.',
+          reason: `${prospect.playerName} is on a ${trajectory} trajectory and needs a clearer support plan.`,
+          evidence,
+        };
+      }
+
+      if (prospect.trend === 'surging' || trajectory === 'ahead of curve') {
+        return {
+          playerId: prospect.playerId,
+          playerName: prospect.playerName,
+          level: prospect.level,
+          category: 'accelerate_challenge' as const,
+          label: 'Challenge Lane',
+          action: 'Test a harder assignment if the next report confirms the trend.',
+          reason: `${prospect.playerName} is separating from the current level without a current setback flag.`,
+          evidence,
+        };
+      }
+
+      if (prospect.ceiling >= 72 && prospect.eta !== 'Ready now') {
+        return {
+          playerId: prospect.playerId,
+          playerName: prospect.playerName,
+          level: prospect.level,
+          category: 'protect_runway' as const,
+          label: 'Protect Runway',
+          action: 'Protect the development lane and avoid short-term role churn.',
+          reason: `${prospect.playerName} has ${prospect.ceiling} ceiling with a longer ETA, so the payoff is still runway-driven.`,
+          evidence,
+        };
+      }
+
+      return null;
+    })
+    .filter((priority): priority is ProspectPipelineView['developmentFocus']['priorities'][number] => priority != null);
+  const priorities = [
+    ...allPriorities.filter((priority) => priority.category === 'promotion_window').slice(0, 2),
+    ...allPriorities.filter((priority) => priority.category === 'recalibrate_plan').slice(0, 2),
+    ...allPriorities.filter((priority) => priority.category === 'accelerate_challenge').slice(0, 1),
+    ...allPriorities.filter((priority) => priority.category === 'protect_runway').slice(0, 1),
+  ];
+
+  return {
+    summary: summarizeDevelopmentFocus(priorities),
+    priorities,
+  };
+}
+
 export function buildProspectPipelineView(
   state: FullGameState,
   teamId: string = state.userTeamId,
@@ -138,6 +280,7 @@ export function buildProspectPipelineView(
       && AFFILIATE_LEVELS.includes(player.rosterStatus as typeof AFFILIATE_LEVELS[number]),
     )
     .map((player) => {
+      const authoredContent = getMinorLeaguePlayerContentByIdentity(player.teamId, player.firstName, player.lastName);
       const bond = getProspectBondView(state, player.id);
       const setback = getActiveDevelopmentSetbackView(state, player.id);
       const progression = getMinorLeagueProgressionView(state, player.id);
@@ -174,6 +317,8 @@ export function buildProspectPipelineView(
           }
           : null,
         milestones: bondMilestones(bond),
+        role: authoredContent?.role ?? null,
+        scoutingNote: authoredContent?.scoutingNote ?? null,
       };
     })
     .sort((left, right) =>
@@ -213,6 +358,7 @@ export function buildProspectPipelineView(
       longTerm,
       organizationalDepth,
     },
+    developmentFocus: buildDevelopmentFocus(state, prospects),
     prospects,
   };
 }

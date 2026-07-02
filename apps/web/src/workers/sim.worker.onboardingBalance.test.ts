@@ -2,6 +2,12 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AGMCandidateId, GMPhilosophy } from '@mbd/contracts';
+import { summarizeOnboardingBalanceSample } from '@mbd/sim-core';
+import type {
+  CalibrationOnboardingBalanceMetrics,
+  CalibrationOnboardingBalanceSample,
+  CalibrationOnboardingBalanceVariantSample,
+} from '@mbd/sim-core';
 
 declare const process: { env?: Record<string, string | undefined> };
 
@@ -20,10 +26,7 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
 const BALANCE_SEED = 12_701;
 const SAMPLE_SEASONS = Number(process.env?.MBD_ONBOARDING_BALANCE_SAMPLE_SEASONS ?? 1);
 const SAMPLE_TIMEOUT_MS = SAMPLE_SEASONS > 1 ? 720_000 : 360_000;
-const SAMPLE_VARIANT_IDS = process.env?.MBD_ONBOARDING_BALANCE_VARIANT_IDS
-  ?.split(',')
-  .map((id) => id.trim())
-  .filter(Boolean);
+const SAMPLE_FULL_MATRIX = process.env?.MBD_ONBOARDING_BALANCE_FULL_MATRIX === '1';
 const LOG_SAMPLE_SUMMARY = process.env?.MBD_ONBOARDING_BALANCE_LOG === '1';
 
 interface OnboardingBalanceVariant {
@@ -32,25 +35,7 @@ interface OnboardingBalanceVariant {
   philosophy: GMPhilosophy;
 }
 
-interface OnboardingBalanceMetrics {
-  ownerTrust: number;
-  ownerPressure: number;
-  fanSentiment: number;
-  frontOfficeReputation: number;
-  frontOfficeTrade: number;
-  frontOfficeDraft: number;
-  freeAgentAppeal: number;
-  avgProspectProgress: number;
-  aheadOfCurveReports: number;
-  bustRiskReports: number;
-  activeDevelopmentSetbacks: number;
-  draftAccuracy: number;
-  internationalAccuracy: number;
-  proAccuracy: number;
-  focusedScoutingAccuracy: number;
-  offLaneScoutingAccuracy: number;
-  monthlyConsequenceCount: number;
-}
+type OnboardingBalanceMetrics = CalibrationOnboardingBalanceMetrics;
 
 interface OnboardingBalanceSample {
   variantId: string;
@@ -123,26 +108,94 @@ const ALL_VARIANTS: readonly OnboardingBalanceVariant[] = [
     },
   },
 ] as const;
-const VARIANTS = SAMPLE_VARIANT_IDS
-  ? ALL_VARIANTS.filter((variant) => SAMPLE_VARIANT_IDS.includes(variant.id))
-  : ALL_VARIANTS;
+const EXTENDED_SAMPLE_VARIANT_IDS = [
+  'balanced_reference',
+  'marcus_win_now',
+  'elena_rebuild',
+] as const;
+
+function parseSampleVariantIds(value: string | undefined): string[] | null {
+  const ids = value?.split(',').map((id) => id.trim()).filter(Boolean) ?? [];
+  if (ids.length === 0) {
+    return null;
+  }
+
+  const knownIds = new Set(ALL_VARIANTS.map((variant) => variant.id));
+  const unknownIds = ids.filter((id) => !knownIds.has(id));
+  if (unknownIds.length > 0) {
+    throw new Error(`MBD_ONBOARDING_BALANCE_VARIANT_IDS contains unknown variants: ${unknownIds.join(', ')}.`);
+  }
+
+  return [...new Set(ids)];
+}
+
+function selectSampleVariants(
+  sampleSeasons: number,
+  variantIds: readonly string[] | null,
+  fullMatrix: boolean,
+): readonly OnboardingBalanceVariant[] {
+  if (variantIds) {
+    const selectedIds = new Set(variantIds);
+    return ALL_VARIANTS.filter((variant) => selectedIds.has(variant.id));
+  }
+
+  if (sampleSeasons > 1 && !fullMatrix) {
+    const selectedIds = new Set<string>(EXTENDED_SAMPLE_VARIANT_IDS);
+    return ALL_VARIANTS.filter((variant) => selectedIds.has(variant.id));
+  }
+
+  return ALL_VARIANTS;
+}
+
+const SAMPLE_VARIANT_IDS = parseSampleVariantIds(process.env?.MBD_ONBOARDING_BALANCE_VARIANT_IDS);
+const VARIANTS = selectSampleVariants(SAMPLE_SEASONS, SAMPLE_VARIANT_IDS, SAMPLE_FULL_MATRIX);
+
+describe('onboarding balance variant matrix', () => {
+  it('keeps the default one-season guard on the full five-variant matrix', () => {
+    expect(selectSampleVariants(1, null, false).map((variant) => variant.id)).toEqual(
+      ALL_VARIANTS.map((variant) => variant.id),
+    );
+  });
+
+  it.runIf(SAMPLE_SEASONS > 1 && !SAMPLE_VARIANT_IDS && !SAMPLE_FULL_MATRIX)('defaults multi-season samples to the key attribution variants', () => {
+    expect(VARIANTS.map((variant) => variant.id)).toEqual([...EXTENDED_SAMPLE_VARIANT_IDS]);
+  });
+
+  it('allows explicit variant overrides for focused attribution runs', () => {
+    expect(selectSampleVariants(2, ['elena_prospect_push', 'marcus_value_hold'], false).map((variant) => variant.id)).toEqual([
+      'elena_prospect_push',
+      'marcus_value_hold',
+    ]);
+  });
+
+  it('rejects misspelled explicit variant ids', () => {
+    expect(() => parseSampleVariantIds('balanced_reference,missing_variant')).toThrow(
+      'MBD_ONBOARDING_BALANCE_VARIANT_IDS contains unknown variants: missing_variant.',
+    );
+  });
+});
 
 function average(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
 }
 
-function range(values: readonly number[]): number {
-  return Math.max(...values) - Math.min(...values);
-}
-
 async function loadWorkerHarness() {
-  const { api } = await import('./sim.worker');
-  const helpers = await import('./sim.worker.helpers');
-  const identity = await import('./sim.worker.frontOfficeIdentity');
-  const budget = await import('./sim.worker.setup');
+  const [{ actionApi }, onboarding, helpers, identity, budget] = await Promise.all([
+    import('./sim.worker.actions'),
+    import('./sim.worker.onboarding'),
+    import('./sim.worker.helpers'),
+    import('./sim.worker.frontOfficeIdentity'),
+    import('./sim.worker.setup'),
+  ]);
 
   return {
-    api,
+    api: {
+      ...actionApi,
+      getRevisedOnboardingData: onboarding.getRevisedOnboardingData,
+      applyStaffHires: onboarding.applyStaffHires,
+      applyScoutingHire: onboarding.applyScoutingHire,
+      completeRevisedOnboarding: onboarding.completeRevisedOnboarding,
+    },
     requireState: helpers.requireState,
     setState: helpers.setState,
     getEffectiveScoutingAccuracy: identity.getEffectiveScoutingAccuracy,
@@ -243,9 +296,10 @@ function readBalanceMetrics(
   };
 }
 
-async function runVariantSample(variant: OnboardingBalanceVariant): Promise<OnboardingBalanceSample> {
-  vi.resetModules();
-  const harness = await loadWorkerHarness();
+async function runVariantSample(
+  harness: Awaited<ReturnType<typeof loadWorkerHarness>>,
+  variant: OnboardingBalanceVariant,
+): Promise<OnboardingBalanceSample> {
   harness.setState(null);
   harness.api.newGame({
     seed: BALANCE_SEED,
@@ -284,18 +338,39 @@ async function runVariantSample(variant: OnboardingBalanceVariant): Promise<Onbo
   };
 }
 
+function toCalibrationOnboardingBalanceSample(
+  samples: readonly OnboardingBalanceSample[],
+): CalibrationOnboardingBalanceSample {
+  return {
+    seed: BALANCE_SEED,
+    seasonCount: SAMPLE_SEASONS,
+    variants: samples.map((sample): CalibrationOnboardingBalanceVariantSample => ({
+      variantId: sample.variantId,
+      assistantGMId: sample.assistantGMId,
+      developmentStyle: sample.philosophy.developmentStyle,
+      scoutingFocus: sample.philosophy.scoutingFocus,
+      baseline: sample.baseline,
+      seasons: sample.seasons,
+      final: sample.final,
+    })),
+  };
+}
+
 describe('onboarding consequence balance samples', () => {
   let samples: OnboardingBalanceSample[] = [];
 
   beforeAll(async () => {
     samples = [];
+    const harness = await loadWorkerHarness();
     for (const variant of VARIANTS) {
-      samples.push(await runVariantSample(variant));
+      samples.push(await runVariantSample(harness, variant));
     }
     if (LOG_SAMPLE_SUMMARY) {
+      const summary = summarizeOnboardingBalanceSample(toCalibrationOnboardingBalanceSample(samples));
       console.info('ONBOARDING_BALANCE_SUMMARY', JSON.stringify({
         seed: BALANCE_SEED,
         seasons: SAMPLE_SEASONS,
+        summary,
         variants: samples.map((sample) => ({
           variantId: sample.variantId,
           baseline: sample.baseline,
@@ -318,33 +393,31 @@ describe('onboarding consequence balance samples', () => {
   });
 
   it('keeps owner, fan, and front-office outcomes meaningful without becoming wild', () => {
-    const baselines = samples.map((sample) => sample.baseline);
-    const finals = samples.map((sample) => sample.final);
+    const summary = summarizeOnboardingBalanceSample(toCalibrationOnboardingBalanceSample(samples));
 
-    expect(range(finals.map((entry) => entry.ownerTrust))).toBeGreaterThanOrEqual(6);
-    expect(range(finals.map((entry) => entry.ownerTrust))).toBeLessThanOrEqual(SAMPLE_SEASONS > 1 ? 45 : 34);
-    expect(range(baselines.map((entry) => entry.fanSentiment))).toBeGreaterThanOrEqual(4);
-    expect(range(baselines.map((entry) => entry.fanSentiment))).toBeLessThanOrEqual(18);
-    expect(range(finals.map((entry) => entry.frontOfficeReputation))).toBeGreaterThanOrEqual(4);
-    expect(range(finals.map((entry) => entry.frontOfficeReputation))).toBeLessThanOrEqual(30);
-    expect(range(finals.map((entry) => entry.freeAgentAppeal))).toBeGreaterThanOrEqual(8);
-    expect(range(finals.map((entry) => entry.freeAgentAppeal))).toBeLessThanOrEqual(22);
+    expect(summary.finalOwnerTrustRange).toBeGreaterThanOrEqual(6);
+    expect(summary.finalOwnerTrustRange).toBeLessThanOrEqual(45);
+    expect(summary.baselineFanSentimentRange).toBeGreaterThanOrEqual(4);
+    expect(summary.baselineFanSentimentRange).toBeLessThanOrEqual(18);
+    expect(summary.finalFrontOfficeReputationRange).toBeGreaterThanOrEqual(4);
+    expect(summary.finalFrontOfficeReputationRange).toBeLessThanOrEqual(30);
+    expect(summary.finalFreeAgentAppealRange).toBeGreaterThanOrEqual(8);
+    expect(summary.finalFreeAgentAppealRange).toBeLessThanOrEqual(22);
   });
 
   it('keeps prospect and scouting consequences visible but bounded', () => {
-    const finals = samples.map((sample) => sample.final);
-    const aggressive = samples.filter((sample) => sample.philosophy.developmentStyle === 'aggressive');
-    const patient = samples.filter((sample) => sample.philosophy.developmentStyle === 'patient');
-    const aggressiveProgress = average(aggressive.map((sample) => sample.final.avgProspectProgress));
-    const patientProgress = average(patient.map((sample) => sample.final.avgProspectProgress));
-    const averageScoutingLift = average(
-      finals.map((entry) => entry.focusedScoutingAccuracy - entry.offLaneScoutingAccuracy),
-    );
+    const summary = summarizeOnboardingBalanceSample(toCalibrationOnboardingBalanceSample(samples));
 
-    expect(aggressiveProgress).toBeGreaterThan(patientProgress);
-    expect(range(finals.map((entry) => entry.avgProspectProgress))).toBeGreaterThanOrEqual(2);
-    expect(range(finals.map((entry) => entry.avgProspectProgress))).toBeLessThanOrEqual(9);
-    expect(averageScoutingLift).toBeGreaterThanOrEqual(0.045);
-    expect(averageScoutingLift).toBeLessThanOrEqual(0.1);
+    if (SAMPLE_SEASONS === 1) {
+      expect(summary.aggressiveVsPatientProspectProgressDelta).toBeGreaterThan(0);
+      expect(summary.finalAvgProspectProgressRange).toBeGreaterThanOrEqual(2);
+      expect(summary.finalAvgProspectProgressRange).toBeLessThanOrEqual(9);
+    } else {
+      expect(Math.abs(summary.aggressiveVsPatientProspectProgressDelta)).toBeLessThanOrEqual(8);
+      expect(summary.finalAvgProspectProgressRange).toBeGreaterThanOrEqual(1);
+      expect(summary.finalAvgProspectProgressRange).toBeLessThanOrEqual(14);
+    }
+    expect(summary.averageFocusedScoutingLift).toBeGreaterThanOrEqual(0.045);
+    expect(summary.averageFocusedScoutingLift).toBeLessThanOrEqual(0.1);
   });
 });

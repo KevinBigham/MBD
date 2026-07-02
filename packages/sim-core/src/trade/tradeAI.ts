@@ -7,6 +7,7 @@
  */
 
 import type { GameRNG } from '../math/prng.js';
+import type { TeamBuildingArchetype } from '../league/frontOffice.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { assignPlayerToTeam } from '../player/teamTenures.js';
 import { isTradeDeadlineModeDay } from '../sim/calendar.js';
@@ -89,6 +90,7 @@ export interface TradeResult {
 export interface TradeGenerationContext {
   currentDay?: number;
   contenderTeamIds?: string[];
+  teamBuildingArchetype?: TeamBuildingArchetype;
 }
 
 // ---------------------------------------------------------------------------
@@ -313,8 +315,9 @@ export function generateAITradeOffers(
 ): TradeProposal[] {
   const deadlineMode = isTradeDeadlineModeDay(context.currentDay ?? 1);
   const contenderTeamIds = new Set(context.contenderTeamIds ?? []);
+  const deadlineBuyer = shouldBuyAtDeadline(isContender, context.teamBuildingArchetype);
 
-  if (!isContender && deadlineMode) {
+  if (shouldShopDeadlineRentals(isContender, context.teamBuildingArchetype) && deadlineMode) {
     const sellerProposals = generateSellerTradeOffers(
       rng,
       teamId,
@@ -381,7 +384,7 @@ export function generateAITradeOffers(
       .filter((p) => {
         if (p.position !== weakPos) return false;
         if (p.contract.noTradeClause) return false;
-        if (deadlineMode && isContender) {
+        if (deadlineMode && deadlineBuyer) {
           if (contenderTeamIds.has(p.teamId)) return false;
           if (!isRentalPlayer(p) && p.contract.years > 2) return false;
         }
@@ -412,7 +415,7 @@ export function generateAITradeOffers(
 
     if (offerPackage.length === 0) continue;
 
-    if (deadlineMode && isContender && packageValue < targetValue) {
+    if (deadlineMode && deadlineBuyer && packageValue < targetValue) {
       const prospectSweetener = teamPlayers
         .filter((player) =>
           !player.contract.noTradeClause
@@ -434,12 +437,12 @@ export function generateAITradeOffers(
     // Check if AI itself thinks this is reasonable
     const { fairness } = comparePackages(offerPackage, [target]);
     const selfThreshold = ACCEPTANCE_THRESHOLDS[gmPersonality];
-    const fairnessCap = proposalFairnessCap(deadlineMode, isContender);
+    const fairnessCap = proposalFairnessCap(deadlineMode, deadlineBuyer);
 
     // AI won't propose trades it wouldn't accept itself (but in reverse)
     if (fairness < selfThreshold || Math.abs(fairness) > fairnessCap) continue;
 
-    const reason = buildTradeReason(weakPos, isContender, gmPersonality, deadlineMode);
+    const reason = buildTradeReason(weakPos, deadlineBuyer, gmPersonality, deadlineMode);
 
     proposals.push({
       id: generateTradeId(rng),
@@ -453,6 +456,20 @@ export function generateAITradeOffers(
   }
 
   return proposals;
+}
+
+function shouldShopDeadlineRentals(isContender: boolean, archetype: TeamBuildingArchetype | undefined): boolean {
+  if (archetype === 'rebuilding' || archetype === 'budget_constrained') {
+    return true;
+  }
+  return !isContender;
+}
+
+function shouldBuyAtDeadline(isContender: boolean, archetype: TeamBuildingArchetype | undefined): boolean {
+  if (archetype === 'rebuilding' || archetype === 'budget_constrained') {
+    return false;
+  }
+  return isContender || archetype === 'contending' || archetype === 'win_now';
 }
 
 function generateSellerTradeOffers(

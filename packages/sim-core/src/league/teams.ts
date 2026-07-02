@@ -28,7 +28,7 @@ export const TEAMS: readonly TeamDef[] = [
   { id: 'chi', name: 'Deep Dish',      city: 'Chicago',       abbreviation: 'CHI', division: 'AL_CENTRAL', parkFactor: 1.03 },
   { id: 'det', name: 'Motor Kings',    city: 'Detroit',       abbreviation: 'DET', division: 'AL_CENTRAL', parkFactor: 0.99 },
   { id: 'cle', name: 'Forge',          city: 'Cleveland',     abbreviation: 'CLE', division: 'AL_CENTRAL', parkFactor: 0.98 },
-  { id: 'col', name: 'Buckeyes',       city: 'Columbus',      abbreviation: 'CLB', division: 'AL_CENTRAL', parkFactor: 1.00 },
+  { id: 'col', name: 'Wayfinders',     city: 'Columbus',      abbreviation: 'CLB', division: 'AL_CENTRAL', parkFactor: 1.00 },
   { id: 'pit', name: 'Smokestack',     city: 'Pittsburgh',    abbreviation: 'PIT', division: 'AL_CENTRAL', parkFactor: 0.98 },
   // Atlantic West
   { id: 'kc',  name: 'BBQ Fountains',  city: 'Kansas City',   abbreviation: 'KCF', division: 'AL_WEST', parkFactor: 1.00 },
@@ -38,13 +38,13 @@ export const TEAMS: readonly TeamDef[] = [
   { id: 'mil', name: 'Suds',           city: 'Milwaukee',     abbreviation: 'MIL', division: 'AL_WEST', parkFactor: 1.00 },
   { id: 'nas', name: 'Honky Tonks',    city: 'Nashville',     abbreviation: 'NAS', division: 'AL_WEST', parkFactor: 1.01 },
   // National East
-  { id: 'mia', name: 'Hurricanes',     city: 'Miami',         abbreviation: 'MIA', division: 'NL_EAST', parkFactor: 0.96 },
+  { id: 'mia', name: 'Palms',          city: 'Miami',         abbreviation: 'MIA', division: 'NL_EAST', parkFactor: 0.96 },
   { id: 'atl', name: 'Peach Kings',    city: 'Atlanta',       abbreviation: 'ATL', division: 'NL_EAST', parkFactor: 1.01 },
-  { id: 'cha', name: 'Hornets',        city: 'Charlotte',     abbreviation: 'CHA', division: 'NL_EAST', parkFactor: 1.00 },
-  { id: 'orl', name: 'Thunder',        city: 'Orlando',       abbreviation: 'ORL', division: 'NL_EAST', parkFactor: 1.00 },
+  { id: 'cha', name: 'Weavers',        city: 'Charlotte',     abbreviation: 'CHA', division: 'NL_EAST', parkFactor: 1.00 },
+  { id: 'orl', name: 'Sunbursts',      city: 'Orlando',       abbreviation: 'ORL', division: 'NL_EAST', parkFactor: 1.00 },
   { id: 'ral', name: 'Pines',          city: 'Raleigh',       abbreviation: 'RAL', division: 'NL_EAST', parkFactor: 0.99 },
   // National Central
-  { id: 'hou', name: 'Space Cowboys',  city: 'Houston',       abbreviation: 'HOU', division: 'NL_CENTRAL', parkFactor: 1.02 },
+  { id: 'hou', name: 'Starliners',     city: 'Houston',       abbreviation: 'HOU', division: 'NL_CENTRAL', parkFactor: 1.02 },
   { id: 'dal', name: 'Lone Stars',     city: 'Dallas',        abbreviation: 'DAL', division: 'NL_CENTRAL', parkFactor: 1.03 },
   { id: 'sat', name: 'Riverwalk',      city: 'San Antonio',   abbreviation: 'SAT', division: 'NL_CENTRAL', parkFactor: 1.00 },
   { id: 'den', name: 'Altitude',       city: 'Denver',        abbreviation: 'DEN', division: 'NL_CENTRAL', parkFactor: 1.12 },
@@ -52,7 +52,7 @@ export const TEAMS: readonly TeamDef[] = [
   // National West
   { id: 'lax', name: 'Sunset Strip',   city: 'Los Angeles',   abbreviation: 'LAX', division: 'NL_WEST', parkFactor: 0.99 },
   { id: 'sfb', name: 'Sourdoughs',     city: 'San Francisco', abbreviation: 'SFB', division: 'NL_WEST', parkFactor: 0.95 },
-  { id: 'phx', name: 'Dust Devils',    city: 'Phoenix',       abbreviation: 'PHX', division: 'NL_WEST', parkFactor: 1.02 },
+  { id: 'phx', name: 'Copperbirds',    city: 'Phoenix',       abbreviation: 'PHX', division: 'NL_WEST', parkFactor: 1.02 },
   { id: 'sea', name: 'Drizzle',        city: 'Seattle',       abbreviation: 'SEA', division: 'NL_WEST', parkFactor: 0.97 },
   { id: 'sdg', name: 'Surf Hounds',    city: 'San Diego',     abbreviation: 'SDG', division: 'NL_WEST', parkFactor: 0.97 },
   { id: 'por', name: 'Sasquatch',      city: 'Portland',      abbreviation: 'POR', division: 'NL_WEST', parkFactor: 1.00 },

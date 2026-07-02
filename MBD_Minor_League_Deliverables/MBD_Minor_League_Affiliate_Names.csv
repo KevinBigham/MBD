@@ -1,0 +1,193 @@
+teamId,parentTeam,division,level,affiliateName,shortName,identityNote
+nym,New York Tycoons,AL_EAST,AAA,Newark Market Makers,Market Makers,Near-ready bats with polished plate plans and bench-ready defensive utility.
+nym,New York Tycoons,AL_EAST,AA,Albany Blue Chips,Blue Chips,Top-prospect stop for high-floor position players and command arms.
+nym,New York Tycoons,AL_EAST,A_PLUS,Hudson Floor Traders,Floor Traders,Tool development with emphasis on swing decisions and baserunning reads.
+nym,New York Tycoons,AL_EAST,A,Long Island Vaults,Vaults,"Raw upside tier focused on strength, defense, and strike-zone habits."
+nym,New York Tycoons,AL_EAST,ROOKIE,Queens Coiners,Coiners,First pro reps for high-variance bats and athletic defenders.
+nym,New York Tycoons,AL_EAST,INTERNATIONAL,Boca Chica Tycoon Academy,Tycoon Academy,Latin academy brand for polished infield actions and projection bats.
+phi,Philadelphia Liberty Bells,AL_EAST,AAA,Wilmington Founders,Founders,"MLB-depth stop for contact, toughness, and defensive dependability."
+phi,Philadelphia Liberty Bells,AL_EAST,AA,Lancaster Quillwrights,Quillwrights,Prospect tier built around pitch recognition and gap-to-gap contact.
+phi,Philadelphia Liberty Bells,AL_EAST,A_PLUS,Trenton Tollkeepers,Tollkeepers,Transition level for arms learning to attack hitter-leaning parks.
+phi,Philadelphia Liberty Bells,AL_EAST,A,Brandywine Bellows,Bellows,Young hitters build strength without losing contact quality.
+phi,Philadelphia Liberty Bells,AL_EAST,ROOKIE,Valley Forge Riveters,Riveters,Rookie identity for energetic athletes and command projects.
+phi,Philadelphia Liberty Bells,AL_EAST,INTERNATIONAL,Santo Domingo Liberty Academy,Liberty Academy,Academy focused on disciplined swings and high-makeup defenders.
+bos,Boston Noreasters,AL_EAST,AAA,Providence Gale Runners,Gale Runners,Near-ready depth trained for cold-weather tempo and durable innings.
+bos,Boston Noreasters,AL_EAST,AA,Portland Harbor Fog,Harbor Fog,Prospect stop for left-side bats and pitchers who can work through traffic.
+bos,Boston Noreasters,AL_EAST,A_PLUS,Lowell Millraces,Millraces,Fundamentals level emphasizing repeatable swings and repeatable deliveries.
+bos,Boston Noreasters,AL_EAST,A,Cape Cod Tideriders,Tideriders,Raw hitters and arms learn to adjust to changing game conditions.
+bos,Boston Noreasters,AL_EAST,ROOKIE,Salem Sea Glints,Sea Glints,"Rookie reps for athletic, weather-tough players."
+bos,Boston Noreasters,AL_EAST,INTERNATIONAL,San Pedro Noreaster Academy,Noreaster Academy,"Academy focused on strength, durability, and strike throwing."
+bal,Baltimore Crab Cakes,AL_EAST,AAA,Annapolis Hardshells,Hardshells,"Defense-first depth, catchers, and relievers ready for Baltimore callups."
+bal,Baltimore Crab Cakes,AL_EAST,AA,Patapsco Pinchers,Pinchers,"Top arm tier for command, movement, and tight relief roles."
+bal,Baltimore Crab Cakes,AL_EAST,A_PLUS,Harborplace Mallets,Mallets,Young pitchers learn attack plans and contact-management habits.
+bal,Baltimore Crab Cakes,AL_EAST,A,Chesapeake Cakewalkers,Cakewalkers,Raw bats develop plate discipline and defensive reliability.
+bal,Baltimore Crab Cakes,AL_EAST,ROOKIE,Inner Harbor Claws,Claws,Rookie group for gritty athletes and low-current projection arms.
+bal,Baltimore Crab Cakes,AL_EAST,INTERNATIONAL,Cartagena Crab Academy,Crab Academy,"Academy brand for catchers, contact bats, and command projects."
+wsh,Washington Monuments,AL_EAST,AAA,Alexandria Obelisks,Obelisks,Polished depth with stable defense and MLB bench traits.
+wsh,Washington Monuments,AL_EAST,AA,Arlington Surveyors,Surveyors,Evaluation-heavy stop for command arms and refined defenders.
+wsh,Washington Monuments,AL_EAST,A_PLUS,Potomac Pylons,Pylons,"Development level for structure, footwork, and strike-zone planning."
+wsh,Washington Monuments,AL_EAST,A,Georgetown Marblemen,Marblemen,Young players build durability and assignment discipline.
+wsh,Washington Monuments,AL_EAST,ROOKIE,Capitol Pedestals,Pedestals,Rookie tier for high-makeup players with one standout tool.
+wsh,Washington Monuments,AL_EAST,INTERNATIONAL,La Romana Monument Academy,Monument Academy,Academy focused on fundamentals and polished defensive actions.
+chi,Chicago Deep Dish,AL_CENTRAL,AAA,Gary Steel Slices,Steel Slices,Power bats and durable arms near major-league depth status.
+chi,Chicago Deep Dish,AL_CENTRAL,AA,Aurora Ovenbirds,Ovenbirds,Top-prospect stop for physical hitters and starters building stamina.
+chi,Chicago Deep Dish,AL_CENTRAL,A_PLUS,Rockford Crustmakers,Crustmakers,Strength and launch-angle development without losing game contact.
+chi,Chicago Deep Dish,AL_CENTRAL,A,Cicero Saucehands,Saucehands,Raw hitters learn approach while pitchers build ground-ball plans.
+chi,Chicago Deep Dish,AL_CENTRAL,ROOKIE,Naperville Doughboys,Doughboys,Rookie brand for big frames and early strength gains.
+chi,Chicago Deep Dish,AL_CENTRAL,INTERNATIONAL,Santiago Deep Dish Academy,Deep Dish Academy,Academy for power projection and sturdy catcher/first-base bodies.
+det,Detroit Motor Kings,AL_CENTRAL,AAA,Lansing Gearheads,Gearheads,"Near-ready arms, ground-ball relievers, and reliable utility defenders."
+det,Detroit Motor Kings,AL_CENTRAL,AA,Grand Rapids Axles,Axles,Pitching mechanics hub with infield defense behind it.
+det,Detroit Motor Kings,AL_CENTRAL,A_PLUS,Flint Torque Works,Torque Works,Velocity and movement lab for young power arms.
+det,Detroit Motor Kings,AL_CENTRAL,A,Kalamazoo Carburetors,Carburetors,Raw players learn repeatable mechanics and simple offensive plans.
+det,Detroit Motor Kings,AL_CENTRAL,ROOKIE,Dearborn Dynamos,Dynamos,Rookie tier for energetic athletes and delivery projects.
+det,Detroit Motor Kings,AL_CENTRAL,INTERNATIONAL,Valencia Motor Academy,Motor Academy,"Academy focused on coordination, strength, and mechanical consistency."
+cle,Cleveland Forge,AL_CENTRAL,AAA,Akron Anvils,Anvils,Command arms and defense-first depth close to Cleveland.
+cle,Cleveland Forge,AL_CENTRAL,AA,Erie Hammerfall,Hammerfall,Top pitching prospects refine movement and secondary weapons.
+cle,Cleveland Forge,AL_CENTRAL,A_PLUS,Youngstown Blast Furnaces,Blast Furnaces,Power-arm development with control and lower-half stability.
+cle,Cleveland Forge,AL_CENTRAL,A,Canton Steelhands,Steelhands,Young defenders and strike throwers build reliable habits.
+cle,Cleveland Forge,AL_CENTRAL,ROOKIE,Lake Erie Tongs,Tongs,"Rookie group built around strength, balance, and mound composure."
+cle,Cleveland Forge,AL_CENTRAL,INTERNATIONAL,Maracay Forge Academy,Forge Academy,"Academy for arm action, defense, and contact-management traits."
+col,Columbus Wayfinders,AL_CENTRAL,AAA,Dayton Night Oaks,Night Oaks,Balanced depth with strong makeup and adaptable roles.
+col,Columbus Wayfinders,AL_CENTRAL,AA,Toledo Scarlet Acorns,Scarlet Acorns,Top-prospect level for steady infielders and command starters.
+col,Columbus Wayfinders,AL_CENTRAL,A_PLUS,Athens Campus Foxes,Campus Foxes,Tool refinement and decision-making for young college-style prospects.
+col,Columbus Wayfinders,AL_CENTRAL,A,Springfield Seedlings,Seedlings,Raw players develop fundamentals and positional flexibility.
+col,Columbus Wayfinders,AL_CENTRAL,ROOKIE,Newark Nutcrackers,Nutcrackers,Rookie tier for patient development and high-effort athletes.
+col,Columbus Wayfinders,AL_CENTRAL,INTERNATIONAL,Puerto Plata Wayfinder Academy,Wayfinder Academy,Academy focused on baseball IQ and balanced tool growth.
+pit,Pittsburgh Smokestack,AL_CENTRAL,AAA,Altoona Blacktops,Blacktops,"Pitching depth, defense, and grindy bench bats."
+pit,Pittsburgh Smokestack,AL_CENTRAL,AA,Erie Chimney Swifts,Chimney Swifts,Top arms and contact managers in a pitcher-leaning identity.
+pit,Pittsburgh Smokestack,AL_CENTRAL,A_PLUS,Wheeling Coaljacks,Coaljacks,"Strength, stamina, and ground-ball development."
+pit,Pittsburgh Smokestack,AL_CENTRAL,A,Johnstown Soot Owls,Soot Owls,Raw defenders and pitchers learn to win low-scoring games.
+pit,Pittsburgh Smokestack,AL_CENTRAL,ROOKIE,Monongahela Flues,Flues,Rookie stop for long-view arms and tough contact hitters.
+pit,Pittsburgh Smokestack,AL_CENTRAL,INTERNATIONAL,Barquisimeto Smokestack Academy,Smokestack Academy,"Academy brand for pitchers, defenders, and makeup-first players."
+kc,Kansas City BBQ Fountains,AL_WEST,AAA,Wichita Pitmasters,Pitmasters,Useful MLB depth without overloading the already-strong parent core.
+kc,Kansas City BBQ Fountains,AL_WEST,AA,Topeka Sauce Kings,Sauce Kings,"Balanced prospects with speed, defense, and role clarity."
+kc,Kansas City BBQ Fountains,AL_WEST,A_PLUS,Omaha Smoke Rings,Smoke Rings,Athletic transition level with contact and base-running focus.
+kc,Kansas City BBQ Fountains,AL_WEST,A,Lawrence Burnt Ends,Burnt Ends,"Raw bats and defenders learn simple, repeatable plans."
+kc,Kansas City BBQ Fountains,AL_WEST,ROOKIE,Independence Rib Tips,Rib Tips,"Rookie group for speed, energy, and basic strike-zone growth."
+kc,Kansas City BBQ Fountains,AL_WEST,INTERNATIONAL,Managua BBQ Academy,BBQ Academy,Academy focused on athleticism without adding another 80-grade star.
+msp,Minneapolis Frost Giants,AL_WEST,AAA,St. Paul Icebreakers,Icebreakers,"Cold-weather strength, depth bats, and durable bullpen help."
+msp,Minneapolis Frost Giants,AL_WEST,AA,Duluth Lake Giants,Lake Giants,Top prospects with outfield range and power-arm traits.
+msp,Minneapolis Frost Giants,AL_WEST,A_PLUS,Rochester Snowdrifts,Snowdrifts,Athletic development tier emphasizing strength and speed retention.
+msp,Minneapolis Frost Giants,AL_WEST,A,Mankato Frostlings,Frostlings,Raw players build durability and winter-weight-room gains.
+msp,Minneapolis Frost Giants,AL_WEST,ROOKIE,Northwoods Icecaps,Icecaps,Rookie identity for high-motor athletes and young arms.
+msp,Minneapolis Frost Giants,AL_WEST,INTERNATIONAL,Punta Cana Frost Academy,Frost Academy,Academy for athletic outfielders and power projection.
+stl,St. Louis Archers,AL_WEST,AAA,Springfield Bowstrings,Bowstrings,Ready-now depth with leadership and repeatable fundamentals.
+stl,St. Louis Archers,AL_WEST,AA,Columbia Gateway Guards,Gateway Guards,"Top-prospect tier for command, defensive reliability, and baseball IQ."
+stl,St. Louis Archers,AL_WEST,A_PLUS,Cape Girardeau Targets,Targets,Strike throwing and contact quality are measured tightly here.
+stl,St. Louis Archers,AL_WEST,A,Quincy Fletchers,Fletchers,Young players learn fundamentals and role accountability.
+stl,St. Louis Archers,AL_WEST,ROOKIE,Riverfront Bullseyes,Bullseyes,"Rookie group for simple cues, competition, and makeup testing."
+stl,St. Louis Archers,AL_WEST,INTERNATIONAL,San Juan Archer Academy,Archer Academy,Academy brand for polished actions and strike-zone judgment.
+ind,Indianapolis Speedsters,AL_WEST,AAA,Fort Wayne Flywheels,Flywheels,"Speed, defense, and up-tempo utility depth near the majors."
+ind,Indianapolis Speedsters,AL_WEST,AA,Lafayette Lap Kings,Lap Kings,"Top prospects learn pace, pressure, and aggressive baserunning."
+ind,Indianapolis Speedsters,AL_WEST,A_PLUS,Terre Haute Turbochargers,Turbochargers,Athletic level for first-step quickness and fastball life.
+ind,Indianapolis Speedsters,AL_WEST,A,Bloomington Checkered Flags,Checkered Flags,Young players build game speed and cleaner decisions.
+ind,Indianapolis Speedsters,AL_WEST,ROOKIE,Speedway Sprinters,Sprinters,"Rookie stop for raw speed, pressure reps, and confidence."
+ind,Indianapolis Speedsters,AL_WEST,INTERNATIONAL,Monterrey Speed Academy,Speed Academy,"Academy focused on speed, center-field traits, and fast hands."
+mil,Milwaukee Suds,AL_WEST,AAA,Madison Mash Tuns,Mash Tuns,Power-arm depth and physical bats ready for injury coverage.
+mil,Milwaukee Suds,AL_WEST,AA,Green Bay Barrelmen,Barrelmen,Top arms and sturdy corner bats develop pro consistency.
+mil,Milwaukee Suds,AL_WEST,A_PLUS,Kenosha Foam Caps,Foam Caps,"Transition level for velocity, strength, and usable power."
+mil,Milwaukee Suds,AL_WEST,A,Appleton Kettles,Kettles,Raw players add strength and repeatable swing/delivery moves.
+mil,Milwaukee Suds,AL_WEST,ROOKIE,Waukesha Wort,Wort,Rookie group for physical projection and competitive edge.
+mil,Milwaukee Suds,AL_WEST,INTERNATIONAL,Santo Domingo Suds Academy,Suds Academy,Academy for power arms and durable catcher/corner profiles.
+nas,Nashville Honky Tonks,AL_WEST,AAA,Memphis Backbeats,Backbeats,"Near-ready bats with rhythm, contact, and flexible outfield roles."
+nas,Nashville Honky Tonks,AL_WEST,AA,Knoxville Neon Strings,Neon Strings,Top prospects sharpen barrel control and athletic middle defense.
+nas,Nashville Honky Tonks,AL_WEST,A_PLUS,Chattanooga Fretboards,Fretboards,Swing-timing lab for young contact hitters and live bullpen arms.
+nas,Nashville Honky Tonks,AL_WEST,A,Murfreesboro Two-Steps,Two-Steps,"Raw players learn tempo, footwork, and consistent approach."
+nas,Nashville Honky Tonks,AL_WEST,ROOKIE,Music Row Pickers,Pickers,Rookie brand for lively athletes and tool-first players.
+nas,Nashville Honky Tonks,AL_WEST,INTERNATIONAL,San Pedro Tonk Academy,Tonk Academy,Academy focused on bat-to-ball skills and quick reactions.
+mia,Miami Palms,NL_EAST,AAA,Fort Lauderdale Tidewalls,Tidewalls,"Pitching depth, speed, and defensive replacements near the majors."
+mia,Miami Palms,NL_EAST,AA,Key West Crosswinds,Crosswinds,Top arms and athletic defenders who fit a low-run environment.
+mia,Miami Palms,NL_EAST,A_PLUS,Palm Beach Pressure,Pressure,"Movement, command, and speed training for young talent."
+mia,Miami Palms,NL_EAST,A,Naples Rainbands,Rainbands,Raw arms and defenders learn run-prevention habits.
+mia,Miami Palms,NL_EAST,ROOKIE,Little Havana Squalls,Squalls,"Rookie stop for athleticism, range, and arm strength."
+mia,Miami Palms,NL_EAST,INTERNATIONAL,Santo Domingo Storm Academy,Storm Academy,"Academy for pitchers, speed, and defensive-first prospects."
+atl,Atlanta Peach Kings,NL_EAST,AAA,Macon Orchard Kings,Orchard Kings,Power/speed depth and high-upside bats close to the majors.
+atl,Atlanta Peach Kings,NL_EAST,AA,Augusta Stonefruit,Stonefruit,Top-prospect tier for twitchy hitters and athletic outfielders.
+atl,Atlanta Peach Kings,NL_EAST,A_PLUS,Savannah Nectar,Nectar,Tool refinement for young bats with loud exit velocity.
+atl,Atlanta Peach Kings,NL_EAST,A,Athens Peach Pitters,Peach Pitters,Raw power and speed players learn pro strike-zone habits.
+atl,Atlanta Peach Kings,NL_EAST,ROOKIE,Decatur Crownlets,Crownlets,Rookie identity for projection athletes and high-energy defenders.
+atl,Atlanta Peach Kings,NL_EAST,INTERNATIONAL,Cartagena Peach Academy,Peach Academy,"Academy for bat speed, range, and long-view upside."
+cha,Charlotte Weavers,NL_EAST,AAA,Greensboro Nestmakers,Nestmakers,"Catching depth, staff handlers, and steady bench bats."
+cha,Charlotte Weavers,NL_EAST,AA,Columbia Honeycombs,Honeycombs,Top catchers and versatile defenders sharpen game-calling and contact.
+cha,Charlotte Weavers,NL_EAST,A_PLUS,Greenville Hivehands,Hivehands,"Defensive skill level with footwork, receiving, and zone control."
+cha,Charlotte Weavers,NL_EAST,A,Concord Waxcombs,Waxcombs,Young players develop defensive versatility and low-chase approaches.
+cha,Charlotte Weavers,NL_EAST,ROOKIE,Rock Hill Buzzlets,Buzzlets,"Rookie group for catchers, speed, and compact swings."
+cha,Charlotte Weavers,NL_EAST,INTERNATIONAL,San Juan Loom Academy,Loom Academy,"Academy focused on catching, contact, and athletic defense."
+orl,Orlando Sunbursts,NL_EAST,AAA,Tampa Voltage,Voltage,Ready-now power arms and impact bench power.
+orl,Orlando Sunbursts,NL_EAST,AA,Jacksonville Bolts,Bolts,Top boom/bust prospects with thunderous tools and arm strength.
+orl,Orlando Sunbursts,NL_EAST,A_PLUS,Daytona Cloudbursts,Cloudbursts,"Transition level for velocity, raw power, and pitch selection."
+orl,Orlando Sunbursts,NL_EAST,A,Lakeland Rumbles,Rumbles,Raw players learn to turn loud tools into usable production.
+orl,Orlando Sunbursts,NL_EAST,ROOKIE,Kissimmee Sparks,Sparks,"Rookie group for young power, speed, and delivery cleanup."
+orl,Orlando Sunbursts,NL_EAST,INTERNATIONAL,Santo Domingo Sunburst Academy,Sunburst Academy,Academy for live arms and high-variance bats.
+ral,Raleigh Pines,NL_EAST,AAA,Durham Longleafs,Longleafs,Near-ready pitching depth and rangy outfield defense.
+ral,Raleigh Pines,NL_EAST,AA,Wilmington Pinecones,Pinecones,Top arms and disciplined hitters under measured development pacing.
+ral,Raleigh Pines,NL_EAST,A_PLUS,Fayetteville Resin Riders,Resin Riders,"Movement, command, and defensive-route training."
+ral,Raleigh Pines,NL_EAST,A,Chapel Hill Needles,Needles,Raw players learn plate discipline and clean defensive reads.
+ral,Raleigh Pines,NL_EAST,ROOKIE,Cary Sprouts,Sprouts,Rookie tier for long-view athletes and patient growth.
+ral,Raleigh Pines,NL_EAST,INTERNATIONAL,Bayamon Pines Academy,Pines Academy,"Academy focused on range, command, and baseball IQ."
+hou,Houston Starliners,NL_CENTRAL,AAA,Corpus Navigators,Navigators,Ready-now power/OBP depth and pitch-design graduates.
+hou,Houston Starliners,NL_CENTRAL,AA,Galveston Orbiteers,Orbiteers,Top prospects with analytics-friendly swings and modern pitch shapes.
+hou,Houston Starliners,NL_CENTRAL,A_PLUS,The Woodlands Starbreakers,Starbreakers,"Tool level for launch decisions, pitch data, and defensive positioning."
+hou,Houston Starliners,NL_CENTRAL,A,Beaumont Starhands,Starhands,Raw players learn data-backed routines and contact quality goals.
+hou,Houston Starliners,NL_CENTRAL,ROOKIE,Pasadena Launchpads,Launchpads,"Rookie group for bat speed, arm strength, and first-step traits."
+hou,Houston Starliners,NL_CENTRAL,INTERNATIONAL,Santo Domingo Space Academy,Space Academy,"Academy for shortstops, power bats, and pitch-design arms."
+dal,Dallas Lone Stars,NL_CENTRAL,AAA,Fort Worth Spur Knights,Spur Knights,"Power depth, corner bats, and big-arm relievers near the majors."
+dal,Dallas Lone Stars,NL_CENTRAL,AA,Waco Lone Riders,Lone Riders,Top-prospect level for loud tools and patient development.
+dal,Dallas Lone Stars,NL_CENTRAL,A_PLUS,Plano Starbridges,Starbridges,"Transition level for power, strike-zone growth, and arm strength."
+dal,Dallas Lone Stars,NL_CENTRAL,A,Tyler Cattle Stars,Cattle Stars,Raw strength players learn cleaner swing decisions.
+dal,Dallas Lone Stars,NL_CENTRAL,ROOKIE,Frisco Night Herd,Night Herd,"Rookie group for big frames, fastballs, and athletic power."
+dal,Dallas Lone Stars,NL_CENTRAL,INTERNATIONAL,Monterrey Lone Star Academy,Lone Star Academy,Academy for power projection and quick-twitch traits.
+sat,San Antonio Riverwalk,NL_CENTRAL,AAA,El Paso Riverstones,Riverstones,"Steady depth, contact bats, and pitchers who keep the ball down."
+sat,San Antonio Riverwalk,NL_CENTRAL,AA,Laredo Esplanades,Esplanades,"Top prospects shaped by defense, command, and contact quality."
+sat,San Antonio Riverwalk,NL_CENTRAL,A_PLUS,New Braunfels Floaters,Floaters,"Transition level for footwork, bat control, and calm mound tempo."
+sat,San Antonio Riverwalk,NL_CENTRAL,A,Seguin Spillways,Spillways,Raw players learn simple offensive plans and reliable defense.
+sat,San Antonio Riverwalk,NL_CENTRAL,ROOKIE,Alamo Walkers,Walkers,"Rookie tier for contact, balance, and game awareness."
+sat,San Antonio Riverwalk,NL_CENTRAL,INTERNATIONAL,Monterrey Riverwalk Academy,Riverwalk Academy,Academy for polished defenders and strike throwers.
+den,Denver Altitude,NL_CENTRAL,AAA,Colorado Springs Moonshots,Moonshots,"Altitude-ready depth, power bats, and pitchers with usable movement."
+den,Denver Altitude,NL_CENTRAL,AA,Boulder Thin Airs,Thin Airs,Top hitters learn altitude expectations while arms build ground-ball plans.
+den,Denver Altitude,NL_CENTRAL,A_PLUS,Pueblo Highliners,Highliners,"Transition level for contact quality, power, and movement-heavy pitching."
+den,Denver Altitude,NL_CENTRAL,A,Fort Collins Lift,Lift,Raw players develop stamina and batted-ball discipline.
+den,Denver Altitude,NL_CENTRAL,ROOKIE,Front Range Launchers,Launchers,Rookie group for loud bats and pitchers who need movement development.
+den,Denver Altitude,NL_CENTRAL,INTERNATIONAL,La Romana Altitude Academy,Altitude Academy,Academy for power/contact upside and stamina traits.
+aus,Austin Bat Colony,NL_CENTRAL,AAA,Round Rock Nightwings,Nightwings,"Near-ready athletes, OBP bats, and flexible defenders."
+aus,Austin Bat Colony,NL_CENTRAL,AA,Waco Echolocators,Echolocators,"Top prospects with swing decisions, speed, and defensive reads."
+aus,Austin Bat Colony,NL_CENTRAL,A_PLUS,San Marcos Cave Flyers,Cave Flyers,"Tool level for bat speed, route running, and fast hands."
+aus,Austin Bat Colony,NL_CENTRAL,A,Hill Country Roost,Roost,Raw players develop patience and contact under game pressure.
+aus,Austin Bat Colony,NL_CENTRAL,ROOKIE,Congress Bridge Pups,Pups,"Rookie group for athleticism, speed, and long-view power."
+aus,Austin Bat Colony,NL_CENTRAL,INTERNATIONAL,Merida Bat Academy,Bat Academy,Academy for quick-twitch athletes and OBP-focused hitters.
+lax,Los Angeles Sunset Strip,NL_WEST,AAA,Long Beach Neon Palms,Neon Palms,"Ready-now bats, media-polished depth, and late-inning arms."
+lax,Los Angeles Sunset Strip,NL_WEST,AA,Pasadena Headliners,Headliners,Top prospects with star tools and stage-ready confidence.
+lax,Los Angeles Sunset Strip,NL_WEST,A_PLUS,Inland Empire Limelights,Limelights,"Transition level for contact, leverage arms, and pressure reps."
+lax,Los Angeles Sunset Strip,NL_WEST,A,Ventura Backlots,Backlots,Raw players learn repeatable routines away from the spotlight.
+lax,Los Angeles Sunset Strip,NL_WEST,ROOKIE,Hollywood Stagehands,Stagehands,Rookie tier for confidence building and athletic foundations.
+lax,Los Angeles Sunset Strip,NL_WEST,INTERNATIONAL,Tijuana Sunset Academy,Sunset Academy,"Academy for bat speed, defense, and bullpen arm strength."
+sfb,San Francisco Sourdoughs,NL_WEST,AAA,Sacramento Starters,Starters,"Pitching depth, defense, and gap bats close to the majors."
+sfb,San Francisco Sourdoughs,NL_WEST,AA,Oakland Crusts,Crusts,Top arms and defenders shaped for a pitcher-friendly park.
+sfb,San Francisco Sourdoughs,NL_WEST,A_PLUS,San Jose Proofers,Proofers,"Command, contact, and defense transition level."
+sfb,San Francisco Sourdoughs,NL_WEST,A,Santa Rosa Levains,Levains,"Raw players learn patience, footwork, and contact management."
+sfb,San Francisco Sourdoughs,NL_WEST,ROOKIE,Mission Yeasts,Yeasts,Rookie group for long-view arms and compact bats.
+sfb,San Francisco Sourdoughs,NL_WEST,INTERNATIONAL,Tijuana Sourdough Academy,Sourdough Academy,"Academy for pitchers, defenders, and gap-to-gap hitters."
+phx,Phoenix Copperbirds,NL_WEST,AAA,Tucson Sandglass,Sandglass,"Desert-ready power, stamina, and callup bats."
+phx,Phoenix Copperbirds,NL_WEST,AA,Mesa Mirages,Mirages,Top prospects with loud power and high-variance arms.
+phx,Phoenix Copperbirds,NL_WEST,A_PLUS,Yuma Dustspinners,Dustspinners,"Transition level for strength, stamina, and swing decisions."
+phx,Phoenix Copperbirds,NL_WEST,A,Flagstaff Redrocks,Redrocks,Raw players develop durability and contact quality.
+phx,Phoenix Copperbirds,NL_WEST,ROOKIE,Tempe Heat Haze,Heat Haze,Rookie group for athletic power and delivery repeatability.
+phx,Phoenix Copperbirds,NL_WEST,INTERNATIONAL,Hermosillo Dust Academy,Dust Academy,"Academy for stamina, power, and arm strength."
+sea,Seattle Drizzle,NL_WEST,AAA,Tacoma Umbrellas,Umbrellas,"Pitching depth, defense, and patient bench bats."
+sea,Seattle Drizzle,NL_WEST,AA,Spokane Mistmakers,Mistmakers,Top arms and defenders tailored for low-run games.
+sea,Seattle Drizzle,NL_WEST,A_PLUS,Everett Cloudbreakers,Cloudbreakers,"Command, route running, and swing-decision level."
+sea,Seattle Drizzle,NL_WEST,A,Olympia Rainchecks,Rainchecks,Raw players develop patience and defense-first value.
+sea,Seattle Drizzle,NL_WEST,ROOKIE,Puget Sound Puddles,Puddles,Rookie identity for young arms and contact-first athletes.
+sea,Seattle Drizzle,NL_WEST,INTERNATIONAL,Vancouver Drizzle Academy,Drizzle Academy,"Academy for patience, defense, and strike throwing."
+sdg,San Diego Surf Hounds,NL_WEST,AAA,Tijuana Breakers,Breakers,Speed/defense depth and contact bats near the majors.
+sdg,San Diego Surf Hounds,NL_WEST,AA,Oceanside Boardwalkers,Boardwalkers,Top athletes with defensive range and gap contact.
+sdg,San Diego Surf Hounds,NL_WEST,A_PLUS,Escondido Tidecallers,Tidecallers,"Transition level for speed, contact, and movement arms."
+sdg,San Diego Surf Hounds,NL_WEST,A,Chula Vista Riptides,Riptides,Raw players learn baserunning pressure and extra-base prevention.
+sdg,San Diego Surf Hounds,NL_WEST,ROOKIE,Mission Bay Pawprints,Pawprints,Rookie group for athletic defenders and young arms.
+sdg,San Diego Surf Hounds,NL_WEST,INTERNATIONAL,Ensenada Surf Academy,Surf Academy,"Academy for contact, speed, and outfield defense."
+por,Portland Sasquatch,NL_WEST,AAA,Eugene Trail Shadows,Trail Shadows,"Patient depth, outfield defense, and unusual late-blooming tools."
+por,Portland Sasquatch,NL_WEST,AA,Bend Timber Giants,Timber Giants,Top prospects with long-view upside and defensive value.
+por,Portland Sasquatch,NL_WEST,A_PLUS,Salem Mossbacks,Mossbacks,"Tool level for strength, routes, and patient offensive growth."
+por,Portland Sasquatch,NL_WEST,A,Vancouver Footprints,Footprints,Raw players learn pro routines and quiet confidence.
+por,Portland Sasquatch,NL_WEST,ROOKIE,Forest Grove Saplings,Saplings,"Rookie group for projection, range, and unconventional skill sets."
+por,Portland Sasquatch,NL_WEST,INTERNATIONAL,San Jose Sasquatch Academy,Sasquatch Academy,Academy for long-view tools and athletic defensive profiles.

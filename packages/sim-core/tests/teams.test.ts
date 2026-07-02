@@ -25,6 +25,27 @@ describe('TEAMS', () => {
     const abbrs = TEAMS.map(t => t.abbreviation);
     expect(new Set(abbrs).size).toBe(abbrs.length);
   });
+
+  it('uses approved original names for every reviewed identity blocker', () => {
+    expect(getTeamById('hou')).toMatchObject({ city: 'Houston', name: 'Starliners' });
+    expect(getTeamById('phx')).toMatchObject({ city: 'Phoenix', name: 'Copperbirds' });
+    expect(getTeamById('cha')).toMatchObject({ city: 'Charlotte', name: 'Weavers' });
+    expect(getTeamById('mia')).toMatchObject({ city: 'Miami', name: 'Palms' });
+    expect(getTeamById('col')).toMatchObject({ city: 'Columbus', name: 'Wayfinders' });
+    expect(getTeamById('orl')).toMatchObject({ city: 'Orlando', name: 'Sunbursts' });
+
+    const oldReviewedNames = new Set([
+      'Space Cowboys',
+      'Dust Devils',
+      'Hornets',
+      'Hurricanes',
+      'Buckeyes',
+      'Thunder',
+    ]);
+    for (const team of TEAMS) {
+      expect(oldReviewedNames.has(team.name)).toBe(false);
+    }
+  });
 });
 
 describe('getTeamsByDivision', () => {

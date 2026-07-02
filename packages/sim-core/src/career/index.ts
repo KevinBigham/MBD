@@ -12,7 +12,7 @@ const BIG_MARKET_TEAM_IDS = new Set([
   'nym',  // New York Tycoons
   'chi',  // Chicago Deep Dish
   'lax',  // Los Angeles Sunset Strip
-  'hou',  // Houston Space Cowboys
+  'hou',  // Houston Starliners
   'dal',  // Dallas Lone Stars
   'phi',  // Philadelphia Liberty Bells
   'bos',  // Boston Noreasters

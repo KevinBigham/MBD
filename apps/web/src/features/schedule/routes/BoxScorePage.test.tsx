@@ -30,9 +30,9 @@ const audioEngineMock = {
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-function renderWithRoute(gameIndex: number) {
+function renderWithRoute(gameRef: number | string) {
   return (
-    <MemoryRouter initialEntries={[`/games/${gameIndex}`]}>
+    <MemoryRouter initialEntries={[`/games/${gameRef}`]}>
       <Routes>
         <Route path="/games/:gameIndex" element={<BoxScorePage />} />
       </Routes>
@@ -187,5 +187,41 @@ describe('BoxScorePage', () => {
     });
 
     expect(audioEngineMock.playEffect).toHaveBeenCalledWith('walk_off');
+  });
+
+  it('loads archived box scores by stable id without enhanced play-by-play', async () => {
+    const worker = createWorkerMock({
+      archivedGameId: 'archived-game-s6-d120-nym-bos-rivalry',
+      recap: 'The Tycoons beat Boston in a rivalry game worth saving.',
+      highlights: [
+        { inning: 9, halfInning: 'bottom', text: 'The Tycoons finished a rivalry classic.' },
+      ],
+      plays: [
+        { inning: 9, halfInning: 'bottom', text: 'The Tycoons finished a rivalry classic.', isHighlight: true },
+      ],
+      lineScore: [
+        { inning: 9, awayRuns: 0, homeRuns: 1 },
+      ],
+      boxScore: {
+        homeTeamId: 'nym',
+        awayTeamId: 'bos',
+        homeScore: 5,
+        awayScore: 4,
+        innings: 9,
+        homeHits: 8,
+        awayHits: 7,
+      },
+    });
+    mockedUseWorker.mockReturnValue(worker);
+
+    await act(async () => {
+      root.render(renderWithRoute('archived-game-s6-d120-nym-bos-rivalry'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.getGamePlayByPlay).toHaveBeenCalledWith('archived-game-s6-d120-nym-bos-rivalry');
+    expect(worker.getEnhancedGamePlayByPlay).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('The Tycoons beat Boston in a rivalry game worth saving.');
   });
 });

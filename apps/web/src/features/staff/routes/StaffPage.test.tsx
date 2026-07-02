@@ -115,6 +115,11 @@ describe('StaffPage', () => {
         playerAffinities: [],
         coaches: [],
       }),
+      getMentorships: vi.fn().mockResolvedValue({
+        mentorCount: 0,
+        protegeeCount: 0,
+        pairings: [],
+      }),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -157,5 +162,127 @@ describe('StaffPage', () => {
 
     expect(fireCoach).toHaveBeenCalledWith('coach-1');
     expect(hireCoach).toHaveBeenCalledWith('coach-2');
+  });
+
+  it('renders clubhouse mentorship pairings from the staff route worker query', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getCoachingStaff: vi.fn().mockResolvedValue([]),
+      getCoachMarket: vi.fn().mockResolvedValue([]),
+      getCoachingImpact: vi.fn().mockResolvedValue([]),
+      getStaffBudget: vi.fn().mockResolvedValue({
+        payroll: 9.1,
+        budget: 12.4,
+        remaining: 3.3,
+      }),
+      getCoachingChemistry: vi.fn().mockResolvedValue({
+        harmony: { overallScore: 76, synergies: [], weakestLink: null, strongestBond: null },
+        issues: [],
+        playerAffinities: [],
+        coaches: [],
+      }),
+      getMentorships: vi.fn().mockResolvedValue({
+        mentorCount: 2,
+        protegeeCount: 3,
+        pairings: [
+          {
+            mentorId: 'mentor-1',
+            protegeeId: 'protegee-1',
+            mentorName: 'Elias Anchor',
+            protegeeName: 'Milo Spark',
+            quality: 88,
+            developmentBonus: 0.13,
+            compatibilityFactors: ['Shared traits: Leader.', 'Same team context.'],
+          },
+        ],
+      }),
+      hireCoach: vi.fn(),
+      fireCoach: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <StaffPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Clubhouse Mentorship');
+    expect(container.textContent).toContain('Elias Anchor');
+    expect(container.textContent).toContain('Milo Spark');
+    expect(container.textContent).toContain('88 quality');
+    expect(container.textContent).toContain('13% lift');
+    expect(container.textContent).toContain('Same team context.');
+  });
+
+  it('renders clubhouse leaders and conflict risks from mentorship intelligence', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getCoachingStaff: vi.fn().mockResolvedValue([]),
+      getCoachMarket: vi.fn().mockResolvedValue([]),
+      getCoachingImpact: vi.fn().mockResolvedValue([]),
+      getStaffBudget: vi.fn().mockResolvedValue({
+        payroll: 9.1,
+        budget: 12.4,
+        remaining: 3.3,
+      }),
+      getCoachingChemistry: vi.fn().mockResolvedValue({
+        harmony: { overallScore: 61, synergies: [], weakestLink: null, strongestBond: null },
+        issues: [],
+        playerAffinities: [],
+        coaches: [],
+      }),
+      getMentorships: vi.fn().mockResolvedValue({
+        mentorCount: 2,
+        protegeeCount: 3,
+        pairings: [],
+        leaders: [
+          {
+            playerId: 'leader-1',
+            playerName: 'Elias Anchor',
+            position: 'SS',
+            role: 'Clubhouse captain',
+            leadership: 96,
+            summary: 'Elias Anchor sets the room with 96 leadership.',
+            traits: ['Leader', 'Mentor'],
+          },
+        ],
+        conflictRisks: [
+          {
+            playerId: 'risk-1',
+            playerName: 'Rico Flash',
+            position: 'CF',
+            severity: 'high',
+            riskScore: 84,
+            reason: 'Rico Flash brings 97 competitiveness with low leadership support.',
+            mitigation: 'Pair with a veteran leader before role changes.',
+          },
+        ],
+      }),
+      hireCoach: vi.fn(),
+      fireCoach: vi.fn(),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <StaffPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Clubhouse Leaders');
+    expect(container.textContent).toContain('Elias Anchor');
+    expect(container.textContent).toContain('Clubhouse captain');
+    expect(container.textContent).toContain('96 leadership');
+    expect(container.textContent).toContain('Conflict Watch');
+    expect(container.textContent).toContain('Rico Flash');
+    expect(container.textContent).toContain('high');
+    expect(container.textContent).toContain('Pair with a veteran leader before role changes.');
   });
 });

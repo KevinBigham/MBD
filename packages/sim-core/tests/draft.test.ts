@@ -148,6 +148,98 @@ describe('aiSelectPick', () => {
     const ids = draftClass.prospects.map((p) => p.player.id);
     expect(ids).toContain(pick.player.id);
   });
+
+  it('breaks equal-score choices deterministically regardless of available order', () => {
+    const prospects = generateDraftClass(new GameRNG(143), 6).prospects.slice(0, 4)
+      .map((prospect, index) => ({
+        ...prospect,
+        scoutingGrade: 60,
+        signability: 0.7,
+        player: {
+          ...prospect.player,
+          id: `equal-score-prospect-${index + 1}`,
+          position: 'SS' as const,
+        },
+      }));
+    const teamRoster = generateTeamRoster(new GameRNG(144), 'NYT')
+      .filter((player) => player.position !== 'SS');
+
+    const forwardPick = aiSelectPick(new GameRNG(145), 'NYT', prospects, teamRoster);
+    const reversePick = aiSelectPick(new GameRNG(145), 'NYT', [...prospects].reverse(), teamRoster);
+
+    expect(reversePick.player.id).toBe(forwardPick.player.id);
+  });
+
+  it('uses deterministic organization draft tendencies without changing the prospect pool', () => {
+    const prospects = generateDraftClass(new GameRNG(2031), 12).prospects.slice(0, 3)
+      .map((prospect, index) => {
+        const profiles = [
+          {
+            id: 'safe-college-shortstop',
+            background: 'college_senior' as const,
+            scoutingGrade: 60,
+            signability: 0.95,
+            overallRating: 260,
+            ceiling: 315,
+          },
+          {
+            id: 'upside-prep-shortstop',
+            background: 'high_school' as const,
+            scoutingGrade: 61,
+            signability: 0.45,
+            overallRating: 235,
+            ceiling: 405,
+          },
+          {
+            id: 'balanced-underclass-shortstop',
+            background: 'college_underclass' as const,
+            scoutingGrade: 60,
+            signability: 0.7,
+            overallRating: 250,
+            ceiling: 350,
+          },
+        ] as const;
+        const profile = profiles[index]!;
+        return {
+          ...prospect,
+          background: profile.background,
+          collegeOrHS: profile.background,
+          commitmentStrength: profile.background === 'high_school' ? 0.85 : 0.25,
+          scoutingGrade: profile.scoutingGrade,
+          signability: profile.signability,
+          player: {
+            ...prospect.player,
+            id: profile.id,
+            position: 'SS' as const,
+            overallRating: profile.overallRating,
+            ceiling: profile.ceiling,
+            potentialRating: profile.ceiling,
+          },
+        };
+      });
+    const originalProspects = prospects.map((prospect) => ({
+      id: prospect.player.id,
+      scoutingGrade: prospect.scoutingGrade,
+      signability: prospect.signability,
+      background: prospect.background,
+      ceiling: prospect.player.ceiling,
+    }));
+    const teamRoster = generateTeamRoster(new GameRNG(2032), 'pit')
+      .filter((player) => player.position !== 'SS');
+
+    const upsidePick = aiSelectPick(new GameRNG(2033), 'pit', prospects, teamRoster);
+    const safePick = aiSelectPick(new GameRNG(2033), 'sfb', prospects, teamRoster);
+
+    expect(upsidePick.player.id).toBe('upside-prep-shortstop');
+    expect(safePick.player.id).toBe('safe-college-shortstop');
+    expect(prospects.map((prospect) => ({
+      id: prospect.player.id,
+      scoutingGrade: prospect.scoutingGrade,
+      signability: prospect.signability,
+      background: prospect.background,
+      ceiling: prospect.player.ceiling,
+    }))).toEqual(originalProspects);
+  });
 });
 
 describe('evaluateTeamNeeds', () => {

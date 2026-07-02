@@ -230,10 +230,10 @@ const DAY_ONE_TEAM_METADATA: Record<string, DayOneTeamMetadata> = {
     orgStory: 'The franchise needs coherence more than headlines.',
   },
   kc: {
-    archetype: 'Balanced Mid-Market Builder',
-    franchiseHook: 'The club can compete, but only if the roster and pipeline stay aligned.',
-    whyNow: 'This is the sweet spot for a patient contender build.',
-    orgStory: 'You inherited enough talent to matter and enough gaps to stay honest.',
+    archetype: 'Loaded Flagship Juggernaut',
+    franchiseHook: 'Fontaine and Fuentes headline the most talented roster in baseball, and everyone knows it.',
+    whyNow: 'The window is wide open on day one. Anything short of a title reads as failure.',
+    orgStory: 'You inherited the club every other front office is scheming to dethrone.',
   },
   msp: {
     archetype: 'Northern Heavyweight',

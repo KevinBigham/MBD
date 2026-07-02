@@ -153,6 +153,7 @@ describe('HistoryPage', () => {
           },
         },
       ]),
+      getHistoryOverview: vi.fn().mockResolvedValue({ seasonViews: [] }),
       getSeasonArchive: vi.fn().mockImplementation(async (season?: number) => {
         if (season === 1) {
           return {
@@ -369,6 +370,26 @@ describe('HistoryPage', () => {
           keyAcquisitions: ['Deadline blockbuster reshaped the race'],
           keyDepartures: ['Anthony Rizzo retired'],
           dynastyScore: 215,
+          playerMomentBeats: [
+            {
+              playerId: 'player-breakout',
+              teamId: 'nym',
+              type: 'rookie_breakout',
+              label: 'Breakout Season',
+              summary: 'Rafael Diaz forced his way into the core with a loud rookie season.',
+              relevance: 0.97,
+              day: 162,
+            },
+            {
+              playerId: 'player-injury',
+              teamId: 'nym',
+              type: 'injury_return_hero',
+              label: 'Injury Return',
+              summary: 'Mina Stone came back from a long absence and carried September.',
+              relevance: 0.94,
+              day: 152,
+            },
+          ],
         },
       ]),
       getDynastyScore: vi.fn().mockResolvedValue({
@@ -479,13 +500,17 @@ describe('HistoryPage', () => {
           'player-k': 'Gerrit Cole',
           'player-w': 'Logan Gilbert',
           'player-retire': 'Anthony Rizzo',
+          'player-breakout': 'Rafael Diaz',
+          'player-injury': 'Mina Stone',
+          'pick-2': 'Calvin Velez',
         },
         teams: {
           nym: 'New York Tycoons',
           bos: 'Boston Noreasters',
           bal: 'Baltimore Crab Cakes',
-          tor: 'Charlotte Hornets',
+          tor: 'Charlotte Weavers',
           sea: 'Seattle Drizzle',
+          lax: 'Los Angeles Lightning',
           lad: 'Los Angeles Sunset Strip',
         },
       }),
@@ -580,6 +605,22 @@ describe('HistoryPage', () => {
     expect(chapterToggle?.textContent).toContain('Peak Years');
     expect(chapterToggle?.getAttribute('aria-expanded')).toBe('true');
     expect(container.textContent).toContain('Anthony Rizzo retired');
+    expect(container.textContent).toContain('Timeline Memory');
+    expect(container.textContent).toContain('Defining Trade');
+    expect(container.textContent).toContain('Draft Pick #8');
+    expect(container.textContent).toContain('AL MVP');
+    expect(container.textContent).toContain('Retirement');
+    expect(container.textContent).toContain('Breakout Season');
+    expect(container.textContent).toContain('Injury Return');
+    expect(container.textContent).toContain('Mike Trout');
+    expect(container.textContent).toContain('Rafael Diaz');
+    expect(container.textContent).toContain('Mina Stone');
+    expect(container.textContent).toContain('New York Tycoons');
+    expect(container.textContent).toContain('Los Angeles Lightning');
+    expect(container.querySelector('a[href="/players/player-mvp"]')?.textContent).toContain('Mike Trout');
+    expect(container.querySelector('a[href="/players/player-breakout"]')?.textContent).toContain('Rafael Diaz');
+    expect(container.querySelector('a[href="/players/player-injury"]')?.textContent).toContain('Mina Stone');
+    expect(container.querySelector('[data-testid="timeline-memory-team"]')?.textContent).toContain('New York Tycoons');
     expect(container.textContent).toContain('Open Recap');
 
     await act(async () => {
@@ -604,6 +645,7 @@ describe('HistoryPage', () => {
       getAwardRaces: vi.fn().mockResolvedValue(null),
       getAwardHistory: vi.fn().mockResolvedValue([]),
       getSeasonHistory: vi.fn().mockResolvedValue([]),
+      getHistoryOverview: vi.fn().mockResolvedValue({ seasonViews: [] }),
       getRivalries: vi.fn().mockResolvedValue([]),
       getHallOfFame: vi.fn().mockResolvedValue([]),
       getFranchiseTimeline: vi.fn().mockResolvedValue([]),

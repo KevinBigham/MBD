@@ -94,6 +94,13 @@ describe('Sidebar', () => {
     expect(container.textContent).toContain('Offseason');
     expect(container.textContent).toContain('Compare');
     expect(container.textContent).toContain('News');
+    expect(container.textContent).toContain('Home');
+    expect(container.textContent).toContain('Team');
+    expect(container.textContent).toContain('Players');
+    expect(container.textContent).toContain('Transactions');
+    expect(container.textContent).toContain('League');
+    expect(container.textContent).toContain('Story');
+    expect(container.textContent).toContain('System');
     expect(getDashboardSummary).toHaveBeenCalledTimes(1);
   });
 
@@ -118,6 +125,9 @@ describe('Sidebar', () => {
       moreButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(container.textContent).toContain('Navigation');
+    expect(container.textContent).toContain('Transactions');
+    expect(container.textContent).toContain('System');
+    expect(container.textContent).toContain('Settings');
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));

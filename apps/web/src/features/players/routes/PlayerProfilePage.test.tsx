@@ -150,6 +150,23 @@ function createProfileView(overrides: Partial<PlayerProfileView> = {}): PlayerPr
     },
     developmentReports: {
       playerId: 'player-1',
+      draftOutcome: {
+        acquisitionType: 'draft',
+        teamId: 'nym',
+        teamName: 'New York Tycoons',
+        season: 3,
+        round: 1,
+        pickNumber: 18,
+        originalGrade: 64,
+        signed: true,
+        bonusAmount: 3.6,
+        currentStatus: 'AA',
+        currentLevel: 'AA',
+        bondStrength: 34,
+        loyaltyModifier: 0.34,
+        summary: 'Round 1 pick 18 in Season 3, signed for $3.60M; currently tracking at AA.',
+        milestones: ['Drafted Round 1, 3', 'Promoted to AA, 5'],
+      },
       history: [{
         season: 5,
         month: 4,
@@ -434,7 +451,7 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Season Stats');
     expect(container.textContent).toContain('Career Totals');
     expect(container.textContent).toContain('Split data is not tracked in v15.');
-    expect(container.textContent).toContain('Trade Player');
+    expect(container.textContent).toContain('Shop Player');
     expect(container.textContent).toContain('The Kid');
     expect(container.textContent).toContain('14 Hits to 300');
 
@@ -466,6 +483,11 @@ describe('PlayerProfilePage', () => {
 
     await renderPage('/players/player-1?tab=history', createProfileView());
 
+    expect(container.textContent).toContain('Draft Outcome');
+    expect(container.textContent).toContain('Round 1 pick 18 in Season 3');
+    expect(container.textContent).toContain('Original Grade');
+    expect(container.textContent).toContain('34');
+    expect(container.textContent).toContain('Drafted Round 1, 3');
     expect(container.textContent).toContain('Extension History');
     expect(container.textContent).toContain('$18.2M');
 
@@ -474,6 +496,118 @@ describe('PlayerProfilePage', () => {
     expect(container.textContent).toContain('Personality Profile');
     expect(container.textContent).toContain('Leader');
     expect(container.textContent).toContain('Fan Favorite');
+  });
+
+  it('renders a development decision brief on the Development tab', async () => {
+    const profile = createProfileView();
+    (profile.developmentReports as NonNullable<PlayerProfileView['developmentReports']> & {
+      developmentDecision: {
+        plan: { label: string; summary: string };
+        risk: { level: string; summary: string };
+        coachFit: { coachName: string | null; summary: string };
+        mentorship: {
+          mentorName: string | null;
+          partnerName: string | null;
+          partnerPlayerId: string | null;
+          relationshipRole: 'mentor' | 'protegee' | null;
+          summary: string;
+        };
+        nextMilestone: { label: string; summary: string };
+        evidence: string[];
+      };
+    }).developmentDecision = {
+      plan: {
+        label: 'MLB Prep',
+        summary: 'Keep Marco on the current MLB prep lane while his swing decisions stabilize.',
+      },
+      risk: {
+        level: 'medium',
+        summary: 'One hot streak is helping, but recent reports still need confirmation.',
+      },
+      coachFit: {
+        coachName: 'Mina Torres',
+        summary: 'Mina Torres is the best current coach fit for this checkpoint.',
+        score: 84,
+      },
+      mentorship: {
+        mentorName: 'Elias Anchor',
+        partnerName: 'Elias Anchor',
+        partnerPlayerId: 'veteran-mentor',
+        relationshipRole: 'protegee',
+        summary: 'Elias Anchor is guiding the next clubhouse adjustment.',
+        startedSeason: 5,
+      },
+      nextMilestone: {
+        label: 'Push to AAA',
+        summary: 'Next milestone: prove the AA gains can travel to AAA.',
+      },
+      evidence: ['Improved first-step reads and contact quality.', 'Drafted Round 1, 3'],
+    };
+
+    await renderPage('/players/player-1?tab=development', profile);
+
+    expect(container.textContent).toContain('Development Decision');
+    expect(container.textContent).toContain('MLB Prep');
+    expect(container.textContent).toContain('Medium Risk');
+    expect(container.textContent).toContain('Mina Torres');
+    expect(container.textContent).toContain('Mentor');
+    expect(container.textContent).toContain('Elias Anchor');
+    expect(container.textContent).toContain('Push to AAA');
+    expect(container.textContent).toContain('Improved first-step reads and contact quality.');
+  });
+
+  it('labels a veteran development mentorship card by protege', async () => {
+    const profile = createProfileView();
+    (profile.developmentReports as NonNullable<PlayerProfileView['developmentReports']> & {
+      developmentDecision: {
+        plan: { label: string; summary: string };
+        risk: { level: string; summary: string };
+        coachFit: { coachName: string | null; summary: string };
+        mentorship: {
+          mentorName: string | null;
+          partnerName: string | null;
+          partnerPlayerId: string | null;
+          relationshipRole: 'mentor' | 'protegee' | null;
+          summary: string;
+        };
+        nextMilestone: { label: string; summary: string };
+        evidence: string[];
+      };
+    }).developmentDecision = {
+      plan: {
+        label: 'Veteran Maintenance',
+        summary: 'Keep the veteran fresh while his clubhouse work matters.',
+      },
+      risk: {
+        level: 'low',
+        summary: 'No active setback.',
+      },
+      coachFit: {
+        coachName: 'Mina Torres',
+        summary: 'Mina Torres is the best current coach fit for the veteran role.',
+        score: 84,
+      },
+      mentorship: {
+        mentorName: 'Marco Ascension',
+        partnerName: 'Dani Rise',
+        partnerPlayerId: 'protege-1',
+        relationshipRole: 'mentor',
+        summary: 'Marco Ascension is guiding Dani Rise through the next checkpoint.',
+        startedSeason: 5,
+      },
+      nextMilestone: {
+        label: 'Sustain MLB Role',
+        summary: 'Keep translating preparation into production.',
+      },
+      evidence: ['Marco Ascension is guiding Dani Rise through the next checkpoint.'],
+    };
+
+    await renderPage('/players/player-1?tab=development', profile);
+
+    expect(container.textContent).toContain('Development Decision');
+    expect(container.textContent).toContain('Protege');
+    expect(container.textContent).toContain('Dani Rise');
+    expect(container.textContent).not.toContain('No pairing');
   });
 
   it('renders a read-only historical fallback and scouting availability note for retired players', async () => {
@@ -722,6 +856,10 @@ describe('PlayerProfilePage', () => {
     expect(worker.getExtensionOffer).toHaveBeenCalledWith('player-1', 5);
     expect(worker.negotiateExtension).toHaveBeenCalled();
     expect(container.textContent).toContain('Extension accepted');
-    expect(container.querySelector('a[href="/trade?playerId=player-1"]')).toBeTruthy();
+    const shopPlayerLink = Array.from(container.querySelectorAll('a')).find((link) =>
+      link.textContent?.includes('Shop Player'),
+    );
+    expect(shopPlayerLink?.getAttribute('href')).toContain('/trade?playerId=player-1');
+    expect(shopPlayerLink?.getAttribute('href')).toContain('mode=quick');
   });
 });

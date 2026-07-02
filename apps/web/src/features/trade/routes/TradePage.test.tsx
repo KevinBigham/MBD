@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import TradePage from './TradePage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-import { loadGameById, saveGameById, scheduleAutoSave } from '@/shared/lib/saveSystem';
+import { loadGameById, saveGameById } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -25,7 +25,6 @@ const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedLoadGameById = vi.mocked(loadGameById);
 const mockedSaveGameById = vi.mocked(saveGameById);
-const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -39,6 +38,10 @@ function createNegotiationView() {
     phase: 'counter_1',
     roundsCompleted: 2,
     expiresAtDay: 101,
+    gmPersonality: 'aggressive',
+    personalityLabel: 'Aggressive',
+    negotiationPosture: 'Aggressive counter pressure',
+    counterOfferSummary: 'Aggressive room: add value now or they will move to another call.',
     dialogue: [
       { speaker: 'rival_gm', text: 'Boston left the counter on the table overnight.', tone: 'firm' },
       { speaker: 'agm_advisor', text: 'This is still close enough to keep alive if the package stays focused.', tone: 'firm' },
@@ -158,13 +161,13 @@ function createWorkerMock() {
       {
         id: 'history-1',
         fromTeamId: 'orl',
-        fromTeamName: 'Orlando Thunder',
+        fromTeamName: 'Orlando Sunbursts',
         fromTeamAbbreviation: 'ORL',
         toTeamId: 'cha',
-        toTeamName: 'Charlotte Hornets',
+        toTeamName: 'Charlotte Weavers',
         toTeamAbbreviation: 'CHA',
         fairnessScore: 9,
-        summary: 'Orlando Thunder sent Drew Example to Charlotte Hornets for Chris Sample.',
+        summary: 'Orlando Sunbursts sent Drew Example to Charlotte Weavers for Chris Sample.',
         timestamp: 'S4D90',
         offeringAssets: [
           {
@@ -275,6 +278,54 @@ function createWorkerMock() {
           teamId: null,
         },
       ],
+      marketIntel: [
+        {
+          teamId: 'bos',
+          teamName: 'Boston Noreasters',
+          teamAbbreviation: 'BOS',
+          mode: 'buyer',
+          gmPersonality: 'aggressive',
+          personalityLabel: 'Aggressive',
+          posture: 'Aggressive buyer',
+          pressureScore: 86,
+          pressureLabel: 'High heat',
+          budgetPressure: 'high',
+          needs: ['CF', 'SP'],
+          surplus: ['SS', 'RP'],
+          activeOfferCount: 3,
+          relationshipTier: 'friendly',
+          relationshipSummary: 'a trade both sides could justify',
+        },
+        {
+          teamId: 'sea',
+          teamName: 'Seattle Drizzle',
+          teamAbbreviation: 'SEA',
+          mode: 'seller',
+          gmPersonality: 'analytical',
+          personalityLabel: 'Analytical',
+          posture: 'Model-led seller',
+          pressureScore: 62,
+          pressureLabel: 'Active',
+          budgetPressure: 'medium',
+          needs: ['C'],
+          surplus: ['SP'],
+          activeOfferCount: 1,
+          relationshipTier: 'strained',
+          relationshipSummary: 'a trade you clearly won',
+        },
+      ],
+      warRoom: {
+        headline: 'Final sprint war room',
+        detail: 'Six checkpoint bursts are complete; the room is prioritizing executable offers before the final call window.',
+        currentCheckpointDay: 117,
+        nextCheckpointDay: 120,
+        completedCheckpoints: 6,
+        totalCheckpoints: 8,
+        callsToAction: [
+          'Prioritize the hottest incoming offers.',
+          'Escalate buyer calls with budget pressure.',
+        ],
+      },
       recap: {
         analysisHeadline: 'Deadline winners and losers',
         yourTrades: [
@@ -356,6 +407,12 @@ function createWorkerMock() {
       decision: 'countered',
       message: 'Boston kicked back a firmer counter and asked for a cleaner fit.',
       tradeExecuted: false,
+      review: {
+        fairnessScore: -4,
+        rosterValid: true,
+        rosterIssues: [],
+        narrative: 'Boston Noreasters returned a counter after the fairness review.',
+      },
       negotiation: {
         id: 'neg-1',
         teamId: 'bos',
@@ -364,6 +421,10 @@ function createWorkerMock() {
         phase: 'counter_1',
         roundsCompleted: 1,
         expiresAtDay: 97,
+        gmPersonality: 'aggressive',
+        personalityLabel: 'Aggressive',
+        negotiationPosture: 'Aggressive counter pressure',
+        counterOfferSummary: 'Aggressive room: add value now or they will move to another call.',
         dialogue: [
           { speaker: 'rival_gm', text: 'Boston kicked back a firmer counter and asked for a cleaner fit.', tone: 'firm' },
           { speaker: 'agm_advisor', text: 'Our AGM thinks the friendly relationship bought us a little patience, but not real leverage.', tone: 'firm' },
@@ -438,7 +499,7 @@ function createWorkerMock() {
         },
       ],
     }),
-    exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 33, season: 4, day: 95, phase: 'regular' }),
+    exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 95, phase: 'regular' }),
     proposeTrade: vi.fn().mockResolvedValue({ decision: 'accepted', reason: 'Deal works.' }),
     respondToTradeOffer: vi.fn().mockResolvedValue({ decision: 'accepted', message: 'Accepted.' }),
   };
@@ -520,12 +581,21 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('3 clubs are in on Anthony Volpe.');
     expect(container.textContent).toContain('Active Talks');
     expect(container.textContent).toContain('No active talks');
+    expect(container.textContent).toContain('Market Intelligence');
+    expect(container.textContent).toContain('Aggressive buyer');
+    expect(container.textContent).toContain('Needs: CF, SP');
+    expect(container.textContent).toContain('Surplus: SS, RP');
+    expect(container.textContent).toContain('Budget heat: High');
+    expect(container.textContent).toContain('3 active calls');
+    expect(container.textContent).toContain('Final sprint war room');
+    expect(container.textContent).toContain('6/8 checkpoints');
+    expect(container.textContent).toContain('Prioritize the hottest incoming offers.');
     expect(container.textContent).toContain('GM Dialogue');
     expect(container.textContent).toContain('Right now the offer is light for what you are asking us to surrender.');
     expect(container.textContent).toContain('League Trade Ticker');
     expect(container.textContent).toContain('Seattle Drizzle sent Drew Example to San Diego Surf Hounds for Chris Sample.');
     expect(container.textContent).toContain('Trade History');
-    expect(container.textContent).toContain('Orlando Thunder sent Drew Example to Charlotte Hornets for Chris Sample.');
+    expect(container.textContent).toContain('Orlando Sunbursts sent Drew Example to Charlotte Weavers for Chris Sample.');
   });
 
   it('renders the closed-state banner after the trade deadline', async () => {
@@ -749,17 +819,31 @@ describe('TradePage', () => {
 
     expect(container.textContent).toContain('Negotiation Round');
     expect(container.textContent).toContain('Boston kicked back a firmer counter and asked for a cleaner fit.');
+    expect(container.textContent).toContain('Aggressive counter pressure');
+    expect(container.textContent).toContain('Aggressive room: add value now or they will move to another call.');
+    expect(container.textContent).toContain('Negotiation Review');
+    expect(container.textContent).toContain('Fairness -4.0');
+    expect(container.textContent).toContain('Roster check: Valid');
+    expect(container.textContent).toContain('Boston Noreasters returned a counter after the fairness review.');
     expect(worker.startNegotiation).toHaveBeenCalled();
     expect(worker.getOpenNegotiations).toHaveBeenCalledTimes(2);
     expect(worker.exportSnapshot).toHaveBeenCalled();
-    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(1, 'Taylor Bennett • Tycoons • Season 4', {
-      schemaVersion: 33,
-      season: 4,
-      day: 95,
-      phase: 'regular',
-    });
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      'save-slot-1',
+      'Taylor Bennett • Tycoons • Season 4',
+      {
+        schemaVersion: 34,
+        season: 4,
+        day: 95,
+        phase: 'regular',
+      },
+      expect.objectContaining({
+        slotNumber: 1,
+        parentSaveId: null,
+        isRootSave: true,
+      }),
+    );
     expect(mockedLoadGameById).not.toHaveBeenCalled();
-    expect(mockedSaveGameById).not.toHaveBeenCalled();
   });
 
   it('discovers persisted open negotiations and resumes them into the builder', async () => {
@@ -1083,5 +1167,115 @@ describe('TradePage', () => {
     expect(playerRows.some((row) => row.textContent?.includes('Roman Anthony'))).toBe(true);
     expect(container.textContent).toContain('Anthony Volpe · SS');
     expect(worker.proposeTrade).not.toHaveBeenCalled();
+  });
+
+  it('opens a quick trade lane from mode query and sends through existing builder state', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      gmName: 'Taylor Bennett',
+      difficulty: 'standard',
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage('/trade?mode=quick');
+
+    expect(container.textContent).toContain('Quick Trade');
+    expect(container.textContent).toContain('Partner');
+    expect(container.textContent).toContain('My asset');
+    expect(container.textContent).toContain('Target asset');
+    expect(container.textContent).toContain('Fairness');
+    expect(container.textContent).toContain('Send');
+
+    const quickButtons = Array.from(container.querySelectorAll('[data-testid^="quick-trade-"]'));
+    const partnerButton = quickButtons.find((button) => button.textContent?.includes('BOS'));
+    expect(partnerButton).toBeTruthy();
+
+    await act(async () => {
+      partnerButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const myAssetButton = Array.from(container.querySelectorAll('[data-testid="quick-trade-my-asset"]')).find(
+      (button) => button.textContent?.includes('Anthony Volpe'),
+    );
+    const targetAssetButton = Array.from(container.querySelectorAll('[data-testid="quick-trade-target-asset"]')).find(
+      (button) => button.textContent?.includes('Roman Anthony'),
+    );
+    expect(myAssetButton).toBeTruthy();
+    expect(targetAssetButton).toBeTruthy();
+
+    await act(async () => {
+      myAssetButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      targetAssetButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const quickSubmit = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Send Quick Trade'));
+    expect(quickSubmit).toBeTruthy();
+
+    await act(async () => {
+      quickSubmit?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.startNegotiation).toHaveBeenCalledWith(
+      [{ type: 'player', playerId: 'nyy-1' }],
+      [{ type: 'player', playerId: 'bos-1' }],
+      'bos',
+    );
+  });
+
+  it('shows shop-this-player context when launched from a player profile', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 4,
+      day: 95,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nym',
+      teamName: 'Tycoons',
+      playerCount: 780,
+      gamesPlayed: 95,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const worker = createWorkerMock();
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage('/trade?playerId=nyy-1');
+
+    expect(container.textContent).toContain('Shopping Anthony Volpe');
+    expect(container.textContent).toContain('Quick Trade');
+    expect(container.textContent).toContain('Anthony Volpe · SS');
   });
 });

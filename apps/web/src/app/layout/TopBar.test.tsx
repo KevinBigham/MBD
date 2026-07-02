@@ -6,6 +6,8 @@ import type { NewsItem } from '@mbd/contracts';
 import { TopBar } from './TopBar';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSavePersistenceStatus } from '@/shared/hooks/useActiveSavePersistenceStatus';
+import { retryActiveSavePersistence } from '@/shared/lib/activeSavePersistence';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -15,8 +17,18 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useActiveSavePersistenceStatus', () => ({
+  useActiveSavePersistenceStatus: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  retryActiveSavePersistence: vi.fn().mockResolvedValue({ saved: true, saveName: 'Dynasty' }),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedUseActiveSavePersistenceStatus = vi.mocked(useActiveSavePersistenceStatus);
+const mockedRetryActiveSavePersistence = vi.mocked(retryActiveSavePersistence);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -63,6 +75,8 @@ describe('TopBar', () => {
       day: 81,
       phase: 'regular',
       isInitialized: true,
+      activeSaveId: 'save-slot-2',
+      activeSaveSlot: 2,
       userTeamId: 'nym',
       teamName: 'Tycoons',
       playerCount: 780,
@@ -76,6 +90,17 @@ describe('TopBar', () => {
       setUserTeamId: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
+    });
+    mockedUseActiveSavePersistenceStatus.mockReturnValue({
+      state: 'idle',
+      saveId: 'save-slot-2',
+      saveName: null,
+      desiredGeneration: 0,
+      durableGeneration: 0,
+      canRetry: false,
+      lastSavedAt: null,
+      errorMessage: null,
+      failureKind: null,
     });
 
     mockedUseWorker.mockReturnValue({
@@ -114,5 +139,136 @@ describe('TopBar', () => {
     });
 
     expect(container.querySelector('[aria-label="News inbox unread count"]')?.textContent).toContain('1');
+  });
+
+  it('shows contextual help for dynamic player profile routes', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/players/player-42']}>
+          <TopBar onOpenCommandPalette={vi.fn()} flow={null} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('button[aria-label="Help: Read the full player file"]')).not.toBeNull();
+  });
+
+  it('surfaces save progress from the active-save coordinator', async () => {
+    mockedUseActiveSavePersistenceStatus.mockReturnValue({
+      state: 'saving',
+      saveId: 'save-slot-2',
+      saveName: 'Alex Rivera • Tycoons • Season 2',
+      desiredGeneration: 2,
+      durableGeneration: 1,
+      canRetry: false,
+      lastSavedAt: null,
+      errorMessage: null,
+      failureKind: null,
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <TopBar onOpenCommandPalette={vi.fn()} flow={null} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const status = container.querySelector('[data-testid="save-persistence-status"]');
+    expect(status?.textContent).toContain('Saving...');
+    expect(status?.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('surfaces failed save status with retry for the active save', async () => {
+    mockedUseActiveSavePersistenceStatus.mockReturnValue({
+      state: 'failed',
+      saveId: 'save-slot-2',
+      saveName: 'Alex Rivera • Tycoons • Season 2',
+      desiredGeneration: 2,
+      durableGeneration: 1,
+      canRetry: true,
+      lastSavedAt: null,
+      errorMessage: 'QuotaExceededError',
+      failureKind: 'storage',
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <TopBar onOpenCommandPalette={vi.fn()} flow={null} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const status = container.querySelector('[data-testid="save-persistence-status"]');
+    expect(status?.textContent).toContain('Save failed');
+    expect(status?.textContent).toContain('Retry');
+    expect(status?.getAttribute('aria-live')).toBe('assertive');
+    expect(status?.className).toContain('z-[80]');
+
+    await act(async () => {
+      container.querySelector('button[aria-label="Retry failed save"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(mockedRetryActiveSavePersistence).toHaveBeenCalledWith('save-slot-2');
+  });
+
+  it('maps each storage failure kind to distinct, accessible copy with retry', async () => {
+    const cases: Array<{ failureKind: 'quota' | 'indexeddb' | 'storage' | 'export'; copy: string; errorMessage: string }> = [
+      { failureKind: 'quota', copy: 'Save failed — storage full', errorMessage: 'QuotaExceededError' },
+      { failureKind: 'indexeddb', copy: 'Save failed — browser database error', errorMessage: 'TransactionInactiveError' },
+      { failureKind: 'storage', copy: 'Save failed — storage error', errorMessage: 'Persistent storage unavailable' },
+      { failureKind: 'export', copy: 'Save failed — could not read game', errorMessage: 'Worker export failed' },
+    ];
+    const seen = new Set<string>();
+
+    for (const testCase of cases) {
+      mockedUseActiveSavePersistenceStatus.mockReturnValue({
+        state: 'failed',
+        saveId: 'save-slot-2',
+        saveName: 'Alex Rivera • Tycoons • Season 2',
+        desiredGeneration: 2,
+        durableGeneration: 1,
+        canRetry: true,
+        lastSavedAt: null,
+        errorMessage: testCase.errorMessage,
+        failureKind: testCase.failureKind,
+      });
+
+      const caseContainer = document.createElement('div');
+      document.body.appendChild(caseContainer);
+      const caseRoot = createRoot(caseContainer);
+      await act(async () => {
+        caseRoot.render(
+          <MemoryRouter>
+            <TopBar onOpenCommandPalette={vi.fn()} flow={null} />
+          </MemoryRouter>,
+        );
+        await Promise.resolve();
+      });
+
+      const status = caseContainer.querySelector('[data-testid="save-persistence-status"]');
+      expect(status?.textContent).toContain(testCase.copy);
+      expect(status?.getAttribute('aria-live')).toBe('assertive');
+      expect(status?.getAttribute('data-failure-kind')).toBe(testCase.failureKind);
+      expect(status?.getAttribute('title')).toBe(testCase.errorMessage);
+      expect(caseContainer.querySelector('button[aria-label="Retry failed save"]')).not.toBeNull();
+
+      // Each kind must produce a distinct player-facing label.
+      const label = status?.textContent?.replace('Retry', '').trim() ?? '';
+      expect(seen.has(label)).toBe(false);
+      seen.add(label);
+
+      await act(async () => {
+        caseRoot.unmount();
+      });
+      caseContainer.remove();
+    }
+
+    expect(seen.size).toBe(cases.length);
   });
 });

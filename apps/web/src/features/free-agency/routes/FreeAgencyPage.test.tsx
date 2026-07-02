@@ -63,7 +63,7 @@ describe('FreeAgencyPage', () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
       getFreeAgents: vi.fn().mockResolvedValue([]),
-      getTeamFinances: vi.fn().mockResolvedValue({ payroll: 100, budget: 150, luxuryTax: 200 }),
+      getFinanceOverview: vi.fn().mockResolvedValue({ totalPayroll: 100, budget: 150, capSpace: 50 }),
       getLeagueLeaders: vi.fn().mockResolvedValue([]),
       getFreeAgencyMarketIntelligence: vi.fn().mockResolvedValue(null),
     } as unknown as ReturnType<typeof useWorker>);

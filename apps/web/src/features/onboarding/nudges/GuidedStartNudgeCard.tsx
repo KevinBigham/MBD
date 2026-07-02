@@ -83,7 +83,7 @@ export function GuidedStartNudgeCard({
     <aside
       aria-live="polite"
       data-testid={`guided-start-nudge-${current}`}
-      className="fixed bottom-4 right-4 z-50 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-accent-info/35 bg-dynasty-surface p-4 shadow-2xl shadow-black/30"
+      className="pointer-events-none fixed bottom-4 right-4 z-50 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-accent-info/35 bg-dynasty-surface p-4 shadow-2xl shadow-black/30"
     >
       <div className="flex items-start gap-3">
         <div className="rounded-md border border-accent-info/30 bg-accent-info/10 p-2 text-accent-info">
@@ -107,7 +107,7 @@ export function GuidedStartNudgeCard({
                 onClick={() => {
                   void handleExport();
                 }}
-                className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-3 py-2 font-heading text-xs font-semibold text-white transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:bg-dynasty-border disabled:text-dynasty-muted"
+                className="pointer-events-auto inline-flex items-center gap-2 rounded-md bg-accent-primary px-3 py-2 font-heading text-xs font-semibold text-white transition-colors hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:bg-dynasty-border disabled:text-dynasty-muted"
               >
                 <Download className="h-3.5 w-3.5" />
                 {exporting ? 'Exporting...' : 'Export backup'}
@@ -116,7 +116,7 @@ export function GuidedStartNudgeCard({
             <button
               type="button"
               onClick={() => onDismiss(current)}
-              className="rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs font-semibold text-dynasty-text transition-colors hover:bg-dynasty-elevated"
+              className="pointer-events-auto rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs font-semibold text-dynasty-text transition-colors hover:bg-dynasty-elevated"
             >
               {copy.dismissLabel}
             </button>
@@ -126,7 +126,7 @@ export function GuidedStartNudgeCard({
           type="button"
           aria-label="Dismiss guided start nudge"
           onClick={() => onDismiss(current)}
-          className="rounded border border-transparent p-1 text-dynasty-muted transition-colors hover:border-dynasty-border hover:text-dynasty-text"
+          className="pointer-events-auto rounded border border-transparent p-1 text-dynasty-muted transition-colors hover:border-dynasty-border hover:text-dynasty-text"
         >
           <X className="h-4 w-4" />
         </button>

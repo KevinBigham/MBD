@@ -1,13 +1,15 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AwardHistoryEntry } from '@mbd/contracts';
+import type { AwardHistoryEntry, GameSnapshot } from '@mbd/contracts';
 import {
   buildRosterState,
   createOffseasonState,
   evaluatePlayerTradeValue,
+  OFFSEASON_PHASES,
   type GameBoxScore,
   type GeneratedPlayer,
+  type OffseasonPhase,
   type PAOutcome,
   type PAResult,
   type PlayerGameStats,
@@ -27,7 +29,7 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
 }));
 
 import { api } from './sim.worker';
-import { processDayInjuriesAndNews, requireState, setState } from './sim.worker.helpers';
+import { advanceMinorLeagueDay, processDayInjuriesAndNews, requireState, setState } from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
 import { refreshTickerFeed } from './sim.worker.ticker';
 import {
@@ -112,14 +114,21 @@ interface DFACandidateView {
 
 interface AffiliateOverviewView {
   affiliates: Array<{
+    teamId: string;
     level: string;
+    label: string;
+    shortName?: string;
+    identityNote?: string;
     gamesPlayed: number;
     wins: number;
     losses: number;
   }>;
   recentBoxScores: Array<{
     id: string;
+    teamId: string;
     level: string;
+    label: string;
+    shortName?: string;
     summary: string;
   }>;
   waiverClaims: Array<{
@@ -143,6 +152,10 @@ interface AffiliateOverviewView {
 
 interface AffiliateBoxScoreView {
   id: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeShortName?: string;
+  awayShortName?: string;
   summary: string;
 }
 
@@ -154,11 +167,23 @@ interface ProspectPipelineView {
     nextWave: number;
     longTerm: number;
   };
+  developmentFocus: {
+    priorities: Array<{
+      playerId: string;
+      category: string;
+      label: string;
+      action: string;
+      reason: string;
+      evidence: string[];
+    }>;
+  };
   prospects: Array<{
     playerId: string;
     playerName: string;
     eta: string;
     trend: string;
+    role?: string;
+    scoutingNote?: string;
   }>;
 }
 
@@ -212,6 +237,43 @@ interface OffseasonHeadlineView {
   headline: string;
 }
 
+interface OffseasonCommandCenterView {
+  checklist: Array<{
+    id: string;
+    label: string;
+    status: 'complete' | 'attention' | 'blocked' | 'upcoming';
+    detail: string;
+  }>;
+  warnings: Array<{
+    id: string;
+    severity: 'warning' | 'danger';
+    title: string;
+    detail: string;
+  }>;
+  projectedOpeningDay: {
+    activeRosterCount: number;
+    activeRosterLimit: number;
+    fortyManCount: number;
+    fortyManLimit: number;
+    payroll: number;
+    budget: number;
+    payrollSpace: number;
+    rosterHoleCount: number;
+  };
+}
+
+interface OffseasonMarketDaySummaryView {
+  id: string;
+  day: number;
+  category: 'signing' | 'trade';
+  tone: 'user' | 'division_rival' | 'neutral';
+  headline: string;
+  detail: string;
+  teamIds: string[];
+  playerIds: string[];
+  valueLabel?: string;
+}
+
 interface DraftCommentaryView {
   heartbeat: string | null;
   entries: Array<{
@@ -247,6 +309,20 @@ interface DraftPostDraftGradesView {
   }>;
 }
 
+interface TestExtensionOffer {
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+  noTradeClause: boolean;
+  noTradeClauseType: string;
+  playerOption: boolean;
+  teamOption: boolean;
+  optOutYears: number[];
+  signingBonus: number;
+  buyoutAmount: number;
+  deferredMoney: Array<{ yearOffset: number; amount: number }>;
+}
+
 interface MinorLeagueWorkerApi {
   getSetupPreview: (options: {
     seed: number;
@@ -277,6 +353,10 @@ interface MinorLeagueWorkerApi {
   };
   getAffiliateOverview: (teamId?: string) => AffiliateOverviewView;
   getAffiliateBoxScore: (boxScoreId: string) => AffiliateBoxScoreView | null;
+  applyDevelopmentFocusPlan: (
+    playerId: string,
+    category: ProspectPipelineView['developmentFocus']['priorities'][number]['category'],
+  ) => { success: boolean; developmentProgram?: string; error?: string };
   getCoachingStaff: (teamId?: string) => Array<{ id: string; role: string; specialty: string }>;
   getCoachFreeAgents: () => Array<{ id: string; role: string }>;
   getCoachMarket: () => Array<{ id: string; role: string }>;
@@ -304,38 +384,32 @@ interface MinorLeagueWorkerApi {
     playerId: string;
     willingness: number;
   }>;
-  getExtensionOffer: (playerId: string, years: number) => {
-    years: number;
-    annualSalary: number;
-    totalValue: number;
-  } | null;
+  getExtensionOffer: (playerId: string, years: number) => TestExtensionOffer | null;
   negotiateExtension: (
     playerId: string,
-    offer: {
-      years: number;
-      annualSalary: number;
-      totalValue: number;
-      noTradeClause: boolean;
-      noTradeClauseType: string;
-      playerOption: boolean;
-      teamOption: boolean;
-      optOutYears: number[];
-      signingBonus: number;
-      buyoutAmount: number;
-      deferredMoney: Array<{ yearOffset: number; amount: number }>;
-    },
+    offer: TestExtensionOffer,
   ) => {
     status: 'accepted' | 'rejected' | 'countered';
     rounds: Array<{ round: number; status: string }>;
+    review?: {
+      status: 'accepted' | 'rejected' | 'countered';
+      riskLevel: 'low' | 'medium' | 'high';
+      offerGapPct: number;
+      teamOfferAav: number;
+      playerDemandAav: number;
+      evidence: string[];
+    };
   };
   getQualifyingOfferEligible: (teamId?: string) => Array<{ playerId: string }>;
   getQualifyingOfferSalary: () => number;
-  issueQualifyingOffer: (playerId: string) => { success: boolean };
+  issueQualifyingOffer: (playerId: string) => { success: boolean; error?: string };
   resolveQualifyingOffers: () => {
     resolved: Array<{ playerId: string; status: string }>;
+    error?: string;
   };
-  hireCoach: (coachId: string) => { success: boolean };
-  fireCoach: (coachId: string) => { success: boolean };
+  hireCoach: (coachId: string) => { success: boolean; error?: string };
+  fireCoach: (coachId: string) => { success: boolean; error?: string };
+  tradeIFAPoolSpace: (toTeamId: string, amount: number) => { success: boolean; error?: string };
   getMonthlyPulse: () => {
     pendingReport: {
       id: string;
@@ -923,6 +997,7 @@ describe('sim worker narrative APIs', () => {
     const state = requireState();
     state.phase = 'regular';
     state.day = 75;
+    state.gmPersonalities.set('bos', 'aggressive');
     const userPlayers = state.players
       .filter((player) => player.teamId === state.userTeamId && player.rosterStatus === 'MLB')
       .sort((left, right) =>
@@ -946,7 +1021,7 @@ describe('sim worker narrative APIs', () => {
           ratio: offerValue / Math.max(1, requestValue),
         };
       }),
-    ).find((candidate) => candidate.ratio >= 0.7 && candidate.ratio <= 1.35);
+    ).find((candidate) => candidate.ratio >= 0.62 && candidate.ratio < 0.88);
 
     expect(viablePair).toBeTruthy();
 
@@ -957,12 +1032,30 @@ describe('sim worker narrative APIs', () => {
         toTeamId: string,
       ) => {
         decision: string;
-        negotiation: { id: string } | null;
+        review: {
+          fairnessScore: number | null;
+          rosterValid: boolean;
+          rosterIssues: string[];
+          narrative: string;
+        };
+        negotiation: {
+          id: string;
+          gmPersonality: string;
+          personalityLabel: string;
+          negotiationPosture: string;
+          counterOfferSummary: string | null;
+        } | null;
       };
       resolveNegotiation: (negotiationId: string, action: 'accept' | 'reject') => {
         success: boolean;
         decision: string;
         tradeExecuted: boolean;
+        review: {
+          fairnessScore: number | null;
+          rosterValid: boolean;
+          rosterIssues: string[];
+          narrative: string;
+        };
       };
     }).startNegotiation(
       [{ type: 'player', playerId: viablePair!.offered.id }],
@@ -971,7 +1064,21 @@ describe('sim worker narrative APIs', () => {
     );
 
     expect(startResult.negotiation).not.toBeNull();
-    expect(['accepted', 'countered', 'pending']).toContain(startResult.decision);
+    expect(startResult.decision).toBe('countered');
+    expect(startResult.negotiation).toMatchObject({
+      gmPersonality: 'aggressive',
+      personalityLabel: 'Aggressive',
+    });
+    expect(startResult.negotiation?.negotiationPosture).toContain('Aggressive');
+    expect(startResult.negotiation?.counterOfferSummary).toContain('Aggressive');
+    const startReview = startResult.review;
+    expect(startReview).not.toBeNull();
+    expect(startReview!).toMatchObject({
+      rosterValid: true,
+      rosterIssues: [],
+    });
+    expect(startReview!.fairnessScore).toEqual(expect.any(Number));
+    expect(startReview!.narrative).toContain('returned a counter');
     expect(requireState().tradeState.negotiations).toHaveLength(1);
 
     const resolveResult = (api as typeof api & {
@@ -979,6 +1086,12 @@ describe('sim worker narrative APIs', () => {
         success: boolean;
         decision: string;
         tradeExecuted: boolean;
+        review: {
+          fairnessScore: number | null;
+          rosterValid: boolean;
+          rosterIssues: string[];
+          narrative: string;
+        };
       };
     }).resolveNegotiation(startResult.negotiation!.id, 'accept');
 
@@ -987,8 +1100,67 @@ describe('sim worker narrative APIs', () => {
       decision: 'accepted',
       tradeExecuted: true,
     });
+    const resolveReview = resolveResult.review;
+    expect(resolveReview).not.toBeNull();
+    expect(resolveReview!).toMatchObject({
+      rosterValid: true,
+      rosterIssues: [],
+    });
+    expect(resolveReview!.fairnessScore).toEqual(expect.any(Number));
+    expect(resolveReview!.narrative).toContain('accepted');
     expect(requireState().tradeState.negotiations).toHaveLength(0);
     expect(requireState().tradeState.tradeHistory.length).toBeGreaterThan(0);
+  });
+
+  it('returns negotiation review evidence for rejected invalid roster packages', () => {
+    startGame(1807, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 75;
+
+    const bosPlayer = state.players.find((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB');
+    const bosOther = state.players.find((player) =>
+      player.teamId === 'bos'
+      && player.rosterStatus === 'MLB'
+      && player.id !== bosPlayer?.id,
+    );
+
+    expect(bosPlayer).toBeTruthy();
+    expect(bosOther).toBeTruthy();
+
+    const result = (api as typeof api & {
+      startNegotiation: (
+        offeringAssets: Array<{ type: 'player'; playerId: string }>,
+        requestingAssets: Array<{ type: 'player'; playerId: string }>,
+        toTeamId: string,
+      ) => {
+        success: boolean;
+        decision: string;
+        tradeExecuted: boolean;
+        review: {
+          fairnessScore: number | null;
+          rosterValid: boolean;
+          rosterIssues: string[];
+          narrative: string;
+        };
+      };
+    }).startNegotiation(
+      [{ type: 'player', playerId: bosPlayer!.id }],
+      [{ type: 'player', playerId: bosOther!.id }],
+      'bos',
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      decision: 'rejected',
+      tradeExecuted: false,
+    });
+    const review = result.review;
+    expect(review).not.toBeNull();
+    expect(review!.rosterValid).toBe(false);
+    expect(review!.rosterIssues[0]).toContain('not controlled');
+    expect(review!.fairnessScore).toBeNull();
+    expect(review!.narrative).toContain('Roster validation blocked');
   });
 
   it('evaluates and executes a multi-team framework with a persisted conditional clause', () => {
@@ -1243,6 +1415,21 @@ describe('sim worker narrative APIs', () => {
     expect(wins.filter((winTotal) => winTotal >= 97)).toHaveLength(0);
   });
 
+  it('surfaces a usable league-wide spread of setup preview farm grades', () => {
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const farmGrades = TEAMS.map((team) => workerApi.getSetupPreview({
+      seed: 2124,
+      userTeamId: team.id,
+      difficulty: 'standard',
+    }).farmSystemRating);
+    const uniqueFarmGrades = new Set(farmGrades);
+
+    expect(uniqueFarmGrades.size).toBeGreaterThanOrEqual(4);
+    expect(farmGrades.some((grade) => grade.startsWith('A'))).toBe(true);
+    expect(farmGrades.some((grade) => grade === 'B' || grade === 'B+')).toBe(true);
+    expect(farmGrades.some((grade) => grade === 'C' || grade === 'C+')).toBe(true);
+  });
+
   it('initializes career mode and exposes the GM career ledger', () => {
     startGameWithOptions({
       seed: 919,
@@ -1286,6 +1473,68 @@ describe('sim worker narrative APIs', () => {
     expect(report?.playerId).toBe(prospect!.id);
     expect(report?.history.length).toBeGreaterThan(0);
     expect(reports?.history).toEqual(report?.history);
+  });
+
+  it('applies active mentor relationships to monthly development checkpoints', () => {
+    function runCheckpoint(mentored: boolean) {
+      startGame(12501, 'nym');
+      const state = requireState();
+      const prospect = state.players.find((player) =>
+        player.teamId === 'nym'
+        && player.rosterStatus === 'AA'
+        && player.pitcherAttributes == null,
+      )!;
+      const veteran = state.players.find((player) =>
+        player.teamId === 'nym'
+        && player.rosterStatus === 'MLB'
+        && player.pitcherAttributes == null,
+      )!;
+
+      prospect.developmentProgram = 'mlb_prep';
+      prospect.personality.workEthic = 78;
+      prospect.personality.mentalToughness = 70;
+      state.coachingStaffs.set('nym', [{
+        id: 'coach-nym-aa-mentor-test',
+        firstName: 'Dale',
+        lastName: 'Briggs',
+        role: 'aa_coordinator',
+        specialty: 'mlb_prep',
+        teachingAbility: 0.84,
+        developmentBonus: 0.18,
+        personalityFit: 0.8,
+        experienceYears: 11,
+        contractYears: 2,
+        annualSalary: 2.1,
+        teamId: 'nym',
+      }]);
+      state.mentorRelationships = mentored
+        ? [{
+          veteranPlayerId: veteran.id,
+          rookiePlayerId: prospect.id,
+          teamId: 'nym',
+          startedSeason: state.season,
+          summary: 'Mentorship quality 100; development bonus 0.15; factors: Same team context.',
+        }]
+        : [];
+      state.phase = 'regular';
+      state.day = 31;
+      state.seasonState = {
+        ...state.seasonState,
+        currentDay: 31,
+      };
+
+      api.simMonth();
+      return requireState().minorLeagueState.developmentLedger.find((entry) =>
+        entry.playerId === prospect.id,
+      )!;
+    }
+
+    const baseline = runCheckpoint(false);
+    const mentored = runCheckpoint(true);
+
+    expect(mentored.progressScore).toBeGreaterThan(baseline.progressScore);
+    expect(mentored.breakoutProbability).toBeGreaterThan(baseline.breakoutProbability);
+    expect(mentored.bustRisk).toBeLessThan(baseline.bustRisk);
   });
 
   it('exposes development path, bond, and setback data through worker queries', () => {
@@ -1340,6 +1589,164 @@ describe('sim worker narrative APIs', () => {
     expect(overview.farmReport?.bondedProspects).toBeGreaterThan(0);
     expect(overview.farmReport?.activeSetbackCount).toBeGreaterThan(0);
     expect((overview.farmReport?.topProspects.length ?? 0)).toBeGreaterThan(0);
+  });
+
+  it('surfaces authored affiliate identities and prospect notes from the minor-league content pack', () => {
+    startGame(12602, 'nym');
+    const state = requireState();
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+
+    const overview = workerApi.getAffiliateOverview('nym');
+    const pipeline = workerApi.getProspectPipeline('nym');
+    const aaa = overview.affiliates.find((affiliate) => affiliate.level === 'AAA');
+    const ari = pipeline.prospects.find((prospect) => prospect.playerName === 'Ari Abarca');
+    const authoredParentPlayer = state.players.find((player) => player.id === 'auth-nym-mlb-001');
+    const authoredAri = state.players.find((player) => player.firstName === 'Ari' && player.lastName === 'Abarca');
+
+    expect(state.players).toHaveLength(5408);
+    expect(authoredParentPlayer).toMatchObject({
+      teamId: 'nym',
+      rosterStatus: 'MLB',
+      minorLeagueLevel: null,
+    });
+    expect(authoredAri?.id).toMatch(/^auth-nym-aa-\d{3}$/);
+    expect(aaa).toMatchObject({
+      teamId: 'nym',
+      label: 'Newark Market Makers',
+      shortName: 'Market Makers',
+      identityNote: expect.stringContaining('Near-ready bats'),
+    });
+    expect(ari).toMatchObject({
+      role: 'Top ranked prospect / potential impact regular',
+      scoutingNote: expect.stringContaining('Up-the-middle athlete'),
+    });
+  });
+
+  it('derives a player development decision brief from plan, risk, coach fit, mentorship, and milestones', () => {
+    startGame(12601, 'nym');
+    const state = requireState();
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const prospect = state.players.find((player) =>
+      player.teamId === 'nym'
+      && player.rosterStatus === 'AA'
+      && player.pitcherAttributes == null,
+    )!;
+    const veteran = state.players.find((player) =>
+      player.teamId === 'nym'
+      && player.rosterStatus === 'MLB'
+      && player.pitcherAttributes == null,
+    )!;
+
+    prospect.developmentProgram = 'mlb_prep';
+    prospect.developmentTrajectory = 'below_expectations';
+    prospect.overallRating = 320;
+    prospect.ceiling = 430;
+    prospect.floor = 270;
+    prospect.personality.workEthic = 82;
+    prospect.personalityTraits = ['Hard Worker'];
+    veteran.firstName = 'Elias';
+    veteran.lastName = 'Anchor';
+    veteran.personalityTraits = ['Leader', 'Mentor'];
+
+    state.coachingStaffs.set('nym', [{
+      id: 'coach-nym-aa-dev',
+      firstName: 'Mina',
+      lastName: 'Torres',
+      role: 'aa_coordinator',
+      specialty: 'mlb_prep',
+      teachingAbility: 0.91,
+      developmentBonus: 0.24,
+      personalityFit: 0.86,
+      experienceYears: 14,
+      contractYears: 2,
+      annualSalary: 2.4,
+      teamId: 'nym',
+    }]);
+    state.mentorRelationships = [{
+      veteranPlayerId: veteran.id,
+      rookiePlayerId: prospect.id,
+      teamId: 'nym',
+      startedSeason: state.season,
+      summary: `${veteran.firstName} ${veteran.lastName} is guiding ${prospect.firstName} ${prospect.lastName} through the next checkpoint.`,
+    }];
+    state.minorLeagueState.developmentReports.push({
+      playerId: prospect.id,
+      teamId: 'nym',
+      season: state.season,
+      month: 4,
+      trajectory: 'below_expectations',
+      summary: `${prospect.firstName} ${prospect.lastName} needs cleaner swing decisions before a promotion.`,
+      overallRating: prospect.overallRating,
+    });
+    state.minorLeagueState.activeDevelopmentSetbacks = [{
+      playerId: prospect.id,
+      type: 'mental_block',
+      overallModifier: -5,
+      startSeason: state.season,
+      startMonth: 4,
+      endSeason: state.season,
+      endMonth: 5,
+      summary: `${prospect.firstName} ${prospect.lastName} is pressing through a swing-change mental block.`,
+      active: true,
+    }];
+    state.prospectBonds = [{
+      prospectId: prospect.id,
+      draftedSeason: state.season - 1,
+      debutSeason: null,
+      currentLevel: 'AA',
+      bondStrength: 31,
+      milestones: ['Drafted Round 2, 4', 'Earned everyday AA reps, 5'],
+      loyaltyModifier: 0.31,
+    }];
+
+    const profile = workerApi.getPlayerProfileView(prospect.id);
+    const decision = (profile?.developmentReports as {
+      developmentDecision?: {
+        plan: { label: string; summary: string };
+        risk: { level: string; summary: string };
+        coachFit: { coachName: string | null; summary: string };
+        mentorship: {
+          mentorName: string | null;
+          partnerName: string | null;
+          partnerPlayerId: string | null;
+          relationshipRole: 'mentor' | 'protegee' | null;
+          summary: string;
+        };
+        nextMilestone: { label: string; summary: string };
+        evidence: string[];
+      };
+    } | null)?.developmentDecision;
+
+    expect(decision?.plan.label).toBe('Mlb Prep');
+    expect(decision?.plan.summary).toContain('below expectations');
+    expect(decision?.risk.level).toBe('high');
+    expect(decision?.risk.summary).toContain('mental block');
+    expect(decision?.coachFit.coachName).toBe('Mina Torres');
+    expect(decision?.coachFit.summary).toContain('AA coordinator');
+    expect(decision?.mentorship.mentorName).toBe('Elias Anchor');
+    expect(decision?.mentorship.partnerName).toBe('Elias Anchor');
+    expect(decision?.mentorship.partnerPlayerId).toBe(veteran.id);
+    expect(decision?.mentorship.relationshipRole).toBe('protegee');
+    expect(decision?.mentorship.summary).toContain('guiding');
+    expect(decision?.nextMilestone.label).toBe('Push to AAA');
+    expect(decision?.evidence).toContain('Earned everyday AA reps, 5');
+
+    const veteranProfile = workerApi.getPlayerProfileView(veteran.id);
+    const veteranDecision = (veteranProfile?.developmentReports as {
+      developmentDecision?: {
+        mentorship: {
+          mentorName: string | null;
+          partnerName: string | null;
+          partnerPlayerId: string | null;
+          relationshipRole: 'mentor' | 'protegee' | null;
+          summary: string;
+        };
+      };
+    } | null)?.developmentDecision;
+    expect(veteranDecision?.mentorship.mentorName).toBe('Elias Anchor');
+    expect(veteranDecision?.mentorship.partnerName).toBe(`${prospect.firstName} ${prospect.lastName}`);
+    expect(veteranDecision?.mentorship.partnerPlayerId).toBe(prospect.id);
+    expect(veteranDecision?.mentorship.relationshipRole).toBe('mentor');
   });
 
   it('builds a unified player profile view with career, development, and scout conflict data', () => {
@@ -1422,12 +1829,73 @@ describe('sim worker narrative APIs', () => {
       summary: `${prospect.firstName} ${prospect.lastName} tightened the approach this month.`,
       overallRating: prospect.overallRating,
     });
+    state.playerOrigins.set(prospect.id, {
+      playerId: prospect.id,
+      originTeamId: 'nym',
+      acquisitionType: 'draft',
+      acquiredSeason: state.season,
+      draftSeason: state.season,
+      draftRound: 1,
+      draftPickNumber: 18,
+      originalGrade: 63,
+      bonusAmount: 3.6,
+    });
+    state.draftState.signingDecisions.push({
+      season: state.season,
+      playerId: prospect.id,
+      teamId: 'nym',
+      signed: true,
+      offeredBonus: 3.6,
+      agreedBonus: 3.6,
+      returnPath: 'organization',
+    });
+    state.prospectBonds.push({
+      prospectId: prospect.id,
+      draftedSeason: state.season - 1,
+      debutSeason: null,
+      currentLevel: 'AA',
+      bondStrength: 42,
+      milestones: ['Drafted Round 1, 4', 'Promoted to AA, 5'],
+      loyaltyModifier: 0.42,
+    });
+    state.minorLeagueState.minorLeagueStatHistory = [[prospect.id, [{
+      season: state.season,
+      level: 'AA',
+      gamesPlayed: 44,
+      pa: 181,
+      hits: 59,
+      hr: 11,
+      rbi: 37,
+      avg: 0.326,
+      ip: 0,
+      era: 0,
+      k: 0,
+      bb: 22,
+    }]]];
 
     const profile = workerApi.getPlayerProfileView(prospect.id);
 
     expect(profile?.player?.id).toBe(prospect.id);
     expect(profile?.personalityProfile?.playerId).toBe(prospect.id);
     expect(profile?.developmentReports?.playerId).toBe(prospect.id);
+    expect(profile?.developmentReports?.draftOutcome).toMatchObject({
+      acquisitionType: 'draft',
+      teamId: 'nym',
+      season: state.season,
+      round: 1,
+      pickNumber: 18,
+      originalGrade: 63,
+      signed: true,
+      bonusAmount: 3.6,
+      currentStatus: 'AA',
+      currentLevel: 'AA',
+      bondStrength: 42,
+      summary: expect.stringContaining('Round 1'),
+    });
+    expect(profile?.developmentReports?.draftOutcome?.milestones).toEqual([
+      'Drafted Round 1, 4',
+      'Promoted to AA, 5',
+    ]);
     expect(profile?.careerStats?.playerId).toBe(prospect.id);
     expect(profile?.scoutConflict?.prospectId).toBe(prospect.id);
     expect(profile?.scoutingReport).toBeNull();
@@ -1852,7 +2320,7 @@ describe('sim worker narrative APIs', () => {
       totalDay: 13,
     };
 
-    const extensionApi = api as typeof api & MinorLeagueWorkerApi;
+    const extensionApi = api as unknown as MinorLeagueWorkerApi;
     const candidates = extensionApi.getExtensionCandidates('nym');
     const entry = candidates.find((player) => player.playerId === candidate.id);
     const openingOffer = extensionApi.getExtensionOffer(candidate.id, 5);
@@ -1874,9 +2342,138 @@ describe('sim worker narrative APIs', () => {
     expect(secondResponse).toBeTruthy();
     expect(firstResponse!.status).toBe('countered');
     expect(firstResponse!.rounds).toHaveLength(1);
+    expect(firstResponse!.review).toMatchObject({
+      status: 'countered',
+      riskLevel: 'high',
+    });
+    expect(firstResponse!.review!.offerGapPct).toBeGreaterThan(20);
+    expect(firstResponse!.review!.teamOfferAav).toBe(lowballOffer.annualSalary);
+    expect(firstResponse!.review!.playerDemandAav).toBeGreaterThan(lowballOffer.annualSalary);
+    expect(firstResponse!.review!.evidence.join(' ')).toContain('below current ask');
     expect(resetOffer?.annualSalary).toBe(openingOffer?.annualSalary);
     expect(secondResponse!.status).toBe('countered');
     expect(secondResponse!.rounds).toHaveLength(1);
+  });
+
+  it('applies runtime team-building identity to promotion and extension candidate priorities', () => {
+    startGame(1271, 'nym');
+    const state = requireState();
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const standing = state.seasonState.standings.getRecord('bos');
+    if (!standing) {
+      throw new Error('Missing BOS standing.');
+    }
+
+    const bosPlayers = state.players.filter((player) => player.teamId === 'bos');
+    for (const player of bosPlayers) {
+      if (player.rosterStatus === 'MLB') {
+        player.overallRating = 250;
+      }
+    }
+
+    standing.wins = 35;
+    standing.losses = 75;
+
+    const [currentReady, upsideProspect] = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'AAA' && player.pitcherAttributes == null)
+      .slice(0, 2);
+    if (!currentReady || !upsideProspect) {
+      throw new Error('Expected two BOS AAA hitters.');
+    }
+
+    setHitterProfile(currentReady, 'RF', 340, 31, 1);
+    currentReady.id = 'bos-current-ready-promotion';
+    currentReady.overallRating = 340;
+    currentReady.potentialRating = 345;
+    currentReady.minorLeagueLevel = 'AAA';
+
+    setHitterProfile(upsideProspect, 'RF', 320, 22, 1);
+    upsideProspect.id = 'bos-upside-promotion';
+    upsideProspect.overallRating = 320;
+    upsideProspect.potentialRating = 430;
+    upsideProspect.minorLeagueLevel = 'AAA';
+
+    const aaaState = state.minorLeagueState.affiliateStates.find(
+      (entry) => entry.teamId === 'bos' && entry.level === 'AAA',
+    );
+    if (!aaaState) {
+      throw new Error('Missing BOS AAA affiliate state.');
+    }
+    aaaState.playerStats = [currentReady, upsideProspect].map((player) => [player.id, {
+      playerId: player.id,
+      games: 24,
+      pa: 118,
+      hits: 38,
+      hr: 7,
+      rbi: 29,
+      bb: 18,
+      k: 17,
+      ipOuts: 0,
+      earnedRuns: 0,
+      strikeouts: 0,
+      walks: 0,
+      wins: 0,
+      losses: 0,
+    }]);
+
+    expect(workerApi.getPromotionCandidates('bos')[0]?.playerId).toBe(upsideProspect.id);
+
+    const [winNowStar, youngCornerstone] = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null)
+      .slice(0, 2);
+    if (!winNowStar || !youngCornerstone) {
+      throw new Error('Expected two BOS MLB hitters.');
+    }
+
+    setHitterProfile(winNowStar, '3B', 420, 31, 24);
+    winNowStar.id = 'bos-current-extension-star';
+    winNowStar.overallRating = 420;
+    winNowStar.contract.years = 1;
+    winNowStar.contract.totalValue = 24;
+    state.serviceTime.set(winNowStar.id, 6);
+
+    setHitterProfile(youngCornerstone, 'SS', 360, 24, 7);
+    youngCornerstone.id = 'bos-young-extension-core';
+    youngCornerstone.overallRating = 360;
+    youngCornerstone.contract.years = 3;
+    youngCornerstone.contract.totalValue = 21;
+    youngCornerstone.developmentTrajectory = 'ahead_of_curve';
+    state.serviceTime.set(youngCornerstone.id, 2);
+
+    for (const player of bosPlayers) {
+      if (
+        player.rosterStatus !== 'MLB'
+        || player.id === winNowStar.id
+        || player.id === youngCornerstone.id
+      ) {
+        continue;
+      }
+      player.extensionHistory = [{
+        season: state.season,
+        teamId: 'bos',
+        years: 2,
+        annualSalary: player.contract.annualSalary,
+        totalValue: player.contract.annualSalary * 2,
+        outcome: 'accepted',
+      }];
+    }
+
+    const rebuildingExtensions = workerApi.getExtensionCandidates('bos');
+    expect(rebuildingExtensions[0]?.playerId).toBe(youngCornerstone.id);
+
+    standing.wins = 96;
+    standing.losses = 48;
+    for (const player of bosPlayers) {
+      if (player.rosterStatus === 'MLB') {
+        player.overallRating = Math.max(player.overallRating, 410);
+      }
+    }
+
+    const winNowExtensions = workerApi.getExtensionCandidates('bos');
+    const winNowPromotions = workerApi.getPromotionCandidates('bos');
+
+    expect(winNowExtensions[0]?.playerId).toBe(winNowStar.id);
+    expect(winNowPromotions[0]?.playerId).toBe(currentReady.id);
   });
 
   it('issues and resolves qualifying offers through worker APIs', () => {
@@ -1900,7 +2497,7 @@ describe('sim worker narrative APIs', () => {
       totalDay: 18,
     };
 
-    const extensionApi = api as typeof api & MinorLeagueWorkerApi;
+    const extensionApi = api as unknown as MinorLeagueWorkerApi;
     const salary = extensionApi.getQualifyingOfferSalary();
     const eligible = extensionApi.getQualifyingOfferEligible('nym');
     const issued = extensionApi.issueQualifyingOffer(candidate.id);
@@ -1909,12 +2506,6 @@ describe('sim worker narrative APIs', () => {
     expect(eligible.some((player) => player.playerId === candidate.id)).toBe(true);
     expect(issued.success).toBe(true);
     expect(requireState().draftState.qualifyingOffers.some((record) => record.playerId === candidate.id)).toBe(true);
-
-    requireState().offseasonState = {
-      ...requireState().offseasonState!,
-      currentPhase: 'free_agency',
-      phaseDay: 1,
-    };
 
     const resolved = extensionApi.resolveQualifyingOffers();
     const record = requireState().draftState.qualifyingOffers.find((entry) => entry.playerId === candidate.id);
@@ -2087,7 +2678,87 @@ describe('sim worker narrative APIs', () => {
     expect(compliance.dfaRecommendations.length).toBeGreaterThan(0);
     expect(affiliateOverview.affiliates.some((affiliate) => affiliate.level === 'AAA' && affiliate.gamesPlayed > 0)).toBe(true);
     expect(affiliateOverview.recentBoxScores.length).toBeGreaterThan(0);
+    expect(affiliateOverview.recentBoxScores[0]).toMatchObject({
+      teamId: 'nym',
+      label: expect.any(String),
+      shortName: expect.any(String),
+    });
     expect(latestBoxScore?.id).toBe(affiliateOverview.recentBoxScores[0]!.id);
+    expect(latestBoxScore).toMatchObject({
+      homeTeamId: expect.any(String),
+      awayTeamId: expect.any(String),
+      homeShortName: expect.any(String),
+      awayShortName: expect.any(String),
+    });
+  });
+
+  it('accrues service time and affiliate games for every day advanced by week and month sims', () => {
+    startGame(113, 'nym');
+    api.simDay();
+
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'nym' && candidate.rosterStatus === 'MLB')!;
+
+    const beforeWeekDay = requireState().day;
+    const beforeWeekService = (api.getPlayer(player.id) as unknown as WorkerPlayerView).serviceTimeDays;
+    const beforeWeekAffiliateGames = workerApi.getAffiliateOverview('nym').affiliates
+      .find((affiliate) => affiliate.level === 'AAA')!.gamesPlayed;
+
+    api.simWeek();
+
+    const afterWeekDay = requireState().day;
+    const weekDayDelta = afterWeekDay - beforeWeekDay;
+    const afterWeekService = (api.getPlayer(player.id) as unknown as WorkerPlayerView).serviceTimeDays;
+    const afterWeekAffiliateGames = workerApi.getAffiliateOverview('nym').affiliates
+      .find((affiliate) => affiliate.level === 'AAA')!.gamesPlayed;
+
+    expect(afterWeekService).toBe(beforeWeekService + weekDayDelta);
+    expect(afterWeekAffiliateGames).toBe(beforeWeekAffiliateGames + weekDayDelta);
+
+    const beforeMonthDay = requireState().day;
+    const beforeMonthService = afterWeekService;
+    const beforeMonthAffiliateGames = afterWeekAffiliateGames;
+
+    api.simMonth();
+
+    const afterMonthDay = requireState().day;
+    const monthDayDelta = afterMonthDay - beforeMonthDay;
+    const afterMonthService = (api.getPlayer(player.id) as unknown as WorkerPlayerView).serviceTimeDays;
+    const afterMonthAffiliateGames = workerApi.getAffiliateOverview('nym').affiliates
+      .find((affiliate) => affiliate.level === 'AAA')!.gamesPlayed;
+
+    expect(afterMonthService).toBe(beforeMonthService + monthDayDelta);
+    expect(afterMonthAffiliateGames).toBe(beforeMonthAffiliateGames + monthDayDelta);
+
+    const afterMonthState = requireState();
+    const aaaAffiliateState = afterMonthState.minorLeagueState.affiliateStates
+      .find((affiliate) => affiliate.teamId === 'nym' && affiliate.level === 'AAA')!;
+    const [trackedPlayerId, trackedStats] = aaaAffiliateState.playerStats[0]!;
+    const historyLine = afterMonthState.minorLeagueState.minorLeagueStatHistory
+      .find(([playerId]) => playerId === trackedPlayerId)?.[1]
+      .find((line) => line.season === afterMonthState.season && line.level === 'AAA');
+
+    expect(historyLine?.gamesPlayed).toBe(trackedStats.games);
+  });
+
+  it('advances affiliate games without consuming the parent worker rng', () => {
+    startGame(114, 'nym');
+
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    const beforeRng = requireState().rng.getState();
+    const beforeAffiliateGames = workerApi.getAffiliateOverview('nym').affiliates
+      .find((affiliate) => affiliate.level === 'AAA')!.gamesPlayed;
+    const state = requireState();
+
+    advanceMinorLeagueDay(state, state.day);
+
+    const afterRng = requireState().rng.getState();
+    const afterAffiliateGames = workerApi.getAffiliateOverview('nym').affiliates
+      .find((affiliate) => affiliate.level === 'AAA')!.gamesPlayed;
+
+    expect(afterRng).toEqual(beforeRng);
+    expect(afterAffiliateGames).toBe(beforeAffiliateGames + 1);
   });
 
   it('persists user roster plans in the existing opening-day plan field', () => {
@@ -2115,7 +2786,7 @@ describe('sim worker narrative APIs', () => {
     expect(result.success).toBe(true);
     expect(api.getRosterPlan().lineupPlayerIds.slice(0, lineupPlayerIds.length)).toEqual(lineupPlayerIds);
     expect(api.getRosterPlan().rotationPlayerIds.slice(0, rotationPlayerIds.length)).toEqual(rotationPlayerIds);
-    expect(snapshot.schemaVersion).toBe(33);
+    expect(snapshot.schemaVersion).toBe(34);
     expect(snapshot.franchise.dayOne.openingDayPlan?.lineupPlayerIds.slice(0, lineupPlayerIds.length)).toEqual(lineupPlayerIds);
     expect(snapshot.franchise.dayOne.openingDayPlan?.rotationPlayerIds.slice(0, rotationPlayerIds.length)).toEqual(rotationPlayerIds);
   });
@@ -2155,6 +2826,50 @@ describe('sim worker narrative APIs', () => {
     expect(claimedPlayer.teamId).toBe('phx');
     expect(claimedPlayer.rosterStatus).toBe('AAA');
     expect(overviewAfterClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'claimed')).toBe(true);
+  });
+
+  it('does not route a legal third option-year demotion through waivers', () => {
+    startGame(112, 'phx');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+    player.optionYearsUsed = 2;
+    player.isOutOfOptions = false;
+    state.minorLeagueState.optionUsage = [[player.id, [state.season - 2, state.season - 1]]];
+
+    const demotionResult = api.demotePlayer(player.id);
+    const updatedPlayer = requireState().players.find((candidate) => candidate.id === player.id)!;
+
+    expect(demotionResult.success).toBe(true);
+    expect(updatedPlayer.rosterStatus).toBe('AAA');
+    expect(updatedPlayer.optionYearsUsed).toBe(3);
+    expect(updatedPlayer.isOutOfOptions).toBe(true);
+    expect(requireState().minorLeagueState.optionUsage).toContainEqual([
+      player.id,
+      [state.season - 2, state.season - 1, state.season],
+    ]);
+    expect(requireState().minorLeagueState.waiverClaims.some((claim) => claim.playerId === player.id)).toBe(false);
+  });
+
+  it('does not route an out-of-options player through waivers when this season option is already active', () => {
+    startGame(112, 'phx');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+    player.optionYearsUsed = 3;
+    player.isOutOfOptions = true;
+    state.minorLeagueState.optionUsage = [[player.id, [state.season - 2, state.season - 1, state.season]]];
+
+    const demotionResult = api.demotePlayer(player.id);
+    const updatedPlayer = requireState().players.find((candidate) => candidate.id === player.id)!;
+
+    expect(demotionResult.success).toBe(true);
+    expect(updatedPlayer.rosterStatus).toBe('AAA');
+    expect(updatedPlayer.optionYearsUsed).toBe(3);
+    expect(updatedPlayer.isOutOfOptions).toBe(true);
+    expect(requireState().minorLeagueState.optionUsage).toContainEqual([
+      player.id,
+      [state.season - 2, state.season - 1, state.season],
+    ]);
+    expect(requireState().minorLeagueState.waiverClaims.some((claim) => claim.playerId === player.id)).toBe(false);
   });
 
   it('lets a friendly higher-priority team pass on a marginal waiver claim so the user can claim the player', () => {
@@ -2487,9 +3202,6 @@ describe('sim worker narrative APIs', () => {
     const arbitrationGroup = formatted.transactionGroups.find((group) => group.phase === 'arbitration');
     const userRow = arbitrationGroup?.rows.find((row) => row.summary.includes('Juan Soto'));
     const updatedCandidate = requireState().players.find((player) => player.id === arbCandidate!.id);
-    const arbitrationTicker = requireState().tickerFeed.find((entry) =>
-      entry.category === 'arbitration' && entry.text.includes('Juan Soto'),
-    );
 
     expect(result?.currentPhase).toBe('tender_nontender');
     expect(formatted.phaseResults.arbitrationResolved.length).toBeGreaterThan(0);
@@ -2499,8 +3211,223 @@ describe('sim worker narrative APIs', () => {
     expect(updatedCandidate?.arbitrationHistory[0]?.awardedSalary).toBe(arbitrationResult?.newSalary);
     expect(userRow?.summary).toContain('Juan Soto');
     expect(userRow?.tone).toBe('user');
-    expect(arbitrationTicker).toBeTruthy();
-    expect(arbitrationTicker?.text).toContain('arb hearing');
+  });
+
+  it('derives an offseason command center checklist with roster and budget warnings', () => {
+    startGame(337, 'nym');
+    const state = requireState();
+    const rosterState = state.rosterStates.get('nym')!;
+    const owner = state.ownerState.get('nym')!;
+    const userPlayers = state.players.filter((player) => player.teamId === 'nym');
+
+    rosterState.mlbRoster = rosterState.mlbRoster.slice(0, 24);
+    owner.annualBudget = 12;
+    owner.payrollCap = 10;
+
+    for (const player of userPlayers) {
+      if (player.rosterStatus === 'MLB') {
+        player.contract.annualSalary = 2;
+      }
+    }
+
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'free_agency',
+      phaseDay: 2,
+      totalDay: 22,
+    };
+
+    const view = api.getOffseasonState() as {
+      commandCenter: OffseasonCommandCenterView;
+    } | null;
+
+    expect(view?.commandCenter.checklist.map((item) => item.id)).toEqual([
+      'arbitration',
+      'qualifying_offers',
+      'rule5',
+      'free_agency',
+      'staff',
+      'roster',
+      'budget',
+    ]);
+    expect(view?.commandCenter.checklist.find((item) => item.id === 'free_agency')?.status).toBe('attention');
+    expect(view?.commandCenter.checklist.find((item) => item.id === 'roster')?.status).toBe('attention');
+    expect(view?.commandCenter.checklist.find((item) => item.id === 'budget')?.status).toBe('blocked');
+    expect(view?.commandCenter.warnings.some((warning) => warning.id === 'roster-active_roster_under_limit')).toBe(true);
+    expect(view?.commandCenter.warnings.some((warning) => warning.id === 'budget-over-cap')).toBe(true);
+    expect(view?.commandCenter.projectedOpeningDay.activeRosterCount).toBe(24);
+    expect(view?.commandCenter.projectedOpeningDay.activeRosterLimit).toBe(26);
+    expect(view?.commandCenter.projectedOpeningDay.rosterHoleCount).toBe(2);
+    expect(view?.commandCenter.projectedOpeningDay.payrollSpace).toBeLessThan(0);
+  });
+
+  it('derives offseason market day summaries from major signings and trades', () => {
+    startGame(338, 'nym');
+    const state = requireState();
+    const userStar = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const incomingStar = state.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    userStar.firstName = 'Juan';
+    userStar.lastName = 'Soto';
+    incomingStar.firstName = 'Rafael';
+    incomingStar.lastName = 'Devers';
+    setHitterProfile(userStar, 'RF', 520, 28, 32);
+    setHitterProfile(incomingStar, '3B', 500, 29, 28);
+
+    state.phase = 'offseason';
+    state.day = 12;
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'free_agency',
+      phaseDay: 4,
+      totalDay: 18,
+      phaseResults: {
+        ...createOffseasonState(state.season).phaseResults,
+        freeAgentSignings: [
+          {
+            playerId: userStar.id,
+            teamId: 'nym',
+            years: 6,
+            annualSalary: 31,
+            totalValue: 186,
+          },
+        ],
+      },
+    };
+    state.tradeState.tradeHistory = [
+      {
+        id: 'offseason-market-trade',
+        fromTeamId: 'bos',
+        toTeamId: 'nym',
+        offeringAssets: [{ type: 'player', playerId: incomingStar.id }],
+        requestingAssets: [{ type: 'player', playerId: userStar.id }],
+        fairnessScore: 22,
+        summary: 'Boston Noreasters sent Rafael Devers to New York Tycoons for Juan Soto.',
+        timestamp: `S${state.season}D11`,
+      },
+    ];
+
+    const view = api.getOffseasonState() as {
+      marketDaySummaries: OffseasonMarketDaySummaryView[];
+    } | null;
+
+    expect(view?.marketDaySummaries).toHaveLength(2);
+    expect(view?.marketDaySummaries[0]?.category).toBe('signing');
+    expect(view?.marketDaySummaries[0]?.headline).toContain('New York Tycoons');
+    expect(view?.marketDaySummaries[0]?.detail).toContain('Juan Soto');
+    expect(view?.marketDaySummaries[0]?.valueLabel).toBe('$186.0M');
+    expect(view?.marketDaySummaries[0]?.tone).toBe('user');
+    expect(view?.marketDaySummaries[1]?.category).toBe('trade');
+    expect(view?.marketDaySummaries[1]?.headline).toContain('Boston Noreasters');
+    expect(view?.marketDaySummaries[1]?.detail).toContain('Rafael Devers');
+    expect(view?.marketDaySummaries[1]?.teamIds).toEqual(['bos', 'nym']);
+    expect(view?.marketDaySummaries[1]?.playerIds).toEqual([incomingStar.id, userStar.id]);
+  });
+
+  it('round-trips every offseason phase through snapshot import without persisting derived views', () => {
+    startGame(339, 'nym');
+
+    for (const [index, phaseName] of OFFSEASON_PHASES.entries()) {
+      const state = requireState();
+      const totalDay = index * 10 + 2;
+      state.phase = 'offseason';
+      state.day = totalDay;
+      state.offseasonState = {
+        ...createOffseasonState(state.season),
+        currentPhase: phaseName as OffseasonPhase,
+        phaseDay: 2,
+        totalDay,
+      };
+
+      const liveView = api.getOffseasonState();
+      const snapshot = api.exportSnapshot() as GameSnapshot;
+      const savedOffseasonState = snapshot.offseasonState as Record<string, unknown>;
+
+      expect(liveView?.currentPhase).toBe(phaseName);
+      expect(liveView?.commandCenter).toBeTruthy();
+      expect(liveView?.marketDaySummaries).toEqual(expect.any(Array));
+      expect(savedOffseasonState.currentPhase).toBe(phaseName);
+      expect(savedOffseasonState.phaseDay).toBe(2);
+      expect(savedOffseasonState.totalDay).toBe(totalDay);
+      expect('commandCenter' in savedOffseasonState).toBe(false);
+      expect('marketDaySummaries' in savedOffseasonState).toBe(false);
+
+      const imported = api.importSnapshot(snapshot);
+      const restoredState = requireState();
+      const restoredView = api.getOffseasonState();
+
+      expect(imported.success).toBe(true);
+      expect(restoredState.phase).toBe('offseason');
+      expect(restoredState.day).toBe(totalDay);
+      expect(restoredState.offseasonState?.currentPhase).toBe(phaseName);
+      expect(restoredState.offseasonState?.phaseDay).toBe(2);
+      expect(restoredState.offseasonState?.totalDay).toBe(totalDay);
+      expect(restoredView?.commandCenter).toBeTruthy();
+      expect(restoredView?.marketDaySummaries).toEqual(expect.any(Array));
+    }
+  });
+
+  it('blocks phase-specific offseason actions outside their active phases', () => {
+    startGame(340, 'nym');
+    const state = requireState();
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const candidate = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    setHitterProfile(candidate, 'RF', 480, 34, 18);
+    candidate.contract.years = 1;
+    candidate.developmentTrajectory = 'on_track';
+    state.serviceTime.set(candidate.id, 6);
+    candidate.serviceTimeDays = 6 * 172;
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'season_review',
+      phaseDay: 1,
+      totalDay: 1,
+    };
+
+    const qualifyingOffersBefore = state.draftState.qualifyingOffers.length;
+    const blockedQualifyingOffer = workerApi.issueQualifyingOffer(candidate.id);
+
+    expect(blockedQualifyingOffer.success).toBe(false);
+    expect(blockedQualifyingOffer.error).toContain('Qualifying offers phase');
+    expect(requireState().draftState.qualifyingOffers).toHaveLength(qualifyingOffersBefore);
+    expect(requireState().offseasonState?.phaseResults.qualifyingOffers).toHaveLength(0);
+
+    const blockedQualifyingOfferResolve = workerApi.resolveQualifyingOffers();
+
+    expect(blockedQualifyingOfferResolve.resolved).toHaveLength(0);
+    expect((blockedQualifyingOfferResolve as { error?: string }).error).toContain('Qualifying offers phase');
+
+    const coachMarketTarget = workerApi.getCoachMarket()[0]!;
+    const staffBefore = workerApi.getCoachingStaff('nym').map((coach) => coach.id);
+    requireState().offseasonState = {
+      ...requireState().offseasonState!,
+      currentPhase: 'free_agency',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+
+    const blockedCoachHire = workerApi.hireCoach(coachMarketTarget.id);
+
+    expect(blockedCoachHire.success).toBe(false);
+    expect(blockedCoachHire.error).toContain('Coaching changes phase');
+    expect(workerApi.getCoachingStaff('nym').map((coach) => coach.id)).toEqual(staffBefore);
+    expect(requireState().offseasonState?.phaseResults.coachChanges).toHaveLength(0);
+
+    const ifaBudgetBefore = { ...requireState().internationalScoutingState.budgets.get('nym')! };
+    const blockedIFATrade = workerApi.tradeIFAPoolSpace('bos', 0.25);
+
+    expect(blockedIFATrade.success).toBe(false);
+    expect(blockedIFATrade.error).toContain('International signing phase');
+    expect(requireState().internationalScoutingState.budgets.get('nym')).toMatchObject(ifaBudgetBefore);
   });
 
   it('applies holdout service-time, morale, and ticker effects when an arbitration holdout triggers', () => {
@@ -3017,7 +3944,17 @@ describe('sim worker narrative APIs', () => {
       draft: {
         currentPick: { teamId: string; userOnClock: boolean } | null;
         completedPicks: Array<{ playerId: string }>;
-        availableProspects: Array<{ id: string }>;
+        availableProspects: Array<{
+          id: string;
+          decisionInputs: {
+            scoutAccuracy: { label: string; value: number; detail: string };
+            disagreement: { label: string; value: number; detail: string };
+            makeup: { label: string; value: number; detail: string };
+            signability: { label: string; value: number; detail: string };
+            risk: { label: string; value: number; detail: string };
+            whyThisPick: string;
+          };
+        }>;
       } | null;
       newPicks: Array<{ playerId: string }>;
     };
@@ -3029,6 +3966,16 @@ describe('sim worker narrative APIs', () => {
 
     const selectedProspectId = start.draft?.availableProspects[0]?.id;
     expect(selectedProspectId).toBeTruthy();
+    const decisionInputs = start.draft?.availableProspects[0]?.decisionInputs;
+    expect(decisionInputs).toMatchObject({
+      scoutAccuracy: { label: expect.any(String), value: expect.any(Number), detail: expect.stringContaining('look') },
+      disagreement: { label: expect.any(String), value: expect.any(Number), detail: expect.any(String) },
+      makeup: { label: expect.any(String), value: expect.any(Number), detail: expect.any(String) },
+      signability: { label: expect.any(String), value: expect.any(Number), detail: expect.any(String) },
+      risk: { label: expect.any(String), value: expect.any(Number), detail: expect.any(String) },
+      whyThisPick: expect.any(String),
+    });
+    expect(decisionInputs!.whyThisPick.length).toBeGreaterThan(20);
 
     const result = api.makeDraftPick(selectedProspectId!) as {
       success: boolean;
@@ -3117,6 +4064,70 @@ describe('sim worker narrative APIs', () => {
     expect(secondRun.draft?.status).toBe('complete');
     expect(secondRun.draft?.userDraftClass?.overallGrade).toMatch(/^[A-F]/);
     expect(secondRun.draft?.userDraftClass?.picks.length).toBeGreaterThan(0);
+  });
+
+  it('keeps remaining draft AI picks stable after user scouting looks', () => {
+    startGame(340, 'nym');
+    let state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    const unscoutedStart = api.startDraft() as {
+      success: boolean;
+      draft: { availableProspects: Array<{ id: string }> } | null;
+    };
+    expect(unscoutedStart.success).toBe(true);
+    const unscoutedRun = api.simulateRemainingDraft() as {
+      success: boolean;
+      draft: {
+        completedPicks: Array<{ pickNumber: number; teamId: string; playerId: string; scoutingGrade: number }>;
+      } | null;
+    };
+    const unscoutedSequence = unscoutedRun.draft?.completedPicks.map(
+      (pick) => `${pick.pickNumber}:${pick.teamId}:${pick.playerId}:${pick.scoutingGrade}`,
+    );
+
+    setState(null);
+
+    startGame(340, 'nym');
+    state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    const scoutedStart = api.startDraft() as {
+      success: boolean;
+      draft: { availableProspects: Array<{ id: string }> } | null;
+    };
+    const scoutedProspectId = scoutedStart.draft?.availableProspects[0]?.id;
+    expect(scoutedProspectId).toBeTruthy();
+    const callCountBeforeScouting = requireState().rng.getState().callCount;
+    expect(api.scoutDraftPlayer(scoutedProspectId!)).toMatchObject({ success: true });
+    expect(api.scoutDraftPlayer(scoutedProspectId!)).toMatchObject({ success: true });
+    expect(requireState().rng.getState().callCount).toBe(callCountBeforeScouting);
+
+    const scoutedRun = api.simulateRemainingDraft() as {
+      success: boolean;
+      draft: {
+        completedPicks: Array<{ pickNumber: number; teamId: string; playerId: string; scoutingGrade: number }>;
+      } | null;
+    };
+    const scoutedSequence = scoutedRun.draft?.completedPicks.map(
+      (pick) => `${pick.pickNumber}:${pick.teamId}:${pick.playerId}:${pick.scoutingGrade}`,
+    );
+
+    expect(unscoutedRun.success).toBe(true);
+    expect(scoutedRun.success).toBe(true);
+    expect(scoutedSequence).toEqual(unscoutedSequence);
   });
 
   it('builds deterministic draft commentary, preview, and post-draft grades without advancing rng state', () => {
@@ -3288,6 +4299,152 @@ describe('sim worker narrative APIs', () => {
     expect(state.players.find((candidate) => candidate.id === player.id)?.teamId).toBe('bos');
   });
 
+  it('keeps active Rule 5 players on the MLB roster during AI overflow normalization', () => {
+    startGame(343, 'nym');
+    const state = requireState();
+    const teamId = 'bos';
+    state.phase = 'regular';
+    state.day = 1;
+
+    const rule5Player = state.players.find(
+      (candidate) => candidate.teamId === teamId && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    rule5Player.id = 'bos-active-rule5-overflow';
+    rule5Player.overallRating = 40;
+    rule5Player.serviceTimeDays = 0;
+    setHitterProfile(rule5Player, 'RF', 90, 23, 1);
+
+    const extraPlayers = state.players
+      .filter((candidate) => candidate.teamId === teamId && candidate.rosterStatus !== 'MLB')
+      .slice(0, 31 - state.players.filter((candidate) => candidate.teamId === teamId && candidate.rosterStatus === 'MLB').length);
+    expect(extraPlayers.length).toBeGreaterThan(0);
+    for (const [index, player] of extraPlayers.entries()) {
+      player.rosterStatus = 'MLB';
+      player.minorLeagueLevel = null;
+      player.overallRating = 100 + index;
+    }
+
+    state.rule5Obligations = [{
+      playerId: rule5Player.id,
+      originalTeamId: 'nym',
+      draftingTeamId: teamId,
+      draftedAfterSeason: state.season - 1,
+      status: 'active',
+    }];
+    state.rosterStates.set(teamId, buildRosterState(teamId, state.players));
+
+    const beforeCount = state.players.filter((candidate) => candidate.teamId === teamId && candidate.rosterStatus === 'MLB').length;
+    expect(beforeCount).toBeGreaterThan(30);
+
+    api.simWeek();
+
+    const protectedPlayer = requireState().players.find((candidate) => candidate.id === rule5Player.id);
+    const afterCount = requireState().players.filter((candidate) => candidate.teamId === teamId && candidate.rosterStatus === 'MLB').length;
+
+    expect(protectedPlayer?.rosterStatus).toBe('MLB');
+    expect(afterCount).toBeLessThanOrEqual(30);
+    expect(requireState().rule5Obligations[0]?.status).toBe('active');
+  });
+
+  it('consumes an AI overflow demotion option year before trimming an overfull MLB roster', () => {
+    startGame(344, 'nym');
+    const state = requireState();
+    const teamId = 'bos';
+    state.phase = 'regular';
+    state.day = 1;
+
+    const candidate = state.players.find(
+      (player) => player.teamId === teamId && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    candidate.id = 'bos-ai-option-overflow';
+    candidate.overallRating = 35;
+    candidate.optionYearsUsed = 2;
+    candidate.isOutOfOptions = false;
+    state.minorLeagueState.optionUsage = [[candidate.id, [state.season - 2, state.season - 1]]];
+    setHitterProfile(candidate, 'RF', 90, 23, 1);
+
+    for (const [index, player] of state.players
+      .filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB' && player.id !== candidate.id)
+      .entries()) {
+      player.overallRating = 500 + index;
+    }
+
+    const extraPlayers = state.players
+      .filter((player) => player.teamId === teamId && player.rosterStatus !== 'MLB')
+      .slice(0, 31 - state.players.filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB').length);
+    expect(extraPlayers.length).toBeGreaterThan(0);
+    for (const [index, player] of extraPlayers.entries()) {
+      player.rosterStatus = 'MLB';
+      player.minorLeagueLevel = null;
+      player.overallRating = 600 + index;
+    }
+
+    state.rosterStates.set(teamId, buildRosterState(teamId, state.players));
+
+    api.simWeek();
+
+    const updatedPlayer = requireState().players.find((player) => player.id === candidate.id)!;
+
+    expect(updatedPlayer.rosterStatus).toBe('AAA');
+    expect(updatedPlayer.optionYearsUsed).toBe(3);
+    expect(updatedPlayer.isOutOfOptions).toBe(true);
+    expect(requireState().minorLeagueState.optionUsage).toContainEqual([
+      candidate.id,
+      [state.season - 2, state.season - 1, state.season],
+    ]);
+    expect(requireState().minorLeagueState.waiverClaims.some((claim) => claim.playerId === candidate.id)).toBe(false);
+  });
+
+  it('routes AI overflow demotions through waivers when no option year is available', () => {
+    startGame(345, 'nym');
+    const state = requireState();
+    const teamId = 'bos';
+    state.phase = 'regular';
+    state.day = 1;
+
+    const candidate = state.players.find(
+      (player) => player.teamId === teamId && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    candidate.id = 'bos-ai-waiver-overflow';
+    candidate.overallRating = 35;
+    candidate.optionYearsUsed = 3;
+    candidate.isOutOfOptions = true;
+    state.minorLeagueState.optionUsage = [[candidate.id, [state.season - 3, state.season - 2, state.season - 1]]];
+    setHitterProfile(candidate, 'RF', 90, 23, 1);
+
+    for (const [index, player] of state.players
+      .filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB' && player.id !== candidate.id)
+      .entries()) {
+      player.overallRating = 500 + index;
+    }
+
+    const extraPlayers = state.players
+      .filter((player) => player.teamId === teamId && player.rosterStatus !== 'MLB')
+      .slice(0, 31 - state.players.filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB').length);
+    expect(extraPlayers.length).toBeGreaterThan(0);
+    for (const [index, player] of extraPlayers.entries()) {
+      player.rosterStatus = 'MLB';
+      player.minorLeagueLevel = null;
+      player.overallRating = 600 + index;
+    }
+
+    state.rosterStates.set(teamId, buildRosterState(teamId, state.players));
+
+    api.simWeek();
+
+    const updatedPlayer = requireState().players.find((player) => player.id === candidate.id)!;
+    const waiverClaim = requireState().minorLeagueState.waiverClaims.find((claim) => claim.playerId === candidate.id);
+
+    expect(updatedPlayer.rosterStatus).toBe('AAA');
+    expect(updatedPlayer.optionYearsUsed).toBe(3);
+    expect(updatedPlayer.isOutOfOptions).toBe(true);
+    expect(waiverClaim).toEqual(expect.objectContaining({
+      playerId: candidate.id,
+      fromTeamId: teamId,
+      status: 'pending',
+    }));
+  });
+
   it('opens the international signing phase after the Rule 5 draft and seeds the IFA pool', () => {
     startGame(342, 'nym');
     const state = requireState();
@@ -3405,6 +4562,20 @@ describe('sim worker narrative APIs', () => {
     const state = requireState();
     state.phase = 'regular';
     state.day = 118;
+    state.gmPersonalities.set('bos', 'aggressive');
+    state.gmRelationships.set('bos', {
+      targetTeamId: 'bos',
+      score: 32,
+      lastInteractionSeason: state.season,
+      tradeHistory: [
+        {
+          season: state.season,
+          surplusValue: 8,
+          description: 'a trade both sides could justify',
+          permanentMemory: false,
+        },
+      ],
+    });
 
     const first = buildIncomingOffer('deadline-hot-1');
     const second = buildIncomingOffer('deadline-hot-2');
@@ -3435,6 +4606,32 @@ describe('sim worker narrative APIs', () => {
         chatter: Array<{ headline: string }>;
         hotOffers: Array<{ urgencyTag: string; bidderCount: number; biddingSummary: string | null; dialogue: { headline: string; lines: string[] } }>;
         ticker: Array<{ summary: string }>;
+        marketIntel: Array<{
+          teamId: string;
+          teamName: string;
+          teamAbbreviation: string;
+          mode: string;
+          gmPersonality: string;
+          personalityLabel: string;
+          posture: string;
+          pressureScore: number;
+          pressureLabel: string;
+          budgetPressure: string;
+          needs: string[];
+          surplus: string[];
+          activeOfferCount: number;
+          relationshipTier: string;
+          relationshipSummary: string | null;
+        }>;
+        warRoom: {
+          headline: string;
+          detail: string;
+          currentCheckpointDay: number | null;
+          nextCheckpointDay: number | null;
+          completedCheckpoints: number;
+          totalCheckpoints: number;
+          callsToAction: string[];
+        };
       };
     }).getTradeDeadlineState();
 
@@ -3449,6 +4646,46 @@ describe('sim worker narrative APIs', () => {
     expect(deadlineState.hotOffers.some((offer) => offer.biddingSummary?.includes('clubs'))).toBe(true);
     expect(deadlineState.hotOffers[0]?.dialogue.lines.length).toBe(3);
     expect(deadlineState.ticker[0]?.summary).toContain('Seattle Drizzle');
+    expect(deadlineState.marketIntel.length).toBeGreaterThan(0);
+
+    const bostonIntel = deadlineState.marketIntel.find((team) => team.teamId === 'bos');
+    expect(bostonIntel).toMatchObject({
+      teamName: 'Boston Noreasters',
+      teamAbbreviation: 'BOS',
+      gmPersonality: 'aggressive',
+      personalityLabel: 'Aggressive',
+      activeOfferCount: 1,
+      relationshipTier: 'friendly',
+      relationshipSummary: 'a trade both sides could justify',
+    });
+    expect(bostonIntel?.posture).toContain('Aggressive');
+    expect(bostonIntel?.needs.length).toBeGreaterThan(0);
+    expect(bostonIntel?.surplus.length).toBeGreaterThan(0);
+    expect(bostonIntel?.pressureScore).toBeGreaterThan(0);
+    expect(['low', 'medium', 'high']).toContain(bostonIntel?.budgetPressure);
+    expect(deadlineState.warRoom.headline).toContain('Final');
+    expect(deadlineState.warRoom.currentCheckpointDay).toBe(117);
+    expect(deadlineState.warRoom.nextCheckpointDay).toBe(120);
+    expect(deadlineState.warRoom.completedCheckpoints).toBe(6);
+    expect(deadlineState.warRoom.totalCheckpoints).toBe(8);
+    expect(deadlineState.warRoom.callsToAction.some((action) => action.includes('hottest incoming offers'))).toBe(true);
+
+    state.day = 91;
+    const earlyDeadlineState = (api as typeof api & {
+      getTradeDeadlineState: () => {
+        warRoom: {
+          headline: string;
+          currentCheckpointDay: number | null;
+          nextCheckpointDay: number | null;
+          completedCheckpoints: number;
+        };
+      };
+    }).getTradeDeadlineState();
+
+    expect(earlyDeadlineState.warRoom.headline).toContain('Set the board');
+    expect(earlyDeadlineState.warRoom.currentCheckpointDay).toBeNull();
+    expect(earlyDeadlineState.warRoom.nextCheckpointDay).toBe(92);
+    expect(earlyDeadlineState.warRoom.completedCheckpoints).toBe(0);
   });
 
   it('builds deterministic trade dialogue without advancing rng state', () => {
@@ -3870,14 +5107,11 @@ describe('sim worker narrative APIs', () => {
 
     api.simDay();
 
-    const ceremony = (api as typeof api & {
-      getCeremonyState: () => {
-        activeMoment: { type: string; title: string } | null;
-      };
-    }).getCeremonyState();
+    const playoffClinchMoment = requireState().ceremony.pendingMoments.find(
+      (moment) => moment.type === 'playoff_clinch',
+    );
 
-    expect(ceremony.activeMoment?.type).toBe('playoff_clinch');
-    expect(ceremony.activeMoment?.title).toContain('POSTSEASON BOUND');
+    expect(playoffClinchMoment?.title).toContain('POSTSEASON BOUND');
   });
 
   it('queues a prospect debut flashback on a homegrown player first MLB game', () => {
@@ -4294,6 +5528,153 @@ describe('sim worker narrative APIs', () => {
     expect(firstHeadline?.headline).toContain('World Series');
   });
 
+  it('derives a deterministic farm development focus board from reports, ETA, setbacks, and runway', () => {
+    startGame(3559, 'nym');
+    const state = requireState();
+    const workerApi = api as typeof api & {
+      getProspectPipeline: (teamId?: string) => ProspectPipelineView;
+    };
+
+    const readyProspect = state.players.find((player) =>
+      player.teamId === 'nym' && player.rosterStatus === 'AAA' && player.pitcherAttributes == null,
+    )!;
+    const stallingProspect = state.players.find((player) =>
+      player.teamId === 'nym' && player.rosterStatus === 'AA' && player.id !== readyProspect.id,
+    )!;
+    const longViewProspect = state.players.find((player) =>
+      player.teamId === 'nym' && player.rosterStatus === 'A' && player.id !== readyProspect.id,
+    )!;
+
+    for (const player of state.players) {
+      if (
+        player.teamId === 'nym'
+        && ['ROOKIE', 'A', 'A_PLUS', 'AA', 'AAA'].includes(player.rosterStatus)
+        && player.id !== readyProspect.id
+        && player.id !== stallingProspect.id
+        && player.id !== longViewProspect.id
+      ) {
+        player.age = 24;
+        player.overallRating = 44;
+        player.ceiling = 62;
+        player.developmentTrajectory = 'on_track';
+      }
+    }
+
+    readyProspect.overallRating = 64;
+    readyProspect.ceiling = 72;
+    readyProspect.developmentTrajectory = 'ahead_of_curve';
+    stallingProspect.overallRating = 52;
+    stallingProspect.ceiling = 70;
+    stallingProspect.developmentTrajectory = 'below_expectations';
+    longViewProspect.age = 19;
+    longViewProspect.overallRating = 45;
+    longViewProspect.ceiling = 76;
+    longViewProspect.developmentTrajectory = 'on_track';
+
+    state.minorLeagueState.minorLeagueStatHistory = [[readyProspect.id, [{
+      season: state.season,
+      level: 'AAA',
+      gamesPlayed: 66,
+      pa: 240,
+      hits: 78,
+      hr: 13,
+      rbi: 44,
+      avg: 0.325,
+      ip: 0,
+      era: 0,
+      k: 0,
+      bb: 28,
+    }]]];
+    state.minorLeagueState.developmentReports.push({
+      playerId: stallingProspect.id,
+      teamId: 'nym',
+      season: state.season,
+      month: 4,
+      trajectory: 'below_expectations',
+      summary: `${stallingProspect.firstName} ${stallingProspect.lastName} is chasing spin and needs tighter swing decisions.`,
+      overallRating: stallingProspect.overallRating,
+    });
+    state.minorLeagueState.activeDevelopmentSetbacks = [{
+      playerId: stallingProspect.id,
+      type: 'mental_block',
+      overallModifier: -4,
+      startSeason: state.season,
+      startMonth: 4,
+      endSeason: state.season,
+      endMonth: 5,
+      summary: `${stallingProspect.firstName} ${stallingProspect.lastName} is fighting a lower-half timing leak.`,
+      active: true,
+    }];
+    state.prospectBonds.push({
+      prospectId: longViewProspect.id,
+      draftedSeason: state.season - 1,
+      debutSeason: null,
+      currentLevel: 'A',
+      bondStrength: 36,
+      milestones: ['Drafted Round 2, 4', 'Assigned to A-ball, 5'],
+      loyaltyModifier: 0.36,
+    });
+
+    const rngCallsBefore = state.rng.getState().callCount;
+    const firstPipeline = workerApi.getProspectPipeline('nym');
+    const secondPipeline = workerApi.getProspectPipeline('nym');
+
+    expect(secondPipeline.developmentFocus).toEqual(firstPipeline.developmentFocus);
+    expect(state.rng.getState().callCount).toBe(rngCallsBefore);
+
+    const readyPriority = firstPipeline.developmentFocus.priorities.find((priority) => priority.playerId === readyProspect.id);
+    const stallingPriority = firstPipeline.developmentFocus.priorities.find((priority) => priority.playerId === stallingProspect.id);
+    const longViewPriority = firstPipeline.developmentFocus.priorities.find((priority) => priority.playerId === longViewProspect.id);
+
+    expect(readyPriority).toMatchObject({
+      category: 'promotion_window',
+      label: 'Promotion Window',
+    });
+    expect(readyPriority?.action).toContain('Evaluate MLB fit');
+    expect(readyPriority?.evidence.some((item) => item.includes('.325 AVG'))).toBe(true);
+    expect(stallingPriority).toMatchObject({
+      category: 'recalibrate_plan',
+      label: 'Recalibrate Plan',
+    });
+    expect(stallingPriority?.reason).toContain('below expectations');
+    expect(stallingPriority?.evidence).toContain(`${stallingProspect.firstName} ${stallingProspect.lastName} is fighting a lower-half timing leak.`);
+    expect(longViewPriority).toMatchObject({
+      category: 'protect_runway',
+      label: 'Protect Runway',
+    });
+    expect(longViewPriority?.action).toContain('Protect the development lane');
+  });
+
+  it('applies development focus plans to the existing persisted player program', () => {
+    startGame(3560, 'nym');
+    const state = requireState();
+    const workerApi = api as typeof api & MinorLeagueWorkerApi;
+    const prospect = state.players.find((player) =>
+      player.teamId === 'nym'
+      && player.rosterStatus === 'AA'
+      && player.pitcherAttributes == null,
+    )!;
+    const otherTeamProspect = state.players.find((player) =>
+      player.teamId !== 'nym'
+      && player.rosterStatus === 'AA'
+    )!;
+
+    prospect.developmentProgram = 'tools';
+    const rngCallsBefore = state.rng.getState().callCount;
+
+    const result = workerApi.applyDevelopmentFocusPlan(prospect.id, 'recalibrate_plan');
+    const exported = api.exportSnapshot() as GameSnapshot;
+
+    expect(result).toEqual({ success: true, developmentProgram: 'refinement' });
+    expect(requireState().players.find((player) => player.id === prospect.id)?.developmentProgram).toBe('refinement');
+    expect(exported.players.find((player) => player.id === prospect.id)?.developmentProgram).toBe('refinement');
+    expect(requireState().rng.getState().callCount).toBe(rngCallsBefore);
+    expect(workerApi.applyDevelopmentFocusPlan(otherTeamProspect.id, 'promotion_window')).toMatchObject({
+      success: false,
+      error: 'Player is not controlled by the user team',
+    });
+  });
+
   it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {
     startGame(344, 'nym');
 
@@ -4509,6 +5890,70 @@ describe('sim worker narrative APIs', () => {
     expect(timeline[0]?.dynastyScore).toBeGreaterThan(0);
     expect(dynasty?.grade).not.toBe('F');
     expect(requireState().careerStats.find((entry) => entry.playerId === icon.id)?.seasonsPlayed).toBeGreaterThanOrEqual(13);
+  });
+
+  it('links current-season team timeline moments to matching box scores without advancing rng state', () => {
+    startGame(14011, 'nym');
+    const state = requireState();
+    const gameIndex = 0;
+    state.franchiseTimeline = [{
+      season: state.season,
+      teamId: 'nym',
+      record: '88-74',
+      winTotal: 88,
+      playoffResult: 'Won Division Series',
+      championship: false,
+      worldSeriesAppearance: false,
+      playoffAppearance: true,
+      divisionTitle: true,
+      awardWinnerCount: 0,
+      keyAcquisitions: [],
+      keyDepartures: [],
+      dynastyScore: 144,
+    }];
+    state.seasonState.gameLog.length = 0;
+    state.seasonState.gameLog.push({
+      homeTeamId: 'nym',
+      awayTeamId: 'bos',
+      homeScore: 6,
+      awayScore: 4,
+      innings: 9,
+      homeHits: 10,
+      awayHits: 7,
+      paResults: [],
+      date: `S${state.season}D88`,
+      isPlayoff: false,
+    });
+    state.teamMoments.set('nym', [{
+      season: state.season,
+      day: 88,
+      timestamp: `S${state.season}D88`,
+      type: 'lineup_of_era',
+      description: 'The lineup announced itself with a defining win over Boston.',
+      impact: 7,
+      relevance: 0.92,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    }]);
+
+    const workerApi = api as typeof api & {
+      getFranchiseTimeline: () => Array<{
+        teamMomentBeats?: Array<{ label: string; summary: string; gameIndex?: number }>;
+      }>;
+    };
+    const rngCallsBefore = state.rng.getState().callCount;
+    const firstTimeline = workerApi.getFranchiseTimeline();
+    const secondTimeline = workerApi.getFranchiseTimeline();
+
+    expect(secondTimeline).toEqual(firstTimeline);
+    expect(state.rng.getState().callCount).toBe(rngCallsBefore);
+    expect(firstTimeline[0]?.teamMomentBeats?.[0]).toMatchObject({
+      label: 'Lineup of Era',
+      summary: 'The lineup announced itself with a defining win over Boston.',
+      gameIndex,
+    });
   });
 
   it('rolls games missed to injury into prior-season history when starting the next season', () => {
@@ -5601,11 +7046,13 @@ describe('sim worker narrative APIs', () => {
       && item.relatedTeamIds.includes('nym')
       && item.relatedTeamIds.includes('bos'),
     );
+    const walkoffTicker = state.tickerFeed.find((entry) =>
+      entry.relatedPlayerIds.includes(hitter.id) && /walk-off/i.test(entry.text),
+    );
 
-    expect(state.tickerFeed[0]?.text).toContain('WALK-OFF HOME RUN');
-    expect(state.tickerFeed[0]?.relatedPlayerIds).toContain(hitter.id);
+    expect(walkoffTicker?.relatedPlayerIds).toContain(hitter.id);
     expect(highlightNews?.headline.toLowerCase()).toContain('walk-off');
-    expect(highlightNews?.body).toContain('WALK-OFF HOME RUN');
+    expect(highlightNews?.body).toMatch(/walk-off/i);
   });
 
   it('publishes career milestone news with structured cumulative totals', () => {

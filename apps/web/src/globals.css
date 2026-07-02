@@ -90,3 +90,20 @@
     color: #F8FAFC !important;
   }
 }
+
+@layer components {
+  .mobile-critical-control {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+
+  @media (max-width: 767px) {
+    .mobile-critical-control {
+      width: 100%;
+      justify-content: center;
+      white-space: normal;
+      text-align: center;
+    }
+  }
+}
