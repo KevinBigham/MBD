@@ -4,10 +4,25 @@ export const MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES = 81 * 1024;
 // Worker ceilings: see apps/web/docs/BUDGETS.md for the lift policy and per-slice rationale.
 export const WORKER_CHUNK_BUDGET_BYTES = 446 * 1024;
 export const WORKER_CHUNK_GZIP_BUDGET_BYTES = 143 * 1024;
+// Team-building policy plus offseason DTOs, phase gates, trade deadline
+// intelligence/posture/review evidence, draft decision inputs, profile
+// development outcomes including role-aware mentorship, minors focus,
+// timeline/rivalry/mentorship memory DTOs including playoff box-score links, and
+// clubhouse intelligence DTOs live in worker helpers/trade/queries/pipeline.
+// Phase 6.1 opt-in query profiling adds runtime-only diagnostics helpers, and
+// Phase 3 roster contracts add runtime-only extension negotiation review evidence.
+export const WORKER_STORY_CHUNK_BUDGET_BYTES = 499 * 1024;
+export const WORKER_STORY_CHUNK_GZIP_BUDGET_BYTES = 150 * 1024;
+export const WORKER_CORE_CHUNK_GZIP_BUDGET_BYTES = 144 * 1024;
 
 /** Lazy-loaded chart vendor chunk (recharts + d3) gets a bigger budget. */
 export const CHART_CHUNK_BUDGET_BYTES = 430 * 1024;
 export const CHART_CHUNK_GZIP_BUDGET_BYTES = 120 * 1024;
+
+export interface BundleBudget {
+  rawBudget: number;
+  gzipBudget: number;
+}
 
 /** Returns true if the chunk file is the lazy-loaded chart vendor bundle. */
 export function isChartBundleFile(fileName: string): boolean {
@@ -29,6 +44,33 @@ function includesPath(id: string, pathFragment: string): boolean {
 
 export function isWorkerBundleFile(fileName: string): boolean {
   return /sim\.worker|game-engine|worker/i.test(fileName);
+}
+
+export function getBudgetForBundleFile(fileName: string): BundleBudget {
+  if (isWorkerBundleFile(fileName)) {
+    return {
+      rawBudget: /game-engine-story/i.test(fileName)
+        ? WORKER_STORY_CHUNK_BUDGET_BYTES
+        : WORKER_CHUNK_BUDGET_BYTES,
+      gzipBudget: /game-engine-story/i.test(fileName)
+        ? WORKER_STORY_CHUNK_GZIP_BUDGET_BYTES
+        : /game-engine-core/i.test(fileName)
+          ? WORKER_CORE_CHUNK_GZIP_BUDGET_BYTES
+          : WORKER_CHUNK_GZIP_BUDGET_BYTES,
+    };
+  }
+
+  if (isChartBundleFile(fileName)) {
+    return {
+      rawBudget: CHART_CHUNK_BUDGET_BYTES,
+      gzipBudget: CHART_CHUNK_GZIP_BUDGET_BYTES,
+    };
+  }
+
+  return {
+    rawBudget: MAIN_THREAD_CHUNK_BUDGET_BYTES,
+    gzipBudget: MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES,
+  };
 }
 
 export function resolveAppManualChunk(id: string): string | undefined {
@@ -134,6 +176,26 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
   // core helpers; assigning the barrel to core creates a circular chunk edge.
   if (normalized.endsWith('/packages/sim-core/src/index.ts')) {
     return 'game-engine-shell';
+  }
+
+  // Authored roster/content data is worker-owned, versioned, and isolated from
+  // the deterministic engine-core chunk so content expansion cannot bloat core.
+  if (includesPath(normalized, '/apps/web/src/workers/content/')) {
+    return 'game-engine-content-v1';
+  }
+
+  // Compact archived box-score persistence is save-schema/history plumbing.
+  // Keep it out of the already tight story chunk while preserving a scoped
+  // worker-owned boundary for future archive route work.
+  if (includesPath(normalized, '/apps/web/src/workers/sim.worker.archivedGames.')) {
+    return 'game-engine-archives';
+  }
+
+  // The worker query facade is large but read-only. Split it from narrative
+  // mutation/story modules so small query-surface additions do not consume the
+  // story chunk budget.
+  if (normalized.endsWith('/apps/web/src/workers/sim.worker.queries.ts')) {
+    return 'game-engine-queries';
   }
 
   if (includesPath(normalized, '/packages/sim-core/src/')) {

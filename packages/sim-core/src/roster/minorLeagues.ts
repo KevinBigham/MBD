@@ -21,6 +21,7 @@ export const ROOKIE_AFFILIATE_START_DAY = 45;
 
 export const AFFILIATE_LEVELS = ['AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE'] as const;
 export type AffiliateLevel = (typeof AFFILIATE_LEVELS)[number];
+const AFFILIATE_LEVEL_SET = new Set<RosterLevel>(AFFILIATE_LEVELS);
 
 export const AFFILIATE_SCHEDULE_LENGTHS: Record<AffiliateLevel, number> = {
   AAA: 150,
@@ -187,6 +188,37 @@ export interface PromotionCandidate {
 
 function affiliateStateKey(teamId: string, level: AffiliateLevel): string {
   return `${teamId}:${level}`;
+}
+
+function isAffiliateLevel(level: RosterLevel): level is AffiliateLevel {
+  return AFFILIATE_LEVEL_SET.has(level);
+}
+
+function buildAffiliatePlayerIndex(players: GeneratedPlayer[]): Map<string, GeneratedPlayer[]> {
+  const indexed = new Map<string, GeneratedPlayer[]>();
+
+  for (const player of players) {
+    if (!isAffiliateLevel(player.rosterStatus)) {
+      continue;
+    }
+    const key = affiliateStateKey(player.teamId, player.rosterStatus);
+    const teamPlayers = indexed.get(key);
+    if (teamPlayers) {
+      teamPlayers.push(player);
+    } else {
+      indexed.set(key, [player]);
+    }
+  }
+
+  return indexed;
+}
+
+function getAffiliatePlayers(
+  indexedPlayers: ReadonlyMap<string, GeneratedPlayer[]>,
+  teamId: string,
+  level: AffiliateLevel,
+): GeneratedPlayer[] {
+  return indexedPlayers.get(affiliateStateKey(teamId, level)) ?? [];
 }
 
 function cloneStats(stats: AffiliatePlayerStats): AffiliatePlayerStats {
@@ -464,19 +496,24 @@ export function createMinorLeagueState(teamIds: string[], season: number): Minor
   };
 }
 
-export function accrueServiceTimeDay(
+export function accrueServiceTimeDays(
   players: GeneratedPlayer[],
   state: MinorLeagueState,
+  days: number,
 ): MinorLeagueMutationResult {
+  if (days <= 0) {
+    return { players, state };
+  }
+
   const ledger = new Map(state.serviceTimeLedger);
   const updatedPlayers = players.map((player) => {
     if (player.rosterStatus !== 'MLB') {
       return player;
     }
-    ledger.set(player.id, (ledger.get(player.id) ?? 0) + 1);
+    ledger.set(player.id, (ledger.get(player.id) ?? 0) + days);
     return {
       ...player,
-      serviceTimeDays: player.serviceTimeDays + 1,
+      serviceTimeDays: player.serviceTimeDays + days,
     };
   });
 
@@ -487,6 +524,13 @@ export function accrueServiceTimeDay(
       serviceTimeLedger: sortTupleNumbers(Array.from(ledger.entries())),
     },
   };
+}
+
+export function accrueServiceTimeDay(
+  players: GeneratedPlayer[],
+  state: MinorLeagueState,
+): MinorLeagueMutationResult {
+  return accrueServiceTimeDays(players, state, 1);
 }
 
 export function consumeOptionYear(
@@ -728,6 +772,7 @@ export function simulateAffiliateDay(
   let nextState = ensureAffiliateStates(state, teamIds, season);
   let affiliateStates = nextState.affiliateStates;
   const nextBoxScores = [...nextState.affiliateBoxScores];
+  const affiliatePlayers = buildAffiliatePlayerIndex(players);
 
   for (const level of AFFILIATE_LEVELS) {
     const dayCount = activeAffiliateDayCount(level, day);
@@ -744,8 +789,8 @@ export function simulateAffiliateDay(
         continue;
       }
 
-      const homePlayers = players.filter((player) => player.teamId === homeTeamId && player.rosterStatus === level);
-      const awayPlayers = players.filter((player) => player.teamId === awayTeamId && player.rosterStatus === level);
+      const homePlayers = getAffiliatePlayers(affiliatePlayers, homeTeamId, level);
+      const awayPlayers = getAffiliatePlayers(affiliatePlayers, awayTeamId, level);
       const homeStrength = teamStrength(homePlayers);
       const awayStrength = teamStrength(awayPlayers);
       let homeScore = Math.max(0, 2 + Math.round(homeStrength / 140) + rng.nextInt(0, 4) - 1);

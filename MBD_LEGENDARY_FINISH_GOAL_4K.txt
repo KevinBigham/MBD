@@ -1,0 +1,23 @@
+/goal Continue in /Users/tkevinbigham/Downloads/MBD-main and finish Mr. Baseball Dynasty as a v1. This is a marathon, not another one-slice continuation. Continue until every release gate passes or a listed stop condition requires Kevin.
+
+Read current source plus AGENTS.md if present, STATUS/GOAL, all CODEX guides/plans/checklists, MINOR_LEAGUE_CONTENT_BRIEF, TUNING, and all supplied minor-league content assets. Source wins when docs drift.
+
+Locked direction: hardcore-first single-player GM sim; newcomer guidance; no pitch-by-pitch manager mode. Ship desktop browser + responsive tablet/mobile + installable PWA. Write a platform ADR and clean seams for a future desktop/Steam build; do not block web v1 or add a wrapper yet. Priority: minors/scouting/development/draft; dynasty memory; fair AI; presentation; sim balance; reliability. Reliability is last as a differentiator but all gates are mandatory. AI difficulty may improve decisions/search/consistency, never cheat.
+
+First reconcile the dirty tree: inspect every change/untracked file, classify UI/minors/generated/user artifacts, preserve prior work, run baseline gates, explicitly stage accepted files, create/push a checkpoint and verify Actions. Never git add -A or delete unknown content.
+
+Execute:
+1. Complete 32x169=5,408 stable authored players across MLB/AAA/AA/A+/A/Rookie/International plus 192 affiliate identities. Inventory all AI files first; preserve approved content; dedupe; author missing slots; validate counts, legal fields, balance, stable IDs, determinism, Rule 5/40-man/position coverage. New games get full authored rosters. Existing saves get affiliate flavor only—never replacement players. International stays intake-only for v1 unless making it playable is nearly free.
+2. Produce a franchise/affiliate originality review before renaming anything. Keep team IDs. Do not apply flagged renames without Kevin.
+3. Move authored data out of game-engine-core into a versioned compact/lazy worker content pack. Existing bundle budgets must pass without broad increases; offline PWA new-game creation must work.
+4. Finish the farm loop, scouting, development, draft, promotions, options/service time, Rule 5, waivers, mentorship, setbacks, breakouts, and AI legality/strategy.
+5. Use one bundled v1 save migration. Persist compact archived box scores for major games only: postseason/championships, no-hitters/perfect games, major milestones, historic rivalry games. Bump schema once; migrate every supported fixture and an explicit Season 10 save; never fabricate old details; add stable archive routes, size/import/export/autosave tests, and History links.
+6. Improve AI roster/trade/contract/offseason decisions with deterministic identity/difficulty scenarios and no hidden boosts.
+7. Add coherent club/affiliate colors and original scalable logo fallbacks plus stronger draft/award/milestone/playoff/championship/news presentation; do not block on thousands of assets.
+8. Run multi-seed/multi-season calibration and tune only from evidence.
+
+Rules: worker is canonical; Zustand is UI mirror. No bare Math.random. No unrelated refactors/endless decomposition. No dependency without 2-sentence proof. Use TDD where practical. Commit/push reviewable slices, monitor CI, fix failures, continue automatically.
+
+Release blockers: targeted/full tests, typecheck, build, determinism, old-save/Season-10 migration matrix, bundle budgets, no broken routes/critical console errors, desktop/mobile playtests, Chrome/Firefox/Safari-WebKit smoke, installable/offline/update/save-recovery PWA checks, CI+Deploy green, current docs/changelog, clean v1 tag/build.
+
+Stop only for flagged identity approval, irreversible data loss, a true product fork, blocked credentials, or save design beyond the approved migration. Final response: Plan, Files, Patch, How to test, Handoff back to Claude Code; include commands, totals, schema proof, bundle sizes, browser/PWA results, commits, Actions, tag/build, risks, approvals needed.

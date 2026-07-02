@@ -31,16 +31,33 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify workspace
-        run: npx pnpm verify
+        run: MBD_SKIP_SMOKE_GATE=1 pnpm verify
+
+      - name: Verify smoke gate
+        run: pnpm --filter @mbd/sim-core exec vitest run tests/smokeGate.integration.test.ts --reporter=verbose
 
       - name: Verify sim-core determinism snapshot
         run: cd packages/sim-core && node ./node_modules/vitest/vitest.mjs run tests/determinism.snapshot.test.ts
 
+      - name: Check GitHub Pages availability
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages is not enabled or is not supported for this repository plan; skipping Pages deployment."
+          fi
+
       - name: Upload artifact
+        if: steps.pages.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist
 
       - name: Deploy to GitHub Pages
+        if: steps.pages.outputs.enabled == 'true'
         id: deployment
         uses: actions/deploy-pages@v4

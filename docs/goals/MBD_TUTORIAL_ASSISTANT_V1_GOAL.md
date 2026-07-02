@@ -9,7 +9,7 @@
 - Primary app stack: React 18, Vite 6, Tailwind CSS, Zustand, Dexie saves, Comlink worker, Zod contracts, Vitest.
 - Current app routes are defined in `apps/web/src/app/routes/index.tsx`.
 - Existing guidance surfaces include `TourProvider`, `tourDefinition`, `PageHelp`, `ContextualHelp`, `GameAdvisor`, and guided-start nudges.
-- Current save schema version is `CURRENT_GAME_SNAPSHOT_VERSION = 33` in `packages/contracts/src/schemas/save.ts`.
+- Historical note: Tutorial Assistant V1 was written when `CURRENT_GAME_SNAPSHOT_VERSION` was 33. Check `packages/contracts/src/schemas/save.ts` for the current version before any new save work.
 - No filesystem `AGENTS.md` was present at the repo root during contract creation; follow Kevin's supplied AGENTS.md instructions for this sprint.
 - `MASTER_CONTEXT.md` exists but contains stale paths, schema version, and counts. Treat live repo inspection as authoritative.
 

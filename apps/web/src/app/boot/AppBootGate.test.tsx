@@ -68,7 +68,7 @@ function createStorageMock(): Storage {
 const okLoadResult: Extract<LoadSaveSafelyResult, { ok: true }> = {
   ok: true,
   snapshot: {
-    schemaVersion: 33,
+    schemaVersion: 34,
     season: 4,
     day: 88,
     phase: 'regular',
@@ -80,7 +80,7 @@ const okLoadResult: Extract<LoadSaveSafelyResult, { ok: true }> = {
     season: 4,
     day: 88,
     phase: 'regular',
-    schemaVersion: 33,
+    schemaVersion: 34,
     hasSnapshot: true,
     snapshot: null,
     legacyState: null,

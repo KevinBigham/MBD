@@ -18,6 +18,7 @@ export const REQUIRED_ASSISTANT_ROUTE_KEYS = [
   'schedule',
   'box-score',
   'press-room',
+  'news',
   'playoffs',
   'free-agency',
   'offseason',
@@ -42,6 +43,15 @@ export interface AssistantAction {
   reason: string;
 }
 
+export interface AssistantDecisionSpotlight {
+  id: string;
+  urgency: 'red' | 'yellow' | 'blue';
+  title: string;
+  body: string;
+  route: string;
+  actionLabel: string;
+}
+
 export interface AssistantGuidance {
   routeKey: AssistantRouteKey;
   title: string;
@@ -60,6 +70,8 @@ export interface AssistantNextActionContext {
   day: number;
   season: number;
   mode: AssistantMode;
+  pendingMonthlyReport?: boolean;
+  decisionQueue?: readonly AssistantDecisionSpotlight[];
 }
 
 export interface AssistantTickerItem {
@@ -86,6 +98,95 @@ export interface AssistantStoryContext {
 
 function action(label: string, route: string, reason: string): AssistantAction {
   return { label, route, reason };
+}
+
+const DECISION_URGENCY_PRIORITY: Record<AssistantDecisionSpotlight['urgency'], number> = {
+  red: 0,
+  yellow: 1,
+  blue: 2,
+};
+
+function selectDecisionSpotlight(
+  decisionQueue: readonly AssistantDecisionSpotlight[] | undefined,
+): AssistantDecisionSpotlight | null {
+  if (!decisionQueue || decisionQueue.length === 0) return null;
+
+  return decisionQueue.slice().sort((left, right) =>
+    DECISION_URGENCY_PRIORITY[left.urgency] - DECISION_URGENCY_PRIORITY[right.urgency]
+    || left.title.localeCompare(right.title)
+    || left.id.localeCompare(right.id),
+  )[0] ?? null;
+}
+
+function operatorActionForDecision(decision: AssistantDecisionSpotlight): AssistantAction {
+  const text = `${decision.title} ${decision.body}`.toLowerCase();
+
+  if (decision.route === '/roster' || text.includes('roster') || text.includes('active limit')) {
+    return action('Fix roster compliance', decision.route, decision.body);
+  }
+
+  if (
+    decision.route === '/front-office'
+    || text.includes('owner')
+    || text.includes('ownership')
+    || text.includes('patience')
+    || text.includes('front office')
+    || text.includes('reputation')
+  ) {
+    return action('Review owner pressure', '/front-office', decision.body);
+  }
+
+  if (
+    decision.route === '/playoffs'
+    || text.includes('postseason')
+    || text.includes('playoff matchup')
+    || text.includes('playoff series')
+  ) {
+    return action('Review playoff matchup', '/playoffs', decision.body);
+  }
+
+  if (
+    decision.route === '/standings'
+    || decision.route === '/league/standings'
+    || text.includes('wild card')
+    || text.includes('division race')
+    || text.includes('playoff race')
+    || text.includes('playoff odds')
+  ) {
+    return action('Check playoff race', decision.route, decision.body);
+  }
+
+  if (decision.route === '/offseason' && (text.includes('contract') || text.includes('extension') || text.includes('arbitration'))) {
+    return action('Review expiring contracts', decision.route, decision.body);
+  }
+
+  if (
+    decision.route === '/free-agency'
+    || decision.route === '/finance'
+    || text.includes('free-agent')
+    || text.includes('free agency')
+    || (decision.route === '/offseason' && (text.includes('payroll') || text.includes('budget')))
+  ) {
+    return action('Inspect FA budget', decision.route, decision.body);
+  }
+
+  if (decision.route === '/draft' || text.includes('draft')) {
+    return action('Scout draft targets', decision.route, decision.body);
+  }
+
+  if (decision.route === '/trade') {
+    return action('Respond to trade decision', decision.route, decision.body);
+  }
+
+  if (decision.route === '/minors') {
+    return action('Review promotion candidate', decision.route, decision.body);
+  }
+
+  if (decision.route === '/scouting') {
+    return action('Review new scouting report', decision.route, decision.body);
+  }
+
+  return action(decision.actionLabel || 'Respond to pulse decision', decision.route, decision.body);
 }
 
 export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = {
@@ -276,6 +377,17 @@ export const ASSISTANT_GUIDANCE: Record<AssistantRouteKey, AssistantGuidance> = 
     deeperStrategy: 'Treat rumors as prompts to investigate, not as instructions to act.',
     mobileTip: 'Filters help reduce the story feed on small screens.',
   },
+  news: {
+    routeKey: 'news',
+    title: 'Read the league inbox',
+    pagePurpose: 'News is the focused inbox for unread league updates, team stories, rumors, and transaction signals.',
+    whenToUse: 'Use it after sim chunks, before the deadline, and when the TopBar shows unread items.',
+    decision: 'Decide which stories deserve action and which can be marked read.',
+    ratingsFocus: 'Ratings are indirect; news items point you toward player profiles, scouting, roster, trade, or finance pages when talent context matters.',
+    suggestedAction: action('Review unread news', '/news', 'Unread stories often explain why another route needs attention.'),
+    deeperStrategy: 'Treat news as triage, not noise: rumors suggest research, transaction notes suggest market movement, and performance stories suggest profile checks.',
+    mobileTip: 'Clear one story group at a time so the inbox stays useful on small screens.',
+  },
   playoffs: {
     routeKey: 'playoffs',
     title: 'Manage the October moment',
@@ -452,6 +564,7 @@ export function resolveAssistantRouteKey(pathname: string): AssistantRouteKey {
   if (normalized === '/schedule') return 'schedule';
   if (normalized.startsWith('/games/')) return 'box-score';
   if (normalized === '/press-room') return 'press-room';
+  if (normalized === '/news') return 'news';
   if (normalized === '/playoffs') return 'playoffs';
   if (normalized === '/free-agency') return 'free-agency';
   if (normalized === '/offseason') return 'offseason';
@@ -475,6 +588,15 @@ export function selectRouteGuidance(pathname: string): AssistantGuidance {
 }
 
 export function buildAssistantNextAction(context: AssistantNextActionContext): AssistantAction {
+  if (context.pendingMonthlyReport) {
+    return action('Review monthly report', '/pulse', 'Monthly Pulse has a fresh checkpoint before the next sim chunk.');
+  }
+
+  const decision = selectDecisionSpotlight(context.decisionQueue);
+  if (decision) {
+    return operatorActionForDecision(decision);
+  }
+
   if (context.phase === 'offseason') {
     return action('Open offseason checklist', '/offseason', 'Offseason tasks are easiest when handled in sequence.');
   }

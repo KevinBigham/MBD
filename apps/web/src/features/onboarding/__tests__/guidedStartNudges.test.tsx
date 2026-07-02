@@ -10,6 +10,7 @@ import {
 import {
   readGuidedStartNudgeRecord,
   registerGuidedStartSave,
+  resetGuidedStartNudges,
   seenRecordFor,
   guidedStartNudgeStorageKey,
   markGuidedStartNudgeSeen,
@@ -125,6 +126,18 @@ describe('guided start nudge localStorage persistence', () => {
   it('returns null for missing keys so pre-LC2 existing saves do not replay nudges', () => {
     expect(readGuidedStartNudgeRecord('save-slot-4')).toBeNull();
   });
+
+  it('replays stored guided-start nudges without enabling old saves that lack a record', () => {
+    registerGuidedStartSave('save-slot-2');
+    markGuidedStartNudgeSeen('save-slot-2', 'intro_scroll');
+    markGuidedStartNudgeSeen('save-slot-2', 'first_series_pointer');
+
+    expect(resetGuidedStartNudges('save-slot-2')).toEqual({ reset: true, seenNudges: 2 });
+    expect(readGuidedStartNudgeRecord('save-slot-2')).toEqual(seenRecordFor([]));
+
+    expect(resetGuidedStartNudges('save-slot-4')).toEqual({ reset: false, seenNudges: 0 });
+    expect(readGuidedStartNudgeRecord('save-slot-4')).toBeNull();
+  });
 });
 
 describe('GuidedStartNudgeCard', () => {
@@ -167,6 +180,24 @@ describe('GuidedStartNudgeCard', () => {
     });
 
     expect(onDismiss).toHaveBeenCalledWith('intro_scroll');
+  });
+
+  it('keeps the nudge shell from intercepting underlying onboarding actions', async () => {
+    await act(async () => {
+      root.render(
+        <GuidedStartNudgeCard
+          current="intro_scroll"
+          onDismiss={vi.fn()}
+        />,
+      );
+    });
+
+    const nudge = container.querySelector('[data-testid="guided-start-nudge-intro_scroll"]');
+    expect(nudge?.className).toContain('pointer-events-none');
+
+    for (const button of container.querySelectorAll('button')) {
+      expect(button.className).toContain('pointer-events-auto');
+    }
   });
 
   it('offers an export action for the first off-day autosave prompt', async () => {

@@ -9,23 +9,41 @@ Date: 2026-05-05
 3. Confirm the Assistant chip is visible on Setup and Onboarding.
 4. Open the Assistant on Setup and read the first-save guidance.
 5. Complete onboarding and land on Dashboard.
-6. Open "What now?" and follow its suggested route.
-7. Visit Roster, Players, Trade, Draft, Free Agency, Finance, Minors, and Player Profile.
-8. On each page, confirm the Assistant explains:
+6. Confirm the Dashboard answers what/why/next/where through Franchise Identity, sim controls, Reports Hub, Quickstarts, Trade Intel, and Game Advisor.
+7. Open Reports Hub and confirm Trade Ledger, Tx Log, Season Recap, Draft Log, FA Market, Budget Report, Player Dev, History, Records, Pulse, and News all route to live surfaces.
+8. Open Quickstarts and confirm Contender, Rebuild, Small Market, and Tutorial Day One point to the right workflow.
+9. Open "What now?" and follow its suggested route.
+10. Visit Roster, Players, Trade, Draft, Free Agency, Finance, Minors, Player Profile, News, and a game detail route.
+11. On each page, confirm the Assistant, TopBar help, and PageHelp explain the same:
    - what the page is for
    - what decision the user can make
    - what OVR/ratings/stat context matters
    - one next action
-9. Toggle Explain ratings and Deeper strategy.
-10. Toggle Hardcore mode, then return to Newcomer mode.
-11. Dismiss route help with Got it, navigate away/back, and use Replay.
-12. Sim enough to see ticker/story context and confirm the Assistant can show/dismiss a story callback.
+12. Toggle Explain ratings and Deeper strategy.
+13. Toggle Hardcore mode, then return to Newcomer mode.
+14. Dismiss route help with Got it, navigate away/back, and use Replay.
+15. Sim enough to see ticker/story context and confirm the Assistant can show/dismiss a story callback.
+
+## UX Overhaul Checklist
+
+Use this checklist for the UI/UX + OOTP-reference overhaul acceptance pass.
+
+1. New game: start from Save Hub, create a dynasty, and confirm the first route explains the setup decision.
+2. Onboarding: complete Day One, choose an assistant profile, and confirm guided-start nudges appear only after eligible saves.
+3. Dashboard: confirm Reports Hub and Quickstarts are visible before dense intelligence panels, and all links open real routes.
+4. Quick trade: use `/trade?mode=quick`, pick partner, my asset, target asset, read fairness, and start negotiation.
+5. Shop player: open a user-team player profile, choose Shop Player, and confirm `/trade?playerId=...&mode=quick` preserves that context.
+6. Roster compliance: visit Roster and confirm help points to the next legal roster action before simming.
+7. Sim month: sim a month, review Pulse, News, Trade Intel, and History/Records for changed-state reports.
+8. Settings replay: use Settings > Guidance Replay to replay Assistant help, guided-start nudges, tutorial/help, and dashboard quickstarts without clearing saves.
+9. Save/return: save, reload the slot, and confirm dynasty state is unchanged while local guidance replay state behaves as reset.
+10. Mobile: repeat Dashboard, Quick Trade, Roster, Reports Hub, and Settings Replay at 360x640 or 375x667.
 
 ## Mobile Script
 
 Viewport target: 360x640 or 375x667.
 
-1. Repeat Setup, Onboarding, Dashboard, Roster, Trade, and Draft checks.
+1. Repeat Setup, Onboarding, Dashboard, Roster, Quick Trade, Reports Hub, Settings Replay, and Draft checks.
 2. Confirm Assistant compact chip does not hide the bottom nav or sim controls.
 3. Open the Assistant and confirm the panel scrolls internally.
 4. Confirm all Assistant buttons are touch-sized and text wraps.

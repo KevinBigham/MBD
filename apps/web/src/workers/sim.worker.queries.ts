@@ -28,10 +28,6 @@ import {
   scoutPlayer,
   toInternalRating,
   toLetterGrade,
-  // Round 1 APIs
-  selectPressConferenceTopic,
-  generateEnhancedPressConference,
-  evaluatePressConferenceResponse,
   // Round 2 APIs
   generateDeadlineTimeline,
   getDeadlineEventsForDay,
@@ -49,9 +45,10 @@ import {
   pairMentors,
   advanceMentorship,
   getMentorshipDevelopmentBonus,
+  fromMentorRelationship,
   getScenarioObjectives,
   evaluateObjectiveProgress,
-  // Round 3 APIs — unwired modules
+  // Round 3 route APIs: player comparison, projections, similarity, enhanced PBP, awards.
   comparePlayersHead2Head,
   comparePlayerStats,
   generateComparisonSummary,
@@ -75,15 +72,25 @@ import {
   generateMomentumNarrative,
 } from '@mbd/sim-core';
 import type { MilestoneAlert } from '@mbd/sim-core';
+import {
+  getMinorLeagueAffiliateIdentityView,
+  getMinorLeagueAffiliateOpponentLabel,
+} from './content/minorLeagueContent.js';
 import type {
   CareerStatsLedger,
   GMRelationship,
   HistoricalPlayer,
   PlayerNicknameState,
   PlayerStoryArc,
+  PlayoffSeriesHistoryEntry,
+  Rivalry,
   ScoutConflict,
   SignatureMoment,
 } from '@mbd/contracts';
+import {
+  archivedGameView,
+  archivedMomentGameId,
+} from './sim.worker.archivedGames.js';
 import type {
   Division,
   FreeAgent,
@@ -115,7 +122,11 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
-import { buildPerformanceDiagnosticsView, estimateSnapshotSizeBytes } from './sim.worker.diagnostics.js';
+import {
+  buildPerformanceDiagnosticsView,
+  estimateSnapshotSizeBytes,
+  measureWorkerQuerySync,
+} from './sim.worker.diagnostics.js';
 import { buildAchievementView } from './sim.worker.achievements.js';
 import { getCeremonyStateView } from './sim.worker.ceremony.js';
 import { getCurrentLeagueEvents, getLeagueEventHistory, getMonthlyPulse } from './sim.worker.monthlyPulse.js';
@@ -168,6 +179,7 @@ import {
 import {
   buildFrontOfficeIdentityView,
   getEffectiveScoutingAccuracy,
+  hasAnsweredInteractivePressConference,
 } from './sim.worker.frontOfficeIdentity.js';
 import { exportGameSnapshot } from './snapshot.js';
 import {
@@ -256,6 +268,7 @@ function buildDevelopmentReportsView(
   s: NonNullable<typeof state>,
   playerId: string,
 ) {
+  const player = s.players.find((candidate) => candidate.id === playerId) ?? null;
   const recommendations = s.minorLeagueState.conversionRecommendations
     .filter((entry) => entry.playerId === playerId);
   const reports = s.minorLeagueState.developmentReports
@@ -265,9 +278,15 @@ function buildDevelopmentReportsView(
   const prospectBond = getProspectBondView(s, playerId);
   const activeSetback = getActiveDevelopmentSetbackView(s, playerId);
   const debutFlashback = s.debutFlashbacks.find((entry) => entry.playerId === playerId) ?? null;
+  const draftOutcome = buildDraftOutcomeView(s, playerId, prospectBond, minorLeagueProgression);
+  const developmentDecision = player
+    ? buildDevelopmentDecisionView(s, player, reports, prospectBond, activeSetback)
+    : null;
 
   if (
-    reports.length === 0
+    !developmentDecision
+    && !draftOutcome
+    && reports.length === 0
     && recommendations.length === 0
     && minorLeagueProgression.length === 0
     && !prospectBond
@@ -279,6 +298,8 @@ function buildDevelopmentReportsView(
 
   return {
     playerId,
+    developmentDecision,
+    draftOutcome,
     history: reports.map((entry) => ({
       season: entry.season,
       month: entry.month,
@@ -291,6 +312,251 @@ function buildDevelopmentReportsView(
     prospectBond,
     activeSetback,
     debutFlashback,
+  };
+}
+
+function buildDevelopmentDecisionView(
+  s: NonNullable<typeof state>,
+  player: GeneratedPlayer,
+  reports: Array<{
+    season: number;
+    month: number;
+    trajectory: string;
+    summary: string;
+    overallRating: number;
+  }>,
+  prospectBond: ReturnType<typeof getProspectBondView>,
+  activeSetback: ReturnType<typeof getActiveDevelopmentSetbackView>,
+) {
+  const latestReport = reports[reports.length - 1] ?? null;
+  const programLabel = labelize(player.developmentProgram ?? null);
+  const trajectoryLabel = labelize(player.developmentTrajectory ?? 'on_track').toLowerCase();
+  const level = player.rosterStatus === 'MLB'
+    ? 'MLB'
+    : formatMinorLevel(player.minorLeagueLevel ?? player.rosterStatus);
+  const levelSummary = player.rosterStatus === 'MLB'
+    ? 'major-league role'
+    : `${level} checkpoint`;
+  const planSummary = latestReport
+    ? `${programLabel} plan is ${trajectoryLabel} after the latest ${levelSummary}: ${latestReport.summary}`
+    : `${programLabel} plan is ${trajectoryLabel} entering the next ${levelSummary}.`;
+
+  const risk = developmentRiskForPlayer(player, latestReport, activeSetback);
+  const coachFit = bestCoachFitForPlayer(s, player);
+  const mentorship = mentorshipViewForPlayer(s, player);
+  const nextMilestone = nextDevelopmentMilestoneForPlayer(player, prospectBond);
+  const evidence = [
+    latestReport?.summary,
+    activeSetback?.summary,
+    prospectBond?.milestones.at(-1),
+    mentorship.summary !== 'No active mentorship pairing is on file.' ? mentorship.summary : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return {
+    plan: {
+      label: programLabel,
+      summary: planSummary,
+    },
+    risk,
+    coachFit,
+    mentorship,
+    nextMilestone,
+    evidence,
+  };
+}
+
+function developmentRiskForPlayer(
+  player: GeneratedPlayer,
+  latestReport: { trajectory: string; summary: string } | null,
+  activeSetback: ReturnType<typeof getActiveDevelopmentSetbackView>,
+) {
+  const trajectory = latestReport?.trajectory ?? player.developmentTrajectory ?? 'on_track';
+  const hasNegativeSetback = Boolean(activeSetback && activeSetback.overallModifier < 0);
+  const level = hasNegativeSetback || trajectory === 'bust_risk'
+    ? 'high'
+    : trajectory === 'below_expectations'
+      ? 'medium'
+      : 'low';
+  const setbackLabel = activeSetback
+    ? `${labelize(activeSetback.type).toLowerCase()} signal (${activeSetback.overallModifier > 0 ? '+' : ''}${activeSetback.overallModifier})`
+    : null;
+  const summary = setbackLabel
+    ? `${labelize(trajectory).toLowerCase()} trajectory with ${setbackLabel}: ${activeSetback?.summary}`
+    : `${labelize(trajectory).toLowerCase()} trajectory without an active setback.`;
+
+  return {
+    level,
+    summary,
+  };
+}
+
+function bestCoachFitForPlayer(
+  s: NonNullable<typeof state>,
+  player: GeneratedPlayer,
+) {
+  const coaches = s.coachingStaffs.get(player.teamId) ?? [];
+  if (coaches.length === 0) {
+    return {
+      coachName: null,
+      summary: 'No coaching staff is assigned to this organization yet.',
+      score: null,
+    };
+  }
+
+  const best = coaches
+    .map((coach) => ({
+      coach,
+      affinity: calculateCoachPlayerAffinity(coach, player),
+    }))
+    .sort((left, right) =>
+      right.affinity.affinityScore - left.affinity.affinityScore
+      || left.coach.id.localeCompare(right.coach.id),
+    )[0]!;
+  const coachName = `${best.coach.firstName} ${best.coach.lastName}`;
+  const role = coachRoleSentenceLabel(best.coach.role);
+  const specialty = labelize(best.coach.specialty).toLowerCase();
+  const summary = `${coachName} is the best current coach fit as ${role} with ${specialty} focus and ${best.affinity.affinityScore} affinity.`;
+
+  return {
+    coachName,
+    summary,
+    score: best.affinity.affinityScore,
+  };
+}
+
+function mentorshipViewForPlayer(
+  s: NonNullable<typeof state>,
+  player: GeneratedPlayer,
+) {
+  const relationship = s.mentorRelationships.find((entry) =>
+    entry.rookiePlayerId === player.id || entry.veteranPlayerId === player.id,
+  ) ?? null;
+  if (!relationship) {
+    return {
+      mentorName: null,
+      partnerName: null,
+      partnerPlayerId: null,
+      relationshipRole: null,
+      summary: 'No active mentorship pairing is on file.',
+      startedSeason: null,
+    };
+  }
+
+  const isProtegee = relationship.rookiePlayerId === player.id;
+  const mentorId = relationship.veteranPlayerId;
+  const partnerId = isProtegee ? relationship.veteranPlayerId : relationship.rookiePlayerId;
+  const mentor = s.players.find((candidate) => candidate.id === mentorId);
+  const partner = s.players.find((candidate) => candidate.id === partnerId);
+  const mentorName = mentor ? `${mentor.firstName} ${mentor.lastName}` : null;
+  const partnerName = partner ? `${partner.firstName} ${partner.lastName}` : null;
+
+  return {
+    mentorName,
+    partnerName,
+    partnerPlayerId: partnerId,
+    relationshipRole: isProtegee ? 'protegee' as const : 'mentor' as const,
+    summary: relationship.summary,
+    startedSeason: relationship.startedSeason,
+  };
+}
+
+function nextDevelopmentMilestoneForPlayer(
+  player: GeneratedPlayer,
+  prospectBond: ReturnType<typeof getProspectBondView>,
+) {
+  if (player.rosterStatus !== 'MLB') {
+    const label = player.rosterStatus === 'AAA' ? 'Earn MLB Look' : `Push to ${nextMinorLevelLabel(player.rosterStatus)}`;
+    return {
+      label,
+      summary: `${label} is the next checkpoint if the ${labelize(player.developmentTrajectory ?? 'on_track').toLowerCase()} trend holds.`,
+    };
+  }
+
+  if (prospectBond?.debutSeason == null) {
+    return {
+      label: 'Lock In MLB Role',
+      summary: 'Hold the major-league roster spot long enough to convert prospect trust into a debut milestone.',
+    };
+  }
+
+  return {
+    label: 'Sustain MLB Role',
+    summary: 'Convert development gains into a full-season major-league role.',
+  };
+}
+
+function nextMinorLevelLabel(level: string): string {
+  switch (level) {
+    case 'ROOKIE':
+    case 'INTERNATIONAL':
+      return 'A';
+    case 'A':
+      return 'A+';
+    case 'A_PLUS':
+      return 'AA';
+    case 'AA':
+      return 'AAA';
+    case 'AAA':
+    default:
+      return 'MLB';
+  }
+}
+
+function buildDraftOutcomeView(
+  s: NonNullable<typeof state>,
+  playerId: string,
+  prospectBond: ReturnType<typeof getProspectBondView>,
+  minorLeagueProgression: ReturnType<typeof getMinorLeagueProgressionView>,
+) {
+  const origin = s.playerOrigins.get(playerId);
+  if (!origin || origin.acquisitionType !== 'draft') {
+    return null;
+  }
+
+  const player = s.players.find((candidate) => candidate.id === playerId) ?? null;
+  const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
+  const signing = s.draftState.signingDecisions.find((entry) => entry.playerId === playerId) ?? null;
+  const latestLine = minorLeagueProgression[minorLeagueProgression.length - 1] ?? null;
+  const team = getTeamById(origin.originTeamId);
+  const currentStatus = player?.rosterStatus
+    ?? (historicalPlayer ? 'RETIRED' : 'Unknown');
+  const currentLevel = player?.minorLeagueLevel
+    ?? prospectBond?.currentLevel
+    ?? latestLine?.level
+    ?? (currentStatus !== 'MLB' && currentStatus !== 'RETIRED' ? currentStatus : null);
+  const signed = signing?.signed ?? (origin.bonusAmount != null ? true : null);
+  const bonusAmount = signing?.agreedBonus
+    ?? signing?.offeredBonus
+    ?? origin.bonusAmount
+    ?? null;
+  const season = origin.draftSeason ?? origin.acquiredSeason;
+  const roundLabel = origin.draftRound != null ? `Round ${origin.draftRound}` : 'Draft';
+  const pickLabel = origin.draftPickNumber != null ? ` pick ${origin.draftPickNumber}` : '';
+  const signingLabel = signed === true
+    ? `signed${bonusAmount != null ? ` for $${bonusAmount.toFixed(2)}M` : ''}`
+    : signed === false
+      ? 'did not sign'
+      : 'has no recorded signing decision';
+  const statusLabel = currentLevel
+    ? `currently tracking at ${currentLevel}`
+    : `current status ${currentStatus}`;
+
+  return {
+    acquisitionType: 'draft' as const,
+    teamId: origin.originTeamId,
+    teamName: team ? `${team.city} ${team.name}` : origin.originTeamId.toUpperCase(),
+    season,
+    round: origin.draftRound,
+    pickNumber: origin.draftPickNumber,
+    originalGrade: origin.originalGrade,
+    signed,
+    bonusAmount,
+    currentStatus,
+    currentLevel,
+    bondStrength: prospectBond?.bondStrength ?? null,
+    loyaltyModifier: prospectBond?.loyaltyModifier ?? null,
+    summary: `${roundLabel}${pickLabel} in Season ${season}, ${signingLabel}; ${statusLabel}.`,
+    milestones: prospectBond?.milestones ?? [],
   };
 }
 
@@ -922,6 +1188,355 @@ const PLAYER_ARC_MOMENT_TYPES = [
 ] as const;
 const PLAYER_ARC_MOMENT_TYPE_SET: ReadonlySet<string> = new Set(PLAYER_ARC_MOMENT_TYPES);
 
+const DYNASTY_TIMELINE_PLAYER_MOMENT_LABELS: Partial<Record<SignatureMoment['type'], string>> = {
+  no_hitter: 'No-Hitter',
+  perfect_game: 'Perfect Game',
+  cycle: 'Cycle',
+  milestone_500hr: '500 HR Milestone',
+  milestone_3000h: '3000 Hit Milestone',
+  milestone_300w: '300 Win Milestone',
+  rookie_breakout: 'Breakout Season',
+  injury_return_hero: 'Injury Return',
+};
+
+const DYNASTY_TIMELINE_TEAM_MOMENT_LABELS: Partial<Record<SignatureMoment['type'], string>> = {
+  championship_run: 'Championship Run',
+  playoff_gauntlet: 'Playoff Gauntlet',
+  three_peat: 'Three-Peat',
+  perennial_contender: 'Perennial Contender',
+  rivalry_renewed: 'Rivalry Renewed',
+  dominant_rotation: 'Dominant Rotation',
+  bullpen_collapse: 'Bullpen Collapse',
+  lineup_of_era: 'Lineup of Era',
+  hot_streak_week: 'Hot Streak',
+  cold_snap_week: 'Cold Snap',
+  closer_lights_out: 'Closer Lockdown',
+  closer_meltdown_week: 'Closer Meltdown',
+  bench_clutch_week: 'Bench Spark',
+  bullpen_overwork_warning: 'Bullpen Workload',
+  deadline_buyer: 'Deadline Buyer',
+  deadline_seller: 'Deadline Seller',
+  fire_sale: 'Fire Sale',
+  dynasty_end: 'Dynasty End',
+  era_ending_collapse: 'Era Ending',
+};
+
+const DYNASTY_TIMELINE_RIVALRY_EVENT_LABELS: Record<NonNullable<Rivalry['eventHistory']>[number]['type'], string> = {
+  historical: 'Rivalry Roots',
+  division_race: 'Rivalry Race',
+  playoff: 'Rivalry October',
+  trade: 'Rivalry Trade',
+  defection: 'Rivalry Defection',
+  series_result: 'Rivalry Chapter',
+};
+
+interface DynastyTimelinePlayerMomentBeatView {
+  playerId: string;
+  teamId: string;
+  type: SignatureMoment['type'];
+  label: string;
+  summary: string;
+  relevance: number;
+  day: number | null;
+  playerNameFallback?: string;
+  gameIndex?: number;
+  archivedGameId?: string;
+}
+
+interface DynastyTimelineTeamMomentBeatView {
+  teamId: string;
+  teamIds?: string[];
+  type: string;
+  label: string;
+  summary: string;
+  relevance: number;
+  day: number | null;
+  playerIds?: string[];
+  playerNameFallbacks?: Record<string, string>;
+  gameIndex?: number;
+  archivedGameId?: string;
+}
+
+function seasonFromGameDate(date: string): number | null {
+  const match = /^S(\d+)D\d+$/.exec(date);
+  return match ? Number(match[1]) : null;
+}
+
+function dynastyTimelineTeamMomentLabel(type: string): string {
+  return DYNASTY_TIMELINE_TEAM_MOMENT_LABELS[type as SignatureMoment['type']]
+    ?? type.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
+function dynastyTimelineRivalryEventRelevance(
+  rivalry: Rivalry,
+  eventType: NonNullable<Rivalry['eventHistory']>[number]['type'],
+): number {
+  const typeBoost = eventType === 'playoff'
+    ? 0.12
+    : eventType === 'trade' || eventType === 'defection'
+      ? 0.08
+      : eventType === 'division_race'
+        ? 0.05
+        : 0.04;
+  return Number(Math.min(0.98, 0.41 + ((rivalry.intensity ?? 0) / 200) + typeBoost).toFixed(2));
+}
+
+function playoffDeficitLabel(deficitReached: PlayoffSeriesHistoryEntry['deficitReached']): string {
+  return deficitReached === '0-2' ? 'down 0-2' : 'down 3-1';
+}
+
+function playoffSeriesOpponentTeamId(series: PlayoffSeriesHistoryEntry, teamId: string): string {
+  return series.higherSeedTeamId === teamId ? series.lowerSeedTeamId : series.higherSeedTeamId;
+}
+
+function buildPlayoffSeriesHistoryMomentBeats(
+  s: NonNullable<typeof state>,
+  season: number,
+  teamId: string,
+  savedTeamMomentBeats: DynastyTimelineTeamMomentBeatView[],
+): DynastyTimelineTeamMomentBeatView[] {
+  const hasSavedGauntlet = savedTeamMomentBeats.some((beat) => beat.type === 'playoff_gauntlet');
+
+  return s.playoffSeriesHistory
+    .filter((series) =>
+      series.season === season
+      && series.deficitReached != null
+      && series.deficitTeamId === series.winnerTeamId
+      && (series.higherSeedTeamId === teamId || series.lowerSeedTeamId === teamId),
+    )
+    .flatMap((series): DynastyTimelineTeamMomentBeatView[] => {
+      const opponentTeamId = playoffSeriesOpponentTeamId(series, teamId);
+      const teamWonComeback = series.winnerTeamId === teamId;
+      const label = playoffDeficitLabel(series.deficitReached);
+      const teamName = teamNameFromId(teamId);
+      const opponentName = teamNameFromId(opponentTeamId);
+
+      if (teamWonComeback) {
+        if (hasSavedGauntlet) {
+          return [];
+        }
+
+        return [{
+          teamId,
+          teamIds: [teamId, opponentTeamId],
+          type: 'playoff_series_comeback',
+          label: 'Playoff Comeback',
+          summary: `${teamName} survived ${label} in the ${series.round} against ${opponentName}.`,
+          relevance: 0.96,
+          day: null,
+        }];
+      }
+
+      return [{
+        teamId,
+        teamIds: [teamId, opponentTeamId],
+        type: 'playoff_series_heartbreak',
+        label: 'Playoff Heartbreak',
+        summary: `${opponentName} came back from ${label} to steal the ${series.round} from ${teamName}.`,
+        relevance: 0.92,
+        day: null,
+      }];
+    });
+}
+
+function playerMomentFallbackName(
+  livePlayer: GeneratedPlayer | undefined,
+  historicalPlayer: HistoricalPlayer | undefined,
+): string | undefined {
+  if (livePlayer) {
+    return `${livePlayer.firstName} ${livePlayer.lastName}`.trim();
+  }
+
+  return historicalPlayer?.fullName;
+}
+
+function timelinePlayerNameFallback(
+  s: NonNullable<typeof state>,
+  playerId: string,
+): string | undefined {
+  return playerMomentFallbackName(
+    s.players.find((player) => player.id === playerId),
+    s.historicalPlayers.find((player) => player.playerId === playerId),
+  );
+}
+
+function playerMomentGameIndex(
+  s: NonNullable<typeof state>,
+  playerId: string,
+  season: number,
+  day: number | null,
+): number | undefined {
+  if (season !== s.season || day == null) {
+    return undefined;
+  }
+
+  const date = `S${season}D${day}`;
+  const gameIndex = s.seasonState.gameLog.findIndex((boxScore) =>
+    boxScore.date === date
+    && boxScore.paResults.some((result) => result.batterId === playerId || result.pitcherId === playerId),
+  );
+
+  return gameIndex >= 0 ? gameIndex : undefined;
+}
+
+function teamMomentGameIndex(
+  s: NonNullable<typeof state>,
+  teamId: string,
+  season: number,
+  day: number | null,
+): number | undefined {
+  if (season !== s.season || day == null) {
+    return undefined;
+  }
+
+  const date = `S${season}D${day}`;
+  const gameIndex = s.seasonState.gameLog.findIndex((boxScore) =>
+    boxScore.date === date
+    && (boxScore.homeTeamId === teamId || boxScore.awayTeamId === teamId),
+  );
+
+  return gameIndex >= 0 ? gameIndex : undefined;
+}
+
+function playoffTimelineGameIndex(
+  s: NonNullable<typeof state>,
+  teamId: string,
+  season: number,
+): number | undefined {
+  if (season !== s.season) {
+    return undefined;
+  }
+
+  for (let gameIndex = s.seasonState.gameLog.length - 1; gameIndex >= 0; gameIndex -= 1) {
+    const boxScore = s.seasonState.gameLog[gameIndex]!;
+    if (
+      boxScore.isPlayoff
+      && seasonFromGameDate(boxScore.date) === season
+      && (boxScore.homeTeamId === teamId || boxScore.awayTeamId === teamId)
+    ) {
+      return gameIndex;
+    }
+  }
+
+  return undefined;
+}
+
+function buildDynastyTimelinePlayerMomentBeats(
+  s: NonNullable<typeof state>,
+  season: number,
+): DynastyTimelinePlayerMomentBeatView[] {
+  const beats: DynastyTimelinePlayerMomentBeatView[] = [];
+
+  for (const [playerId, moments] of s.playerMoments.entries()) {
+    for (const moment of moments) {
+      if (moment.season !== season) continue;
+      const label = DYNASTY_TIMELINE_PLAYER_MOMENT_LABELS[moment.type];
+      if (!label) continue;
+
+      const livePlayer = s.players.find((player) => player.id === playerId);
+      const historicalPlayer = s.historicalPlayers.find((player) => player.playerId === playerId);
+      const day = moment.day ?? momentDayFromTimestamp(moment.timestamp);
+      const gameIndex = playerMomentGameIndex(s, playerId, season, day);
+      const archivedGameId = season === s.season
+        ? undefined
+        : archivedMomentGameId(s.archivedGames, playerId, season, day, 'playerIds');
+      const playerNameFallback = playerMomentFallbackName(livePlayer, historicalPlayer);
+      beats.push({
+        playerId,
+        teamId: livePlayer?.teamId ?? historicalPlayer?.lastKnownTeamId ?? '',
+        type: moment.type,
+        label,
+        summary: moment.description,
+        relevance: moment.relevance,
+        day,
+        ...(playerNameFallback ? { playerNameFallback } : {}),
+        ...(gameIndex != null ? { gameIndex } : {}),
+        ...(archivedGameId != null ? { archivedGameId } : {}),
+      });
+    }
+  }
+
+  return beats
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || (right.day ?? 0) - (left.day ?? 0)
+      || left.type.localeCompare(right.type)
+      || left.playerId.localeCompare(right.playerId),
+    )
+    .slice(0, 3);
+}
+
+function buildDynastyTimelineTeamMomentBeats(
+  s: NonNullable<typeof state>,
+  season: number,
+  teamId: string,
+): DynastyTimelineTeamMomentBeatView[] {
+  const savedTeamMomentBeats = [...(s.teamMoments.get(teamId) ?? [])]
+    .filter((moment) => moment.season === season)
+    .map((moment) => {
+      const day = moment.day ?? null;
+      const gameIndex = teamMomentGameIndex(s, teamId, moment.season, day);
+      const archivedGameId = moment.season === s.season
+        ? undefined
+        : archivedMomentGameId(s.archivedGames, teamId, moment.season, day, 'teamIds');
+      return {
+        teamId,
+        type: moment.type,
+        label: dynastyTimelineTeamMomentLabel(moment.type),
+        summary: moment.description,
+        relevance: moment.relevance,
+        day,
+        ...(gameIndex != null ? { gameIndex } : {}),
+        ...(archivedGameId != null ? { archivedGameId } : {}),
+      };
+    });
+  const playoffSeriesHistoryBeats = buildPlayoffSeriesHistoryMomentBeats(s, season, teamId, savedTeamMomentBeats);
+  const mentorshipRelationshipBeats = s.mentorRelationships
+    .filter((relationship) => relationship.teamId === teamId && relationship.startedSeason === season)
+    .map((relationship) => {
+      const playerIds = [relationship.veteranPlayerId, relationship.rookiePlayerId];
+      const playerNameFallbacks = Object.fromEntries(
+        playerIds
+          .map((playerId) => [playerId, timelinePlayerNameFallback(s, playerId)] as const)
+          .filter((entry): entry is readonly [string, string] => typeof entry[1] === 'string' && entry[1].length > 0),
+      );
+
+      return {
+        teamId,
+        type: 'clubhouse_mentorship',
+        label: 'Mentorship Lane',
+        summary: relationship.summary,
+        relevance: 0.82,
+        day: null,
+        playerIds,
+        ...(Object.keys(playerNameFallbacks).length > 0 ? { playerNameFallbacks } : {}),
+      };
+    });
+  const rivalryEventBeats = [...s.rivalries.values()]
+    .filter((rivalry) => rivalry.teamA === teamId || rivalry.teamB === teamId)
+    .flatMap((rivalry) => (rivalry.eventHistory ?? [])
+      .filter((event) => event.season === season)
+      .map((event) => ({
+        teamId,
+        teamIds: [rivalry.teamA, rivalry.teamB]
+          .filter((id, index, ids) => id.length > 0 && ids.indexOf(id) === index),
+        type: `rivalry_${event.type}`,
+        label: DYNASTY_TIMELINE_RIVALRY_EVENT_LABELS[event.type],
+        summary: event.summary,
+        relevance: dynastyTimelineRivalryEventRelevance(rivalry, event.type),
+        day: null,
+      })));
+
+  return [...savedTeamMomentBeats, ...playoffSeriesHistoryBeats, ...rivalryEventBeats, ...mentorshipRelationshipBeats]
+    .sort((left, right) =>
+      right.relevance - left.relevance
+      || (right.day ?? 0) - (left.day ?? 0)
+      || left.type.localeCompare(right.type)
+      || left.teamId.localeCompare(right.teamId),
+    )
+    .slice(0, 3);
+}
+
 function buildCareerRetrospective(s: NonNullable<typeof state>) {
   const gm = s.gmCareer;
   const userTeam = getTeamById(s.userTeamId);
@@ -1463,11 +2078,41 @@ function formatMinorLevel(level: string): string {
   switch (level) {
     case 'A_PLUS':
       return 'A+';
+    case 'AA':
+      return 'AA';
+    case 'AAA':
+      return 'AAA';
     case 'ROOKIE':
       return 'Rookie';
     default:
       return level;
   }
+}
+
+function labelize(value: string | null | undefined): string {
+  if (!value) return 'No Assignment';
+  return value
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function coachRoleLabel(role: string): string {
+  return labelize(role)
+    .replace(/^Aa\b/, 'AA')
+    .replace(/^Aaa\b/, 'AAA');
+}
+
+function coachRoleSentenceLabel(role: string): string {
+  const label = coachRoleLabel(role);
+  if (label.startsWith('AAA ')) {
+    return `AAA ${label.slice(4).toLowerCase()}`;
+  }
+  if (label.startsWith('AA ')) {
+    return `AA ${label.slice(3).toLowerCase()}`;
+  }
+  return label.toLowerCase();
 }
 
 function buildDFARecommendations(teamId: string) {
@@ -1601,6 +2246,11 @@ function buildAffiliateOverview(teamId: string) {
     .filter((affiliate) => affiliate.teamId === teamId)
     .sort((left, right) => AFFILIATE_LEVELS.indexOf(left.level) - AFFILIATE_LEVELS.indexOf(right.level))
     .map((affiliate) => {
+      const identity = getMinorLeagueAffiliateIdentityView(
+        affiliate.teamId,
+        affiliate.level,
+        formatMinorLevel(affiliate.level),
+      );
       const topPlayerEntry = [...affiliate.playerStats].sort((left, right) => {
         const leftScore = left[1].hits + (left[1].hr * 2) + left[1].strikeouts;
         const rightScore = right[1].hits + (right[1].hr * 2) + right[1].strikeouts;
@@ -1610,8 +2260,11 @@ function buildAffiliateOverview(teamId: string) {
       const topStats = topPlayerEntry?.[1] ?? null;
 
       return {
+        teamId: affiliate.teamId,
         level: affiliate.level,
-        label: formatMinorLevel(affiliate.level),
+        label: identity.label,
+        shortName: identity.shortName,
+        identityNote: identity.identityNote,
         wins: affiliate.wins,
         losses: affiliate.losses,
         gamesPlayed: affiliate.gamesPlayed,
@@ -1637,13 +2290,20 @@ function buildAffiliateOverview(teamId: string) {
       const teamScore = home ? boxScore.homeScore : boxScore.awayScore;
       const opponentScore = home ? boxScore.awayScore : boxScore.homeScore;
       const opponentId = home ? boxScore.awayTeamId : boxScore.homeTeamId;
+      const identity = getMinorLeagueAffiliateIdentityView(teamId, boxScore.level, formatMinorLevel(boxScore.level));
       return {
         id: boxScore.id,
+        teamId,
         day: boxScore.day,
         level: boxScore.level,
-        label: formatMinorLevel(boxScore.level),
+        label: identity.label,
+        shortName: identity.shortName,
         result: teamScore > opponentScore ? 'W' : 'L',
-        scoreline: `${teamScore}-${opponentScore} ${home ? 'vs' : 'at'} ${getTeamById(opponentId)?.abbreviation ?? opponentId.toUpperCase()}`,
+        scoreline: `${teamScore}-${opponentScore} ${home ? 'vs' : 'at'} ${getMinorLeagueAffiliateOpponentLabel(
+          opponentId,
+          boxScore.level,
+          getTeamById(opponentId)?.abbreviation ?? opponentId.toUpperCase(),
+        )}`,
         summary: boxScore.summary,
       };
     });
@@ -1686,16 +2346,29 @@ function getAffiliateBoxScoreView(boxScoreId: string) {
     return null;
   }
 
+  const { homeTeamId, awayTeamId, level } = boxScore;
+  const homeIdentity = getMinorLeagueAffiliateIdentityView(
+    homeTeamId,
+    level,
+    teamNameFromId(homeTeamId),
+  );
+  const awayIdentity = getMinorLeagueAffiliateIdentityView(
+    awayTeamId,
+    level,
+    teamNameFromId(awayTeamId),
+  );
   return {
     id: boxScore.id,
     season: boxScore.season,
     day: boxScore.day,
-    level: boxScore.level,
-    label: formatMinorLevel(boxScore.level),
-    homeTeamId: boxScore.homeTeamId,
-    homeTeamName: teamNameFromId(boxScore.homeTeamId),
-    awayTeamId: boxScore.awayTeamId,
-    awayTeamName: teamNameFromId(boxScore.awayTeamId),
+    level,
+    label: homeIdentity.label,
+    homeTeamId,
+    homeTeamName: homeIdentity.label,
+    homeShortName: homeIdentity.shortName,
+    awayTeamId,
+    awayTeamName: awayIdentity.label,
+    awayShortName: awayIdentity.shortName,
     homeScore: boxScore.homeScore,
     awayScore: boxScore.awayScore,
     summary: boxScore.summary,
@@ -1870,6 +2543,146 @@ function buildAwardRaceBoards(topN: number) {
   };
 }
 
+function fullPlayerName(player: Pick<GeneratedPlayer, 'firstName' | 'lastName'>): string {
+  return `${player.firstName} ${player.lastName}`;
+}
+
+function playerTraits(player: GeneratedPlayer): string[] {
+  return player.personalityTraits ?? [];
+}
+
+function hasTrait(player: GeneratedPlayer, trait: string): boolean {
+  return playerTraits(player).includes(trait);
+}
+
+function clubhouseLeaderRole(player: GeneratedPlayer): string {
+  if (player.personality.leadership >= 90) return 'Clubhouse captain';
+  if (hasTrait(player, 'Veteran Presence')) return 'Veteran stabilizer';
+  if (hasTrait(player, 'Mentor')) return 'Mentor voice';
+  if (player.personality.workEthic >= 85) return 'Routine setter';
+  return 'Bridge voice';
+}
+
+function clubhouseLeaderScore(player: GeneratedPlayer): number {
+  const traitBonus =
+    (hasTrait(player, 'Leader') ? 12 : 0)
+    + (hasTrait(player, 'Mentor') ? 8 : 0)
+    + (hasTrait(player, 'Team First') ? 8 : 0)
+    + (hasTrait(player, 'Veteran Presence') ? 10 : 0)
+    + (hasTrait(player, 'Hard Worker') ? 4 : 0);
+  const ageBonus = player.age >= 30 ? 8 : player.age >= 27 ? 4 : 0;
+  const rosterBonus = player.rosterStatus === 'MLB' ? 5 : 0;
+  return Math.round(
+    player.personality.leadership
+    + (player.personality.mentalToughness * 0.2)
+    + (player.personality.workEthic * 0.15)
+    + traitBonus
+    + ageBonus
+    + rosterBonus,
+  );
+}
+
+function buildClubhouseLeaders(teamPlayers: GeneratedPlayer[]) {
+  return teamPlayers
+    .map((player) => {
+      const score = clubhouseLeaderScore(player);
+      const playerName = fullPlayerName(player);
+      return {
+        playerId: player.id,
+        playerName,
+        position: player.position,
+        role: clubhouseLeaderRole(player),
+        leadership: player.personality.leadership,
+        score,
+        summary: `${playerName} sets the room with ${player.personality.leadership} leadership and ${player.personality.mentalToughness} mental toughness.`,
+        traits: playerTraits(player).slice(0, 3),
+      };
+    })
+    .filter((entry) => entry.score >= 95)
+    .sort((left, right) =>
+      right.score - left.score
+      || right.leadership - left.leadership
+      || left.playerName.localeCompare(right.playerName)
+      || left.playerId.localeCompare(right.playerId),
+    )
+    .slice(0, 3);
+}
+
+function clubhouseConflictRiskScore(player: GeneratedPlayer): number {
+  const lowWorkEthicPenalty = Math.max(0, 50 - player.personality.workEthic) * 0.25;
+  const traitPenalty =
+    (hasTrait(player, 'Hot Head') ? 15 : 0)
+    + (hasTrait(player, 'Volatile') ? 12 : 0)
+    + (hasTrait(player, 'Selfish') ? 10 : 0);
+  return Math.round(
+    player.personality.competitiveness
+    + ((100 - player.personality.leadership) * 0.45)
+    + ((100 - player.personality.mentalToughness) * 0.35)
+    + lowWorkEthicPenalty
+    + traitPenalty,
+  );
+}
+
+function conflictSeverity(score: number): 'low' | 'medium' | 'high' {
+  if (score >= 150) return 'high';
+  if (score >= 125) return 'medium';
+  return 'low';
+}
+
+function buildClubhouseConflictRisks(teamPlayers: GeneratedPlayer[]) {
+  return teamPlayers
+    .map((player) => {
+      const riskScore = clubhouseConflictRiskScore(player);
+      const playerName = fullPlayerName(player);
+      return {
+        playerId: player.id,
+        playerName,
+        position: player.position,
+        severity: conflictSeverity(riskScore),
+        riskScore,
+        reason: `${playerName} brings ${player.personality.competitiveness} competitiveness with ${player.personality.leadership} leadership and ${player.personality.mentalToughness} mental toughness.`,
+        mitigation: riskScore >= 150
+          ? 'Pair with a veteran leader before role changes.'
+          : 'Keep staff communication direct before changing the player plan.',
+      };
+    })
+    .filter((entry) => entry.riskScore >= 115)
+    .sort((left, right) =>
+      right.riskScore - left.riskScore
+      || left.playerName.localeCompare(right.playerName)
+      || left.playerId.localeCompare(right.playerId),
+    )
+    .slice(0, 3);
+}
+
+type MentorshipLaneStatus = 'active' | 'recommended';
+
+function mentorshipLaneKey(mentorId: string, protegeeId: string): string {
+  return `${mentorId}:${protegeeId}`;
+}
+
+function buildMentorshipLaneView(options: {
+  mentor: GeneratedPlayer;
+  protegee: GeneratedPlayer;
+  pairing: ReturnType<typeof pairMentors>[number];
+  status: MentorshipLaneStatus;
+  startedSeason?: number;
+  summary?: string;
+}) {
+  return {
+    mentorId: options.mentor.id,
+    protegeeId: options.protegee.id,
+    mentorName: fullPlayerName(options.mentor),
+    protegeeName: fullPlayerName(options.protegee),
+    quality: options.pairing.quality,
+    compatibilityFactors: options.pairing.compatibilityFactors,
+    developmentBonus: options.pairing.developmentBonus,
+    status: options.status,
+    startedSeason: options.startedSeason ?? null,
+    summary: options.summary ?? null,
+  };
+}
+
 export const queryApi = {
   getSetupPreview(options: {
     seed: number;
@@ -1934,25 +2747,27 @@ export const queryApi = {
   },
 
   getFullRoster(teamId: string): { mlb: PlayerDTO[]; minors: Record<string, PlayerDTO[]> } {
-    if (!state) {
-      return { mlb: [], minors: {} };
-    }
+    return measureWorkerQuerySync('getFullRoster', () => {
+      if (!state) {
+        return { mlb: [], minors: {} };
+      }
 
-    const teamPlayers = state.players.filter((player) => player.teamId === teamId);
-    const advancedIndex = buildAdvancedStatsIndex(state, teamPlayers);
-    const mlb = teamPlayers
-      .filter((player) => player.rosterStatus === 'MLB')
-      .sort((left, right) => right.overallRating - left.overallRating)
-      .map((player) => toPlayerDTO(player, undefined, advancedIndex.get(player.id) ?? null));
-
-    const minors: Record<string, PlayerDTO[]> = {};
-    for (const level of ['AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE', 'INTERNATIONAL']) {
-      minors[level] = teamPlayers
-        .filter((player) => player.rosterStatus === level)
+      const teamPlayers = state.players.filter((player) => player.teamId === teamId);
+      const advancedIndex = buildAdvancedStatsIndex(state, teamPlayers);
+      const mlb = teamPlayers
+        .filter((player) => player.rosterStatus === 'MLB')
         .sort((left, right) => right.overallRating - left.overallRating)
         .map((player) => toPlayerDTO(player, undefined, advancedIndex.get(player.id) ?? null));
-    }
-    return { mlb, minors };
+
+      const minors: Record<string, PlayerDTO[]> = {};
+      for (const level of ['AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE', 'INTERNATIONAL']) {
+        minors[level] = teamPlayers
+          .filter((player) => player.rosterStatus === level)
+          .sort((left, right) => right.overallRating - left.overallRating)
+          .map((player) => toPlayerDTO(player, undefined, advancedIndex.get(player.id) ?? null));
+      }
+      return { mlb, minors };
+    });
   },
 
   getPlayer(playerId: string): PlayerDTO | null {
@@ -2189,38 +3004,40 @@ export const queryApi = {
   },
 
   getPlayerProfileView(playerId: string) {
-    const s = requireState();
-    const player = s.players.find((candidate) => candidate.id === playerId) ?? null;
-    const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
-    const advanced = player ? getAdvancedStatsForPlayer(s, player.id) : null;
-    const playerView = player
-      ? decorateHistoricalPlayer(toPlayerDTO(player, undefined, advanced), historicalPlayer)
-      : historicalPlayer
-        ? buildHistoricalPlayerDTO(historicalPlayer)
-        : null;
-    if (!playerView) {
-      return null;
-    }
+    return measureWorkerQuerySync('getPlayerProfileView', () => {
+      const s = requireState();
+      const player = s.players.find((candidate) => candidate.id === playerId) ?? null;
+      const historicalPlayer = s.historicalPlayers.find((candidate) => candidate.playerId === playerId) ?? null;
+      const advanced = player ? getAdvancedStatsForPlayer(s, player.id) : null;
+      const playerView = player
+        ? decorateHistoricalPlayer(toPlayerDTO(player, undefined, advanced), historicalPlayer)
+        : historicalPlayer
+          ? buildHistoricalPlayerDTO(historicalPlayer)
+          : null;
+      if (!playerView) {
+        return null;
+      }
 
-    const scoutConflict = getScoutConflictForPlayer(s, playerId);
-    const storyArcs = getPlayerStoryArcsForQuery(s, playerId);
-    const milestoneAlerts = player ? buildMilestoneAlertsForPlayers(s, [player]) : [];
+      const scoutConflict = getScoutConflictForPlayer(s, playerId);
+      const storyArcs = getPlayerStoryArcsForQuery(s, playerId);
+      const milestoneAlerts = player ? buildMilestoneAlertsForPlayers(s, [player]) : [];
 
-    return {
-      player: playerView,
-      personalityProfile: playerView.historical ? null : getPersonalityProfileForPlayer(s, playerId),
-      developmentReports: playerView.historical ? null : buildDevelopmentReportsView(s, playerId),
-      careerStats: getCareerStatsForPlayer(s, playerId),
-      moments: queryApi.getPlayerMoments(playerId),
-      nicknames: queryApi.getNicknamesForPlayer(playerId),
-      storyArcs,
-      milestoneAlerts,
-      scoutConflict,
-      scoutingReport: player && !playerView.historical && !scoutConflict
-        ? buildStableScoutReportView(s, player, `player-profile:${player.id}`)
-        : null,
-      scoutingHistoryNote: 'Scouting report history is not tracked in v15.',
-    };
+      return {
+        player: playerView,
+        personalityProfile: playerView.historical ? null : getPersonalityProfileForPlayer(s, playerId),
+        developmentReports: playerView.historical ? null : buildDevelopmentReportsView(s, playerId),
+        careerStats: getCareerStatsForPlayer(s, playerId),
+        moments: queryApi.getPlayerMoments(playerId),
+        nicknames: queryApi.getNicknamesForPlayer(playerId),
+        storyArcs,
+        milestoneAlerts,
+        scoutConflict,
+        scoutingReport: player && !playerView.historical && !scoutConflict
+          ? buildStableScoutReportView(s, player, `player-profile:${player.id}`)
+          : null,
+        scoutingHistoryNote: 'Scouting report history is not tracked in v15.',
+      };
+    });
   },
 
   getAdvancedStats(playerId: string) {
@@ -2302,7 +3119,22 @@ export const queryApi = {
   },
 
   getFranchiseTimeline() {
-    return [...(state?.franchiseTimeline ?? [])].sort((left, right) => right.season - left.season);
+    if (!state) {
+      return [];
+    }
+
+    const s = state;
+    return [...s.franchiseTimeline]
+      .sort((left, right) => right.season - left.season)
+      .map((entry) => {
+        const playoffGameIndex = playoffTimelineGameIndex(s, entry.teamId, entry.season);
+        return {
+          ...entry,
+          ...(playoffGameIndex != null ? { playoffGameIndex } : {}),
+          playerMomentBeats: buildDynastyTimelinePlayerMomentBeats(s, entry.season),
+          teamMomentBeats: buildDynastyTimelineTeamMomentBeats(s, entry.season, entry.teamId),
+        };
+      });
   },
 
   getDynastyScore() {
@@ -2355,11 +3187,16 @@ export const queryApi = {
   },
 
   getDashboardSummary() {
-    return state ? buildDashboardSummary(state) : null;
+    return measureWorkerQuerySync('getDashboardSummary', () =>
+      state ? buildDashboardSummary(state) : null,
+    );
   },
 
-  getGamePlayByPlay(gameIndex: number) {
-    return state ? buildGamePlayByPlayView(state, gameIndex) : null;
+  getGamePlayByPlay(gameRef: number | string) {
+    if (!state) return null;
+    return typeof gameRef === 'number'
+      ? buildGamePlayByPlayView(state, gameRef)
+      : archivedGameView(state.archivedGames, gameRef);
   },
 
   getRecentGameRecaps(count: number = 3) {
@@ -2519,6 +3356,7 @@ export const queryApi = {
     };
   },
 
+  // Future route surface: keep worker-side until a minors/player-development UI consumes it.
   getDevelopmentPipeline(teamId?: string) {
     const s = requireState();
     const resolvedTeamId = teamId ?? s.userTeamId;
@@ -2591,7 +3429,7 @@ export const queryApi = {
   },
 
   getTradeDeadlineState() {
-    return buildTradeDeadlineStateView(requireState());
+    return measureWorkerQuerySync('getTradeDeadlineState', () => buildTradeDeadlineStateView(requireState()));
   },
 
   getTradeDialogue(
@@ -2691,6 +3529,10 @@ export const queryApi = {
 
   getInteractivePressConference() {
     const s = requireState();
+    if (hasAnsweredInteractivePressConference(s)) {
+      return null;
+    }
+
     const standings = s.seasonState.standings.getFullStandings();
     const userStanding = Object.values(standings)
       .flat()
@@ -2855,7 +3697,7 @@ export const queryApi = {
   },
 
   getHistoryOverview() {
-    return getHistoryOverview(requireState());
+    return measureWorkerQuerySync('getHistoryOverview', () => getHistoryOverview(requireState()));
   },
 
   getSeasonHistoryView(season?: number) {
@@ -3108,46 +3950,8 @@ export const queryApi = {
   },
 
   // ---------------------------------------------------------------------------
-  // Round 1 API Integration: Press Conferences, Coaching, Mentorship, Scenarios
+  // Round 1 API Integration: Coaching, Mentorship, Scenarios
   // ---------------------------------------------------------------------------
-
-  getEnhancedPressConference() {
-    const s = requireState();
-    const rng = createStableWorkerRng(s, 'enhanced-press-conference');
-    const teamPlayers = getTeamPlayers(s.userTeamId);
-    const standingsTracker = s.seasonState.standings;
-    const userRecord = standingsTracker.getRecord(s.userTeamId);
-    const userOwner = s.ownerState.get(s.userTeamId);
-    const injuredStarIds = [...s.injuries.keys()];
-    const hasInjuredStar = teamPlayers.some(p =>
-      injuredStarIds.includes(p.id) && p.overallRating > 350 && p.rosterStatus === 'MLB',
-    );
-
-    const context = {
-      season: s.season,
-      day: s.day,
-      teamId: s.userTeamId,
-      teamRecord: { wins: userRecord?.wins ?? 0, losses: userRecord?.losses ?? 0 },
-      recentResults: [] as Array<'W' | 'L'>,
-      ownerTone: (userOwner?.hotSeat ? 'impatient' : 'neutral') as 'supportive' | 'neutral' | 'impatient',
-      hasInjuredStar,
-      hasRecentTrade: false,
-      hasRecentCallup: false,
-      isPlayoffContender: (userRecord?.wins ?? 0) > (userRecord?.losses ?? 1),
-      divisionRank: 3,
-      gamesBack: 0,
-      isOffseason: s.phase === 'offseason',
-    };
-
-    const topic = selectPressConferenceTopic(rng, context);
-    if (!topic) return null;
-
-    return generateEnhancedPressConference(rng, context);
-  },
-
-  respondToEnhancedPressConference(conferenceId: string, responseId: string) {
-    return evaluatePressConferenceResponse(conferenceId, responseId);
-  },
 
   getCoachingChemistry() {
     const s = requireState();
@@ -3195,26 +3999,74 @@ export const queryApi = {
     };
   },
 
+  // Staff route mentorship board: saved active lanes first, then deterministic roster recommendations.
   getMentorships() {
     const s = requireState();
     const teamPlayers = getTeamPlayers(s.userTeamId);
+    const playersById = new Map(teamPlayers.map((player) => [player.id, player]));
     const rng = createStableWorkerRng(s, 'mentorship');
     const mentors = findMentorCandidates(teamPlayers);
     const protegees = findProtegeeCandidates(teamPlayers);
-    const pairings = pairMentors(rng, mentors, protegees);
+    const activePairings = s.mentorRelationships
+      .filter((relationship) => relationship.teamId === s.userTeamId)
+      .map((relationship) => {
+        const mentor = playersById.get(relationship.veteranPlayerId);
+        const protegee = playersById.get(relationship.rookiePlayerId);
+        if (!mentor || !protegee) {
+          return null;
+        }
+        return buildMentorshipLaneView({
+          mentor,
+          protegee,
+          pairing: fromMentorRelationship(relationship),
+          status: 'active',
+          startedSeason: relationship.startedSeason,
+          summary: relationship.summary,
+        });
+      })
+      .filter((pairing): pairing is NonNullable<typeof pairing> => pairing != null)
+      .sort((left, right) =>
+        (left.startedSeason ?? 0) - (right.startedSeason ?? 0)
+        || left.mentorName.localeCompare(right.mentorName)
+        || left.protegeeName.localeCompare(right.protegeeName),
+      );
+    const activeKeys = new Set(activePairings.map((pairing) =>
+      mentorshipLaneKey(pairing.mentorId, pairing.protegeeId),
+    ));
+    const activeProtegeeIds = new Set(activePairings.map((pairing) => pairing.protegeeId));
+    const recommendedPairings = pairMentors(rng, mentors, protegees)
+      .filter((pairing) =>
+        !activeKeys.has(mentorshipLaneKey(pairing.mentorId, pairing.protegeeId))
+        && !activeProtegeeIds.has(pairing.protegeeId),
+      )
+      .map((pairing) => {
+        const mentor = playersById.get(pairing.mentorId);
+        const protegee = playersById.get(pairing.protegeeId);
+        if (!mentor || !protegee) {
+          return null;
+        }
+        return buildMentorshipLaneView({
+          mentor,
+          protegee,
+          pairing,
+          status: 'recommended',
+        });
+      })
+      .filter((pairing): pairing is NonNullable<typeof pairing> => pairing != null)
+      .sort((left, right) =>
+        right.quality - left.quality
+        || left.mentorName.localeCompare(right.mentorName)
+        || left.protegeeName.localeCompare(right.protegeeName),
+      );
 
     return {
       mentorCount: mentors.length,
       protegeeCount: protegees.length,
-      pairings: pairings.map(p => {
-        const mentor = teamPlayers.find(pl => pl.id === p.mentorId);
-        const protegee = teamPlayers.find(pl => pl.id === p.protegeeId);
-        return {
-          ...p,
-          mentorName: mentor ? `${mentor.firstName} ${mentor.lastName}` : 'Unknown',
-          protegeeName: protegee ? `${protegee.firstName} ${protegee.lastName}` : 'Unknown',
-        };
-      }),
+      activePairingCount: activePairings.length,
+      recommendedPairingCount: recommendedPairings.length,
+      leaders: buildClubhouseLeaders(teamPlayers),
+      conflictRisks: buildClubhouseConflictRisks(teamPlayers),
+      pairings: [...activePairings, ...recommendedPairings],
     };
   },
 

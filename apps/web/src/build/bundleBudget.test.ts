@@ -8,14 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import {
-  CHART_CHUNK_BUDGET_BYTES,
-  CHART_CHUNK_GZIP_BUDGET_BYTES,
-  MAIN_THREAD_CHUNK_BUDGET_BYTES,
-  MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES,
-  WORKER_CHUNK_BUDGET_BYTES,
-  WORKER_CHUNK_GZIP_BUDGET_BYTES,
-  isChartBundleFile,
-  isWorkerBundleFile,
+  getBudgetForBundleFile,
 } from './bundleConfig';
 
 const generatedDirs: string[] = [];
@@ -49,7 +42,7 @@ describe('bundle budgets', () => {
     }
   });
 
-  it('keeps emitted app and worker chunks inside the Phase 11 budget', async () => {
+  it('keeps emitted app and worker chunks inside the current scoped budget', async () => {
     const outDir = mkdtempSync(path.join(tmpdir(), 'mbd-bundle-budget-'));
     generatedDirs.push(outDir);
 
@@ -74,10 +67,7 @@ describe('bundle budgets', () => {
       const source = readFileSync(filePath);
       const rawBytes = source.byteLength;
       const gzipBytes = gzipSync(source).byteLength;
-      const isWorker = isWorkerBundleFile(fileName);
-      const isChart = isChartBundleFile(fileName);
-      const rawBudget = isWorker ? WORKER_CHUNK_BUDGET_BYTES : isChart ? CHART_CHUNK_BUDGET_BYTES : MAIN_THREAD_CHUNK_BUDGET_BYTES;
-      const gzipBudget = isWorker ? WORKER_CHUNK_GZIP_BUDGET_BYTES : isChart ? CHART_CHUNK_GZIP_BUDGET_BYTES : MAIN_THREAD_CHUNK_GZIP_BUDGET_BYTES;
+      const { rawBudget, gzipBudget } = getBudgetForBundleFile(fileName);
 
       if (rawBytes <= rawBudget && gzipBytes <= gzipBudget) {
         return [];

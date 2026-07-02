@@ -322,4 +322,57 @@ describe('generateAIOffer', () => {
     expect(offer?.annualSalary).toBeGreaterThan(20);
     expect(offer?.years).toBeGreaterThanOrEqual(4);
   });
+
+  it('lets team-building identity separate win-now bidders from rebuilders', () => {
+    const player = {
+      ...makeExpiringPlayer(303),
+      age: 29,
+      overallRating: 335,
+      hitterAttributes: {
+        contact: 330,
+        power: 320,
+        eye: 305,
+        speed: 210,
+        defense: 285,
+        durability: 330,
+      },
+    };
+
+    const winNowOffer = generateAIOffer(
+      new GameRNG(303),
+      'bos',
+      player,
+      205,
+      108,
+      78,
+      undefined,
+      'win_now',
+    );
+    const rebuildingOffer = generateAIOffer(
+      new GameRNG(303),
+      'por',
+      player,
+      205,
+      108,
+      78,
+      undefined,
+      'rebuilding',
+    );
+    const constrainedOffer = generateAIOffer(
+      new GameRNG(303),
+      'cha',
+      player,
+      205,
+      108,
+      78,
+      undefined,
+      'budget_constrained',
+    );
+
+    expect(winNowOffer).toBeTruthy();
+    expect(rebuildingOffer).toBeTruthy();
+    expect(constrainedOffer).toBeTruthy();
+    expect(winNowOffer!.annualSalary).toBeGreaterThan(rebuildingOffer!.annualSalary);
+    expect(rebuildingOffer!.annualSalary).toBeGreaterThan(constrainedOffer!.annualSalary);
+  });
 });

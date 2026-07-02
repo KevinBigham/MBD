@@ -1,591 +1,43 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Card, CardContent, CardHeader, CardTitle, GradeBar } from '@mbd/ui';
-import { Building2, Clock, Coins, Compass, Radio, ShieldCheck, TrendingUp, Users, Zap } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
-import type { TeamChemistry } from '@mbd/contracts';
-
-interface OwnerState {
-  archetype: string;
-  patience: number;
-  confidence: number;
-  hotSeat: boolean;
-  summary: string;
-  expectations: { winsTarget: number; playoffTarget: boolean; payrollTarget: number };
-  satisfaction: number;
-  spendingWillingness: number;
-  winNowPressure: number;
-  meddlingLevel: number;
-  annualBudget: number;
-  payrollCap: number;
-  draftBonusPool: number;
-  ifaBonusPool: number;
-  staffBudget: number;
-}
-
-interface FrontOfficeState {
-  reputation: number;
-  draftScore: number;
-  tradeScore: number;
-  freeAgencyScore: number;
-  playoffScore: number;
-  summary: string;
-}
-
-interface RelationshipView {
-  teamId: string;
-  teamName: string;
-  teamAbbreviation: string;
-  score: number;
-  tier: 'hostile' | 'strained' | 'neutral' | 'friendly' | 'trusted';
-  tooltip: string;
-  lastInteractionSeason: number;
-  lastEventLabel: string;
-  latestMemoryDescription: string | null;
-}
-
-interface AlignmentScore {
-  score: number;
-  impact: number;
-  label: 'strong' | 'steady' | 'watch' | 'strained';
-  summary: string;
-}
-
-interface FrontOfficeIdentityView {
-  assistantGM: {
-    id: string | null;
-    name: string;
-    focus: string;
-    upside: string;
-    watchout: string;
-  };
-  scoutingDirector: {
-    name: string;
-    focus: string;
-    draftAccuracy: number;
-    internationalAccuracy: number;
-    proAccuracy: number;
-  } | null;
-  philosophy: {
-    seasonGoal: string;
-    developmentStyle: string;
-    scoutingFocus: string;
-    spendingStyle: string;
-    tradeApproach: string;
-    mediaTone: string;
-  };
-  alignment: {
-    overall: AlignmentScore;
-    mandate: AlignmentScore;
-    spending: AlignmentScore;
-    trade: AlignmentScore;
-    development: AlignmentScore;
-    media: AlignmentScore;
-  };
-  visibleEffects: string[];
-  recentConsequence: {
-    headline: string;
-    body: string;
-    timestamp: string;
-  } | null;
-}
-
-function archetypeIcon(archetype: string) {
-  switch (archetype) {
-    case 'win_now': return <TrendingUp className="h-4 w-4" />;
-    case 'patient_builder': return <Clock className="h-4 w-4" />;
-    case 'penny_pincher': return <Coins className="h-4 w-4" />;
-    default: return <Building2 className="h-4 w-4" />;
-  }
-}
-
-function archetypeLabel(archetype: string): string {
-  return archetype.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function chemTierTone(tier: string): string {
-  switch (tier) {
-    case 'electric': return 'text-accent-primary bg-accent-primary/10 border-accent-primary/30';
-    case 'connected': return 'text-accent-success bg-accent-success/10 border-accent-success/30';
-    case 'neutral': return 'text-accent-warning bg-accent-warning/10 border-accent-warning/30';
-    case 'disconnected': return 'text-accent-primary bg-accent-primary/10 border-accent-primary/30';
-    case 'toxic': return 'text-accent-danger bg-accent-danger/10 border-accent-danger/30';
-    default: return 'text-dynasty-muted bg-dynasty-elevated border-dynasty-border';
-  }
-}
-
-function scoreToGrade(score: number): number {
-  // Map -40..+40 -> 0..100
-  return Math.round(((score + 40) / 80) * 100);
-}
-
-function relationshipTone(tier: RelationshipView['tier']): string {
-  switch (tier) {
-    case 'hostile':
-      return 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger';
-    case 'strained':
-      return 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
-    case 'friendly':
-      return 'border-accent-info/40 bg-accent-info/10 text-accent-info';
-    case 'trusted':
-      return 'border-accent-success/40 bg-accent-success/10 text-accent-success';
-    case 'neutral':
-    default:
-      return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
-  }
-}
-
-function relationshipLabel(tier: RelationshipView['tier']): string {
-  switch (tier) {
-    case 'hostile':
-      return 'Hostile';
-    case 'strained':
-      return 'Strained';
-    case 'friendly':
-      return 'Friendly';
-    case 'trusted':
-      return 'Trusted';
-    case 'neutral':
-    default:
-      return 'Neutral';
-  }
-}
-
-function alignmentTone(label: AlignmentScore['label']): string {
-  switch (label) {
-    case 'strong':
-      return 'border-accent-success/40 bg-accent-success/10 text-accent-success';
-    case 'steady':
-      return 'border-accent-info/40 bg-accent-info/10 text-accent-info';
-    case 'watch':
-      return 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning';
-    case 'strained':
-    default:
-      return 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger';
-  }
-}
-
-function formatAccuracy(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
-
-function formatMoney(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
-}
-
-function OwnerProfileCard({ owner }: { owner: OwnerState }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {archetypeIcon(owner.archetype)}
-          Owner Profile
-          {owner.hotSeat && (
-            <Badge className="ml-auto border-accent-danger/40 bg-accent-danger/10 text-accent-danger motion-safe:animate-pulse">
-              HOT SEAT
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Badge className="border-dynasty-border bg-dynasty-elevated text-dynasty-text">
-          {archetypeLabel(owner.archetype)}
-        </Badge>
-
-        <div className="space-y-3">
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Patience</span><span>{owner.patience}</span>
-            </div>
-            <GradeBar grade={owner.patience} />
-          </div>
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Confidence</span><span>{owner.confidence}</span>
-            </div>
-            <GradeBar grade={owner.confidence} />
-          </div>
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Satisfaction</span><span>{owner.satisfaction}</span>
-            </div>
-            <GradeBar grade={owner.satisfaction} />
-          </div>
-        </div>
-
-        <div className="rounded-md border border-dynasty-border bg-dynasty-base p-3">
-          <div className="font-heading text-xs text-dynasty-muted">Expectations</div>
-          <div className="mt-1.5 space-y-1 font-data text-xs text-dynasty-text">
-            <div>Win target: <span className="text-accent-primary">{owner.expectations.winsTarget}+</span> wins</div>
-            <div>Playoffs: <span className={owner.expectations.playoffTarget ? 'text-accent-success' : 'text-dynasty-muted'}>{owner.expectations.playoffTarget ? 'Expected' : 'Optional'}</span></div>
-            <div>Payroll cap: <span className="text-accent-warning">{formatMoney(owner.expectations.payrollTarget)}</span></div>
-          </div>
-        </div>
-
-        <p className="font-data text-xs italic text-dynasty-muted">{owner.summary}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ReputationCard({ fo }: { fo: FrontOfficeState }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Building2 className="h-4 w-4" />
-          Front Office Reputation
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="text-center">
-          <div className="font-brand text-4xl text-accent-primary">{fo.reputation}</div>
-          <div className="font-data text-xs text-dynasty-muted">Overall Rating</div>
-        </div>
-        <GradeBar grade={fo.reputation} label="Overall" showValue />
-
-        <div className="space-y-3">
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Draft Acumen</span><span>{fo.draftScore > 0 ? '+' : ''}{fo.draftScore}</span>
-            </div>
-            <GradeBar grade={scoreToGrade(fo.draftScore)} />
-          </div>
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Trade Savvy</span><span>{fo.tradeScore > 0 ? '+' : ''}{fo.tradeScore}</span>
-            </div>
-            <GradeBar grade={scoreToGrade(fo.tradeScore)} />
-          </div>
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Free Agency</span><span>{fo.freeAgencyScore > 0 ? '+' : ''}{fo.freeAgencyScore}</span>
-            </div>
-            <GradeBar grade={scoreToGrade(fo.freeAgencyScore)} />
-          </div>
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Playoff Success</span><span>{fo.playoffScore > 0 ? '+' : ''}{fo.playoffScore}</span>
-            </div>
-            <GradeBar grade={scoreToGrade(fo.playoffScore)} />
-          </div>
-        </div>
-
-        <p className="font-data text-xs italic text-dynasty-muted">{fo.summary}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function IdentityCard({ identity }: { identity: FrontOfficeIdentityView }) {
-  const philosophyRows = [
-    ['Mandate', identity.philosophy.seasonGoal],
-    ['Development', identity.philosophy.developmentStyle],
-    ['Scouting', identity.philosophy.scoutingFocus],
-    ['Spending', identity.philosophy.spendingStyle],
-    ['Trades', identity.philosophy.tradeApproach],
-    ['Media', identity.philosophy.mediaTone],
-  ];
-  const alignmentRows = [
-    ['Mandate', identity.alignment.mandate],
-    ['Spending', identity.alignment.spending],
-    ['Trade', identity.alignment.trade],
-    ['Development', identity.alignment.development],
-    ['Media', identity.alignment.media],
-  ];
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Compass className="h-4 w-4" />
-          Front Office Identity
-          <Badge className={`ml-auto ${alignmentTone(identity.alignment.overall.label)}`}>
-            {identity.alignment.overall.score}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-md border border-dynasty-border bg-dynasty-base p-3">
-            <div className="flex items-center gap-2 font-heading text-sm text-dynasty-textBright">
-              <ShieldCheck className="h-4 w-4 text-accent-primary" />
-              {identity.assistantGM.name}
-            </div>
-            <p className="mt-2 font-data text-xs text-dynasty-muted">{identity.assistantGM.upside}</p>
-            <p className="mt-1 font-data text-xs text-accent-warning">{identity.assistantGM.watchout}</p>
-          </div>
-
-          <div className="rounded-md border border-dynasty-border bg-dynasty-base p-3">
-            <div className="flex items-center gap-2 font-heading text-sm text-dynasty-textBright">
-              <Radio className="h-4 w-4 text-accent-info" />
-              {identity.scoutingDirector?.name ?? 'Scouting Director'}
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2 font-data text-[10px] text-dynasty-muted">
-              <div>
-                <div>Draft</div>
-                <div className="text-xs text-dynasty-textBright">{identity.scoutingDirector ? formatAccuracy(identity.scoutingDirector.draftAccuracy) : 'Base'}</div>
-              </div>
-              <div>
-                <div>IFA</div>
-                <div className="text-xs text-dynasty-textBright">{identity.scoutingDirector ? formatAccuracy(identity.scoutingDirector.internationalAccuracy) : 'Base'}</div>
-              </div>
-              <div>
-                <div>Pro</div>
-                <div className="text-xs text-dynasty-textBright">{identity.scoutingDirector ? formatAccuracy(identity.scoutingDirector.proAccuracy) : 'Base'}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-            <span>Overall Alignment</span><span>{identity.alignment.overall.label}</span>
-          </div>
-          <GradeBar grade={identity.alignment.overall.score} />
-          <p className="mt-2 font-data text-xs text-dynasty-muted">{identity.alignment.overall.summary}</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {philosophyRows.map(([label, value]) => (
-            <div key={label} className="rounded-md border border-dynasty-border bg-dynasty-base p-2">
-              <div className="font-data text-[10px] text-dynasty-muted">{label}</div>
-              <div className="mt-0.5 font-heading text-xs text-dynasty-textBright">{value}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid gap-2 md:grid-cols-5">
-          {alignmentRows.map(([label, score]) => (
-            <div key={label as string} className="rounded-md border border-dynasty-border bg-dynasty-base p-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-data text-[10px] text-dynasty-muted">{label as string}</span>
-                <Badge className={alignmentTone((score as AlignmentScore).label)}>
-                  {(score as AlignmentScore).impact >= 0 ? '+' : ''}{(score as AlignmentScore).impact}
-                </Badge>
-              </div>
-              <div className="mt-1 font-brand text-xl text-dynasty-textBright">{(score as AlignmentScore).score}</div>
-            </div>
-          ))}
-        </div>
-
-        {identity.recentConsequence ? (
-          <div className="rounded-md border border-accent-primary/25 bg-accent-primary/10 p-3">
-            <div className="font-heading text-sm text-dynasty-textBright">{identity.recentConsequence.headline}</div>
-            <p className="mt-1 font-data text-xs text-dynasty-muted">{identity.recentConsequence.body}</p>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ChemistryCard({ chem }: { chem: TeamChemistry }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-4 w-4" />
-          Clubhouse Chemistry
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="font-brand text-3xl text-dynasty-textBright">{chem.score}</div>
-          <div>
-            <Badge className={chemTierTone(chem.tier)}>{chem.tier}</Badge>
-            <div className="mt-0.5 font-data text-[10px] text-dynasty-muted">
-              Trend: {chem.trend === 'rising' ? 'Improving' : chem.trend === 'falling' ? 'Declining' : 'Stable'}
-            </div>
-          </div>
-        </div>
-        <GradeBar grade={chem.score} />
-        {chem.reasons.length > 0 && (
-          <div className="space-y-1">
-            {chem.reasons.map((r, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-dynasty-muted" />
-                <span className="font-data text-xs text-dynasty-muted">{r}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <p className="font-data text-xs italic text-dynasty-muted">{chem.summary}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function BudgetCard({ owner }: { owner: OwnerState }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Coins className="h-4 w-4" />
-          Budget Overview
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'Annual Budget', value: formatMoney(owner.annualBudget) },
-            { label: 'Payroll Cap', value: formatMoney(owner.payrollCap) },
-            { label: 'Draft Bonus Pool', value: formatMoney(owner.draftBonusPool) },
-            { label: 'IFA Bonus Pool', value: formatMoney(owner.ifaBonusPool) },
-            { label: 'Staff Budget', value: formatMoney(owner.staffBudget) },
-            { label: 'Spending Will', value: `${owner.spendingWillingness}` },
-          ].map((item) => (
-            <div key={item.label} className="rounded-md border border-dynasty-border bg-dynasty-base p-2.5">
-              <div className="font-data text-[10px] text-dynasty-muted">{item.label}</div>
-              <div className="mt-0.5 font-data text-sm text-dynasty-textBright">{item.value}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-3 space-y-2">
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Win-Now Pressure</span><span>{owner.winNowPressure}</span>
-            </div>
-            <GradeBar grade={owner.winNowPressure} />
-          </div>
-          <div>
-            <div className="mb-1 flex justify-between font-data text-xs text-dynasty-muted">
-              <span>Meddling Level</span><span>{owner.meddlingLevel}</span>
-            </div>
-            <GradeBar grade={owner.meddlingLevel} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function LeagueStandingCard({
-  relationships,
-}: {
-  relationships: RelationshipView[];
-}) {
-  const [sortKey, setSortKey] = useState<'score' | 'team' | 'season'>('score');
-  const sorted = useMemo(
-    () => relationships
-      .slice()
-      .sort((left, right) => {
-        if (sortKey === 'team') {
-          return left.teamName.localeCompare(right.teamName) || left.teamId.localeCompare(right.teamId);
-        }
-        if (sortKey === 'season') {
-          return right.lastInteractionSeason - left.lastInteractionSeason
-            || right.score - left.score
-            || left.teamName.localeCompare(right.teamName);
-        }
-        return right.score - left.score
-          || left.teamName.localeCompare(right.teamName)
-          || left.teamId.localeCompare(right.teamId);
-      }),
-    [relationships, sortKey],
-  );
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="h-4 w-4" />
-          League Standing
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex gap-2">
-          {[
-            ['score', 'Score'],
-            ['team', 'Team'],
-            ['season', 'Last Event'],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setSortKey(value as 'score' | 'team' | 'season')}
-              className={[
-                'focus-ring rounded border px-2.5 py-1 font-heading text-[11px] uppercase tracking-[0.18em] transition-colors',
-                sortKey === value
-                  ? 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary'
-                  : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted hover:text-dynasty-text',
-              ].join(' ')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-2">
-          {sorted.map((relationship) => (
-            <div
-              key={relationship.teamId}
-              className="rounded-md border border-dynasty-border bg-dynasty-base p-3"
-              title={relationship.tooltip}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-heading text-sm text-dynasty-textBright">
-                    {relationship.teamAbbreviation} · {relationship.teamName}
-                  </div>
-                  <div className="mt-1 font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted">
-                    Last event {relationship.lastEventLabel}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge className={relationshipTone(relationship.tier)}>
-                    {relationshipLabel(relationship.tier)}
-                  </Badge>
-                  <span className="font-data text-xs text-dynasty-textBright">{relationship.score}</span>
-                </div>
-              </div>
-              <p className="mt-2 font-data text-xs text-dynasty-muted">
-                {relationship.latestMemoryDescription ?? 'No memorable front-office friction or goodwill logged yet.'}
-              </p>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+import {
+  FrontOfficeChemistryCard,
+  FrontOfficeReputationCard,
+} from '../components/FrontOfficeHealthCards';
+import { FrontOfficeIdentityCard } from '../components/FrontOfficeIdentityCard';
+import {
+  FrontOfficeBudgetCard,
+  FrontOfficeOwnerProfileCard,
+} from '../components/FrontOfficeOwnerCards';
+import { FrontOfficeLeagueStandingCard } from '../components/FrontOfficeLeagueStandingCard';
+import { FrontOfficeClubhouseWebCard } from '../components/FrontOfficeClubhouseWebCard';
+import { useFrontOfficeRouteData } from '../hooks/useFrontOfficeRouteData';
 
 export default function FrontOfficePage() {
   const worker = useWorker();
-  const workerReady = worker.isReady;
   const { isInitialized, season, day, phase } = useGameStore();
-  const [owner, setOwner] = useState<OwnerState | null>(null);
-  const [fo, setFO] = useState<FrontOfficeState | null>(null);
-  const [chem, setChem] = useState<TeamChemistry | null>(null);
-  const [identity, setIdentity] = useState<FrontOfficeIdentityView | null>(null);
-  const [relationships, setRelationships] = useState<RelationshipView[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = useCallback(async () => {
-    if (!isInitialized || !workerReady) return;
-    setLoading(true);
-    const [ownerData, foData, chemData, identityData, relationshipData] = await Promise.all([
-      worker.getOwnerState(),
-      worker.getFrontOfficeState(),
-      worker.getTeamChemistry(),
-      worker.getFrontOfficeIdentity(),
-      worker.getRelationships(),
-    ]);
-    setOwner((ownerData ?? null) as OwnerState | null);
-    setFO((foData ?? null) as FrontOfficeState | null);
-    setChem((chemData ?? null) as TeamChemistry | null);
-    setIdentity((identityData ?? null) as FrontOfficeIdentityView | null);
-    setRelationships((relationshipData as RelationshipView[]) ?? []);
-    setLoading(false);
-  }, [isInitialized, worker, workerReady]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData, season, day, phase]);
+  const {
+    chemistry,
+    frontOffice,
+    identity,
+    loading,
+    mentorship,
+    owner,
+    relationships,
+  } = useFrontOfficeRouteData({
+    day,
+    getFrontOfficeIdentity: worker.getFrontOfficeIdentity,
+    getFrontOfficeState: worker.getFrontOfficeState,
+    getMentorships: worker.getMentorships,
+    getOwnerState: worker.getOwnerState,
+    getRelationships: worker.getRelationships,
+    getTeamChemistry: worker.getTeamChemistry,
+    isInitialized,
+    phase,
+    season,
+    workerReady: worker.isReady,
+  });
 
   return (
     <PageShell loading={loading}>
@@ -599,20 +51,22 @@ export default function FrontOfficePage() {
         </div>
 
         {/* Two-column grid */}
-        {identity && <IdentityCard identity={identity} />}
+        {identity && <FrontOfficeIdentityCard identity={identity} />}
 
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="space-y-4">
-            {owner && <OwnerProfileCard owner={owner} />}
-            {chem && <ChemistryCard chem={chem} />}
+            {owner && <FrontOfficeOwnerProfileCard owner={owner} />}
+            {chemistry && <FrontOfficeChemistryCard chemistry={chemistry} />}
           </div>
           <div className="space-y-4">
-            {fo && <ReputationCard fo={fo} />}
-            {owner && <BudgetCard owner={owner} />}
+            {frontOffice && <FrontOfficeReputationCard reputation={frontOffice} />}
+            {owner && <FrontOfficeBudgetCard owner={owner} />}
           </div>
         </div>
 
-        {relationships.length > 0 ? <LeagueStandingCard relationships={relationships} /> : null}
+        {mentorship && <FrontOfficeClubhouseWebCard mentorship={mentorship} />}
+
+        {relationships.length > 0 ? <FrontOfficeLeagueStandingCard relationships={relationships} /> : null}
       </div>
     </PageShell>
   );

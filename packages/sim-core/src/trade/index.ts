@@ -20,6 +20,7 @@ export {
   type TradeStatus,
   type TradeProposal,
   type TradeResult,
+  type TradeGenerationContext,
 } from './tradeAI.js';
 
 export {

@@ -83,7 +83,7 @@ const visiblePicks: DraftNarrativePick[] = [
     round: 1,
     pickNumber: 3,
     teamId: 'orl',
-    teamName: 'Orlando Thunder',
+    teamName: 'Orlando Sunbursts',
     teamAbbreviation: 'ORL',
     playerId: 'tb-1',
     playerName: 'Noah Closer',

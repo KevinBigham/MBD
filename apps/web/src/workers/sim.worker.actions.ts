@@ -44,10 +44,12 @@ import {
   generateSchedule,
   generateSeasonRecapCard,
   generateScoutingStaff,
+  getMentorshipDevelopmentBonus,
   getTeamBudget,
   getRegularSeasonMonthForDay,
   getTeamById,
   getScenarioById,
+  fromMentorRelationship,
   initializePlayerDevelopmentProfile,
   initializePlayoffBracket,
   isPlayoffComplete,
@@ -84,6 +86,7 @@ import type {
 } from '@mbd/sim-core';
 import type {
   DayOneOpeningPlan,
+  DevelopmentProgram,
   SignatureMoment as PersistedSignatureMoment,
   TradeAsset,
 } from '@mbd/contracts';
@@ -91,12 +94,14 @@ import {
   createEmptyDraftState,
   createEmptyInternationalScoutingState,
   createEmptyMinorLeagueState,
+  accrueMinorLeagueServiceTimeDays,
   advanceMinorLeagueDay,
   appendPlayerMoments,
   appendTeamMoments,
   buildOffseasonStateView,
   claimPlayerOffWaivers,
   createEmptyTradeState,
+  deriveWorkerTeamBuildingArchetype,
   enforceRule5RosterRestriction,
   ensurePlayersHaveRule5Eligibility,
   fireCoachForUserTeam,
@@ -174,6 +179,7 @@ import {
   respondToTradeOffer,
 } from './sim.worker.trade.js';
 import { publishDraftGradesNarrative } from './sim.worker.draft.js';
+import { syncArchivedMajorGames } from './sim.worker.archivedGames.js';
 import {
   recordSeasonArchive,
   ensureNarrativeState,
@@ -224,11 +230,13 @@ import {
   applySeasonEndProspectBondUpdates,
   getLoyaltyAdjustedAppeal,
   recordProspectBondDebuts,
+  syncMinorLeagueStatHistory,
 } from './sim.worker.farm.js';
 import {
   applyMonthlyDevelopmentIdentity,
   applyMonthlyFrontOfficeConsequences,
   applyPressToneConsequences,
+  hasAnsweredInteractivePressConference,
 } from './sim.worker.frontOfficeIdentity.js';
 import {
   applyBreakoutCountdowns,
@@ -250,6 +258,7 @@ import {
   estimateSnapshotSizeBytes,
   measureRuntimeAsync,
   measureRuntimeSync,
+  measureWorkerQuerySync,
   normalizePerformanceDiagnostics,
   pruneStaleWorkerData,
 } from './sim.worker.diagnostics.js';
@@ -309,6 +318,45 @@ const AT_BAT_OUTCOMES = new Set([
 
 const ROSTER_PLAN_HITTER_POSITIONS = new Set(['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']);
 const ROSTER_PLAN_PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
+const PLAYABLE_DEVELOPMENT_LEVELS = new Set<string>(['AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE']);
+
+type DevelopmentFocusCategory =
+  | 'promotion_window'
+  | 'recalibrate_plan'
+  | 'accelerate_challenge'
+  | 'protect_runway';
+
+function defaultDevelopmentProgramForLevel(level: string | null | undefined): DevelopmentProgram {
+  switch (level) {
+    case 'ROOKIE':
+      return 'tools';
+    case 'A':
+    case 'A_PLUS':
+      return 'fundamentals';
+    case 'AA':
+      return 'refinement';
+    case 'AAA':
+    default:
+      return 'mlb_prep';
+  }
+}
+
+function developmentProgramForFocusCategory(
+  category: DevelopmentFocusCategory,
+  player: FullGameState['players'][number],
+): DevelopmentProgram {
+  switch (category) {
+    case 'promotion_window':
+      return 'mlb_prep';
+    case 'accelerate_challenge':
+      return player.pitcherAttributes ? 'velocity' : 'power';
+    case 'protect_runway':
+      return player.rosterStatus === 'ROOKIE' ? 'tools' : defaultDevelopmentProgramForLevel(player.rosterStatus);
+    case 'recalibrate_plan':
+    default:
+      return defaultDevelopmentProgramForLevel(player.rosterStatus);
+  }
+}
 
 function uniqueRosterPlanIds(playerIds: Array<string | null | undefined>): string[] {
   const seen = new Set<string>();
@@ -1338,6 +1386,7 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
   const seasonMoments = applyPostseasonConsequences(s);
   recordSeasonHistory(s, seasonMoments);
   recordSeasonArchive(s);
+  syncArchivedMajorGames(s);
   upsertFranchiseTimelineEntry(s);
   if (s.playoffBracket.champion === s.userTeamId) {
     upsertDynastyCard(s, generateChampionshipCard(exportGameSnapshot(s), s.season));
@@ -1483,12 +1532,22 @@ function publishMonthlyNarrativeHooks(s: FullGameState, crossedMonths: readonly 
   }
 }
 
+function buildMentorshipDevelopmentBonusMap(s: FullGameState): Map<string, number> {
+  const pairings = s.mentorRelationships.map((relationship) => fromMentorRelationship(relationship));
+  const protegeeIds = new Set(pairings.map((pairing) => pairing.protegeeId));
+  return new Map([...protegeeIds].map((playerId) => [
+    playerId,
+    getMentorshipDevelopmentBonus(pairings, playerId),
+  ]));
+}
+
 function applyMonthlyDevelopmentCheckpoints(
   s: FullGameState,
   previousDay: number,
   currentDay: number,
 ) {
   const crossedMonths = getCrossedRegularSeasonMonths(previousDay, currentDay);
+  const mentorshipBonuses = buildMentorshipDevelopmentBonusMap(s);
   for (const month of crossedMonths) {
     const monthView = getRegularSeasonMonthForDay(Math.min(currentDay, (month * 30) - 1));
     const checkpoint = runMonthlyDevelopmentCheckpoint(
@@ -1498,6 +1557,7 @@ function applyMonthlyDevelopmentCheckpoints(
       s.players,
       s.coachingStaffs,
       s.minorLeagueState,
+      mentorshipBonuses,
     );
     s.players = checkpoint.players;
     s.minorLeagueState = checkpoint.state;
@@ -1539,6 +1599,7 @@ function simWeekInternal(): SimResultDTO {
   );
   s.seasonState = newState;
   s.day = newState.currentDay;
+  advanceMinorLeagueDays(s, previousDay, s.day);
   const crossedMonths = applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
@@ -1597,12 +1658,61 @@ function buildSeasonSimulationOptions(s: FullGameState) {
   };
 }
 
+function advanceMinorLeagueDays(
+  s: FullGameState,
+  startDayInclusive: number,
+  endDayExclusive: number,
+) {
+  const days = Math.max(0, endDayExclusive - startDayInclusive);
+  if (days === 0) {
+    return;
+  }
+
+  accrueMinorLeagueServiceTimeDays(s, days);
+  let advanced = false;
+  for (let day = startDayInclusive; day < endDayExclusive; day += 1) {
+    advanceMinorLeagueDay(s, day, {
+      accrueServiceTime: false,
+      syncStatHistory: false,
+    });
+    advanced = true;
+  }
+  syncMinorLeagueStatHistory(s);
+}
+
 function buildUnavailablePlayerIds(s: FullGameState): Set<string> {
   return new Set(
     Array.from(s.injuries.entries())
       .filter(([, injury]) => injury.daysRemaining > 0)
       .map(([playerId]) => playerId),
   );
+}
+
+function hasCurrentSeasonOptionUsage(s: FullGameState, playerId: string): boolean {
+  return s.minorLeagueState.optionUsage.some(
+    ([usagePlayerId, seasons]) => usagePlayerId === playerId && seasons.includes(s.season),
+  );
+}
+
+function prepareMlbDemotionOptionLedger(s: FullGameState, playerId: string): boolean {
+  const player = s.players.find((candidate) => candidate.id === playerId);
+  if (!player || player.rosterStatus !== 'MLB') {
+    return false;
+  }
+
+  const currentSeasonOptionActive = hasCurrentSeasonOptionUsage(s, playerId);
+  const requiresWaivers = !currentSeasonOptionActive
+    && (player.isOutOfOptions || player.optionYearsUsed >= 3);
+
+  if (!currentSeasonOptionActive && !requiresWaivers) {
+    const optionResult = consumeOptionYear(player, s.minorLeagueState, s.season);
+    s.minorLeagueState = optionResult.state;
+    s.players = s.players.map((candidate) =>
+      candidate.id === playerId ? optionResult.player : candidate,
+    );
+  }
+
+  return requiresWaivers;
 }
 
 function incrementGamesMissedToInjury(
@@ -1647,21 +1757,46 @@ function incrementGamesMissedToInjury(
 
 function normalizeLeagueActiveRosters(s: FullGameState) {
   for (const team of TEAMS) {
+    const activeRule5PlayerIds = new Set(
+      s.rule5Obligations
+        .filter((obligation) => obligation.status === 'active' && obligation.draftingTeamId === team.id)
+        .map((obligation) => obligation.playerId),
+    );
     const mlbPlayers = s.players
       .filter((player) => player.teamId === team.id && player.rosterStatus === 'MLB')
-      .sort((left, right) => left.overallRating - right.overallRating || left.id.localeCompare(right.id));
+      .sort((left, right) => {
+        const leftProtected = activeRule5PlayerIds.has(left.id) ? 1 : 0;
+        const rightProtected = activeRule5PlayerIds.has(right.id) ? 1 : 0;
+        if (leftProtected !== rightProtected) return leftProtected - rightProtected;
+        return left.overallRating - right.overallRating || left.id.localeCompare(right.id);
+      });
 
     while (mlbPlayers.length > 30) {
-      const overflow = mlbPlayers.shift();
+      const overflowIndex = mlbPlayers.findIndex((player) => !activeRule5PlayerIds.has(player.id));
+      if (overflowIndex === -1) {
+        break;
+      }
+      const [overflow] = mlbPlayers.splice(overflowIndex, 1);
       if (!overflow) {
         break;
       }
-      overflow.rosterStatus = 'AAA';
-      overflow.minorLeagueLevel = 'AAA';
+      const requiresWaivers = prepareMlbDemotionOptionLedger(s, overflow.id);
+      const demotedPlayer = s.players.find((player) => player.id === overflow.id);
+      if (!demotedPlayer) {
+        continue;
+      }
+      demotedPlayer.rosterStatus = 'AAA';
+      demotedPlayer.minorLeagueLevel = 'AAA';
+      if (requiresWaivers) {
+        placePlayerOnWaivers(s, demotedPlayer);
+      }
     }
 
     const rosterState = buildRosterState(team.id, s.players);
-    const filledRoster = autoFillMLBRoster(team.id, s.players, rosterState);
+    const filledRoster = autoFillMLBRoster(team.id, s.players, rosterState, {
+      teamBuildingArchetype: deriveWorkerTeamBuildingArchetype(s, team.id),
+      protectServiceTimeProspects: true,
+    });
     s.players = filledRoster.players;
     s.rosterStates.set(team.id, filledRoster.rosterState);
   }
@@ -1709,6 +1844,7 @@ function simMonthInternal(): SimResultDTO {
   );
   s.seasonState = newState;
   s.day = newState.currentDay;
+  advanceMinorLeagueDays(s, previousDay, s.day);
   const crossedMonths = applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
@@ -1829,7 +1965,10 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.seasonState = createSeasonState(s.season, teamIds);
   for (const teamId of teamIds) {
     const rosterState = buildRosterState(teamId, s.players);
-    const filledRoster = autoFillMLBRoster(teamId, s.players, rosterState);
+    const filledRoster = autoFillMLBRoster(teamId, s.players, rosterState, {
+      teamBuildingArchetype: deriveWorkerTeamBuildingArchetype(s, teamId),
+      protectServiceTimeProspects: true,
+    });
     s.players = filledRoster.players;
     s.rosterStates.set(teamId, filledRoster.rosterState);
   }
@@ -2040,6 +2179,9 @@ export const actionApi = {
 
   respondToPressConference(conferenceId: string, responseId: string) {
     const s = requireState();
+    if (hasAnsweredInteractivePressConference(s)) {
+      return { success: false as const, error: 'Press conference already answered.' };
+    }
 
     // Regenerate the conference to validate the response
     const pcStandings = s.seasonState.standings.getFullStandings();
@@ -2366,7 +2508,7 @@ export const actionApi = {
   },
 
   exportSnapshot() {
-    return exportGameSnapshot(requireState());
+    return measureWorkerQuerySync('exportSnapshot', () => exportGameSnapshot(requireState()));
   },
 
   importSnapshot(snapshot: unknown) {
@@ -2531,6 +2673,7 @@ export const actionApi = {
         message: franchiseLockMessage(s),
         negotiation: null,
         tradeExecuted: false,
+        review: null,
       };
     }
     pruneExpiredNegotiations(s);
@@ -2555,6 +2698,7 @@ export const actionApi = {
         message: franchiseLockMessage(s),
         negotiation: null,
         tradeExecuted: false,
+        review: null,
       };
     }
     pruneExpiredNegotiations(s);
@@ -2570,6 +2714,7 @@ export const actionApi = {
         message: franchiseLockMessage(s),
         negotiation: null,
         tradeExecuted: false,
+        review: null,
       };
     }
     pruneExpiredNegotiations(s);
@@ -2628,6 +2773,32 @@ export const actionApi = {
       syncAchievementState(s);
     }
     return result;
+  },
+
+  applyDevelopmentFocusPlan(playerId: string, category: DevelopmentFocusCategory) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+
+    const player = s.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return { success: false, error: 'Player not found' };
+    }
+    if (player.teamId !== s.userTeamId) {
+      return { success: false, error: 'Player is not controlled by the user team' };
+    }
+    if (!PLAYABLE_DEVELOPMENT_LEVELS.has(player.rosterStatus)) {
+      return { success: false, error: 'Development plans can only be applied to playable affiliates' };
+    }
+
+    const developmentProgram = developmentProgramForFocusCategory(category, player);
+    s.players = s.players.map((candidate) =>
+      candidate.id === playerId
+        ? { ...candidate, developmentProgram }
+        : candidate,
+    );
+    return { success: true, developmentProgram };
   },
 
   promotePlayerAction(playerId: string) {
@@ -2703,14 +2874,7 @@ export const actionApi = {
       return rule5Restriction;
     }
 
-    if (player.rosterStatus === 'MLB' && !player.isOutOfOptions) {
-      const optionResult = consumeOptionYear(player, s.minorLeagueState, s.season);
-      s.minorLeagueState = optionResult.state;
-      s.players = s.players.map((candidate) =>
-        candidate.id === playerId ? optionResult.player : candidate,
-      );
-    }
-
+    const requiresWaivers = prepareMlbDemotionOptionLedger(s, playerId);
     const result = demotePlayer(playerId, s.players, rosterState, timestamp());
     s.players = result.players.map((candidate) =>
       candidate.id === playerId
@@ -2722,7 +2886,7 @@ export const actionApi = {
     );
     s.rosterStates.set(player.teamId, result.rosterState);
     const updatedPlayer = s.players.find((candidate) => candidate.id === playerId);
-    if (updatedPlayer && player.rosterStatus === 'MLB' && updatedPlayer.isOutOfOptions) {
+    if (result.success && updatedPlayer && requiresWaivers) {
       placePlayerOnWaivers(s, updatedPlayer);
     }
     return { success: result.success, error: result.error };
@@ -2905,6 +3069,13 @@ export const actionApi = {
     const s = requireState();
     if (syncFranchiseTerminationFromOwner(s)) {
       return { resolved: [], error: franchiseLockMessage(s) };
+    }
+    if (
+      s.phase !== 'offseason'
+      || s.offseasonState?.currentPhase !== 'qualifying_offers'
+      || s.offseasonState.completed === true
+    ) {
+      return { resolved: [], error: 'Qualifying offers phase is not active.' };
     }
     return resolveOutstandingQualifyingOffers(s);
   },

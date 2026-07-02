@@ -583,7 +583,7 @@ describe('detectFireSale', () => {
   it('emits a fire_sale moment when a sub-.450 club ships out three veterans in the deadline window', () => {
     const detectionContext = context({
       teams: [
-        summary({ teamId: 'oak', teamName: 'Oakland Comets', wins: 68, losses: 94 }),
+        summary({ teamId: 'oak', teamName: 'Oakland Navigators', wins: 68, losses: 94 }),
       ],
       tradeHistory: [
         tradeHistoryEntry('trade-1', 'oak', 'lad', ['p1'], 94),
@@ -602,14 +602,14 @@ describe('detectFireSale', () => {
     expect(result).not.toBeNull();
     expect(result?.moment.type).toBe('fire_sale');
     expect(result?.moment.impact).toBe(FIRE_SALE_IMPACT);
-    expect(result?.moment.description).toContain('Oakland Comets');
+    expect(result?.moment.description).toContain('Oakland Navigators');
     expect(result?.moment.description).toContain('3 veterans');
   });
 
   it('returns null when fewer than three veterans with term are moved', () => {
     const detectionContext = context({
       teams: [
-        summary({ teamId: 'oak', teamName: 'Oakland Comets', wins: 65, losses: 97 }),
+        summary({ teamId: 'oak', teamName: 'Oakland Navigators', wins: 65, losses: 97 }),
       ],
       tradeHistory: [
         tradeHistoryEntry('trade-1', 'oak', 'lad', ['p1'], 94, 11),
@@ -631,7 +631,7 @@ describe('detectFireSale', () => {
   it('returns null when the team sits exactly at a .450 win percentage proxy', () => {
     const detectionContext = context({
       teams: [
-        summary({ teamId: 'oak', teamName: 'Oakland Comets', wins: 45, losses: 55 }),
+        summary({ teamId: 'oak', teamName: 'Oakland Navigators', wins: 45, losses: 55 }),
       ],
       tradeHistory: [
         tradeHistoryEntry('trade-1', 'oak', 'lad', ['p1'], 94),
@@ -1158,7 +1158,7 @@ describe('detectSeasonIdentityMoments', () => {
       teams: [
         summary({
           teamId: 'oak',
-          teamName: 'Oakland Comets',
+          teamName: 'Oakland Navigators',
           wins: 68,
           losses: 94,
         }),

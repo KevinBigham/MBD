@@ -26,6 +26,11 @@ export interface MonthlyDevelopmentCheckpointResult {
   state: MinorLeagueState;
 }
 
+const MAX_MENTORSHIP_DEVELOPMENT_BONUS = 0.2;
+const MENTORSHIP_PROGRESS_SCORE_WEIGHT = 18;
+const MENTORSHIP_BREAKOUT_PROBABILITY_WEIGHT = 0.25;
+const MENTORSHIP_BUST_RISK_WEIGHT = 0.18;
+
 function isActiveProspect(player: GeneratedPlayer): boolean {
   return player.rosterStatus !== 'MLB';
 }
@@ -50,6 +55,10 @@ function defaultProgramForLevel(
 
 function clampProbability(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function clampMentorshipDevelopmentBonus(value: number): number {
+  return Math.max(0, Math.min(MAX_MENTORSHIP_DEVELOPMENT_BONUS, value));
 }
 
 function uniqueSortedMonths(months: number[]): number[] {
@@ -98,6 +107,7 @@ function progressInputs(
   rng: GameRNG,
   player: GeneratedPlayer,
   staff: Coach[],
+  mentorshipBonus: number,
 ): {
   coachModifier: number;
   programBonus: number;
@@ -112,9 +122,28 @@ function progressInputs(
   const ageFactor = player.age <= 21 ? 1.08 : player.age <= 24 ? 1 : 0.92;
   const programBonus = monthlyProgramBonus(player, defaultProgram);
   const volatility = rng.nextGaussian(0, 2.4);
-  const progressScore = Math.round((((coachModifier - 1) * 18) + (programBonus * 22) + ((personalityFactor - 1) * 20) + ((ageFactor - 1) * 16) + volatility) * 100) / 100;
-  const breakoutProbability = clampProbability(0.05 + ((coachModifier - 1) * 0.35) + (programBonus * 0.3) + ((100 - player.age * 3) / 1000));
-  const bustRisk = clampProbability(0.2 - ((coachModifier - 1) * 0.25) - (programBonus * 0.2) + ((player.age > 24 ? player.age - 24 : 0) * 0.015));
+  const progressScore = Math.round((
+    ((coachModifier - 1) * 18)
+    + (programBonus * 22)
+    + ((personalityFactor - 1) * 20)
+    + ((ageFactor - 1) * 16)
+    + (mentorshipBonus * MENTORSHIP_PROGRESS_SCORE_WEIGHT)
+    + volatility
+  ) * 100) / 100;
+  const breakoutProbability = clampProbability(
+    0.05
+    + ((coachModifier - 1) * 0.35)
+    + (programBonus * 0.3)
+    + ((100 - player.age * 3) / 1000)
+    + (mentorshipBonus * MENTORSHIP_BREAKOUT_PROBABILITY_WEIGHT),
+  );
+  const bustRisk = clampProbability(
+    0.2
+    - ((coachModifier - 1) * 0.25)
+    - (programBonus * 0.2)
+    + ((player.age > 24 ? player.age - 24 : 0) * 0.015)
+    - (mentorshipBonus * MENTORSHIP_BUST_RISK_WEIGHT),
+  );
 
   return {
     coachModifier,
@@ -219,6 +248,7 @@ export function runMonthlyDevelopmentCheckpoint(
   players: GeneratedPlayer[],
   coachingStaffs: Map<string, Coach[]>,
   state: MinorLeagueState,
+  mentorshipBonuses: ReadonlyMap<string, number> = new Map(),
 ): MonthlyDevelopmentCheckpointResult {
   if (state.processedDevelopmentMonths.includes(month)) {
     return { players, state };
@@ -235,7 +265,8 @@ export function runMonthlyDevelopmentCheckpoint(
     }
 
     const staff = coachingStaffs.get(player.teamId) ?? [];
-    const inputs = progressInputs(rng.fork(), player, staff);
+    const mentorshipBonus = clampMentorshipDevelopmentBonus(mentorshipBonuses.get(player.id) ?? 0);
+    const inputs = progressInputs(rng.fork(), player, staff, mentorshipBonus);
     const trajectory = trajectoryFromProgress(inputs.progressScore);
     const existingIndex = nextConversions.findIndex((entry) => entry.playerId === player.id);
     const conversionTarget = getPrimaryConversionTarget(player);

@@ -6,7 +6,7 @@ import type { NewsItem } from '@mbd/contracts';
 import NewsPage from './NewsPage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-import { saveGame } from '@/shared/lib/saveSystem';
+import { saveGameById } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('@/shared/lib/saveSystem', () => ({
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
-const mockedSaveGame = vi.mocked(saveGame);
+const mockedSaveGameById = vi.mocked(saveGameById);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -83,7 +83,7 @@ describe('NewsPage', () => {
     getNews = vi.fn().mockResolvedValue(sampleNews);
     markNewsRead = vi.fn().mockResolvedValue(undefined);
     exportSnapshot = vi.fn().mockResolvedValue({
-      schemaVersion: 33,
+      schemaVersion: 34,
       season: 3,
       day: 45,
       phase: 'regular',
@@ -213,12 +213,21 @@ describe('NewsPage', () => {
     });
 
     expect(exportSnapshot).toHaveBeenCalled();
-    expect(mockedSaveGame).toHaveBeenCalledWith(2, 'Jamie Foster • Tycoons • Season 3', {
-      schemaVersion: 33,
-      season: 3,
-      day: 45,
-      phase: 'regular',
-    });
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      'save-slot-2',
+      'Jamie Foster • Tycoons • Season 3',
+      {
+        schemaVersion: 34,
+        season: 3,
+        day: 45,
+        phase: 'regular',
+      },
+      expect.objectContaining({
+        slotNumber: 2,
+        parentSaveId: null,
+        isRootSave: true,
+      }),
+    );
   });
 
   it('filters the inbox by unread state and category', async () => {

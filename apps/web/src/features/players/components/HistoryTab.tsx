@@ -1,8 +1,6 @@
 import { Badge, Card, CardContent, CardHeader, CardTitle, StatLine } from '@mbd/ui';
 import type { PlayerProfileView } from './playerProfileShared';
-import {
-  moneyLabel,
-} from './playerProfileShared';
+import { moneyLabel } from './playerProfileShared';
 
 export default function HistoryTab({
   view,
@@ -13,7 +11,8 @@ export default function HistoryTab({
     return null;
   }
 
-  const { player, careerStats } = view;
+  const { player, careerStats, developmentReports } = view;
+  const draftOutcome = developmentReports?.draftOutcome ?? null;
 
   return (
     <div className="space-y-6">
@@ -42,6 +41,64 @@ export default function HistoryTab({
               <div className="flex flex-wrap gap-2">
                 {player.historicalSummary.personalityTraits.map((trait) => (
                   <Badge key={trait} variant="outline">{trait}</Badge>
+                ))}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {draftOutcome ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="font-heading text-dynasty-text">Draft Outcome</CardTitle>
+              <Badge variant={draftOutcome.signed === true ? 'success' : draftOutcome.signed === false ? 'warning' : 'outline'}>
+                {draftOutcome.signed === true
+                  ? 'Signed'
+                  : draftOutcome.signed === false
+                    ? 'Unsigned'
+                    : 'Decision Unknown'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-sm text-dynasty-text">{draftOutcome.summary}</div>
+              <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                Drafted by {draftOutcome.teamName}
+              </div>
+            </div>
+            <StatLine
+              stats={[
+                { label: 'Season', value: `S${draftOutcome.season}` },
+                { label: 'Round', value: draftOutcome.round ?? '--' },
+                { label: 'Pick', value: draftOutcome.pickNumber ?? '--' },
+                { label: 'Current', value: draftOutcome.currentLevel ?? draftOutcome.currentStatus },
+              ]}
+            />
+            <StatLine
+              stats={[
+                { label: 'Original Grade', value: draftOutcome.originalGrade ?? '--' },
+                { label: 'Bonus', value: draftOutcome.bonusAmount != null ? moneyLabel(draftOutcome.bonusAmount) : '--' },
+                { label: 'Bond', value: draftOutcome.bondStrength ?? '--' },
+                {
+                  label: 'Loyalty',
+                  value: draftOutcome.loyaltyModifier != null
+                    ? `${Math.round(draftOutcome.loyaltyModifier * 100)}%`
+                    : '--',
+                },
+              ]}
+            />
+            {draftOutcome.milestones.length > 0 ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {draftOutcome.milestones.map((milestone) => (
+                  <div
+                    key={milestone}
+                    className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-xs text-dynasty-muted"
+                  >
+                    {milestone}
+                  </div>
                 ))}
               </div>
             ) : null}

@@ -63,6 +63,100 @@ function buildOffseasonState(overrides: Record<string, unknown> = {}) {
         ],
       },
     ],
+    marketDaySummaries: [
+      {
+        id: 'market-fa-1',
+        day: 18,
+        category: 'signing',
+        tone: 'user',
+        headline: 'New York Tycoons commit $186.0M',
+        detail: 'Juan Soto signed a 6-year deal at $31.0M/yr, giving the roster a middle-order anchor.',
+        teamIds: ['nym'],
+        playerIds: ['soto-1'],
+        valueLabel: '$186.0M',
+      },
+      {
+        id: 'market-trade-1',
+        day: 17,
+        category: 'trade',
+        tone: 'division_rival',
+        headline: 'Boston Noreasters and New York Tycoons reshaped the market',
+        detail: 'Boston Noreasters sent Rafael Devers to New York Tycoons for Juan Soto.',
+        teamIds: ['bos', 'nym'],
+        playerIds: ['devers-1', 'soto-1'],
+        valueLabel: 'Trade value +22',
+      },
+    ],
+    commandCenter: {
+      checklist: [
+        {
+          id: 'arbitration',
+          label: 'Arbitration',
+          status: 'complete',
+          detail: 'No active arbitration files.',
+        },
+        {
+          id: 'qualifying_offers',
+          label: 'Qualifying Offers',
+          status: 'complete',
+          detail: 'No qualifying-offer decisions remain.',
+        },
+        {
+          id: 'rule5',
+          label: 'Rule 5',
+          status: 'upcoming',
+          detail: 'Protection audit opens after the draft.',
+        },
+        {
+          id: 'free_agency',
+          label: 'Free Agency',
+          status: 'attention',
+          detail: 'Market is open; fill the projected roster holes.',
+        },
+        {
+          id: 'staff',
+          label: 'Staff',
+          status: 'upcoming',
+          detail: 'Coaching changes open later in the offseason.',
+        },
+        {
+          id: 'roster',
+          label: 'Roster',
+          status: 'attention',
+          detail: 'Projected Opening Day roster has 2 open spots.',
+        },
+        {
+          id: 'budget',
+          label: 'Budget',
+          status: 'blocked',
+          detail: 'Payroll projects $6.0M above the owner budget.',
+        },
+      ],
+      warnings: [
+        {
+          id: 'roster-active_roster_under_limit',
+          severity: 'warning',
+          title: 'Roster hole',
+          detail: 'Active roster has 24 players (target 26).',
+        },
+        {
+          id: 'budget-over-cap',
+          severity: 'danger',
+          title: 'Budget overage',
+          detail: 'Projected payroll is above the owner budget.',
+        },
+      ],
+      projectedOpeningDay: {
+        activeRosterCount: 24,
+        activeRosterLimit: 26,
+        fortyManCount: 39,
+        fortyManLimit: 40,
+        payroll: 186,
+        budget: 180,
+        payrollSpace: -6,
+        rosterHoleCount: 2,
+      },
+    },
     ...overrides,
   };
 }
@@ -172,6 +266,43 @@ describe('OffseasonPage', () => {
     expect(container.textContent).toContain('A 94-68 run and a deep October push kept the contention window open.');
     expect(container.innerHTML).toContain('accent-success');
     expect(container.innerHTML).toContain('accent-warning');
+  });
+
+  it('renders the offseason command center checklist, projection, and warnings', async () => {
+    mockedUseWorker.mockReturnValue(
+      buildWorkerMock() as unknown as ReturnType<typeof useWorker>,
+    );
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Offseason Command Center');
+    expect(container.textContent).toContain('Opening Day Projection');
+    expect(container.textContent).toContain('24/26');
+    expect(container.textContent).toContain('Payroll Space');
+    expect(container.textContent).toContain('-$6.0M');
+    expect(container.textContent).toContain('Arbitration');
+    expect(container.textContent).toContain('Qualifying Offers');
+    expect(container.textContent).toContain('Rule 5');
+    expect(container.textContent).toContain('Free Agency');
+    expect(container.textContent).toContain('Staff');
+    expect(container.textContent).toContain('Roster');
+    expect(container.textContent).toContain('Budget');
+    expect(container.textContent).toContain('Roster hole');
+    expect(container.textContent).toContain('Budget overage');
+  });
+
+  it('renders market day summaries for major offseason signings and trades', async () => {
+    mockedUseWorker.mockReturnValue(
+      buildWorkerMock() as unknown as ReturnType<typeof useWorker>,
+    );
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Market Day Briefing');
+    expect(container.textContent).toContain('New York Tycoons commit $186.0M');
+    expect(container.textContent).toContain('Juan Soto signed a 6-year deal at $31.0M/yr');
+    expect(container.textContent).toContain('Boston Noreasters and New York Tycoons reshaped the market');
+    expect(container.textContent).toContain('Trade value +22');
   });
 
   it('shows the qualifying offers phase in the offseason progress flow', async () => {

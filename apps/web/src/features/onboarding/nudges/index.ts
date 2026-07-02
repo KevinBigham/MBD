@@ -10,4 +10,5 @@ export {
   normalizeGuidedStartSaveSlotId,
   readGuidedStartNudgeRecord,
   registerGuidedStartSave,
+  resetGuidedStartNudges,
 } from './guidedStartNudgeStore';

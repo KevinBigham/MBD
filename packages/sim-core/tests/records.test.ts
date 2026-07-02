@@ -78,7 +78,7 @@ describe('records', () => {
       playerSeasons: [
         {
           playerId: 'slugger-a',
-          playerName: 'Aaron Thunder',
+          playerName: 'Aaron Sunbursts',
           teamId: 'nym',
           position: 'RF',
           isPitcher: false,
@@ -122,7 +122,7 @@ describe('records', () => {
     const leagueWins = recordBook.find((entry) => entry.id === 'league:team_single_season:wins');
 
     expect(franchiseHr?.holders).toHaveLength(1);
-    expect(franchiseHr?.holders[0]?.playerName).toBe('Aaron Thunder');
+    expect(franchiseHr?.holders[0]?.playerName).toBe('Aaron Sunbursts');
     expect(leagueWins?.holders).toHaveLength(2);
     expect(brokenRecords.some((record) => record.entryId === 'franchise:nym:individual_single_season:hr')).toBe(true);
   });

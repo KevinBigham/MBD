@@ -69,6 +69,7 @@ describe('TeamIdentityCard', () => {
     await renderCard([]);
 
     expect(container.textContent).toContain('New York Tycoons');
+    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(1);
     expect(container.textContent).toContain('No team identity moments yet. Deadline seller/buyer beats will appear here after your first trade deadline.');
   });
 

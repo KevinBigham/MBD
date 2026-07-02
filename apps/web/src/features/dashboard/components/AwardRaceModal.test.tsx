@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
@@ -108,6 +108,14 @@ describe('AwardRaceModal', () => {
     });
   }
 
+  async function flushFocusTrap() {
+    await act(async () => {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 60);
+      });
+    });
+  }
+
   it('renders empty-state prompt when the worker returns null', async () => {
     mockWorker.getAwardRaceDetail.mockResolvedValue(null);
 
@@ -211,6 +219,78 @@ describe('AwardRaceModal', () => {
       closeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps keyboard focus inside the board and restores launcher focus on close', async () => {
+    mockWorker.getAwardRaceDetail.mockResolvedValue(richView);
+
+    function Harness() {
+      const [isOpen, setIsOpen] = useState(false);
+      return (
+        <MemoryRouter>
+          <button type="button" onClick={() => setIsOpen(true)}>
+            Open award race
+          </button>
+          {isOpen ? <AwardRaceModal onDismiss={() => setIsOpen(false)} /> : null}
+        </MemoryRouter>
+      );
+    }
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+
+    const launcher = container.querySelector('button') as HTMLButtonElement;
+    launcher.focus();
+
+    await act(async () => {
+      launcher.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flushFocusTrap();
+
+    const closeBtn = container.querySelector(
+      'button[aria-label="Close award race board"]',
+    ) as HTMLButtonElement;
+    expect(document.activeElement).toBe(closeBtn);
+
+    const focusableLinks = Array.from(container.querySelectorAll('a')) as HTMLAnchorElement[];
+    const lastLink = focusableLinks[focusableLinks.length - 1]!;
+    lastLink.focus();
+
+    const tabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(tabEvent);
+    });
+    expect(tabEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(closeBtn);
+
+    closeBtn.focus();
+    const shiftTabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(shiftTabEvent);
+    });
+    expect(shiftTabEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(lastLink);
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(launcher);
   });
 
   it('uses a 44px close target for touch devices', async () => {

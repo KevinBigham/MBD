@@ -83,4 +83,125 @@ describe('useWorker', () => {
 
     expect(makeContractOffer).toHaveBeenCalledWith('fa-1', 4, 22);
   });
+
+  it('exposes route-used free agency and history query APIs', async () => {
+    type WorkerHookProbe = {
+      getFreeAgents: (limit?: number) => Promise<unknown>;
+      getHistoryOverview: () => Promise<unknown>;
+    };
+
+    const getFreeAgents = vi.fn().mockResolvedValue([{ id: 'fa-1' }]);
+    const getHistoryOverview = vi.fn().mockResolvedValue({ seasonViews: [{ season: 1 }] });
+    const ping = vi.fn().mockResolvedValue({ pong: true, timestamp: 0 });
+    const workerApi = {
+      ping,
+      getFreeAgents,
+      getHistoryOverview,
+    };
+
+    vi.doMock('comlink', () => ({
+      wrap: vi.fn(() => workerApi),
+    }));
+    vi.doMock('sonner', () => ({
+      toast: {
+        error: vi.fn(),
+      },
+    }));
+
+    class MockWorker {
+      addEventListener = vi.fn();
+      terminate = vi.fn();
+    }
+
+    vi.stubGlobal('Worker', MockWorker as unknown as typeof Worker);
+
+    const { useWorker } = await import('./useWorker');
+
+    let latest: WorkerHookProbe | null = null;
+
+    function Probe() {
+      latest = useWorker() as unknown as WorkerHookProbe;
+      return null;
+    }
+
+    await act(async () => {
+      root.render(<Probe />);
+      await Promise.resolve();
+    });
+
+    if (!latest) {
+      throw new Error('useWorker probe did not capture the hook result');
+    }
+
+    const worker = latest as WorkerHookProbe;
+
+    expect(typeof worker.getFreeAgents).toBe('function');
+    expect(typeof worker.getHistoryOverview).toBe('function');
+
+    await expect(worker.getFreeAgents(200)).resolves.toEqual([{ id: 'fa-1' }]);
+    await expect(worker.getHistoryOverview()).resolves.toEqual({ seasonViews: [{ season: 1 }] });
+    expect(getFreeAgents).toHaveBeenCalledWith(200);
+    expect(getHistoryOverview).toHaveBeenCalledWith();
+  });
+
+  it('exposes route-owned mentorship query API', async () => {
+    type WorkerHookProbe = {
+      getMentorships: () => Promise<unknown>;
+    };
+
+    const getMentorships = vi.fn().mockResolvedValue({
+      mentorCount: 2,
+      protegeeCount: 3,
+      pairings: [{ mentorName: 'Elias Anchor', protegeeName: 'Milo Spark' }],
+    });
+    const ping = vi.fn().mockResolvedValue({ pong: true, timestamp: 0 });
+    const workerApi = {
+      ping,
+      getMentorships,
+    };
+
+    vi.doMock('comlink', () => ({
+      wrap: vi.fn(() => workerApi),
+    }));
+    vi.doMock('sonner', () => ({
+      toast: {
+        error: vi.fn(),
+      },
+    }));
+
+    class MockWorker {
+      addEventListener = vi.fn();
+      terminate = vi.fn();
+    }
+
+    vi.stubGlobal('Worker', MockWorker as unknown as typeof Worker);
+
+    const { useWorker } = await import('./useWorker');
+
+    let latest: WorkerHookProbe | null = null;
+
+    function Probe() {
+      latest = useWorker() as unknown as WorkerHookProbe;
+      return null;
+    }
+
+    await act(async () => {
+      root.render(<Probe />);
+      await Promise.resolve();
+    });
+
+    if (!latest) {
+      throw new Error('useWorker probe did not capture the hook result');
+    }
+
+    const worker = latest as WorkerHookProbe;
+
+    expect(typeof worker.getMentorships).toBe('function');
+    await expect(worker.getMentorships()).resolves.toEqual({
+      mentorCount: 2,
+      protegeeCount: 3,
+      pairings: [{ mentorName: 'Elias Anchor', protegeeName: 'Milo Spark' }],
+    });
+    expect(getMentorships).toHaveBeenCalledWith();
+  });
 });

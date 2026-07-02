@@ -28,6 +28,9 @@ const SECONDARY_NEED_BONUS = 5;
 /** Signability multiplier to put it on comparable scale to scouting grade. */
 const SIGNABILITY_SCALE = 20;
 
+/** Ceiling-gap multiplier to put upside on comparable scale to scouting grade. */
+const UPSIDE_SCALE = 20;
+
 /** Minimum roster count at a position before it becomes a need. */
 const MIN_POSITION_DEPTH: Record<string, number> = {
   C: 2, '1B': 2, '2B': 2, '3B': 2, SS: 2,
@@ -56,6 +59,134 @@ export interface DraftResult {
   picks: DraftPick[];
   undrafted: DraftProspect[];
 }
+
+type DraftStrategyArchetype =
+  | 'balanced'
+  | 'board'
+  | 'college_secure'
+  | 'need_first'
+  | 'pitching'
+  | 'premium_athletes'
+  | 'upside';
+
+interface AIDraftStrategyProfile {
+  readonly bpaWeight: number;
+  readonly needWeight: number;
+  readonly signabilityWeight: number;
+  readonly upsideWeight: number;
+  readonly collegeSecurityBonus: number;
+  readonly prepUpsideBonus: number;
+  readonly pitcherBonus: number;
+  readonly upTheMiddleBonus: number;
+}
+
+const DRAFT_STRATEGY_PROFILES: Record<DraftStrategyArchetype, AIDraftStrategyProfile> = {
+  balanced: {
+    bpaWeight: WEIGHT_BPA,
+    needWeight: WEIGHT_NEED,
+    signabilityWeight: WEIGHT_SIGNABILITY,
+    upsideWeight: 0.04,
+    collegeSecurityBonus: 0,
+    prepUpsideBonus: 0,
+    pitcherBonus: 0,
+    upTheMiddleBonus: 0,
+  },
+  board: {
+    bpaWeight: 0.64,
+    needWeight: 0.18,
+    signabilityWeight: 0.12,
+    upsideWeight: 0.06,
+    collegeSecurityBonus: 0,
+    prepUpsideBonus: 0,
+    pitcherBonus: 0,
+    upTheMiddleBonus: 1.5,
+  },
+  college_secure: {
+    bpaWeight: 0.56,
+    needWeight: 0.22,
+    signabilityWeight: 0.22,
+    upsideWeight: 0.02,
+    collegeSecurityBonus: 3,
+    prepUpsideBonus: -4,
+    pitcherBonus: 0,
+    upTheMiddleBonus: 0,
+  },
+  need_first: {
+    bpaWeight: 0.50,
+    needWeight: 0.36,
+    signabilityWeight: 0.10,
+    upsideWeight: 0.04,
+    collegeSecurityBonus: 0,
+    prepUpsideBonus: 0,
+    pitcherBonus: 0,
+    upTheMiddleBonus: 0,
+  },
+  pitching: {
+    bpaWeight: 0.54,
+    needWeight: 0.22,
+    signabilityWeight: 0.12,
+    upsideWeight: 0.06,
+    collegeSecurityBonus: 0,
+    prepUpsideBonus: 0,
+    pitcherBonus: 4,
+    upTheMiddleBonus: 0,
+  },
+  premium_athletes: {
+    bpaWeight: 0.54,
+    needWeight: 0.20,
+    signabilityWeight: 0.11,
+    upsideWeight: 0.10,
+    collegeSecurityBonus: 0,
+    prepUpsideBonus: 1.5,
+    pitcherBonus: 0,
+    upTheMiddleBonus: 4,
+  },
+  upside: {
+    bpaWeight: 0.56,
+    needWeight: 0.18,
+    signabilityWeight: 0.06,
+    upsideWeight: 0.20,
+    collegeSecurityBonus: 0,
+    prepUpsideBonus: 4,
+    pitcherBonus: 0,
+    upTheMiddleBonus: 2,
+  },
+};
+
+const TEAM_DRAFT_STRATEGY: Record<string, DraftStrategyArchetype> = {
+  nym: 'board',
+  phi: 'college_secure',
+  bos: 'board',
+  bal: 'premium_athletes',
+  wsh: 'college_secure',
+  chi: 'board',
+  det: 'need_first',
+  cle: 'pitching',
+  col: 'balanced',
+  pit: 'upside',
+  kc: 'premium_athletes',
+  msp: 'pitching',
+  stl: 'college_secure',
+  ind: 'premium_athletes',
+  mil: 'balanced',
+  nas: 'upside',
+  mia: 'upside',
+  atl: 'premium_athletes',
+  cha: 'balanced',
+  orl: 'upside',
+  ral: 'college_secure',
+  hou: 'board',
+  dal: 'need_first',
+  sat: 'pitching',
+  den: 'premium_athletes',
+  aus: 'upside',
+  lax: 'board',
+  sfb: 'college_secure',
+  phx: 'need_first',
+  sea: 'pitching',
+  sdg: 'balanced',
+  por: 'premium_athletes',
+};
 
 // ---------------------------------------------------------------------------
 // Draft order
@@ -148,6 +279,32 @@ export function evaluateTeamNeeds(teamRoster: GeneratedPlayer[]): Map<string, nu
 // AI pick selection
 // ---------------------------------------------------------------------------
 
+function draftStrategyProfileForTeam(teamId: string): AIDraftStrategyProfile {
+  return DRAFT_STRATEGY_PROFILES[TEAM_DRAFT_STRATEGY[teamId] ?? 'balanced'];
+}
+
+function prospectUpsideScore(prospect: DraftProspect): number {
+  const projectedCeiling = prospect.player.ceiling ?? prospect.player.potentialRating ?? prospect.player.overallRating;
+  const gap = Math.max(0, projectedCeiling - prospect.player.overallRating);
+  return Math.min(UPSIDE_SCALE, (gap / 170) * UPSIDE_SCALE);
+}
+
+function profileBackgroundBonus(profile: AIDraftStrategyProfile, prospect: DraftProspect): number {
+  if (prospect.background === 'college_senior') {
+    return profile.collegeSecurityBonus;
+  }
+  if (prospect.background === 'high_school') {
+    return profile.prepUpsideBonus;
+  }
+  return profile.collegeSecurityBonus / 2;
+}
+
+function profilePositionBonus(profile: AIDraftStrategyProfile, position: Position): number {
+  const isPitcher = position === 'SP' || position === 'RP' || position === 'CL';
+  const isUpTheMiddle = position === 'C' || position === 'SS' || position === 'CF';
+  return (isPitcher ? profile.pitcherBonus : 0) + (isUpTheMiddle ? profile.upTheMiddleBonus : 0);
+}
+
 /**
  * AI selects the best available prospect for a given team.
  * Blends best-player-available (BPA), team need, and signability.
@@ -167,17 +324,22 @@ export function aiSelectPick(
   }
 
   const needs = evaluateTeamNeeds(teamRoster);
+  const profile = draftStrategyProfileForTeam(teamId);
 
   // Find the top two need positions for bonus calculation
   const sortedNeeds = [...needs.entries()].sort((a, b) => b[1] - a[1]);
   const primaryNeedPos = sortedNeeds[0]?.[0];
   const secondaryNeedPos = sortedNeeds[1]?.[0];
 
-  // Score each available prospect
-  let bestProspect = availableProspects[0]!;
+  // Score each available prospect in stable order so the RNG tiebreaker is
+  // assigned to the same player regardless of caller-provided array order.
+  const candidates = [...availableProspects].sort((left, right) =>
+    left.player.id.localeCompare(right.player.id),
+  );
+  let bestProspect = candidates[0]!;
   let bestScore = -Infinity;
 
-  for (const prospect of availableProspects) {
+  for (const prospect of candidates) {
     const pos = prospect.player.position;
 
     // Need bonus
@@ -189,11 +351,14 @@ export function aiSelectPick(
     }
 
     const pickScore =
-      prospect.scoutingGrade * WEIGHT_BPA +
-      needBonus * WEIGHT_NEED +
-      prospect.signability * SIGNABILITY_SCALE * WEIGHT_SIGNABILITY;
+      prospect.scoutingGrade * profile.bpaWeight +
+      needBonus * profile.needWeight +
+      prospect.signability * SIGNABILITY_SCALE * profile.signabilityWeight +
+      prospectUpsideScore(prospect) * profile.upsideWeight +
+      profileBackgroundBonus(profile, prospect) +
+      profilePositionBonus(profile, pos);
 
-    // Add small random tiebreaker to prevent deterministic same-pick situations
+    // Add a small seeded tiebreaker so equal-scored players still vary by draft seed.
     const tiebreaker = rng.nextFloat() * 0.5;
 
     const totalScore = pickScore + tiebreaker;

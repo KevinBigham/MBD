@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import PennantRaceModal, { type PennantRaceDetailView } from './PennantRaceModal';
@@ -178,6 +178,14 @@ describe('PennantRaceModal', () => {
     });
   }
 
+  async function flushFocusTrap() {
+    await act(async () => {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 60);
+      });
+    });
+  }
+
   it('renders empty-state prompt when the worker returns null', async () => {
     mockWorker.getPennantRaceDetail.mockResolvedValue(null);
 
@@ -284,6 +292,73 @@ describe('PennantRaceModal', () => {
       closeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps keyboard focus inside the board and restores launcher focus on close', async () => {
+    mockWorker.getPennantRaceDetail.mockResolvedValue(richView);
+
+    function Harness() {
+      const [isOpen, setIsOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setIsOpen(true)}>
+            Open pennant race
+          </button>
+          {isOpen ? <PennantRaceModal onDismiss={() => setIsOpen(false)} /> : null}
+        </>
+      );
+    }
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+
+    const launcher = container.querySelector('button') as HTMLButtonElement;
+    launcher.focus();
+
+    await act(async () => {
+      launcher.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flushFocusTrap();
+
+    const closeBtn = container.querySelector(
+      'button[aria-label="Close pennant race board"]',
+    ) as HTMLButtonElement;
+    expect(document.activeElement).toBe(closeBtn);
+
+    const tabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(tabEvent);
+    });
+    expect(tabEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(closeBtn);
+
+    const shiftTabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(shiftTabEvent);
+    });
+    expect(shiftTabEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(closeBtn);
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(launcher);
   });
 
   it('uses a 44px close target for touch devices', async () => {

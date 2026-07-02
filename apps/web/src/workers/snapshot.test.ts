@@ -1,5 +1,9 @@
 // @vitest-environment node
 
+// Vitest executes this fixture-backed migration guard in Node, while the app
+// tsconfig intentionally omits Node globals for runtime code.
+// @ts-ignore
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   GameRNG,
@@ -16,6 +20,7 @@ import {
 } from '@mbd/sim-core';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
+  type ArchivedGameBoxScore,
   type ArchivedSeason,
   type BriefingItem,
   type GMRelationship,
@@ -43,6 +48,13 @@ import {
   createEmptyCeremonyState,
 } from './sim.worker.ceremony';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot';
+
+function loadContractSaveFixture(version: number): unknown {
+  return JSON.parse(readFileSync(
+    new URL(`../../../../packages/contracts/tests/fixtures/save/v${version}/core.json`, import.meta.url),
+    'utf8',
+  )) as unknown;
+}
 
 function createNarrativeSample(userTeamId: string) {
   const playerMorale = new Map<string, PlayerMorale>();
@@ -224,6 +236,7 @@ function createNarrativeSample(userTeamId: string) {
     recordWatch: [] as RecordWatchEntry[],
     seasonArchive: [],
     archivedSeasons: [] as ArchivedSeason[],
+    archivedGames: [] as ArchivedGameBoxScore[],
     historicalPlayers: [],
     mentorRelationships: [],
     frontOfficeState: new Map(),
@@ -333,6 +346,7 @@ function createState(): FullGameState {
     recordBook: narrative.recordBook,
     recordWatch: narrative.recordWatch,
     seasonArchive: narrative.seasonArchive,
+    archivedGames: narrative.archivedGames,
     historicalPlayers: narrative.historicalPlayers,
     mentorRelationships: narrative.mentorRelationships,
     frontOfficeState: narrative.frontOfficeState,
@@ -466,6 +480,39 @@ describe('snapshot helpers', () => {
         status: 'pending',
       },
     ];
+    original.archivedGames.push({
+      id: 'archived-game-s1-d122-nym-bos-rivalry',
+      season: 1,
+      day: 122,
+      date: 'S1D122',
+      kind: 'rivalry',
+      label: 'Rivalry Chapter',
+      homeTeamId: 'nym',
+      awayTeamId: 'bos',
+      homeScore: 5,
+      awayScore: 3,
+      homeHits: 10,
+      awayHits: 7,
+      innings: 9,
+      isPlayoff: false,
+      round: null,
+      gameNumber: null,
+      winningPitcherId: 'pitcher-win',
+      losingPitcherId: 'pitcher-loss',
+      savePitcherId: null,
+      teamIds: ['nym', 'bos'],
+      playerIds: [candidate.id],
+      teamNameFallbacks: { nym: 'New York Tycoons', bos: 'Boston Noreasters' },
+      playerNameFallbacks: { [candidate.id]: `${candidate.firstName} ${candidate.lastName}` },
+      lineScore: [
+        { inning: 1, awayRuns: 1, homeRuns: 2 },
+        { inning: 9, awayRuns: 0, homeRuns: 1 },
+      ],
+      highlights: [
+        { inning: 9, halfInning: 'bottom', text: 'The Tycoons closed a rivalry classic.' },
+      ],
+      recap: 'The Tycoons beat Boston in a rivalry game worth saving.',
+    });
 
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
@@ -492,6 +539,7 @@ describe('snapshot helpers', () => {
     expect(snapshot.narrative.recordBook).toEqual([]);
     expect(snapshot.narrative.recordWatch).toEqual([]);
     expect(snapshot.narrative.seasonArchive).toEqual([]);
+    expect(snapshot.narrative.archivedGames).toHaveLength(1);
     expect(snapshot.narrative.historicalPlayers).toEqual([]);
     expect(snapshot.narrative.mentorRelationships).toEqual([]);
     expect(snapshot.narrative.frontOfficeState).toEqual([]);
@@ -516,6 +564,12 @@ describe('snapshot helpers', () => {
     expect(restored.recordBook).toEqual([]);
     expect(restored.recordWatch).toEqual([]);
     expect(restored.seasonArchive).toEqual([]);
+    expect(restored.archivedGames[0]).toMatchObject({
+      id: 'archived-game-s1-d122-nym-bos-rivalry',
+      kind: 'rivalry',
+      homeTeamId: 'nym',
+      awayTeamId: 'bos',
+    });
     expect(restored.historicalPlayers).toEqual([]);
     expect(restored.mentorRelationships).toEqual([]);
     expect(restored.frontOfficeState.size).toBe(0);
@@ -579,6 +633,17 @@ describe('snapshot helpers', () => {
     expect(restored.leagueEvents).toEqual([]);
     expect(restored.tradeState.negotiations).toEqual([]);
     expect(restored.tradeState.multiTeamPendingTrades).toEqual([]);
+  });
+
+  it('imports contract-backed v18-v33 snapshots through the worker migration path', () => {
+    for (const version of [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]) {
+      const restored = importGameSnapshot(loadContractSaveFixture(version));
+
+      expect(restored.season).toBeGreaterThan(0);
+      expect(restored.userTeamId).toBe('nym');
+      expect(exportGameSnapshot(restored).schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+      expect(restored.archivedGames).toEqual([]);
+    }
   });
 
   it('migrates v14 snapshots into the v15 archive and diagnostics shape', () => {

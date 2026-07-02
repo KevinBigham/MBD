@@ -1,16 +1,22 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { toast } from 'sonner';
-import { registerMbdServiceWorker, showServiceWorkerUpdatedToast } from './registerServiceWorker';
+
+const sonnerMock = vi.hoisted(() => ({
+  toastInfo: vi.fn(),
+}));
 
 vi.mock('sonner', () => ({
-  toast: { info: vi.fn() },
+  toast: { info: sonnerMock.toastInfo },
 }));
 
 describe('registerMbdServiceWorker', () => {
   const serviceWorkerListeners = new Map<string, EventListener[]>();
+  let registerMbdServiceWorker: typeof import('./registerServiceWorker')['registerMbdServiceWorker'];
+  let showServiceWorkerUpdatedToast: typeof import('./registerServiceWorker')['showServiceWorkerUpdatedToast'];
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     vi.useFakeTimers();
+    sonnerMock.toastInfo.mockReset();
     serviceWorkerListeners.clear();
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
@@ -22,10 +28,11 @@ describe('registerMbdServiceWorker', () => {
         }),
       },
     });
+    ({ registerMbdServiceWorker, showServiceWorkerUpdatedToast } = await import('./registerServiceWorker'));
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.useRealTimers();
     Reflect.deleteProperty(navigator, 'serviceWorker');
   });
@@ -78,7 +85,7 @@ describe('registerMbdServiceWorker', () => {
 
     listeners[0]?.(new Event('controllerchange'));
 
-    expect(toast.info).toHaveBeenCalledWith(
+    expect(sonnerMock.toastInfo).toHaveBeenCalledWith(
       'App updated — refresh for the latest version.',
       expect.objectContaining({
         duration: Infinity,
@@ -91,7 +98,7 @@ describe('registerMbdServiceWorker', () => {
     const reload = vi.fn();
 
     showServiceWorkerUpdatedToast(reload);
-    const toastOptions = vi.mocked(toast.info).mock.calls[0]?.[1];
+    const toastOptions = sonnerMock.toastInfo.mock.calls[0]?.[1];
     const action = toastOptions?.action;
 
     if (!action || typeof action !== 'object' || !('onClick' in action)) {

@@ -1,5 +1,68 @@
 # Changelog
 
+## [Unreleased] - 2026-06-18
+
+### KC BBQ Fountains Ships As The League Bully
+
+- Design decision (Kevin, 2026-07-02): KC is the deliberately overpowered flagship franchise at full authored strength — the team every dynasty has to dethrone. Before this change the authored content pack overlaid all 28 KC MLB slots after `applyKCOverrides` ran, so Marcus Fontaine, Alejandro Fuentes, and the staff/infield boosts never appeared in real games and KC shipped 19th of 32 by mean MLB rating.
+- `generateTeamRoster` now applies the KC overrides after the authored roster overlay, so the phenoms and boosts survive into shipped new games. Generation paths without the authored pack (calibration, tests) are byte-identical to before.
+- Shipped-world evidence (full season, seed 44001, authored pack): KC finishes 112-50 with the best record and allows 477 runs against 532 for the next-best staff.
+- Added worker-content regression tests pinning Fontaine/Fuentes at full authored strength in the shipped world, the staff/infield boosts above their pack baselines, and every other franchise exactly on its authored values.
+- Existing saves keep their persisted players; save schema unchanged.
+
+### KC Rating-Scale Fix And Run-Environment Recalibration
+
+- Fixed `applyKCOverrides` writing display-scale (20-80) values into internal-scale (0-550) attributes and clamping boosts at 80, which crushed KC BBQ Fountains MLB pitchers to the league floor while their overall ratings still claimed phenom grades. Authored grades now convert through `toInternalRating()` and boosts clamp through `clampRating()`.
+- The KC infield-defense boost no longer double-applies on top of the authored shortstop's exact defense grade, matching how the SP boost already excluded the authored phenom.
+- Recalibrated `LEAGUE_AVG.hr` from `0.03175` to `0.0333`: with KC pitching no longer inflating league offense, the core calibration sample fell to 4,896 league home runs, just under the 5,000 floor; it now lands at 5,078 with every other target band still passing (8+ WAR held at 7 of max 8).
+- Scope note: new games built with the full authored roster pack overlay all 169 KC slots after these overrides, so shipped rosters were already scale-correct; the fix matters for the calibration harness, tests, and any generation path without the authored pack. Existing saves keep their persisted players either way. Save schema unchanged.
+- Refreshed the determinism snapshot baseline and the core calibration evidence in `TUNING.md` (intentional behavior change: KC ratings and league HR rate).
+
+### Authored Roster Content
+
+- Materialized the compact worker content pack into 5,408 stable authored roster rows: 169 players for each of 32 organizations across MLB, AAA, AA, A+, A, Rookie, and International.
+- Preserved the 640 reviewed seed players and 192 affiliate identities, then filled missing slots through the versioned worker materializer with stable `auth-<team>-<level>-###` content IDs.
+- New games now pass the full authored content map into league generation; existing saves still load persisted players and are not replaced. Save schema remains v34.
+- Calibrated authored MLB bands and a one-point penny-pincher free-agent appeal penalty so season scoring, trades, extensions, FA activity, and onboarding consequence spread remain inside existing balance gates.
+- Added focused sim-core, worker-content, and worker new-game tests for full-roster overlay, legal fields, deterministic content IDs, duplicate prevention, and reviewed seed preservation.
+
+### Identity Originality
+
+- Applied Kevin-approved original replacements for every reviewed blocker/high/medium/internal-duplicate franchise and affiliate identity while preserving team IDs and affiliate keys.
+- Updated the compact minor-league worker content pack plus supplied CSV/workbook/guide/division-packet assets; counts remain 192 affiliates and 640 authored player rows with 192 unique affiliate short names.
+- Save schema remains v34; this is display/source content only and does not replace existing-save players.
+
+### Save And Determinism
+
+- Current save schema: v34.
+- Added compact archived major-game box scores for future postseason, championship, no-hitter/perfect-game, milestone, and rivalry games.
+- Added v33 -> v34 migration with `narrative.archivedGames: []`; explicit Season 10 v33 fixture proves old saves load without fabricated historic game details.
+- Box Score routes can now render either live numeric game indexes or stable archived-game ids from dynasty timeline memory beats.
+- Bundle ceilings were not raised; archive/query worker logic is split into scoped chunks.
+- Fixed MLB demotion waiver legality so a legal third option-year demotion, or a repeat demotion during an already-active option season, does not incorrectly create a waiver claim.
+- Fixed AI roster overflow normalization so AI clubs consume option years and expose out-of-options players to waivers under the same ledger-backed rules as the user club.
+- Fixed week/month sims so skipped regular-season days accrue MLB service time and advance affiliate games through the same day-level farm clock as `simDay()`, with affiliate games on a stable scoped RNG that does not perturb MLB balance.
+- Batched week/month farm stat-history and service-time work, and indexed affiliate players during farm simulation, so the fuller affiliate clock stays inside the isolated smoke-gate runtime budget while keeping save-visible minor-league history current.
+
+### AI Organization
+
+- Added deterministic club draft-strategy profiles so CPU teams can weight scouting grade, need, signability, upside, player background, and position scarcity differently without hidden boosts or saved-state changes.
+- Added draft and worker regression coverage proving organization tendencies can change CPU picks from the same board while preserving deterministic order and prospect data.
+
+### Setup And Onboarding
+
+- Recalibrated setup farm-system preview grades against the generated league so the team picker shows a usable spread after the authored full-roster pack.
+- Setup filters now hide loaded no-op controls that only contain one real option, while still keeping active filters resettable.
+
+### Farm Development
+
+- Staff and front-office mentorship now show saved active mentor lanes ahead of deterministic recommendations, with active/recommended counts and labels on the staff board so the displayed farm-development lift matches the relationships that affect monthly checkpoints.
+
+### Release Readiness
+
+- Refreshed sample-dynasty and calibration playtest evidence against the full authored v1 roster/content state, and extended the sample-dynasty generator watchdog so the required 10-season evidence run completes instead of timing out.
+- Re-ran production preview browser/PWA smoke: Chrome desktop/mobile, Firefox, and WebKit all load the setup flow without console errors, and Chrome can reload offline and create a new Quick Start dynasty from the cached PWA.
+
 ## [1.0.0] - 2026-04-28
 
 First stable public milestone for Mr. Baseball Dynasty.
@@ -39,8 +102,8 @@ First stable public milestone for Mr. Baseball Dynasty.
 
 ### Save And Determinism
 
-- Current save schema: v33.
-- v1.0.0 does not bump schema.
+- Launch save schema: v33.
+- v1.0.0 did not bump schema during the April launch-candidate cycle.
 - Save migrations remained additive through the launch cycle, with fixtures for each schema bump.
 - Randomness remains centralized through seeded PRNG paths; launch work did not touch sim RNG.
 

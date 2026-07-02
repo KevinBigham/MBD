@@ -1,24 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Star, Flame, Zap } from 'lucide-react';
 import { Badge } from '@mbd/ui';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-
-interface EnhancedEntry {
-  text: string;
-  excitement: 1 | 2 | 3 | 4 | 5;
-  isHighlight: boolean;
-  situation: string;
-}
-
-interface EnhancedPBPData {
-  gameIndex: number;
-  homeTeamId: string;
-  awayTeamId: string;
-  entries: EnhancedEntry[];
-  highlightCount: number;
-  maxExcitement: number;
-}
+import { useEnhancedPlayByPlayData } from '../hooks/useEnhancedPlayByPlayData';
 
 const SITUATION_LABELS: Record<string, string> = {
   walk_off: 'Walk-Off',
@@ -49,19 +34,13 @@ function excitementBorder(level: number): string {
 export default function EnhancedPlayByPlay({ gameIndex }: { gameIndex: number }) {
   const worker = useWorker();
   const { isInitialized } = useGameStore();
-  const [data, setData] = useState<EnhancedPBPData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
-
-  useEffect(() => {
-    if (!isInitialized || !worker.isReady || Number.isNaN(gameIndex)) return;
-    setLoading(true);
-    void (async () => {
-      const result = await worker.getEnhancedGamePlayByPlay(gameIndex);
-      setData(result as EnhancedPBPData | null);
-      setLoading(false);
-    })();
-  }, [isInitialized, worker.isReady, gameIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data, loading } = useEnhancedPlayByPlayData({
+    gameIndex,
+    getEnhancedGamePlayByPlay: worker.getEnhancedGamePlayByPlay,
+    isInitialized,
+    workerReady: worker.isReady,
+  });
 
   if (loading || !data) return null;
 

@@ -5,7 +5,12 @@ interface Props {
   data: FinancialPlaybook;
 }
 
+const PRIMARY_EXTENSION_LIMIT = 4;
+
 export function FinancialView({ data }: Props) {
+  const primaryExtensions = data.extensions.slice(0, PRIMARY_EXTENSION_LIMIT);
+  const overflowExtensions = data.extensions.slice(PRIMARY_EXTENSION_LIMIT);
+
   return (
     <div className="space-y-5">
       {/* Payroll breakdown */}
@@ -56,26 +61,59 @@ export function FinancialView({ data }: Props) {
             Extension Priorities
           </h4>
           <div className="mt-3 space-y-2">
-            {data.extensions.map((ext) => (
-              <div
+            {primaryExtensions.map((ext) => (
+              <ExtensionPriorityRow
                 key={ext.playerId}
-                className="flex items-center justify-between rounded border border-dynasty-border/50 bg-dynasty-bg/40 px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <span className="font-heading text-sm text-dynasty-text">{ext.name}</span>
-                  <span className="ml-2 font-data text-xs text-dynasty-muted">{ext.position}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <UrgencyBadge urgency={ext.urgency} />
-                  <span className="font-data text-xs text-dynasty-muted">
-                    {ext.yearsRemaining}yr left &middot; ${ext.currentSalary.toFixed(1)}M
-                  </span>
-                </div>
-              </div>
+                ext={ext}
+                testId="primary-extension-priority"
+              />
             ))}
           </div>
+          {overflowExtensions.length > 0 ? (
+            <details className="mt-3 rounded border border-dynasty-border/50 bg-dynasty-bg/30 px-3 py-2">
+              <summary className="cursor-pointer font-data text-xs text-dynasty-muted">
+                Show {overflowExtensions.length} more extension {overflowExtensions.length === 1 ? 'priority' : 'priorities'}
+              </summary>
+              <div className="mt-3 space-y-2">
+                {overflowExtensions.map((ext) => (
+                  <ExtensionPriorityRow
+                    key={ext.playerId}
+                    ext={ext}
+                    testId="overflow-extension-priority"
+                  />
+                ))}
+              </div>
+            </details>
+          ) : null}
         </div>
       )}
+    </div>
+  );
+}
+
+function ExtensionPriorityRow({
+  ext,
+  testId,
+}: {
+  ext: FinancialPlaybook['extensions'][number];
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="flex items-center justify-between rounded border border-dynasty-border/50 bg-dynasty-bg/40 px-3 py-2"
+    >
+      <div className="min-w-0 flex-1">
+        <span className="font-heading text-sm text-dynasty-text">{ext.name}</span>
+        {' '}
+        <span className="font-data text-xs text-dynasty-muted">&middot; {ext.position}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <UrgencyBadge urgency={ext.urgency} />
+        <span className="font-data text-xs text-dynasty-muted">
+          {ext.yearsRemaining}yr left &middot; ${ext.currentSalary.toFixed(1)}M
+        </span>
+      </div>
     </div>
   );
 }

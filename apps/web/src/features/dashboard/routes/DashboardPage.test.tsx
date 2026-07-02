@@ -11,7 +11,7 @@ import {
   readGuidedStartNudgeRecord,
   registerGuidedStartSave,
 } from '@/features/onboarding/nudges';
-import { exportSnapshotToJson, scheduleAutoSave } from '@/shared/lib/saveSystem';
+import { exportSnapshotToJson, saveGameById } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('@/shared/lib/saveSystem', () => ({
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedExportSnapshotToJson = vi.mocked(exportSnapshotToJson);
-const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
+const mockedSaveGameById = vi.mocked(saveGameById);
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -434,7 +434,7 @@ describe('DashboardPage', () => {
       simDay: vi.fn().mockResolvedValue({ season: 4, day: 89, phase: 'regular', gamesPlayed: 1 }),
       simWeek: vi.fn().mockResolvedValue({ season: 4, day: 95, phase: 'regular', gamesPlayed: 7 }),
       simMonth: vi.fn().mockResolvedValue({ season: 4, day: 118, phase: 'regular', gamesPlayed: 30 }),
-      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 33, season: 4, day: 89, phase: 'regular' }),
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 89, phase: 'regular' }),
     } as unknown as ReturnType<typeof useWorker>);
   });
 
@@ -552,10 +552,15 @@ describe('DashboardPage', () => {
 
     expect(worker.exportSnapshot).toHaveBeenCalled();
     expect(updateFromSim).toHaveBeenCalledWith(expect.objectContaining({ day: 89 }));
-    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(
-      1,
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      'save-slot-1',
       expect.stringContaining('Alex Rivera'),
-      expect.objectContaining({ schemaVersion: 33 }),
+      expect.objectContaining({ schemaVersion: 34 }),
+      expect.objectContaining({
+        slotNumber: 1,
+        parentSaveId: null,
+        isRootSave: true,
+      }),
     );
   });
 
@@ -715,7 +720,7 @@ describe('DashboardPage', () => {
     });
     const worker = mockedUseWorker();
     const exportSnapshot = vi.fn().mockResolvedValue({
-      schemaVersion: 33,
+      schemaVersion: 34,
       season: 1,
       day: 2,
       phase: 'regular',
@@ -925,7 +930,7 @@ describe('DashboardPage', () => {
         ],
       }),
       applyForJob,
-      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 33, season: 4, day: 88, phase: 'regular' }),
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 88, phase: 'regular' }),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {

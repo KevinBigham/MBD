@@ -3,9 +3,36 @@ import {
   ASSISTANT_STORAGE_VERSION,
   assistantStorageKey,
   createInitialAssistantState,
+  resetAssistantGuidanceProgress,
   reduceAssistantState,
   sanitizeAssistantState,
+  writeAssistantState,
 } from './assistantState';
+
+function createStorageMock(): Storage {
+  const storage = new Map<string, string>();
+
+  return {
+    get length() {
+      return storage.size;
+    },
+    clear() {
+      storage.clear();
+    },
+    getItem(key: string) {
+      return storage.get(key) ?? null;
+    },
+    key(index: number) {
+      return Array.from(storage.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      storage.delete(key);
+    },
+    setItem(key: string, value: string) {
+      storage.set(key, value);
+    },
+  };
+}
 
 describe('assistantState', () => {
   it('creates save-scoped localStorage keys without touching GameSnapshot', () => {
@@ -51,5 +78,35 @@ describe('assistantState', () => {
 
     state = reduceAssistantState(state, { type: 'markStorySeen', callbackId: 'trade-ticker' });
     expect(state.seenStoryCallbacks['trade-ticker']).toBe(true);
+  });
+
+  it('resets route completions and story callbacks without changing mode or save data', () => {
+    const storage = createStorageMock();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: storage,
+    });
+
+    writeAssistantState(1, {
+      version: ASSISTANT_STORAGE_VERSION,
+      mode: 'hardcore',
+      dismissedRoutes: { dashboard: true, trade: true },
+      completedRoutes: { dashboard: true },
+      seenStoryCallbacks: { 'story-1': true },
+    });
+
+    expect(resetAssistantGuidanceProgress(1)).toEqual({
+      completedRoutes: 1,
+      dismissedRoutes: 2,
+      seenStoryCallbacks: 1,
+    });
+
+    expect(JSON.parse(window.localStorage.getItem(assistantStorageKey(1)) ?? '{}')).toEqual({
+      version: ASSISTANT_STORAGE_VERSION,
+      mode: 'hardcore',
+      dismissedRoutes: {},
+      completedRoutes: {},
+      seenStoryCallbacks: {},
+    });
   });
 });

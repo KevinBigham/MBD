@@ -134,6 +134,37 @@ describe('runMonthlyDevelopmentCheckpoint', () => {
       weak.state.developmentLedger[0]?.progressScore ?? 0,
     );
   });
+
+  it('raises monthly progress and lowers bust risk for active mentorship support', () => {
+    const player = makePlayer({});
+    const staff = new Map([['nym', generateCoachingStaff(new GameRNG(34), 'nym')]]);
+    const baselineState = createMinorLeagueState(['nym'], 1);
+    const mentorshipBonuses = new Map([[player.id, 0.16]]);
+
+    const withoutMentor = runMonthlyDevelopmentCheckpoint(
+      new GameRNG(35),
+      1,
+      4,
+      [player],
+      staff,
+      baselineState,
+    );
+    const withMentor = runMonthlyDevelopmentCheckpoint(
+      new GameRNG(35),
+      1,
+      4,
+      [player],
+      staff,
+      baselineState,
+      mentorshipBonuses,
+    );
+
+    const baselineLedger = withoutMentor.state.developmentLedger[0]!;
+    const mentoredLedger = withMentor.state.developmentLedger[0]!;
+    expect(mentoredLedger.progressScore).toBeGreaterThan(baselineLedger.progressScore);
+    expect(mentoredLedger.breakoutProbability).toBeGreaterThan(baselineLedger.breakoutProbability);
+    expect(mentoredLedger.bustRisk).toBeLessThan(baselineLedger.bustRisk);
+  });
 });
 
 describe('reconcileDevelopmentPipeline', () => {
@@ -158,6 +189,49 @@ describe('reconcileDevelopmentPipeline', () => {
 
     expect(reconciled[0]?.overallRating).toBeGreaterThanOrEqual(205);
     expect(reconciled[0]?.overallRating).toBeLessThanOrEqual(245);
+  });
+
+  it('turns mentor-supported monthly progress into higher annual rating movement', () => {
+    const player = makePlayer({ ceiling: 270, floor: 205, overallRating: 220 });
+    const staff = new Map([['nym', generateCoachingStaff(new GameRNG(44), 'nym')]]);
+    const mentorshipBonuses = new Map([[player.id, 0.2]]);
+    let baselineState = createMinorLeagueState(['nym'], 1);
+    let mentoredState = createMinorLeagueState(['nym'], 1);
+
+    for (const month of [1, 2, 3]) {
+      baselineState = runMonthlyDevelopmentCheckpoint(
+        new GameRNG(50 + month),
+        1,
+        month,
+        [player],
+        staff,
+        baselineState,
+      ).state;
+      mentoredState = runMonthlyDevelopmentCheckpoint(
+        new GameRNG(50 + month),
+        1,
+        month,
+        [player],
+        staff,
+        mentoredState,
+        mentorshipBonuses,
+      ).state;
+    }
+
+    const baseline = reconcileDevelopmentPipeline(
+      new GameRNG(61),
+      [player],
+      staff,
+      baselineState,
+    );
+    const mentored = reconcileDevelopmentPipeline(
+      new GameRNG(61),
+      [player],
+      staff,
+      mentoredState,
+    );
+
+    expect(mentored[0]?.overallRating).toBeGreaterThan(baseline[0]?.overallRating ?? 0);
   });
 });
 

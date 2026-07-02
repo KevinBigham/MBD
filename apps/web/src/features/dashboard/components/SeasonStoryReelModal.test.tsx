@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
@@ -105,6 +105,14 @@ describe('SeasonStoryReelModal', () => {
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+    });
+  }
+
+  async function flushFocusTrap() {
+    await act(async () => {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 60);
+      });
     });
   }
 
@@ -374,5 +382,83 @@ describe('SeasonStoryReelModal', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps focus inside the story reel and restores launcher focus on close', async () => {
+    currentSeason = 2029;
+    mockWorker.getSeasonStoryReel.mockResolvedValue(baseView);
+
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <MemoryRouter>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open story reel
+          </button>
+          {open ? (
+            <SeasonStoryReelModal
+              seasonYear={2028}
+              onDismiss={() => setOpen(false)}
+            />
+          ) : null}
+        </MemoryRouter>
+      );
+    }
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+
+    const launcher = container.querySelector('button') as HTMLButtonElement;
+    launcher.focus();
+
+    await act(async () => {
+      launcher.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flushFocusTrap();
+
+    const closeButton = container.querySelector(
+      'button[aria-label="Close season story reel"]',
+    ) as HTMLButtonElement;
+    expect(document.activeElement).toBe(closeButton);
+
+    const nextButton = container.querySelector(
+      'button[aria-label="Next season"]',
+    ) as HTMLButtonElement;
+    nextButton.focus();
+
+    const tabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(tabEvent);
+    });
+    expect(tabEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(closeButton);
+
+    const shiftTabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(shiftTabEvent);
+    });
+    expect(shiftTabEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(nextButton);
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(launcher);
   });
 });

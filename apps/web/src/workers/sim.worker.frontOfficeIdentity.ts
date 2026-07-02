@@ -133,6 +133,16 @@ function hasStoryFlag(state: FullGameState, flag: string): boolean {
   return (state.storyFlags.get(state.userTeamId) ?? []).includes(flag);
 }
 
+export function hasAnsweredInteractivePressConference(
+  state: Pick<FullGameState, 'storyFlags' | 'userTeamId' | 'season' | 'day'>,
+): boolean {
+  const answeredAlignedPrefix = `press_tone_aligned_${state.season}_${state.day}_`;
+  const answeredBacklashPrefix = `press_tone_backlash_${state.season}_${state.day}_`;
+  return (state.storyFlags.get(state.userTeamId) ?? []).some((flag) => (
+    flag.startsWith(answeredAlignedPrefix) || flag.startsWith(answeredBacklashPrefix)
+  ));
+}
+
 function timestamp(state: Pick<FullGameState, 'season' | 'day'>): string {
   return `S${state.season}D${state.day}`;
 }

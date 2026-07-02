@@ -1,5 +1,6 @@
 import {
   type AchievementState,
+  type ArchivedGameBoxScore,
   type ArchivedSeason,
   type AwardHistoryEntry,
   type BriefingItem,
@@ -288,30 +289,23 @@ function backfillGMCareer(
   };
 }
 
+const MINIMUM_SUPPORTED_SNAPSHOT_VERSION = 2;
+
 function validateSnapshot(snapshot: unknown): GameSnapshot {
-  if (
+  const schemaVersion =
     typeof snapshot === 'object' &&
     snapshot !== null &&
     'schemaVersion' in snapshot &&
-    snapshot.schemaVersion !== 2 &&
-    snapshot.schemaVersion !== 3 &&
-    snapshot.schemaVersion !== 4 &&
-    snapshot.schemaVersion !== 5 &&
-    snapshot.schemaVersion !== 6 &&
-    snapshot.schemaVersion !== 7 &&
-    snapshot.schemaVersion !== 8 &&
-    snapshot.schemaVersion !== 9 &&
-    snapshot.schemaVersion !== 10 &&
-    snapshot.schemaVersion !== 11 &&
-    snapshot.schemaVersion !== 12 &&
-    snapshot.schemaVersion !== 13 &&
-    snapshot.schemaVersion !== 14 &&
-    snapshot.schemaVersion !== 15 &&
-    snapshot.schemaVersion !== 16 &&
-    snapshot.schemaVersion !== 17 &&
-    snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
+    typeof snapshot.schemaVersion === 'number'
+      ? snapshot.schemaVersion
+      : null;
+
+  if (
+    schemaVersion !== null &&
+    (schemaVersion < MINIMUM_SUPPORTED_SNAPSHOT_VERSION ||
+      schemaVersion > CURRENT_GAME_SNAPSHOT_VERSION)
   ) {
-    throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
+    throw new Error(`Unsupported snapshot schema version: ${String(schemaVersion)}`);
   }
   try {
     return parseGameSnapshot(snapshot);
@@ -376,6 +370,7 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       recordWatch: state.recordWatch,
       seasonArchive: state.seasonArchive,
       archivedSeasons: state.archivedSeasons,
+      archivedGames: state.archivedGames,
       historicalPlayers: state.historicalPlayers,
       mentorRelationships: state.mentorRelationships,
       playoffSeriesHistory: state.playoffSeriesHistory,
@@ -501,6 +496,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     rookieOfTheYearVoting: (snapshot.narrative.rookieOfTheYearVoting as FullGameState['rookieOfTheYearVoting'] | undefined) ?? [],
     seasonArchive: snapshot.narrative.seasonArchive as SeasonArchiveEntry[],
     archivedSeasons: (snapshot.narrative.archivedSeasons as ArchivedSeason[] | undefined) ?? [],
+    archivedGames: (snapshot.narrative.archivedGames as ArchivedGameBoxScore[] | undefined) ?? [],
     historicalPlayers: snapshot.narrative.historicalPlayers as HistoricalPlayer[],
     mentorRelationships: snapshot.narrative.mentorRelationships as MentorRelationship[],
     frontOfficeState: fromEntries(snapshot.narrative.frontOfficeState as [string, FrontOfficeState][]),

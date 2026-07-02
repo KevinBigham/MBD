@@ -144,5 +144,27 @@ describe('PlayByPlayPanel', () => {
     expect(container.textContent).toContain('Walk-off homer seals it.');
     expect(container.textContent).toContain('R');
     expect(container.textContent).toContain('H');
+    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(1);
+  });
+
+  it('renders the loading booth state inside the shared dense shell', async () => {
+    await act(async () => {
+      root.render(<PlayByPlayPanel detail={null} loading />);
+    });
+
+    expect(container.textContent).toContain('Broadcast Booth');
+    expect(container.textContent).toContain('Loading the latest call sheet...');
+    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(1);
+  });
+
+  it('renders the empty booth state inside the shared dense shell', async () => {
+    await act(async () => {
+      root.render(<PlayByPlayPanel detail={null} />);
+    });
+
+    expect(container.textContent).toContain('Broadcast Booth');
+    expect(container.textContent).toContain('No game selected');
+    expect(container.textContent).toContain('Pick one of the recent recaps to load the booth feed');
+    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(1);
   });
 });

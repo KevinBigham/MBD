@@ -4,6 +4,7 @@ import {
   generatePlayer,
   generateTeamRoster,
   buildRosterState,
+  autoFillMLBRoster,
   validateRoster,
   promotePlayer,
   demotePlayer,
@@ -183,5 +184,244 @@ describe('needsRosterMove', () => {
       transactions: [],
     };
     expect(needsRosterMove(state)).toBe(false);
+  });
+});
+
+describe('autoFillMLBRoster', () => {
+  it('skips blocked non-40-man candidates when a legal 40-man candidate can fill the MLB roster', () => {
+    const roster = makeRoster(53);
+    const mlbPlayers = roster.filter((player) => player.teamId === 'NYT' && player.rosterStatus === 'MLB');
+    const aaaPlayers = roster.filter((player) => player.teamId === 'NYT' && player.rosterStatus === 'AAA');
+    const blockedCandidate = aaaPlayers[0]!;
+    const legalCandidate = aaaPlayers[1]!;
+    expect(blockedCandidate).toBeTruthy();
+    expect(legalCandidate).toBeTruthy();
+
+    const activeRoster = mlbPlayers.slice(0, MLB_ROSTER_LIMIT - 1);
+    (['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'SP', 'RP'] as const).forEach((position, index) => {
+      activeRoster[index]!.position = position;
+    });
+
+    for (const player of roster) {
+      if (player.teamId === 'NYT' && player.rosterStatus === 'AAA') {
+        player.overallRating = 200;
+        player.potentialRating = 200;
+        player.position = 'RF';
+      }
+    }
+
+    blockedCandidate.id = 'blocked-high-score-fill';
+    blockedCandidate.overallRating = 430;
+    blockedCandidate.potentialRating = 430;
+    blockedCandidate.hitterAttributes = {
+      contact: 430,
+      power: 430,
+      eye: 430,
+      speed: 320,
+      defense: 320,
+      durability: 320,
+    };
+
+    legalCandidate.id = 'legal-on-40-fill';
+    legalCandidate.overallRating = 320;
+    legalCandidate.potentialRating = 320;
+    legalCandidate.hitterAttributes = {
+      contact: 320,
+      power: 320,
+      eye: 320,
+      speed: 300,
+      defense: 300,
+      durability: 320,
+    };
+
+    const fillerFortyManIds = roster
+      .filter((player) =>
+        player.teamId === 'NYT' &&
+        player.rosterStatus !== 'MLB' &&
+        player.id !== blockedCandidate.id &&
+        player.id !== legalCandidate.id,
+      )
+      .slice(0, FORTY_MAN_LIMIT - activeRoster.length - 1)
+      .map((player) => player.id);
+
+    const baseState: RosterState = {
+      teamId: 'NYT',
+      mlbRoster: activeRoster.map((player) => player.id),
+      fortyManRoster: [
+        ...activeRoster.map((player) => player.id),
+        legalCandidate.id,
+        ...fillerFortyManIds,
+      ],
+      transactions: [],
+    };
+    expect(baseState.fortyManRoster).toHaveLength(FORTY_MAN_LIMIT);
+
+    const result = autoFillMLBRoster('NYT', roster, baseState);
+
+    expect(result.rosterState.mlbRoster).toHaveLength(MLB_ROSTER_LIMIT);
+    expect(result.rosterState.mlbRoster).toContain(legalCandidate.id);
+    expect(result.rosterState.mlbRoster).not.toContain(blockedCandidate.id);
+    expect(result.rosterState.fortyManRoster).toHaveLength(FORTY_MAN_LIMIT);
+    expect(validateRoster(result.rosterState, result.players).valid).toBe(true);
+  });
+
+  it('protects zero-service upside prospects from AI depth autofill when veteran depth can fill the spot', () => {
+    const roster = makeRoster(54);
+    const mlbPlayers = roster.filter((player) => player.teamId === 'NYT' && player.rosterStatus === 'MLB');
+    const aaaPlayers = roster.filter((player) => player.teamId === 'NYT' && player.rosterStatus === 'AAA');
+    const protectedProspect = aaaPlayers[0]!;
+    const veteranDepth = aaaPlayers[1]!;
+    expect(protectedProspect).toBeTruthy();
+    expect(veteranDepth).toBeTruthy();
+
+    const activeRoster = mlbPlayers.slice(0, MLB_ROSTER_LIMIT - 1);
+    (['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'SP', 'RP'] as const).forEach((position, index) => {
+      activeRoster[index]!.position = position;
+    });
+
+    for (const player of roster) {
+      if (
+        player.teamId === 'NYT'
+        && player.rosterStatus === 'AAA'
+        && player.id !== protectedProspect.id
+        && player.id !== veteranDepth.id
+      ) {
+        player.overallRating = 120;
+        player.potentialRating = 120;
+        player.serviceTimeDays = 0;
+        player.position = 'RF';
+        player.hitterAttributes = {
+          contact: 120,
+          power: 120,
+          eye: 120,
+          speed: 120,
+          defense: 120,
+          durability: 120,
+        };
+        player.pitcherAttributes = null;
+      }
+    }
+
+    protectedProspect.id = 'zero-service-upside-fill';
+    protectedProspect.age = 21;
+    protectedProspect.overallRating = 430;
+    protectedProspect.potentialRating = 500;
+    protectedProspect.serviceTimeDays = 0;
+    protectedProspect.position = 'RF';
+    protectedProspect.hitterAttributes = {
+      contact: 430,
+      power: 430,
+      eye: 430,
+      speed: 360,
+      defense: 350,
+      durability: 330,
+    };
+
+    veteranDepth.id = 'veteran-depth-fill';
+    veteranDepth.age = 29;
+    veteranDepth.overallRating = 320;
+    veteranDepth.potentialRating = 325;
+    veteranDepth.serviceTimeDays = 480;
+    veteranDepth.position = 'RF';
+    veteranDepth.hitterAttributes = {
+      contact: 320,
+      power: 320,
+      eye: 320,
+      speed: 260,
+      defense: 275,
+      durability: 315,
+    };
+
+    const baseState: RosterState = {
+      teamId: 'NYT',
+      mlbRoster: activeRoster.map((player) => player.id),
+      fortyManRoster: [
+        ...activeRoster.map((player) => player.id),
+        protectedProspect.id,
+        veteranDepth.id,
+      ],
+      transactions: [],
+    };
+
+    const result = autoFillMLBRoster('NYT', roster, baseState, {
+      protectServiceTimeProspects: true,
+    });
+
+    expect(result.rosterState.mlbRoster).toHaveLength(MLB_ROSTER_LIMIT);
+    expect(result.rosterState.mlbRoster).toContain(veteranDepth.id);
+    expect(result.rosterState.mlbRoster).not.toContain(protectedProspect.id);
+    expect(validateRoster(result.rosterState, result.players).valid).toBe(true);
+  });
+
+  it('uses team-building identity while preserving roster limits', () => {
+    const roster = makeRoster(52);
+    const mlbPlayers = roster.filter((player) => player.teamId === 'NYT' && player.rosterStatus === 'MLB');
+    const aaaPlayers = roster.filter((player) => player.teamId === 'NYT' && player.rosterStatus === 'AAA');
+    const currentReady = aaaPlayers[0]!;
+    const upsideProspect = aaaPlayers[1]!;
+    expect(currentReady).toBeTruthy();
+    expect(upsideProspect).toBeTruthy();
+
+    const activeRoster = mlbPlayers.slice(0, MLB_ROSTER_LIMIT - 1);
+    (['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'SP', 'RP'] as const).forEach((position, index) => {
+      activeRoster[index]!.position = position;
+    });
+
+    currentReady.id = 'current-ready-fill';
+    currentReady.age = 31;
+    currentReady.overallRating = 340;
+    currentReady.potentialRating = 345;
+    currentReady.position = 'RF';
+    currentReady.rosterStatus = 'AAA';
+    currentReady.hitterAttributes = {
+      contact: 340,
+      power: 340,
+      eye: 340,
+      speed: 300,
+      defense: 300,
+      durability: 320,
+    };
+
+    upsideProspect.id = 'upside-prospect-fill';
+    upsideProspect.age = 22;
+    upsideProspect.overallRating = 320;
+    upsideProspect.potentialRating = 430;
+    upsideProspect.position = 'RF';
+    upsideProspect.rosterStatus = 'AAA';
+    upsideProspect.hitterAttributes = {
+      contact: 320,
+      power: 320,
+      eye: 320,
+      speed: 300,
+      defense: 300,
+      durability: 320,
+    };
+
+    const baseState: RosterState = {
+      teamId: 'NYT',
+      mlbRoster: activeRoster.map((player) => player.id),
+      fortyManRoster: [
+        ...activeRoster.map((player) => player.id),
+        currentReady.id,
+        upsideProspect.id,
+      ],
+      transactions: [],
+    };
+
+    const rebuilding = autoFillMLBRoster('NYT', roster, baseState, {
+      teamBuildingArchetype: 'rebuilding',
+    });
+    const winNow = autoFillMLBRoster('NYT', roster, baseState, {
+      teamBuildingArchetype: 'win_now',
+    });
+
+    expect(rebuilding.rosterState.mlbRoster).toContain(upsideProspect.id);
+    expect(rebuilding.rosterState.mlbRoster).not.toContain(currentReady.id);
+    expect(winNow.rosterState.mlbRoster).toContain(currentReady.id);
+    expect(winNow.rosterState.mlbRoster).not.toContain(upsideProspect.id);
+    expect(rebuilding.rosterState.mlbRoster).toHaveLength(MLB_ROSTER_LIMIT);
+    expect(winNow.rosterState.mlbRoster).toHaveLength(MLB_ROSTER_LIMIT);
+    expect(rebuilding.rosterState.fortyManRoster.length).toBeLessThanOrEqual(FORTY_MAN_LIMIT);
+    expect(winNow.rosterState.fortyManRoster.length).toBeLessThanOrEqual(FORTY_MAN_LIMIT);
   });
 });

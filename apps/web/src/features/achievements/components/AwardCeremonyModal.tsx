@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@mbd/ui';
 import { Award, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 
 interface AwardNarrative {
   awardId: string;
@@ -29,6 +30,7 @@ interface Props {
 export default function AwardCeremonyModal({ ceremony, onClose }: Props) {
   // Slides: opening + each award + closing
   const totalSlides = ceremony.awards.length + 2;
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
   const [slideIndex, setSlideIndex] = useState(0);
 
   const goNext = useCallback(() => {
@@ -55,8 +57,17 @@ export default function AwardCeremonyModal({ ceremony, onClose }: Props) {
   const currentAward = awardIndex >= 0 ? ceremony.awards[awardIndex] : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-dynasty-base/90 px-4 py-8 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-2xl border border-accent-warning/30 bg-dynasty-surface shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-dynasty-base/90 px-4 py-8 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="award-ceremony-modal-title"
+    >
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="w-full max-w-2xl rounded-2xl border border-accent-warning/30 bg-dynasty-surface shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-dynasty-border px-6 py-4">
           <div className="flex items-center gap-3">
@@ -67,7 +78,10 @@ export default function AwardCeremonyModal({ ceremony, onClose }: Props) {
               <div className="font-data text-[11px] uppercase tracking-[0.22em] text-dynasty-muted">
                 Season {ceremony.season}
               </div>
-              <h2 className="font-brand text-xl tracking-wide text-dynasty-textBright">
+              <h2
+                id="award-ceremony-modal-title"
+                className="font-brand text-xl tracking-wide text-dynasty-textBright"
+              >
                 Awards Ceremony
               </h2>
             </div>
@@ -76,6 +90,7 @@ export default function AwardCeremonyModal({ ceremony, onClose }: Props) {
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-dynasty-muted transition-colors hover:bg-dynasty-elevated hover:text-dynasty-text"
+            aria-label="Close awards ceremony"
           >
             <X className="h-5 w-5" />
           </button>

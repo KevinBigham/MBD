@@ -10,6 +10,10 @@ import { FORTY_MAN_LIMIT, PITCHER_POSITIONS, ROSTER_LEVELS } from '../player/enu
 import type { RosterLevel } from '../player/enums.js';
 import { hitterOverall, pitcherOverall } from '../player/attributes.js';
 import { assignPlayerToTeam, releasePlayerFromTeam } from '../player/teamTenures.js';
+import {
+  teamBuildingPromotionScoreAdjustment,
+  type TeamBuildingArchetype,
+} from '../league/frontOffice.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -60,6 +64,11 @@ export interface RosterState {
   transactions: RosterTransaction[];
 }
 
+export interface AutoFillRosterOptions {
+  teamBuildingArchetype?: TeamBuildingArchetype;
+  protectServiceTimeProspects?: boolean;
+}
+
 export interface RosterValidation {
   valid: boolean;
   errors: string[];
@@ -93,6 +102,27 @@ function playerOverall(player: GeneratedPlayer): number {
   return hitterOverall(player.hitterAttributes);
 }
 
+function playerPotential(player: GeneratedPlayer): number {
+  return player.potentialRating ?? player.ceiling ?? player.overallRating;
+}
+
+function autofillPlayerScore(player: GeneratedPlayer, archetype: TeamBuildingArchetype): number {
+  const overall = playerOverall(player);
+  return overall + (teamBuildingPromotionScoreAdjustment(archetype, {
+    age: player.age,
+    overallRating: overall,
+    potentialRating: playerPotential(player),
+  }) * 4);
+}
+
+function isServiceTimeProtectedProspect(player: GeneratedPlayer): boolean {
+  const overall = playerOverall(player);
+  const potential = playerPotential(player);
+  return player.serviceTimeDays < 45
+    && player.age <= 24
+    && potential - overall >= 45;
+}
+
 function findPlayer(players: GeneratedPlayer[], id: string): GeneratedPlayer | undefined {
   return players.find((p) => p.id === id);
 }
@@ -106,6 +136,39 @@ function replacePlayer(
   updated: GeneratedPlayer,
 ): GeneratedPlayer[] {
   return players.map((p) => (p.id === updated.id ? updated : p));
+}
+
+function sortedAutofillCandidates(
+  candidates: readonly GeneratedPlayer[],
+  archetype: TeamBuildingArchetype,
+): GeneratedPlayer[] {
+  return [...candidates].sort(
+    (a, b) =>
+      autofillPlayerScore(b, archetype) - autofillPlayerScore(a, archetype)
+      || playerOverall(b) - playerOverall(a)
+      || a.id.localeCompare(b.id),
+  );
+}
+
+function tryPromoteBestAutofillCandidate(
+  candidates: readonly GeneratedPlayer[],
+  players: GeneratedPlayer[],
+  rosterState: RosterState,
+  archetype: TeamBuildingArchetype,
+  protectServiceTimeProspects: boolean,
+): RosterActionResult | null {
+  const eligibleCandidates = protectServiceTimeProspects
+    ? candidates.filter((candidate) => !isServiceTimeProtectedProspect(candidate))
+    : candidates;
+  const promotionCandidates = eligibleCandidates.length > 0 ? eligibleCandidates : candidates;
+
+  for (const candidate of sortedAutofillCandidates(promotionCandidates, archetype)) {
+    const result = promotePlayer(candidate.id, players, rosterState, 'AUTO');
+    if (result.success) {
+      return result;
+    }
+  }
+  return null;
 }
 
 function cloneRosterState(state: RosterState): RosterState {
@@ -655,9 +718,12 @@ export function autoFillMLBRoster(
   teamId: string,
   players: GeneratedPlayer[],
   rosterState: RosterState,
+  options: AutoFillRosterOptions = {},
 ): { players: GeneratedPlayer[]; rosterState: RosterState } {
   let currentPlayers = players;
   let currentState = cloneRosterState(rosterState);
+  const archetype = options.teamBuildingArchetype ?? 'balanced';
+  const protectServiceTimeProspects = options.protectServiceTimeProspects ?? false;
 
   const getAAAPlayers = () =>
     currentPlayers.filter(
@@ -689,36 +755,33 @@ export function autoFillMLBRoster(
   for (const pos of missingPositions) {
     if (currentState.mlbRoster.length >= MLB_ROSTER_LIMIT) break;
 
-    const candidates = getAAAPlayers()
-      .filter((p) => p.position === pos)
-      .sort((a, b) => playerOverall(b) - playerOverall(a));
-
-    if (candidates.length > 0) {
-      const best = candidates[0]!;
-      const result = promotePlayer(best.id, currentPlayers, currentState, 'AUTO');
-      if (result.success) {
-        currentPlayers = result.players;
-        currentState = result.rosterState;
-      }
+    const result = tryPromoteBestAutofillCandidate(
+      getAAAPlayers().filter((p) => p.position === pos),
+      currentPlayers,
+      currentState,
+      archetype,
+      protectServiceTimeProspects,
+    );
+    if (result) {
+      currentPlayers = result.players;
+      currentState = result.rosterState;
     }
   }
 
   // Phase 2: Fill remaining spots by overall rating
   while (currentState.mlbRoster.length < MLB_ROSTER_LIMIT) {
-    const candidates = getAAAPlayers().sort(
-      (a, b) => playerOverall(b) - playerOverall(a),
+    const result = tryPromoteBestAutofillCandidate(
+      getAAAPlayers(),
+      currentPlayers,
+      currentState,
+      archetype,
+      protectServiceTimeProspects,
     );
-    if (candidates.length === 0) break;
-
-    const best = candidates[0]!;
-    const result = promotePlayer(best.id, currentPlayers, currentState, 'AUTO');
-    if (result.success) {
-      currentPlayers = result.players;
-      currentState = result.rosterState;
-    } else {
-      // Cannot promote (40-man full, etc.) — stop
+    if (!result) {
       break;
     }
+    currentPlayers = result.players;
+    currentState = result.rosterState;
   }
 
   return { players: currentPlayers, rosterState: currentState };

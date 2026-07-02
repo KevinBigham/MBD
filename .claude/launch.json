@@ -6,6 +6,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd /Users/tkevinbigham/Projects/MBD/mr-baseball-dynasty/apps/web && npx vite --port 5174 --host"],
       "port": 5174
+    },
+    {
+      "name": "mbd-trustA",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/tkevinbigham/Downloads/MBD-main/apps/web && npx vite --port 5176 --host"],
+      "port": 5176
     }
   ]
 }

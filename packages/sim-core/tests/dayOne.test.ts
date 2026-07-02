@@ -250,7 +250,7 @@ describe('day one helpers', () => {
   it('builds deterministic teaser copy from the same team and Day One choices', () => {
     const context = {
       teamId: 'hou',
-      teamName: 'Houston Space Cowboys',
+      teamName: 'Houston Starliners',
       marketSize: 'large' as const,
       archetype: 'Win-Now Machine',
       projectedWins: 94,

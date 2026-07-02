@@ -17,7 +17,7 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 vi.mock('@mbd/sim-core', () => ({
   getTeamById: vi.fn((teamId: string) => {
     if (teamId === 'por') return { city: 'Oakland', name: 'Sasquatch', abbreviation: 'POR' };
-    if (teamId === 'col') return { city: 'Chicago', name: 'Buckeyes', abbreviation: 'CLB' };
+    if (teamId === 'col') return { city: 'Chicago', name: 'Wayfinders', abbreviation: 'CLB' };
     if (teamId === 'lax') return { city: 'Los Angeles', name: 'Sunset Strip', abbreviation: 'LAX' };
     return null;
   }),

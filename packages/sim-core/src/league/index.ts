@@ -48,13 +48,22 @@ export type {
 } from './narrativeState.js';
 
 export {
+  TEAM_BUILDING_ARCHETYPES,
   createFrontOfficeState,
   evaluateFrontOfficeState,
+  deriveTeamBuildingArchetype,
   frontOfficeTradeModifier,
   frontOfficeFreeAgencyAppeal,
+  teamBuildingFreeAgencyAggression,
+  teamBuildingExtensionPriorityAdjustment,
+  teamBuildingPromotionScoreAdjustment,
 } from './frontOffice.js';
 export type {
   FrontOfficeEvaluationContext,
+  TeamBuildingArchetype,
+  TeamBuildingExtensionPriorityContext,
+  TeamBuildingIdentityContext,
+  TeamBuildingPromotionContext,
 } from './frontOffice.js';
 
 export {

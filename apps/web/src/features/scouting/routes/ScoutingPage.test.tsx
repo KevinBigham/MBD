@@ -62,14 +62,39 @@ describe('ScoutingPage', () => {
   it('renders scouting heading', async () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
-      getScoutingOverview: vi.fn().mockResolvedValue({
-        scouts: [],
-        assignments: [],
-        recentReports: [],
+      getScoutingStaff: vi.fn().mockResolvedValue([
+        {
+          id: 'scout-1',
+          name: 'Marta Vega',
+          quality: 72,
+          specialty: 'international',
+          bias: 'tools_lover',
+        },
+      ]),
+      getTeamChemistry: vi.fn().mockResolvedValue({
+        score: 68,
+        tier: 'steady',
+        summary: 'The clubhouse is stable.',
       }),
-      getIfaPool: vi.fn().mockResolvedValue({
-        pool: [],
-        budget: { total: 5, spent: 0, remaining: 5 },
+      getOwnerState: vi.fn().mockResolvedValue({
+        hotSeat: false,
+        patience: 62,
+        confidence: 70,
+        summary: 'Ownership trusts the current scouting plan.',
+      }),
+      getIFAPool: vi.fn().mockResolvedValue({
+        season: 1,
+        currentPhase: null,
+        signingWindowOpen: false,
+        budget: {
+          baseAllocation: 5,
+          tradedIn: 0,
+          tradedOut: 0,
+          committed: 0,
+          remaining: 5,
+        },
+        staffAccuracy: 0.72,
+        prospects: [],
       }),
     } as unknown as ReturnType<typeof useWorker>);
 
@@ -84,5 +109,7 @@ describe('ScoutingPage', () => {
     });
 
     expect(container.textContent).toContain('Scout');
+    expect(container.textContent).toContain('Your Scouting Department');
+    expect(container.textContent).toContain('Marta Vega');
   });
 });

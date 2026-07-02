@@ -1,7 +1,8 @@
 import { type FC, useState, useCallback, useEffect } from 'react';
 import { HelpCircle, X, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { PAGE_HELP } from '../lib/pageHelpDefinitions';
+import { getPageHelpForPath } from '../lib/pageHelpDefinitions';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface PageHelpProps {
   pageKey: string;
@@ -9,7 +10,8 @@ interface PageHelpProps {
 
 export const PageHelp: FC<PageHelpProps> = ({ pageKey }) => {
   const [open, setOpen] = useState(false);
-  const entry = PAGE_HELP[pageKey];
+  const entry = getPageHelpForPath(pageKey);
+  const trapRef = useFocusTrap<HTMLDivElement>(open);
 
   const handleClose = useCallback(() => setOpen(false), []);
 
@@ -49,10 +51,12 @@ export const PageHelp: FC<PageHelpProps> = ({ pageKey }) => {
       {/* Slide-in panel */}
       {open && (
         <div
+          ref={trapRef}
           className="fixed right-0 top-0 z-40 my-auto h-full max-h-[80vh] w-80 overflow-y-auto border-l border-dynasty-border bg-dynasty-surface shadow-xl"
           role="dialog"
           aria-modal="true"
           aria-label={`${entry.title} help`}
+          tabIndex={-1}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-dynasty-border">

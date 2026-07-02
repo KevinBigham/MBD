@@ -2,6 +2,8 @@ node_modules/
 dist/
 .turbo/
 .worktrees/
+.logs/
+.playwright-cli/
 *.tsbuildinfo
 .DS_Store
 .env
@@ -13,3 +15,7 @@ test-results/
 storybook-static/
 packages/sim-core/playtest-output/*.md
 !packages/sim-core/playtest-output/sample-dynasty.md
+
+# Local artifacts (never commit)
+OOTP Baseball 27.app/
+output/

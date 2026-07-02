@@ -19,6 +19,10 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
+  useActiveSaveAutosave: () => vi.fn().mockResolvedValue({ saved: true, saveName: 'Test Save' }),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 (
@@ -122,6 +126,126 @@ describe('DraftPage', () => {
           age: 18,
           origin: 'HS',
           scoutConflict: null,
+          decisionInputs: {
+            scoutAccuracy: {
+              label: 'Draft focus 74%',
+              value: 74,
+              detail: '2 looks with the draft staff confidence model.',
+            },
+            disagreement: {
+              label: 'Small gap',
+              value: 3,
+              detail: 'Your room is 3 points above the consensus board.',
+            },
+            makeup: {
+              label: 'Strong makeup',
+              value: 82,
+              detail: 'Work ethic and mental toughness support a longer development runway.',
+            },
+            signability: {
+              label: 'Difficult sign',
+              value: 42,
+              detail: 'Ask $2.80M against $2.40M slot; commitment leverage is live.',
+            },
+            risk: {
+              label: 'High risk',
+              value: 71,
+              detail: 'Prep profile, bonus leverage, and limited certainty raise the variance.',
+            },
+            whyThisPick: 'Middle-of-diamond upside with a +3 internal grade edge; signability needs attention.',
+          },
+        },
+        {
+          id: 'prospect-2',
+          playerId: 'prospect-2',
+          name: 'Maya College',
+          firstName: 'Maya',
+          lastName: 'College',
+          position: 'SP',
+          scoutingGrade: 63,
+          consensusGrade: 61,
+          looks: 3,
+          slotValue: 2.1,
+          askBonus: 2.0,
+          background: 'college_senior',
+          bigBoardRank: 2,
+          age: 21,
+          origin: 'College',
+          scoutConflict: null,
+          decisionInputs: {
+            scoutAccuracy: {
+              label: 'Draft focus 78%',
+              value: 78,
+              detail: '3 looks with the draft staff confidence model.',
+            },
+            disagreement: {
+              label: 'Small gap',
+              value: 2,
+              detail: 'Your room is 2 points above the consensus board.',
+            },
+            makeup: {
+              label: 'Solid makeup',
+              value: 70,
+              detail: 'College performance gives the room a cleaner baseline.',
+            },
+            signability: {
+              label: 'Clean sign',
+              value: 80,
+              detail: 'Ask $2.00M against $2.10M slot; senior leverage is limited.',
+            },
+            risk: {
+              label: 'Moderate risk',
+              value: 44,
+              detail: 'College profile and extra looks lower the variance.',
+            },
+            whyThisPick: 'Pitching depth with a +2 internal grade edge; signability is clean.',
+          },
+        },
+        {
+          id: 'prospect-3',
+          playerId: 'prospect-3',
+          name: 'Jon Safe',
+          firstName: 'Jon',
+          lastName: 'Safe',
+          position: '2B',
+          scoutingGrade: 55,
+          consensusGrade: 55,
+          looks: 4,
+          slotValue: 1.4,
+          askBonus: 1.1,
+          background: 'college',
+          bigBoardRank: 3,
+          age: 22,
+          origin: 'College',
+          scoutConflict: null,
+          decisionInputs: {
+            scoutAccuracy: {
+              label: 'Draft focus 83%',
+              value: 83,
+              detail: '4 looks with the draft staff confidence model.',
+            },
+            disagreement: {
+              label: 'Small gap',
+              value: 0,
+              detail: 'Your room matches the consensus board.',
+            },
+            makeup: {
+              label: 'Strong makeup',
+              value: 84,
+              detail: 'Track record and leadership create a high-floor read.',
+            },
+            signability: {
+              label: 'Clean sign',
+              value: 91,
+              detail: 'Ask $1.10M against $1.40M slot; this should close quickly.',
+            },
+            risk: {
+              label: 'Low risk',
+              value: 28,
+              detail: 'College bat, clean signability, and high certainty suppress variance.',
+            },
+            whyThisPick: 'Board floor with a board grade close to consensus; signability is clean.',
+          },
         },
       ],
       udfaProspects: [],
@@ -244,7 +368,7 @@ describe('DraftPage', () => {
           round: 1,
           pickNumber: 3,
           teamId: 'orl',
-          teamName: 'Orlando Thunder',
+          teamName: 'Orlando Sunbursts',
           teamAbbreviation: 'ORL',
           playerId: 'tb-1',
           playerName: 'Noah Closer',
@@ -257,7 +381,7 @@ describe('DraftPage', () => {
       board: {
         teams: [
           ...inProgressView.board.teams,
-          { teamId: 'orl', teamName: 'Orlando Thunder', abbreviation: 'ORL', tone: 'division_rival' },
+          { teamId: 'orl', teamName: 'Orlando Sunbursts', abbreviation: 'ORL', tone: 'division_rival' },
         ],
         rounds: [
           {
@@ -298,7 +422,7 @@ describe('DraftPage', () => {
                   round: 1,
                   pickNumber: 3,
                   teamId: 'orl',
-                  teamName: 'Orlando Thunder',
+                  teamName: 'Orlando Sunbursts',
                   teamAbbreviation: 'ORL',
                   playerId: 'tb-1',
                   playerName: 'Noah Closer',
@@ -487,6 +611,26 @@ describe('DraftPage', () => {
     expect(container.textContent).toContain('War Room');
     expect(container.textContent).toContain('Buzz Tracker');
     expect(container.textContent).toContain('Value Slide');
+    expect(container.textContent).toContain('Decision Inputs');
+    expect(container.textContent).toContain('Scout accuracy');
+    expect(container.textContent).toContain('Draft focus 74%');
+    expect(container.textContent).toContain('Disagreement');
+    expect(container.textContent).toContain('Small gap');
+    expect(container.textContent).toContain('Makeup');
+    expect(container.textContent).toContain('Strong makeup');
+    expect(container.textContent).toContain('Signability');
+    expect(container.textContent).toContain('Difficult sign');
+    expect(container.textContent).toContain('Risk');
+    expect(container.textContent).toContain('High risk');
+    expect(container.textContent).toContain('Middle-of-diamond upside');
+    expect(container.textContent).toContain('Board Compare');
+    expect(container.textContent).toContain('Selected Read');
+    expect(container.textContent).toContain('Best Grade');
+    expect(container.textContent).toContain('+2 grade vs selected');
+    expect(container.textContent).toContain('Safer Sign');
+    expect(container.textContent).toContain('+49 signability vs selected');
+    expect(container.textContent).toContain('Lower Risk');
+    expect(container.textContent).toContain('-43 risk vs selected');
 
     const watchButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.includes('Watch Draft'),

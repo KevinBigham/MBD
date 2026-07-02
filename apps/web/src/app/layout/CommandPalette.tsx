@@ -3,29 +3,15 @@ import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
 import {
   Award,
-  Activity,
   Briefcase,
-  Building2,
   Users,
-  User,
-  BriefcaseBusiness,
   DollarSign,
   Search,
-  FileText,
   ArrowLeftRight,
   BarChart3,
-  Flame,
   HandCoins,
-  Scale,
   Snowflake,
-  Trophy,
-  Target,
-  TrendingUp,
-  CalendarDays,
-  CalendarRange,
-  Newspaper,
   History,
-  Settings,
   Save,
   PlusCircle,
   Keyboard,
@@ -33,10 +19,15 @@ import {
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
+import {
+  NAVIGATION_GROUPS,
+  getNavigationSearchValue,
+} from './navigationRegistry';
 
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenShortcuts?: () => void;
 }
 
 interface CommandItem {
@@ -44,10 +35,20 @@ interface CommandItem {
   label: string;
   icon: React.ReactNode;
   action: () => void;
-  group: 'navigation' | 'actions';
+  value: string;
 }
 
-export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+interface NavigationCommandGroup {
+  id: string;
+  label: string;
+  items: CommandItem[];
+}
+
+function getActionSearchValue(label: string, aliases: readonly string[] = []): string {
+  return [label, ...aliases].join(' ');
+}
+
+export function CommandPalette({ open, onOpenChange, onOpenShortcuts }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const worker = useWorker();
@@ -59,36 +60,22 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     }
   }, [open]);
 
-  const items: CommandItem[] = [
-    // Navigation
-    { id: 'nav-office', label: 'Front Office', icon: <Briefcase className="h-4 w-4" />, action: () => navigate('/dashboard'), group: 'navigation' },
-    { id: 'nav-roster', label: 'Roster', icon: <Users className="h-4 w-4" />, action: () => navigate('/roster'), group: 'navigation' },
-    { id: 'nav-minors', label: 'Minor League Hub', icon: <Users className="h-4 w-4" />, action: () => navigate('/minors'), group: 'navigation' },
-    { id: 'nav-players', label: 'Players', icon: <User className="h-4 w-4" />, action: () => navigate('/players'), group: 'navigation' },
-    { id: 'nav-scouting', label: 'Scouting', icon: <Search className="h-4 w-4" />, action: () => navigate('/scouting'), group: 'navigation' },
-    { id: 'nav-staff', label: 'Staff', icon: <BriefcaseBusiness className="h-4 w-4" />, action: () => navigate('/staff'), group: 'navigation' },
-    { id: 'nav-finance', label: 'Finance', icon: <DollarSign className="h-4 w-4" />, action: () => navigate('/finance'), group: 'navigation' },
-    { id: 'nav-owner-intel', label: 'Owner Intel', icon: <Building2 className="h-4 w-4" />, action: () => navigate('/front-office'), group: 'navigation' },
-    { id: 'nav-draft', label: 'Draft Room', icon: <FileText className="h-4 w-4" />, action: () => navigate('/draft'), group: 'navigation' },
-    { id: 'nav-free-agency', label: 'Free Agency', icon: <HandCoins className="h-4 w-4" />, action: () => navigate('/free-agency'), group: 'navigation' },
-    { id: 'nav-offseason', label: 'Offseason', icon: <Snowflake className="h-4 w-4" />, action: () => navigate('/offseason'), group: 'navigation' },
-    { id: 'nav-compare', label: 'Compare Players', icon: <Scale className="h-4 w-4" />, action: () => navigate('/players/compare'), group: 'navigation' },
-    { id: 'nav-trade', label: 'Trade Center', icon: <ArrowLeftRight className="h-4 w-4" />, action: () => navigate('/trade'), group: 'navigation' },
-    { id: 'nav-standings', label: 'League Standings', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/standings'), group: 'navigation' },
-    { id: 'nav-leaders', label: 'Stat Leaders', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/leaders'), group: 'navigation' },
-    { id: 'nav-stats', label: 'Stats', icon: <BarChart3 className="h-4 w-4" />, action: () => navigate('/stats'), group: 'navigation' },
-    { id: 'nav-records', label: 'Records', icon: <TrendingUp className="h-4 w-4" />, action: () => navigate('/records'), group: 'navigation' },
-    { id: 'nav-rivalries', label: 'Rivalries', icon: <Flame className="h-4 w-4" />, action: () => navigate('/rivalries'), group: 'navigation' },
-    { id: 'nav-schedule', label: 'Season Schedule', icon: <CalendarDays className="h-4 w-4" />, action: () => navigate('/schedule'), group: 'navigation' },
-    { id: 'nav-pulse', label: 'Pulse', icon: <Activity className="h-4 w-4" />, action: () => navigate('/pulse'), group: 'navigation' },
-    { id: 'nav-playoffs', label: 'Playoffs', icon: <CalendarRange className="h-4 w-4" />, action: () => navigate('/playoffs'), group: 'navigation' },
-    { id: 'nav-press-room', label: 'Press Room', icon: <Newspaper className="h-4 w-4" />, action: () => navigate('/press-room'), group: 'navigation' },
-    { id: 'nav-history', label: 'Franchise History', icon: <History className="h-4 w-4" />, action: () => navigate('/history'), group: 'navigation' },
-    { id: 'nav-career', label: 'GM Career', icon: <Award className="h-4 w-4" />, action: () => navigate('/career'), group: 'navigation' },
-    { id: 'nav-achievements', label: 'Achievements', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/achievements'), group: 'navigation' },
-    { id: 'nav-scenarios', label: 'Scenarios', icon: <Target className="h-4 w-4" />, action: () => navigate('/scenarios'), group: 'navigation' },
-    { id: 'nav-settings', label: 'Settings', icon: <Settings className="h-4 w-4" />, action: () => navigate('/settings'), group: 'navigation' },
-    // Actions
+  const navigationGroups: NavigationCommandGroup[] = NAVIGATION_GROUPS.map((group) => ({
+    id: group.id,
+    label: group.label,
+    items: group.items.map((item) => {
+      const Icon = item.icon;
+      return {
+        id: `nav-${item.id}`,
+        label: item.commandLabel ?? item.label,
+        icon: <Icon className="h-4 w-4" />,
+        action: () => navigate(item.to),
+        value: getNavigationSearchValue(item, group.label),
+      };
+    }),
+  }));
+
+  const actionItems: CommandItem[] = [
     {
       id: 'act-save',
       label: 'Quick Save',
@@ -109,40 +96,107 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           branchMeta: existing?.branchMeta ?? null,
         });
       },
-      group: 'actions',
+      value: getActionSearchValue('Quick Save', ['save game', 'write save']),
     },
     {
       id: 'act-load',
       label: 'Open Save Hub',
       icon: <Save className="h-4 w-4" />,
       action: () => navigate('/'),
-      group: 'actions',
+      value: getActionSearchValue('Open Save Hub', ['load save', 'save hub', 'continue dynasty']),
     },
     {
       id: 'act-start-negotiation',
       label: 'Start Negotiation',
       icon: <ArrowLeftRight className="h-4 w-4" />,
-      action: () => navigate('/trade'),
-      group: 'actions',
+      action: () => navigate('/trade?mode=quick'),
+      value: getActionSearchValue('Start Negotiation', ['trade', 'quick trade', 'shop player', 'propose trade']),
+    },
+    {
+      id: 'act-roster-needs',
+      label: 'Review Roster Needs',
+      icon: <Users className="h-4 w-4" />,
+      action: () => navigate('/roster'),
+      value: getActionSearchValue('Review Roster Needs', ['fix roster', 'roster compliance', 'lineup']),
+    },
+    {
+      id: 'act-trade-market',
+      label: 'Review Trade Market',
+      icon: <ArrowLeftRight className="h-4 w-4" />,
+      action: () => navigate('/trade?mode=market'),
+      value: getActionSearchValue('Review Trade Market', ['trade', 'market', 'shop player', 'deadline market']),
+    },
+    {
+      id: 'act-scout-draft-class',
+      label: 'Scout Draft Class',
+      icon: <Search className="h-4 w-4" />,
+      action: () => navigate('/draft'),
+      value: getActionSearchValue('Scout Draft Class', ['draft', 'big board', 'prospects']),
+    },
+    {
+      id: 'act-free-agent-market',
+      label: 'Review Free Agent Market',
+      icon: <HandCoins className="h-4 w-4" />,
+      action: () => navigate('/free-agency'),
+      value: getActionSearchValue('Review Free Agent Market', ['free agents', 'sign player', 'market']),
+    },
+    {
+      id: 'act-offseason-plan',
+      label: 'Review Offseason Plan',
+      icon: <Snowflake className="h-4 w-4" />,
+      action: () => navigate('/offseason'),
+      value: getActionSearchValue('Review Offseason Plan', ['offseason', 'winter', 'rule 5', 'arbitration']),
+    },
+    {
+      id: 'act-franchise-history',
+      label: 'Study Franchise History',
+      icon: <History className="h-4 w-4" />,
+      action: () => navigate('/history'),
+      value: getActionSearchValue('Study Franchise History', ['history', 'reports', 'dynasty recap']),
+    },
+    {
+      id: 'act-keyboard-shortcuts',
+      label: 'Open Keyboard Shortcuts',
+      icon: <Keyboard className="h-4 w-4" />,
+      action: () => onOpenShortcuts?.(),
+      value: getActionSearchValue('Open Keyboard Shortcuts', ['shortcuts', 'hotkeys', 'keyboard help']),
     },
     {
       id: 'act-view-signature-moments',
       label: 'View Signature Moments',
       icon: <Award className="h-4 w-4" />,
       action: () => navigate('/players'),
-      group: 'actions',
+      value: getActionSearchValue('View Signature Moments', ['player stories', 'moments', 'ratings']),
+    },
+    {
+      id: 'act-what-now',
+      label: 'What Now: Review Front Office',
+      icon: <Briefcase className="h-4 w-4" />,
+      action: () => navigate('/dashboard'),
+      value: getActionSearchValue('What Now: Review Front Office', ['what now', 'next action', 'gm office']),
+    },
+    {
+      id: 'act-budget',
+      label: 'Review Budget',
+      icon: <DollarSign className="h-4 w-4" />,
+      action: () => navigate('/finance'),
+      value: getActionSearchValue('Review Budget', ['budget', 'payroll', 'finance', 'money']),
+    },
+    {
+      id: 'act-reports',
+      label: 'Open Reports',
+      icon: <BarChart3 className="h-4 w-4" />,
+      action: () => navigate('/history'),
+      value: getActionSearchValue('Open Reports', ['reports', 'history', 'records', 'stats']),
     },
     {
       id: 'act-new',
       label: 'New Dynasty Setup',
       icon: <PlusCircle className="h-4 w-4" />,
       action: () => navigate('/'),
-      group: 'actions',
+      value: getActionSearchValue('New Dynasty Setup', ['new game', 'setup', 'quickstart']),
     },
   ];
-
-  const navItems = items.filter((i) => i.group === 'navigation');
-  const actionItems = items.filter((i) => i.group === 'actions');
 
   if (!open) return null;
 
@@ -180,25 +234,28 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             No results found.
           </Command.Empty>
 
-          <Command.Group
-            heading="Navigation"
-            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-heading [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-dynasty-muted"
-          >
-            {navItems.map((item) => (
-              <Command.Item
-                key={item.id}
-                value={item.label}
-                onSelect={() => {
-                  item.action();
-                  onOpenChange(false);
-                }}
-                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-dynasty-text aria-selected:bg-dynasty-elevated aria-selected:text-accent-primary"
-              >
-                <span className="text-dynasty-muted">{item.icon}</span>
-                <span className="font-heading">{item.label}</span>
-              </Command.Item>
-            ))}
-          </Command.Group>
+          {navigationGroups.map((group) => (
+            <Command.Group
+              key={group.id}
+              heading={group.label}
+              className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-heading [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-dynasty-muted"
+            >
+              {group.items.map((item) => (
+                <Command.Item
+                  key={item.id}
+                  value={item.value}
+                  onSelect={() => {
+                    item.action();
+                    onOpenChange(false);
+                  }}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-dynasty-text aria-selected:bg-dynasty-elevated aria-selected:text-accent-primary"
+                >
+                  <span className="text-dynasty-muted">{item.icon}</span>
+                  <span className="font-heading">{item.label}</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          ))}
 
           <Command.Separator className="my-1 h-px bg-dynasty-border" />
 
@@ -209,7 +266,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             {actionItems.map((item) => (
               <Command.Item
                 key={item.id}
-                value={item.label}
+                value={item.value}
                 onSelect={() => {
                   item.action();
                   onOpenChange(false);

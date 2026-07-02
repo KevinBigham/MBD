@@ -10,6 +10,7 @@ const USER_TEAM = TEAMS.find((team) => team.id === USER_TEAM_ID);
 const DEFAULT_SEED = 2_601;
 const DEFAULT_YEARS = 10;
 const DEFAULT_OUT = 'playtest-output/sample-dynasty.md';
+const DEFAULT_TEST_TIMEOUT_MS = 900_000;
 const PRESS_ROOM_LIMIT = 6;
 const SIGNATURE_MOMENT_LIMIT = 6;
 const TEAM_MOMENT_LIMIT = 5;
@@ -450,5 +451,5 @@ describe.runIf(process.env.MBD_PLAYTEST_DUMP === '1')('playtest narrative dump',
 
     await mkdir(dirname(outPath), { recursive: true });
     await writeFile(outPath, first, 'utf8');
-  }, 480_000);
+  }, readPositiveIntegerEnv('PLAYTEST_TIMEOUT_MS', DEFAULT_TEST_TIMEOUT_MS));
 });

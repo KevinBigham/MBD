@@ -5,9 +5,11 @@
 import {
   GameRNG,
   TEAMS,
+  COACH_ROLES,
   DRAFT_CLASS_SIZE,
   DRAFT_ROUNDS,
   FORTY_MAN_LIMIT,
+  OFFSEASON_PHASES,
   aiSelectPick,
   awardCompensatoryPick,
   buildPlayoffPreview,
@@ -16,12 +18,14 @@ import {
   calculateMarketValue,
   calculateQualifyingOfferSalary as calculateQualifyingOfferSalaryCore,
   createDefaultDraftPickOwnership,
+  deriveTeamBuildingArchetype,
   createInternationalScoutingState as createInternationalScoutingStateCore,
   evaluateExtensionWillingness,
   fireCoach as fireCoachCore,
   type Coach,
   type ExtensionContractTerms,
   type ExtensionNegotiationSession,
+  type ExtensionResult,
   type ExtensionTeamContext,
   type InternationalScoutingState,
   determinePlayoffSeeds,
@@ -33,6 +37,7 @@ import {
   getTeamById,
   getTradeDeadlineDay,
   getOffseasonLength,
+  getActiveRosterLimit,
   getQualifyingOfferEligiblePlayers,
   getRegularSeasonMonthForDay,
   resolveDraftSigning,
@@ -97,10 +102,13 @@ import {
   simulateAffiliateDay as simulateAffiliateDayCore,
   simulateFADay,
   processTeamExtensions,
+  teamBuildingExtensionPriorityAdjustment,
+  teamBuildingPromotionScoreAdjustment,
   pruneTickerFeed,
   MAX_MOMENTS_PER_PLAYER,
   tradeIFABonusPool as tradeIFABonusPoolCore,
   accrueServiceTimeDay as accrueServiceTimeDayCore,
+  accrueServiceTimeDays as accrueServiceTimeDaysCore,
   lockRule5ProtectionAudit as lockRule5ProtectionAuditCore,
   makeRule5Selection as makeRule5SelectionCore,
   passRule5DraftTurn as passRule5DraftTurnCore,
@@ -117,6 +125,7 @@ import {
   type PromotionCandidate,
   type RelationshipBidContext,
   type RetirementResult,
+  type TeamBuildingArchetype,
   type RosterComplianceIssue,
   type Rule5EligiblePlayer,
   type Rule5Obligation,
@@ -152,6 +161,7 @@ import type {
 } from '@mbd/sim-core';
 import type {
   AchievementState,
+  ArchivedGameBoxScore,
   ArchivedSeason,
   AwardHistoryEntry,
   BriefingItem,
@@ -280,6 +290,7 @@ export interface FullGameState {
   rookieOfTheYearVoting: RookieOfTheYearVotingEntry[];
   seasonArchive: SeasonArchiveEntry[];
   archivedSeasons: ArchivedSeason[];
+  archivedGames: ArchivedGameBoxScore[];
   historicalPlayers: HistoricalPlayer[];
   mentorRelationships: MentorRelationship[];
   frontOfficeState: Map<string, FrontOfficeState>;
@@ -478,8 +489,60 @@ export interface OffseasonTransactionGroup {
   rows: OffseasonTransactionRow[];
 }
 
+export interface OffseasonMarketDaySummary {
+  id: string;
+  day: number;
+  category: 'signing' | 'trade';
+  tone: OffseasonTransactionTone;
+  headline: string;
+  detail: string;
+  teamIds: string[];
+  playerIds: string[];
+  valueLabel?: string;
+}
+
+export type OffseasonCommandStatus = 'complete' | 'attention' | 'blocked' | 'upcoming';
+
+export interface OffseasonCommandChecklistItem {
+  id: 'arbitration' | 'qualifying_offers' | 'rule5' | 'free_agency' | 'staff' | 'roster' | 'budget';
+  label: string;
+  status: OffseasonCommandStatus;
+  detail: string;
+  actionLabel?: string;
+}
+
+export interface OffseasonCommandWarning {
+  id: string;
+  severity: 'warning' | 'danger';
+  title: string;
+  detail: string;
+  playerId?: string;
+  teamId?: string;
+}
+
+export interface OffseasonOpeningDayProjection {
+  activeRosterCount: number;
+  activeRosterLimit: number;
+  fortyManCount: number;
+  fortyManLimit: number;
+  payroll: number;
+  budget: number;
+  payrollCap: number;
+  payrollSpace: number;
+  capSpace: number;
+  rosterHoleCount: number;
+}
+
+export interface OffseasonCommandCenterView {
+  checklist: OffseasonCommandChecklistItem[];
+  warnings: OffseasonCommandWarning[];
+  projectedOpeningDay: OffseasonOpeningDayProjection;
+}
+
 export interface OffseasonStateView extends OffseasonState {
   transactionGroups: OffseasonTransactionGroup[];
+  marketDaySummaries: OffseasonMarketDaySummary[];
+  commandCenter: OffseasonCommandCenterView;
   rule5?: Rule5StateView;
   flowStateChanged?: boolean;
 }
@@ -500,6 +563,21 @@ export interface Rule5StateView {
 
 export type DraftRoomStatus = 'available' | 'in_progress' | 'complete';
 
+export interface DraftDecisionInputSignal {
+  label: string;
+  value: number;
+  detail: string;
+}
+
+export interface DraftProspectDecisionInputs {
+  scoutAccuracy: DraftDecisionInputSignal;
+  disagreement: DraftDecisionInputSignal;
+  makeup: DraftDecisionInputSignal;
+  signability: DraftDecisionInputSignal;
+  risk: DraftDecisionInputSignal;
+  whyThisPick: string;
+}
+
 export interface DraftRoomProspect {
   id: string;
   playerId: string;
@@ -517,6 +595,7 @@ export interface DraftRoomProspect {
   age: number;
   origin: string;
   scoutConflict: ScoutConflict | null;
+  decisionInputs: DraftProspectDecisionInputs;
 }
 
 export interface DraftCompensationContext {
@@ -774,6 +853,12 @@ export function timestamp(): string {
   return `S${s.season}D${s.day}`;
 }
 
+function isOffseasonPhaseActive(s: FullGameState, phase: OffseasonState['currentPhase']): boolean {
+  return s.phase === 'offseason'
+    && s.offseasonState?.currentPhase === phase
+    && s.offseasonState.completed !== true;
+}
+
 export function getTeamPlayers(teamId: string): GeneratedPlayer[] {
   return requireState().players.filter(p => p.teamId === teamId);
 }
@@ -817,6 +902,64 @@ export function createEmptyMinorLeagueState(season = 1): MinorLeagueState {
 
 function clampValue(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+const TEAM_BUILDING_CORE_PLAYER_COUNT = 8;
+const TEAM_BUILDING_PROSPECT_COUNT = 8;
+
+function ratingToIdentityScore(value: number): number {
+  return clampValue(value / 5, 0, 100);
+}
+
+function averageTopIdentityScores(scores: number[], fallback: number, limit: number): number {
+  if (scores.length === 0) return fallback;
+  const selected = [...scores]
+    .sort((left, right) => right - left)
+    .slice(0, limit);
+  const total = selected.reduce((sum, score) => sum + score, 0);
+  return total / selected.length;
+}
+
+function prospectIdentityScore(player: GeneratedPlayer): number {
+  return ratingToIdentityScore(Math.max(
+    player.potentialRating ?? player.ceiling ?? player.overallRating,
+    player.overallRating,
+  ));
+}
+
+export function deriveWorkerTeamBuildingArchetype(
+  s: FullGameState,
+  teamId: string,
+): TeamBuildingArchetype {
+  const teamPlayers = s.players.filter((player) => player.teamId === teamId);
+  const record = s.seasonState.standings.getRecord(teamId);
+  const totalGames = (record?.wins ?? 0) + (record?.losses ?? 0);
+  const winPercentage = totalGames > 0 ? (record?.wins ?? 0) / totalGames : 0.5;
+  const payroll = calculateTeamPayroll(teamId, teamPlayers).totalPayroll;
+  const payrollCap = getTeamPayrollCap(s, teamId);
+  const payrollRatio = payrollCap > 0 ? payroll / payrollCap : 0;
+  const majorLeagueCoreScore = averageTopIdentityScores(
+    teamPlayers
+      .filter((player) => player.rosterStatus === 'MLB')
+      .map((player) => ratingToIdentityScore(player.overallRating)),
+    50,
+    TEAM_BUILDING_CORE_PLAYER_COUNT,
+  );
+  const prospectScore = averageTopIdentityScores(
+    teamPlayers
+      .filter((player) => player.rosterStatus !== 'MLB' && player.age <= 25)
+      .map(prospectIdentityScore),
+    50,
+    TEAM_BUILDING_PROSPECT_COUNT,
+  );
+
+  return deriveTeamBuildingArchetype({
+    winPercentage,
+    payrollRatio,
+    prospectScore,
+    majorLeagueCoreScore,
+    frontOfficeReputation: s.frontOfficeState.get(teamId)?.reputation ?? 50,
+  });
 }
 
 function roundMoney(value: number): number {
@@ -871,6 +1014,7 @@ function buildExtensionContextForTeam(
     controlYearsByPlayer,
     serviceYearsByPlayer,
     moraleByPlayer,
+    teamBuildingArchetype: deriveWorkerTeamBuildingArchetype(s, teamId),
   };
 }
 
@@ -951,30 +1095,95 @@ function buildWaiverPriorityForState(s: FullGameState): string[] {
   );
 }
 
-export function advanceMinorLeagueDay(s: FullGameState) {
-  const accrued = accrueServiceTimeDayCore(s.players, s.minorLeagueState);
+export function accrueMinorLeagueServiceTimeDays(s: FullGameState, days: number) {
+  const accrued = accrueServiceTimeDaysCore(s.players, s.minorLeagueState, days);
   s.players = accrued.players;
+  s.minorLeagueState = accrued.state;
+}
+
+export function advanceMinorLeagueDay(
+  s: FullGameState,
+  day: number = s.day,
+  options: { accrueServiceTime?: boolean; syncStatHistory?: boolean } = {},
+) {
+  if (options.accrueServiceTime !== false) {
+    const accrued = accrueServiceTimeDayCore(s.players, s.minorLeagueState);
+    s.players = accrued.players;
+    s.minorLeagueState = accrued.state;
+  }
   s.minorLeagueState = simulateAffiliateDayCore(
-    s.rng.fork(),
-    accrued.state,
+    createStableWorkerRng(s, `affiliate-day:${day}`),
+    s.minorLeagueState,
     s.players,
-    s.day,
+    day,
     s.season,
     TEAMS.map((team) => team.id),
   );
-  syncMinorLeagueStatHistory(s);
+  if (options.syncStatHistory !== false) {
+    syncMinorLeagueStatHistory(s);
+  }
+}
+
+function adjustPromotionCandidateForTeamBuilding(
+  s: FullGameState,
+  candidate: PromotionCandidate,
+): PromotionCandidate {
+  const player = s.players.find((entry) => entry.id === candidate.playerId);
+  if (!player) {
+    return candidate;
+  }
+
+  const archetype = deriveWorkerTeamBuildingArchetype(s, candidate.teamId);
+  const baseAdjustment = teamBuildingPromotionScoreAdjustment(archetype, {
+    age: player.age,
+    overallRating: player.overallRating,
+    potentialRating: player.potentialRating ?? player.ceiling ?? player.overallRating,
+  });
+  const rosterState = s.rosterStates.get(candidate.teamId);
+  const activeRosterFull = candidate.targetLevel === 'MLB'
+    && rosterState != null
+    && rosterState.mlbRoster.length >= getActiveRosterLimit(s.day);
+  const fortyManFull = candidate.targetLevel === 'MLB'
+    && rosterState != null
+    && !rosterState.fortyManRoster.includes(candidate.playerId)
+    && rosterState.fortyManRoster.length >= FORTY_MAN_LIMIT;
+  const constraintAdjustment = (activeRosterFull ? -12 : 0) + (fortyManFull ? -10 : 0);
+  const totalAdjustment = baseAdjustment + constraintAdjustment;
+
+  if (totalAdjustment === 0) {
+    return candidate;
+  }
+
+  const notes: string[] = [];
+  if (baseAdjustment > 0) {
+    notes.push(`${archetype.replace(/_/g, ' ')} team plan pushes this promotion earlier.`);
+  } else if (baseAdjustment < 0) {
+    notes.push(`${archetype.replace(/_/g, ' ')} team plan slows this promotion.`);
+  }
+  if (activeRosterFull) {
+    notes.push('Active roster space must clear first.');
+  }
+  if (fortyManFull) {
+    notes.push('40-man roster space must clear first.');
+  }
+
+  return {
+    ...candidate,
+    score: Math.max(0, candidate.score + totalAdjustment),
+    reason: `${candidate.reason} ${notes.join(' ')}`.trim(),
+  };
 }
 
 export function getPromotionCandidatesForTeam(
   s: FullGameState,
   teamId: string,
 ): PromotionCandidate[] {
-  const candidates = getPromotionCandidatesCore(s.players, s.minorLeagueState, teamId);
-  if (teamId !== s.userTeamId) {
-    return candidates;
-  }
-  return candidates
-    .map((candidate) => adjustPromotionCandidateForIdentity(s, candidate))
+  const candidates = getPromotionCandidatesCore(s.players, s.minorLeagueState, teamId)
+    .map((candidate) => adjustPromotionCandidateForTeamBuilding(s, candidate));
+  const adjustedCandidates = teamId === s.userTeamId
+    ? candidates.map((candidate) => adjustPromotionCandidateForIdentity(s, candidate))
+    : candidates;
+  return adjustedCandidates
     .sort((left, right) => right.score - left.score || left.playerId.localeCompare(right.playerId));
 }
 
@@ -1007,6 +1216,16 @@ export function getExtensionCandidatesForTeam(
         context,
         createStableWorkerRng(s, `extension-candidate:${teamId}:${player.id}`),
       );
+      const controlYears = context.controlYearsByPlayer.get(player.id) ?? Math.max(1, player.contract.years);
+      const teamPriority = (willingness.willingness * 100) + teamBuildingExtensionPriorityAdjustment(
+        context.teamBuildingArchetype ?? 'balanced',
+        {
+          age: player.age,
+          overallRating: player.overallRating,
+          controlYears,
+          annualSalary: player.contract.annualSalary,
+        },
+      );
       return {
         playerId: player.id,
         playerName: `${player.firstName} ${player.lastName}`,
@@ -1017,13 +1236,16 @@ export function getExtensionCandidatesForTeam(
         willingness: willingness.willingness,
         demandMultiplier: willingness.demandMultiplier,
         walkAwayThreshold: willingness.walkAwayThreshold,
+        teamPriority,
       };
     })
     .sort((left, right) =>
-      right.willingness - left.willingness
+      right.teamPriority - left.teamPriority
+      || right.willingness - left.willingness
       || right.demandMultiplier - left.demandMultiplier
       || left.playerName.localeCompare(right.playerName),
-    );
+    )
+    .map(({ teamPriority: _teamPriority, ...candidate }) => candidate);
 }
 
 export function getExtensionOfferForPlayer(
@@ -1045,6 +1267,48 @@ export function getExtensionOfferForPlayer(
   );
 }
 
+export interface ExtensionNegotiationReview {
+  status: ExtensionResult['status'];
+  riskLevel: 'low' | 'medium' | 'high';
+  offerGapPct: number;
+  teamOfferAav: number;
+  playerDemandAav: number;
+  evidence: string[];
+}
+
+function roundReviewNumber(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function buildExtensionNegotiationReview(result: ExtensionResult): ExtensionNegotiationReview | null {
+  const latestRound = result.rounds.at(-1);
+  if (!latestRound) {
+    return null;
+  }
+
+  const offerGapPct = Math.round(latestRound.gap * 1000) / 10;
+  const riskLevel: ExtensionNegotiationReview['riskLevel'] = result.status === 'rejected' || latestRound.gap >= 0.18
+    ? 'high'
+    : latestRound.gap >= 0.08
+      ? 'medium'
+      : 'low';
+  const teamOfferAav = roundReviewNumber(latestRound.teamOffer.annualSalary);
+  const playerDemandAav = roundReviewNumber(latestRound.playerDemand.annualSalary);
+
+  return {
+    status: result.status,
+    riskLevel,
+    offerGapPct,
+    teamOfferAav,
+    playerDemandAav,
+    evidence: [
+      `Team offer is ${offerGapPct.toFixed(1)}% below current ask.`,
+      `Team AAV $${teamOfferAav.toFixed(1)}M vs player ask $${playerDemandAav.toFixed(1)}M.`,
+      `Walk-away roll ${latestRound.walkAwayRoll.toFixed(3)} for this round.`,
+    ],
+  };
+}
+
 export function negotiatePlayerExtension(
   s: FullGameState,
   playerId: string,
@@ -1062,7 +1326,10 @@ export function negotiatePlayerExtension(
 
   if (result.status === 'countered') {
     s.pendingExtensionNegotiations.set(playerId, result.session);
-    return result;
+    return {
+      ...result,
+      review: buildExtensionNegotiationReview(result),
+    };
   }
 
   s.pendingExtensionNegotiations.delete(playerId);
@@ -1112,7 +1379,10 @@ export function negotiatePlayerExtension(
     },
   }, s.players, s.season, s.day));
 
-  return result;
+  return {
+    ...result,
+    review: buildExtensionNegotiationReview(result),
+  };
 }
 
 export function getQualifyingOfferEligibleForTeam(
@@ -1142,6 +1412,10 @@ export function issueTeamQualifyingOffer(
   s: FullGameState,
   playerId: string,
 ) {
+  if (!isOffseasonPhaseActive(s, 'qualifying_offers')) {
+    return { success: false as const, error: 'Qualifying offers phase is not active.' };
+  }
+
   const player = s.players.find((candidate) => candidate.id === playerId);
   if (!player) {
     return { success: false as const };
@@ -1247,6 +1521,10 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
 }
 
 export function hireCoachForUserTeam(s: FullGameState, coachId: string) {
+  if (!isOffseasonPhaseActive(s, 'coaching_changes')) {
+    return { success: false as const, error: 'Coaching changes phase is not active.' };
+  }
+
   const result = hireCoachCore(s.coachingStaffs, s.coachFreeAgentPool, s.userTeamId, coachId);
   if (!result.hiredCoach) {
     return { success: false as const };
@@ -1282,6 +1560,10 @@ export function hireCoachForUserTeam(s: FullGameState, coachId: string) {
 }
 
 export function fireCoachForUserTeam(s: FullGameState, coachId: string) {
+  if (!isOffseasonPhaseActive(s, 'coaching_changes')) {
+    return { success: false as const, error: 'Coaching changes phase is not active.' };
+  }
+
   const result = fireCoachCore(s.coachingStaffs, s.coachFreeAgentPool, s.userTeamId, coachId);
   if (!result.firedCoach) {
     return { success: false as const };
@@ -1798,6 +2080,98 @@ function originLabel(origin: string): string {
   }
 }
 
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function labelByBands(value: number, bands: Array<[number, string]>, fallback: string): string {
+  for (const [threshold, label] of bands) {
+    if (value >= threshold) {
+      return label;
+    }
+  }
+  return fallback;
+}
+
+function buildDraftProspectDecisionInputs(
+  prospect: DraftProspect,
+  report: DraftScoutingReport | undefined,
+  scoutConflict: ScoutConflict | null,
+  staffAccuracy: number,
+): DraftProspectDecisionInputs {
+  const displayedGrade = report?.overallGrade ?? prospect.scoutingGrade;
+  const gradeGap = displayedGrade - prospect.scoutingGrade;
+  const disagreementValue = scoutConflict?.divergence ?? Math.abs(gradeGap);
+  const accuracyPct = clampPercent((report?.accuracy ?? staffAccuracy) * 100);
+  const looks = report?.looks ?? 0;
+  const makeupScore = clampPercent(
+    (prospect.player.personality.workEthic * 0.45)
+    + (prospect.player.personality.mentalToughness * 0.35)
+    + (prospect.player.personality.leadership * 0.2),
+  );
+  const signabilityPct = clampPercent(prospect.signability * 100);
+  const backgroundRisk = prospect.background === 'high_school'
+    ? 12
+    : prospect.background === 'college_underclass'
+      ? 6
+      : 0;
+  const riskValue = clampPercent(
+    ((1 - (report?.accuracy ?? staffAccuracy)) * 32)
+    + Math.max(0, 3 - looks) * 5
+    + ((1 - prospect.signability) * 24)
+    + (prospect.commitmentStrength * 20)
+    + backgroundRisk
+    + Math.min(12, disagreementValue * 1.25),
+  );
+  const premiumPosition = prospect.player.position === 'C'
+    || prospect.player.position === 'SS'
+    || prospect.player.position === 'CF'
+    || prospect.player.position === 'SP';
+  const edge = gradeGap >= 3
+    ? `a +${gradeGap} internal grade edge`
+    : gradeGap <= -3
+      ? `a ${gradeGap} internal grade warning`
+      : 'a board grade close to consensus';
+  const signabilityRead = signabilityPct >= 70
+    ? 'signability is clean'
+    : signabilityPct >= 50
+      ? 'signability is workable'
+      : 'signability needs attention';
+
+  return {
+    scoutAccuracy: {
+      label: `Draft focus ${accuracyPct}%`,
+      value: accuracyPct,
+      detail: `${looks} look${looks === 1 ? '' : 's'} with the draft staff confidence model.`,
+    },
+    disagreement: {
+      label: disagreementValue >= 8 ? 'Board fight' : disagreementValue >= 4 ? 'Meaningful gap' : 'Small gap',
+      value: clampPercent(disagreementValue),
+      detail: scoutConflict
+        ? `Scout room divergence is ${scoutConflict.divergence}.`
+        : gradeGap === 0
+          ? 'Your room matches the consensus board.'
+          : `Your room is ${Math.abs(gradeGap)} point${Math.abs(gradeGap) === 1 ? '' : 's'} ${gradeGap > 0 ? 'above' : 'below'} consensus.`,
+    },
+    makeup: {
+      label: labelByBands(makeupScore, [[75, 'Strong makeup'], [58, 'Solid makeup'], [42, 'Mixed makeup']], 'Makeup concern'),
+      value: makeupScore,
+      detail: `Work ethic ${prospect.player.personality.workEthic}, mental toughness ${prospect.player.personality.mentalToughness}, leadership ${prospect.player.personality.leadership}.`,
+    },
+    signability: {
+      label: labelByBands(signabilityPct, [[75, 'Clean sign'], [55, 'Workable sign'], [40, 'Difficult sign']], 'Hard sign'),
+      value: signabilityPct,
+      detail: `Ask $${prospect.askBonus.toFixed(2)}M against $${prospect.slotValue.toFixed(2)}M slot; commitment ${(prospect.commitmentStrength * 100).toFixed(0)}%.`,
+    },
+    risk: {
+      label: labelByBands(100 - riskValue, [[68, 'Low risk'], [43, 'Moderate risk']], 'High risk'),
+      value: riskValue,
+      detail: `${originLabel(prospect.background)} profile, ${looks} look${looks === 1 ? '' : 's'}, and signability ${signabilityPct}%.`,
+    },
+    whyThisPick: `${premiumPosition ? 'Premium-position' : 'Board'} upside with ${edge}; ${signabilityRead}.`,
+  };
+}
+
 function stableProspectSeed(baseSeed: number, scope: string, prospectId: string): number {
   let hash = baseSeed;
   const key = `${scope}:${prospectId}`;
@@ -2231,6 +2605,8 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
   }
 
   const scoutConflicts = ensureDraftScoutConflicts(s, session.prospects);
+  const baseDraftAccuracy = getInternationalScoutAccuracy(s.scoutingStaffs.get(s.userTeamId) ?? []);
+  const draftStaffAccuracy = getEffectiveScoutingAccuracy(s, 'draft', baseDraftAccuracy).effectiveAccuracy;
   const sortedProspects = [...session.prospects].sort((left, right) => {
     const leftBoardRank = bigBoardIndex.get(left.player.id);
     const rightBoardRank = bigBoardIndex.get(right.player.id);
@@ -2251,24 +2627,29 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
       `${right.player.lastName}${right.player.firstName}`,
     );
   });
-  const availableProspects = sortedProspects.map((prospect) => ({
-    id: prospect.player.id,
-    playerId: prospect.player.id,
-    name: `${prospect.player.firstName} ${prospect.player.lastName}`,
-    firstName: prospect.player.firstName,
-    lastName: prospect.player.lastName,
-    position: prospect.player.position,
-    scoutingGrade: userReports.get(prospect.player.id)?.overallGrade ?? prospect.scoutingGrade,
-    consensusGrade: prospect.scoutingGrade,
-    looks: userReports.get(prospect.player.id)?.looks ?? 0,
-    slotValue: prospect.slotValue,
-    askBonus: prospect.askBonus,
-    background: originLabel(prospect.background),
-    bigBoardRank: bigBoardIndex.get(prospect.player.id) != null ? (bigBoardIndex.get(prospect.player.id)! + 1) : null,
-    age: prospect.player.age,
-    origin: originLabel(prospect.collegeOrHS),
-    scoutConflict: scoutConflicts.get(prospect.player.id) ?? null,
-  }));
+  const availableProspects = sortedProspects.map((prospect) => {
+    const report = userReports.get(prospect.player.id);
+    const scoutConflict = scoutConflicts.get(prospect.player.id) ?? null;
+    return {
+      id: prospect.player.id,
+      playerId: prospect.player.id,
+      name: `${prospect.player.firstName} ${prospect.player.lastName}`,
+      firstName: prospect.player.firstName,
+      lastName: prospect.player.lastName,
+      position: prospect.player.position,
+      scoutingGrade: report?.overallGrade ?? prospect.scoutingGrade,
+      consensusGrade: prospect.scoutingGrade,
+      looks: report?.looks ?? 0,
+      slotValue: prospect.slotValue,
+      askBonus: prospect.askBonus,
+      background: originLabel(prospect.background),
+      bigBoardRank: bigBoardIndex.get(prospect.player.id) != null ? (bigBoardIndex.get(prospect.player.id)! + 1) : null,
+      age: prospect.player.age,
+      origin: originLabel(prospect.collegeOrHS),
+      scoutConflict,
+      decisionInputs: buildDraftProspectDecisionInputs(prospect, report, scoutConflict, draftStaffAccuracy),
+    };
+  });
 
   const currentSlot = session.status === 'complete' ? null : getCurrentDraftSlot(session);
   const totalPicks = session.pickSlots.length;
@@ -2490,6 +2871,10 @@ export function tradeUserIFABonusPool(
   toTeamId: string,
   amount: number,
 ): { success: true; remainingBudget: number } | { success: false; error: string } {
+  if (!isOffseasonPhaseActive(s, 'international_signing')) {
+    return { success: false, error: 'International signing phase is not active.' };
+  }
+
   ensureInternationalScoutingStateForSeason(s);
 
   try {
@@ -2529,7 +2914,13 @@ export function scoutUserDraftPlayer(
   const accuracy = getEffectiveScoutingAccuracy(s, 'draft', baseAccuracy).effectiveAccuracy;
   const previousReport = getTeamDraftScoutingReports(s, s.userTeamId)
     .find((report) => report.playerId === playerId);
-  const report = scoutDraftProspect(s.rng.fork(), prospect, accuracy, previousReport);
+  const nextLook = (previousReport?.looks ?? 0) + 1;
+  const scoutRng = new GameRNG(stableProspectSeed(
+    s.rng.getSeed(),
+    `draft-scout-${s.season}-look-${nextLook}`,
+    playerId,
+  ));
+  const report = scoutDraftProspect(scoutRng, prospect, accuracy, previousReport);
   upsertTeamDraftScoutingReport(s, s.userTeamId, report);
   return { success: true, report };
 }
@@ -2946,6 +3337,314 @@ function buildRule5StateView(s: FullGameState): Rule5StateView | undefined {
   };
 }
 
+function offseasonPhaseIndex(phase: string): number {
+  return OFFSEASON_PHASES.indexOf(phase as (typeof OFFSEASON_PHASES)[number]);
+}
+
+function phaseCommandStatus(
+  currentPhase: string,
+  targetPhase: string,
+  hasAttention: boolean,
+): OffseasonCommandStatus {
+  const currentIndex = offseasonPhaseIndex(currentPhase);
+  const targetIndex = offseasonPhaseIndex(targetPhase);
+
+  if (currentIndex > targetIndex) return 'complete';
+  if (currentIndex < targetIndex) return 'upcoming';
+  return hasAttention ? 'attention' : 'complete';
+}
+
+function rosterWarningTitle(issue: RosterComplianceIssue): string {
+  switch (issue.code) {
+    case 'active_roster_under_limit':
+      return 'Roster hole';
+    case 'active_roster_over_limit':
+      return 'Roster over limit';
+    case 'forty_man_over_limit':
+      return '40-man overflow';
+    case 'mlb_not_on_40_man':
+      return '40-man mismatch';
+    default:
+      return 'Roster warning';
+  }
+}
+
+function buildOffseasonCommandCenter(s: FullGameState): OffseasonCommandCenterView {
+  const teamId = s.userTeamId;
+  const currentPhase = s.offseasonState?.currentPhase ?? 'season_review';
+  const rosterState = s.rosterStates.get(teamId);
+  const teamPlayers = s.players.filter((player) => player.teamId === teamId);
+  const activeRosterLimit = getActiveRosterLimit(1);
+  const activeRosterCount = rosterState?.mlbRoster.length ?? 0;
+  const fortyManCount = rosterState?.fortyManRoster.length ?? 0;
+  const rosterHoleCount = Math.max(0, activeRosterLimit - activeRosterCount);
+  const rosterIssues = rosterState
+    ? getRosterComplianceIssuesCore(teamPlayers, rosterState, 1)
+    : [];
+  const payroll = calculateTeamPayroll(teamId, teamPlayers).totalPayroll;
+  const budget = getDifficultyAdjustedBudget(s, teamId);
+  const payrollCap = getTeamPayrollCap(s, teamId);
+  const payrollSpace = roundMoney(budget - payroll);
+  const capSpace = roundMoney(payrollCap - payroll);
+  const arbitrationEligible = getArbEligiblePlayers(s.players, teamId, s.serviceTime);
+  const arbitrationResolvedIds = new Set(
+    s.offseasonState?.phaseResults.arbitrationResolved
+      .filter((entry) => entry.teamId === teamId)
+      .map((entry) => entry.playerId) ?? [],
+  );
+  const arbitrationRemaining = arbitrationEligible.filter((player) => !arbitrationResolvedIds.has(player.id)).length;
+  const qualifyingOfferEligible = getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime);
+  const activeQualifyingOffers = s.draftState.qualifyingOffers.filter((record) =>
+    record.teamId === teamId
+    && record.season === s.season
+    && record.status === 'offered',
+  ).length;
+  const rule5AtRisk = s.rule5Session?.eligiblePlayers.filter((player) => player.teamId === teamId).length ?? 0;
+  const rule5PendingOffers = s.rule5OfferBackStates.filter((entry) =>
+    entry.draftingTeamId === teamId && entry.status === 'pending',
+  ).length;
+  const coachingStaffCount = s.coachingStaffs.get(teamId)?.length ?? 0;
+  const missingStaffCount = Math.max(0, COACH_ROLES.length - coachingStaffCount);
+  const budgetOverage = Math.max(0, payroll - Math.min(budget, payrollCap));
+  const lowPayrollSpace = budgetOverage === 0 && payrollSpace < Math.max(5, budget * 0.03);
+
+  const projectedOpeningDay: OffseasonOpeningDayProjection = {
+    activeRosterCount,
+    activeRosterLimit,
+    fortyManCount,
+    fortyManLimit: FORTY_MAN_LIMIT,
+    payroll,
+    budget,
+    payrollCap,
+    payrollSpace,
+    capSpace,
+    rosterHoleCount,
+  };
+
+  const warnings: OffseasonCommandWarning[] = rosterIssues.map((issue) => ({
+    id: `roster-${issue.code}${issue.playerId ? `-${issue.playerId}` : ''}`,
+    severity: issue.severity === 'error' ? 'danger' : 'warning',
+    title: rosterWarningTitle(issue),
+    detail: issue.message,
+    playerId: issue.playerId,
+    teamId,
+  }));
+
+  if (budgetOverage > 0) {
+    warnings.push({
+      id: 'budget-over-cap',
+      severity: 'danger',
+      title: 'Budget overage',
+      detail: `Projected payroll is ${formatTickerMoney(budgetOverage)} above the tighter owner budget/payroll cap line.`,
+      teamId,
+    });
+  } else if (lowPayrollSpace) {
+    warnings.push({
+      id: 'budget-low-space',
+      severity: 'warning',
+      title: 'Limited payroll space',
+      detail: `Only ${formatTickerMoney(Math.max(0, payrollSpace))} remains before the owner budget line.`,
+      teamId,
+    });
+  }
+
+  const rule5Status = (() => {
+    const baseStatus = phaseCommandStatus(
+      currentPhase,
+      currentPhase === 'rule5_draft' ? 'rule5_draft' : 'protection_audit',
+      rule5AtRisk > 0 || rule5PendingOffers > 0 || currentPhase === 'rule5_draft',
+    );
+    if (currentPhase === 'rule5_draft') return 'attention';
+    return baseStatus;
+  })();
+  const staffStatus = missingStaffCount > 0
+    ? 'attention'
+    : phaseCommandStatus(currentPhase, 'coaching_changes', currentPhase === 'coaching_changes');
+  const rosterStatus: OffseasonCommandStatus = rosterIssues.length > 0 ? 'attention' : 'complete';
+  const budgetStatus: OffseasonCommandStatus = budgetOverage > 0 ? 'blocked' : lowPayrollSpace ? 'attention' : 'complete';
+
+  return {
+    checklist: [
+      {
+        id: 'arbitration',
+        label: 'Arbitration',
+        status: phaseCommandStatus(currentPhase, 'arbitration', arbitrationRemaining > 0),
+        detail: arbitrationRemaining > 0
+          ? `${arbitrationRemaining} arbitration file${arbitrationRemaining === 1 ? '' : 's'} need resolution.`
+          : 'No active arbitration files.',
+        actionLabel: 'Review arb files',
+      },
+      {
+        id: 'qualifying_offers',
+        label: 'Qualifying Offers',
+        status: phaseCommandStatus(currentPhase, 'qualifying_offers', qualifyingOfferEligible.length > 0 || activeQualifyingOffers > 0),
+        detail: activeQualifyingOffers > 0
+          ? `${activeQualifyingOffers} issued qualifying offer${activeQualifyingOffers === 1 ? '' : 's'} need resolution.`
+          : qualifyingOfferEligible.length > 0
+            ? `${qualifyingOfferEligible.length} player${qualifyingOfferEligible.length === 1 ? '' : 's'} eligible for a qualifying offer.`
+            : 'No qualifying-offer decisions remain.',
+        actionLabel: 'Check QOs',
+      },
+      {
+        id: 'rule5',
+        label: 'Rule 5',
+        status: rule5Status,
+        detail: rule5PendingOffers > 0
+          ? `${rule5PendingOffers} Rule 5 offer-back decision${rule5PendingOffers === 1 ? '' : 's'} pending.`
+          : rule5AtRisk > 0
+            ? `${rule5AtRisk} exposed player${rule5AtRisk === 1 ? '' : 's'} on the protection board.`
+            : 'Protection audit opens after the draft.',
+        actionLabel: 'Audit 40-man',
+      },
+      {
+        id: 'free_agency',
+        label: 'Free Agency',
+        status: phaseCommandStatus(currentPhase, 'free_agency', currentPhase === 'free_agency'),
+        detail: rosterHoleCount > 0
+          ? `Market is open; fill ${rosterHoleCount} projected roster spot${rosterHoleCount === 1 ? '' : 's'}.`
+          : 'Market is open; roster projection is full.',
+        actionLabel: 'Review market',
+      },
+      {
+        id: 'staff',
+        label: 'Staff',
+        status: staffStatus,
+        detail: missingStaffCount > 0
+          ? `${missingStaffCount} staff role${missingStaffCount === 1 ? '' : 's'} need coverage.`
+          : 'Coaching staff coverage is set.',
+        actionLabel: 'Review staff',
+      },
+      {
+        id: 'roster',
+        label: 'Roster',
+        status: rosterStatus,
+        detail: rosterHoleCount > 0
+          ? `Projected Opening Day roster has ${rosterHoleCount} open spot${rosterHoleCount === 1 ? '' : 's'}.`
+          : rosterIssues.length > 0
+            ? `${rosterIssues.length} roster compliance issue${rosterIssues.length === 1 ? '' : 's'} detected.`
+            : 'Projected Opening Day roster is compliant.',
+        actionLabel: 'Fix roster',
+      },
+      {
+        id: 'budget',
+        label: 'Budget',
+        status: budgetStatus,
+        detail: budgetOverage > 0
+          ? `Payroll projects ${formatTickerMoney(budgetOverage)} above the tighter owner budget/payroll cap line.`
+          : `Payroll space projects at ${formatTickerMoney(payrollSpace)}.`,
+        actionLabel: 'Check payroll',
+      },
+    ],
+    warnings,
+    projectedOpeningDay,
+  };
+}
+
+function transactionToneForTeams(s: FullGameState, teamIds: string[]): OffseasonTransactionTone {
+  if (teamIds.includes(s.userTeamId)) return 'user';
+  return teamIds.some((teamId) => transactionToneForTeam(s, teamId) === 'division_rival')
+    ? 'division_rival'
+    : 'neutral';
+}
+
+function parseMarketTimestampDay(timestampValue: string): { season: number; day: number } | null {
+  const match = /^S(\d+)D(\d+)$/.exec(timestampValue);
+  if (!match) return null;
+  return {
+    season: Number(match[1]),
+    day: Number(match[2]),
+  };
+}
+
+function playerIdsFromTradeAssets(
+  assets: FullGameState['tradeState']['tradeHistory'][number]['offeringAssets'],
+): string[] {
+  return assets
+    .filter((asset): asset is Extract<typeof asset, { type: 'player' }> => asset.type === 'player')
+    .map((asset) => asset.playerId);
+}
+
+function isMajorSigning(
+  s: FullGameState,
+  signing: FASigningResult,
+  player: GeneratedPlayer | undefined,
+): boolean {
+  return signing.totalValue >= 75
+    || signing.annualSalary >= 18
+    || (player?.overallRating ?? 0) >= 420
+    || transactionToneForTeam(s, signing.teamId) !== 'neutral';
+}
+
+function isMajorTrade(
+  s: FullGameState,
+  trade: FullGameState['tradeState']['tradeHistory'][number],
+  playerIds: string[],
+): boolean {
+  const highestPlayerRating = playerIds.reduce((highest, playerId) => {
+    const player = s.players.find((candidate) => candidate.id === playerId);
+    return Math.max(highest, player?.overallRating ?? 0);
+  }, 0);
+
+  return Math.abs(trade.fairnessScore) >= 15
+    || highestPlayerRating >= 390
+    || transactionToneForTeams(s, [trade.fromTeamId, trade.toTeamId]) !== 'neutral';
+}
+
+function buildOffseasonMarketDaySummaries(
+  s: FullGameState,
+  offseasonState: OffseasonState,
+): OffseasonMarketDaySummary[] {
+  const summaries: OffseasonMarketDaySummary[] = [];
+
+  for (const signing of offseasonState.phaseResults.freeAgentSignings) {
+    const player = s.players.find((candidate) => candidate.id === signing.playerId);
+    if (!isMajorSigning(s, signing, player)) continue;
+
+    summaries.push({
+      id: `market-fa-${signing.playerId}-${signing.teamId}`,
+      day: offseasonState.totalDay,
+      category: 'signing',
+      tone: transactionToneForTeam(s, signing.teamId),
+      headline: `${teamLabel(signing.teamId)} commit ${formatTickerMoney(signing.totalValue)}`,
+      detail: `${playerLabel(player)} signed a ${signing.years}-year deal at ${formatMoneyPerYear(signing.annualSalary)}, giving the roster a major offseason anchor.`,
+      teamIds: [signing.teamId],
+      playerIds: [signing.playerId],
+      valueLabel: formatTickerMoney(signing.totalValue),
+    });
+  }
+
+  for (const trade of s.tradeState.tradeHistory) {
+    const parsedTimestamp = parseMarketTimestampDay(trade.timestamp);
+    if (!parsedTimestamp || parsedTimestamp.season !== s.season) continue;
+
+    const playerIds = [
+      ...playerIdsFromTradeAssets(trade.offeringAssets),
+      ...playerIdsFromTradeAssets(trade.requestingAssets),
+    ];
+    if (!isMajorTrade(s, trade, playerIds)) continue;
+
+    summaries.push({
+      id: `market-trade-${trade.id}`,
+      day: parsedTimestamp.day,
+      category: 'trade',
+      tone: transactionToneForTeams(s, [trade.fromTeamId, trade.toTeamId]),
+      headline: `${teamLabel(trade.fromTeamId)} and ${teamLabel(trade.toTeamId)} reshaped the market`,
+      detail: trade.summary,
+      teamIds: [trade.fromTeamId, trade.toTeamId],
+      playerIds,
+      valueLabel: `Trade value ${trade.fairnessScore >= 0 ? '+' : ''}${trade.fairnessScore}`,
+    });
+  }
+
+  return summaries
+    .sort((left, right) =>
+      right.day - left.day
+      || left.category.localeCompare(right.category)
+      || left.id.localeCompare(right.id),
+    )
+    .slice(0, 8);
+}
+
 export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | null {
   const offseasonState = normalizeOffseasonState(s.offseasonState, s.players, s.serviceTime);
   if (!offseasonState) return null;
@@ -3142,6 +3841,8 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
   return {
     ...offseasonState,
     transactionGroups,
+    marketDaySummaries: buildOffseasonMarketDaySummaries(s, offseasonState),
+    commandCenter: buildOffseasonCommandCenter(s),
     rule5: buildRule5StateView(s),
   };
 }
@@ -4503,6 +5204,11 @@ function simulateFreeAgencyDays(
     );
     const teamPayrolls = buildFreeAgencyPayrolls(s);
     const teamNeeds = buildFreeAgencyNeeds(s);
+    const teamBuildingArchetypes = new Map(
+      TEAMS
+        .filter((team) => team.id !== s.userTeamId)
+        .map((team) => [team.id, deriveWorkerTeamBuildingArchetype(s, team.id)] as const),
+    );
     s.freeAgencyMarket = simulateFADay(
       s.rng.fork(),
       s.freeAgencyMarket,
@@ -4512,6 +5218,7 @@ function simulateFreeAgencyDays(
       teamAttractiveness,
       relationshipContexts,
       userTeamNeeds,
+      teamBuildingArchetypes,
     );
     aiSignings.push(...applyNewFreeAgencySignings(s, previousSignedIds));
   }

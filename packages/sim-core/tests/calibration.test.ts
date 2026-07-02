@@ -8,6 +8,10 @@ const CALIBRATION_CONFIG = {
   seed: 44_001,
   seasonCount: 1,
 };
+const MULTI_SEASON_CALIBRATION_CONFIG = {
+  seed: 44_019,
+  seasonCount: 2,
+};
 const MLB_REALISTIC_AVERAGE_TEAM_WINS_MIN = 76;
 const MLB_REALISTIC_AVERAGE_TEAM_WINS_MAX = 86;
 const CALIBRATION_TEST_TIMEOUT_MS = 15_000;
@@ -61,5 +65,25 @@ describe('season calibration harness', () => {
     expect(summary.sluggingPercentage).toBeLessThanOrEqual(0.65);
     expect(summary.ops).toBeGreaterThanOrEqual(0.5);
     expect(summary.ops).toBeLessThanOrEqual(1.1);
+  }, CALIBRATION_TEST_TIMEOUT_MS);
+
+  it('runs a deterministic two-season balance sample inside the quick guard', () => {
+    const first = summarizeSeasonCalibration(runSeasonCalibration(MULTI_SEASON_CALIBRATION_CONFIG));
+    const second = summarizeSeasonCalibration(runSeasonCalibration(MULTI_SEASON_CALIBRATION_CONFIG));
+
+    expect(second).toEqual(first);
+    expect(first.seasonCount).toBe(2);
+    expect(first.seasons.map((season) => season.season)).toEqual([1, 2]);
+    expect(first.totalGames).toBe(first.seasons.reduce((sum, season) => sum + season.gamesPlayed, 0));
+    expect(first.seasons[1]).not.toEqual(first.seasons[0]);
+
+    for (const season of first.seasons) {
+      expect(season.averageTeamWins).toBeGreaterThanOrEqual(MLB_REALISTIC_AVERAGE_TEAM_WINS_MIN);
+      expect(season.averageTeamWins).toBeLessThanOrEqual(MLB_REALISTIC_AVERAGE_TEAM_WINS_MAX);
+      expect(season.averageRunsPerGame).toBeGreaterThanOrEqual(2);
+      expect(season.averageRunsPerGame).toBeLessThanOrEqual(14);
+      expect(season.averageMlbSalary).toBeGreaterThanOrEqual(2.5);
+      expect(season.averageMlbSalary).toBeLessThanOrEqual(8.5);
+    }
   }, CALIBRATION_TEST_TIMEOUT_MS);
 });

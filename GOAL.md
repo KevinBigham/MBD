@@ -1,47 +1,61 @@
-# GOAL.md - Demo Event Readiness Sweep
+# GOAL.md - Mr. Baseball Dynasty v1 Finish
 
-> Handoff packet for the current repository state.
+> Current repo-level goal for the active MBD v1 branch.
 
-## Mission Status
+## Mission
 
-The demo-readiness sweep and final demo-confidence pass are complete. See `STATUS.md` for the detailed closeout, validation commands, browser smoke notes, manual changed-file inventory, and remaining risks.
+Ship Mr. Baseball Dynasty as a hardcore-first single-player GM sim for desktop
+browser, responsive tablet/mobile, and installable PWA. Keep the web/PWA build
+canonical for v1; native desktop/Steam wrappers are deferred behind the platform
+ADR and must not block web release.
 
-## Completed Scope
+## Current Direction
 
-- Fixed broken milestone news/ticker data flow by building structured cumulative career milestone events before generating news or ticker text.
-- Added regression coverage proving malformed or season-only milestone payloads cannot emit `Unknown`, `#0`, `0th`, `undefined`, or missing milestone numbers.
-- Wired Trade Center `Active Talks` so persisted open negotiations are autosaved after trade actions, discovered on page entry, resumed after reload, refreshed after negotiation actions, and deep-linked by `?negotiationId=...`.
-- Added focused player-profile tests for worker-backed projections, breakout intelligence, scout consensus, and similar-player panels.
-- Added original fictional SVG logos for every team id used by the game and a smoke test for missing assets/fallback behavior.
-- Added a demo-safe Settings/About feedback form with GitHub issue draft and mailto fallback.
-- Removed true-dead legacy onboarding components reported by the structure audit.
-- Updated local dev service-worker registration so Vite demo reloads do not log expected `sw.js` MIME errors.
+- GM-only scope; no pitch-by-pitch manager mode for v1.
+- Worker remains canonical; Zustand remains a UI mirror.
+- AI difficulty may improve decision quality, search, and consistency, but must
+  not use hidden boosts or cheating.
+- Prioritize minors, scouting, development, draft, dynasty memory, fair AI,
+  presentation, sim balance, and reliability gates.
+- New games should use the authored world; existing saves get compatible
+  affiliate flavor and migrations, never replacement players.
 
-## Guardrails Preserved
+## Current Save State
 
-- Save schema remains v33.
-- No new dependencies.
-- No licensed MLB marks.
-- No new `Math.random` usage.
-- Existing Bloomberg-terminal/baseball-dynasty aesthetic preserved.
+- Current save schema is v34 in `packages/contracts/src/schemas/save.ts`.
+- v33 -> v34 adds compact archived major-game box scores with
+  `narrative.archivedGames: []` for existing saves.
+- The explicit Season 10 v33 fixture must migrate to v34 without fabricating
+  historic archived games.
+- Any future save change still requires a version bump, migration, fixture
+  update, old-save proof, and Season 10 reasoning.
 
-## Final Validation Gate
+## Verified Branch State
 
-Run from `/Users/kevin/MBD-main`:
+- Branch: `codex/mbd-ui-ux-ootp-overhaul`.
+- Latest green remote checkpoint: `5d214ab` (`MBD Phase 12: Harden affiliate identity fallback`).
+- GitHub Actions run `27846168866` passed workspace verify, isolated smoke gate,
+  and determinism snapshot on `5d214ab`.
+- The authored roster content pack materializes 5,408 stable players:
+  32 organizations x 169 players across MLB, AAA, AA, A+, A, Rookie, and
+  International, plus 192 affiliate identities.
+- Authored content is kept in the versioned worker content seam rather than the
+  game-engine core chunk.
 
-```text
-PATH=/Users/kevin/.nvm/versions/node/v24.14.0/bin:$PATH pnpm typecheck
-PATH=/Users/kevin/.nvm/versions/node/v24.14.0/bin:$PATH pnpm test
-PATH=/Users/kevin/.nvm/versions/node/v24.14.0/bin:$PATH pnpm build
-PATH=/Users/kevin/.nvm/versions/node/v24.14.0/bin:$PATH pnpm run verify:structure
-PATH=/Users/kevin/.nvm/versions/node/v24.14.0/bin:$PATH PLAYTEST_SEED=2601 PLAYTEST_YEARS=2 PLAYTEST_OUT=playtest-output/demo-readiness-sweep.md MBD_PLAYTEST_DUMP=1 pnpm --filter @mbd/sim-core exec vitest run tests/playtestNarrativeDump.generate.ts
-rg -n "Unknown|#0|0th|undefined" packages/sim-core/playtest-output/demo-readiness-sweep.md
-```
+## Remaining Release Gates
 
-Expected state: all commands pass; the final `rg` exits with no matches.
+- Keep targeted tests, full tests, typecheck, build, determinism, smoke gate,
+  old-save/Season-10 migration matrix, and bundle budgets green.
+- Finish/verify manual desktop and mobile playtests.
+- Smoke Chrome, Firefox, and Safari/WebKit routes for critical console errors.
+- Verify installable/offline/update/save-recovery PWA behavior outside the
+  restricted Codex shell.
+- Keep docs, changelog, and release checklist current.
+- Produce a clean v1 tag/build only after CI, deploy, browser/PWA smoke, and
+  manual playtest gates are green.
 
-## Next Agent Notes
+## Local Sandbox Note
 
-- This local folder is not a git repo. Use `STATUS.md` for the manual changed-file inventory.
-- The final browser pass created a real in-browser open negotiation during an in-season save and confirmed `Active Talks` resume by reload, plain `/MBD/trade`, and `?negotiationId=...`.
-- `verify:structure` still reports broad unused export/type noise and an unused dependency warning for `@mbd/design-tokens`; the sweep removed the unused onboarding files and redundant Knip entry hints it discovered.
+This checkout is a git repo, but Codex cannot write `.git/index.lock` in the
+current sandbox. Stage/commit locally only from Kevin's terminal, or use a
+single GitHub tree/commit/ref update when a small remote checkpoint is needed.

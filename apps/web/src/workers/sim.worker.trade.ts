@@ -10,6 +10,7 @@ import {
   applyMoraleEvent,
   adjustDraftPickTradeValue,
   buildRosterState,
+  calculateTeamPayroll,
   calculateTeamChemistry,
   comparePackages,
   createDefaultDraftPickOwnership,
@@ -29,9 +30,11 @@ import {
   generateNews,
   generateNewsId,
   getRelationship,
+  getRelationshipTier,
   getDaysUntilTradeDeadline,
   getTradeDeadlineDay,
   getRemainingIFABudget,
+  getTeamBudget,
   getTeamById,
   isTradeDeadlineModeDay,
   detectTradeCascades,
@@ -51,6 +54,7 @@ import type {
   NegotiationState,
   NegotiationContext,
   GMPersonality,
+  RelationshipTier,
   TradeChatterItem,
   TradeDeadlineMode,
   TradeDialogue,
@@ -58,6 +62,7 @@ import type {
   TradeNegotiationType,
   TradeProposal,
   TradeParticipantRole,
+  TeamBuildingArchetype,
 } from '@mbd/sim-core';
 import type { CascadeEvent, PendingTrade } from '@mbd/sim-core';
 import { buildTradeBroadcastCoverage } from '../../../../packages/sim-core/src/narrative/tradeDeadlinePressConferences.js';
@@ -66,6 +71,7 @@ import {
   appendArbitrationMoments,
   appendTeamMoments,
   createStableWorkerRng,
+  deriveWorkerTeamBuildingArchetype,
   getTeamPlayers,
   timestamp,
   updatePlayerTeamAssignment,
@@ -148,6 +154,36 @@ export interface TradeDeadlineRecapView {
   losers: string[];
 }
 
+export type TradeMarketBudgetPressure = 'low' | 'medium' | 'high';
+
+export interface TradeMarketIntelTeamView {
+  teamId: string;
+  teamName: string;
+  teamAbbreviation: string;
+  mode: TradeDeadlineMode;
+  gmPersonality: GMPersonality;
+  personalityLabel: string;
+  posture: string;
+  pressureScore: number;
+  pressureLabel: string;
+  budgetPressure: TradeMarketBudgetPressure;
+  needs: string[];
+  surplus: string[];
+  activeOfferCount: number;
+  relationshipTier: RelationshipTier;
+  relationshipSummary: string | null;
+}
+
+export interface TradeWarRoomView {
+  headline: string;
+  detail: string;
+  currentCheckpointDay: number | null;
+  nextCheckpointDay: number | null;
+  completedCheckpoints: number;
+  totalCheckpoints: number;
+  callsToAction: string[];
+}
+
 export interface TradeDeadlineStateView {
   currentPhase: string;
   deadlineDay: number;
@@ -159,6 +195,8 @@ export interface TradeDeadlineStateView {
   hotOffers: HotTradeOfferView[];
   ticker: TradeTickerItem[];
   chatter: TradeChatterItem[];
+  marketIntel: TradeMarketIntelTeamView[];
+  warRoom: TradeWarRoomView;
   recap: TradeDeadlineRecapView | null;
 }
 
@@ -188,6 +226,10 @@ export interface TradeNegotiationView {
   teamId: string;
   teamName: string;
   teamAbbreviation: string;
+  gmPersonality: GMPersonality;
+  personalityLabel: string;
+  negotiationPosture: string;
+  counterOfferSummary: string | null;
   phase: NegotiationPhase;
   roundsCompleted: number;
   expiresAtDay: number;
@@ -200,12 +242,20 @@ export interface TradeNegotiationView {
   canReject: boolean;
 }
 
+export interface TradeNegotiationReviewView {
+  fairnessScore: number | null;
+  rosterValid: boolean;
+  rosterIssues: string[];
+  narrative: string;
+}
+
 export interface TradeNegotiationActionResult {
   success: boolean;
   decision: 'accepted' | 'rejected' | 'countered' | 'pending' | 'dead';
   message: string;
   negotiation: TradeNegotiationView | null;
   tradeExecuted: boolean;
+  review: TradeNegotiationReviewView | null;
 }
 
 export interface MultiTeamTradeParticipantInput {
@@ -521,11 +571,93 @@ export function pruneExpiredNegotiations(state: FullGameState) {
   };
 }
 
+function negotiationPostureLabel(
+  personality: GMPersonality,
+  phase: NegotiationPhase,
+  tier: RelationshipTier,
+): string {
+  if (phase.startsWith('counter')) {
+    switch (personality) {
+      case 'aggressive':
+        return 'Aggressive counter pressure';
+      case 'win_now':
+        return 'Win-now counter pressure';
+      case 'prospect_hugger':
+        return 'Prospect-protecting counter';
+      case 'conservative':
+        return 'Conservative value hold';
+      default:
+        return 'Analytical counter read';
+    }
+  }
+
+  if (phase === 'pending') {
+    return tier === 'friendly' || tier === 'trusted'
+      ? 'Relationship patience window'
+      : 'Value review window';
+  }
+
+  if (phase === 'accepted') {
+    return 'Framework accepted';
+  }
+
+  if (phase === 'rejected' || phase === 'dead') {
+    return 'Room closed';
+  }
+
+  return `${personalityLabel(personality)} negotiation posture`;
+}
+
+function counterOfferPersonalityLead(personality: GMPersonality): string {
+  switch (personality) {
+    case 'aggressive':
+      return 'Aggressive room: add value now or they will move to another call.';
+    case 'win_now':
+      return 'Win-now room: they want present impact, not theoretical surplus.';
+    case 'prospect_hugger':
+      return 'Prospect-hugging room: young upside is driving the ask.';
+    case 'conservative':
+      return 'Conservative room: they need the floor cleaned up before saying yes.';
+    default:
+      return 'Analytical room: the model still sees a value gap to close.';
+  }
+}
+
+function buildNegotiationCounterSummary(
+  negotiation: NegotiationState,
+  personality: GMPersonality,
+): string | null {
+  if (!negotiation.phase.startsWith('counter')) {
+    return null;
+  }
+
+  const latestCounter = negotiation.counterOffers.at(-1);
+  const lead = counterOfferPersonalityLead(personality);
+  if (!latestCounter) {
+    return lead;
+  }
+
+  const moves: string[] = [];
+  if (latestCounter.addedByAI.length > 0) {
+    moves.push(`${latestCounter.addedByAI.length} added piece${latestCounter.addedByAI.length === 1 ? '' : 's'}`);
+  }
+  if (latestCounter.removedByAI.length > 0) {
+    moves.push(`${latestCounter.removedByAI.length} ask trimmed`);
+  }
+
+  return moves.length > 0
+    ? `${lead} Counter movement: ${moves.join(', ')}.`
+    : lead;
+}
+
 function buildNegotiationView(
   state: FullGameState,
   negotiation: NegotiationState,
 ): TradeNegotiationView {
   const counterpartTeamId = negotiation.proposal.toTeamId;
+  const gmPersonality = state.gmPersonalities.get(counterpartTeamId) ?? 'analytical';
+  const relationship = getRelationship(state.gmRelationships, counterpartTeamId);
+  const relationshipTier = getRelationshipTier(relationship.score);
   const counterOffer = negotiation.phase.startsWith('counter')
     ? buildNegotiationPackage(negotiation.proposal.offering, negotiation.proposal.requesting)
     : null;
@@ -535,6 +667,10 @@ function buildNegotiationView(
     teamId: counterpartTeamId,
     teamName: teamName(counterpartTeamId),
     teamAbbreviation: teamAbbreviation(counterpartTeamId),
+    gmPersonality,
+    personalityLabel: personalityLabel(gmPersonality),
+    negotiationPosture: negotiationPostureLabel(gmPersonality, negotiation.phase, relationshipTier),
+    counterOfferSummary: buildNegotiationCounterSummary(negotiation, gmPersonality),
     phase: negotiation.phase,
     roundsCompleted: negotiation.roundsCompleted,
     expiresAtDay: negotiation.expiresAtDay,
@@ -1936,6 +2072,347 @@ function modeSummary(mode: TradeDeadlineMode): string {
   }
 }
 
+const TRADE_MARKET_POSITION_ORDER = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'SP', 'RP'] as const;
+const TRADE_MARKET_INTEL_LIMIT = 12;
+
+function clampPressureScore(score: number): number {
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function personalityLabel(personality: GMPersonality): string {
+  switch (personality) {
+    case 'aggressive':
+      return 'Aggressive';
+    case 'conservative':
+      return 'Conservative';
+    case 'prospect_hugger':
+      return 'Prospect Hugger';
+    case 'win_now':
+      return 'Win Now';
+    default:
+      return 'Analytical';
+  }
+}
+
+function marketPosture(
+  mode: TradeDeadlineMode,
+  personality: GMPersonality,
+  archetype: TeamBuildingArchetype,
+  budgetPressure: TradeMarketBudgetPressure,
+): string {
+  if (mode === 'buyer') {
+    if (personality === 'aggressive') return 'Aggressive buyer';
+    if (personality === 'win_now' || archetype === 'win_now') return 'Win-now buyer';
+    if (personality === 'prospect_hugger') return 'Prospect-protecting buyer';
+    if (personality === 'conservative') return 'Selective buyer';
+    return 'Model-led buyer';
+  }
+
+  if (mode === 'seller') {
+    if (budgetPressure === 'high' || archetype === 'budget_constrained') return 'Payroll-pressure seller';
+    if (personality === 'prospect_hugger' || archetype === 'rebuilding') return 'Prospect-first seller';
+    if (personality === 'aggressive') return 'Aggressive seller';
+    if (personality === 'conservative') return 'Value-hold seller';
+    return 'Model-led seller';
+  }
+
+  if (budgetPressure === 'high') return 'Listening on salary';
+  if (personality === 'aggressive') return 'Opportunistic listener';
+  if (personality === 'prospect_hugger') return 'Prospect-protecting listener';
+  if (personality === 'conservative') return 'Quiet listener';
+  return 'Model-led listener';
+}
+
+function marketPressureLabel(score: number): string {
+  if (score >= 80) return 'High heat';
+  if (score >= 60) return 'Active';
+  if (score >= 40) return 'Listening';
+  return 'Quiet';
+}
+
+function normalizeMarketPosition(position: string): string {
+  if (position === 'CL') return 'RP';
+  if (position === 'P') return 'SP';
+  return position;
+}
+
+function requiredMarketDepth(position: string): number {
+  if (position === 'SP') return 5;
+  if (position === 'RP') return 7;
+  return 1;
+}
+
+function deriveNeedsAndSurplus(teamPlayers: FullGameState['players']): { needs: string[]; surplus: string[] } {
+  const majorLeaguePlayers = teamPlayers.filter((player) => player.rosterStatus === 'MLB');
+  const roster = majorLeaguePlayers.length > 0 ? majorLeaguePlayers : teamPlayers;
+  const positionBuckets = new Map<string, number[]>();
+
+  for (const player of roster) {
+    const position = normalizeMarketPosition(player.position);
+    const bucket = positionBuckets.get(position) ?? [];
+    bucket.push(player.overallRating);
+    positionBuckets.set(position, bucket);
+  }
+
+  for (const ratings of positionBuckets.values()) {
+    ratings.sort((left, right) => right - left);
+  }
+
+  const positions = Array.from(new Set<string>([
+    ...TRADE_MARKET_POSITION_ORDER,
+    ...positionBuckets.keys(),
+  ]));
+  const positionReads = positions.map((position) => {
+    const ratings = positionBuckets.get(position) ?? [];
+    const requiredDepth = requiredMarketDepth(position);
+    const bestRating = ratings[0] ?? 0;
+    const depthRating = ratings[requiredDepth - 1] ?? 0;
+    const extraRating = ratings[requiredDepth] ?? 0;
+    const needScore = (requiredDepth - ratings.length) * 16 + Math.max(0, 62 - bestRating) + Math.max(0, 56 - depthRating);
+    const surplusScore = extraRating + Math.max(0, ratings.length - requiredDepth) * 3;
+    return {
+      position,
+      bestRating,
+      needScore,
+      surplusScore,
+      isNeed: ratings.length < requiredDepth || bestRating < 62 || depthRating < 54,
+      isSurplus: ratings.length > requiredDepth && extraRating >= 54,
+    };
+  });
+
+  const needs = positionReads
+    .filter((read) => read.isNeed)
+    .sort((left, right) => right.needScore - left.needScore || left.bestRating - right.bestRating || left.position.localeCompare(right.position))
+    .slice(0, 2)
+    .map((read) => read.position);
+
+  if (needs.length === 0) {
+    needs.push(...positionReads
+      .sort((left, right) => left.bestRating - right.bestRating || left.position.localeCompare(right.position))
+      .slice(0, 2)
+      .map((read) => read.position));
+  }
+
+  const surplus = positionReads
+    .filter((read) => read.isSurplus)
+    .sort((left, right) => right.surplusScore - left.surplusScore || right.bestRating - left.bestRating || left.position.localeCompare(right.position))
+    .slice(0, 2)
+    .map((read) => read.position);
+
+  if (surplus.length === 0) {
+    surplus.push(...positionReads
+      .filter((read) => read.bestRating > 0)
+      .sort((left, right) => right.bestRating - left.bestRating || left.position.localeCompare(right.position))
+      .slice(0, 2)
+      .map((read) => read.position));
+  }
+
+  return {
+    needs: needs.length > 0 ? needs : ['Roster'],
+    surplus: surplus.length > 0 ? surplus : ['Depth'],
+  };
+}
+
+function deriveBudgetPressure(state: FullGameState, teamId: string, teamPlayers: FullGameState['players']): TradeMarketBudgetPressure {
+  const payroll = calculateTeamPayroll(teamId, teamPlayers).totalPayroll;
+  const owner = state.ownerState.get(teamId);
+  const budgetLine = owner?.payrollCap ?? owner?.annualBudget ?? getTeamBudget(teamId);
+  const budgetRatio = budgetLine > 0 ? payroll / budgetLine : 0;
+
+  if (budgetRatio >= 0.95) return 'high';
+  if (budgetRatio >= 0.82) return 'medium';
+  return 'low';
+}
+
+function tradeMarketPressureScore({
+  activeOfferCount,
+  archetype,
+  budgetPressure,
+  daysUntilDeadline,
+  mode,
+}: {
+  activeOfferCount: number;
+  archetype: TeamBuildingArchetype;
+  budgetPressure: TradeMarketBudgetPressure;
+  daysUntilDeadline: number | null;
+  mode: TradeDeadlineMode;
+}): number {
+  const deadlineScore = daysUntilDeadline == null ? 4 : Math.max(0, 30 - Math.min(30, daysUntilDeadline * 2));
+  const modeScore = mode === 'standing_pat' ? 8 : 22;
+  const offerScore = Math.min(24, activeOfferCount * 12);
+  const budgetScore = budgetPressure === 'high' ? 20 : budgetPressure === 'medium' ? 10 : 2;
+  const identityScore = archetype === 'win_now' || archetype === 'rebuilding' || archetype === 'budget_constrained'
+    ? 10
+    : archetype === 'contending'
+      ? 7
+      : 3;
+
+  return clampPressureScore(deadlineScore + modeScore + offerScore + budgetScore + identityScore);
+}
+
+function activeTradeOfferCount(state: FullGameState, teamId: string): number {
+  return state.tradeState.pendingOffers.filter((offer) => offer.fromTeamId === teamId || offer.toTeamId === teamId).length;
+}
+
+function collectTradeMarketTeamIds(state: FullGameState): string[] {
+  const teamIds = new Set<string>();
+
+  for (const player of state.players) {
+    if (getTeamById(player.teamId)) {
+      teamIds.add(player.teamId);
+    }
+  }
+  for (const offer of state.tradeState.pendingOffers) {
+    if (getTeamById(offer.fromTeamId)) teamIds.add(offer.fromTeamId);
+    if (getTeamById(offer.toTeamId)) teamIds.add(offer.toTeamId);
+  }
+  for (const trade of state.tradeState.tradeHistory.slice(0, 12)) {
+    if (getTeamById(trade.fromTeamId)) teamIds.add(trade.fromTeamId);
+    if (getTeamById(trade.toTeamId)) teamIds.add(trade.toTeamId);
+  }
+
+  return Array.from(teamIds);
+}
+
+function buildTradeMarketIntel(state: FullGameState): TradeMarketIntelTeamView[] {
+  const priorityTeamIds = new Set<string>([state.userTeamId]);
+  for (const offer of state.tradeState.pendingOffers) {
+    priorityTeamIds.add(offer.fromTeamId);
+    priorityTeamIds.add(offer.toTeamId);
+  }
+
+  const rows = collectTradeMarketTeamIds(state).map((teamId) => {
+    const teamPlayers = state.players.filter((player) => player.teamId === teamId);
+    const modeContext = buildTradeModeContext(state, teamId);
+    const gmPersonality = state.gmPersonalities.get(teamId) ?? modeContext.gmPersonality;
+    const relationship = getRelationship(state.gmRelationships, teamId);
+    const budgetPressure = deriveBudgetPressure(state, teamId, teamPlayers);
+    const archetype = deriveWorkerTeamBuildingArchetype(state, teamId);
+    const activeOfferCount = activeTradeOfferCount(state, teamId);
+    const pressureScore = tradeMarketPressureScore({
+      activeOfferCount,
+      archetype,
+      budgetPressure,
+      daysUntilDeadline: modeContext.daysUntilDeadline,
+      mode: modeContext.mode,
+    });
+    const needsAndSurplus = deriveNeedsAndSurplus(teamPlayers);
+
+    return {
+      teamId,
+      teamName: modeContext.teamName,
+      teamAbbreviation: teamAbbreviation(teamId),
+      mode: modeContext.mode,
+      gmPersonality,
+      personalityLabel: personalityLabel(gmPersonality),
+      posture: marketPosture(modeContext.mode, gmPersonality, archetype, budgetPressure),
+      pressureScore,
+      pressureLabel: marketPressureLabel(pressureScore),
+      budgetPressure,
+      needs: needsAndSurplus.needs,
+      surplus: needsAndSurplus.surplus,
+      activeOfferCount,
+      relationshipTier: getRelationshipTier(relationship.score),
+      relationshipSummary: relationship.tradeHistory[0]?.description ?? null,
+    };
+  });
+
+  const sortedRows = rows.sort((left, right) =>
+    right.pressureScore - left.pressureScore
+    || right.activeOfferCount - left.activeOfferCount
+    || left.teamName.localeCompare(right.teamName),
+  );
+  const priorityRows = sortedRows.filter((row) => priorityTeamIds.has(row.teamId));
+  const remainingRows = sortedRows.filter((row) => !priorityTeamIds.has(row.teamId));
+
+  return [...priorityRows, ...remainingRows].slice(0, TRADE_MARKET_INTEL_LIMIT);
+}
+
+function tradeWarRoomHeadline(state: FullGameState, completedCheckpoints: number): string {
+  if (state.phase !== 'regular' || state.day > TRADE_DEADLINE_DAY) {
+    return 'Deadline desk closed';
+  }
+
+  if (completedCheckpoints === 0) {
+    return 'Set the board war room';
+  }
+
+  if (state.day >= 117) {
+    return 'Final sprint war room';
+  }
+
+  if (completedCheckpoints >= 4) {
+    return 'Live calls war room';
+  }
+
+  return 'Market sorting war room';
+}
+
+function buildWarRoomCallsToAction(
+  state: FullGameState,
+  hotOffers: HotTradeOfferView[],
+  marketIntel: TradeMarketIntelTeamView[],
+  nextCheckpointDay: number | null,
+): string[] {
+  const callsToAction: string[] = [];
+
+  if (hotOffers.length > 0) {
+    callsToAction.push('Prioritize the hottest incoming offers.');
+  }
+
+  const highHeatTeam = marketIntel.find((team) => team.pressureScore >= 80 || team.budgetPressure === 'high');
+  if (highHeatTeam) {
+    callsToAction.push(`Pressure-test ${highHeatTeam.teamAbbreviation} while their market heat is high.`);
+  }
+
+  if (nextCheckpointDay != null) {
+    callsToAction.push(`Resolve open counters before day ${nextCheckpointDay}.`);
+  } else if (state.phase === 'regular' && state.day <= TRADE_DEADLINE_DAY) {
+    callsToAction.push('Make final yes-or-no calls before the deadline locks.');
+  }
+
+  if (callsToAction.length === 0) {
+    callsToAction.push('Refresh needs, surplus, and relationship reads before opening a new call.');
+  }
+
+  return callsToAction.slice(0, 3);
+}
+
+function buildTradeWarRoomView(
+  state: FullGameState,
+  hotOffers: HotTradeOfferView[],
+  marketIntel: TradeMarketIntelTeamView[],
+): TradeWarRoomView {
+  const completedCheckpoints = state.phase === 'regular'
+    ? DEADLINE_ACTIVITY_CHECKPOINTS.filter((checkpointDay) => checkpointDay <= state.day).length
+    : state.day > TRADE_DEADLINE_DAY
+      ? DEADLINE_ACTIVITY_CHECKPOINTS.length
+      : 0;
+  const currentCheckpointDay = completedCheckpoints > 0
+    ? DEADLINE_ACTIVITY_CHECKPOINTS[completedCheckpoints - 1] ?? null
+    : null;
+  const nextCheckpointDay = state.phase === 'regular' && state.day <= TRADE_DEADLINE_DAY
+    ? DEADLINE_ACTIVITY_CHECKPOINTS.find((checkpointDay) => checkpointDay > state.day) ?? null
+    : null;
+  const headline = tradeWarRoomHeadline(state, completedCheckpoints);
+  const remainingCheckpoints = Math.max(0, DEADLINE_ACTIVITY_CHECKPOINTS.length - completedCheckpoints);
+  const detail = state.phase !== 'regular' || state.day > TRADE_DEADLINE_DAY
+    ? 'The deadline board is closed; review missed calls, completed deals, and offseason follow-ups.'
+    : completedCheckpoints === 0
+      ? `No checkpoint bursts have fired yet. Build the board before day ${nextCheckpointDay ?? TRADE_DEADLINE_DAY}.`
+      : `${completedCheckpoints} checkpoint burst${completedCheckpoints === 1 ? '' : 's'} complete with ${remainingCheckpoints} still ahead. Track active offers, pressure teams, and counter timing.`;
+
+  return {
+    headline,
+    detail,
+    currentCheckpointDay,
+    nextCheckpointDay,
+    completedCheckpoints,
+    totalCheckpoints: DEADLINE_ACTIVITY_CHECKPOINTS.length,
+    callsToAction: buildWarRoomCallsToAction(state, hotOffers, marketIntel, nextCheckpointDay),
+  };
+}
+
 export function buildTradeDialogueView(
   state: FullGameState,
   teamId: string,
@@ -1975,6 +2452,7 @@ export function buildTradeDeadlineStateView(state: FullGameState): TradeDeadline
   const userModeContext = buildTradeModeContext(state, state.userTeamId);
   const hotOffers = state.tradeState.pendingOffers.map((offer) => buildHotTradeOfferView(state, offer));
   const ticker = buildTickerItems(state.tradeState.tradeHistory);
+  const marketIntel = buildTradeMarketIntel(state);
 
   return {
     currentPhase: state.phase,
@@ -2003,6 +2481,8 @@ export function buildTradeDeadlineStateView(state: FullGameState): TradeDeadline
         recentTradeSummaries: ticker.map((item) => item.summary),
       },
     ),
+    marketIntel,
+    warRoom: buildTradeWarRoomView(state, hotOffers, marketIntel),
     recap: deriveTradeDeadlineRecap(state),
   };
 }
@@ -2165,6 +2645,7 @@ function buildMonthlyTradeCandidates(state: FullGameState) {
       {
         currentDay: state.day,
         contenderTeamIds,
+        teamBuildingArchetype: deriveWorkerTeamBuildingArchetype(state, team),
       },
     );
 
@@ -2522,6 +3003,85 @@ function hasNonPlayerAssets(assets: TradeAsset[]): boolean {
   return assets.some((asset) => asset.type !== 'player');
 }
 
+function collectTradePackageReviewEvidence(
+  state: FullGameState,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+  toTeamId: string,
+): Pick<TradeNegotiationReviewView, 'fairnessScore' | 'rosterValid' | 'rosterIssues'> {
+  const rosterIssues = [
+    validateTradeAssetsForTeam(state, state.userTeamId, offeringAssets),
+    validateTradeAssetsForTeam(state, toTeamId, requestingAssets),
+  ].filter(Boolean) as string[];
+  const rosterValid = rosterIssues.length === 0;
+
+  return {
+    fairnessScore: rosterValid
+      ? compareAssetPackages(state, offeringAssets, requestingAssets, state.userTeamId, toTeamId).fairness
+      : null,
+    rosterValid,
+    rosterIssues,
+  };
+}
+
+function buildTradePackageReviewFromEvidence(
+  evidence: Pick<TradeNegotiationReviewView, 'fairnessScore' | 'rosterValid' | 'rosterIssues'>,
+  toTeamId: string,
+  decision: TradeNegotiationActionResult['decision'],
+  narrative: string,
+): TradeNegotiationReviewView {
+  const reviewNarrative = evidence.rosterIssues.length > 0
+    ? `Roster validation blocked: ${evidence.rosterIssues.join(' ')}`
+    : `${teamName(toTeamId)} ${
+      decision === 'accepted'
+        ? 'accepted'
+        : decision === 'countered'
+          ? 'returned a counter'
+          : decision === 'pending'
+            ? 'kept the call open'
+            : decision === 'dead'
+              ? 'ended the call'
+              : 'rejected the framework'
+    }. ${narrative}`;
+
+  return {
+    ...evidence,
+    narrative: reviewNarrative,
+  };
+}
+
+function buildTradePackageReview(
+  state: FullGameState,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+  toTeamId: string,
+  decision: TradeNegotiationActionResult['decision'],
+  narrative: string,
+): TradeNegotiationReviewView {
+  return buildTradePackageReviewFromEvidence(
+    collectTradePackageReviewEvidence(state, offeringAssets, requestingAssets, toTeamId),
+    toTeamId,
+    decision,
+    narrative,
+  );
+}
+
+function buildNegotiationReviewFromState(
+  state: FullGameState,
+  negotiation: NegotiationState,
+  decision: TradeNegotiationActionResult['decision'],
+  narrative: string,
+): TradeNegotiationReviewView {
+  return buildTradePackageReview(
+    state,
+    playerAssets(negotiation.proposal.offering),
+    playerAssets(negotiation.proposal.requesting),
+    negotiation.proposal.toTeamId,
+    decision,
+    narrative,
+  );
+}
+
 export function proposeTradePackage(
   state: FullGameState,
   offeringAssets: TradeAsset[],
@@ -2624,23 +3184,27 @@ export function startNegotiation(
   toTeamId: string,
 ): TradeNegotiationActionResult {
   if (!isTradeMarketOpen(state)) {
+    const message = 'Trade market closed — reopens in offseason';
     return {
       success: false,
       decision: 'rejected',
-      message: 'Trade market closed — reopens in offseason',
+      message,
       negotiation: null,
       tradeExecuted: false,
+      review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', message),
     };
   }
 
   const gm = state.gmPersonalities.get(toTeamId);
   if (!gm) {
+    const message = 'Unknown team';
     return {
       success: false,
       decision: 'rejected',
-      message: 'Unknown team',
+      message,
       negotiation: null,
       tradeExecuted: false,
+      review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', message),
     };
   }
 
@@ -2652,6 +3216,7 @@ export function startNegotiation(
       message: offeredValidation,
       negotiation: null,
       tradeExecuted: false,
+      review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', offeredValidation),
     };
   }
 
@@ -2663,21 +3228,25 @@ export function startNegotiation(
       message: requestedValidation,
       negotiation: null,
       tradeExecuted: false,
+      review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', requestedValidation),
     };
   }
 
   if (hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets)) {
+    const reviewEvidence = collectTradePackageReviewEvidence(state, offeringAssets, requestingAssets, toTeamId);
     const directResult = proposeTradePackage(state, offeringAssets, requestingAssets, toTeamId);
+    const decision = directResult.decision === 'countered'
+      ? 'countered'
+      : directResult.decision === 'accepted'
+        ? 'accepted'
+        : 'rejected';
     return {
       success: directResult.decision !== 'rejected',
-      decision: directResult.decision === 'countered'
-        ? 'countered'
-        : directResult.decision === 'accepted'
-          ? 'accepted'
-          : 'rejected',
+      decision,
       message: directResult.reason,
       negotiation: null,
       tradeExecuted: directResult.decision === 'accepted',
+      review: buildTradePackageReviewFromEvidence(reviewEvidence, toTeamId, decision, directResult.reason),
     };
   }
 
@@ -2703,19 +3272,23 @@ export function startNegotiation(
     upsertNegotiation(state, liveState);
   }
 
+  const decision =
+    liveState.phase === 'accepted'
+      ? 'accepted'
+      : liveState.phase === 'rejected'
+        ? 'rejected'
+        : liveState.phase.startsWith('counter')
+          ? 'countered'
+          : 'pending';
+  const message = liveState.dialogue[liveState.dialogue.length - 1]?.text ?? 'Negotiation opened.';
+
   return {
     success: liveState.phase !== 'rejected',
-    decision:
-      liveState.phase === 'accepted'
-        ? 'accepted'
-        : liveState.phase === 'rejected'
-          ? 'rejected'
-          : liveState.phase.startsWith('counter')
-            ? 'countered'
-            : 'pending',
-    message: liveState.dialogue[liveState.dialogue.length - 1]?.text ?? 'Negotiation opened.',
+    decision,
+    message,
     negotiation: buildNegotiationView(state, liveState),
     tradeExecuted: false,
+    review: buildNegotiationReviewFromState(state, liveState, decision, message),
   };
 }
 
@@ -2732,6 +3305,7 @@ export function advanceNegotiationSession(
       message: 'Negotiation no longer exists.',
       negotiation: null,
       tradeExecuted: false,
+      review: null,
     };
   }
 
@@ -2767,23 +3341,27 @@ export function advanceNegotiationSession(
     upsertNegotiation(state, nextState);
   }
 
+  const decision =
+    nextState.phase === 'accepted'
+      ? 'accepted'
+      : nextState.phase === 'rejected'
+        ? 'rejected'
+        : nextState.phase === 'dead'
+          ? 'dead'
+          : nextState.phase.startsWith('counter')
+            ? 'countered'
+            : 'pending';
+  const message = nextState.dialogue[nextState.dialogue.length - 1]?.text ?? 'Negotiation updated.';
+
   return {
     success: nextState.phase !== 'rejected' && nextState.phase !== 'dead',
-    decision:
-      nextState.phase === 'accepted'
-        ? 'accepted'
-        : nextState.phase === 'rejected'
-          ? 'rejected'
-          : nextState.phase === 'dead'
-            ? 'dead'
-            : nextState.phase.startsWith('counter')
-              ? 'countered'
-              : 'pending',
-    message: nextState.dialogue[nextState.dialogue.length - 1]?.text ?? 'Negotiation updated.',
+    decision,
+    message,
     negotiation: isNegotiationComplete(nextState) && nextState.phase !== 'accepted'
       ? null
       : buildNegotiationView(state, nextState),
     tradeExecuted: false,
+    review: buildNegotiationReviewFromState(state, nextState, decision, message),
   };
 }
 
@@ -2800,6 +3378,7 @@ export function resolveNegotiationSession(
       message: 'Negotiation no longer exists.',
       negotiation: null,
       tradeExecuted: false,
+      review: null,
     };
   }
 
@@ -2819,6 +3398,8 @@ export function resolveNegotiationSession(
   }
 
   const outcome = resolveTradeNegotiation(liveState);
+  const decision = outcome.accepted ? 'accepted' : liveState.phase === 'dead' ? 'dead' : 'rejected';
+  const review = buildNegotiationReviewFromState(state, liveState, decision, outcome.narrative);
   removeNegotiation(state, negotiationId);
 
   if (outcome.accepted) {
@@ -2827,10 +3408,11 @@ export function resolveNegotiationSession(
 
   return {
     success: outcome.accepted,
-    decision: outcome.accepted ? 'accepted' : liveState.phase === 'dead' ? 'dead' : 'rejected',
+    decision,
     message: outcome.narrative,
     negotiation: null,
     tradeExecuted: outcome.accepted,
+    review,
   };
 }
 

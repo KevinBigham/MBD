@@ -27,7 +27,7 @@ function requestFor(reason: SaveLoadFailureReason): SaveRecoveryRequest {
       slotNumber: 3,
       message: `Detailed ${reason} message`,
       rawJson: '{"id":"save-slot-3","name":"Broken"}',
-      schemaVersion: reason === 'version_too_new' ? 999 : 33,
+      schemaVersion: reason === 'version_too_new' ? 999 : 34,
       currentVersion: 33,
       minimumSupportedVersion: 2,
     },

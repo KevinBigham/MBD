@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Mic, Shield, MessageCircle, ArrowRight } from 'lucide-react';
+import { Mic, Shield, MessageCircle, ArrowRight, X } from 'lucide-react';
 import { getAudioEngine } from '@/shared/lib/audio';
 import { useFocusTrap } from '@/shared/hooks/useFocusTrap';
 
@@ -85,6 +85,16 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
     getAudioEngine().playEffect('press_conference');
   }, []);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !submitting) {
+        onDismiss();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onDismiss, submitting]);
+
   const handleSelect = (responseId: string) => {
     if (submitting || result) return;
     getAudioEngine().playEffect('tab_switch');
@@ -107,20 +117,45 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
   };
 
   return (
-    <div ref={trapRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-xl rounded-xl border border-dynasty-border bg-dynasty-surface shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="press-conference-modal-title"
+    >
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="w-full max-w-xl rounded-xl border border-dynasty-border bg-dynasty-surface shadow-2xl"
+      >
         {/* Header */}
         <div className="border-b border-dynasty-border px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-primary/20 text-accent-primary">
-              <Mic className="h-5 w-5" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-primary/20 text-accent-primary">
+                <Mic className="h-5 w-5" />
+              </div>
+              <div>
+                <h2
+                  id="press-conference-modal-title"
+                  className="font-brand text-xl tracking-wide text-dynasty-textBright"
+                >
+                  Press Conference
+                </h2>
+                <p className="mt-0.5 font-data text-xs text-dynasty-muted">
+                  Season {conference.season} &middot; Day {conference.day}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-brand text-xl tracking-wide text-dynasty-textBright">Press Conference</h2>
-              <p className="mt-0.5 font-data text-xs text-dynasty-muted">
-                Season {conference.season} &middot; Day {conference.day}
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={onDismiss}
+              disabled={submitting}
+              className="rounded-lg p-2 text-dynasty-muted transition-colors hover:bg-dynasty-elevated hover:text-dynasty-text disabled:opacity-40"
+              aria-label="Close press conference"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
         </div>
 

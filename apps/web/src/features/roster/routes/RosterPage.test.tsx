@@ -49,11 +49,41 @@ const mockedUseGameStore = vi.mocked(useGameStore);
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+function createStorageMock(): Storage {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+    key: (index: number) => Object.keys(store)[index] ?? null,
+    get length() {
+      return Object.keys(store).length;
+    },
+  };
+}
+
 describe('RosterPage', () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
+    const storage = createStorageMock();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: storage,
+    });
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: storage,
+    });
+
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -288,6 +318,17 @@ describe('RosterPage', () => {
     });
     const negotiateExtension = vi.fn().mockResolvedValue({
       status: 'countered',
+      review: {
+        status: 'countered',
+        riskLevel: 'high',
+        offerGapPct: 26,
+        teamOfferAav: 18.4,
+        playerDemandAav: 24.9,
+        evidence: [
+          'Team offer is 26.0% below current ask.',
+          'Team AAV $18.4M vs player ask $24.9M.',
+        ],
+      },
       counterOffer: {
         years: 5,
         annualSalary: 19.2,
@@ -367,6 +408,9 @@ describe('RosterPage', () => {
 
     expect(getExtensionOffer).toHaveBeenCalledWith('ext-1', 5);
     expect(container.textContent).toContain('Extension Negotiation');
+    expect(container.textContent).toContain('Offer Guardrails');
+    expect(container.textContent).toContain('Payroll Runway');
+    expect(container.textContent).toContain('Over walk-away line');
 
     const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Submit Offer'),
@@ -379,6 +423,8 @@ describe('RosterPage', () => {
 
     expect(negotiateExtension).toHaveBeenCalled();
     expect(container.textContent).toContain('countered');
+    expect(container.textContent).toContain('Negotiation Review');
+    expect(container.textContent).toContain('Team offer is 26.0% below current ask.');
   });
 
   it('persists lineup planning through the roster plan worker action', async () => {

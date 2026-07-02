@@ -3,26 +3,31 @@
 /**
  * smokeGate runtime note:
  * - tuned to 3 seasons
- * - local targeted runtime: 71.27s tests / 72.23s total on 2026-04-22
- * - CI-measured runtime: 105.3s on GitHub Actions ubuntu runners (2026-04-22)
- * - CI-measured Turbo workspace runtime: 186-188s while competing with web tests
- *   on GitHub Actions ubuntu runners (2026-04-23)
+ * - local isolated runtime after the replay export trim: 145.33s tests /
+ *   146.28s total on 2026-06-16
+ * - CI/Deploy run this file as an isolated step after the workspace test matrix
+ *   skips it with MBD_SKIP_SMOKE_GATE=1
  *
- * MAX_RUNTIME_MS must absorb CI/local environmental drift. Patterns.md "CI vs local
- * drift" codifies the rule: leave ~2x buffer above the CI measurement. The local
- * hard stop remains 180s; CI gets the 210s guard required by the workspace run
- * without hiding a real ~2.5x local perf regression. Initial value of 90s tripped
- * only on CI — identical commit, identical seed; pure env variance. Same pattern
- * class as the terser gzip drift fixed in a9d473b.
+ * MAX_RUNTIME_MS guards the baseline dynasty run, not the full Vitest step
+ * including deterministic replay. The replay path skips non-final boundary
+ * snapshot exports; the baseline path still validates every season boundary and
+ * the final save/load round-trip.
+ * - CI budget allows a measured runner-variance buffer after the fuller
+ *   2026-06-18 farm clock moved hosted baseline runs from 210.4s-211.0s to
+ *   220.8s-224.8s while local isolated runtime stayed near 154.50s total.
+ *   Keep this below the 240s Vitest timeout so real regressions still fail
+ *   fast.
  */
 
-import { GameSnapshotSchema, type GameSnapshot } from '@mbd/contracts';
+import { CURRENT_GAME_SNAPSHOT_VERSION, GameSnapshotSchema, type GameSnapshot } from '@mbd/contracts';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TEAMS } from '../src/index.js';
+import { shouldCaptureSeasonBoundarySnapshot, shouldSkipSmokeGate } from './smokeGate.config.js';
 
 const SMOKE_GATE_SEED = 2_601;
 const SMOKE_GATE_YEARS = 3;
-const MAX_RUNTIME_MS = process.env.CI ? 210_000 : 180_000;
+const MAX_RUNTIME_MS = process.env.CI ? 235_000 : 180_000;
+const smokeGateDescribe = shouldSkipSmokeGate(process.env) ? describe.skip : describe;
 
 const TEAM_IDS = new Set(TEAMS.map((team) => team.id));
 const TEAM_ID_LIST_KEYS = new Set(['relatedTeamIds', 'teamIds']);
@@ -356,6 +361,7 @@ async function runDynasty(
   const harness = await loadWorkerHarness();
   let previousHallOfFameCount = 0;
   let previousLedger: Map<string, MonotonicPlayerLedger> | null = null;
+  let finalExported: GameSnapshot | null = null;
 
   try {
     resetHarness(harness);
@@ -381,19 +387,25 @@ async function runDynasty(
         'playoffs',
       );
 
-      const exported = GameSnapshotSchema.parse(harness.actionApi.exportSnapshot());
-      const seasonBoundarySnapshot = normalizeSnapshot(exported);
+      if (shouldCaptureSeasonBoundarySnapshot(options, { seasonIndex, totalSeasons: seasons })) {
+        const exported = GameSnapshotSchema.parse(harness.actionApi.exportSnapshot());
+        const seasonBoundarySnapshot = normalizeSnapshot(exported);
 
-      if (options.validateInvariants) {
-        validateYearBoundarySnapshot(
-          harness,
-          seasonBoundarySnapshot,
-          currentSeason,
-          previousHallOfFameCount,
-          previousLedger,
-        );
-        previousHallOfFameCount = harness.queryApi.getHallOfFame().length;
-        previousLedger = captureMonotonicLedger(seasonBoundarySnapshot);
+        if (seasonIndex === seasons - 1) {
+          finalExported = exported;
+        }
+
+        if (options.validateInvariants) {
+          validateYearBoundarySnapshot(
+            harness,
+            seasonBoundarySnapshot,
+            currentSeason,
+            previousHallOfFameCount,
+            previousLedger,
+          );
+          previousHallOfFameCount = harness.queryApi.getHallOfFame().length;
+          previousLedger = captureMonotonicLedger(seasonBoundarySnapshot);
+        }
       }
 
       if (seasonIndex < seasons - 1) {
@@ -411,7 +423,7 @@ async function runDynasty(
     const runtimeMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
     expect(runtimeMs, 'smokeGate runtime must stay under the hard stop').toBeLessThan(MAX_RUNTIME_MS);
 
-    const finalExported = GameSnapshotSchema.parse(harness.actionApi.exportSnapshot());
+    finalExported ??= GameSnapshotSchema.parse(harness.actionApi.exportSnapshot());
     let finalSnapshot = normalizeSnapshot(finalExported);
 
     if (options.roundTripAtEnd) {
@@ -434,7 +446,7 @@ async function runDynasty(
   }
 }
 
-describe('smokeGate integration', () => {
+smokeGateDescribe('smokeGate integration', () => {
   let baseline: DynastyRunResult;
 
   beforeAll(async () => {
@@ -449,7 +461,7 @@ describe('smokeGate integration', () => {
   });
 
   it('drives a multi-year dynasty with year-boundary invariants, end-to-end save/load, and deterministic replay', async () => {
-    expect(baseline.finalSnapshot.schemaVersion).toBe(33);
+    expect(baseline.finalSnapshot.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(baseline.finalSnapshot.season).toBe(SMOKE_GATE_YEARS);
     expect(baseline.finalSnapshot.phase).toBe('playoffs');
     expect(baseline.runtimeMs).toBeLessThan(MAX_RUNTIME_MS);

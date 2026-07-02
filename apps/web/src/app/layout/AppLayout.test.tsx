@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './AppLayout';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-import { scheduleAutoSave } from '@/shared/lib/saveSystem';
+import { saveGameById } from '@/shared/lib/saveSystem';
 import { getAudioEngine } from '@/shared/lib/audio';
 
 vi.mock('./Sidebar', () => ({
@@ -46,7 +46,7 @@ vi.mock('@/shared/lib/logger', () => ({
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
-const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
+const mockedSaveGameById = vi.mocked(saveGameById);
 const mockedGetAudioEngine = vi.mocked(getAudioEngine);
 const audioEngineMock = {
   playEffect: vi.fn(),
@@ -862,7 +862,7 @@ describe('AppLayout', () => {
 
     expect(worker.simDay).not.toHaveBeenCalled();
     expect(worker.exportSnapshot).not.toHaveBeenCalled();
-    expect(mockedScheduleAutoSave).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
   });
 
   it('maps ambient audio to the requested route contexts', async () => {
@@ -1111,7 +1111,16 @@ describe('AppLayout', () => {
     });
 
     expect(worker.exportSnapshot).toHaveBeenCalled();
-    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      'save-slot-3',
+      expect.stringContaining('Alex Rivera'),
+      expect.any(Object),
+      expect.objectContaining({
+        slotNumber: 3,
+        parentSaveId: null,
+        isRootSave: true,
+      }),
+    );
   });
 
   it('auto-saves active-slot day and week advances from the global controls', async () => {
@@ -1197,8 +1206,20 @@ describe('AppLayout', () => {
     expect(worker.simDay).toHaveBeenCalledTimes(1);
     expect(worker.simWeek).toHaveBeenCalledTimes(1);
     expect(worker.exportSnapshot).toHaveBeenCalledTimes(2);
-    expect(mockedScheduleAutoSave).toHaveBeenNthCalledWith(1, 3, expect.stringContaining('Alex Rivera'), expect.any(Object));
-    expect(mockedScheduleAutoSave).toHaveBeenNthCalledWith(2, 3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+    expect(mockedSaveGameById).toHaveBeenNthCalledWith(
+      1,
+      'save-slot-3',
+      expect.stringContaining('Alex Rivera'),
+      expect.any(Object),
+      expect.objectContaining({ slotNumber: 3, parentSaveId: null, isRootSave: true }),
+    );
+    expect(mockedSaveGameById).toHaveBeenNthCalledWith(
+      2,
+      'save-slot-3',
+      expect.stringContaining('Alex Rivera'),
+      expect.any(Object),
+      expect.objectContaining({ slotNumber: 3, parentSaveId: null, isRootSave: true }),
+    );
   });
 
   it('preserves the autosave even when a post-sim shell refresh fails', async () => {
@@ -1277,7 +1298,16 @@ describe('AppLayout', () => {
 
     expect(worker.simDay).toHaveBeenCalledTimes(1);
     expect(worker.exportSnapshot).toHaveBeenCalledTimes(1);
-    expect(mockedScheduleAutoSave).toHaveBeenCalledWith(3, expect.stringContaining('Alex Rivera'), expect.any(Object));
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      'save-slot-3',
+      expect.stringContaining('Alex Rivera'),
+      expect.any(Object),
+      expect.objectContaining({
+        slotNumber: 3,
+        parentSaveId: null,
+        isRootSave: true,
+      }),
+    );
   });
 
   it('ignores rapid duplicate global sim input while a worker mutation is in flight', async () => {

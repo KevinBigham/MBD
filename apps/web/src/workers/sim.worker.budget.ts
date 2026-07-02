@@ -89,7 +89,7 @@ export function getTeamFreeAgencyAppealScore(
     ? state.franchise?.gmPhilosophy?.spendingStyle === 'big_spender'
       ? 5
       : state.franchise?.gmPhilosophy?.spendingStyle === 'penny_pincher'
-        ? -5
+        ? -6
         : 1
     : 0;
   return Math.max(0, Math.min(100, Math.round((chemistryScore * 0.7) + (reputationAppeal * 0.3) + fanModifier + spendingModifier)));

@@ -1,39 +1,15 @@
 import { NavLink } from 'react-router-dom';
-import {
-  Activity,
-  Award,
-  BarChart3,
-  Briefcase,
-  Building2,
-  Users,
-  User,
-  BriefcaseBusiness,
-  DollarSign,
-  Search,
-  FileText,
-  ArrowLeftRight,
-  HandCoins,
-  Flame,
-  MoreHorizontal,
-  Scale,
-  Snowflake,
-  Trophy,
-  Target,
-  TrendingUp,
-  CalendarDays,
-  CalendarRange,
-  Inbox,
-  Newspaper,
-  History,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  X,
-} from 'lucide-react';
+import { MoreHorizontal, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { getAudioEngine } from '@/shared/lib/audio';
+import {
+  MOBILE_PRIMARY_ROUTES,
+  NAVIGATION_GROUPS,
+  type NavigationGroup,
+  type NavigationItem as RegistryNavigationItem,
+} from './navigationRegistry';
 
 interface NavItem {
   to: string;
@@ -42,38 +18,21 @@ interface NavItem {
   badge?: number | null;
 }
 
-const baseMainNavItems: NavItem[] = [
-  { to: '/dashboard', label: 'Front Office', icon: <Briefcase className="h-5 w-5" /> },
-  { to: '/front-office', label: 'Owner Intel', icon: <Building2 className="h-5 w-5" /> },
-  { to: '/roster', label: 'Roster', icon: <Users className="h-5 w-5" /> },
-  { to: '/minors', label: 'Minors', icon: <Users className="h-5 w-5" /> },
-  { to: '/players', label: 'Players', icon: <User className="h-5 w-5" /> },
-  { to: '/scouting', label: 'Scouting', icon: <Search className="h-5 w-5" /> },
-  { to: '/staff', label: 'Staff', icon: <BriefcaseBusiness className="h-5 w-5" /> },
-  { to: '/finance', label: 'Finance', icon: <DollarSign className="h-5 w-5" /> },
-  { to: '/draft', label: 'Draft', icon: <FileText className="h-5 w-5" /> },
-  { to: '/free-agency', label: 'Free Agency', icon: <HandCoins className="h-5 w-5" /> },
-  { to: '/offseason', label: 'Offseason', icon: <Snowflake className="h-5 w-5" /> },
-  { to: '/players/compare', label: 'Compare', icon: <Scale className="h-5 w-5" /> },
-  { to: '/trade', label: 'Trades', icon: <ArrowLeftRight className="h-5 w-5" /> },
-  { to: '/league/standings', label: 'League', icon: <Trophy className="h-5 w-5" /> },
-  { to: '/stats', label: 'Stats', icon: <BarChart3 className="h-5 w-5" /> },
-  { to: '/records', label: 'Records', icon: <TrendingUp className="h-5 w-5" /> },
-  { to: '/rivalries', label: 'Rivalries', icon: <Flame className="h-5 w-5" /> },
-  { to: '/schedule', label: 'Schedule', icon: <CalendarDays className="h-5 w-5" /> },
-  { to: '/pulse', label: 'Pulse', icon: <Activity className="h-5 w-5" /> },
-  { to: '/playoffs', label: 'Playoffs', icon: <CalendarRange className="h-5 w-5" /> },
-  { to: '/press-room', label: 'Press Room', icon: <Newspaper className="h-5 w-5" /> },
-  { to: '/news', label: 'News', icon: <Inbox className="h-5 w-5" /> },
-  { to: '/history', label: 'History', icon: <History className="h-5 w-5" /> },
-  { to: '/career', label: 'GM Career', icon: <Award className="h-5 w-5" /> },
-  { to: '/achievements', label: 'Trophies', icon: <Trophy className="h-5 w-5" /> },
-  { to: '/scenarios', label: 'Challenges', icon: <Target className="h-5 w-5" /> },
-];
+interface NavItemGroup {
+  id: NavigationGroup['id'];
+  label: string;
+  items: NavItem[];
+}
 
-const bottomNavItems: NavItem[] = [
-  { to: '/settings', label: 'Settings', icon: <Settings className="h-5 w-5" /> },
-];
+function toNavItem(item: RegistryNavigationItem, badge?: number | null): NavItem {
+  const Icon = item.icon;
+  return {
+    to: item.to,
+    label: item.label,
+    icon: <Icon className="h-5 w-5 shrink-0" />,
+    badge,
+  };
+}
 
 function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   return (
@@ -109,14 +68,6 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   );
 }
 
-const MOBILE_PRIMARY_ROUTES = [
-  '/dashboard',
-  '/roster',
-  '/draft',
-  '/trade',
-  '/league/standings',
-] as const;
-
 function MobileTabLink({ item }: { item: NavItem }) {
   return (
     <NavLink
@@ -137,11 +88,11 @@ function MobileTabLink({ item }: { item: NavItem }) {
 }
 
 function MobileMoreDrawer({
-  items,
+  groups,
   open,
   onClose,
 }: {
-  items: NavItem[];
+  groups: NavItemGroup[];
   open: boolean;
   onClose: () => void;
 }) {
@@ -171,27 +122,36 @@ function MobileMoreDrawer({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="grid grid-cols-4 gap-1 p-3">
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => {
-                getAudioEngine().playEffect('tab_switch');
-                onClose();
-              }}
-              className={({ isActive }) =>
-                [
-                  'flex min-h-11 flex-col items-center gap-1 rounded-lg p-3 text-center transition-colors',
-                  isActive
-                    ? 'bg-accent-primary/10 text-accent-primary'
-                    : 'text-dynasty-muted hover:bg-dynasty-elevated hover:text-dynasty-text',
-                ].join(' ')
-              }
-            >
-              {item.icon}
-              <span className="font-heading text-[10px]">{item.label}</span>
-            </NavLink>
+        <nav className="space-y-4 p-3">
+          {groups.map((group) => (
+            <section key={group.id} aria-label={`${group.label} navigation`}>
+              <h3 className="px-1 pb-1 font-heading text-[10px] font-semibold uppercase tracking-wider text-dynasty-muted">
+                {group.label}
+              </h3>
+              <div className="grid grid-cols-4 gap-1">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => {
+                      getAudioEngine().playEffect('tab_switch');
+                      onClose();
+                    }}
+                    className={({ isActive }) =>
+                      [
+                        'flex min-h-11 flex-col items-center gap-1 rounded-lg p-3 text-center transition-colors',
+                        isActive
+                          ? 'bg-accent-primary/10 text-accent-primary'
+                          : 'text-dynasty-muted hover:bg-dynasty-elevated hover:text-dynasty-text',
+                      ].join(' ')
+                    }
+                  >
+                    {item.icon}
+                    <span className="font-heading text-[10px]">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </section>
           ))}
         </nav>
       </div>
@@ -199,13 +159,19 @@ function MobileMoreDrawer({
   );
 }
 
-export function MobileTabBar({ items }: { items: NavItem[] }) {
+export function MobileTabBar({ groups }: { groups: NavItemGroup[] }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const items = groups.flatMap((group) => group.items);
   const tabItems = MOBILE_PRIMARY_ROUTES
     .map((route) => items.find((item) => item.to === route))
     .filter((item): item is NavItem => item != null);
   const primaryRoutes = new Set<string>(MOBILE_PRIMARY_ROUTES);
-  const moreItems = items.filter((item) => !primaryRoutes.has(item.to));
+  const moreGroups = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !primaryRoutes.has(item.to)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <>
@@ -224,7 +190,7 @@ export function MobileTabBar({ items }: { items: NavItem[] }) {
           <span>More</span>
         </button>
       </nav>
-      <MobileMoreDrawer items={moreItems} open={moreOpen} onClose={() => setMoreOpen(false)} />
+      <MobileMoreDrawer groups={moreGroups} open={moreOpen} onClose={() => setMoreOpen(false)} />
     </>
   );
 }
@@ -248,15 +214,20 @@ export function Sidebar() {
     })();
   }, [day, isInitialized, phase, season, worker]);
 
-  const mainNavItems: NavItem[] = baseMainNavItems.map((item) => {
-    if (item.to === '/press-room') {
-      return { ...item, badge: pressRoomCount };
-    }
-    if (item.to === '/history') {
-      return { ...item, badge: achievementCount };
-    }
-    return item;
-  });
+  const mainNavGroups: NavItemGroup[] = NAVIGATION_GROUPS.map((group) => ({
+    id: group.id,
+    label: group.label,
+    items: group.items.map((item) => {
+      let badge: number | null = null;
+      if (item.to === '/press-room') {
+        badge = pressRoomCount;
+      }
+      if (item.to === '/history') {
+        badge = achievementCount;
+      }
+      return toNavItem(item, badge);
+    }),
+  }));
 
   return (
     <>
@@ -288,21 +259,27 @@ export function Sidebar() {
 
         {/* Main navigation */}
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2" aria-label="Main navigation">
-          {mainNavItems.map((item) => (
-            <SidebarLink key={item.to} item={item} collapsed={collapsed} />
-          ))}
-        </nav>
-
-        {/* Bottom navigation */}
-        <nav className="border-t border-dynasty-border p-2" aria-label="Settings">
-          {bottomNavItems.map((item) => (
-            <SidebarLink key={item.to} item={item} collapsed={collapsed} />
+          {mainNavGroups.map((group) => (
+            <section key={group.id} aria-label={`${group.label} navigation`} className="py-1">
+              {collapsed ? (
+                <div className="mx-2 my-1 border-t border-dynasty-border/70" aria-hidden />
+              ) : (
+                <h2 className="px-3 pb-1 pt-2 font-heading text-[10px] font-semibold uppercase tracking-wider text-dynasty-muted">
+                  {group.label}
+                </h2>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <SidebarLink key={item.to} item={item} collapsed={collapsed} />
+                ))}
+              </div>
+            </section>
           ))}
         </nav>
       </aside>
 
       {/* Mobile bottom tab bar — visible only on small screens */}
-      <MobileTabBar items={[...mainNavItems, ...bottomNavItems]} />
+      <MobileTabBar groups={mainNavGroups} />
     </>
   );
 }
