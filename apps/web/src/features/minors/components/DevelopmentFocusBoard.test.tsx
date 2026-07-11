@@ -72,6 +72,11 @@ describe('DevelopmentFocusBoard', () => {
     expect(content).toContain('Recalibrate Plan');
     expect(content).toContain('Reset the current development plan');
     expect(content).toContain('Below expectations trend');
+    const cards = container.querySelectorAll('[data-testid="development-focus-card"]');
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.getAttribute('data-focus-category')).toBe('promotion_window');
+    expect(cards[0]?.getAttribute('data-player-id')).toBe('prospect-ready');
+    expect(cards[0]?.getAttribute('data-player-level')).toBe('AAA');
   });
 
   it('delegates development-plan application from priority cards', async () => {
@@ -92,6 +97,12 @@ describe('DevelopmentFocusBoard', () => {
     expect(container.textContent).toContain('Jules Caldera: refinement plan applied.');
     const buttons = [...container.querySelectorAll('button')];
     expect(buttons.filter((button) => button.textContent === 'Apply plan')).toHaveLength(2);
+    expect(buttons[0]?.getAttribute('aria-label')).toBe(
+      'Apply development plan for Marco Ascension',
+    );
+    expect(buttons[1]?.getAttribute('aria-label')).toBe(
+      'Apply development plan for Jules Caldera',
+    );
     expect(buttons[1]?.disabled).toBe(true);
 
     await act(async () => {

@@ -39,7 +39,14 @@ export default function DevelopmentFocusBoard({
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {focus.priorities.map((priority) => (
-          <div key={`${priority.category}-${priority.playerId}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+          <div
+            key={`${priority.category}-${priority.playerId}`}
+            data-testid="development-focus-card"
+            data-focus-category={priority.category}
+            data-player-id={priority.playerId}
+            data-player-level={priority.level}
+            className="rounded border border-dynasty-border bg-dynasty-elevated p-3"
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="font-heading text-sm text-dynasty-text">{priority.playerName}</div>
@@ -54,6 +61,7 @@ export default function DevelopmentFocusBoard({
             {onApplyPlan ? (
               <button
                 type="button"
+                aria-label={`Apply development plan for ${priority.playerName}`}
                 disabled={busyPlayerId === priority.playerId}
                 onClick={() => onApplyPlan(priority)}
                 className="mt-3 inline-flex items-center gap-2 rounded-md border border-accent-primary/50 bg-accent-primary/10 px-3 py-2 font-heading text-xs font-semibold text-accent-primary transition-colors hover:bg-accent-primary/20 disabled:cursor-not-allowed disabled:border-dynasty-border disabled:bg-dynasty-surface disabled:text-dynasty-muted"

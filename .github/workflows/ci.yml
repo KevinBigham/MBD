@@ -10,6 +10,7 @@ jobs:
   verify:
     name: Typecheck → Test → Build
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +34,20 @@ jobs:
 
       - name: Verify sim-core determinism snapshot
         run: cd packages/sim-core && node ./node_modules/vitest/vitest.mjs run tests/determinism.snapshot.test.ts
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @mbd/web exec playwright install --with-deps chromium
+
+      - name: Verify hard-reload trust journey
+        run: pnpm e2e:reload-smoke
+
+      - name: Upload Playwright failure evidence
+        if: ${{ !cancelled() && failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-reload-smoke
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 14

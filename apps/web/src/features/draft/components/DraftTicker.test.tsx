@@ -90,6 +90,10 @@ describe('DraftTicker', () => {
     expect(container.textContent).toContain('Maya College');
     expect(container.textContent).toContain('QO');
     expect(container.textContent).toContain('QO for Rafael Anchor from Boston Noreasters');
+    const tickerPicks = container.querySelectorAll('[data-testid="draft-ticker-pick"]');
+    expect(tickerPicks).toHaveLength(2);
+    expect(tickerPicks[0]?.getAttribute('data-player-id')).toBe('prospect-1');
+    expect(tickerPicks[1]?.getAttribute('data-player-id')).toBe('prospect-2');
   });
 
   it('renders the empty ticker state', async () => {

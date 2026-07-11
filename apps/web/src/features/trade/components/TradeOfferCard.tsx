@@ -34,7 +34,12 @@ export default function TradeOfferCard({
       : 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
 
   return (
-    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+    <article
+      aria-label={`Trade offer from ${offer.fromTeamName}`}
+      data-testid="trade-offer-card"
+      data-from-team-abbreviation={offer.fromTeamAbbreviation}
+      className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4"
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="font-heading text-sm font-semibold text-dynasty-textBright">{offer.fromTeamName}</p>
@@ -89,7 +94,13 @@ export default function TradeOfferCard({
           <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-accent-success">They Offer</p>
           <div className="mt-2 space-y-1">
             {offer.offeringAssets.map((asset) => (
-              <p key={asset.key} className="font-data text-xs text-dynasty-text">
+              <p
+                key={asset.key}
+                data-testid="trade-offering-asset"
+                data-asset-type={asset.type}
+                data-player-id={asset.playerId}
+                className="font-data text-xs text-dynasty-text"
+              >
                 {asset.label} · {asset.detail}
               </p>
             ))}
@@ -99,7 +110,13 @@ export default function TradeOfferCard({
           <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-accent-warning">They Want</p>
           <div className="mt-2 space-y-1">
             {offer.requestingAssets.map((asset) => (
-              <p key={asset.key} className="font-data text-xs text-dynasty-text">
+              <p
+                key={asset.key}
+                data-testid="trade-requesting-asset"
+                data-asset-type={asset.type}
+                data-player-id={asset.playerId}
+                className="font-data text-xs text-dynasty-text"
+              >
                 {asset.label} · {asset.detail}
               </p>
             ))}
@@ -127,6 +144,6 @@ export default function TradeOfferCard({
           <X className="h-4 w-4" /> Decline
         </button>
       </div>
-    </div>
+    </article>
   );
 }

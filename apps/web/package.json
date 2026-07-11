@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "pree2e:reload-smoke": "vite build",
+    "e2e:reload-smoke": "playwright test --config=playwright.config.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project e2e/tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
@@ -30,6 +32,8 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "20.19.43",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",

@@ -78,6 +78,8 @@ export function DraftProspectsPanel({
             return (
               <tr
                 key={prospect.id}
+                data-testid="draft-prospect-row"
+                data-prospect-id={prospect.id}
                 onClick={() => onSelect(prospect.id)}
                 className={`cursor-pointer border-b border-dynasty-border/50 text-sm transition-colors ${
                   selected ? 'bg-accent-primary/12' : 'hover:bg-dynasty-elevated'

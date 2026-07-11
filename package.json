@@ -17,6 +17,7 @@
     "verify:structure": "knip --no-exit-code",
     "verify:cycles": "madge --circular --extensions ts,tsx --ts-config tsconfig.json packages/sim-core/src apps/web/src || true",
     "verify:determinism": "cd packages/sim-core && node ./node_modules/vitest/vitest.mjs run tests/determinism.snapshot.test.ts",
+    "e2e:reload-smoke": "pnpm --filter @mbd/web run e2e:reload-smoke",
     "verify:quality": "pnpm run verify:structure && pnpm run verify:cycles && pnpm run verify:determinism",
     "playtest": "pnpm --filter @mbd/sim-core run playtest",
     "playtest:sample": "pnpm --filter @mbd/sim-core run playtest:sample",

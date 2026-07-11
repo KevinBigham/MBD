@@ -94,6 +94,16 @@ describe('TradeOfferCard', () => {
     expect(container.textContent).toContain('Team need');
     expect(container.textContent).toContain('GM personality');
     expect(container.textContent).toContain('Market phase');
+    const offerCard = container.querySelector('[data-testid="trade-offer-card"]');
+    expect(offerCard?.tagName).toBe('ARTICLE');
+    expect(offerCard?.getAttribute('aria-label')).toBe('Trade offer from Boston Noreasters');
+    expect(offerCard?.getAttribute('data-from-team-abbreviation')).toBe('BOS');
+    const offeringAsset = container.querySelector('[data-testid="trade-offering-asset"]');
+    expect(offeringAsset?.getAttribute('data-asset-type')).toBe('player');
+    expect(offeringAsset?.getAttribute('data-player-id')).toBe('bos-1');
+    const requestingAsset = container.querySelector('[data-testid="trade-requesting-asset"]');
+    expect(requestingAsset?.getAttribute('data-asset-type')).toBe('player');
+    expect(requestingAsset?.getAttribute('data-player-id')).toBe('nyy-1');
 
     await act(async () => {
       (Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Accept')) as HTMLButtonElement).click();

@@ -53,6 +53,8 @@ export function DraftTicker({ picks, progressLabel }: DraftTickerProps) {
         picks.map((pick) => (
           <div
             key={`${pick.pickNumber}-${pick.playerId}`}
+            data-testid="draft-ticker-pick"
+            data-player-id={pick.playerId}
             className={`mb-2 rounded border px-3 py-2 ${toneClasses(pick.tone)}`}
           >
             <div className="flex items-start justify-between gap-3">

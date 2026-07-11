@@ -84,6 +84,8 @@ describe('DraftProspectsPanel', () => {
     expect(body?.className).toContain('max-h-[32rem]');
     const rows = prospectRows(container);
     expect(rows[0]?.textContent).toContain('Maya College');
+    expect(rows[0]?.dataset.testid).toBe('draft-prospect-row');
+    expect(rows[0]?.dataset.prospectId).toBe('prospect-2');
     expect(rows[1]?.textContent).toContain('Eli Shortstop');
     expect(rows[1]?.textContent).toContain('4');
     expect(rows[1]?.textContent).toContain('SS');
