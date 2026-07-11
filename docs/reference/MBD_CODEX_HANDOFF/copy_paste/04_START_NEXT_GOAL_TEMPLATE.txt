@@ -1,0 +1,6 @@
+# Replace <GOAL_FILE> and <SLICE_ID>, then use in a fresh worktree/thread.
+
+/plan Use $mbd-implement-slice to prepare <SLICE_ID> from docs/codex/goals/<GOAL_FILE>. Read all applicable AGENTS.md and PLANS.md, inspect live source/tests and merged dependencies, create docs/codex/runs/<SLICE_ID>/SOURCE_TRUTH.md and PLAN.md, and pause only for a defined stop condition.
+
+# After the plan is source-grounded:
+/goal Implement docs/codex/goals/<GOAL_FILE> using $mbd-implement-slice and its approved plan. Complete every checkpoint and proof, run full gates and adversarial review, fix all P0/P1 findings, and stop only when the goal's done state is proven or a precise blocker is documented.

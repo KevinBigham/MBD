@@ -1,0 +1,1 @@
+Resolve every P0/P1 finding from the most recent MBD slice review without expanding the active goal. Update PLAN.md and COMPLETION.md, add regression tests for each corrected defect, rerun targeted tests, browser/reload proof, and all full repository gates, then run one final adversarial review. Stop only at MERGE_READY or a precise documented blocker.
