@@ -37,7 +37,12 @@ export function App() {
           </BrowserRouter>
         </AppBootGate>
         <Toaster
-          position="bottom-right"
+          theme="dark"
+          position="top-center"
+          offset={{ top: 64 }}
+          mobileOffset={{ top: 160 }}
+          closeButton
+          containerAriaLabel="Save and application notifications"
           toastOptions={{
             style: {
               background: highContrast ? HC_BASE : dynasty.surface,

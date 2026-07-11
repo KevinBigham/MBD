@@ -25,6 +25,10 @@ vi.mock('@/shared/lib/activeSavePersistence', () => ({
   retryActiveSavePersistence: vi.fn().mockResolvedValue({ saved: true, saveName: 'Dynasty' }),
 }));
 
+vi.mock('./activeSaveRecoveryToast', () => ({
+  useActiveSaveRecoveryToast: vi.fn(),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedUseActiveSavePersistenceStatus = vi.mocked(useActiveSavePersistenceStatus);
@@ -104,6 +108,7 @@ describe('TopBar', () => {
       lastSavedAt: null,
       errorMessage: null,
       failureKind: null,
+      recovery: null,
     });
 
     mockedUseWorker.mockReturnValue({
@@ -169,6 +174,7 @@ describe('TopBar', () => {
       lastSavedAt: '2026-04-02T19:42:03.000Z',
       errorMessage: null,
       failureKind: null,
+      recovery: null,
     });
 
     await act(async () => {
@@ -203,6 +209,7 @@ describe('TopBar', () => {
       lastSavedAt: '2026-04-02T19:42:03.000Z',
       errorMessage: 'QuotaExceededError',
       failureKind: 'storage',
+      recovery: null,
     });
 
     await act(async () => {
@@ -218,10 +225,13 @@ describe('TopBar', () => {
     expect(status?.textContent).toContain('Save failed');
     expect(status?.textContent).toContain('Retry');
     expect(status?.getAttribute('aria-live')).toBe('assertive');
-    expect(status?.className).toContain('z-[80]');
+    expect(status?.className).toContain('order-4');
+    expect(status?.className).toContain('lg:order-3');
+    expect(status?.className).not.toContain('fixed');
     expect(container.querySelector('[data-testid="save-persistence-summary"]')?.textContent)
       .toMatch(/^Last saved .+ · 1 pending write$/);
 
+    mockedRetryActiveSavePersistence.mockRejectedValueOnce(new Error('Still unavailable'));
     await act(async () => {
       container.querySelector('button[aria-label="Retry failed save"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
@@ -242,6 +252,7 @@ describe('TopBar', () => {
       lastSavedAt: '2026-04-02T19:42:03.000Z',
       errorMessage: null,
       failureKind: null,
+      recovery: null,
     });
 
     await act(async () => {
@@ -293,8 +304,9 @@ describe('TopBar', () => {
   });
 
   it('maps each storage failure kind to distinct, accessible copy with retry', async () => {
-    const cases: Array<{ failureKind: 'quota' | 'indexeddb' | 'storage' | 'export'; copy: string; errorMessage: string }> = [
+    const cases: Array<{ failureKind: 'quota' | 'unavailable' | 'indexeddb' | 'storage' | 'export'; copy: string; errorMessage: string }> = [
       { failureKind: 'quota', copy: 'Save failed — storage full', errorMessage: 'QuotaExceededError' },
+      { failureKind: 'unavailable', copy: 'Save failed — browser storage unavailable', errorMessage: 'SecurityError' },
       { failureKind: 'indexeddb', copy: 'Save failed — browser database error', errorMessage: 'TransactionInactiveError' },
       { failureKind: 'storage', copy: 'Save failed — storage error', errorMessage: 'Persistent storage unavailable' },
       { failureKind: 'export', copy: 'Save failed — could not read game', errorMessage: 'Worker export failed' },
@@ -313,6 +325,7 @@ describe('TopBar', () => {
         lastSavedAt: null,
         errorMessage: testCase.errorMessage,
         failureKind: testCase.failureKind,
+        recovery: null,
       });
 
       const caseContainer = document.createElement('div');

@@ -13,12 +13,15 @@ import {
   type ActiveSavePersistenceFailureKind,
 } from '@/shared/lib/activeSavePersistence';
 import type { SeasonFlowState } from './seasonFlow';
+import { useActiveSaveRecoveryToast } from './activeSaveRecoveryToast';
 import { formatSavePersistenceSummary } from './savePersistenceSummary';
 
 function describeSaveFailure(failureKind: ActiveSavePersistenceFailureKind | null): string {
   switch (failureKind) {
     case 'quota':
       return 'Save failed — storage full';
+    case 'unavailable':
+      return 'Save failed — browser storage unavailable';
     case 'indexeddb':
       return 'Save failed — browser database error';
     case 'storage':
@@ -58,6 +61,7 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   const location = useLocation();
   const online = useOnlineStatus();
   const saveStatus = useActiveSavePersistenceStatus(activeSaveId);
+  useActiveSaveRecoveryToast(activeSaveId, saveStatus);
   const [unreadNewsIds, setUnreadNewsIds] = useState<Set<string>>(() => new Set());
   const helpContent = getContextualHelpForPath(location.pathname);
   const phaseLabel = flow?.phaseLabel ?? `Season ${season} — Day ${day}`;
@@ -75,9 +79,36 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
     : saveStatus.state === 'failed'
       ? describeSaveFailure(saveStatus.failureKind)
       : 'Saved';
-  const saveStatusPositionClass = saveStatus.state === 'failed'
-    ? 'fixed right-3 top-3 z-[80] shadow-2xl shadow-black/30 sm:right-4'
-    : '';
+  const renderSaveStatus = (positionClass: string) => (
+    <span
+      data-testid="save-persistence-status"
+      data-failure-kind={saveStatus.state === 'failed' ? saveStatus.failureKind ?? 'unknown' : undefined}
+      title={saveStatus.state === 'failed' ? saveStatus.errorMessage ?? undefined : undefined}
+      role="status"
+      aria-live={saveStatus.state === 'failed' ? 'assertive' : 'polite'}
+      className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-data text-[11px] ${positionClass} ${
+        saveStatus.state === 'failed'
+          ? 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger'
+          : saveStatus.state === 'saving'
+            ? 'border-accent-info/35 bg-accent-info/10 text-accent-info'
+            : 'border-accent-success/35 bg-accent-success/10 text-accent-success'
+      }`}
+    >
+      <span>{saveStatusLabel}</span>
+      {saveStatus.state === 'failed' && saveStatus.canRetry ? (
+        <button
+          type="button"
+          aria-label="Retry failed save"
+          className="rounded border border-current px-1.5 py-0.5 font-heading text-[10px] uppercase"
+          onClick={() => {
+            void retryActiveSavePersistence(activeSaveId).catch(() => undefined);
+          }}
+        >
+          Retry
+        </button>
+      ) : null}
+    </span>
+  );
 
   const refreshUnreadNews = useCallback(async () => {
     if (!isInitialized || !worker.isReady || typeof worker.getNews !== 'function') {
@@ -153,38 +184,17 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
         </span>
       )}
 
+      {saveStatusVisible && saveStatus.state === 'failed'
+        ? renderSaveStatus(
+          'order-4 mx-4 mb-2 w-[calc(100%-2rem)] justify-between lg:order-3 lg:mx-0 lg:mb-0 lg:w-auto lg:justify-start',
+        )
+        : null}
+
       {/* Right: Help + Command palette trigger + Settings */}
-      <div className="order-2 flex h-12 shrink-0 items-center gap-2 pr-4 lg:order-3">
-        {saveStatusVisible && (
-          <span
-            data-testid="save-persistence-status"
-            data-failure-kind={saveStatus.state === 'failed' ? saveStatus.failureKind ?? 'unknown' : undefined}
-            title={saveStatus.state === 'failed' ? saveStatus.errorMessage ?? undefined : undefined}
-            role="status"
-            aria-live={saveStatus.state === 'failed' ? 'assertive' : 'polite'}
-            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-data text-[11px] ${saveStatusPositionClass} ${
-              saveStatus.state === 'failed'
-                ? 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger'
-                : saveStatus.state === 'saving'
-                  ? 'border-accent-info/35 bg-accent-info/10 text-accent-info'
-                  : 'border-accent-success/35 bg-accent-success/10 text-accent-success'
-            }`}
-          >
-            <span>{saveStatusLabel}</span>
-            {saveStatus.state === 'failed' && saveStatus.canRetry ? (
-              <button
-                type="button"
-                aria-label="Retry failed save"
-                className="rounded border border-current px-1.5 py-0.5 font-heading text-[10px] uppercase"
-                onClick={() => {
-                  void retryActiveSavePersistence(activeSaveId);
-                }}
-              >
-                Retry
-              </button>
-            ) : null}
-          </span>
-        )}
+      <div className="order-2 flex h-12 shrink-0 items-center gap-2 pr-4 lg:order-4">
+        {saveStatusVisible && saveStatus.state !== 'failed'
+          ? renderSaveStatus('')
+          : null}
         {!online && (
           <span
             className="flex items-center gap-1 rounded-md bg-accent-warning/10 px-2 py-1 font-data text-[11px] text-accent-warning"

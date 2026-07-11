@@ -1,5 +1,7 @@
+import { parseGameSnapshot } from '@mbd/contracts';
 import {
   deleteSaveById,
+  exportSnapshotToJson,
   listBranches,
   loadGameById,
   saveGameById,
@@ -10,9 +12,24 @@ export type ActiveSavePersistenceState = 'idle' | 'saving' | 'saved' | 'failed';
 export type ActiveSavePersistenceFailureKind =
   | 'export'
   | 'quota'
+  | 'unavailable'
   | 'indexeddb'
   | 'storage'
   | 'unknown';
+
+export type ActiveSaveRecoveryPhase =
+  | 'retry_scheduled'
+  | 'retrying'
+  | 'fallback_ready'
+  | 'recovered';
+
+export interface ActiveSaveRecoveryStatus {
+  phase: ActiveSaveRecoveryPhase;
+  automaticAttempts: number;
+  automaticAttemptLimit: number;
+  failureKind: ActiveSavePersistenceFailureKind;
+  errorMessage: string;
+}
 
 export interface ActiveSavePersistenceStatus {
   state: ActiveSavePersistenceState;
@@ -25,6 +42,14 @@ export interface ActiveSavePersistenceStatus {
   lastSavedAt: string | null;
   errorMessage: string | null;
   failureKind: ActiveSavePersistenceFailureKind | null;
+  recovery: ActiveSaveRecoveryStatus | null;
+}
+
+export interface ActiveSavePersistenceBackup {
+  saveId: string;
+  generation: number;
+  filename: string;
+  payload: string;
 }
 
 interface PersistActiveSaveSnapshotOptions {
@@ -48,6 +73,14 @@ interface PersistedSnapshotJob {
   activeSaveSlot: number | null | undefined;
   saveName: string;
   snapshot: object;
+  writeReason: 'capture' | 'automatic' | 'manual';
+}
+
+interface RecoveryEpisode {
+  automaticAttempts: number;
+  automaticEnabled: boolean;
+  failureKind: ActiveSavePersistenceFailureKind;
+  errorMessage: string;
 }
 
 interface DeferredPersist {
@@ -70,11 +103,35 @@ interface SaveCoordinatorState {
   captureQuiescenceWaiters: Array<() => void>;
   captureResumeWaiters: Array<() => void>;
   quiescenceWaiters: Array<() => void>;
+  recoveryEpisode: RecoveryEpisode | null;
+  recoveryTimer: ReturnType<typeof setTimeout> | null;
+  recoveryEpoch: number;
 }
+
+export const ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS = [1_000, 3_000] as const;
 
 const states = new Map<string, SaveCoordinatorState>();
 const listeners = new Set<() => void>();
 let latestSaveId: string | null = null;
+let activeRecoverySaveId: string | null = null;
+let activeRecoveryOwnerActivated = false;
+
+// Bootstrap/test callers may touch independent save IDs before a dynasty is
+// activated. Once activation names the imported worker state, stale closures
+// for any other save must not reclaim persistence or recovery ownership.
+function claimActiveRecoverySave(saveId: string): boolean {
+  if (activeRecoveryOwnerActivated && activeRecoverySaveId !== saveId) {
+    return false;
+  }
+  if (!activeRecoveryOwnerActivated) {
+    activeRecoverySaveId = saveId;
+  }
+  return true;
+}
+
+function activatedOwnerExcludes(saveId: string): boolean {
+  return activeRecoveryOwnerActivated && activeRecoverySaveId !== saveId;
+}
 
 const IDLE_STATUS: ActiveSavePersistenceStatus = {
   state: 'idle',
@@ -87,6 +144,7 @@ const IDLE_STATUS: ActiveSavePersistenceStatus = {
   lastSavedAt: null,
   errorMessage: null,
   failureKind: null,
+  recovery: null,
 };
 
 function snapshotSeason(snapshot: object, fallbackSeason: number): number {
@@ -108,6 +166,9 @@ function classifyPersistenceFailure(error: unknown, fallbackKind: ActiveSavePers
   const message = error instanceof Error ? `${error.name} ${error.message}` : String(error);
   if (/quota|exceeded/i.test(message)) {
     return 'quota';
+  }
+  if (/securityerror|notallowederror|invalidstateerror|private browsing|incognito|operation is insecure|access denied|storage (?:is )?(?:disabled|unavailable)/i.test(message)) {
+    return 'unavailable';
   }
   if (/indexeddb|dexie|database|transaction|objectstore|constraint|version(?:error)?|blocked|abort/i.test(message)) {
     return 'indexeddb';
@@ -167,6 +228,9 @@ function ensureState(saveId: string): SaveCoordinatorState {
     captureQuiescenceWaiters: [],
     captureResumeWaiters: [],
     quiescenceWaiters: [],
+    recoveryEpisode: null,
+    recoveryTimer: null,
+    recoveryEpoch: 0,
   };
   states.set(saveId, state);
   return state;
@@ -192,6 +256,155 @@ function updateStatus(
     pendingWrites: pendingWrites(state),
   };
   notifyListeners();
+}
+
+function recoveryStatus(
+  episode: RecoveryEpisode,
+  phase: ActiveSaveRecoveryPhase,
+): ActiveSaveRecoveryStatus {
+  return {
+    phase,
+    automaticAttempts: episode.automaticAttempts,
+    automaticAttemptLimit: ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS.length,
+    failureKind: episode.failureKind,
+    errorMessage: episode.errorMessage,
+  };
+}
+
+function isRetainedStorageFailure(kind: ActiveSavePersistenceFailureKind): boolean {
+  return kind === 'quota'
+    || kind === 'unavailable'
+    || kind === 'indexeddb'
+    || kind === 'storage';
+}
+
+function cancelRecoveryTimer(state: SaveCoordinatorState): boolean {
+  const hadTimer = state.recoveryTimer != null;
+  if (state.recoveryTimer != null) {
+    clearTimeout(state.recoveryTimer);
+    state.recoveryTimer = null;
+  }
+  state.recoveryEpoch += 1;
+  return hadTimer;
+}
+
+function clearRecoveryEpisode(state: SaveCoordinatorState): void {
+  cancelRecoveryTimer(state);
+  state.recoveryEpisode = null;
+}
+
+function exposeRecoveryFallback(saveId: string, state: SaveCoordinatorState): void {
+  const episode = state.recoveryEpisode;
+  if (!episode) return;
+  episode.automaticEnabled = false;
+  cancelRecoveryTimer(state);
+  updateStatus(saveId, state, {
+    state: 'failed',
+    canRetry: true,
+    errorMessage: episode.errorMessage,
+    failureKind: episode.failureKind,
+    recovery: recoveryStatus(episode, 'fallback_ready'),
+  });
+}
+
+function queueAutomaticRetry(saveId: string, state: SaveCoordinatorState): void {
+  const episode = state.recoveryEpisode;
+  const retryJob = state.failedJob;
+  if (!episode || !retryJob) return;
+  if (!episode.automaticEnabled
+    || episode.automaticAttempts >= ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS.length) {
+    exposeRecoveryFallback(saveId, state);
+    return;
+  }
+
+  cancelRecoveryTimer(state);
+  const recoveryEpoch = state.recoveryEpoch;
+  const expectedGeneration = retryJob.generation;
+  const nextAttempt = episode.automaticAttempts + 1;
+  const delay = ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[episode.automaticAttempts] ?? 0;
+
+  state.recoveryTimer = setTimeout(() => {
+    state.recoveryTimer = null;
+    if (state.recoveryEpoch !== recoveryEpoch
+      || activeRecoverySaveId !== saveId
+      || state.captureBlocked
+      || state.capturePaused
+      || state.activeCaptures > 0
+      || state.running
+      || state.latestJob
+      || state.failedJob?.generation !== expectedGeneration
+      || !state.recoveryEpisode?.automaticEnabled) {
+      return;
+    }
+
+    state.recoveryEpisode.automaticAttempts = nextAttempt;
+    const automaticJob: PersistedSnapshotJob = {
+      ...state.failedJob,
+      writeReason: 'automatic',
+    };
+    state.latestJob = automaticJob;
+    state.failedJob = null;
+    updateStatus(saveId, state, {
+      state: 'saving',
+      saveName: automaticJob.saveName,
+      canRetry: false,
+      errorMessage: null,
+      failureKind: null,
+      recovery: recoveryStatus(state.recoveryEpisode, 'retrying'),
+    });
+    flushSave(saveId);
+  }, delay);
+
+  updateStatus(saveId, state, {
+    state: 'failed',
+    canRetry: true,
+    errorMessage: episode.errorMessage,
+    failureKind: episode.failureKind,
+    recovery: recoveryStatus(episode, 'retry_scheduled'),
+  });
+}
+
+function resumeAutomaticRecovery(saveId: string, state: SaveCoordinatorState): void {
+  if (state.captureBlocked
+    || state.capturePaused
+    || state.activeCaptures > 0
+    || state.running
+    || state.latestJob
+    || state.recoveryTimer
+    || !state.failedJob
+    || !state.recoveryEpisode?.automaticEnabled) {
+    return;
+  }
+  queueAutomaticRetry(saveId, state);
+}
+
+function recordRetainedStorageFailure(
+  saveId: string,
+  state: SaveCoordinatorState,
+  job: PersistedSnapshotJob,
+  error: unknown,
+): void {
+  const failureKind = classifyPersistenceFailure(error, 'storage');
+  const message = errorMessage(error);
+  const episode = state.recoveryEpisode ?? {
+    automaticAttempts: 0,
+    automaticEnabled: true,
+    failureKind,
+    errorMessage: message,
+  };
+  // Preserve the initiating outage evidence even if later persistence-only
+  // attempts fail through a different browser-storage path.
+  state.recoveryEpisode = episode;
+  state.failedJob = {
+    ...job,
+    writeReason: 'capture',
+  };
+
+  if (!isRetainedStorageFailure(failureKind) || job.writeReason === 'manual') {
+    exposeRecoveryFallback(saveId, state);
+    return;
+  }
+  queueAutomaticRetry(saveId, state);
 }
 
 function resolveAll(state: SaveCoordinatorState, value: PersistActiveSaveSnapshotResult) {
@@ -246,6 +459,7 @@ interface SavePersistenceBarrier {
 function beginSavePersistenceBarrier(saveId: string): SavePersistenceBarrier {
   const state = ensureState(saveId);
   const barrier = { saveId, state, wasBlocked: state.captureBlocked };
+  cancelRecoveryTimer(state);
   state.captureBlocked = true;
   state.captureEpoch += 1;
   resumePausedCaptures(state);
@@ -276,6 +490,7 @@ function restoreSavePersistenceBarriers(barriers: SavePersistenceBarrier[]) {
   for (const barrier of barriers) {
     barrier.state.captureBlocked = barrier.wasBlocked;
     barrier.state.captureEpoch += 1;
+    resumeAutomaticRecovery(barrier.saveId, barrier.state);
   }
   notifyListeners();
 }
@@ -287,12 +502,17 @@ function tombstoneSavePersistenceBarrier(barrier: SavePersistenceBarrier) {
   state.durableGeneration = 0;
   state.latestJob = null;
   state.failedJob = null;
+  clearRecoveryEpisode(state);
   state.status = {
     ...IDLE_STATUS,
     saveId,
   };
   if (latestSaveId === saveId) {
     latestSaveId = null;
+  }
+  if (activeRecoverySaveId === saveId) {
+    activeRecoverySaveId = null;
+    activeRecoveryOwnerActivated = false;
   }
 }
 
@@ -332,6 +552,9 @@ function flushSave(saveId: string) {
         canRetry: false,
         errorMessage: null,
         failureKind: null,
+        recovery: state.recoveryEpisode
+          ? recoveryStatus(state.recoveryEpisode, 'retrying')
+          : null,
       });
 
       try {
@@ -339,6 +562,13 @@ function flushSave(saveId: string) {
         state.durableGeneration = Math.max(state.durableGeneration, job.generation);
         state.failedJob = null;
         const durableLatest = state.durableGeneration >= state.desiredGeneration && !state.latestJob;
+        const episode = state.recoveryEpisode;
+        const recovery = episode
+          ? recoveryStatus(episode, durableLatest ? 'recovered' : 'retrying')
+          : null;
+        if (episode && durableLatest) {
+          clearRecoveryEpisode(state);
+        }
         updateStatus(saveId, state, {
           state: durableLatest ? 'saved' : 'saving',
           saveName: job.saveName,
@@ -346,6 +576,7 @@ function flushSave(saveId: string) {
           lastSavedAt: latestDurableTimestamp(state.status.lastSavedAt, savedRecord.updatedAt),
           errorMessage: null,
           failureKind: null,
+          recovery,
         });
         if (durableLatest) {
           resolveAll(state, { saved: true, saveName: job.saveName });
@@ -356,14 +587,7 @@ function flushSave(saveId: string) {
           continue;
         }
 
-        state.failedJob = job;
-        updateStatus(saveId, state, {
-          state: 'failed',
-          saveName: job.saveName,
-          canRetry: true,
-          errorMessage: errorMessage(error),
-          failureKind: classifyPersistenceFailure(error, 'storage'),
-        });
+        recordRetainedStorageFailure(saveId, state, job, error);
         rejectAll(state, error);
       } finally {
         state.running = false;
@@ -389,6 +613,7 @@ function markPreCaptureFailure(
     canRetry: false,
     errorMessage: errorMessage(error),
     failureKind: classifyPersistenceFailure(error, failureKind),
+    recovery: null,
   });
 }
 
@@ -412,6 +637,7 @@ export function reconcileActiveSavePersistenceMetadata(
 ): void {
   const state = ensureState(save.id);
   latestSaveId = save.id;
+  claimActiveRecoverySave(save.id);
   updateStatus(save.id, state, {
     saveName: save.name,
     lastSavedAt: latestDurableTimestamp(state.status.lastSavedAt, save.updatedAt),
@@ -425,6 +651,7 @@ export function reconcileActiveSavePersistenceMetadata(
  */
 export async function prepareActiveSavePersistenceForLoad(saveId: string): Promise<void> {
   const state = ensureState(saveId);
+  cancelRecoveryTimer(state);
   state.captureBlocked = true;
   state.captureEpoch += 1;
   resumePausedCaptures(state);
@@ -440,6 +667,7 @@ export function releaseActiveSavePersistenceLoad(saveId: string): void {
   state.captureBlocked = false;
   state.captureEpoch += 1;
   resumePausedCaptures(state);
+  resumeAutomaticRecovery(saveId, state);
   notifyListeners();
 }
 
@@ -461,6 +689,7 @@ export function activateActiveSavePersistenceMetadata(
   state.durableGeneration = 0;
   state.latestJob = null;
   state.failedJob = null;
+  clearRecoveryEpisode(state);
   state.captureBlocked = false;
   state.captureEpoch += 1;
   resumePausedCaptures(state);
@@ -470,7 +699,14 @@ export function activateActiveSavePersistenceMetadata(
     saveName: save.name,
     lastSavedAt: validDurableTimestamp(save.updatedAt),
   };
+  for (const [otherSaveId, otherState] of states) {
+    if (otherSaveId !== save.id) {
+      cancelRecoveryTimer(otherState);
+    }
+  }
   latestSaveId = save.id;
+  activeRecoverySaveId = save.id;
+  activeRecoveryOwnerActivated = true;
   notifyListeners();
 }
 
@@ -491,14 +727,26 @@ export async function retryActiveSavePersistence(saveId?: string | null): Promis
 
   const state = states.get(resolvedSaveId);
   const retryJob = state?.failedJob;
-  if (!state || !retryJob) {
+  if (!state || !retryJob || activeRecoverySaveId !== resolvedSaveId) {
     return { saved: false, saveName: null };
   }
-  if (state.captureBlocked || state.capturePaused) {
+  if (state.captureBlocked || state.capturePaused || state.activeCaptures > 0 || state.running) {
     return { saved: false, saveName: null };
   }
 
-  state.latestJob = retryJob;
+  const episode = state.recoveryEpisode ?? {
+    automaticAttempts: 0,
+    automaticEnabled: false,
+    failureKind: state.status.failureKind ?? 'storage',
+    errorMessage: state.status.errorMessage ?? 'Local save failed.',
+  };
+  episode.automaticEnabled = false;
+  state.recoveryEpisode = episode;
+  cancelRecoveryTimer(state);
+  state.latestJob = {
+    ...retryJob,
+    writeReason: 'manual',
+  };
   state.failedJob = null;
   latestSaveId = resolvedSaveId;
   updateStatus(resolvedSaveId, state, {
@@ -507,6 +755,7 @@ export async function retryActiveSavePersistence(saveId?: string | null): Promis
     canRetry: false,
     errorMessage: null,
     failureKind: null,
+    recovery: recoveryStatus(episode, 'retrying'),
   });
 
   const retryPromise = new Promise<PersistActiveSaveSnapshotResult>((resolve, reject) => {
@@ -525,6 +774,9 @@ export async function trackActiveSavePersistenceOperation(
   saveId: string,
   operation: () => Promise<SaveData>,
 ): Promise<SaveData> {
+  if (!claimActiveRecoverySave(saveId)) {
+    throw new Error(`Save ${saveId} is not the active persistence owner.`);
+  }
   const state = ensureState(saveId);
   const operationEpoch = state.captureEpoch;
   while (state.capturePaused && !state.captureBlocked) {
@@ -532,8 +784,11 @@ export async function trackActiveSavePersistenceOperation(
       state.captureResumeWaiters.push(resolve);
     });
   }
-  if (state.captureBlocked) {
+  if (state.captureBlocked || activatedOwnerExcludes(saveId)) {
     throw new Error(`Save ${saveId} is not available for persistence.`);
+  }
+  if (state.status.state === 'failed') {
+    throw new Error(`Save ${saveId} has unresolved persistence work. Retry or save it before changing save metadata.`);
   }
 
   state.capturePaused = true;
@@ -542,11 +797,13 @@ export async function trackActiveSavePersistenceOperation(
   await waitForCaptureQuiescence(state);
   await waitForWriteQuiescence(saveId, state);
 
-  if (state.captureBlocked || state.captureEpoch !== operationEpoch) {
+  if (state.captureBlocked
+    || state.captureEpoch !== operationEpoch
+    || activatedOwnerExcludes(saveId)) {
     resumePausedCaptures(state);
     throw new Error(`Save ${saveId} is not available for persistence.`);
   }
-  if (state.status.state === 'failed' || pendingWrites(state) > 0) {
+  if (pendingWrites(state) > 0) {
     resumePausedCaptures(state);
     throw new Error(`Save ${saveId} has unresolved persistence work. Retry or save it before changing save metadata.`);
   }
@@ -560,6 +817,7 @@ export async function trackActiveSavePersistenceOperation(
     canRetry: false,
     errorMessage: null,
     failureKind: null,
+    recovery: null,
   });
 
   try {
@@ -573,6 +831,7 @@ export async function trackActiveSavePersistenceOperation(
       lastSavedAt: latestDurableTimestamp(state.status.lastSavedAt, savedRecord.updatedAt),
       errorMessage: null,
       failureKind: null,
+      recovery: null,
     });
     return savedRecord;
   } catch (error) {
@@ -584,6 +843,7 @@ export async function trackActiveSavePersistenceOperation(
     state.running = false;
     resolveQuiescenceWaiters(state);
     resumePausedCaptures(state);
+    resumeAutomaticRecovery(saveId, state);
     notifyListeners();
   }
 }
@@ -636,6 +896,7 @@ export async function retireActiveSavePersistenceForDelete(
 ): Promise<unknown> {
   const state = ensureState(saveId);
   const wasBlocked = state.captureBlocked;
+  cancelRecoveryTimer(state);
   state.captureBlocked = true;
   state.captureEpoch += 1;
   resumePausedCaptures(state);
@@ -650,6 +911,7 @@ export async function retireActiveSavePersistenceForDelete(
     state.durableGeneration = 0;
     state.latestJob = null;
     state.failedJob = null;
+    clearRecoveryEpisode(state);
     state.status = {
       ...IDLE_STATUS,
       saveId,
@@ -657,11 +919,16 @@ export async function retireActiveSavePersistenceForDelete(
     if (latestSaveId === saveId) {
       latestSaveId = null;
     }
+    if (activeRecoverySaveId === saveId) {
+      activeRecoverySaveId = null;
+      activeRecoveryOwnerActivated = false;
+    }
     notifyListeners();
     return deletionResult;
   } catch (error) {
     state.captureBlocked = wasBlocked;
     state.captureEpoch += 1;
+    resumeAutomaticRecovery(saveId, state);
     notifyListeners();
     throw error;
   }
@@ -699,6 +966,9 @@ export async function persistActiveSaveSnapshot({
   if (activeSaveId == null) {
     return { saved: false, saveName: null };
   }
+  if (!claimActiveRecoverySave(activeSaveId)) {
+    return { saved: false, saveName: null };
+  }
 
   const state = ensureState(activeSaveId);
   while (state.capturePaused && !state.captureBlocked) {
@@ -707,16 +977,23 @@ export async function persistActiveSaveSnapshot({
     });
   }
   const captureEpoch = state.captureEpoch;
-  if (state.captureBlocked) {
+  if (state.captureBlocked || activatedOwnerExcludes(activeSaveId)) {
     return { saved: false, saveName: null };
   }
 
+  const pausedAutomaticRecovery = state.recoveryTimer != null
+    ? cancelRecoveryTimer(state)
+    : false;
+  let resumeRecoveryAfterCapture = false;
   let snapshot: object;
   state.activeCaptures += 1;
   try {
     snapshot = await exportSnapshot();
   } catch (error) {
-    if (state.captureBlocked || state.captureEpoch !== captureEpoch) {
+    resumeRecoveryAfterCapture = pausedAutomaticRecovery;
+    if (state.captureBlocked
+      || state.captureEpoch !== captureEpoch
+      || activatedOwnerExcludes(activeSaveId)) {
       return { saved: false, saveName: null };
     }
     markPreCaptureFailure(activeSaveId, error, 'export');
@@ -724,9 +1001,17 @@ export async function persistActiveSaveSnapshot({
   } finally {
     state.activeCaptures -= 1;
     resolveCaptureQuiescenceWaiters(state);
+    const captureInvalidated = state.captureBlocked
+      || state.captureEpoch !== captureEpoch
+      || activatedOwnerExcludes(activeSaveId);
+    if (resumeRecoveryAfterCapture || (pausedAutomaticRecovery && captureInvalidated)) {
+      resumeAutomaticRecovery(activeSaveId, state);
+    }
   }
 
-  if (state.captureBlocked || state.captureEpoch !== captureEpoch) {
+  if (state.captureBlocked
+    || state.captureEpoch !== captureEpoch
+    || activatedOwnerExcludes(activeSaveId)) {
     return { saved: false, saveName: null };
   }
 
@@ -739,6 +1024,7 @@ export async function persistActiveSaveSnapshot({
     activeSaveSlot,
     saveName,
     snapshot,
+    writeReason: 'capture',
   };
 
   state.desiredGeneration = generation;
@@ -751,6 +1037,9 @@ export async function persistActiveSaveSnapshot({
     canRetry: false,
     errorMessage: null,
     failureKind: null,
+    recovery: state.recoveryEpisode
+      ? recoveryStatus(state.recoveryEpisode, 'retrying')
+      : null,
   });
 
   const persistPromise = new Promise<PersistActiveSaveSnapshotResult>((resolve, reject) => {
@@ -760,8 +1049,43 @@ export async function persistActiveSaveSnapshot({
   return persistPromise;
 }
 
+function backupFilename(saveId: string, generation: number): string {
+  const safeSaveId = saveId
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'active-save';
+  return `mbd-${safeSaveId}-pending-${generation}.json`;
+}
+
+/**
+ * Creates an importable safety copy from the exact retained failed job. This
+ * does not mutate coordinator state or imply that local persistence recovered.
+ */
+export function createActiveSavePersistenceBackup(
+  saveId?: string | null,
+): ActiveSavePersistenceBackup | null {
+  const resolvedSaveId = saveId ?? latestSaveId;
+  if (!resolvedSaveId || activeRecoverySaveId !== resolvedSaveId) return null;
+  const state = states.get(resolvedSaveId);
+  const job = state?.failedJob;
+  if (!state
+    || !job
+    || state.status.recovery?.phase !== 'fallback_ready') {
+    return null;
+  }
+
+  const snapshot = parseGameSnapshot(job.snapshot);
+  return {
+    saveId: resolvedSaveId,
+    generation: job.generation,
+    filename: backupFilename(resolvedSaveId, job.generation),
+    payload: exportSnapshotToJson(job.saveName, snapshot),
+  };
+}
+
 export function resetActiveSavePersistenceForTesting(): void {
   states.forEach((state) => {
+    clearRecoveryEpisode(state);
     state.activeCaptures = 0;
     resolveQuiescenceWaiters(state);
     resolveCaptureQuiescenceWaiters(state);
@@ -770,4 +1094,6 @@ export function resetActiveSavePersistenceForTesting(): void {
   states.clear();
   listeners.clear();
   latestSaveId = null;
+  activeRecoverySaveId = null;
+  activeRecoveryOwnerActivated = false;
 }

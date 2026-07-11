@@ -4,11 +4,80 @@ const APP_BOOT_COPY = 'Reopening the front office';
 const APP_UPDATED_COPY = 'App updated — refresh for the latest version.';
 const MAX_OVERLAY_PASSES = 48;
 
+interface IndexedDbSaveFaultState {
+  blockedAttempts: number;
+  enabled: boolean;
+  totalAttempts: number;
+}
+
 export const appMain = (page: Page) => page.locator('main#main-content');
 export const mainNavigation = (page: Page) => page.getByRole('navigation', { name: 'Main navigation' });
 export const saveSummary = (page: Page) => page.getByTestId('save-persistence-summary');
 export const saveStatus = (page: Page) => page.getByTestId('save-persistence-status');
 export const simFooter = (page: Page) => page.locator('footer[data-tour="sim-controls"]');
+
+export async function installIndexedDbSaveFault(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const state: IndexedDbSaveFaultState = {
+      blockedAttempts: 0,
+      enabled: false,
+      totalAttempts: 0,
+    };
+    const target = window as typeof window & {
+      __mbdIndexedDbSaveFault?: IndexedDbSaveFaultState;
+    };
+    target.__mbdIndexedDbSaveFault = state;
+    const originalPut = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function put(
+      value: unknown,
+      key?: IDBValidKey,
+    ): IDBRequest<IDBValidKey> {
+      const isSaveRow = this.transaction.db.name === 'mbd-saves' && this.name === 'saves';
+      if (isSaveRow) {
+        state.totalAttempts += 1;
+        if (state.enabled) {
+          state.blockedAttempts += 1;
+          throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        }
+      }
+      return key === undefined
+        ? originalPut.call(this, value)
+        : originalPut.call(this, value, key);
+    };
+  });
+}
+
+export async function enableIndexedDbSaveFault(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const state = (window as typeof window & {
+      __mbdIndexedDbSaveFault?: IndexedDbSaveFaultState;
+    }).__mbdIndexedDbSaveFault;
+    if (!state) throw new Error('IndexedDB save fault shim was not installed.');
+    state.blockedAttempts = 0;
+    state.totalAttempts = 0;
+    state.enabled = true;
+  });
+}
+
+export async function disableIndexedDbSaveFault(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const state = (window as typeof window & {
+      __mbdIndexedDbSaveFault?: IndexedDbSaveFaultState;
+    }).__mbdIndexedDbSaveFault;
+    if (!state) throw new Error('IndexedDB save fault shim was not installed.');
+    state.enabled = false;
+  });
+}
+
+export async function indexedDbSaveFaultState(page: Page): Promise<IndexedDbSaveFaultState> {
+  return page.evaluate(() => {
+    const state = (window as typeof window & {
+      __mbdIndexedDbSaveFault?: IndexedDbSaveFaultState;
+    }).__mbdIndexedDbSaveFault;
+    if (!state) throw new Error('IndexedDB save fault shim was not installed.');
+    return { ...state };
+  });
+}
 
 export interface DurableSaveSummarySnapshot {
   lastSavedAt: string;

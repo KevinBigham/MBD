@@ -1,14 +1,19 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import {
   appMain,
+  disableIndexedDbSaveFault,
   dismissGuidedStartNudges,
   drainDurableOverlays,
+  enableIndexedDbSaveFault,
   expectDurableSaveSummary,
   escapeRegExp,
   expectFreshMutationRuntime,
   expectMutationSaved,
   freshRuntimeReload,
   handlePressConference,
+  indexedDbSaveFaultState,
+  installIndexedDbSaveFault,
   installTutorialDismissal,
   navigateFromSidebar,
   normalizeVisibleLabel,
@@ -18,6 +23,8 @@ import {
   waitForAppReady,
 } from './helpers/dynasty';
 
+const DEVELOPMENT_RECOVERY_SAVED_AT = '2026-04-02T19:41:02.000Z';
+const DEVELOPMENT_RECOVERY_SUMMARY = 'Last saved 7:41:02 PM · 0 pending writes';
 const ACCEPTED_TRADE_SAVED_AT = '2026-04-02T19:42:03.000Z';
 const ACCEPTED_TRADE_SUMMARY = 'Last saved 7:42:03 PM · 0 pending writes';
 
@@ -41,6 +48,17 @@ interface DevelopmentCandidate {
   level: string;
   playerId: string;
   playerName: string;
+}
+
+interface DownloadedSaveExport {
+  kind?: unknown;
+  snapshot?: {
+    players?: Array<{
+      developmentProgram?: unknown;
+      id?: unknown;
+    }>;
+    schemaVersion?: unknown;
+  };
 }
 
 function expectedProgram(category: string, level: string): string | null {
@@ -134,6 +152,7 @@ async function chooseRealDevelopmentMutation(page: Page): Promise<{
 test('four high-emotion mutations remain durable after real browser reloads', async ({ page }) => {
   test.setTimeout(8 * 60_000);
   await installTutorialDismissal(page);
+  await installIndexedDbSaveFault(page);
   await page.clock.setFixedTime(new Date('2026-04-01T12:00:00.000Z'));
 
   let developmentPlayer = '';
@@ -210,7 +229,52 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     });
     await handlePressConference(page, 'skip');
     await expectFreshMutationRuntime(page);
+    const durableSummaryBeforeDevelopment = await expectDurableSaveSummary(page);
+    await enableIndexedDbSaveFault(page);
+    const recoveryToast = page.getByTestId('active-save-recovery-toast');
+    const retry = saveStatus(page).getByRole('button', { name: 'Retry failed save' });
+    const firstFailureState = Promise.all([
+      expect(saveStatus(page)).toContainText('Save failed — storage full'),
+      expect(recoveryToast).toHaveCount(1),
+      expect(recoveryToast).toContainText('Local storage is full.'),
+      expect(recoveryToast).toContainText(
+        'Automatic persistence retry 1 of 2 is scheduled.',
+      ),
+    ]);
     await apply.click();
+    await firstFailureState;
+
+    await expect(retry).toBeVisible();
+    await expect(saveSummary(page)).toHaveAttribute(
+      'data-last-saved-at',
+      durableSummaryBeforeDevelopment.lastSavedAt,
+    );
+    await expect(saveSummary(page)).toHaveAttribute('data-pending-writes', '1');
+    await expect(saveSummary(page)).toContainText('1 pending write');
+
+    await expect.poll(
+      async () => (await indexedDbSaveFaultState(page)).blockedAttempts,
+      { timeout: 10_000 },
+    ).toBe(2);
+    await expect(recoveryToast).toHaveCount(1);
+    await expect(recoveryToast).toContainText(
+      'Automatic persistence retry 2 of 2 is scheduled.',
+    );
+
+    await expect.poll(
+      async () => (await indexedDbSaveFaultState(page)).blockedAttempts,
+      { timeout: 10_000 },
+    ).toBe(3);
+    await expect(recoveryToast).toHaveCount(1);
+    await expect(recoveryToast).toContainText('Local save still failed.');
+    await expect(recoveryToast).toContainText(
+      'Download a backup, then use Retry when browser storage is available.',
+    );
+    const downloadBackup = recoveryToast.getByRole('button', {
+      name: 'Download backup',
+      exact: true,
+    });
+    await expect(downloadBackup).toBeVisible();
 
     const result = appMain(page).getByText(
       new RegExp(`^${escapeRegExp(developmentPlayer)}: (.+) plan applied\\.$`),
@@ -230,7 +294,161 @@ test('four high-emotion mutations remain durable after real browser reloads', as
         normalizeVisibleLabel(selection.candidate.expectedProgram),
       );
     }
+
+    const exhaustedAttempts = await indexedDbSaveFaultState(page);
+    expect(exhaustedAttempts).toMatchObject({ blockedAttempts: 3, totalAttempts: 3 });
+    await page.waitForTimeout(4_000);
+    expect(await indexedDbSaveFaultState(page)).toEqual(exhaustedAttempts);
+    await expect(saveStatus(page)).toContainText('Save failed — storage full');
+    await expect(saveSummary(page)).toHaveAttribute(
+      'data-last-saved-at',
+      durableSummaryBeforeDevelopment.lastSavedAt,
+    );
+    await expect(saveSummary(page)).toHaveAttribute('data-pending-writes', '1');
+
+    const desktopViewport = page.viewportSize();
+    if (!desktopViewport) throw new Error('Desktop recovery viewport was unavailable.');
+    const desktopToastBox = await recoveryToast.boundingBox();
+    const desktopStatusBox = await saveStatus(page).boundingBox();
+    const desktopSummaryBox = await saveSummary(page).boundingBox();
+    const desktopFooterBox = await page.locator('footer[data-tour="sim-controls"]').boundingBox();
+    const desktopCommand = page.getByRole('button', { name: 'Open command palette', exact: true });
+    const desktopSettings = page.locator('header').getByRole('link', { name: 'Settings', exact: true });
+    const desktopCommandBox = await desktopCommand.boundingBox();
+    const desktopSettingsBox = await desktopSettings.boundingBox();
+    if (
+      !desktopToastBox
+      || !desktopStatusBox
+      || !desktopSummaryBox
+      || !desktopFooterBox
+      || !desktopCommandBox
+      || !desktopSettingsBox
+    ) {
+      throw new Error('Desktop autosave-recovery geometry was unavailable.');
+    }
+    expect(desktopToastBox.x).toBeGreaterThanOrEqual(0);
+    expect(desktopToastBox.y).toBeGreaterThanOrEqual(0);
+    expect(desktopToastBox.x + desktopToastBox.width).toBeLessThanOrEqual(desktopViewport.width);
+    expect(desktopToastBox.y + desktopToastBox.height).toBeLessThanOrEqual(desktopViewport.height);
+    expect(rectanglesOverlap(desktopToastBox, desktopStatusBox)).toBe(false);
+    expect(rectanglesOverlap(desktopToastBox, desktopSummaryBox)).toBe(false);
+    expect(rectanglesOverlap(desktopToastBox, desktopFooterBox)).toBe(false);
+    expect(rectanglesOverlap(desktopToastBox, desktopCommandBox)).toBe(false);
+    expect(rectanglesOverlap(desktopToastBox, desktopSettingsBox)).toBe(false);
+    expect(rectanglesOverlap(desktopStatusBox, desktopSummaryBox)).toBe(false);
+    expect(rectanglesOverlap(desktopStatusBox, desktopCommandBox)).toBe(false);
+    expect(rectanglesOverlap(desktopStatusBox, desktopSettingsBox)).toBe(false);
+    await retry.click({ trial: true });
+    await downloadBackup.click({ trial: true });
+    await desktopCommand.click({ trial: true });
+    await desktopSettings.click({ trial: true });
+    await test.info().attach('autosave-recovery-desktop.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+
+    await page.setViewportSize({ width: 375, height: 667 });
+    await expect.poll(async () => {
+      const box = await recoveryToast.boundingBox();
+      return box
+        && box.x >= 0
+        && box.y >= 0
+        && box.x + box.width <= 375
+        && box.y + box.height <= 667;
+    }, {
+      message: 'the recovery toast should settle inside the 375x667 viewport',
+    }).toBe(true);
+    await retry.click({ trial: true });
+    await downloadBackup.click({ trial: true });
+    const mobileCommand = page.getByRole('button', { name: 'Open command palette', exact: true });
+    const mobileSettings = page.locator('header').getByRole('link', { name: 'Settings', exact: true });
+    await mobileCommand.click({ trial: true });
+    await mobileSettings.click({ trial: true });
+    const mobileToastBox = await recoveryToast.boundingBox();
+    const mobileStatusBox = await saveStatus(page).boundingBox();
+    const mobileSummaryBox = await saveSummary(page).boundingBox();
+    const mobileFooterBox = await page.locator('footer[data-tour="sim-controls"]').boundingBox();
+    const mobileCommandBox = await mobileCommand.boundingBox();
+    const mobileSettingsBox = await mobileSettings.boundingBox();
+    if (
+      !mobileToastBox
+      || !mobileStatusBox
+      || !mobileSummaryBox
+      || !mobileFooterBox
+      || !mobileCommandBox
+      || !mobileSettingsBox
+    ) {
+      throw new Error('Mobile autosave-recovery geometry was unavailable.');
+    }
+    expect(mobileToastBox.x).toBeGreaterThanOrEqual(0);
+    expect(mobileToastBox.y).toBeGreaterThanOrEqual(0);
+    expect(mobileToastBox.x + mobileToastBox.width).toBeLessThanOrEqual(375);
+    expect(mobileToastBox.y + mobileToastBox.height).toBeLessThanOrEqual(667);
+    expect(rectanglesOverlap(mobileToastBox, mobileStatusBox)).toBe(false);
+    expect(rectanglesOverlap(mobileToastBox, mobileSummaryBox)).toBe(false);
+    expect(rectanglesOverlap(mobileToastBox, mobileFooterBox)).toBe(false);
+    expect(rectanglesOverlap(mobileToastBox, mobileCommandBox)).toBe(false);
+    expect(rectanglesOverlap(mobileToastBox, mobileSettingsBox)).toBe(false);
+    expect(rectanglesOverlap(mobileStatusBox, mobileSummaryBox)).toBe(false);
+    expect(rectanglesOverlap(mobileStatusBox, mobileCommandBox)).toBe(false);
+    expect(rectanglesOverlap(mobileStatusBox, mobileSettingsBox)).toBe(false);
+    await test.info().attach('autosave-recovery-mobile.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+
+    await downloadBackup.focus();
+    await expect(downloadBackup).toBeFocused();
+    const [backupDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.keyboard.press('Enter'),
+    ]);
+    expect(backupDownload.suggestedFilename()).toMatch(/^mbd-.+-pending-\d+\.json$/);
+    const backupPath = await backupDownload.path();
+    if (!backupPath) throw new Error('The autosave recovery backup had no local download path.');
+    const downloadedPayload = JSON.parse(
+      await readFile(backupPath, 'utf8'),
+    ) as DownloadedSaveExport;
+    expect(downloadedPayload.kind).toBe('mbd-save-export');
+    expect(downloadedPayload.snapshot?.schemaVersion).toBe(34);
+    const downloadedPlayer = downloadedPayload.snapshot?.players?.find(
+      (player) => player.id === selection.candidate.playerId,
+    );
+    expect(downloadedPlayer).toBeTruthy();
+    expect(normalizeVisibleLabel(String(downloadedPlayer?.developmentProgram ?? ''))).toBe(
+      normalizeVisibleLabel(developmentProgram),
+    );
+    await expect(recoveryToast).toContainText('Backup download requested.');
+    await expect(recoveryToast).toContainText('Local saving is still pending.');
+    await expect(
+      recoveryToast.getByRole('button', { name: 'Download again', exact: true }),
+    ).toBeVisible();
+    await expect(saveStatus(page)).toContainText('Save failed — storage full');
+    await expect(retry).toBeVisible();
+    await expect(saveSummary(page)).toHaveAttribute(
+      'data-last-saved-at',
+      durableSummaryBeforeDevelopment.lastSavedAt,
+    );
+    await expect(saveSummary(page)).toHaveAttribute('data-pending-writes', '1');
+
+    await page.setViewportSize(desktopViewport);
+    await disableIndexedDbSaveFault(page);
+    await page.clock.setFixedTime(new Date(DEVELOPMENT_RECOVERY_SAVED_AT));
+    await retry.click();
     await expectMutationSaved(page);
+    await expectDurableSaveSummary(page, {
+      lastSavedAt: DEVELOPMENT_RECOVERY_SAVED_AT,
+      text: DEVELOPMENT_RECOVERY_SUMMARY,
+    });
+    await expect(recoveryToast).toContainText('Local save recovered.');
+    await expect(recoveryToast).toContainText(
+      'Your latest changes are now durable on this device.',
+    );
+    await expect(
+      recoveryToast.getByRole('button', { name: /Download (?:backup|again)/ }),
+    ).toHaveCount(0);
+    await expect.poll(async () => (await indexedDbSaveFaultState(page)).totalAttempts).toBe(4);
+    await expect.poll(async () => (await indexedDbSaveFaultState(page)).blockedAttempts).toBe(3);
 
     await freshRuntimeReload(page);
     const persistedProgram = await readCurrentProgram(

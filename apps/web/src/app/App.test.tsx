@@ -12,6 +12,21 @@ const routeMockState = vi.hoisted(() => ({
   error: null as unknown,
 }));
 
+const sonnerMockState = vi.hoisted(() => ({
+  toasterProps: null as Record<string, unknown> | null,
+}));
+
+vi.mock('sonner', () => ({
+  Toaster: (props: Record<string, unknown>) => {
+    sonnerMockState.toasterProps = props;
+    return null;
+  },
+  toast: {
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
 vi.mock('./routes', () => ({
   AppRoutes: () => {
     if (routeMockState.error) {
@@ -74,6 +89,7 @@ describe('App', () => {
     });
     usePreferencesStore.getState().reset();
     routeMockState.error = null;
+    sonnerMockState.toasterProps = null;
     document.documentElement.dataset.contrast = 'standard';
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -98,6 +114,22 @@ describe('App', () => {
     });
 
     expect(document.documentElement.dataset.contrast).toBe('high');
+  });
+
+  it('keeps global notifications above the mobile shell with an accessible owner', async () => {
+    await act(async () => {
+      root!.render(<App />);
+      await Promise.resolve();
+    });
+
+    expect(sonnerMockState.toasterProps).toMatchObject({
+      theme: 'dark',
+      position: 'top-center',
+      offset: { top: 64 },
+      mobileOffset: { top: 160 },
+      closeButton: true,
+      containerAriaLabel: 'Save and application notifications',
+    });
   });
 
   it('routes save-load render failures into recovery instead of the generic app shell', async () => {
