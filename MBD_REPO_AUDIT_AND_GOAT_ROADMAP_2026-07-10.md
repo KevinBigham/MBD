@@ -1,6 +1,7 @@
 # MBD Repo Audit & True GOAT-Level Roadmap
 **Date:** 2026-07-10 · **Audited snapshot:** `MBD-main-main.zip` (GitHub download, no `.git`) · **Auditor:** Claude (Fable)
 **Purpose:** Prepare any future AI agent to work on Mr. Baseball Dynasty successfully — fast context, honest state, clear priorities, and a cleanup plan.
+**Execution log:** 2026-07-10 — the §5 safe-delete list was executed via Appendix A and pushed to `main` (commit `c4e154b`); this audit doc was added to the repo as the paper trail. Roadmap item 97 is now half done. Appendix B restructure: still pending, Kevin's call.
 
 ---
 
@@ -111,7 +112,7 @@ Four-agent studio: **Kevin (Director/oracle owner) → Architect → Codex (Buil
 ### Clean already ✅
 - No `node_modules/`, `dist/`, `.DS_Store`, empty files, or `.bak/.orig/.tmp` junk committed. `.gitignore` is sane (ignores `output/`, playtest MD except the sample, worktrees, logs).
 
-### Verified-redundant files (0% chance needed — the delete list)
+### Verified-redundant files — ✅ EXECUTED 2026-07-10, commit `c4e154b` (table kept for the record)
 | Path | Size | Proof |
 |---|---|---|
 | `MBD_CODEX_5_5_EXECUTION_SYSTEM.zip` | 36KB | Its `repo_overlay/` is **already installed at root** (`AGENTS.md` diff-verified byte-identical; `docs/codex/` in-repo is **newer** — goals 11/12 exist only in the repo). Its top-level docs are duplicated at `docs/reference/MBD_CODEX_HANDOFF/` (README_FIRST diff-verified identical). **One caveat:** `copy_paste/*.txt` (5 tiny prompt files) exist *only inside the zip* and are referenced by `DISPATCH_BRIEF.md` — extract those 5 files to `docs/reference/MBD_CODEX_HANDOFF/copy_paste/` first, then the zip is 100% dead weight. A zip inside a git repo is redundant by definition. |
@@ -120,7 +121,7 @@ Four-agent studio: **Kevin (Director/oracle owner) → Architect → Codex (Buil
 | `apps/web/docs/screenshots/sprint-3/` (6 PNGs) | ~0.9MB | Same — orphaned, unreferenced. |
 | `apps/web/docs/screenshots/sprint-3-5/` (11 PNGs) | ~1.0MB | Same — orphaned, unreferenced. |
 
-**Total reclaimed: ~2.9MB and 27 files, zero information loss** (after the two one-minute preservation steps).
+**Total reclaimed: ~2.9MB and 28 files (26 PNGs + zip + rtf), zero information loss.** Preservation done first: the 5 `copy_paste/*.txt` prompts live at `docs/reference/MBD_CODEX_HANDOFF/copy_paste/` and the RTF's content at `docs/reference/AUDIT_EXECUTION_RULES.md`. *(Original estimate said 27 files — arithmetic slip; git counted 28 deletions.)*
 **Do NOT touch:** `apps/web/public/screenshots/` — those six JPGs are live, referenced by `README.md` and the launch-prep audit.
 
 ### Archive / restructure candidates (valuable history — Kevin's call, don't auto-delete)
@@ -293,7 +294,7 @@ Ordered in ten tiers. Tiers 1–3 are release-gating; 4–7 are the GOAT differe
 94. DTO boundary: remove the ~56 direct `@mbd/sim-core` imports from web — UI consumes contracts only.
 95. `STATUS.md` rotation policy: cap the active log, archive by half-year, add an index (this audit's §5 plan).
 96. Doc canon pass: banner every root/docs file CANONICAL/ACTIVE/ARCHIVE; fix or archive `MASTER_CONTEXT.md`'s v17 drift.
-97. Execute the repo slim: safe-delete list + move June audits to `docs/audits/2026-06/` + content sources to `docs/content-source/`.
+97. Execute the repo slim — **safe-delete list ✅ done 2026-07-10 (`c4e154b`)**; remaining: move June audits to `docs/audits/2026-06/` + content sources to `docs/content-source/` (Appendix B, Kevin approves first).
 98. Long-save performance budgets: sim-day latency, memory, and save-size thresholds for 30-season dynasties, enforced in CI.
 99. Privacy-safe, opt-in diagnostic export bundle so bug reports carry evidence.
 100. v1.x release train: tag cadence, release notes generated from `CHANGELOG.md`, and revisit the desktop/Steam wrapper ADR only after web stability holds.
@@ -303,6 +304,8 @@ Ordered in ten tiers. Tiers 1–3 are release-gating; 4–7 are the GOAT differe
 ## Appendix A — Safe-Delete Execution Prompt (for Claude Cowork)
 
 > The verified, zero-information-loss cleanup. Preservation steps run first; deletes are recoverable from git history regardless.
+>
+> **✅ EXECUTED 2026-07-10 — commit `c4e154b`, pushed to `main` (CI run #226). Kept for the record.** Run notes: `textutil` was unavailable in the exec environment → converted via Python `striprtf` (same plain-text result); all Step 3 verifications passed — typecheck and all builds exit 0, full test suite green (sim-core 140/140 files, web 438/438 — the 6-minute `sim.worker.onboardingBalance.test.ts` verified on Kevin's Mac: 6 passed, 1 skipped-by-design).
 
 ```
 You are working in the MBD repo (Mr. Baseball Dynasty) at the repo root.
