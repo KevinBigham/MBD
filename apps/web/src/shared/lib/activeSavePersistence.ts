@@ -2,8 +2,9 @@ import { parseGameSnapshot } from '@mbd/contracts';
 import {
   deleteSaveById,
   exportSnapshotToJson,
-  listBranches,
+  listSaveTreeChildIds,
   loadGameById,
+  restoreSaveIntegrityBackup,
   saveGameById,
   type SaveData,
 } from './saveSystem';
@@ -472,8 +473,8 @@ async function beginSaveTreePersistenceBarrier(saveId: string): Promise<SavePers
   notifyListeners();
   try {
     await waitForWriteQuiescence(saveId, rootBarrier.state);
-    const branches = await listBranches(saveId);
-    const childBarriers = branches.map((branch) => beginSavePersistenceBarrier(branch.id));
+    const childSaveIds = await listSaveTreeChildIds(saveId);
+    const childBarriers = childSaveIds.map(beginSavePersistenceBarrier);
     barriers.push(...childBarriers);
     notifyListeners();
     await Promise.all(childBarriers.map((barrier) => (
@@ -770,10 +771,18 @@ export async function retryActiveSavePersistence(saveId?: string | null): Promis
  * Existing captures settle first and new captures wait, so queue depth and
  * recency cannot race the metadata write.
  */
-export async function trackActiveSavePersistenceOperation(
+export function trackActiveSavePersistenceOperation(
   saveId: string,
   operation: () => Promise<SaveData>,
-): Promise<SaveData> {
+): Promise<SaveData>;
+export function trackActiveSavePersistenceOperation(
+  saveId: string,
+  operation: () => Promise<SaveData | null>,
+): Promise<SaveData | null>;
+export async function trackActiveSavePersistenceOperation(
+  saveId: string,
+  operation: () => Promise<SaveData | null>,
+): Promise<SaveData | null> {
   if (!claimActiveRecoverySave(saveId)) {
     throw new Error(`Save ${saveId} is not the active persistence owner.`);
   }
@@ -822,6 +831,15 @@ export async function trackActiveSavePersistenceOperation(
 
   try {
     const savedRecord = await operation();
+    if (!savedRecord) {
+      // The operation may truthfully complete without mutating this active
+      // save (for example, exact branch cleanup while its parent is corrupt).
+      // Restore the prior coordinator truth instead of claiming a new durable
+      // generation or turning a successful cleanup into a false failure.
+      state.desiredGeneration = generation - 1;
+      state.status = statusBeforeOperation;
+      return null;
+    }
     state.durableGeneration = generation;
     state.failedJob = null;
     updateStatus(saveId, state, {
@@ -870,6 +888,30 @@ export async function replaceInactiveSavePersistenceRecord(
       saveName: savedRecord.name,
       lastSavedAt: validDurableTimestamp(savedRecord.updatedAt),
     };
+    notifyListeners();
+    return savedRecord;
+  } catch (error) {
+    restoreSavePersistenceBarriers(barriers);
+    throw error;
+  }
+}
+
+export async function restoreInactiveSaveIntegrityBackup(
+  saveId: string,
+): Promise<SaveData> {
+  const barriers = await beginSaveTreePersistenceBarrier(saveId);
+  const targetBarrier = barriers[0]!;
+
+  try {
+    const savedRecord = await restoreSaveIntegrityBackup(saveId);
+    tombstoneSavePersistenceBarrier(targetBarrier);
+    targetBarrier.state.status = {
+      ...IDLE_STATUS,
+      saveId,
+      saveName: savedRecord.name,
+      lastSavedAt: validDurableTimestamp(savedRecord.updatedAt),
+    };
+    restoreSavePersistenceBarriers(barriers.slice(1));
     notifyListeners();
     return savedRecord;
   } catch (error) {

@@ -17,9 +17,11 @@ import {
   installTutorialDismissal,
   navigateFromSidebar,
   normalizeVisibleLabel,
+  readIndexedDbSaveIntegrityPair,
   runGlobalSimulation,
   saveSummary,
   saveStatus,
+  tamperIndexedDbSaveChecksum,
   waitForAppReady,
 } from './helpers/dynasty';
 
@@ -61,6 +63,15 @@ interface DownloadedSaveExport {
   };
 }
 
+interface DownloadedRawSaveRecord {
+  id?: unknown;
+  integrity?: {
+    checksum?: unknown;
+  };
+  snapshot?: DownloadedSaveExport['snapshot'];
+  updatedAt?: unknown;
+}
+
 function expectedProgram(category: string, level: string): string | null {
   if (category === 'promotion_window') return 'mlb prep';
   if (category === 'accelerate_challenge') return null;
@@ -85,6 +96,7 @@ async function readCurrentProgram(
   playerName: string,
   playerId: string,
 ): Promise<string> {
+  await handlePressConference(page, 'skip');
   await navigateFromSidebar(page, '/players', 'Players');
   await page.getByPlaceholder('Search players or nicknames...').fill(playerName);
   const playerLink = appMain(page).locator(`a[href="/MBD/players/${playerId}"]`).first();
@@ -150,12 +162,13 @@ async function chooseRealDevelopmentMutation(page: Page): Promise<{
 }
 
 test('four high-emotion mutations remain durable after real browser reloads', async ({ page }) => {
-  test.setTimeout(8 * 60_000);
+  test.setTimeout(10 * 60_000);
   await installTutorialDismissal(page);
   await installIndexedDbSaveFault(page);
   await page.clock.setFixedTime(new Date('2026-04-01T12:00:00.000Z'));
 
   let developmentPlayer = '';
+  let developmentPlayerId = '';
   let developmentProgram = '';
   let incomingPlayerId = '';
   let incomingPlayerName = '';
@@ -211,6 +224,7 @@ test('four high-emotion mutations remain durable after real browser reloads', as
       );
     }
     developmentPlayer = selection.candidate.playerName;
+    developmentPlayerId = selection.candidate.playerId;
 
     await freshRuntimeReload(page, {
       ready: async () => {
@@ -457,6 +471,132 @@ test('four high-emotion mutations remain durable after real browser reloads', as
       selection.candidate.playerId,
     );
     expect(normalizeVisibleLabel(persistedProgram)).toBe(
+      normalizeVisibleLabel(developmentProgram),
+    );
+  });
+
+  await test.step('tampered primary integrity blocks load and restores the exact verified copy', async () => {
+    const integrityBefore = await readIndexedDbSaveIntegrityPair(page, 'save-slot-1');
+    expect(integrityBefore.primaryChecksum).toBe(integrityBefore.backupChecksum);
+    expect(integrityBefore.primaryUpdatedAt).toBe(DEVELOPMENT_RECOVERY_SAVED_AT);
+    expect(integrityBefore.backupUpdatedAt).toBe(DEVELOPMENT_RECOVERY_SAVED_AT);
+
+    const tampered = await tamperIndexedDbSaveChecksum(page, 'save-slot-1');
+    expect(tampered.beforeChecksum).toBe(integrityBefore.primaryChecksum);
+    expect(tampered.afterChecksum).not.toBe(tampered.beforeChecksum);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const dialog = page.getByRole('dialog', { name: 'Slot 1 needs recovery' });
+    await expect(dialog).toBeVisible({ timeout: 60_000 });
+    await expect(dialog).toContainText('This local save changed after MBD sealed it.');
+    await expect(dialog).toContainText('accidental local corruption');
+    await expect(dialog).toContainText('verified copy of the same save generation');
+    await expect(dialog).toContainText('not a security guarantee or an older-save rollback');
+
+    const exportRaw = dialog.getByRole('button', { name: 'Export raw JSON', exact: true });
+    const restore = dialog.getByRole('button', { name: 'Restore verified copy', exact: true });
+    const recoveryRetry = dialog.getByRole('button', { name: 'Retry', exact: true });
+    const deleteSave = dialog.getByRole('button', { name: 'Delete this save', exact: true });
+    const details = dialog.getByRole('button', { name: 'View error details', exact: true });
+    const close = dialog.getByRole('button', { name: 'Close save recovery dialog', exact: true });
+    await expect(restore).toBeVisible();
+
+    await exportRaw.focus();
+    await expect(exportRaw).toBeFocused();
+    const [rawDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.keyboard.press('Enter'),
+    ]);
+    expect(rawDownload.suggestedFilename()).toBe('mbd-save-slot-1-recovery.json');
+    const rawPath = await rawDownload.path();
+    if (!rawPath) throw new Error('The raw integrity evidence had no local download path.');
+    const rawRecord = JSON.parse(
+      await readFile(rawPath, 'utf8'),
+    ) as DownloadedRawSaveRecord;
+    expect(rawRecord.id).toBe('save-slot-1');
+    expect(rawRecord.integrity?.checksum).toBe(tampered.afterChecksum);
+    expect(rawRecord.updatedAt).toBe(DEVELOPMENT_RECOVERY_SAVED_AT);
+    const rawPlayer = rawRecord.snapshot?.players?.find(
+      (player) => player.id === developmentPlayerId,
+    );
+    expect(normalizeVisibleLabel(String(rawPlayer?.developmentProgram ?? ''))).toBe(
+      normalizeVisibleLabel(developmentProgram),
+    );
+    await expect(dialog).toBeVisible();
+
+    const desktopViewport = page.viewportSize();
+    if (!desktopViewport) throw new Error('Desktop save-integrity viewport was unavailable.');
+    const panel = dialog.locator(':scope > div');
+    const desktopPanelBox = await panel.boundingBox();
+    if (!desktopPanelBox) throw new Error('Desktop save-integrity panel geometry was unavailable.');
+    expect(desktopPanelBox.x).toBeGreaterThanOrEqual(0);
+    expect(desktopPanelBox.y).toBeGreaterThanOrEqual(0);
+    expect(desktopPanelBox.x + desktopPanelBox.width).toBeLessThanOrEqual(desktopViewport.width);
+    expect(desktopPanelBox.y + desktopPanelBox.height).toBeLessThanOrEqual(desktopViewport.height);
+    await exportRaw.click({ trial: true });
+    await restore.click({ trial: true });
+    await recoveryRetry.click({ trial: true });
+    await deleteSave.click({ trial: true });
+    await details.click({ trial: true });
+    await close.click({ trial: true });
+    await test.info().attach('save-integrity-recovery-desktop.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+
+    await page.setViewportSize({ width: 375, height: 667 });
+    await expect(dialog).toBeVisible();
+    const mobilePanelBox = await panel.boundingBox();
+    if (!mobilePanelBox) throw new Error('Mobile save-integrity panel geometry was unavailable.');
+    expect(mobilePanelBox.x).toBeGreaterThanOrEqual(0);
+    expect(mobilePanelBox.y).toBeGreaterThanOrEqual(0);
+    expect(mobilePanelBox.x + mobilePanelBox.width).toBeLessThanOrEqual(375);
+    expect(mobilePanelBox.y + mobilePanelBox.height).toBeLessThanOrEqual(667);
+    await exportRaw.click({ trial: true });
+    await restore.click({ trial: true });
+    await recoveryRetry.click({ trial: true });
+    await deleteSave.click({ trial: true });
+    await details.click({ trial: true });
+    await close.click({ trial: true });
+    await test.info().attach('save-integrity-recovery-mobile.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+
+    await page.setViewportSize(desktopViewport);
+    await restore.focus();
+    await expect(restore).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await waitForAppReady(page);
+    await expectDurableSaveSummary(page, {
+      lastSavedAt: DEVELOPMENT_RECOVERY_SAVED_AT,
+      text: DEVELOPMENT_RECOVERY_SUMMARY,
+    });
+
+    const integrityAfter = await readIndexedDbSaveIntegrityPair(page, 'save-slot-1');
+    expect(integrityAfter).toEqual(integrityBefore);
+    await handlePressConference(page, 'skip');
+    const restoredProgram = await readCurrentProgram(
+      page,
+      developmentPlayer,
+      developmentPlayerId,
+    );
+    expect(normalizeVisibleLabel(restoredProgram)).toBe(
+      normalizeVisibleLabel(developmentProgram),
+    );
+
+    await freshRuntimeReload(page);
+    await expectDurableSaveSummary(page, {
+      lastSavedAt: DEVELOPMENT_RECOVERY_SAVED_AT,
+      text: DEVELOPMENT_RECOVERY_SUMMARY,
+    });
+    const reloadedProgram = await readCurrentProgram(
+      page,
+      developmentPlayer,
+      developmentPlayerId,
+    );
+    expect(normalizeVisibleLabel(reloadedProgram)).toBe(
       normalizeVisibleLabel(developmentProgram),
     );
   });

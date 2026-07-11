@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   deleteSave,
-  inspectSaveById,
+  deleteSaveById,
   loadSaveSafely,
   saveGame,
   type SaveData,
@@ -14,6 +14,7 @@ import {
   prepareActiveSavePersistenceForLoad,
   releaseActiveSavePersistenceLoad,
   replaceInactiveSavePersistenceRecord,
+  restoreInactiveSaveIntegrityBackup,
   retireSaveTreePersistenceForDelete,
 } from '@/shared/lib/activeSavePersistence';
 import { useSetupActionHandlers } from './useSetupActionHandlers';
@@ -30,7 +31,7 @@ vi.mock('@/features/onboarding/nudges', () => ({
 
 vi.mock('@/shared/lib/saveSystem', () => ({
   deleteSave: vi.fn(),
-  inspectSaveById: vi.fn(),
+  deleteSaveById: vi.fn(),
   loadSaveSafely: vi.fn(),
   saveGame: vi.fn(),
 }));
@@ -40,6 +41,7 @@ vi.mock('@/shared/lib/activeSavePersistence', () => ({
   prepareActiveSavePersistenceForLoad: vi.fn().mockResolvedValue(undefined),
   releaseActiveSavePersistenceLoad: vi.fn(),
   replaceInactiveSavePersistenceRecord: vi.fn(),
+  restoreInactiveSaveIntegrityBackup: vi.fn(),
   retireSaveTreePersistenceForDelete: vi.fn(),
 }));
 
@@ -100,17 +102,8 @@ describe('useSetupActionHandlers', () => {
       snapshot: { schemaVersion: 34, season: 4, day: 88, phase: 'regular' },
       rawJson: '{"id":"save-slot-1"}',
     } as never);
-    vi.mocked(inspectSaveById).mockResolvedValue({
-      status: 'ok',
-      slot: null,
-      save: saveData({
-        id: 'branch-1',
-        slotNumber: null,
-        name: 'Aggressive deadline push',
-        isRootSave: false,
-        parentSaveId: 'save-slot-1',
-      }),
-    } as never);
+    vi.mocked(deleteSaveById).mockResolvedValue(null);
+    vi.mocked(restoreInactiveSaveIntegrityBackup).mockResolvedValue(saveData());
     vi.mocked(saveGame).mockResolvedValue(saveData({
       id: 'save-slot-2',
       slotNumber: 2,
@@ -196,7 +189,7 @@ describe('useSetupActionHandlers', () => {
       await latestResult?.handleContinueSave(saveData());
     });
 
-    expect(loadSaveSafely).toHaveBeenCalledWith(1);
+    expect(loadSaveSafely).toHaveBeenCalledWith('save-slot-1');
     expect(prepareActiveSavePersistenceForLoad).toHaveBeenCalledWith('save-slot-1');
     expect(options.importSnapshot).toHaveBeenCalledWith({ schemaVersion: 34, season: 4, day: 88, phase: 'regular' });
     expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(saveData());
@@ -243,7 +236,12 @@ describe('useSetupActionHandlers', () => {
     await act(async () => {
       await recoveryOptions.onDelete();
     });
-    expect(deleteSave).toHaveBeenCalledWith(1);
+    expect(retireSaveTreePersistenceForDelete).toHaveBeenCalledWith(
+      'save-slot-1',
+      expect.any(Function),
+    );
+    expect(deleteSaveById).toHaveBeenCalledWith('save-slot-1');
+    expect(deleteSave).not.toHaveBeenCalled();
 
     vi.mocked(loadSaveSafely).mockResolvedValueOnce(failure as never);
     let retryResult = true;
@@ -253,7 +251,7 @@ describe('useSetupActionHandlers', () => {
     expect(retryResult).toBe(false);
   });
 
-  it('continues branch saves through branch inspection', async () => {
+  it('continues branch saves through the same verified safe-load path', async () => {
     const options = baseOptions();
     await renderHook(options);
     const branch = saveData({
@@ -263,12 +261,18 @@ describe('useSetupActionHandlers', () => {
       isRootSave: false,
       parentSaveId: 'save-slot-1',
     });
+    vi.mocked(loadSaveSafely).mockResolvedValueOnce({
+      ok: true,
+      save: branch,
+      snapshot: branch.snapshot!,
+      rawJson: '{"id":"branch-1"}',
+    });
 
     await act(async () => {
       await latestResult?.handleContinueSave(branch);
     });
 
-    expect(inspectSaveById).toHaveBeenCalledWith('branch-1');
+    expect(loadSaveSafely).toHaveBeenCalledWith('branch-1');
     expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(expect.objectContaining({
       id: 'branch-1',
       slotNumber: null,
@@ -280,6 +284,57 @@ describe('useSetupActionHandlers', () => {
       activeSaveSlot: null,
     }));
     expect(options.navigate).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('routes a damaged branch through verified restore and the ordinary safe-load retry', async () => {
+    const branch = saveData({
+      id: 'branch-1',
+      slotNumber: null,
+      name: 'Aggressive deadline push',
+      isRootSave: false,
+      parentSaveId: 'save-slot-1',
+    });
+    const failure = {
+      ok: false,
+      reason: 'integrity_failed',
+      detail: {
+        slotId: branch.id,
+        slotNumber: null,
+        message: 'The branch checksum does not match.',
+        rawJson: '{"id":"branch-1"}',
+        integrityFailureKind: 'mismatch',
+        repairAvailable: true,
+        repairUpdatedAt: branch.updatedAt,
+      },
+    } as const;
+    vi.mocked(loadSaveSafely).mockResolvedValueOnce(failure as never);
+    vi.mocked(restoreInactiveSaveIntegrityBackup).mockResolvedValue(branch);
+    const options = baseOptions();
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleContinueSave(branch);
+    });
+
+    const recoveryOptions = vi.mocked(options.recovery.showFailure).mock.calls[0]?.[0] as {
+      onRepair: () => Promise<boolean>;
+      onRetry: () => Promise<boolean>;
+    };
+    expect(recoveryOptions.onRepair).toEqual(expect.any(Function));
+    await expect(recoveryOptions.onRepair()).resolves.toBe(true);
+    expect(restoreInactiveSaveIntegrityBackup).toHaveBeenCalledWith('branch-1');
+
+    vi.mocked(loadSaveSafely).mockResolvedValueOnce({
+      ok: true,
+      save: branch,
+      snapshot: branch.snapshot!,
+      rawJson: '{"id":"branch-1"}',
+    });
+    await act(async () => {
+      await expect(recoveryOptions.onRetry()).resolves.toBe(true);
+    });
+    expect(loadSaveSafely).toHaveBeenLastCalledWith('branch-1');
+    expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(branch);
   });
 
   it('does not delete the active root save or an unknown active branch parent', async () => {

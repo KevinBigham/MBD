@@ -18,7 +18,10 @@ const reasons: SaveLoadFailureReason[] = [
   'storage_failed',
 ];
 
-function requestFor(reason: SaveLoadFailureReason): SaveRecoveryRequest {
+function requestFor(
+  reason: SaveLoadFailureReason,
+  repairAvailable = false,
+): SaveRecoveryRequest {
   const failure: Extract<LoadSaveSafelyResult, { ok: false }> = {
     ok: false,
     reason,
@@ -30,6 +33,8 @@ function requestFor(reason: SaveLoadFailureReason): SaveRecoveryRequest {
       schemaVersion: reason === 'version_too_new' ? 999 : 34,
       currentVersion: 33,
       minimumSupportedVersion: 2,
+      repairAvailable,
+      repairUpdatedAt: '2026-07-11T14:30:00.000Z',
     },
   };
   return createSaveRecoveryRequest(failure);
@@ -84,11 +89,14 @@ describe('SaveRecoveryDialog', () => {
     const dialog = container.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
     expect(dialog?.getAttribute('aria-modal')).toBe('true');
+    expect(dialog?.getAttribute('aria-describedby')).toBe(
+      'save-recovery-summary save-recovery-body',
+    );
     expect(container.textContent).toContain('Save Recovery');
     expect(container.textContent).toContain('Slot 3 needs recovery');
     expect(container.textContent).toContain(request.title);
     expect(container.textContent).toContain('Export raw JSON');
-    expect(container.textContent).toContain('Delete this slot');
+    expect(container.textContent).toContain('Delete this save');
     expect(container.textContent).toContain('View error details');
     expect(container.textContent).toContain('Retry');
   });
@@ -120,6 +128,145 @@ describe('SaveRecoveryDialog', () => {
 
     expect(onExportRaw).toHaveBeenCalledTimes(1);
     expect(onToggleDetails).toHaveBeenCalledTimes(1);
+    expect(buttonByText(container, 'View error details').getAttribute('aria-expanded')).toBe('false');
+    expect(buttonByText(container, 'View error details').getAttribute('aria-controls')).toBe(
+      'save-recovery-error-details',
+    );
+  });
+
+  it('offers an honest verified-copy action only for a repairable request with a callback', async () => {
+    const onRepair = vi.fn();
+    const request = requestFor('integrity_failed', true);
+
+    await act(async () => {
+      root.render(
+        <SaveRecoveryDialog
+          request={request}
+          stateStatus="showing_dialog"
+          detailsVisible={false}
+          onClose={vi.fn()}
+          onDelete={vi.fn()}
+          onExportRaw={vi.fn()}
+          onRepair={onRepair}
+          onRetry={vi.fn()}
+          onToggleDetails={vi.fn()}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('changed after MBD sealed it');
+    expect(container.textContent).toContain('same save generation');
+    expect(container.textContent).toContain('not a security guarantee or an older-save rollback');
+
+    await act(async () => {
+      buttonByText(container, 'Restore verified copy').dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+    });
+    expect(onRepair).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.render(
+        <SaveRecoveryDialog
+          request={request}
+          stateStatus="showing_dialog"
+          detailsVisible={false}
+          onClose={vi.fn()}
+          onDelete={vi.fn()}
+          onExportRaw={vi.fn()}
+          onRetry={vi.fn()}
+          onToggleDetails={vi.fn()}
+        />,
+      );
+    });
+    expect(container.textContent).not.toContain('Restore verified copy');
+
+    await act(async () => {
+      root.render(
+        <SaveRecoveryDialog
+          request={requestFor('parse', true)}
+          stateStatus="showing_dialog"
+          detailsVisible={false}
+          onClose={vi.fn()}
+          onDelete={vi.fn()}
+          onExportRaw={vi.fn()}
+          onRepair={vi.fn()}
+          onRetry={vi.fn()}
+          onToggleDetails={vi.fn()}
+        />,
+      );
+    });
+    expect(container.textContent).not.toContain('Restore verified copy');
+  });
+
+  it('disables every control while restoring and announces the repairing state', async () => {
+    const onClose = vi.fn();
+    await act(async () => {
+      root.render(
+        <SaveRecoveryDialog
+          request={requestFor('integrity_failed', true)}
+          stateStatus="repairing"
+          detailsVisible
+          onClose={onClose}
+          onDelete={vi.fn()}
+          onExportRaw={vi.fn()}
+          onRepair={vi.fn()}
+          onRetry={vi.fn()}
+          onToggleDetails={vi.fn()}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('Restoring verified copy...');
+    const busyStatus = container.querySelector('[role="status"]');
+    expect(busyStatus?.getAttribute('aria-live')).toBe('polite');
+    const controls = Array.from(container.querySelectorAll('button'));
+    expect(controls).toHaveLength(6);
+    expect(controls.every((button) => button.disabled)).toBe(true);
+    const panel = container.querySelector('[role="dialog"] > div') as HTMLElement | null;
+    expect(document.activeElement).toBe(panel);
+
+    const tabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(tabEvent);
+    expect(tabEvent.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(panel);
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('renders action errors assertively and bounds the dialog for mobile scrolling', async () => {
+    await act(async () => {
+      root.render(
+        <SaveRecoveryDialog
+          request={requestFor('integrity_failed', true)}
+          stateStatus="showing_dialog"
+          detailsVisible
+          actionError="The verified copy was restored, but it could not be loaded."
+          onClose={vi.fn()}
+          onDelete={vi.fn()}
+          onExportRaw={vi.fn()}
+          onRepair={vi.fn()}
+          onRetry={vi.fn()}
+          onToggleDetails={vi.fn()}
+        />,
+      );
+    });
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain('was restored');
+
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog?.className).toContain('overflow-y-auto');
+    expect(dialog?.firstElementChild?.className).toContain('max-h-[calc(100dvh-2rem)]');
+    expect(dialog?.firstElementChild?.className).toContain('overflow-y-auto');
+    expect(dialog?.firstElementChild?.className).toContain('overscroll-contain');
   });
 
   it('closes on Escape only when not busy', async () => {

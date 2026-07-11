@@ -255,7 +255,9 @@ describe('saveSystem helpers', () => {
     vi.setSystemTime(new Date('2026-04-02T19:42:03.000Z'));
     vi.stubGlobal('indexedDB', {});
     vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+    vi.spyOn(db.saveIntegrityBackups, 'get').mockResolvedValue(undefined as never);
     const savePut = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-2' as never);
+    const backupPut = vi.spyOn(db.saveIntegrityBackups, 'put').mockResolvedValue('save-slot-2' as never);
     const leaderboardPut = vi.spyOn(db.leaderboard, 'put').mockResolvedValue('leaderboard-dynasty-2' as never);
     const transaction = vi.spyOn(db, 'transaction').mockImplementation((async (...args: unknown[]) => {
       const scope = args.at(-1) as () => Promise<unknown>;
@@ -272,6 +274,7 @@ describe('saveSystem helpers', () => {
     expect(transaction).toHaveBeenCalledWith(
       'rw',
       db.saves,
+      db.saveIntegrityBackups,
       db.leaderboard,
       expect.any(Function),
     );
@@ -279,6 +282,13 @@ describe('saveSystem helpers', () => {
     expect(savePut).toHaveBeenCalledWith(expect.objectContaining({
       id: 'save-slot-2',
       updatedAt: record.updatedAt,
+      integrity: expect.objectContaining({
+        algorithm: 'SHA-256',
+      }),
+    }));
+    expect(backupPut).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'save-slot-2',
+      integrity: record.integrity,
     }));
     expect(leaderboardPut).toHaveBeenCalledWith(expect.objectContaining({
       slotNumber: 2,

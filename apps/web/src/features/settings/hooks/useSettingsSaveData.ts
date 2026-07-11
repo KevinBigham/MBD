@@ -8,6 +8,7 @@ import {
   prepareActiveSavePersistenceForLoad,
   releaseActiveSavePersistenceLoad,
   replaceInactiveSavePersistenceRecord,
+  restoreInactiveSaveIntegrityBackup,
   retireActiveSavePersistenceForDelete,
   retireSaveTreePersistenceForDelete,
   trackActiveSavePersistenceOperation,
@@ -17,7 +18,7 @@ import {
   clearAllSaves,
   createBranchSave,
   deleteSave,
-  deleteSaveById,
+  deleteSaveByIdWithResult,
   exportSnapshotToJson,
   importSnapshotFromJson,
   listBranches,
@@ -26,6 +27,7 @@ import {
   loadSaveSafely,
   saveGame,
   type LoadSaveSafelyResult,
+  type DeleteSaveByIdResult,
   type SaveData,
 } from '@/shared/lib/saveSystem';
 
@@ -199,7 +201,10 @@ export function useSettingsSaveData({
     return continueFromSave(result.save, result.snapshot);
   }, [continueFromSave]);
 
-  const handleLoad = useCallback(async (slot: number): Promise<boolean> => {
+  const handleLoad = useCallback(async (
+    slot: number,
+    options: { fromRecovery?: boolean } = {},
+  ): Promise<boolean> => {
     if (!workerReady) return false;
     const targetSaveId = `save-slot-${slot}`;
     setBusySlot(slot);
@@ -209,11 +214,17 @@ export function useSettingsSaveData({
       const result = await loadSaveSafely(slot);
       if (!result.ok) {
         releaseActiveSavePersistenceLoad(targetSaveId);
-        recoveryShowFailure({
-          failure: result,
-          onDelete: () => handleDelete(slot),
-          onRetry: () => handleLoad(slot),
-        });
+        if (!options.fromRecovery) {
+          recoveryShowFailure({
+            failure: result,
+            onDelete: () => handleDelete(slot),
+            onRepair: async () => {
+              await restoreInactiveSaveIntegrityBackup(targetSaveId);
+              return true;
+            },
+            onRetry: () => handleLoad(slot, { fromRecovery: true }),
+          });
+        }
         return false;
       }
       const continued = await continueFromSafeLoad(result);
@@ -335,18 +346,26 @@ export function useSettingsSaveData({
     setBranchBusy(true);
     setStatus('');
     try {
+      let deletionOutcome: DeleteSaveByIdResult['outcome'] = 'not_found';
       await trackActiveSavePersistenceOperation(activeRootSaveId, async () => {
-        const parent = await retireActiveSavePersistenceForDelete(
+        const result = await retireActiveSavePersistenceForDelete(
           branchSaveId,
-          () => deleteSaveById(branchSaveId),
+          () => deleteSaveByIdWithResult(branchSaveId),
         );
-        if (!parent) {
-          throw new Error('The active root save disappeared after branch deletion.');
-        }
-        return parent;
+        deletionOutcome = result.outcome;
+        return result.parent;
       });
       await refreshBranches();
-      setStatus('Deleted the selected what-if branch.');
+      const completedOutcome = deletionOutcome as DeleteSaveByIdResult['outcome'];
+      if (completedOutcome === 'deleted_exact_parent_untouched') {
+        setStatus(
+          'Deleted the branch record. Its root save was left unchanged because the branch history could not be updated safely; recover that root before continuing.',
+        );
+      } else if (completedOutcome === 'not_found') {
+        setStatus('The selected what-if branch was already absent.');
+      } else {
+        setStatus('Deleted the selected what-if branch.');
+      }
     } catch (error) {
       logger.error('Failed to delete branch:', error);
       setStatus('Failed to delete the selected what-if branch.');

@@ -50,7 +50,11 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(active: boo
       if (event.key !== 'Tab') return;
 
       const elements = getFocusableElements();
-      if (elements.length === 0) return;
+      if (elements.length === 0) {
+        event.preventDefault();
+        containerRef.current?.focus();
+        return;
+      }
 
       const first = elements[0]!;
       const last = elements[elements.length - 1]!;

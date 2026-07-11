@@ -25,6 +25,7 @@ type RetryResult = boolean | void | Promise<boolean | void>;
 interface SaveRecoveryActions {
   onDelete?: () => Promise<boolean | void> | boolean | void;
   onRetry?: () => RetryResult;
+  onRepair?: () => RetryResult;
 }
 
 export interface ShowSaveRecoveryOptions extends SaveRecoveryActions {
@@ -38,10 +39,18 @@ interface SaveRecoveryContextValue {
   exportRaw: () => Promise<void>;
   deleteBrokenSave: () => Promise<void>;
   retry: () => Promise<void>;
+  repair: () => Promise<void>;
   toggleDetails: () => void;
 }
 
 const SaveRecoveryContext = createContext<SaveRecoveryContextValue | null>(null);
+
+const REPAIR_FAILURE_MESSAGE =
+  'MBD could not restore the verified copy. Nothing was replaced. Export the raw JSON, use Retry to recheck the save, or delete it.';
+const REPAIR_RELOAD_FAILURE_MESSAGE =
+  'The verified copy was restored, but MBD could not load it. The restored data remains in place; use Retry to try the ordinary load again.';
+const DELETE_FAILURE_MESSAGE =
+  'MBD could not safely finish deleting this save. No successful deletion was recorded; export the raw JSON, recover the related save if prompted, or retry.';
 
 function activeDialogStatus(state: SaveRecoveryState): Exclude<SaveRecoveryState['status'], 'idle' | 'detecting'> | null {
   return state.status === 'idle' || state.status === 'detecting' ? null : state.status;
@@ -58,6 +67,7 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
     actionsRef.current = {
       onDelete: options.onDelete,
       onRetry: options.onRetry,
+      onRepair: options.onRepair,
     };
     dispatch({ type: 'show_failure', request });
     return request;
@@ -110,7 +120,7 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'delete_finish' });
     } catch (error) {
       logger.error('Failed to delete broken save:', error);
-      dispatch({ type: 'show_failure', request });
+      dispatch({ type: 'delete_failure', message: DELETE_FAILURE_MESSAGE });
     }
   }, []);
 
@@ -135,6 +145,57 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const repair = useCallback(async () => {
+    const request = stateRef.current.request;
+    const { onRepair, onRetry } = actionsRef.current;
+    if (!request?.canRepair || !onRepair || !onRetry) {
+      return;
+    }
+
+    dispatch({ type: 'repair_start' });
+    try {
+      const repaired = await onRepair();
+      if (stateRef.current.request !== request) {
+        return;
+      }
+      if (repaired === false) {
+        dispatch({ type: 'repair_failure', message: REPAIR_FAILURE_MESSAGE });
+        return;
+      }
+    } catch (error) {
+      logger.error('Failed to restore verified save copy:', error);
+      if (stateRef.current.request === request) {
+        dispatch({ type: 'repair_failure', message: REPAIR_FAILURE_MESSAGE });
+      }
+      return;
+    }
+
+    dispatch({ type: 'retry_start' });
+    try {
+      const loaded = await onRetry();
+      if (stateRef.current.request !== request) {
+        return;
+      }
+      if (loaded === false) {
+        dispatch({
+          type: 'repair_reload_failure',
+          message: REPAIR_RELOAD_FAILURE_MESSAGE,
+        });
+        return;
+      }
+      actionsRef.current = {};
+      dispatch({ type: 'retry_success' });
+    } catch (error) {
+      logger.error('Failed to load restored save copy:', error);
+      if (stateRef.current.request === request) {
+        dispatch({
+          type: 'repair_reload_failure',
+          message: REPAIR_RELOAD_FAILURE_MESSAGE,
+        });
+      }
+    }
+  }, []);
+
   const toggleDetails = useCallback(() => {
     dispatch({ type: 'toggle_details' });
   }, []);
@@ -146,8 +207,9 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
     exportRaw,
     deleteBrokenSave,
     retry,
+    repair,
     toggleDetails,
-  }), [close, deleteBrokenSave, exportRaw, retry, showFailure, state, toggleDetails]);
+  }), [close, deleteBrokenSave, exportRaw, repair, retry, showFailure, state, toggleDetails]);
 
   const dialogStatus = activeDialogStatus(state);
 
@@ -159,9 +221,13 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
           request={state.request}
           stateStatus={dialogStatus}
           detailsVisible={state.detailsVisible}
+          actionError={state.actionError}
           onClose={close}
           onDelete={() => void deleteBrokenSave()}
           onExportRaw={() => void exportRaw()}
+          onRepair={state.request.canRepair && actionsRef.current.onRepair && actionsRef.current.onRetry
+            ? () => void repair()
+            : undefined}
           onRetry={() => void retry()}
           onToggleDetails={toggleDetails}
         />

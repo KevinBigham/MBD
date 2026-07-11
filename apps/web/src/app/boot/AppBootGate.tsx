@@ -9,10 +9,30 @@ import {
   activateActiveSavePersistenceMetadata,
   prepareActiveSavePersistenceForLoad,
   releaseActiveSavePersistenceLoad,
+  restoreInactiveSaveIntegrityBackup,
 } from '@/shared/lib/activeSavePersistence';
 
 type AutoResumeFailure = Extract<LoadSaveSafelyResult, { ok: false }>;
 type AutoResumeStatus = 'idle' | 'resuming' | 'finished';
+type ResumeOptions = {
+  fromRecovery?: boolean;
+  resumePath?: string | null;
+};
+
+function currentBrowserPath(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function restoreBrowserPath(path: string | null): void {
+  if (!path || typeof window === 'undefined' || currentBrowserPath() === path) {
+    return;
+  }
+  window.history.replaceState(window.history.state, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -78,8 +98,9 @@ export function AppBootGate({ children }: { children: ReactNode }) {
   const attemptResume = useCallback(async (
     saveId: string,
     slotNumber: number | null,
-    options: { fromRecovery?: boolean } = {},
+    options: ResumeOptions = {},
   ): Promise<boolean> => {
+    const resumePath = options.resumePath ?? currentBrowserPath();
     setResumeStatus('resuming');
 
     try {
@@ -99,7 +120,14 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         if (!options.fromRecovery) {
           recovery.showFailure({
             failure: loadResult,
-            onRetry: () => attemptResume(saveId, slotNumber, { fromRecovery: true }),
+            onRepair: async () => {
+              await restoreInactiveSaveIntegrityBackup(saveId);
+              return true;
+            },
+            onRetry: () => attemptResume(saveId, slotNumber, {
+              fromRecovery: true,
+              resumePath,
+            }),
           });
         }
         return false;
@@ -120,7 +148,10 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         if (!options.fromRecovery) {
           recovery.showFailure({
             failure,
-            onRetry: () => attemptResume(saveId, slotNumber, { fromRecovery: true }),
+            onRetry: () => attemptResume(saveId, slotNumber, {
+              fromRecovery: true,
+              resumePath,
+            }),
           });
         }
         return false;
@@ -139,6 +170,7 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         activeSaveId: loadResult.save.id,
         activeSaveSlot: loadResult.save.slotNumber,
       });
+      restoreBrowserPath(resumePath);
       setResumeStatus('finished');
       return true;
     } catch (error) {
@@ -151,7 +183,10 @@ export function AppBootGate({ children }: { children: ReactNode }) {
       if (!options.fromRecovery) {
         recovery.showFailure({
           failure,
-          onRetry: () => attemptResume(saveId, slotNumber, { fromRecovery: true }),
+          onRetry: () => attemptResume(saveId, slotNumber, {
+            fromRecovery: true,
+            resumePath,
+          }),
         });
       }
       return false;

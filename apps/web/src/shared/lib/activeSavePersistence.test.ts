@@ -12,6 +12,7 @@ import {
   releaseActiveSavePersistenceLoad,
   replaceInactiveSavePersistenceRecord,
   resetActiveSavePersistenceForTesting,
+  restoreInactiveSaveIntegrityBackup,
   retireActiveSavePersistenceForDelete,
   retryActiveSavePersistence,
   subscribeToActiveSavePersistenceStatus,
@@ -20,8 +21,9 @@ import {
 import {
   deleteSaveById,
   importSnapshotFromJson,
-  listBranches,
+  listSaveTreeChildIds,
   loadGameById,
+  restoreSaveIntegrityBackup,
   saveGameById,
   scheduleAutoSave,
   type SaveData,
@@ -32,8 +34,9 @@ vi.mock('./saveSystem', async (importOriginal) => {
   return {
     ...actual,
     deleteSaveById: vi.fn(),
-    listBranches: vi.fn(),
+    listSaveTreeChildIds: vi.fn(),
     loadGameById: vi.fn(),
+    restoreSaveIntegrityBackup: vi.fn(),
     saveGameById: vi.fn(),
     scheduleAutoSave: vi.fn(),
   };
@@ -41,7 +44,8 @@ vi.mock('./saveSystem', async (importOriginal) => {
 
 const mockedLoadGameById = vi.mocked(loadGameById);
 const mockedDeleteSaveById = vi.mocked(deleteSaveById);
-const mockedListBranches = vi.mocked(listBranches);
+const mockedListSaveTreeChildIds = vi.mocked(listSaveTreeChildIds);
+const mockedRestoreSaveIntegrityBackup = vi.mocked(restoreSaveIntegrityBackup);
 const mockedSaveGameById = vi.mocked(saveGameById);
 const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
 
@@ -68,7 +72,8 @@ describe('persistActiveSaveSnapshot', () => {
     resetActiveSavePersistenceForTesting();
     mockedScheduleAutoSave.mockResolvedValue(undefined);
     mockedDeleteSaveById.mockResolvedValue(null);
-    mockedListBranches.mockResolvedValue([]);
+    mockedListSaveTreeChildIds.mockResolvedValue([]);
+    mockedRestoreSaveIntegrityBackup.mockImplementation(async (id) => savedRecord(id));
     mockedSaveGameById.mockImplementation(async (id) => savedRecord(id));
   });
 
@@ -1273,6 +1278,34 @@ describe('persistActiveSaveSnapshot', () => {
     });
   });
 
+  it('does not claim a durable active-root mutation when exact child cleanup leaves it untouched', async () => {
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-1',
+      '2026-04-02T19:40:00.000Z',
+    ));
+
+    await expect(trackActiveSavePersistenceOperation(
+      'save-slot-1',
+      vi.fn().mockResolvedValue(null),
+    )).resolves.toBeNull();
+
+    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
+      state: 'idle',
+      desiredGeneration: 0,
+      durableGeneration: 0,
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T19:40:00.000Z',
+    });
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 4,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 92 }),
+    })).resolves.toMatchObject({ saved: true });
+  });
+
   it('rolls back a rejected atomic metadata generation without phantom pending work', async () => {
     reconcileActiveSavePersistenceMetadata(savedRecord(
       'save-slot-1',
@@ -1374,12 +1407,53 @@ describe('persistActiveSaveSnapshot', () => {
     expect(staleExport).not.toHaveBeenCalled();
   });
 
+  it('restores one integrity record without tombstoning untouched child coordinators', async () => {
+    const branch = savedRecord('branch-live', '2026-04-02T20:30:00.000Z');
+    activateActiveSavePersistenceMetadata(branch);
+    mockedListSaveTreeChildIds.mockResolvedValueOnce([branch.id]);
+    const restoredRoot = savedRecord('save-slot-4', '2026-04-02T21:00:00.000Z');
+    mockedRestoreSaveIntegrityBackup.mockResolvedValueOnce(restoredRoot);
+    mockedLoadGameById.mockResolvedValueOnce({
+      ...branch,
+      slotNumber: null,
+      parentSaveId: 'save-slot-4',
+      isRootSave: false,
+      branchMeta: null,
+    } as SaveData);
+
+    await expect(restoreInactiveSaveIntegrityBackup('save-slot-4')).resolves.toBe(restoredRoot);
+
+    expect(mockedRestoreSaveIntegrityBackup).toHaveBeenCalledWith('save-slot-4');
+    expect(getActiveSavePersistenceStatus('save-slot-4')).toMatchObject({
+      state: 'idle',
+      saveName: 'Durable Dynasty',
+      lastSavedAt: '2026-04-02T21:00:00.000Z',
+    });
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: branch.id,
+      activeSaveSlot: null,
+      gmName: 'Branch GM',
+      teamName: 'Tycoons',
+      season: 4,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 92 }),
+    })).resolves.toMatchObject({ saved: true });
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      branch.id,
+      expect.any(String),
+      expect.objectContaining({ day: 92 }),
+      expect.objectContaining({
+        parentSaveId: 'save-slot-4',
+        isRootSave: false,
+      }),
+    );
+  });
+
   it('fails a tree replacement closed when child coordinator discovery rejects', async () => {
     reconcileActiveSavePersistenceMetadata(savedRecord(
       'save-slot-4',
       '2026-04-02T19:40:00.000Z',
     ));
-    mockedListBranches.mockRejectedValueOnce(new Error('Branch enumeration failed.'));
+    mockedListSaveTreeChildIds.mockRejectedValueOnce(new Error('Branch enumeration failed.'));
     const replaceRecord = vi.fn();
 
     await expect(replaceInactiveSavePersistenceRecord(

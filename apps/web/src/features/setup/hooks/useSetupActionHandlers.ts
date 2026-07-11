@@ -9,16 +9,16 @@ import {
   prepareActiveSavePersistenceForLoad,
   releaseActiveSavePersistenceLoad,
   replaceInactiveSavePersistenceRecord,
+  restoreInactiveSaveIntegrityBackup,
   retireSaveTreePersistenceForDelete,
 } from '@/shared/lib/activeSavePersistence';
 import {
   deleteSave,
-  inspectSaveById,
+  deleteSaveById,
   loadSaveSafely,
   saveGame,
   type LoadSaveSafelyResult,
   type SaveData,
-  type SaveInspectionResult,
 } from '@/shared/lib/saveSystem';
 import type { NewGameOptions } from '@/workers/sim.worker.setup';
 import type {
@@ -141,10 +141,6 @@ export function useSetupActionHandlers({
     return true;
   }, [importSnapshot, initializeGame, navigate, setStatus]);
 
-  const continueFromInspection = useCallback(async (result: Extract<SaveInspectionResult, { status: 'ok' }>): Promise<boolean> => {
-    return continueFromSave(result.save, result.save.snapshot);
-  }, [continueFromSave]);
-
   const continueFromSafeLoad = useCallback(async (result: Extract<LoadSaveSafelyResult, { ok: true }>): Promise<boolean> => {
     return continueFromSave(result.save, result.snapshot);
   }, [continueFromSave]);
@@ -173,7 +169,10 @@ export function useSetupActionHandlers({
     }
   }, [activeSaveId, activeSaveSlot, refreshSaves, setStatus]);
 
-  const handleContinueSave = useCallback(async (save: SaveData): Promise<boolean> => {
+  const handleContinueSave = useCallback(async (
+    save: SaveData,
+    options: { fromRecovery?: boolean } = {},
+  ): Promise<boolean> => {
     if (!workerIsReady) {
       return false;
     }
@@ -181,31 +180,39 @@ export function useSetupActionHandlers({
     setStatus('');
     try {
       await prepareActiveSavePersistenceForLoad(save.id);
-      if (save.isRootSave && save.slotNumber != null) {
-        const result = await loadSaveSafely(save.slotNumber);
-        if (!result.ok) {
-          releaseActiveSavePersistenceLoad(save.id);
+      const result = await loadSaveSafely(save.id);
+      if (!result.ok) {
+        releaseActiveSavePersistenceLoad(save.id);
+        if (!options.fromRecovery) {
           recovery.showFailure({
             failure: result,
-            onDelete: () => handleDelete(save.slotNumber!),
-            onRetry: () => handleContinueSave(save),
+            onDelete: async () => {
+              const deletingActiveSave = activeSaveId === save.id;
+              const deletingRootWithUnknownActiveBranch = /^save-slot-\d+$/.test(save.id)
+                && activeSaveId != null
+                && activeSaveSlot == null;
+              if (deletingActiveSave || deletingRootWithUnknownActiveBranch) {
+                setStatus(`Cannot delete ${save.name} while its dynasty or a what-if branch is active.`);
+                return false;
+              }
+              await retireSaveTreePersistenceForDelete(
+                save.id,
+                () => deleteSaveById(save.id),
+              );
+              await refreshSaves();
+              return true;
+            },
+            onRepair: async () => {
+              await restoreInactiveSaveIntegrityBackup(save.id);
+              return true;
+            },
+            onRetry: () => handleContinueSave(save, { fromRecovery: true }),
           });
-          return false;
-        }
-
-        return await continueFromSafeLoad(result);
-      }
-
-      const result = await inspectSaveById(save.id);
-      if (result.status !== 'ok') {
-        releaseActiveSavePersistenceLoad(save.id);
-        if (save.slotNumber == null) {
-          setStatus(`Unable to load branch "${save.name}".`);
         }
         return false;
       }
 
-      return await continueFromInspection(result);
+      return await continueFromSafeLoad(result);
     } catch (error) {
       releaseActiveSavePersistenceLoad(save.id);
       logger.error('Failed to continue save:', error);
@@ -215,10 +222,12 @@ export function useSetupActionHandlers({
       setBusySlot(null);
     }
   }, [
-    continueFromInspection,
+    activeSaveId,
+    activeSaveSlot,
     continueFromSafeLoad,
     handleDelete,
     recovery,
+    refreshSaves,
     setStatus,
     workerIsReady,
   ]);

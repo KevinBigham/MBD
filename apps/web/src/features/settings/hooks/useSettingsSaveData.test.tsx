@@ -8,6 +8,7 @@ import {
   prepareActiveSavePersistenceForLoad,
   releaseActiveSavePersistenceLoad,
   replaceInactiveSavePersistenceRecord,
+  restoreInactiveSaveIntegrityBackup,
   retireActiveSavePersistenceForDelete,
   retireSaveTreePersistenceForDelete,
   trackActiveSavePersistenceOperation,
@@ -16,7 +17,7 @@ import {
   clearAllSaves,
   createBranchSave,
   deleteSave,
-  deleteSaveById,
+  deleteSaveByIdWithResult,
   importSnapshotFromJson,
   listBranches,
   listSaves,
@@ -32,6 +33,7 @@ vi.mock('@/shared/lib/activeSavePersistence', () => ({
   prepareActiveSavePersistenceForLoad: vi.fn(),
   releaseActiveSavePersistenceLoad: vi.fn(),
   replaceInactiveSavePersistenceRecord: vi.fn(),
+  restoreInactiveSaveIntegrityBackup: vi.fn(),
   retireActiveSavePersistenceForDelete: vi.fn(),
   retireSaveTreePersistenceForDelete: vi.fn(),
   trackActiveSavePersistenceOperation: vi.fn(),
@@ -42,7 +44,7 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   clearAllSaves: vi.fn(),
   createBranchSave: vi.fn(),
   deleteSave: vi.fn(),
-  deleteSaveById: vi.fn(),
+  deleteSaveByIdWithResult: vi.fn(),
   exportSnapshotToJson: vi.fn((name: string, snapshot: unknown) =>
     JSON.stringify({ kind: 'mbd-save-export', name, snapshot })),
   importSnapshotFromJson: vi.fn(),
@@ -115,7 +117,7 @@ describe('useSettingsSaveData', () => {
   const mockedClearAllSaves = vi.mocked(clearAllSaves);
   const mockedCreateBranchSave = vi.mocked(createBranchSave);
   const mockedDeleteSave = vi.mocked(deleteSave);
-  const mockedDeleteSaveById = vi.mocked(deleteSaveById);
+  const mockedDeleteSaveByIdWithResult = vi.mocked(deleteSaveByIdWithResult);
   const mockedImportSnapshotFromJson = vi.mocked(importSnapshotFromJson);
   const mockedListBranches = vi.mocked(listBranches);
   const mockedListSaves = vi.mocked(listSaves);
@@ -131,6 +133,9 @@ describe('useSettingsSaveData', () => {
   );
   const mockedReplaceInactiveSavePersistenceRecord = vi.mocked(
     replaceInactiveSavePersistenceRecord,
+  );
+  const mockedRestoreInactiveSaveIntegrityBackup = vi.mocked(
+    restoreInactiveSaveIntegrityBackup,
   );
   const mockedRetireSaveTreePersistenceForDelete = vi.mocked(
     retireSaveTreePersistenceForDelete,
@@ -154,7 +159,11 @@ describe('useSettingsSaveData', () => {
     mockedClearAllSaves.mockResolvedValue(undefined);
     mockedCreateBranchSave.mockResolvedValue({ branch: branchSave, parent: baseSave });
     mockedDeleteSave.mockResolvedValue(undefined);
-    mockedDeleteSaveById.mockResolvedValue(baseSave);
+    mockedDeleteSaveByIdWithResult.mockResolvedValue({
+      outcome: 'deleted_branch',
+      parent: baseSave,
+    });
+    mockedRestoreInactiveSaveIntegrityBackup.mockResolvedValue(baseSave);
     mockedListBranches.mockResolvedValue([branchSave]);
     mockedSaveGame.mockImplementation(async (slot, name) => ({
       ...baseSave,
@@ -382,6 +391,51 @@ describe('useSettingsSaveData', () => {
     expect(retryResult).toBe(false);
   });
 
+  it('restores a verified integrity copy before retrying the ordinary settings load', async () => {
+    const recoveryShowFailure = vi.fn();
+    const failure = {
+      ok: false,
+      reason: 'integrity_failed',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'The stored checksum does not match.',
+        rawJson: '{"id":"save-slot-1"}',
+        integrityFailureKind: 'mismatch',
+        repairAvailable: true,
+        repairUpdatedAt: baseSave.updatedAt,
+      },
+    } as const;
+    mockedLoadSaveSafely
+      .mockResolvedValueOnce(failure as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        snapshot: { schemaVersion: 34, season: 4, day: 91, phase: 'regular' },
+        save: baseSave,
+        rawJson: '{"id":"save-slot-1"}',
+      } as never);
+
+    await renderHook(baseOptions({ recoveryShowFailure }));
+    await act(async () => {
+      await latestResult?.handleLoad(1);
+    });
+
+    const recoveryOptions = recoveryShowFailure.mock.calls[0]?.[0] as ShowSaveRecoveryOptions;
+    expect(recoveryOptions.onRepair).toEqual(expect.any(Function));
+    await act(async () => {
+      await recoveryOptions.onRepair?.();
+    });
+    expect(mockedRestoreInactiveSaveIntegrityBackup).toHaveBeenCalledWith('save-slot-1');
+
+    let retryResult: boolean | void = undefined;
+    await act(async () => {
+      retryResult = await recoveryOptions.onRetry?.();
+    });
+    expect(retryResult).toBe(true);
+    expect(mockedLoadSaveSafely).toHaveBeenLastCalledWith(1);
+    expect(mockedActivateActiveSavePersistenceMetadata).toHaveBeenCalledWith(baseSave);
+  });
+
   it('saves, imports, clears, creates branches, and deletes branches through existing IO helpers', async () => {
     const worker = makeWorker();
     mockedListBranches
@@ -444,10 +498,31 @@ describe('useSettingsSaveData', () => {
     await act(async () => {
       await latestResult?.handleDeleteBranch('branch-1');
     });
-    expect(mockedDeleteSaveById).toHaveBeenCalledWith('branch-1');
+    expect(mockedDeleteSaveByIdWithResult).toHaveBeenCalledWith('branch-1');
     expect(mockedTrackActiveSavePersistenceOperation).toHaveBeenCalledTimes(2);
     expect(latestResult?.branches).toEqual([]);
     expect(mockedLoadGameById).not.toHaveBeenCalled();
+  });
+
+  it('reports exact branch cleanup truthfully when a damaged parent is left untouched', async () => {
+    mockedDeleteSaveByIdWithResult.mockResolvedValueOnce({
+      outcome: 'deleted_exact_parent_untouched',
+      parent: null,
+    });
+    mockedListBranches
+      .mockResolvedValueOnce([branchSave])
+      .mockResolvedValueOnce([]);
+    await renderHook(baseOptions());
+
+    await act(async () => {
+      await latestResult?.handleDeleteBranch(branchSave.id);
+    });
+
+    expect(mockedDeleteSaveByIdWithResult).toHaveBeenCalledWith(branchSave.id);
+    expect(latestResult?.status).toBe(
+      'Deleted the branch record. Its root save was left unchanged because the branch history could not be updated safely; recover that root before continuing.',
+    );
+    expect(latestResult?.branches).toEqual([]);
   });
 
   it('routes the active root manual save through the coordinator and surfaces coordinator failure', async () => {
@@ -505,7 +580,7 @@ describe('useSettingsSaveData', () => {
     await act(async () => {
       await latestResult?.handleDeleteBranch('branch-1');
     });
-    expect(mockedDeleteSaveById).not.toHaveBeenCalled();
+    expect(mockedDeleteSaveByIdWithResult).not.toHaveBeenCalled();
     expect(latestResult?.status).toBe('Cannot delete the active what-if branch.');
 
     await act(async () => {
@@ -533,7 +608,7 @@ describe('useSettingsSaveData', () => {
     await act(async () => {
       await latestResult?.handleDeleteBranch('branch-2');
     });
-    expect(mockedDeleteSaveById).toHaveBeenCalledWith('branch-2');
+    expect(mockedDeleteSaveByIdWithResult).toHaveBeenCalledWith('branch-2');
 
     confirm.mockRestore();
   });

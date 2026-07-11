@@ -9,6 +9,7 @@ import {
   activateActiveSavePersistenceMetadata,
   prepareActiveSavePersistenceForLoad,
   releaseActiveSavePersistenceLoad,
+  restoreInactiveSaveIntegrityBackup,
 } from '@/shared/lib/activeSavePersistence';
 import { toast } from 'sonner';
 
@@ -28,6 +29,7 @@ vi.mock('@/shared/lib/activeSavePersistence', () => ({
   activateActiveSavePersistenceMetadata: vi.fn(),
   prepareActiveSavePersistenceForLoad: vi.fn().mockResolvedValue(undefined),
   releaseActiveSavePersistenceLoad: vi.fn(),
+  restoreInactiveSaveIntegrityBackup: vi.fn(),
 }));
 
 vi.mock('@/features/save-recovery', () => ({
@@ -136,6 +138,7 @@ describe('AppBootGate', () => {
   };
 
   beforeEach(() => {
+    window.history.replaceState(null, '', '/MBD/dashboard');
     const storage = createStorageMock();
     Object.defineProperty(window, 'localStorage', {
       value: storage,
@@ -175,6 +178,7 @@ describe('AppBootGate', () => {
       root.unmount();
     });
     container.remove();
+    window.history.replaceState(null, '', '/MBD/dashboard');
     vi.clearAllMocks();
   });
 
@@ -282,6 +286,62 @@ describe('AppBootGate', () => {
     expect(releaseActiveSavePersistenceLoad).toHaveBeenCalledWith('save-slot-1');
     expect(useGameStore.getState().activeSaveId).toBeNull();
     expect(container.textContent).toContain('Save Hub Route');
+  });
+
+  it('restores an integrity failure through the persistence boundary before ordinary retry', async () => {
+    const failure: Extract<LoadSaveSafelyResult, { ok: false }> = {
+      ok: false,
+      reason: 'integrity_failed',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'The primary checksum does not match.',
+        rawJson: '{"id":"save-slot-1"}',
+        integrityFailureKind: 'mismatch',
+        repairAvailable: true,
+        repairUpdatedAt: okLoadResult.save.updatedAt,
+      },
+    };
+    window.history.replaceState(null, '', '/MBD/players/player-42');
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(loadSaveSafely)
+      .mockResolvedValueOnce(failure)
+      .mockResolvedValueOnce(okLoadResult);
+    vi.mocked(restoreInactiveSaveIntegrityBackup).mockResolvedValue(okLoadResult.save);
+
+    await act(async () => {
+      root.render(
+        <AppBootGate>
+          <div>Recovered Route</div>
+        </AppBootGate>,
+      );
+      await flushAsync();
+    });
+
+    const actions = recoveryMock.showFailure.mock.calls[0]?.[0] as {
+      onRepair: () => Promise<boolean>;
+      onRetry: () => Promise<boolean>;
+    };
+    expect(actions.onRepair).toEqual(expect.any(Function));
+    expect(actions.onRetry).toEqual(expect.any(Function));
+
+    await expect(actions.onRepair()).resolves.toBe(true);
+    expect(restoreInactiveSaveIntegrityBackup).toHaveBeenCalledWith('save-slot-1');
+
+    // A failed protected-route boot redirects to the Save Hub while the
+    // recovery dialog remains open. Successful retry must restore the route
+    // the player was using before that redirect.
+    window.history.replaceState(null, '', '/MBD/');
+
+    await act(async () => {
+      await expect(actions.onRetry()).resolves.toBe(true);
+      await flushAsync();
+    });
+    expect(loadSaveSafely).toHaveBeenLastCalledWith('save-slot-1');
+    expect(workerMock.importSnapshot).toHaveBeenCalledWith(okLoadResult.snapshot);
+    expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(okLoadResult.save);
+    expect(useGameStore.getState().activeSaveId).toBe('save-slot-1');
+    expect(window.location.pathname).toBe('/MBD/players/player-42');
   });
 
   it('does not auto-load when there is no persisted active save id', async () => {

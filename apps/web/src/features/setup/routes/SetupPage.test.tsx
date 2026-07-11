@@ -7,6 +7,7 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import {
   deleteSave,
+  deleteSaveById,
   inspectSaveById,
   listSaveTree,
   listSaves,
@@ -51,8 +52,10 @@ vi.mock('@/features/onboarding/nudges', () => ({
 vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),
+  deleteSaveById: vi.fn(),
   inspectSaveById: vi.fn(),
   listBranches: vi.fn().mockResolvedValue([]),
+  listSaveTreeChildIds: vi.fn().mockResolvedValue([]),
   listSaveTree: vi.fn(),
   listSaves: vi.fn(),
   loadGame: vi.fn(),
@@ -71,6 +74,7 @@ const mockedLoadSaveSafely = vi.mocked(loadSaveSafely);
 const mockedRepairSave = vi.mocked(repairSave);
 const mockedSaveGame = vi.mocked(saveGame);
 const mockedDeleteSave = vi.mocked(deleteSave);
+const mockedDeleteSaveById = vi.mocked(deleteSaveById);
 const mockedInspectSaveById = vi.mocked(inspectSaveById);
 const mockedRegisterGuidedStartSave = vi.mocked(registerGuidedStartSave);
 
@@ -607,7 +611,7 @@ describe('SetupPage', () => {
       await Promise.resolve();
     });
 
-    expect(mockedLoadSaveSafely).toHaveBeenCalledWith(1);
+    expect(mockedLoadSaveSafely).toHaveBeenCalledWith('save-slot-1');
     expect(vi.mocked(workerMock.importSnapshot)).toHaveBeenCalled();
     expect(storeMock.initializeGame).toHaveBeenCalled();
     expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
@@ -622,6 +626,7 @@ describe('SetupPage', () => {
     });
 
     expect(mockedDeleteSave).toHaveBeenCalledWith(1);
+    expect(mockedDeleteSaveById).not.toHaveBeenCalled();
   });
 
   it('passes career mode into new dynasty creation when the GM Career option is selected', async () => {
@@ -712,7 +717,8 @@ describe('SetupPage', () => {
     await act(async () => {
       await options.onDelete();
     });
-    expect(mockedDeleteSave).toHaveBeenCalledWith(1);
+    expect(mockedDeleteSaveById).toHaveBeenCalledWith('save-slot-1');
+    expect(mockedDeleteSave).not.toHaveBeenCalled();
 
     mockedLoadSaveSafely.mockResolvedValueOnce({
       ok: false,
@@ -732,7 +738,7 @@ describe('SetupPage', () => {
     expect(retryResult).toBe(false);
   });
 
-  it('loads branch saves through the existing branch inspection path', async () => {
+  it('loads branch saves through the verified safe-load path', async () => {
     await act(async () => {
       root.render(
         <MemoryRouter>
@@ -753,6 +759,18 @@ describe('SetupPage', () => {
       await Promise.resolve();
     });
 
+    const branchInspection = await mockedInspectSaveById('branch-1');
+    if (branchInspection.status !== 'ok') {
+      throw new Error('Expected the branch fixture to be loadable.');
+    }
+    mockedInspectSaveById.mockClear();
+    mockedLoadSaveSafely.mockResolvedValueOnce({
+      ok: true,
+      save: branchInspection.save,
+      snapshot: branchInspection.save.snapshot!,
+      rawJson: '{"id":"branch-1"}',
+    });
+
     const branchButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Open Branch'),
     );
@@ -763,7 +781,8 @@ describe('SetupPage', () => {
       await Promise.resolve();
     });
 
-    expect(mockedInspectSaveById).toHaveBeenCalledWith('branch-1');
+    expect(mockedInspectSaveById).not.toHaveBeenCalled();
+    expect(mockedLoadSaveSafely).toHaveBeenCalledWith('branch-1');
     expect(vi.mocked(workerMock.importSnapshot)).toHaveBeenCalled();
   });
 

@@ -10,6 +10,18 @@ interface IndexedDbSaveFaultState {
   totalAttempts: number;
 }
 
+export interface IndexedDbChecksumTamperResult {
+  afterChecksum: string;
+  beforeChecksum: string;
+}
+
+export interface IndexedDbSaveIntegrityPair {
+  backupChecksum: string;
+  backupUpdatedAt: string;
+  primaryChecksum: string;
+  primaryUpdatedAt: string;
+}
+
 export const appMain = (page: Page) => page.locator('main#main-content');
 export const mainNavigation = (page: Page) => page.getByRole('navigation', { name: 'Main navigation' });
 export const saveSummary = (page: Page) => page.getByTestId('save-persistence-summary');
@@ -77,6 +89,311 @@ export async function indexedDbSaveFaultState(page: Page): Promise<IndexedDbSave
     if (!state) throw new Error('IndexedDB save fault shim was not installed.');
     return { ...state };
   });
+}
+
+export async function tamperIndexedDbSaveChecksum(
+  page: Page,
+  saveId: string,
+): Promise<IndexedDbChecksumTamperResult> {
+  return page.evaluate(async (exactSaveId) => {
+    type StoredSaveRecord = {
+      integrity?: {
+        checksum?: unknown;
+        [key: string]: unknown;
+      };
+      [key: string]: unknown;
+    };
+
+    const databaseName = 'mbd-saves';
+    const storeName = 'saves';
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(databaseName);
+      let databaseWasMissing = false;
+      let openSettled = false;
+      const rejectOpen = (message: string) => {
+        if (openSettled) return;
+        openSettled = true;
+        reject(new Error(message));
+      };
+
+      request.onupgradeneeded = () => {
+        databaseWasMissing = true;
+        request.transaction?.abort();
+      };
+      request.onerror = () => {
+        rejectOpen(databaseWasMissing
+          ? `IndexedDB database "${databaseName}" does not exist.`
+          : `Failed to open IndexedDB database "${databaseName}": ${request.error?.message ?? 'unknown error'}`);
+      };
+      request.onblocked = () => {
+        rejectOpen(`Opening IndexedDB database "${databaseName}" was blocked.`);
+      };
+      request.onsuccess = () => {
+        if (databaseWasMissing || openSettled) {
+          request.result.close();
+          rejectOpen(`IndexedDB database "${databaseName}" does not exist.`);
+          return;
+        }
+        openSettled = true;
+        resolve(request.result);
+      };
+    });
+
+    if (!database.objectStoreNames.contains(storeName)) {
+      database.close();
+      throw new Error(
+        `IndexedDB database "${databaseName}" is missing object store "${storeName}".`,
+      );
+    }
+
+    return new Promise<IndexedDbChecksumTamperResult>((resolve, reject) => {
+      let transaction: IDBTransaction;
+      try {
+        transaction = database.transaction(storeName, 'readwrite');
+      } catch (error) {
+        database.close();
+        reject(
+          new Error(
+            `Failed to start IndexedDB checksum-tamper transaction for save "${exactSaveId}": ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
+        return;
+      }
+
+      let failureMessage: string | null = null;
+      let result: IndexedDbChecksumTamperResult | null = null;
+      let settled = false;
+      const rejectOnce = (message: string) => {
+        if (settled) return;
+        settled = true;
+        database.close();
+        reject(new Error(message));
+      };
+
+      // Register completion, failure, and abort handlers before issuing the put.
+      transaction.oncomplete = () => {
+        if (settled) return;
+        if (!result) {
+          rejectOnce(
+            `IndexedDB checksum-tamper transaction completed without updating save "${exactSaveId}".`,
+          );
+          return;
+        }
+        settled = true;
+        database.close();
+        resolve(result);
+      };
+      transaction.onerror = () => {
+        rejectOnce(
+          failureMessage
+            ?? `IndexedDB checksum-tamper transaction failed for save "${exactSaveId}": ${transaction.error?.message ?? 'unknown error'}`,
+        );
+      };
+      transaction.onabort = () => {
+        rejectOnce(
+          failureMessage
+            ?? `IndexedDB checksum-tamper transaction aborted for save "${exactSaveId}": ${transaction.error?.message ?? 'unknown error'}`,
+        );
+      };
+
+      const store = transaction.objectStore(storeName);
+      const getRequest = store.get(exactSaveId);
+      getRequest.onerror = () => {
+        failureMessage = `Failed to read exact save "${exactSaveId}" from IndexedDB: ${getRequest.error?.message ?? 'unknown error'}`;
+      };
+      getRequest.onsuccess = () => {
+        const record = getRequest.result as StoredSaveRecord | undefined;
+        if (!record) {
+          failureMessage = `Cannot tamper IndexedDB checksum: exact save "${exactSaveId}" was not found.`;
+          transaction.abort();
+          return;
+        }
+
+        const integrity = record.integrity;
+        const beforeChecksum = integrity?.checksum;
+        if (
+          !integrity
+          || typeof beforeChecksum !== 'string'
+          || !/^[0-9a-f]{64}$/.test(beforeChecksum)
+        ) {
+          failureMessage = `Cannot tamper IndexedDB checksum for save "${exactSaveId}": integrity seal is missing or malformed.`;
+          transaction.abort();
+          return;
+        }
+
+        const afterChecksum = `${beforeChecksum[0] === '0' ? '1' : '0'}${beforeChecksum.slice(1)}`;
+        integrity.checksum = afterChecksum;
+        result = { beforeChecksum, afterChecksum };
+
+        const putRequest = store.put(record);
+        putRequest.onerror = () => {
+          failureMessage = `Failed to write tampered checksum for save "${exactSaveId}" to IndexedDB: ${putRequest.error?.message ?? 'unknown error'}`;
+        };
+      };
+    });
+  }, saveId);
+}
+
+export async function readIndexedDbSaveIntegrityPair(
+  page: Page,
+  saveId: string,
+): Promise<IndexedDbSaveIntegrityPair> {
+  return page.evaluate(async (exactSaveId) => {
+    type StoredIntegrityRecord = {
+      integrity?: {
+        checksum?: unknown;
+      };
+      updatedAt?: unknown;
+    };
+
+    const databaseName = 'mbd-saves';
+    const primaryStoreName = 'saves';
+    const backupStoreName = 'saveIntegrityBackups';
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(databaseName);
+      let databaseWasMissing = false;
+      let openSettled = false;
+      const rejectOpen = (message: string) => {
+        if (openSettled) return;
+        openSettled = true;
+        reject(new Error(message));
+      };
+
+      request.onupgradeneeded = () => {
+        databaseWasMissing = true;
+        request.transaction?.abort();
+      };
+      request.onerror = () => {
+        rejectOpen(databaseWasMissing
+          ? `IndexedDB database "${databaseName}" does not exist.`
+          : `Failed to open IndexedDB database "${databaseName}": ${request.error?.message ?? 'unknown error'}`);
+      };
+      request.onblocked = () => {
+        rejectOpen(`Opening IndexedDB database "${databaseName}" was blocked.`);
+      };
+      request.onsuccess = () => {
+        if (databaseWasMissing || openSettled) {
+          request.result.close();
+          rejectOpen(`IndexedDB database "${databaseName}" does not exist.`);
+          return;
+        }
+        openSettled = true;
+        resolve(request.result);
+      };
+    });
+
+    const missingStores = [primaryStoreName, backupStoreName]
+      .filter((storeName) => !database.objectStoreNames.contains(storeName));
+    if (missingStores.length > 0) {
+      database.close();
+      throw new Error(
+        `IndexedDB database "${databaseName}" is missing required object store${missingStores.length === 1 ? '' : 's'}: ${missingStores.join(', ')}.`,
+      );
+    }
+
+    return new Promise<IndexedDbSaveIntegrityPair>((resolve, reject) => {
+      let transaction: IDBTransaction;
+      try {
+        transaction = database.transaction(
+          [primaryStoreName, backupStoreName],
+          'readonly',
+        );
+      } catch (error) {
+        database.close();
+        reject(
+          new Error(
+            `Failed to start IndexedDB integrity-read transaction for save "${exactSaveId}": ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
+        return;
+      }
+
+      let failureMessage: string | null = null;
+      let primaryRecord: StoredIntegrityRecord | undefined;
+      let backupRecord: StoredIntegrityRecord | undefined;
+      let settled = false;
+      const rejectOnce = (message: string) => {
+        if (settled) return;
+        settled = true;
+        database.close();
+        reject(new Error(message));
+      };
+
+      transaction.oncomplete = () => {
+        if (settled) return;
+        if (!primaryRecord) {
+          rejectOnce(
+            `Cannot read IndexedDB integrity pair: exact primary save "${exactSaveId}" was not found.`,
+          );
+          return;
+        }
+        if (!backupRecord) {
+          rejectOnce(
+            `Cannot read IndexedDB integrity pair: exact backup save "${exactSaveId}" was not found.`,
+          );
+          return;
+        }
+
+        const primaryChecksum = primaryRecord.integrity?.checksum;
+        const backupChecksum = backupRecord.integrity?.checksum;
+        if (typeof primaryChecksum !== 'string' || !/^[0-9a-f]{64}$/.test(primaryChecksum)) {
+          rejectOnce(
+            `Cannot read IndexedDB integrity pair for save "${exactSaveId}": primary integrity seal is missing or malformed.`,
+          );
+          return;
+        }
+        if (typeof backupChecksum !== 'string' || !/^[0-9a-f]{64}$/.test(backupChecksum)) {
+          rejectOnce(
+            `Cannot read IndexedDB integrity pair for save "${exactSaveId}": backup integrity seal is missing or malformed.`,
+          );
+          return;
+        }
+        if (typeof primaryRecord.updatedAt !== 'string' || typeof backupRecord.updatedAt !== 'string') {
+          rejectOnce(
+            `Cannot read IndexedDB integrity pair for save "${exactSaveId}": primary or backup updatedAt metadata is missing or malformed.`,
+          );
+          return;
+        }
+
+        settled = true;
+        database.close();
+        resolve({
+          backupChecksum,
+          backupUpdatedAt: backupRecord.updatedAt,
+          primaryChecksum,
+          primaryUpdatedAt: primaryRecord.updatedAt,
+        });
+      };
+      transaction.onerror = () => {
+        rejectOnce(
+          failureMessage
+            ?? `IndexedDB integrity-read transaction failed for save "${exactSaveId}": ${transaction.error?.message ?? 'unknown error'}`,
+        );
+      };
+      transaction.onabort = () => {
+        rejectOnce(
+          failureMessage
+            ?? `IndexedDB integrity-read transaction aborted for save "${exactSaveId}": ${transaction.error?.message ?? 'unknown error'}`,
+        );
+      };
+
+      const primaryRequest = transaction.objectStore(primaryStoreName).get(exactSaveId);
+      primaryRequest.onerror = () => {
+        failureMessage = `Failed to read exact primary save "${exactSaveId}" from IndexedDB: ${primaryRequest.error?.message ?? 'unknown error'}`;
+      };
+      primaryRequest.onsuccess = () => {
+        primaryRecord = primaryRequest.result as StoredIntegrityRecord | undefined;
+      };
+
+      const backupRequest = transaction.objectStore(backupStoreName).get(exactSaveId);
+      backupRequest.onerror = () => {
+        failureMessage = `Failed to read exact backup save "${exactSaveId}" from IndexedDB: ${backupRequest.error?.message ?? 'unknown error'}`;
+      };
+      backupRequest.onsuccess = () => {
+        backupRecord = backupRequest.result as StoredIntegrityRecord | undefined;
+      };
+    });
+  }, saveId);
 }
 
 export interface DurableSaveSummarySnapshot {

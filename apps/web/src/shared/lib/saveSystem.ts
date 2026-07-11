@@ -12,6 +12,14 @@ import {
   SAVE_IO_BUDGET_MS,
   measureAsyncOperation,
 } from './performance';
+import {
+  calculateSaveIntegrity,
+  canonicalizeSaveIntegrityValue,
+  SaveIntegrityUnavailableError,
+  sealSaveRecord,
+  verifySaveRecordIntegrity,
+  type SaveIntegrityMetadata,
+} from './saveIntegrity';
 
 export const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
 
@@ -32,6 +40,7 @@ export interface SaveData {
   parentSaveId: string | null;
   isRootSave: boolean;
   branchMeta: WhatIfBranchMeta | null;
+  integrity?: SaveIntegrityMetadata;
 }
 
 export interface LeaderboardEntry {
@@ -61,7 +70,15 @@ export type SaveLoadFailureReason =
   | 'version_too_new'
   | 'version_too_old'
   | 'migration_failed'
+  | 'integrity_failed'
   | 'storage_failed';
+
+export type SaveIntegrityFailureKind =
+  | 'mismatch'
+  | 'malformed'
+  | 'unsupported'
+  | 'unavailable'
+  | 'missing';
 
 export interface SaveLoadFailureDetail {
   slotId: string;
@@ -71,6 +88,11 @@ export interface SaveLoadFailureDetail {
   schemaVersion?: number;
   currentVersion?: number;
   minimumSupportedVersion?: number;
+  integrityFailureKind?: SaveIntegrityFailureKind;
+  expectedChecksum?: string;
+  actualChecksum?: string;
+  repairAvailable?: boolean;
+  repairUpdatedAt?: string;
 }
 
 export type LoadSaveSafelyResult =
@@ -120,6 +142,7 @@ interface AutoSaveScheduler {
 
 class MBDDatabase extends Dexie {
   saves!: Table<SaveData, string>;
+  saveIntegrityBackups!: Table<SaveData, string>;
   leaderboard!: Table<LeaderboardEntry, string>;
 
   constructor() {
@@ -155,6 +178,11 @@ class MBDDatabase extends Dexie {
       saves: 'id, slotNumber, parentSaveId, updatedAt, hasSnapshot',
       leaderboard: 'id, slotNumber, scenarioId, score, updatedAt',
     });
+    this.version(5).stores({
+      saves: 'id, slotNumber, parentSaveId, updatedAt, hasSnapshot',
+      saveIntegrityBackups: 'id, parentSaveId, updatedAt',
+      leaderboard: 'id, slotNumber, scenarioId, score, updatedAt',
+    });
   }
 }
 
@@ -175,6 +203,7 @@ type SaveWriteMetadata = {
   branchMeta: WhatIfBranchMeta | null;
   replaceExistingRootBranchMetadata?: boolean;
   deleteExistingBranchRows?: boolean;
+  deleteExistingBranchIds?: string[];
 };
 
 async function runSaveWriteInOrder<T>(
@@ -206,6 +235,16 @@ function rootSaveId(slot: number): string {
   return `save-slot-${slot}`;
 }
 
+function referencedBranchIds(record: Partial<SaveData> | null | undefined): string[] {
+  const snapshot = tryParseSnapshot(record?.snapshot);
+  if (!snapshot) {
+    return [];
+  }
+  return (snapshot.narrative.whatIfBranches ?? [])
+    .map((branch) => branch.saveId || branch.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
 function parseSlotNumberFromId(id: string | undefined): number | null {
   if (!id) {
     return null;
@@ -232,6 +271,264 @@ function safeRecordJson(raw: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+type SaveIntegrityBackupInspection = {
+  exists: boolean;
+  record: SaveData | null;
+  valid: boolean;
+};
+
+type SaveIntegrityVerification = Awaited<ReturnType<typeof verifySaveRecordIntegrity>>;
+
+export class SaveIntegrityError extends Error {
+  readonly kind: SaveIntegrityFailureKind;
+  readonly expectedChecksum?: string;
+  readonly actualChecksum?: string;
+
+  constructor(
+    kind: SaveIntegrityFailureKind,
+    message: string,
+    evidence: { expectedChecksum?: string; actualChecksum?: string } = {},
+  ) {
+    super(message);
+    this.name = 'SaveIntegrityError';
+    this.kind = kind;
+    this.expectedChecksum = evidence.expectedChecksum;
+    this.actualChecksum = evidence.actualChecksum;
+  }
+}
+
+function integrityErrorFromVerification(
+  verification: Extract<Awaited<ReturnType<typeof verifySaveRecordIntegrity>>, { status: 'invalid' }>,
+): SaveIntegrityError {
+  return new SaveIntegrityError(
+    verification.reason,
+    verification.message,
+    verification.reason === 'mismatch'
+      ? {
+        expectedChecksum: verification.expectedChecksum,
+        actualChecksum: verification.actualChecksum,
+      }
+      : {},
+  );
+}
+
+async function backupMatchesPrimaryGeneration(
+  primary: SaveData,
+  primaryVerification: SaveIntegrityVerification,
+  backupVerification: Extract<SaveIntegrityVerification, { status: 'valid' }>,
+): Promise<boolean> {
+  if (primaryVerification.status === 'valid') {
+    return primaryVerification.checksum === backupVerification.checksum;
+  }
+  if (primaryVerification.status === 'invalid') {
+    if (primaryVerification.reason === 'mismatch') {
+      return primaryVerification.expectedChecksum === backupVerification.checksum
+        || primaryVerification.actualChecksum === backupVerification.checksum;
+    }
+    if (
+      primaryVerification.reason === 'malformed'
+      && primaryVerification.expectedChecksum
+    ) {
+      return primaryVerification.expectedChecksum === backupVerification.checksum;
+    }
+    if (
+      primaryVerification.reason === 'unsupported'
+      || primaryVerification.reason === 'unavailable'
+    ) {
+      return false;
+    }
+  }
+
+  try {
+    return (await calculateSaveIntegrity(primary)).checksum === backupVerification.checksum;
+  } catch {
+    return false;
+  }
+}
+
+async function inspectSaveIntegrityBackup(
+  saveId: string,
+  primary?: SaveData,
+  primaryVerification?: SaveIntegrityVerification,
+): Promise<SaveIntegrityBackupInspection> {
+  if (!hasIndexedDBSupport()) {
+    return { exists: false, record: null, valid: false };
+  }
+
+  const record = await db.saveIntegrityBackups.get(saveId);
+  if (!record) {
+    return { exists: false, record: null, valid: false };
+  }
+
+  const verification = await verifySaveRecordIntegrity(record);
+  const valid = record.id === saveId
+    && verification.status === 'valid'
+    && (primary
+      ? await backupMatchesPrimaryGeneration(
+        primary,
+        primaryVerification ?? await verifySaveRecordIntegrity(primary),
+        verification,
+      )
+      : true);
+  return {
+    exists: true,
+    record,
+    valid,
+  };
+}
+
+async function selectTrustedSaveRecord(
+  saveId: string,
+  primary: SaveData | undefined,
+  backup: SaveData | undefined,
+): Promise<SaveData | null> {
+  const primaryVerification = primary
+    ? await verifySaveRecordIntegrity(primary)
+    : null;
+  if (primary && primaryVerification?.status === 'valid') {
+    return primary;
+  }
+  if (primary && primaryVerification?.status === 'unsealed' && !backup) {
+    return primary;
+  }
+  if (!backup || backup.id !== saveId) {
+    return null;
+  }
+
+  const backupVerification = await verifySaveRecordIntegrity(backup);
+  if (backupVerification.status !== 'valid') {
+    return null;
+  }
+  if (!primary || !primaryVerification) {
+    return backup;
+  }
+  return await backupMatchesPrimaryGeneration(
+    primary,
+    primaryVerification,
+    backupVerification,
+  )
+    ? backup
+    : null;
+}
+
+function recordsAreExactCopies(
+  saveId: string,
+  primary: SaveData | undefined,
+  backup: SaveData | undefined,
+): primary is SaveData {
+  if (!primary || !backup || primary.id !== saveId || backup.id !== saveId) {
+    return false;
+  }
+  try {
+    return canonicalizeSaveIntegrityValue(primary) === canonicalizeSaveIntegrityValue(backup);
+  } catch {
+    return false;
+  }
+}
+
+async function selectTrustedSaveTreeMetadataRecord(
+  saveId: string,
+  primary: SaveData | undefined,
+  backup: SaveData | undefined,
+): Promise<SaveData | null> {
+  const verified = await selectTrustedSaveRecord(saveId, primary, backup);
+  if (verified) {
+    return verified;
+  }
+
+  // Tree barriers and deletion need a no-crypto escape hatch. Exact independent
+  // copies are sufficient evidence for relationship metadata only; they are
+  // never returned by a gameplay load or offered as a verified repair source.
+  return recordsAreExactCopies(saveId, primary, backup) ? primary : null;
+}
+
+export async function listSaveTreeChildIds(parentSaveId: string): Promise<string[]> {
+  if (!hasIndexedDBSupport()) {
+    const branches = await listBranches(parentSaveId);
+    return branches.map((branch) => branch.id).sort((left, right) => left.localeCompare(right));
+  }
+
+  const [rootPrimary, rootBackup, primaryIndexIds, backupIndexIds] = await Promise.all([
+    db.saves.get(parentSaveId),
+    db.saveIntegrityBackups.get(parentSaveId),
+    db.saves.where('parentSaveId').equals(parentSaveId).primaryKeys(),
+    db.saveIntegrityBackups.where('parentSaveId').equals(parentSaveId).primaryKeys(),
+  ]);
+  const trustedRoot = await selectTrustedSaveTreeMetadataRecord(
+    parentSaveId,
+    rootPrimary,
+    rootBackup,
+  );
+  const trustedRootIds = new Set(
+    referencedBranchIds(trustedRoot).filter((id) => !/^save-slot-\d+$/.test(id)),
+  );
+  const candidateIds = new Set<string>([
+    ...trustedRootIds,
+    ...primaryIndexIds.map(String),
+    ...backupIndexIds.map(String),
+  ]);
+  candidateIds.delete(parentSaveId);
+
+  const decisions = await Promise.all([...candidateIds].map(async (candidateId) => {
+    const [primary, backup] = await Promise.all([
+      db.saves.get(candidateId),
+      db.saveIntegrityBackups.get(candidateId),
+    ]);
+    const trustedChild = await selectTrustedSaveTreeMetadataRecord(
+      candidateId,
+      primary,
+      backup,
+    );
+    if (trustedChild) {
+      return !trustedChild.isRootSave && trustedChild.parentSaveId === parentSaveId
+        ? candidateId
+        : null;
+    }
+    return trustedRootIds.has(candidateId) ? candidateId : null;
+  }));
+
+  return decisions
+    .filter((id): id is string => id != null)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+async function assertStoredSaveIntegrity(
+  raw: SaveData,
+  saveId: string,
+): Promise<void> {
+  const verification = await verifySaveRecordIntegrity(raw);
+  if (verification.status === 'valid') {
+    return;
+  }
+  if (verification.status === 'invalid') {
+    throw integrityErrorFromVerification(verification);
+  }
+
+  const backup = await inspectSaveIntegrityBackup(saveId, raw, verification);
+  if (backup.exists) {
+    throw new SaveIntegrityError(
+      'missing',
+      'The save record is missing integrity metadata even though a protected copy exists.',
+    );
+  }
+}
+
+async function readVerifiedStoredSave(saveId: string): Promise<SaveData | undefined> {
+  const raw = await db.saves.get(saveId);
+  if (!raw) {
+    const backup = await inspectSaveIntegrityBackup(saveId);
+    if (backup.exists) {
+      throw new SaveIntegrityError(
+        'missing',
+        'The primary save record is missing while a protected copy still exists.',
+      );
+    }
+    return undefined;
+  }
+  await assertStoredSaveIntegrity(raw, saveId);
+  return normalizeLoadedSaveRecord(raw);
 }
 
 function resolveSaveId(slotId: number | string): string {
@@ -286,6 +583,30 @@ function saveLoadFailure(
       ...extras,
     },
   };
+}
+
+async function saveIntegrityLoadFailure(
+  raw: SaveData,
+  slotId: string,
+  error: SaveIntegrityError,
+): Promise<LoadSaveSafelyResult> {
+  const backup = await inspectSaveIntegrityBackup(slotId, raw);
+  let primaryCanBeRaceChecked = true;
+  try {
+    canonicalizeSaveIntegrityValue(raw);
+  } catch {
+    primaryCanBeRaceChecked = false;
+  }
+  const repairAvailable = backup.valid && primaryCanBeRaceChecked;
+  return saveLoadFailure('integrity_failed', raw, slotId, error.message, {
+    integrityFailureKind: error.kind,
+    ...(error.expectedChecksum ? { expectedChecksum: error.expectedChecksum } : {}),
+    ...(error.actualChecksum ? { actualChecksum: error.actualChecksum } : {}),
+    repairAvailable,
+    ...(repairAvailable && backup.record
+      ? { repairUpdatedAt: backup.record.updatedAt }
+      : {}),
+  });
 }
 
 function fallbackGMCareer(snapshot: GameSnapshot): NonNullable<GameSnapshot['narrative']['gmCareer']> {
@@ -517,6 +838,7 @@ export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
     parentSaveId: raw.parentSaveId ?? null,
     isRootSave,
     branchMeta: raw.branchMeta ?? null,
+    ...(raw.integrity ? { integrity: raw.integrity } : {}),
   };
 }
 
@@ -613,13 +935,13 @@ function buildSaveRecordById(
   };
 }
 
-async function writeSaveGameByIdUnqueued(
+async function prepareSealedSaveRecordById(
   id: string,
   name: string,
   state: object,
   metadata: SaveWriteMetadata,
+  existing?: SaveData,
 ): Promise<SaveData> {
-  const existing = await db.saves.get(id);
   const snapshot = GameSnapshotSchema.safeParse(state);
   if (snapshot.success) {
     const existingSnapshot = metadata.isRootSave && !metadata.replaceExistingRootBranchMetadata
@@ -643,38 +965,13 @@ async function writeSaveGameByIdUnqueued(
         },
       });
     }
-    const record = buildSaveRecordById(id, name, snapshotToPersist, {
+    return sealSaveRecord(buildSaveRecordById(id, name, snapshotToPersist, {
       existing,
       slotNumber: metadata.slotNumber,
       parentSaveId: metadata.parentSaveId,
       isRootSave: metadata.isRootSave,
       branchMeta: metadata.branchMeta,
-    });
-    if (record.isRootSave && record.slotNumber != null) {
-      const leaderboardEntry = buildLeaderboardEntry(
-        record.slotNumber,
-        record.snapshot!,
-        record.updatedAt,
-      );
-      const deleteReplacedBranches = async () => {
-        if (metadata.deleteExistingBranchRows) {
-          await db.saves.where('parentSaveId').equals(record.id).delete();
-        }
-      };
-      if (hasIndexedDBSupport()) {
-        await db.transaction('rw', db.saves, db.leaderboard, async () => {
-          await deleteReplacedBranches();
-          await db.saves.put(record);
-          await db.leaderboard.put(leaderboardEntry);
-        });
-      } else {
-        await deleteReplacedBranches();
-        await db.saves.put(record);
-      }
-    } else {
-      await db.saves.put(record);
-    }
-    return record;
+    }));
   }
 
   const now = new Date().toISOString();
@@ -695,8 +992,75 @@ async function writeSaveGameByIdUnqueued(
     isRootSave: metadata.isRootSave,
     branchMeta: metadata.branchMeta,
   };
+  return sealSaveRecord(record);
+}
+
+async function putSealedSaveRecordRows(
+  record: SaveData,
+  metadata: SaveWriteMetadata,
+): Promise<void> {
+  if (metadata.deleteExistingBranchRows) {
+    if (hasIndexedDBSupport()) {
+      const childIds = metadata.deleteExistingBranchIds ?? [];
+      await db.saves.bulkDelete(childIds);
+      await db.saveIntegrityBackups.bulkDelete(childIds);
+    } else {
+      await db.saves.where('parentSaveId').equals(record.id).delete();
+    }
+  }
+
   await db.saves.put(record);
+  if (hasIndexedDBSupport()) {
+    await db.saveIntegrityBackups.put(record);
+  }
+
+  if (
+    hasIndexedDBSupport()
+    && record.isRootSave
+    && record.slotNumber != null
+    && record.snapshot
+  ) {
+    await db.leaderboard.put(buildLeaderboardEntry(
+      record.slotNumber,
+      record.snapshot,
+      record.updatedAt,
+    ));
+  }
+}
+
+async function commitSealedSaveRecord(
+  record: SaveData,
+  metadata: SaveWriteMetadata,
+): Promise<SaveData> {
+  if (hasIndexedDBSupport()) {
+    await db.transaction(
+      'rw',
+      db.saves,
+      db.saveIntegrityBackups,
+      db.leaderboard,
+      () => putSealedSaveRecordRows(record, metadata),
+    );
+  } else {
+    await putSealedSaveRecordRows(record, metadata);
+  }
   return record;
+}
+
+async function writeSaveGameByIdUnqueued(
+  id: string,
+  name: string,
+  state: object,
+  metadata: SaveWriteMetadata,
+): Promise<SaveData> {
+  const existing = await readVerifiedStoredSave(id);
+  const commitMetadata = metadata.deleteExistingBranchRows
+    ? {
+      ...metadata,
+      deleteExistingBranchIds: await listSaveTreeChildIds(id),
+    }
+    : metadata;
+  const record = await prepareSealedSaveRecordById(id, name, state, commitMetadata, existing);
+  return commitSealedSaveRecord(record, commitMetadata);
 }
 
 export async function saveGameById(
@@ -733,8 +1097,28 @@ export async function saveGame(
 
 export async function loadGameById(id: string): Promise<SaveData | undefined> {
   return measureAsyncOperation('save.load', async () => {
-    const raw = await db.saves.get(id);
-    return raw ? normalizeLoadedSaveRecord(raw) : undefined;
+    const result = await loadSaveSafely(id);
+    if (result.ok) {
+      return result.save;
+    }
+    if (
+      result.reason === 'storage_failed'
+      && result.detail.rawJson == null
+      && result.detail.message === 'No save record found.'
+    ) {
+      return undefined;
+    }
+    if (result.reason === 'integrity_failed') {
+      throw new SaveIntegrityError(
+        result.detail.integrityFailureKind ?? 'malformed',
+        result.detail.message,
+        {
+          expectedChecksum: result.detail.expectedChecksum,
+          actualChecksum: result.detail.actualChecksum,
+        },
+      );
+    }
+    throw new Error(result.detail.message);
   }, { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
@@ -755,7 +1139,66 @@ export async function loadSaveSafely(slotId: number | string): Promise<LoadSaveS
   }
 
   if (!raw) {
+    try {
+      const backup = await inspectSaveIntegrityBackup(id);
+      if (backup.exists) {
+        return saveLoadFailure(
+          'integrity_failed',
+          undefined,
+          id,
+          'The primary save record is missing while a protected copy still exists.',
+          {
+            integrityFailureKind: 'missing',
+            repairAvailable: backup.valid,
+            ...(backup.valid && backup.record
+              ? { repairUpdatedAt: backup.record.updatedAt }
+              : {}),
+          },
+        );
+      }
+    } catch (error) {
+      return saveLoadFailure(
+        'storage_failed',
+        undefined,
+        id,
+        `MBD could not inspect the protected save copy: ${errorMessage(error)}`,
+      );
+    }
     return saveLoadFailure('storage_failed', undefined, id, 'No save record found.');
+  }
+
+  try {
+    const verification = await verifySaveRecordIntegrity(raw);
+    if (verification.status === 'invalid') {
+      return await saveIntegrityLoadFailure(
+        raw,
+        id,
+        integrityErrorFromVerification(verification),
+      );
+    }
+    if (verification.status === 'unsealed') {
+      const backup = await inspectSaveIntegrityBackup(id, raw, verification);
+      if (backup.exists) {
+        return await saveIntegrityLoadFailure(
+          raw,
+          id,
+          new SaveIntegrityError(
+            'missing',
+            'The save record is missing integrity metadata even though a protected copy exists.',
+          ),
+        );
+      }
+    }
+  } catch (error) {
+    if (error instanceof SaveIntegrityError) {
+      return await saveIntegrityLoadFailure(raw, id, error);
+    }
+    return saveLoadFailure(
+      'storage_failed',
+      raw,
+      id,
+      `MBD could not verify local save integrity: ${errorMessage(error)}`,
+    );
   }
 
   let snapshotLike: unknown;
@@ -826,7 +1269,39 @@ async function listAllSaveRecords(): Promise<SaveData[]> {
   return saves.map(normalizeLoadedSaveRecord);
 }
 
+async function readSaveListingRecord(
+  saveId: string,
+  topology: Pick<SaveData, 'slotNumber' | 'parentSaveId' | 'isRootSave'>,
+): Promise<SaveData | null> {
+  const [primary, backup] = await Promise.all([
+    db.saves.get(saveId),
+    db.saveIntegrityBackups.get(saveId),
+  ]);
+  const trusted = await selectTrustedSaveTreeMetadataRecord(saveId, primary, backup);
+  const source = trusted ?? primary ?? backup;
+  if (!source) {
+    return null;
+  }
+  return normalizeLoadedSaveRecord({
+    ...source,
+    id: saveId,
+    ...topology,
+  });
+}
+
 export async function listRootSaves(): Promise<SaveData[]> {
+  if (hasIndexedDBSupport()) {
+    const roots = await Promise.all(SAVE_SLOTS.map((slotNumber) => readSaveListingRecord(
+      rootSaveId(slotNumber),
+      {
+        slotNumber,
+        parentSaveId: null,
+        isRootSave: true,
+      },
+    )));
+    return roots.filter((save): save is SaveData => save != null);
+  }
+
   const saves = await listAllSaveRecords();
   return saves
     .filter((save) => save.isRootSave)
@@ -838,6 +1313,21 @@ export async function listSaves(): Promise<SaveData[]> {
 }
 
 export async function listBranches(parentSaveId: string): Promise<SaveData[]> {
+  if (hasIndexedDBSupport()) {
+    const childIds = await listSaveTreeChildIds(parentSaveId);
+    const branches = await Promise.all(childIds.map((saveId) => readSaveListingRecord(
+      saveId,
+      {
+        slotNumber: null,
+        parentSaveId,
+        isRootSave: false,
+      },
+    )));
+    return branches
+      .filter((save): save is SaveData => save != null)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
   const saves = await listAllSaveRecords();
   return saves
     .filter((save) => !save.isRootSave && save.parentSaveId === parentSaveId)
@@ -845,6 +1335,14 @@ export async function listBranches(parentSaveId: string): Promise<SaveData[]> {
 }
 
 export async function listSaveTree(): Promise<SaveTreeEntry[]> {
+  if (hasIndexedDBSupport()) {
+    const roots = await listRootSaves();
+    return Promise.all(roots.map(async (save) => ({
+      save,
+      branches: await listBranches(save.id),
+    })));
+  }
+
   const [roots, saves] = await Promise.all([listRootSaves(), listAllSaveRecords()]);
   return roots.map((save) => ({
     save,
@@ -855,18 +1353,18 @@ export async function listSaveTree(): Promise<SaveTreeEntry[]> {
 }
 
 export async function loadMostRecentSnapshot(): Promise<SaveData | undefined> {
-  const saves = await listAllSaveRecords();
+  const listed = await listAllSaveRecords();
+  const saves = await Promise.all(listed.map((save) => loadGameById(save.id)));
   return saves
+    .filter((save): save is SaveData => save != null)
     .filter((save) => save.hasSnapshot && save.snapshot)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 }
 
-async function updateParentBranchMetadataUnqueued(
-  parentSaveId: string,
+async function prepareParentBranchMetadataUpdate(
+  parent: SaveData,
   update: (branches: WhatIfBranchMeta[]) => WhatIfBranchMeta[],
 ): Promise<SaveData | null> {
-  const rawParent = await db.saves.get(parentSaveId);
-  const parent = rawParent ? normalizeLoadedSaveRecord(rawParent) : undefined;
   if (!parent?.snapshot) {
     return null;
   }
@@ -878,13 +1376,13 @@ async function updateParentBranchMetadataUnqueued(
       whatIfBranches: update(parent.snapshot.narrative.whatIfBranches ?? []),
     },
   });
-  return writeSaveGameByIdUnqueued(parent.id, parent.name, updatedParentSnapshot, {
+  return prepareSealedSaveRecordById(parent.id, parent.name, updatedParentSnapshot, {
     slotNumber: parent.slotNumber,
     parentSaveId: null,
     isRootSave: true,
     branchMeta: null,
     replaceExistingRootBranchMetadata: true,
-  });
+  }, parent);
 }
 
 export async function createBranchSave(
@@ -893,96 +1391,294 @@ export async function createBranchSave(
   description: string,
 ): Promise<{ branch: SaveData; parent: SaveData }> {
   return runSaveWriteInOrder(parentSaveId, async () => {
+    const parent = await readVerifiedStoredSave(parentSaveId);
+    if (!parent?.snapshot || !parent.isRootSave) {
+      throw new Error('Cannot branch a missing or non-root save.');
+    }
+
+    const existingBranchIds = await listSaveTreeChildIds(parentSaveId);
+    if (existingBranchIds.length >= MAX_BRANCHES_PER_SAVE) {
+      throw new Error(`A save can only keep ${MAX_BRANCHES_PER_SAVE} what-if branches.`);
+    }
+
+    const branchId = createBranchId();
+    const createdAt = new Date().toISOString();
+    const branchMeta: WhatIfBranchMeta = {
+      id: branchId,
+      saveId: branchId,
+      branchedAtSeason: snapshot.season,
+      branchedAtDay: snapshot.day,
+      description,
+      createdAt,
+    };
+    const branchSnapshot = parseGameSnapshot(JSON.parse(JSON.stringify(snapshot)));
+    const branchMetadata: SaveWriteMetadata = {
+      slotNumber: null,
+      parentSaveId,
+      isRootSave: false,
+      branchMeta,
+    };
+    const parentMetadata: SaveWriteMetadata = {
+      slotNumber: parent.slotNumber,
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+      replaceExistingRootBranchMetadata: true,
+    };
+    const branchRecord = await prepareSealedSaveRecordById(
+      branchId,
+      description,
+      branchSnapshot,
+      branchMetadata,
+    );
+    const parentRecord = await prepareParentBranchMetadataUpdate(
+      parent,
+      (branches) => [...branches, branchMeta],
+    );
+    if (!parentRecord) {
+      throw new Error('The parent save disappeared during branch creation.');
+    }
+
     const createBranchRows = async () => {
-      const rawParent = await db.saves.get(parentSaveId);
-      const parent = rawParent ? normalizeLoadedSaveRecord(rawParent) : undefined;
-      if (!parent?.snapshot || !parent.isRootSave) {
-        throw new Error('Cannot branch a missing or non-root save.');
-      }
-
-      const existingBranches = await listBranches(parentSaveId);
-      if (existingBranches.length >= MAX_BRANCHES_PER_SAVE) {
-        throw new Error(`A save can only keep ${MAX_BRANCHES_PER_SAVE} what-if branches.`);
-      }
-
-      const branchId = createBranchId();
-      const createdAt = new Date().toISOString();
-      const branchMeta: WhatIfBranchMeta = {
-        id: branchId,
-        saveId: branchId,
-        branchedAtSeason: snapshot.season,
-        branchedAtDay: snapshot.day,
-        description,
-        createdAt,
-      };
-      const branchSnapshot = parseGameSnapshot(JSON.parse(JSON.stringify(snapshot)));
-
-      const branchRecord = await saveGameById(branchId, description, branchSnapshot, {
-        slotNumber: null,
-        parentSaveId,
-        isRootSave: false,
-        branchMeta,
-      });
-      const parentRecord = await updateParentBranchMetadataUnqueued(
-        parentSaveId,
-        (branches) => [...branches, branchMeta],
-      );
-      if (!parentRecord) {
-        throw new Error('The parent save disappeared during branch creation.');
-      }
+      await putSealedSaveRecordRows(branchRecord, branchMetadata);
+      await putSealedSaveRecordRows(parentRecord, parentMetadata);
       return { branch: branchRecord, parent: parentRecord };
     };
 
     return hasIndexedDBSupport()
-      ? db.transaction('rw', db.saves, db.leaderboard, createBranchRows)
+      ? db.transaction(
+        'rw',
+        db.saves,
+        db.saveIntegrityBackups,
+        db.leaderboard,
+        createBranchRows,
+      )
       : createBranchRows();
   });
 }
 
-export async function deleteSaveById(id: string): Promise<SaveData | null> {
+async function readSaveForDeletion(id: string): Promise<SaveData | undefined> {
+  const raw = await db.saves.get(id);
+  if (!raw) {
+    const backup = await inspectSaveIntegrityBackup(id);
+    if (!backup.exists || !backup.record) {
+      return undefined;
+    }
+    const normalized = normalizeLoadedSaveRecord(backup.record);
+    const rootSlot = parseSlotNumberFromId(id);
+    if (backup.valid) {
+      return normalized;
+    }
+    return rootSlot == null
+      ? {
+        ...normalized,
+        id,
+        slotNumber: null,
+        parentSaveId: null,
+        isRootSave: false,
+      }
+      : {
+        ...normalized,
+        id,
+        slotNumber: rootSlot,
+        parentSaveId: null,
+        isRootSave: true,
+      };
+  }
+
+  try {
+    await assertStoredSaveIntegrity(raw, id);
+    return normalizeLoadedSaveRecord(raw);
+  } catch (error) {
+    if (!(error instanceof SaveIntegrityError)) {
+      throw error;
+    }
+    const backup = await inspectSaveIntegrityBackup(id, raw);
+    if (backup.valid && backup.record) {
+      return normalizeLoadedSaveRecord(backup.record);
+    }
+
+    const normalized = normalizeLoadedSaveRecord(raw);
+    const rootSlot = parseSlotNumberFromId(id);
+    return rootSlot == null
+      ? {
+        ...normalized,
+        id,
+        slotNumber: null,
+        parentSaveId: null,
+        isRootSave: false,
+      }
+      : {
+        ...normalized,
+        id,
+        slotNumber: rootSlot,
+        parentSaveId: null,
+        isRootSave: true,
+      };
+  }
+}
+
+async function readTrustedSaveTreeMetadataRecord(saveId: string): Promise<SaveData | null> {
+  const [primary, backup] = await Promise.all([
+    db.saves.get(saveId),
+    db.saveIntegrityBackups.get(saveId),
+  ]);
+  const trusted = await selectTrustedSaveTreeMetadataRecord(saveId, primary, backup);
+  return trusted ? normalizeLoadedSaveRecord(trusted) : null;
+}
+
+async function findTrustedParentIdForBranch(branchSaveId: string): Promise<string | null> {
+  if (!hasIndexedDBSupport()) {
+    return null;
+  }
+
+  const candidates = await Promise.all(SAVE_SLOTS.map(async (slot) => {
+    const id = rootSaveId(slot);
+    const trusted = await readTrustedSaveTreeMetadataRecord(id);
+    return trusted?.isRootSave && referencedBranchIds(trusted).includes(branchSaveId)
+      ? id
+      : null;
+  }));
+  const parentIds = candidates.filter((candidate): candidate is string => candidate != null);
+  return parentIds.length === 1 ? parentIds[0]! : null;
+}
+
+async function deleteExactSaveRows(id: string): Promise<void> {
+  const deleteRows = async () => {
+    await db.saves.delete(id);
+    if (hasIndexedDBSupport()) {
+      await db.saveIntegrityBackups.delete(id);
+    }
+  };
+  if (hasIndexedDBSupport()) {
+    await db.transaction('rw', db.saves, db.saveIntegrityBackups, deleteRows);
+  } else {
+    await deleteRows();
+  }
+}
+
+export type DeleteSaveByIdResult =
+  | { outcome: 'not_found'; parent: null }
+  | { outcome: 'deleted_root'; parent: null }
+  | { outcome: 'deleted_branch'; parent: SaveData }
+  | { outcome: 'deleted_exact_parent_untouched'; parent: null };
+
+export async function deleteSaveByIdWithResult(id: string): Promise<DeleteSaveByIdResult> {
   return runSaveWriteInOrder(id, async () => {
-    const rawRecord = await db.saves.get(id);
-    const record = rawRecord ? normalizeLoadedSaveRecord(rawRecord) : undefined;
+    const record = await readSaveForDeletion(id);
     if (!record) {
-      return null;
+      return { outcome: 'not_found', parent: null };
     }
 
     if (record.isRootSave) {
+      const childIds = hasIndexedDBSupport()
+        ? await listSaveTreeChildIds(record.id)
+        : [];
       const deleteRootRows = async () => {
-        await db.saves.where('parentSaveId').equals(record.id).delete();
+        if (hasIndexedDBSupport()) {
+          await db.saves.bulkDelete(childIds);
+          await db.saveIntegrityBackups.bulkDelete(childIds);
+          await db.saveIntegrityBackups.delete(id);
+        } else {
+          await db.saves.where('parentSaveId').equals(record.id).delete();
+        }
         if (record.slotNumber != null) {
           await deleteLeaderboardEntriesForSlot(record.slotNumber);
         }
         await db.saves.delete(id);
       };
       if (hasIndexedDBSupport()) {
-        await db.transaction('rw', db.saves, db.leaderboard, deleteRootRows);
+        await db.transaction(
+          'rw',
+          db.saves,
+          db.saveIntegrityBackups,
+          db.leaderboard,
+          deleteRootRows,
+        );
       } else {
         await deleteRootRows();
       }
-      return null;
+      return { outcome: 'deleted_root', parent: null };
     }
 
-    if (record.parentSaveId) {
-      return runSaveWriteInOrder(record.parentSaveId, async () => {
-        let updatedParent: SaveData | null = null;
-        const deleteBranchRows = async () => {
-          updatedParent = await updateParentBranchMetadataUnqueued(record.parentSaveId!, (branches) =>
+    const discoveredParentId = record.parentSaveId
+      ? null
+      : await findTrustedParentIdForBranch(record.id);
+    const parentSaveId = record.parentSaveId ?? discoveredParentId;
+    if (parentSaveId) {
+      return runSaveWriteInOrder(parentSaveId, async () => {
+        let parent: SaveData | undefined;
+        try {
+          parent = await readVerifiedStoredSave(parentSaveId);
+        } catch (error) {
+          if (!(error instanceof SaveIntegrityError)) {
+            throw error;
+          }
+          throw new Error(
+            'The branch cannot be deleted until its parent save is recovered.',
+            { cause: error },
+          );
+        }
+        if (!parent) {
+          await deleteExactSaveRows(id);
+          return { outcome: 'deleted_exact_parent_untouched', parent: null };
+        }
+        if (!parent.isRootSave || !referencedBranchIds(parent).includes(record.id)) {
+          await deleteExactSaveRows(id);
+          return { outcome: 'deleted_exact_parent_untouched', parent: null };
+        }
+        let updatedParent: SaveData | null;
+        try {
+          updatedParent = await prepareParentBranchMetadataUpdate(parent, (branches) =>
             branches.filter((branch) => branch.saveId !== record.id && branch.id !== record.id));
+        } catch (error) {
+          if (!(error instanceof SaveIntegrityUnavailableError)) {
+            throw error;
+          }
+          throw new Error(
+            'The branch cannot be deleted until its parent save can be verified.',
+            { cause: error },
+          );
+        }
+        if (!updatedParent) {
+          throw new Error('The parent save could not be updated during branch deletion.');
+        }
+        const parentMetadata: SaveWriteMetadata = {
+          slotNumber: updatedParent.slotNumber,
+          parentSaveId: null,
+          isRootSave: true,
+          branchMeta: null,
+          replaceExistingRootBranchMetadata: true,
+        };
+        const deleteBranchRows = async () => {
+          await putSealedSaveRecordRows(updatedParent, parentMetadata);
           await db.saves.delete(id);
+          if (hasIndexedDBSupport()) {
+            await db.saveIntegrityBackups.delete(id);
+          }
         };
         if (hasIndexedDBSupport()) {
-          await db.transaction('rw', db.saves, db.leaderboard, deleteBranchRows);
+          await db.transaction(
+            'rw',
+            db.saves,
+            db.saveIntegrityBackups,
+            db.leaderboard,
+            deleteBranchRows,
+          );
         } else {
           await deleteBranchRows();
         }
-        return updatedParent;
+        return { outcome: 'deleted_branch', parent: updatedParent };
       });
     }
 
-    await db.saves.delete(id);
-    return null;
+    await deleteExactSaveRows(id);
+    return { outcome: 'deleted_exact_parent_untouched', parent: null };
   });
+}
+
+export async function deleteSaveById(id: string): Promise<SaveData | null> {
+  return (await deleteSaveByIdWithResult(id)).parent;
 }
 
 export async function deleteSave(slot: number): Promise<void> {
@@ -995,7 +1691,17 @@ export async function clearAllSaves(): Promise<void> {
     return;
   }
 
-  await Promise.all([db.saves.clear(), db.leaderboard.clear()]);
+  await db.transaction(
+    'rw',
+    db.saves,
+    db.saveIntegrityBackups,
+    db.leaderboard,
+    async () => {
+      await db.saves.clear();
+      await db.saveIntegrityBackups.clear();
+      await db.leaderboard.clear();
+    },
+  );
 }
 
 export function exportSnapshotToJson(name: string, snapshot: GameSnapshot): string {
@@ -1033,13 +1739,101 @@ export function importSnapshotFromJson(text: string): { name: string; snapshot: 
   };
 }
 
+export async function restoreSaveIntegrityBackup(saveId: string): Promise<SaveData> {
+  if (!hasIndexedDBSupport()) {
+    throw new SaveIntegrityError(
+      'unavailable',
+      'Browser storage is unavailable, so the verified copy cannot be restored.',
+    );
+  }
+
+  return measureAsyncOperation('save.repair', () => runSaveWriteInOrder(saveId, async () => {
+    const [primary, backup] = await Promise.all([
+      db.saves.get(saveId),
+      db.saveIntegrityBackups.get(saveId),
+    ]);
+    if (!backup || backup.id !== saveId) {
+      throw new Error('No verified copy is available for this save. Nothing was restored.');
+    }
+
+    const primaryVerification = primary
+      ? await verifySaveRecordIntegrity(primary)
+      : null;
+    if (primaryVerification?.status === 'valid') {
+      throw new Error('The primary save changed and now verifies. Nothing was restored.');
+    }
+    const backupVerification = await verifySaveRecordIntegrity(backup);
+    if (backupVerification.status !== 'valid') {
+      throw new Error('The recovery copy no longer verifies. Nothing was restored.');
+    }
+    if (
+      primary
+      && primaryVerification
+      && !await backupMatchesPrimaryGeneration(primary, primaryVerification, backupVerification)
+    ) {
+      throw new Error('The recovery copy does not match the damaged save generation. Nothing was restored.');
+    }
+
+    const expectedPrimary = primary
+      ? canonicalizeSaveIntegrityValue(primary)
+      : null;
+    const expectedBackup = canonicalizeSaveIntegrityValue(backup);
+    const restoredSnapshot = backup.snapshot
+      ? GameSnapshotSchema.parse(backup.snapshot)
+      : null;
+
+    await db.transaction(
+      'rw',
+      db.saves,
+      db.saveIntegrityBackups,
+      db.leaderboard,
+      async () => {
+        const [currentPrimary, currentBackup] = await Promise.all([
+          db.saves.get(saveId),
+          db.saveIntegrityBackups.get(saveId),
+        ]);
+        if (
+          !currentBackup
+          || (expectedPrimary == null
+            ? currentPrimary != null
+            : !currentPrimary
+              || canonicalizeSaveIntegrityValue(currentPrimary) !== expectedPrimary)
+          || canonicalizeSaveIntegrityValue(currentBackup) !== expectedBackup
+        ) {
+          throw new Error('The save changed while repair was being prepared. Nothing was restored.');
+        }
+
+        await db.saves.put(backup);
+        await db.saveIntegrityBackups.put(backup);
+        if (backup.isRootSave && backup.slotNumber != null && restoredSnapshot) {
+          await db.leaderboard.put(buildLeaderboardEntry(
+            backup.slotNumber,
+            restoredSnapshot,
+            backup.updatedAt,
+          ));
+        }
+      },
+    );
+
+    return normalizeLoadedSaveRecord(backup);
+  }), { budgetMs: SAVE_IO_BUDGET_MS });
+}
+
 export async function repairSave(slot: number): Promise<SaveInspectionResult> {
   const id = `save-slot-${slot}`;
-  return measureAsyncOperation('save.repair', async () => {
+  return measureAsyncOperation('save.repair', () => runSaveWriteInOrder(id, async () => {
     const raw = await db.saves.get(id);
     if (!raw) {
+      const backup = await inspectSaveIntegrityBackup(id);
+      if (backup.exists) {
+        throw new SaveIntegrityError(
+          'missing',
+          'The primary save record is missing while a protected copy still exists.',
+        );
+      }
       return { status: 'empty', slot } as SaveInspectionResult;
     }
+    await assertStoredSaveIntegrity(raw, id);
 
     const repairedSnapshot = tryParseSnapshot(raw.snapshot) ?? tryParseLegacySnapshot(raw.legacyState ?? raw.gameState);
     if (!repairedSnapshot) {
@@ -1051,14 +1845,23 @@ export async function repairSave(slot: number): Promise<SaveInspectionResult> {
       } satisfies SaveInspectionResult;
     }
 
-    const repairedRecord = buildSaveRecord(slot, raw.name ?? `Slot ${slot}`, repairedSnapshot, raw as SaveData);
-    await db.saves.put(repairedRecord);
+    const repairedRecord = await writeSaveGameByIdUnqueued(
+      id,
+      raw.name ?? `Slot ${slot}`,
+      repairedSnapshot,
+      {
+        slotNumber: slot,
+        parentSaveId: null,
+        isRootSave: true,
+        branchMeta: null,
+      },
+    );
     return {
       status: 'ok',
       slot,
       save: repairedRecord,
     } satisfies SaveInspectionResult;
-  }, { budgetMs: SAVE_IO_BUDGET_MS });
+  }), { budgetMs: SAVE_IO_BUDGET_MS });
 }
 
 const autoSaveScheduler = createAutoSaveScheduler(async (job) => {
