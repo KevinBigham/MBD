@@ -99,6 +99,7 @@ function createProps(overrides: Partial<Parameters<typeof SettingsPageContent>[0
       branchDescription: '',
       branches: [],
       busySlot: null,
+      operationBusy: false,
       handleClearAllSaves: vi.fn(),
       handleCreateBranch: vi.fn(),
       handleDelete: vi.fn(),

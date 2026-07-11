@@ -3,10 +3,14 @@ import { parseGameSnapshot } from '@mbd/contracts';
 import snapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 import {
   ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS,
+  abortActiveSaveSessionTransition,
   activateActiveSavePersistenceMetadata,
+  completeActiveSaveSessionTransition,
+  markActiveSaveSessionTransitionOwnershipCommitted,
   createActiveSavePersistenceBackup,
   getActiveSavePersistenceStatus,
   persistActiveSaveSnapshot,
+  prepareActiveSaveSessionTransition,
   prepareActiveSavePersistenceForLoad,
   reconcileActiveSavePersistenceMetadata,
   releaseActiveSavePersistenceLoad,
@@ -28,6 +32,10 @@ import {
   scheduleAutoSave,
   type SaveData,
 } from './saveSystem';
+import {
+  beginWorkerMutation,
+  finishWorkerMutation,
+} from './workerMutationSession';
 
 vi.mock('./saveSystem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./saveSystem')>();
@@ -1225,6 +1233,173 @@ describe('persistActiveSaveSnapshot', () => {
       '2026-04-02T19:50:00.000Z',
     ));
     expect(getActiveSavePersistenceStatus('save-slot-2').state).toBe('idle');
+  });
+
+  it('quiesces the outgoing accepted write before completing a session switch', async () => {
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-1'));
+    let releaseWrite: () => void = () => {};
+    mockedSaveGameById.mockImplementationOnce(async (id) => {
+      await new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      return savedRecord(id, '2026-04-02T20:00:00.000Z');
+    });
+    const persistence = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Outgoing GM',
+      teamName: 'Tycoons',
+      season: 2,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 2, day: 50 }),
+    });
+    await flushPromises();
+
+    let prepared = false;
+    const preparation = prepareActiveSaveSessionTransition('save-slot-2').then((transition) => {
+      prepared = true;
+      return transition;
+    });
+    await flushPromises();
+    expect(prepared).toBe(false);
+
+    releaseWrite();
+    await persistence;
+    const transition = await preparation;
+    markActiveSaveSessionTransitionOwnershipCommitted(transition);
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    completeActiveSaveSessionTransition(transition);
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Stale GM',
+      teamName: 'Tycoons',
+      season: 2,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 2, day: 51 }),
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(mockedSaveGameById).toHaveBeenCalledTimes(1);
+  });
+
+  it('forces the settled worker state durable before a display-refresh gap can switch saves', async () => {
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-1'));
+    let finishOutgoingPersistence!: () => void;
+    const persistOutgoingSnapshot = vi.fn(() => new Promise<{
+      saved: boolean;
+      saveName: string | null;
+    }>((resolve) => {
+      finishOutgoingPersistence = () => resolve({
+        saved: true,
+        saveName: 'Outgoing after accepted mutation',
+      });
+    }));
+
+    let prepared = false;
+    const preparation = prepareActiveSaveSessionTransition('save-slot-2', {
+      persistOutgoingSnapshot,
+    }).then((transition) => {
+      prepared = true;
+      return transition;
+    });
+    await flushPromises();
+
+    expect(persistOutgoingSnapshot).toHaveBeenCalledWith('save-slot-1');
+    expect(prepared).toBe(false);
+    expect(() => beginWorkerMutation('save-slot-1')).toThrowError(
+      expect.objectContaining({ kind: 'not_owner' }),
+    );
+
+    finishOutgoingPersistence();
+    const transition = await preparation;
+    abortActiveSaveSessionTransition(transition);
+    expect(prepared).toBe(true);
+  });
+
+  it('restores the outgoing editor when a prepared candidate switch aborts', async () => {
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-1'));
+    const transition = await prepareActiveSaveSessionTransition('save-slot-2');
+    abortActiveSaveSessionTransition(transition);
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Still Active',
+      teamName: 'Tycoons',
+      season: 2,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 2, day: 52 }),
+    })).resolves.toMatchObject({ saved: true });
+    expect(mockedSaveGameById).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the worker mutation lane closed for the full prepared transition', async () => {
+    const inFlightMutation = beginWorkerMutation('save-slot-1');
+    await expect(prepareActiveSaveSessionTransition('save-slot-2')).rejects.toMatchObject({
+      kind: 'request_failed',
+    });
+    finishWorkerMutation(inFlightMutation);
+
+    const transition = await prepareActiveSaveSessionTransition('save-slot-2');
+    expect(() => beginWorkerMutation('save-slot-1')).toThrowError(
+      expect.objectContaining({ kind: 'not_owner' }),
+    );
+    abortActiveSaveSessionTransition(transition);
+
+    const outgoingMutation = beginWorkerMutation('save-slot-1');
+    finishWorkerMutation(outgoingMutation);
+  });
+
+  it('refuses to release an outgoing editor with unresolved persistence work', async () => {
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-1'));
+    mockedSaveGameById.mockRejectedValueOnce(new Error('QuotaExceededError: storage full'));
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Unsaved GM',
+      teamName: 'Tycoons',
+      season: 2,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 2, day: 53 }),
+    })).rejects.toThrow('storage full');
+
+    await expect(prepareActiveSaveSessionTransition('save-slot-2')).rejects.toThrow(
+      'unresolved persistence work',
+    );
+    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
+      state: 'failed',
+      pendingWrites: 1,
+      canRetry: true,
+    });
+
+    await expect(retryActiveSavePersistence('save-slot-1')).resolves.toMatchObject({ saved: true });
+  });
+
+  it('waits for an invalidated outgoing capture before a candidate can proceed', async () => {
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-1'));
+    let releaseExport: (snapshot: object) => void = () => {};
+    const capture = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Capture GM',
+      teamName: 'Tycoons',
+      season: 2,
+      exportSnapshot: () => new Promise<object>((resolve) => {
+        releaseExport = resolve;
+      }),
+    });
+    await Promise.resolve();
+
+    let prepared = false;
+    const preparation = prepareActiveSaveSessionTransition('save-slot-2').then((transition) => {
+      prepared = true;
+      return transition;
+    });
+    await flushPromises();
+    expect(prepared).toBe(false);
+
+    releaseExport({ schemaVersion: 34, season: 2, day: 54 });
+    await expect(capture).resolves.toEqual({ saved: false, saveName: null });
+    const transition = await preparation;
+    expect(prepared).toBe(true);
+    abortActiveSaveSessionTransition(transition);
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
   });
 
   it('tracks an active-save metadata operation as one pending generation and queues new captures behind it', async () => {

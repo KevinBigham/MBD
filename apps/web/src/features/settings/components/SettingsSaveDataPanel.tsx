@@ -11,6 +11,7 @@ export interface SettingsSaveDataPanelProps {
   branches: SaveData[];
   busySlot: number | null;
   installed: boolean;
+  operationBusy: boolean;
   saveSlots: readonly number[];
   saves: SaveData[];
   whatIfBranchLimit: number;
@@ -36,6 +37,7 @@ export function SettingsSaveDataPanel({
   branches,
   busySlot,
   installed,
+  operationBusy,
   saveSlots,
   saves,
   whatIfBranchLimit,
@@ -62,39 +64,43 @@ export function SettingsSaveDataPanel({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
+          disabled={operationBusy}
           aria-label="Refresh save slot list"
           data-mobile-critical-control="settings-save-refresh"
           onClick={() => void onRefreshSaves()}
-          className="mobile-critical-control focus-ring rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+          className="mobile-critical-control focus-ring rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
         >
           Refresh
         </button>
         <button
           type="button"
+          disabled={operationBusy || !workerReady}
           aria-label="Export the current dynasty as a JSON save file"
           data-mobile-critical-control="settings-save-export"
           onClick={() => void onExportCurrent()}
-          className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+          className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" />
           Export Current Save
         </button>
         <button
           type="button"
+          disabled={operationBusy}
           aria-label="Import a dynasty save file"
           data-mobile-critical-control="settings-save-import"
           onClick={() => importInputRef.current?.click()}
-          className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+          className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Upload className="h-3.5 w-3.5" />
           Import Save
         </button>
         <button
           type="button"
+          disabled={operationBusy}
           aria-label="Clear all local save slots"
           data-mobile-critical-control="settings-save-clear"
           onClick={() => void onClearAllSaves()}
-          className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10"
+          className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Trash2 className="h-3.5 w-3.5" />
           Clear All Saves
@@ -111,6 +117,7 @@ export function SettingsSaveDataPanel({
       </div>
       <input
         ref={importInputRef}
+        disabled={operationBusy}
         className="sr-only"
         onChange={(event) => {
           const input = event.currentTarget;
@@ -142,6 +149,7 @@ export function SettingsSaveDataPanel({
             <div className="mt-4 flex flex-col gap-3 lg:flex-row">
               <input
                 value={branchDescription}
+                disabled={operationBusy}
                 data-mobile-critical-control="settings-branch-description"
                 onChange={(event) => onBranchDescriptionChange(event.target.value)}
                 placeholder="Aggressive deadline push"
@@ -149,7 +157,7 @@ export function SettingsSaveDataPanel({
               />
               <button
                 type="button"
-                disabled={branchBusy || branchLimitReached || branchDescription.trim().length === 0}
+                disabled={operationBusy || branchBusy || branchLimitReached || branchDescription.trim().length === 0}
                 data-mobile-critical-control="settings-branch-create"
                 onClick={() => void onCreateBranch()}
                 className="mobile-critical-control focus-ring rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
@@ -179,7 +187,7 @@ export function SettingsSaveDataPanel({
                   </div>
                   <button
                     type="button"
-                    disabled={branchBusy}
+                    disabled={operationBusy || branchBusy}
                     data-mobile-critical-control="settings-branch-delete"
                     onClick={() => void onDeleteBranch(branch.id)}
                     className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
@@ -205,7 +213,7 @@ export function SettingsSaveDataPanel({
       <div className="mt-6 space-y-3">
         {saveSlots.map((slot) => {
           const save = saveMap.get(slot);
-          const disabled = busySlot === slot;
+          const disabled = operationBusy || busySlot === slot;
           return (
             <div
               key={slot}

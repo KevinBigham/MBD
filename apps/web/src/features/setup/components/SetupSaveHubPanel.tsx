@@ -39,6 +39,7 @@ export default function SetupSaveHubPanel({
   onDeleteSlot,
 }: SetupSaveHubPanelProps) {
   const saveMap = new Map(saveTree.map((entry) => [entry.save.slotNumber, entry]));
+  const operationBusy = busySlot != null;
 
   return (
     <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
@@ -51,9 +52,10 @@ export default function SetupSaveHubPanel({
         </div>
         <button
           type="button"
+          disabled={operationBusy}
           data-mobile-critical-control="setup-save-refresh"
           onClick={onRefresh}
-          className="mobile-critical-control focus-ring rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+          className="mobile-critical-control focus-ring rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
         >
           Refresh
         </button>
@@ -102,7 +104,7 @@ export default function SetupSaveHubPanel({
                   <>
                     <button
                       type="button"
-                      disabled={busySlot === slot}
+                      disabled={operationBusy}
                       data-mobile-critical-control="setup-save-continue"
                       onClick={() => onContinueSave(save)}
                       className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:opacity-50"
@@ -112,7 +114,7 @@ export default function SetupSaveHubPanel({
                     </button>
                     <button
                       type="button"
-                      disabled={busySlot === slot}
+                      disabled={operationBusy}
                       data-mobile-critical-control="setup-save-delete"
                       onClick={() => onDeleteSlot(slot)}
                       className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:opacity-50"
@@ -124,9 +126,10 @@ export default function SetupSaveHubPanel({
                 ) : null}
                 <button
                   type="button"
+                  disabled={operationBusy}
                   data-mobile-critical-control="setup-save-use-slot"
                   onClick={() => onUseSlot(slot)}
-                  className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+                  className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Shield className="h-3.5 w-3.5" />
                   {save ? 'Replace' : 'Use This Slot'}
@@ -160,9 +163,10 @@ export default function SetupSaveHubPanel({
                             </div>
                             <button
                               type="button"
+                              disabled={operationBusy}
                               data-mobile-critical-control="setup-save-open-branch"
                               onClick={() => onContinueSave(branch)}
-                              className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-[11px] uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated"
+                              className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-[11px] uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Play className="h-3 w-3" />
                               Open Branch

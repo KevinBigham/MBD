@@ -20,6 +20,12 @@ import {
   verifySaveRecordIntegrity,
   type SaveIntegrityMetadata,
 } from './saveIntegrity';
+import {
+  assertAllSaveTreeSessionsOwned,
+  assertSaveTreeSessionOwned,
+  isSaveSessionOwnershipEnforcementEnabled,
+  SaveSessionOwnershipError,
+} from './saveSessionOwnership';
 
 export const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
 
@@ -111,6 +117,13 @@ export type LoadSaveSafelyResult =
 export interface SaveTreeEntry {
   save: SaveData;
   branches: SaveData[];
+}
+
+export interface SaveSessionTarget {
+  saveId: string;
+  rootSaveId: string;
+  slotNumber: number;
+  name: string | null;
 }
 
 interface AutoSaveJob {
@@ -233,6 +246,18 @@ function hasIndexedDBSupport(): boolean {
 
 function rootSaveId(slot: number): string {
   return `save-slot-${slot}`;
+}
+
+function writeRootSaveId(id: string, metadata: SaveWriteMetadata): string {
+  const rootId = metadata.parentSaveId ?? (metadata.isRootSave ? id : null);
+  if (!rootId) {
+    throw new SaveSessionOwnershipError(
+      'unknown_tree',
+      'MBD could not identify the root save tree for this write.',
+      null,
+    );
+  }
+  return rootId;
 }
 
 function referencedBranchIds(record: Partial<SaveData> | null | undefined): string[] {
@@ -1052,6 +1077,8 @@ async function writeSaveGameByIdUnqueued(
   state: object,
   metadata: SaveWriteMetadata,
 ): Promise<SaveData> {
+  const ownershipRootSaveId = writeRootSaveId(id, metadata);
+  assertSaveTreeSessionOwned(ownershipRootSaveId);
   const existing = await readVerifiedStoredSave(id);
   const commitMetadata = metadata.deleteExistingBranchRows
     ? {
@@ -1060,6 +1087,7 @@ async function writeSaveGameByIdUnqueued(
     }
     : metadata;
   const record = await prepareSealedSaveRecordById(id, name, state, commitMetadata, existing);
+  assertSaveTreeSessionOwned(ownershipRootSaveId);
   return commitSealedSaveRecord(record, commitMetadata);
 }
 
@@ -1390,6 +1418,7 @@ export async function createBranchSave(
   snapshot: GameSnapshot,
   description: string,
 ): Promise<{ branch: SaveData; parent: SaveData }> {
+  assertSaveTreeSessionOwned(parentSaveId);
   return runSaveWriteInOrder(parentSaveId, async () => {
     const parent = await readVerifiedStoredSave(parentSaveId);
     if (!parent?.snapshot || !parent.isRootSave) {
@@ -1440,6 +1469,7 @@ export async function createBranchSave(
     }
 
     const createBranchRows = async () => {
+      assertSaveTreeSessionOwned(parentSaveId);
       await putSealedSaveRecordRows(branchRecord, branchMetadata);
       await putSealedSaveRecordRows(parentRecord, parentMetadata);
       return { branch: branchRecord, parent: parentRecord };
@@ -1543,6 +1573,85 @@ async function findTrustedParentIdForBranch(branchSaveId: string): Promise<strin
   return parentIds.length === 1 ? parentIds[0]! : null;
 }
 
+function knownRootSlot(saveId: string | null | undefined): number | null {
+  const slotNumber = parseSlotNumberFromId(saveId ?? undefined);
+  return slotNumber != null && SAVE_SLOTS.includes(slotNumber as (typeof SAVE_SLOTS)[number])
+    ? slotNumber
+    : null;
+}
+
+/**
+ * Resolves only the stable ownership topology needed before a tab may load a
+ * dynasty. The caller must acquire the returned root lock and then run the
+ * ordinary verified load again; this metadata is never gameplay state.
+ */
+export async function resolveSaveSessionTarget(
+  saveId: string,
+): Promise<SaveSessionTarget | null> {
+  const directRootSlot = knownRootSlot(saveId);
+  const trusted = await readTrustedSaveTreeMetadataRecord(saveId);
+
+  if (directRootSlot != null) {
+    return {
+      saveId,
+      rootSaveId: saveId,
+      slotNumber: directRootSlot,
+      name: trusted?.name ?? null,
+    };
+  }
+
+  if (trusted?.isRootSave) {
+    const trustedRootId = trusted.slotNumber == null
+      ? trusted.id
+      : rootSaveId(trusted.slotNumber);
+    const slotNumber = knownRootSlot(trustedRootId);
+    return slotNumber == null
+      ? null
+      : {
+        saveId,
+        rootSaveId: trustedRootId,
+        slotNumber,
+        name: trusted.name,
+      };
+  }
+
+  const parentSaveId = trusted?.parentSaveId
+    ?? await findTrustedParentIdForBranch(saveId);
+  const slotNumber = knownRootSlot(parentSaveId);
+  if (!parentSaveId || slotNumber == null) {
+    return null;
+  }
+
+  return {
+    saveId,
+    rootSaveId: parentSaveId,
+    slotNumber,
+    name: trusted?.name ?? null,
+  };
+}
+
+async function requiredMutationRootSaveId(saveId: string): Promise<string | null> {
+  if (!isSaveSessionOwnershipEnforcementEnabled()) {
+    return null;
+  }
+  const target = await resolveSaveSessionTarget(saveId);
+  if (!target) {
+    throw new SaveSessionOwnershipError(
+      'unknown_tree',
+      'MBD could not establish this record\'s root save tree safely.',
+      null,
+    );
+  }
+  assertSaveTreeSessionOwned(target.rootSaveId);
+  return target.rootSaveId;
+}
+
+function reassertMutationRoot(rootSaveId: string | null): void {
+  if (rootSaveId) {
+    assertSaveTreeSessionOwned(rootSaveId);
+  }
+}
+
 async function deleteExactSaveRows(id: string): Promise<void> {
   const deleteRows = async () => {
     await db.saves.delete(id);
@@ -1565,6 +1674,7 @@ export type DeleteSaveByIdResult =
 
 export async function deleteSaveByIdWithResult(id: string): Promise<DeleteSaveByIdResult> {
   return runSaveWriteInOrder(id, async () => {
+    const ownershipRootSaveId = await requiredMutationRootSaveId(id);
     const record = await readSaveForDeletion(id);
     if (!record) {
       return { outcome: 'not_found', parent: null };
@@ -1575,6 +1685,7 @@ export async function deleteSaveByIdWithResult(id: string): Promise<DeleteSaveBy
         ? await listSaveTreeChildIds(record.id)
         : [];
       const deleteRootRows = async () => {
+        reassertMutationRoot(ownershipRootSaveId);
         if (hasIndexedDBSupport()) {
           await db.saves.bulkDelete(childIds);
           await db.saveIntegrityBackups.bulkDelete(childIds);
@@ -1620,10 +1731,12 @@ export async function deleteSaveByIdWithResult(id: string): Promise<DeleteSaveBy
           );
         }
         if (!parent) {
+          reassertMutationRoot(ownershipRootSaveId);
           await deleteExactSaveRows(id);
           return { outcome: 'deleted_exact_parent_untouched', parent: null };
         }
         if (!parent.isRootSave || !referencedBranchIds(parent).includes(record.id)) {
+          reassertMutationRoot(ownershipRootSaveId);
           await deleteExactSaveRows(id);
           return { outcome: 'deleted_exact_parent_untouched', parent: null };
         }
@@ -1651,6 +1764,7 @@ export async function deleteSaveByIdWithResult(id: string): Promise<DeleteSaveBy
           replaceExistingRootBranchMetadata: true,
         };
         const deleteBranchRows = async () => {
+          reassertMutationRoot(ownershipRootSaveId);
           await putSealedSaveRecordRows(updatedParent, parentMetadata);
           await db.saves.delete(id);
           if (hasIndexedDBSupport()) {
@@ -1672,6 +1786,7 @@ export async function deleteSaveByIdWithResult(id: string): Promise<DeleteSaveBy
       });
     }
 
+    reassertMutationRoot(ownershipRootSaveId);
     await deleteExactSaveRows(id);
     return { outcome: 'deleted_exact_parent_untouched', parent: null };
   });
@@ -1686,6 +1801,8 @@ export async function deleteSave(slot: number): Promise<void> {
 }
 
 export async function clearAllSaves(): Promise<void> {
+  const rootSaveIds = SAVE_SLOTS.map(rootSaveId);
+  assertAllSaveTreeSessionsOwned(rootSaveIds);
   if (!hasIndexedDBSupport()) {
     await db.saves.clear();
     return;
@@ -1697,6 +1814,7 @@ export async function clearAllSaves(): Promise<void> {
     db.saveIntegrityBackups,
     db.leaderboard,
     async () => {
+      assertAllSaveTreeSessionsOwned(rootSaveIds);
       await db.saves.clear();
       await db.saveIntegrityBackups.clear();
       await db.leaderboard.clear();
@@ -1748,6 +1866,7 @@ export async function restoreSaveIntegrityBackup(saveId: string): Promise<SaveDa
   }
 
   return measureAsyncOperation('save.repair', () => runSaveWriteInOrder(saveId, async () => {
+    const ownershipRootSaveId = await requiredMutationRootSaveId(saveId);
     const [primary, backup] = await Promise.all([
       db.saves.get(saveId),
       db.saveIntegrityBackups.get(saveId),
@@ -1788,6 +1907,7 @@ export async function restoreSaveIntegrityBackup(saveId: string): Promise<SaveDa
       db.saveIntegrityBackups,
       db.leaderboard,
       async () => {
+        reassertMutationRoot(ownershipRootSaveId);
         const [currentPrimary, currentBackup] = await Promise.all([
           db.saves.get(saveId),
           db.saveIntegrityBackups.get(saveId),

@@ -122,6 +122,7 @@ export default function SettingsPageContent({
             branches={saveData.branches}
             busySlot={saveData.busySlot}
             installed={installPrompt.installed}
+            operationBusy={saveData.operationBusy}
             saveSlots={saveData.saveSlots}
             saves={saveData.saves}
             whatIfBranchLimit={WHAT_IF_BRANCH_LIMIT}

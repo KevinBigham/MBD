@@ -4,6 +4,27 @@ import { createRoot, type Root } from 'react-dom/client';
 import { SaveRecoveryProvider, useSaveRecovery } from '../SaveRecoveryProvider';
 import type { LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
 import { logger } from '@/shared/lib/logger';
+import {
+  SaveSessionOwnershipError,
+  withTransientSaveSessionOwnership,
+} from '@/shared/lib/saveSessionOwnership';
+
+vi.mock('@/shared/lib/saveSystem', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/shared/lib/saveSystem')>(),
+  resolveSaveSessionTarget: vi.fn(async (saveId: string) => ({
+    saveId,
+    rootSaveId: 'save-slot-4',
+    slotNumber: 4,
+    name: 'Recovery Target',
+  })),
+}));
+
+vi.mock('@/shared/lib/saveSessionOwnership', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/shared/lib/saveSessionOwnership')>(),
+  withTransientSaveSessionOwnership: vi.fn(
+    async (_rootSaveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
+}));
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -99,6 +120,9 @@ describe('SaveRecoveryProvider', () => {
       value: revokeObjectURL,
     });
     vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    vi.mocked(withTransientSaveSessionOwnership).mockImplementation(
+      async (_rootSaveId, operation) => operation(),
+    );
   });
 
   afterEach(async () => {
@@ -171,6 +195,70 @@ describe('SaveRecoveryProvider', () => {
       'could not safely finish deleting',
     );
     expect(buttonByText(container, 'Delete this save')).toBeTruthy();
+  });
+
+  it('does not run recovery deletion while another tab owns the dynasty', async () => {
+    const onDelete = vi.fn().mockResolvedValue(true);
+    vi.mocked(withTransientSaveSessionOwnership).mockRejectedValueOnce(
+      new SaveSessionOwnershipError(
+        'contended',
+        'This dynasty is already open for editing in another tab.',
+        'save-slot-4',
+      ),
+    );
+
+    await act(async () => {
+      root.render(
+        <SaveRecoveryProvider>
+          <TriggerRecovery onDelete={onDelete} />
+        </SaveRecoveryProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      buttonByText(container, 'Delete this save').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'open in another tab',
+    );
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Nothing was deleted');
+    expect(buttonByText(container, 'Delete this save')).toBeTruthy();
+  });
+
+  it('does not mislabel unavailable recovery ownership as another tab', async () => {
+    const onDelete = vi.fn().mockResolvedValue(true);
+    vi.mocked(withTransientSaveSessionOwnership).mockRejectedValueOnce(
+      new SaveSessionOwnershipError(
+        'unavailable',
+        'Web Locks are unavailable.',
+        'save-slot-4',
+      ),
+    );
+
+    await act(async () => {
+      root.render(
+        <SaveRecoveryProvider>
+          <TriggerRecovery onDelete={onDelete} />
+        </SaveRecoveryProvider>,
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      buttonByText(container, 'Delete this save').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const message = container.querySelector('[role="alert"]')?.textContent ?? '';
+    expect(message).toContain('unavailable in this browser');
+    expect(message).toContain('Nothing was deleted');
+    expect(message).not.toContain('open in another tab');
+    expect(onDelete).not.toHaveBeenCalled();
   });
 
   it('renders repair only when the integrity request has both restore and retry callbacks', async () => {

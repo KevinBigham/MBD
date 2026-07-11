@@ -7,6 +7,11 @@ import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { saveGameById } from '@/shared/lib/saveSystem';
 import { getAudioEngine } from '@/shared/lib/audio';
+import {
+  pauseWorkerMutationsForSaveTransition,
+  resetWorkerMutationSessionForTesting,
+  resumeWorkerMutationsAfterSaveTransition,
+} from '@/shared/lib/workerMutationSession';
 
 vi.mock('./Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
@@ -104,6 +109,7 @@ describe('AppLayout', () => {
   let root: Root;
 
   beforeEach(() => {
+    resetWorkerMutationSessionForTesting();
     vi.useFakeTimers();
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -122,6 +128,7 @@ describe('AppLayout', () => {
       root.unmount();
     });
     vi.useRealTimers();
+    resetWorkerMutationSessionForTesting();
     container.remove();
     vi.clearAllMocks();
   });
@@ -220,6 +227,25 @@ describe('AppLayout', () => {
     expect(worker.simDay).toHaveBeenCalledTimes(1);
     expect(worker.simWeek).toHaveBeenCalledTimes(1);
     expect(worker.simMonth).toHaveBeenCalledTimes(1);
+
+    let transitionPause!: ReturnType<typeof pauseWorkerMutationsForSaveTransition>;
+    await act(async () => {
+      transitionPause = pauseWorkerMutationsForSaveTransition();
+      await Promise.resolve();
+    });
+    const simDayButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Sim Day (Space)"]',
+    );
+    expect(simDayButton?.disabled).toBe(true);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(worker.simDay).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resumeWorkerMutationsAfterSaveTransition(transitionPause);
+      await Promise.resolve();
+    });
 
     const liveRegion = container.querySelector('[aria-live="polite"]');
     expect(liveRegion?.textContent).toContain('Season 3');

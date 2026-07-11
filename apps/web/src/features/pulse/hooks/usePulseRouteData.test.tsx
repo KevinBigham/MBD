@@ -105,12 +105,17 @@ describe('usePulseRouteData', () => {
     const dismissDecisionSpotlight = vi.fn().mockResolvedValue({ success: true });
     const getCurrentLeagueEvents = vi.fn().mockResolvedValue([leagueEvent]);
     const getMonthlyPulse = vi.fn().mockResolvedValue(pulseWithDecisions);
+    const persistActiveSave = vi.fn().mockResolvedValue({
+      saved: true,
+      saveName: 'Pulse Save',
+    });
 
     return {
       acknowledgeMonthlyReport,
       dismissDecisionSpotlight,
       getCurrentLeagueEvents,
       getMonthlyPulse,
+      persistActiveSave,
       options: {
         acknowledgeMonthlyReport,
         day: 80,
@@ -118,6 +123,7 @@ describe('usePulseRouteData', () => {
         getCurrentLeagueEvents,
         getMonthlyPulse,
         isInitialized: true,
+        persistActiveSave,
         phase: 'regular_season',
         season: 5,
         workerReady: true,
@@ -168,7 +174,7 @@ describe('usePulseRouteData', () => {
   });
 
   it('acknowledges a pending report and refreshes route data', async () => {
-    const { acknowledgeMonthlyReport, getMonthlyPulse, options } = makeOptions();
+    const { acknowledgeMonthlyReport, getMonthlyPulse, persistActiveSave, options } = makeOptions();
     const result = await renderHook(options);
 
     await act(async () => {
@@ -177,11 +183,15 @@ describe('usePulseRouteData', () => {
     });
 
     expect(acknowledgeMonthlyReport).toHaveBeenCalledWith('report-june');
+    expect(persistActiveSave).toHaveBeenCalledTimes(1);
+    expect(persistActiveSave.mock.invocationCallOrder[0]!).toBeLessThan(
+      getMonthlyPulse.mock.invocationCallOrder[1]!,
+    );
     expect(getMonthlyPulse).toHaveBeenCalledTimes(2);
   });
 
   it('dismisses decision spotlights and refreshes route data', async () => {
-    const { dismissDecisionSpotlight, getMonthlyPulse, options } = makeOptions();
+    const { dismissDecisionSpotlight, getMonthlyPulse, persistActiveSave, options } = makeOptions();
     const result = await renderHook(options);
 
     await act(async () => {
@@ -190,6 +200,49 @@ describe('usePulseRouteData', () => {
     });
 
     expect(dismissDecisionSpotlight).toHaveBeenCalledWith('dec-red');
+    expect(persistActiveSave).toHaveBeenCalledTimes(1);
+    expect(persistActiveSave.mock.invocationCallOrder[0]!).toBeLessThan(
+      getMonthlyPulse.mock.invocationCallOrder[1]!,
+    );
     expect(getMonthlyPulse).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not save or refresh a rejected pulse mutation', async () => {
+    const { acknowledgeMonthlyReport, getMonthlyPulse, persistActiveSave, options } = makeOptions();
+    acknowledgeMonthlyReport.mockResolvedValueOnce({ success: false });
+    const result = await renderHook(options);
+
+    await act(async () => {
+      await result.handleAcknowledge();
+    });
+
+    expect(persistActiveSave).not.toHaveBeenCalled();
+    expect(getMonthlyPulse).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh an acknowledged report when its persistence fails', async () => {
+    const { getMonthlyPulse, persistActiveSave, options } = makeOptions();
+    persistActiveSave.mockResolvedValueOnce({ saved: false, saveName: null });
+    const result = await renderHook(options);
+
+    await act(async () => {
+      await result.handleAcknowledge();
+    });
+
+    expect(persistActiveSave).toHaveBeenCalledTimes(1);
+    expect(getMonthlyPulse).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh a dismissed spotlight when its persistence fails', async () => {
+    const { getMonthlyPulse, persistActiveSave, options } = makeOptions();
+    persistActiveSave.mockResolvedValueOnce({ saved: false, saveName: null });
+    const result = await renderHook(options);
+
+    await act(async () => {
+      await result.handleDismiss('dec-red');
+    });
+
+    expect(persistActiveSave).toHaveBeenCalledTimes(1);
+    expect(getMonthlyPulse).toHaveBeenCalledTimes(1);
   });
 });

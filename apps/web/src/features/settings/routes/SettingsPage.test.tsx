@@ -63,7 +63,59 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   loadGameSafe: vi.fn(),
   loadSaveSafely: vi.fn(),
   repairSave: vi.fn(),
+  resolveSaveSessionTarget: vi.fn(async (saveId: string) => ({
+    saveId,
+    rootSaveId: saveId,
+    slotNumber: Number(/^save-slot-(\d+)$/.exec(saveId)?.[1] ?? 1),
+    name: 'Healthy Save',
+  })),
   saveGame: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  abortActiveSaveSessionTransition: vi.fn(),
+  activateActiveSavePersistenceMetadata: vi.fn(),
+  completeActiveSaveSessionTransition: vi.fn(),
+  prepareActiveSaveSessionTransition: vi.fn(async (targetSaveId: string) => ({
+    transitionId: Symbol(targetSaveId),
+    targetSaveId,
+    outgoingSaveId: 'save-slot-1',
+  })),
+  replaceInactiveSavePersistenceRecord: vi.fn(
+    async (_saveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
+  restoreInactiveSaveIntegrityBackup: vi.fn(),
+  retireActiveSavePersistenceForDelete: vi.fn(
+    async (_saveId: string, operation?: () => Promise<unknown>) => operation?.(),
+  ),
+  retireSaveTreePersistenceForDelete: vi.fn(
+    async (_saveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
+  trackActiveSavePersistenceOperation: vi.fn(
+    async (_saveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
+}));
+
+vi.mock('@/shared/lib/saveSessionOwnership', () => ({
+  abortSaveSessionOwnership: vi.fn(),
+  beginSaveSessionOwnership: vi.fn(async (rootSaveId: string) => ({
+    rootSaveId,
+    resourceName: `mbd-save-tree-v1:${rootSaveId}`,
+    claimId: Symbol(rootSaveId),
+  })),
+  commitSaveSessionOwnership: vi.fn(),
+  isSaveSessionOwnershipError: (error: unknown) => Boolean(
+    error && typeof error === 'object' && 'kind' in error,
+  ),
+  withAllTransientSaveSessionOwnership: vi.fn(
+    async (_rootSaveIds: readonly string[], operation: () => Promise<unknown>) => operation(),
+  ),
+  withSaveSessionImportAuthorization: vi.fn(
+    async (_claim: unknown, operation: () => Promise<unknown>) => operation(),
+  ),
+  withTransientSaveSessionOwnership: vi.fn(
+    async (_rootSaveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);

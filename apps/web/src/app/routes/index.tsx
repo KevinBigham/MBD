@@ -1,10 +1,13 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AppLayout } from '@/app/layout/AppLayout';
 import { RouteErrorBoundary } from '@/app/providers/RouteErrorBoundary';
 import { AssistantPanel } from '@/features/assistant/components/AssistantPanel';
 
 // Lazy-loaded route components
+const AppLayout = lazy(async () => {
+  const module = await import('@/app/layout/AppLayout');
+  return { default: module.AppLayout };
+});
 const DashboardPage = lazy(
   () => import('@/features/dashboard/routes/DashboardPage')
 );

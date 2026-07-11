@@ -35,6 +35,8 @@
 ### Save And Determinism
 
 - Current save schema: v34.
+- Added a same-origin save-tree guard so a supported browser allows only one current MBD tab to load, mutate, or persist a root dynasty and its what-if branches at a time; blocked tabs can check again after the owner closes.
+- Rollout note: an older MBD tab that was already running before this update cannot participate in the guard. Close or reload every older open MBD tab before relying on multi-tab protection; mixed-version tabs are not protected.
 - Added compact archived major-game box scores for future postseason, championship, no-hitter/perfect-game, milestone, and rivalry games.
 - Added v33 -> v34 migration with `narrative.archivedGames: []`; explicit Season 10 v33 fixture proves old saves load without fabricated historic game details.
 - Box Score routes can now render either live numeric game indexes or stable archived-game ids from dynasty timeline memory beats.

@@ -62,7 +62,70 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   loadGameSafe: vi.fn(),
   loadSaveSafely: vi.fn(),
   repairSave: vi.fn(),
+  resolveSaveSessionTarget: vi.fn(async (saveId: string) => ({
+    saveId,
+    rootSaveId: saveId.startsWith('branch-') ? 'save-slot-1' : saveId,
+    slotNumber: Number(/^save-slot-(\d+)$/.exec(saveId)?.[1] ?? 1),
+    name: saveId.startsWith('branch-') ? 'Aggressive deadline push' : 'Tycoons Year 4',
+  })),
   saveGame: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  abortActiveSaveSessionTransition: vi.fn(),
+  activateActiveSavePersistenceMetadata: vi.fn(),
+  completeActiveSaveSessionTransition: vi.fn(),
+  markActiveSaveSessionTransitionOwnershipCommitted: vi.fn(),
+  prepareActiveSaveSessionTransition: vi.fn(async (targetSaveId: string) => ({
+    transitionId: Symbol(targetSaveId),
+    targetSaveId,
+    outgoingSaveId: null,
+  })),
+  replaceInactiveSavePersistenceRecord: vi.fn(
+    async (_saveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
+  restoreInactiveSaveIntegrityBackup: vi.fn(),
+  retireSaveTreePersistenceForDelete: vi.fn(
+    async (_saveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
+}));
+
+vi.mock('@/shared/lib/saveSessionOwnership', () => ({
+  SaveSessionOwnershipError: class SaveSessionOwnershipError extends Error {
+    constructor(readonly kind: string, message: string, readonly rootSaveId: string | null) {
+      super(message);
+    }
+  },
+  abortSaveSessionOwnership: vi.fn(),
+  beginSaveSessionOwnership: vi.fn(async (rootSaveId: string) => ({
+    rootSaveId,
+    resourceName: `mbd-save-tree-v1:${rootSaveId}`,
+    claimId: Symbol(rootSaveId),
+  })),
+  commitSaveSessionOwnership: vi.fn(),
+  isSaveSessionOwnershipError: (error: unknown) => Boolean(
+    error && typeof error === 'object' && 'kind' in error,
+  ),
+  getSaveSessionOwnershipSnapshot: vi.fn(() => ({
+    activeRootSaveId: null,
+    candidateRootSaveId: null,
+    transientRootSaveIds: [],
+    allTransientRootSaveIds: [],
+  })),
+  saveSessionOwnershipFailureMessage: vi.fn((_error, target: string, outcome: string) =>
+    `${target}: ${outcome}`),
+  withSaveSessionImportAuthorization: vi.fn(
+    async (_claim: unknown, operation: () => Promise<unknown>) => operation(),
+  ),
+  withSaveSessionNewGameAuthorization: vi.fn(
+    async (_claim: unknown, operation: () => Promise<unknown>) => operation(),
+  ),
+  withSaveSessionCandidateSnapshotExportAuthorization: vi.fn(
+    async (_claim: unknown, operation: () => Promise<unknown>) => operation(),
+  ),
+  withTransientSaveSessionOwnership: vi.fn(
+    async (_rootSaveId: string, operation: () => Promise<unknown>) => operation(),
+  ),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);
@@ -159,6 +222,7 @@ describe('SetupPage', () => {
         gmName: 'General Manager',
         difficulty: 'standard',
       }),
+      restartWorker: vi.fn().mockResolvedValue(undefined),
     } as unknown as ReturnType<typeof useWorker>;
     mockedUseWorker.mockReturnValue(workerMock);
     mockedSaveGame.mockResolvedValue({

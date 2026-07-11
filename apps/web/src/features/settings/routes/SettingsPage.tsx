@@ -26,7 +26,16 @@ export default function SettingsPage() {
   const persistActiveSave = useActiveSaveAutosave();
   const recovery = useSaveRecovery();
   const workerReady = worker.isReady;
-  const { season, day, phase, userTeamId, initializeGame, activeSaveId, activeSaveSlot } = useGameStore();
+  const {
+    season,
+    day,
+    phase,
+    userTeamId,
+    initializeGame,
+    setInitialized,
+    activeSaveId,
+    activeSaveSlot,
+  } = useGameStore();
   const preferences = useSettingsPreferenceControls();
   const [openSections, setOpenSections] = useState<Record<SettingsSectionKey, boolean>>(DEFAULT_OPEN_SECTIONS);
   const saveData = useSettingsSaveData({
@@ -34,6 +43,7 @@ export default function SettingsPage() {
     activeSaveSlot,
     day,
     initializeGame,
+    setInitialized,
     persistActiveSave,
     recoveryShowFailure: recovery.showFailure,
     season,

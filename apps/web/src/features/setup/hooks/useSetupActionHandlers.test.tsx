@@ -5,18 +5,35 @@ import {
   deleteSave,
   deleteSaveById,
   loadSaveSafely,
+  resolveSaveSessionTarget,
   saveGame,
   type SaveData,
 } from '@/shared/lib/saveSystem';
 import { registerGuidedStartSave } from '@/features/onboarding/nudges';
 import {
   activateActiveSavePersistenceMetadata,
-  prepareActiveSavePersistenceForLoad,
-  releaseActiveSavePersistenceLoad,
+  abortActiveSaveSessionTransition,
+  completeActiveSaveSessionTransition,
+  markActiveSaveSessionTransitionOwnershipCommitted,
+  prepareActiveSaveSessionTransition,
   replaceInactiveSavePersistenceRecord,
   restoreInactiveSaveIntegrityBackup,
   retireSaveTreePersistenceForDelete,
 } from '@/shared/lib/activeSavePersistence';
+import {
+  abortSaveSessionOwnership,
+  beginSaveSessionOwnership,
+  commitSaveSessionOwnership,
+  saveSessionOwnershipFailureMessage,
+  withSaveSessionImportAuthorization,
+  withSaveSessionNewGameAuthorization,
+  withSaveSessionCandidateSnapshotExportAuthorization,
+  withTransientSaveSessionOwnership,
+} from '@/shared/lib/saveSessionOwnership';
+import {
+  captureOutgoingSaveSessionSnapshot,
+  recoverWorkerAfterCandidateImportFailure,
+} from '@/shared/lib/saveSessionTransitionRecovery';
 import { useSetupActionHandlers } from './useSetupActionHandlers';
 
 vi.mock('@/shared/lib/logger', () => ({
@@ -33,16 +50,44 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   deleteSave: vi.fn(),
   deleteSaveById: vi.fn(),
   loadSaveSafely: vi.fn(),
+  resolveSaveSessionTarget: vi.fn(),
   saveGame: vi.fn(),
 }));
 
 vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  abortActiveSaveSessionTransition: vi.fn(),
   activateActiveSavePersistenceMetadata: vi.fn(),
-  prepareActiveSavePersistenceForLoad: vi.fn().mockResolvedValue(undefined),
-  releaseActiveSavePersistenceLoad: vi.fn(),
+  completeActiveSaveSessionTransition: vi.fn(),
+  markActiveSaveSessionTransitionOwnershipCommitted: vi.fn(),
+  prepareActiveSaveSessionTransition: vi.fn(),
   replaceInactiveSavePersistenceRecord: vi.fn(),
   restoreInactiveSaveIntegrityBackup: vi.fn(),
   retireSaveTreePersistenceForDelete: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/saveSessionOwnership', () => ({
+  SaveSessionOwnershipError: class SaveSessionOwnershipError extends Error {
+    constructor(readonly kind: string, message: string, readonly rootSaveId: string | null) {
+      super(message);
+    }
+  },
+  abortSaveSessionOwnership: vi.fn(),
+  beginSaveSessionOwnership: vi.fn(),
+  commitSaveSessionOwnership: vi.fn(),
+  isSaveSessionOwnershipError: (error: unknown) => Boolean(
+    error && typeof error === 'object' && 'kind' in error,
+  ),
+  saveSessionOwnershipFailureMessage: vi.fn((_error, target: string, outcome: string) =>
+    `${target}: ${outcome}`),
+  withSaveSessionImportAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
+  withSaveSessionNewGameAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
+  withSaveSessionCandidateSnapshotExportAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
+  withTransientSaveSessionOwnership: vi.fn((_rootSaveId, operation: () => Promise<unknown>) => operation()),
+}));
+
+vi.mock('@/shared/lib/saveSessionTransitionRecovery', () => ({
+  captureOutgoingSaveSessionSnapshot: vi.fn(),
+  recoverWorkerAfterCandidateImportFailure: vi.fn(),
 }));
 
 (
@@ -96,6 +141,33 @@ describe('useSetupActionHandlers', () => {
     latestResult = null;
     vi.mocked(replaceInactiveSavePersistenceRecord).mockImplementation(async (_saveId, replaceRecord) => replaceRecord());
     vi.mocked(retireSaveTreePersistenceForDelete).mockImplementation(async (_saveId, deleteRecord) => deleteRecord());
+    vi.mocked(resolveSaveSessionTarget).mockImplementation(async (saveId) => ({
+      saveId,
+      rootSaveId: saveId.startsWith('branch-') ? 'save-slot-1' : saveId,
+      slotNumber: Number(/^save-slot-(\d+)$/.exec(saveId)?.[1] ?? 1),
+      name: saveId.startsWith('branch-') ? 'Aggressive deadline push' : 'Tycoons Year 4',
+    }));
+    vi.mocked(beginSaveSessionOwnership).mockImplementation(async (rootSaveId) => ({
+      rootSaveId,
+      resourceName: `mbd-save-tree-v1:${rootSaveId}`,
+      claimId: Symbol(rootSaveId),
+    }));
+    vi.mocked(prepareActiveSaveSessionTransition).mockImplementation(async (targetSaveId) => ({
+      transitionId: Symbol(targetSaveId),
+      targetSaveId,
+      outgoingSaveId: null,
+    }));
+    vi.mocked(abortSaveSessionOwnership).mockResolvedValue(undefined);
+    vi.mocked(commitSaveSessionOwnership).mockResolvedValue(undefined);
+    vi.mocked(captureOutgoingSaveSessionSnapshot).mockResolvedValue(null);
+    vi.mocked(recoverWorkerAfterCandidateImportFailure).mockImplementation(async (options) => {
+      await options.restartWorker();
+      if (options.candidateCommitted) {
+        options.setInitialized?.(false);
+        return { kind: 'reload_required', error: new Error('reload required') };
+      }
+      return { kind: 'discarded_candidate' };
+    });
     vi.mocked(loadSaveSafely).mockResolvedValue({
       ok: true,
       save: saveData(),
@@ -144,6 +216,7 @@ describe('useSetupActionHandlers', () => {
         difficulty: 'standard',
       }),
       initializeGame: vi.fn(),
+      setInitialized: vi.fn(),
       navigate: vi.fn(),
       newGame: vi.fn().mockResolvedValue({
         success: true,
@@ -157,8 +230,13 @@ describe('useSetupActionHandlers', () => {
         difficulty: 'hard',
       }),
       playMode: 'standard',
+      persistActiveSave: vi.fn().mockResolvedValue({
+        saved: true,
+        saveName: 'Outgoing Save',
+      }),
       recovery: { showFailure: vi.fn() },
       refreshSaves: vi.fn().mockResolvedValue(undefined),
+      restartWorker: vi.fn().mockResolvedValue(undefined),
       seed: 42,
       selectedScenario: null,
       selectedScenarioId: null,
@@ -190,16 +268,74 @@ describe('useSetupActionHandlers', () => {
     });
 
     expect(loadSaveSafely).toHaveBeenCalledWith('save-slot-1');
-    expect(prepareActiveSavePersistenceForLoad).toHaveBeenCalledWith('save-slot-1');
+    expect(beginSaveSessionOwnership).toHaveBeenCalledWith('save-slot-1');
+    expect(prepareActiveSaveSessionTransition).toHaveBeenCalledWith(
+      'save-slot-1',
+      expect.objectContaining({ persistOutgoingSnapshot: expect.any(Function) }),
+    );
     expect(options.importSnapshot).toHaveBeenCalledWith({ schemaVersion: 34, season: 4, day: 88, phase: 'regular' });
+    expect(withSaveSessionImportAuthorization).toHaveBeenCalled();
     expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(saveData());
+    expect(completeActiveSaveSessionTransition).toHaveBeenCalled();
+    expect(commitSaveSessionOwnership).toHaveBeenCalledWith(
+      expect.objectContaining({ rootSaveId: 'save-slot-1' }),
+      'save-slot-1',
+    );
+    expect(markActiveSaveSessionTransitionOwnershipCommitted).toHaveBeenCalledTimes(1);
     expect(options.initializeGame).toHaveBeenCalledWith(expect.objectContaining({
       activeSaveId: 'save-slot-1',
       activeSaveSlot: 1,
       teamName: 'New York Tycoons',
     }));
     expect(options.navigate).toHaveBeenCalledWith('/dashboard');
+    expect(vi.mocked(commitSaveSessionOwnership).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(options.initializeGame).mock.invocationCallOrder[0]!,
+    );
+    expect(vi.mocked(options.initializeGame).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(completeActiveSaveSessionTransition).mock.invocationCallOrder[0]!,
+    );
     expect(latestResult?.busySlot).toBeNull();
+  });
+
+  it('restores the outgoing worker before aborting a post-import commit failure', async () => {
+    const candidate = saveData({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Candidate Save',
+    });
+    const outgoingSnapshot = { schemaVersion: 34, season: 4, day: 88 };
+    vi.mocked(prepareActiveSaveSessionTransition).mockResolvedValueOnce({
+      transitionId: Symbol('switch-to-b'),
+      targetSaveId: 'save-slot-2',
+      outgoingSaveId: 'save-slot-1',
+    });
+    vi.mocked(captureOutgoingSaveSessionSnapshot).mockResolvedValueOnce(outgoingSnapshot);
+    vi.mocked(loadSaveSafely).mockResolvedValueOnce({
+      ok: true,
+      save: candidate,
+      snapshot: candidate.snapshot!,
+      rawJson: '{"id":"save-slot-2"}',
+    });
+    vi.mocked(commitSaveSessionOwnership).mockRejectedValueOnce(new Error('commit failed'));
+    const options = baseOptions({ activeSaveId: 'save-slot-1', activeSaveSlot: 1 });
+    await renderHook(options);
+
+    await act(async () => {
+      await expect(latestResult?.handleContinueSave(candidate)).resolves.toBe(false);
+    });
+
+    expect(recoverWorkerAfterCandidateImportFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        importSnapshot: options.importSnapshot,
+        outgoingSnapshot,
+        restartWorker: options.restartWorker,
+      }),
+    );
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(abortActiveSaveSessionTransition).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(recoverWorkerAfterCandidateImportFailure).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(abortActiveSaveSessionTransition).mock.invocationCallOrder[0]!);
   });
 
   it('hands corrupt root saves to recovery callbacks that retry and delete the same slot', async () => {
@@ -227,7 +363,8 @@ describe('useSetupActionHandlers', () => {
       onRetry: expect.any(Function),
     }));
     expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
-    expect(releaseActiveSavePersistenceLoad).toHaveBeenCalledWith('save-slot-1');
+    expect(abortActiveSaveSessionTransition).toHaveBeenCalled();
+    expect(abortSaveSessionOwnership).toHaveBeenCalled();
     const recoveryOptions = vi.mocked(options.recovery.showFailure).mock.calls[0]?.[0] as {
       onDelete: () => Promise<void>;
       onRetry: () => Promise<boolean>;
@@ -273,6 +410,7 @@ describe('useSetupActionHandlers', () => {
     });
 
     expect(loadSaveSafely).toHaveBeenCalledWith('branch-1');
+    expect(beginSaveSessionOwnership).toHaveBeenCalledWith('save-slot-1');
     expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(expect.objectContaining({
       id: 'branch-1',
       slotNumber: null,
@@ -284,6 +422,49 @@ describe('useSetupActionHandlers', () => {
       activeSaveSlot: null,
     }));
     expect(options.navigate).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('blocks root deletion while a branch activation is still loading', async () => {
+    const options = baseOptions();
+    await renderHook(options);
+    const branch = saveData({
+      id: 'branch-1',
+      slotNumber: null,
+      name: 'Aggressive deadline push',
+      isRootSave: false,
+      parentSaveId: 'save-slot-1',
+    });
+    let finishLoad!: (result: Awaited<ReturnType<typeof loadSaveSafely>>) => void;
+    vi.mocked(loadSaveSafely).mockReturnValueOnce(new Promise((resolve) => {
+      finishLoad = resolve;
+    }));
+
+    let loadAttempt!: Promise<boolean>;
+    await act(async () => {
+      loadAttempt = latestResult!.handleContinueSave(branch);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(latestResult?.busySlot).toBe(0);
+
+    await act(async () => {
+      await expect(latestResult!.handleDelete(1)).resolves.toBe(false);
+    });
+    expect(withTransientSaveSessionOwnership).not.toHaveBeenCalled();
+    expect(deleteSave).not.toHaveBeenCalled();
+    expect(options.setStatus).toHaveBeenCalledWith(
+      'Finish the current save operation before deleting a dynasty.',
+    );
+
+    finishLoad({
+      ok: true,
+      save: branch,
+      snapshot: branch.snapshot!,
+      rawJson: '{"id":"branch-1"}',
+    });
+    await act(async () => {
+      await expect(loadAttempt).resolves.toBe(true);
+    });
   });
 
   it('routes a damaged branch through verified restore and the ordinary safe-load retry', async () => {
@@ -389,6 +570,14 @@ describe('useSetupActionHandlers', () => {
       playMode: 'standard',
       dayOneExperience: 'full',
     }));
+    expect(withSaveSessionNewGameAuthorization).toHaveBeenCalledWith(
+      expect.objectContaining({ rootSaveId: 'save-slot-2' }),
+      expect.any(Function),
+    );
+    expect(withSaveSessionCandidateSnapshotExportAuthorization).toHaveBeenCalledWith(
+      expect.objectContaining({ rootSaveId: 'save-slot-2' }),
+      options.exportSnapshot,
+    );
     expect(saveGame).toHaveBeenCalledWith(
       2,
       expect.stringContaining('Alex Rivera'),
@@ -405,6 +594,15 @@ describe('useSetupActionHandlers', () => {
       name: 'Alex Rivera • New York Tycoons',
       updatedAt: '2026-04-02T13:00:00.000Z',
     }));
+    expect(beginSaveSessionOwnership).toHaveBeenCalledWith('save-slot-2');
+    expect(prepareActiveSaveSessionTransition).toHaveBeenCalledWith(
+      'save-slot-2',
+      expect.objectContaining({ persistOutgoingSnapshot: expect.any(Function) }),
+    );
+    expect(commitSaveSessionOwnership).toHaveBeenCalledWith(
+      expect.objectContaining({ rootSaveId: 'save-slot-2' }),
+      'save-slot-2',
+    );
     expect(registerGuidedStartSave).toHaveBeenCalledWith('save-slot-2');
     expect(options.initializeGame).toHaveBeenCalledWith(expect.objectContaining({
       activeSaveId: 'save-slot-2',
@@ -413,4 +611,122 @@ describe('useSetupActionHandlers', () => {
     }));
     expect(options.navigate).toHaveBeenCalledWith('/onboarding');
   });
+
+  it.each(['export', 'save', 'commit'] as const)(
+    'discards the new worker before releasing ownership when %s fails',
+    async (failurePoint) => {
+      const options = baseOptions();
+      if (failurePoint === 'export') {
+        vi.mocked(options.exportSnapshot).mockRejectedValueOnce(new Error('export failed'));
+      } else if (failurePoint === 'save') {
+        vi.mocked(saveGame).mockRejectedValueOnce(new Error('save failed'));
+      } else {
+        vi.mocked(commitSaveSessionOwnership).mockRejectedValueOnce(new Error('commit failed'));
+      }
+      await renderHook(options);
+
+      await act(async () => {
+        await latestResult?.handleBeginDynasty();
+      });
+
+      expect(options.newGame).toHaveBeenCalledTimes(1);
+      expect(options.restartWorker).toHaveBeenCalledTimes(1);
+      expect(abortActiveSaveSessionTransition).toHaveBeenCalledTimes(1);
+      expect(abortSaveSessionOwnership).toHaveBeenCalledTimes(1);
+      expect(
+        vi.mocked(options.restartWorker).mock.invocationCallOrder[0],
+      ).toBeLessThan(vi.mocked(abortActiveSaveSessionTransition).mock.invocationCallOrder[0]!);
+      expect(options.initializeGame).not.toHaveBeenCalled();
+      expect(options.navigate).not.toHaveBeenCalled();
+      expect(completeActiveSaveSessionTransition).not.toHaveBeenCalled();
+      expect(latestResult?.busySlot).toBeNull();
+      if (failurePoint === 'export') {
+        expect(saveGame).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each(['initialize', 'complete'] as const)(
+    'releases a committed new-dynasty worker session when %s fails',
+    async (failurePoint) => {
+      const options = baseOptions();
+      if (failurePoint === 'initialize') {
+        vi.mocked(options.initializeGame).mockImplementationOnce(() => {
+          throw new Error('store persistence failed');
+        });
+      } else {
+        vi.mocked(completeActiveSaveSessionTransition).mockImplementationOnce(() => {
+          throw new Error('transition completion failed');
+        });
+      }
+      await renderHook(options);
+
+      await act(async () => {
+        await latestResult?.handleBeginDynasty();
+      });
+
+      expect(markActiveSaveSessionTransitionOwnershipCommitted).toHaveBeenCalledTimes(1);
+      expect(recoverWorkerAfterCandidateImportFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ candidateCommitted: true }),
+      );
+      expect(options.restartWorker).toHaveBeenCalledTimes(1);
+      expect(options.setInitialized).toHaveBeenCalledWith(false);
+      expect(abortActiveSaveSessionTransition).toHaveBeenCalledTimes(1);
+      expect(abortSaveSessionOwnership).not.toHaveBeenCalled();
+    },
+  );
+
+  it('acquires an inactive delete target before entering its persistence barrier', async () => {
+    const options = baseOptions();
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleDelete(3);
+    });
+
+    expect(withTransientSaveSessionOwnership).toHaveBeenCalledWith(
+      'save-slot-3',
+      expect.any(Function),
+    );
+    expect(retireSaveTreePersistenceForDelete).toHaveBeenCalledWith(
+      'save-slot-3',
+      expect.any(Function),
+    );
+  });
+
+  it('does not replace the worker with a new dynasty while another save is active', async () => {
+    const options = baseOptions({ activeSaveId: 'save-slot-1', activeSaveSlot: 1 });
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleBeginDynasty();
+    });
+
+    expect(beginSaveSessionOwnership).not.toHaveBeenCalled();
+    expect(options.newGame).not.toHaveBeenCalled();
+    expect(options.setStatus).toHaveBeenCalledWith(
+      'Finish or reload the active dynasty before starting a new one.',
+    );
+  });
+
+  it.each(['unavailable', 'request_failed', 'unknown_tree'] as const)(
+    'routes %s new-game ownership failures through kind-aware copy',
+    async (kind) => {
+      const error = { kind, rootSaveId: 'save-slot-2' };
+      vi.mocked(beginSaveSessionOwnership).mockRejectedValueOnce(error);
+      const options = baseOptions();
+      await renderHook(options);
+
+      await act(async () => {
+        await latestResult?.handleBeginDynasty();
+      });
+
+      expect(saveSessionOwnershipFailureMessage).toHaveBeenCalledWith(
+        error,
+        'Slot 2',
+        'The new dynasty was not started.',
+      );
+      expect(options.newGame).not.toHaveBeenCalled();
+    },
+  );
 });

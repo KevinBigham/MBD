@@ -4,7 +4,7 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'reload-smoke.spec.ts',
+  testMatch: ['reload-smoke.spec.ts', 'multitab-guard.spec.ts'],
   fullyParallel: false,
   forbidOnly: isCi,
   retries: isCi ? 1 : 0,

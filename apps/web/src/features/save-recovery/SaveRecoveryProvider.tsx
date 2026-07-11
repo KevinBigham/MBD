@@ -8,8 +8,18 @@ import {
   type ReactNode,
 } from 'react';
 import { retireSaveTreePersistenceForDelete } from '@/shared/lib/activeSavePersistence';
-import { deleteSaveById, type LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
+import {
+  deleteSaveById,
+  resolveSaveSessionTarget,
+  type LoadSaveSafelyResult,
+} from '@/shared/lib/saveSystem';
 import { logger } from '@/shared/lib/logger';
+import {
+  isSaveSessionOwnershipError,
+  saveSessionOwnershipFailureMessage,
+  SaveSessionOwnershipError,
+  withTransientSaveSessionOwnership,
+} from '@/shared/lib/saveSessionOwnership';
 import { downloadRawRecoveryJson } from './download';
 import { SaveRecoveryDialog } from './SaveRecoveryDialog';
 import {
@@ -52,6 +62,12 @@ const REPAIR_RELOAD_FAILURE_MESSAGE =
 const DELETE_FAILURE_MESSAGE =
   'MBD could not safely finish deleting this save. No successful deletion was recorded; export the raw JSON, recover the related save if prompted, or retry.';
 
+function recoveryTargetLabel(request: SaveRecoveryRequest): string {
+  return request.failure.detail.slotNumber != null
+    ? `Slot ${request.failure.detail.slotNumber}`
+    : request.failure.detail.slotId;
+}
+
 function activeDialogStatus(state: SaveRecoveryState): Exclude<SaveRecoveryState['status'], 'idle' | 'detecting'> | null {
   return state.status === 'idle' || state.status === 'detecting' ? null : state.status;
 }
@@ -61,6 +77,21 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
   const actionsRef = useRef<SaveRecoveryActions>({});
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const withRequestOwnership = useCallback(async <T,>(
+    request: SaveRecoveryRequest,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    const target = await resolveSaveSessionTarget(request.failure.detail.slotId);
+    if (!target) {
+      throw new SaveSessionOwnershipError(
+        'unknown_tree',
+        'MBD could not identify the root dynasty for this recovery action.',
+        null,
+      );
+    }
+    return withTransientSaveSessionOwnership(target.rootSaveId, operation);
+  }, []);
 
   const showFailure = useCallback((options: ShowSaveRecoveryOptions) => {
     const request = createSaveRecoveryRequest(options.failure);
@@ -102,27 +133,38 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'delete_start' });
     try {
-      if (actionsRef.current.onDelete) {
-        const deleted = await actionsRef.current.onDelete();
-        if (deleted === false) {
-          dispatch({ type: 'show_failure', request });
-          return;
+      const deleted = await withRequestOwnership(request, async () => {
+        if (actionsRef.current.onDelete) {
+          return await actionsRef.current.onDelete();
         }
-      } else {
         await retireSaveTreePersistenceForDelete(
           request.failure.detail.slotId,
           async () => {
             await deleteSaveById(request.failure.detail.slotId);
           },
         );
+        return true;
+      });
+      if (deleted === false) {
+        dispatch({ type: 'show_failure', request });
+        return;
       }
       actionsRef.current = {};
       dispatch({ type: 'delete_finish' });
     } catch (error) {
       logger.error('Failed to delete broken save:', error);
-      dispatch({ type: 'delete_failure', message: DELETE_FAILURE_MESSAGE });
+      dispatch({
+        type: 'delete_failure',
+        message: isSaveSessionOwnershipError(error)
+          ? saveSessionOwnershipFailureMessage(
+              error,
+              recoveryTargetLabel(request),
+              'Nothing was deleted.',
+            )
+          : DELETE_FAILURE_MESSAGE,
+      });
     }
-  }, []);
+  }, [withRequestOwnership]);
 
   const retry = useCallback(async () => {
     const request = stateRef.current.request;
@@ -154,7 +196,7 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'repair_start' });
     try {
-      const repaired = await onRepair();
+      const repaired = await withRequestOwnership(request, async () => onRepair());
       if (stateRef.current.request !== request) {
         return;
       }
@@ -165,7 +207,16 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       logger.error('Failed to restore verified save copy:', error);
       if (stateRef.current.request === request) {
-        dispatch({ type: 'repair_failure', message: REPAIR_FAILURE_MESSAGE });
+        dispatch({
+          type: 'repair_failure',
+          message: isSaveSessionOwnershipError(error)
+            ? saveSessionOwnershipFailureMessage(
+                error,
+                recoveryTargetLabel(request),
+                'Nothing was restored.',
+              )
+            : REPAIR_FAILURE_MESSAGE,
+        });
       }
       return;
     }
@@ -194,7 +245,7 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  }, []);
+  }, [withRequestOwnership]);
 
   const toggleDetails = useCallback(() => {
     dispatch({ type: 'toggle_details' });

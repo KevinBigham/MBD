@@ -52,6 +52,7 @@ function defaultProps() {
     branches: [branchSave],
     busySlot: null,
     installed: false,
+    operationBusy: false,
     saveSlots: [1, 2],
     saves: [
       baseSave,
@@ -177,5 +178,18 @@ describe('SettingsSaveDataPanel', () => {
 
     expect(container.textContent).toContain('Load a root dynasty save to create or manage what-if branches.');
     expect(container.textContent).not.toContain('Create Branch');
+  });
+
+  it('disables every save-tree control while another save operation is running', async () => {
+    await act(async () => {
+      root.render(<SettingsSaveDataPanel {...defaultProps()} operationBusy />);
+    });
+
+    const saveTreeControls = Array.from(container.querySelectorAll<
+      HTMLButtonElement | HTMLInputElement
+    >('[data-mobile-critical-control^="settings-save-"], [data-mobile-critical-control^="settings-slot-"], [data-mobile-critical-control^="settings-branch-"]'));
+
+    expect(saveTreeControls.length).toBeGreaterThan(0);
+    expect(saveTreeControls.every((control) => control.disabled)).toBe(true);
   });
 });

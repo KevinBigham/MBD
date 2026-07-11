@@ -89,6 +89,7 @@ interface SetupPageWorker {
     gmName: string;
     difficulty: SetupDifficulty;
   }>;
+  restartWorker: () => Promise<void>;
   workerStatus: string;
 }
 
@@ -97,9 +98,13 @@ export interface UseSetupPageControllerOptions {
   activeSaveSlot: number | null;
   branchLimit?: number;
   initializeGame: GameState['initializeGame'];
+  setInitialized: GameState['setInitialized'];
   isInitialized: boolean;
   listSaveTree?: () => Promise<SaveTreeEntry[]>;
   navigate: (path: string) => void;
+  persistActiveSave: (options?: {
+    transitionSaveId?: string;
+  }) => Promise<{ saved: boolean; saveName: string | null }>;
   recovery: {
     showFailure: (options: ShowSaveRecoveryOptions) => unknown;
   };
@@ -116,9 +121,11 @@ export function useSetupPageController({
   activeSaveSlot,
   branchLimit = WHAT_IF_BRANCH_LIMIT,
   initializeGame,
+  setInitialized,
   isInitialized,
   listSaveTree = listSaveTreeFromStorage,
   navigate,
+  persistActiveSave,
   recovery,
   teamOptions = SETUP_TEAM_OPTIONS,
   worker,
@@ -194,11 +201,14 @@ export function useSetupPageController({
     gmName,
     importSnapshot: worker.importSnapshot,
     initializeGame,
+    setInitialized,
     navigate,
     newGame: worker.newGame,
     playMode,
+    persistActiveSave,
     recovery,
     refreshSaves,
+    restartWorker: worker.restartWorker,
     seed,
     selectedScenario: selectedScenario as ScenarioCatalogEntry | null,
     selectedScenarioId,

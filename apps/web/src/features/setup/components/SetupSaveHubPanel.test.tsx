@@ -187,7 +187,7 @@ describe('SetupSaveHubPanel', () => {
     expect(onUseSlot).toHaveBeenCalledWith(2);
   });
 
-  it('disables root continue and delete controls for the busy slot', async () => {
+  it('disables every tree-changing control while a save operation is busy', async () => {
     await act(async () => {
       root.render(
         <SetupSaveHubPanel
@@ -205,5 +205,8 @@ describe('SetupSaveHubPanel', () => {
 
     expect(buttonByText(container, 'Continue').disabled).toBe(true);
     expect(buttonByText(container, 'Delete').disabled).toBe(true);
+    expect(buttonByText(container, 'Refresh').disabled).toBe(true);
+    expect(buttonByText(container, 'Open Branch').disabled).toBe(true);
+    expect(buttonByText(container, 'Use This Slot').disabled).toBe(true);
   });
 });

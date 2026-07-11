@@ -51,9 +51,10 @@ export default function SetupPageContent({
               ) : null}
               <button
                 type="button"
+                disabled={saveHubPanelProps.busySlot != null}
                 data-mobile-critical-control="setup-open-wizard"
                 onClick={onOpenWizard}
-                className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover"
+                className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <PlusCircle className="h-4 w-4" />
                 New Dynasty

@@ -3,7 +3,49 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Difficulty } from '@mbd/contracts';
 
 export const GAME_STORE_STORAGE_KEY = 'mbd:game-store@v1';
+export const GAME_STORE_SESSION_RESUME_KEY = 'mbd:active-save-resume@v1';
 const GAME_STORE_PERSIST_VERSION = 1;
+
+interface ActiveSaveResumeHint {
+  activeSaveId: string | null;
+  activeSaveSlot: number | null;
+}
+
+function readActiveSaveResumeHint(): ActiveSaveResumeHint | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(GAME_STORE_SESSION_RESUME_KEY);
+    if (raw == null) return null;
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+
+    const candidate = parsed as Partial<ActiveSaveResumeHint>;
+    const validId = candidate.activeSaveId === null || typeof candidate.activeSaveId === 'string';
+    const validSlot = candidate.activeSaveSlot === null
+      || (typeof candidate.activeSaveSlot === 'number' && Number.isInteger(candidate.activeSaveSlot));
+    if (!validId || !validSlot) return null;
+
+    return {
+      activeSaveId: candidate.activeSaveId!,
+      activeSaveSlot: candidate.activeSaveSlot!,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveSaveResumeHint(hint: ActiveSaveResumeHint): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(GAME_STORE_SESSION_RESUME_KEY, JSON.stringify(hint));
+  } catch {
+    // The shared localStorage state remains the new-tab fallback when
+    // per-document session storage is unavailable.
+  }
+}
 
 export interface GameState {
   season: number;
@@ -69,11 +111,19 @@ export const useGameStore = create<GameState>()(
       setSimulating: (simulating) => set({ isSimulating: simulating }),
       setInitialized: (initialized) => set({ isInitialized: initialized }),
       setUserTeamId: (teamId) => set({ userTeamId: teamId }),
-      setActiveSave: (id, slot) => set({ activeSaveId: id, activeSaveSlot: slot }),
-      setActiveSaveSlot: (slot) => set({
-        activeSaveId: slot != null ? `save-slot-${slot}` : null,
-        activeSaveSlot: slot,
-      }),
+      setActiveSave: (id, slot) => {
+        const target = { activeSaveId: id, activeSaveSlot: slot };
+        writeActiveSaveResumeHint(target);
+        set(target);
+      },
+      setActiveSaveSlot: (slot) => {
+        const target = {
+          activeSaveId: slot != null ? `save-slot-${slot}` : null,
+          activeSaveSlot: slot,
+        };
+        writeActiveSaveResumeHint(target);
+        set(target);
+      },
       updateFromSim: (data) =>
         set({
           season: data.season,
@@ -81,7 +131,13 @@ export const useGameStore = create<GameState>()(
           phase: data.phase,
           gamesPlayed: data.gamesPlayed ?? 0,
         }),
-      initializeGame: (data) =>
+      initializeGame: (data) => {
+        const target = {
+          activeSaveId: data.activeSaveId
+            ?? (data.activeSaveSlot != null ? `save-slot-${data.activeSaveSlot}` : null),
+          activeSaveSlot: data.activeSaveSlot ?? null,
+        };
+        writeActiveSaveResumeHint(target);
         set({
           season: data.season,
           day: data.day,
@@ -91,15 +147,23 @@ export const useGameStore = create<GameState>()(
           teamName: data.teamName ?? 'Franchise',
           gmName: data.gmName ?? 'General Manager',
           difficulty: data.difficulty ?? 'standard',
-          activeSaveId: data.activeSaveId ?? (data.activeSaveSlot != null ? `save-slot-${data.activeSaveSlot}` : null),
-          activeSaveSlot: data.activeSaveSlot ?? null,
+          ...target,
           isInitialized: true,
-        }),
+        });
+      },
     }),
     {
       name: GAME_STORE_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       version: GAME_STORE_PERSIST_VERSION,
+      merge: (persistedState, currentState) => {
+        const merged = {
+          ...currentState,
+          ...(persistedState as Partial<GameState>),
+        };
+        const sessionHint = readActiveSaveResumeHint();
+        return sessionHint ? { ...merged, ...sessionHint } : merged;
+      },
       partialize: (state) => ({
         activeSaveId: state.activeSaveId,
         activeSaveSlot: state.activeSaveSlot,

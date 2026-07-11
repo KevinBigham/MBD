@@ -14,6 +14,7 @@ interface UsePulseRouteDataOptions {
   getCurrentLeagueEvents: () => Promise<LeagueEvent[] | null | undefined>;
   getMonthlyPulse: () => Promise<MonthlyPulseState | null | undefined>;
   isInitialized: boolean;
+  persistActiveSave: () => Promise<{ saved: boolean; saveName: string | null }>;
   phase: string;
   season: number;
   workerReady: boolean;
@@ -26,6 +27,7 @@ export function usePulseRouteData({
   getCurrentLeagueEvents,
   getMonthlyPulse,
   isInitialized,
+  persistActiveSave,
   phase,
   season,
   workerReady,
@@ -52,14 +54,24 @@ export function usePulseRouteData({
 
   const handleAcknowledge = useCallback(async () => {
     if (!pulse?.pendingReport) return;
-    await acknowledgeMonthlyReport(pulse.pendingReport.id);
-    void fetchData();
-  }, [acknowledgeMonthlyReport, fetchData, pulse]);
+    const result = await acknowledgeMonthlyReport(pulse.pendingReport.id);
+    if (typeof result !== 'object' || result === null || !('success' in result) || !result.success) {
+      return;
+    }
+    const persistence = await persistActiveSave();
+    if (!persistence.saved) return;
+    await fetchData();
+  }, [acknowledgeMonthlyReport, fetchData, persistActiveSave, pulse]);
 
   const handleDismiss = useCallback(async (decisionId: string) => {
-    await dismissDecisionSpotlight(decisionId);
-    void fetchData();
-  }, [dismissDecisionSpotlight, fetchData]);
+    const result = await dismissDecisionSpotlight(decisionId);
+    if (typeof result !== 'object' || result === null || !('success' in result) || !result.success) {
+      return;
+    }
+    const persistence = await persistActiveSave();
+    if (!persistence.saved) return;
+    await fetchData();
+  }, [dismissDecisionSpotlight, fetchData, persistActiveSave]);
 
   const hasContent = Boolean(
     (pulse && (pulse.pendingReport || pulse.decisionQueue.length > 0))

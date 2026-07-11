@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { SimControls } from './SimControls';
@@ -21,6 +21,10 @@ import { getAudioEngine, type AmbientMode } from '@/shared/lib/audio';
 import { humanizeLabel } from '@/shared/lib/labels';
 import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import type { CeremonyMoment, MonthlyPulseState, TickerEntry } from '@mbd/contracts';
+import {
+  getWorkerMutationPauseSnapshot,
+  subscribeToWorkerMutationPause,
+} from '@/shared/lib/workerMutationSession';
 
 interface MonthlyPulseView extends MonthlyPulseState {
   onboardingGuide?: string | null;
@@ -108,6 +112,10 @@ export function AppLayout() {
   const [pressConferenceShownForDay, setPressConferenceShownForDay] = useState<string | null>(null);
   const worker = useWorker();
   const workerReady = worker.isReady;
+  const saveTransitionBusy = useSyncExternalStore(
+    subscribeToWorkerMutationPause,
+    getWorkerMutationPauseSnapshot,
+  );
   const {
     phase,
     season,
@@ -434,7 +442,7 @@ export function AppLayout() {
         return;
       }
 
-      if (commandPaletteOpen || shortcutsPanelOpen || isEditableTarget(event.target) || !seasonFlow?.canUseRegularSimControls) {
+      if (saveTransitionBusy || commandPaletteOpen || shortcutsPanelOpen || isEditableTarget(event.target) || !seasonFlow?.canUseRegularSimControls) {
         return;
       }
 
@@ -460,7 +468,7 @@ export function AppLayout() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [commandPaletteOpen, shortcutsPanelOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
+  }, [commandPaletteOpen, saveTransitionBusy, shortcutsPanelOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
 
   if (!isInitialized) {
     return <Navigate to="/" replace />;
@@ -510,7 +518,7 @@ export function AppLayout() {
         onSimMonth={() => handleSim(() => worker.simMonth())}
         onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs())}
         onFlowAction={() => void handleFlowAction()}
-        disabled={!workerReady}
+        disabled={!workerReady || saveTransitionBusy}
         flow={seasonFlow}
       />
 

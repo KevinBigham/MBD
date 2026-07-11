@@ -8,6 +8,13 @@ import {
   saveGameById,
   type SaveData,
 } from './saveSystem';
+import { assertActiveSaveSessionOwned } from './saveSessionOwnership';
+import {
+  pauseWorkerMutationsForSaveTransition,
+  resetWorkerMutationSessionForTesting,
+  resumeWorkerMutationsAfterSaveTransition,
+  type WorkerMutationPause,
+} from './workerMutationSession';
 
 export type ActiveSavePersistenceState = 'idle' | 'saving' | 'saved' | 'failed';
 export type ActiveSavePersistenceFailureKind =
@@ -116,6 +123,28 @@ const listeners = new Set<() => void>();
 let latestSaveId: string | null = null;
 let activeRecoverySaveId: string | null = null;
 let activeRecoveryOwnerActivated = false;
+let activeSessionTransition: InternalActiveSaveSessionTransition | null = null;
+
+export interface ActiveSaveSessionTransition {
+  readonly transitionId: symbol;
+  readonly targetSaveId: string;
+  readonly outgoingSaveId: string | null;
+}
+
+export interface PrepareActiveSaveSessionTransitionOptions {
+  persistOutgoingSnapshot?: (
+    outgoingSaveId: string,
+  ) => Promise<{ saved: boolean; saveName: string | null }>;
+}
+
+interface InternalActiveSaveSessionTransition extends ActiveSaveSessionTransition {
+  barriers: SavePersistenceBarrier[];
+  ownershipCommitted: boolean;
+  previousActiveRecoveryOwnerActivated: boolean;
+  previousActiveRecoverySaveId: string | null;
+  previousLatestSaveId: string | null;
+  workerMutationPause: WorkerMutationPause;
+}
 
 // Bootstrap/test callers may touch independent save IDs before a dynasty is
 // activated. Once activation names the imported worker state, stale closures
@@ -418,6 +447,28 @@ function rejectAll(state: SaveCoordinatorState, error: unknown) {
   deferreds.forEach((deferred) => deferred.reject(error));
 }
 
+function cancelPersistenceForLostSessionOwnership(
+  saveId: string,
+  state: SaveCoordinatorState,
+): void {
+  cancelRecoveryTimer(state);
+  resolveAll(state, { saved: false, saveName: null });
+  state.desiredGeneration = state.durableGeneration;
+  state.latestJob = null;
+  state.failedJob = null;
+  clearRecoveryEpisode(state);
+  state.captureBlocked = true;
+  state.captureEpoch += 1;
+  resumePausedCaptures(state);
+  state.status = {
+    ...IDLE_STATUS,
+    saveId,
+    saveName: state.status.saveName,
+    lastSavedAt: state.status.lastSavedAt,
+  };
+  notifyListeners();
+}
+
 function resolveQuiescenceWaiters(state: SaveCoordinatorState) {
   if (state.running || state.latestJob) return;
   const waiters = state.quiescenceWaiters.splice(0);
@@ -539,6 +590,12 @@ async function writeSnapshotJob(job: PersistedSnapshotJob): Promise<SaveData> {
 function flushSave(saveId: string) {
   const state = states.get(saveId);
   if (!state || state.running || !state.latestJob) {
+    return;
+  }
+  try {
+    assertActiveSaveSessionOwned(saveId);
+  } catch {
+    cancelPersistenceForLostSessionOwnership(saveId, state);
     return;
   }
 
@@ -672,6 +729,156 @@ export function releaseActiveSavePersistenceLoad(saveId: string): void {
   notifyListeners();
 }
 
+function requireActiveSessionTransition(
+  transition: ActiveSaveSessionTransition,
+): InternalActiveSaveSessionTransition {
+  if (!activeSessionTransition
+    || activeSessionTransition.transitionId !== transition.transitionId
+    || activeSessionTransition.targetSaveId !== transition.targetSaveId) {
+    throw new Error('This active-save session transition is no longer current.');
+  }
+  return activeSessionTransition;
+}
+
+/**
+ * Quiesces both the outgoing exact save and the candidate target before a
+ * cross-tab ownership handoff. The caller still owns the outgoing browser
+ * lock until candidate activation succeeds and the transition completes.
+ */
+export async function prepareActiveSaveSessionTransition(
+  targetSaveId: string,
+  options: PrepareActiveSaveSessionTransitionOptions = {},
+): Promise<ActiveSaveSessionTransition> {
+  if (activeSessionTransition) {
+    throw new Error('Another active-save session transition is already in progress.');
+  }
+
+  const workerMutationPause = pauseWorkerMutationsForSaveTransition();
+
+  const outgoingSaveId = activeRecoveryOwnerActivated
+    ? activeRecoverySaveId
+    : null;
+  const barriers: SavePersistenceBarrier[] = [];
+  const transition: InternalActiveSaveSessionTransition = {
+    transitionId: Symbol(`active-save-session:${targetSaveId}`),
+    targetSaveId,
+    outgoingSaveId,
+    barriers,
+    ownershipCommitted: false,
+    previousActiveRecoveryOwnerActivated: activeRecoveryOwnerActivated,
+    previousActiveRecoverySaveId: activeRecoverySaveId,
+    previousLatestSaveId: latestSaveId,
+    workerMutationPause,
+  };
+  activeSessionTransition = transition;
+
+  try {
+    // A worker mutation can resolve before its route finishes display refresh
+    // and requests autosave. Once the mutation lane is paused, force one exact
+    // outgoing capture so every accepted worker change is durable before the
+    // old browser lock can be released.
+    if (outgoingSaveId && options.persistOutgoingSnapshot) {
+      const persisted = await options.persistOutgoingSnapshot(outgoingSaveId);
+      if (!persisted.saved) {
+        throw new Error(
+          `Save ${outgoingSaveId} could not be made durable before switching dynasties.`,
+        );
+      }
+    }
+
+    const saveIds = Array.from(new Set([
+      ...(outgoingSaveId ? [outgoingSaveId] : []),
+      targetSaveId,
+    ]));
+    barriers.push(...saveIds.map(beginSavePersistenceBarrier));
+    latestSaveId = targetSaveId;
+    notifyListeners();
+
+    await Promise.all(barriers.map(async (barrier) => {
+      await waitForCaptureQuiescence(barrier.state);
+      await waitForWriteQuiescence(barrier.saveId, barrier.state);
+    }));
+
+    if (outgoingSaveId) {
+      const outgoingState = ensureState(outgoingSaveId);
+      if (
+        pendingWrites(outgoingState) > 0
+        || outgoingState.failedJob
+        || outgoingState.status.state === 'failed'
+      ) {
+        throw new Error(
+          `Save ${outgoingSaveId} has unresolved persistence work. Retry or download a backup before switching dynasties.`,
+        );
+      }
+    }
+
+    return {
+      transitionId: transition.transitionId,
+      targetSaveId,
+      outgoingSaveId,
+    };
+  } catch (error) {
+    restoreSavePersistenceBarriers(barriers);
+    latestSaveId = transition.previousLatestSaveId;
+    activeSessionTransition = null;
+    resumeWorkerMutationsAfterSaveTransition(workerMutationPause);
+    throw error;
+  }
+}
+
+export function abortActiveSaveSessionTransition(
+  transition: ActiveSaveSessionTransition,
+): void {
+  const current = requireActiveSessionTransition(transition);
+  restoreSavePersistenceBarriers(current.barriers);
+  latestSaveId = current.ownershipCommitted ? null : current.previousLatestSaveId;
+  activeRecoverySaveId = current.ownershipCommitted
+    ? null
+    : current.previousActiveRecoverySaveId;
+  activeRecoveryOwnerActivated = current.ownershipCommitted
+    ? false
+    : current.previousActiveRecoveryOwnerActivated;
+  activeSessionTransition = null;
+  resumeWorkerMutationsAfterSaveTransition(current.workerMutationPause);
+  notifyListeners();
+}
+
+export function markActiveSaveSessionTransitionOwnershipCommitted(
+  transition: ActiveSaveSessionTransition,
+): void {
+  const current = requireActiveSessionTransition(transition);
+  current.ownershipCommitted = true;
+}
+
+export function completeActiveSaveSessionTransition(
+  transition: ActiveSaveSessionTransition,
+): void {
+  const current = requireActiveSessionTransition(transition);
+  if (!current.ownershipCommitted) {
+    throw new Error(
+      `Save ${current.targetSaveId} ownership must be committed before its session transition can complete.`,
+    );
+  }
+  if (!activeRecoveryOwnerActivated || activeRecoverySaveId !== current.targetSaveId) {
+    throw new Error(
+      `Save ${current.targetSaveId} must be activated before its session transition can complete.`,
+    );
+  }
+
+  for (const barrier of current.barriers) {
+    if (barrier.saveId === current.targetSaveId) {
+      continue;
+    }
+    cancelRecoveryTimer(barrier.state);
+    barrier.state.captureBlocked = true;
+    barrier.state.captureEpoch += 1;
+    resumePausedCaptures(barrier.state);
+  }
+  activeSessionTransition = null;
+  resumeWorkerMutationsAfterSaveTransition(current.workerMutationPause);
+  notifyListeners();
+}
+
 /**
  * Activates the exact durable record that was imported into the worker. This
  * is intentionally stronger than metadata reconciliation: an explicit load
@@ -725,6 +932,7 @@ export async function retryActiveSavePersistence(saveId?: string | null): Promis
   if (!resolvedSaveId) {
     return { saved: false, saveName: null };
   }
+  assertActiveSaveSessionOwned(resolvedSaveId);
 
   const state = states.get(resolvedSaveId);
   const retryJob = state?.failedJob;
@@ -783,6 +991,7 @@ export async function trackActiveSavePersistenceOperation(
   saveId: string,
   operation: () => Promise<SaveData | null>,
 ): Promise<SaveData | null> {
+  assertActiveSaveSessionOwned(saveId);
   if (!claimActiveRecoverySave(saveId)) {
     throw new Error(`Save ${saveId} is not the active persistence owner.`);
   }
@@ -1008,6 +1217,7 @@ export async function persistActiveSaveSnapshot({
   if (activeSaveId == null) {
     return { saved: false, saveName: null };
   }
+  assertActiveSaveSessionOwned(activeSaveId);
   if (!claimActiveRecoverySave(activeSaveId)) {
     return { saved: false, saveName: null };
   }
@@ -1056,6 +1266,7 @@ export async function persistActiveSaveSnapshot({
     || activatedOwnerExcludes(activeSaveId)) {
     return { saved: false, saveName: null };
   }
+  assertActiveSaveSessionOwned(activeSaveId);
 
   const generation = state.desiredGeneration + 1;
   const saveName = explicitSaveName?.trim()
@@ -1138,4 +1349,6 @@ export function resetActiveSavePersistenceForTesting(): void {
   latestSaveId = null;
   activeRecoverySaveId = null;
   activeRecoveryOwnerActivated = false;
+  activeSessionTransition = null;
+  resetWorkerMutationSessionForTesting();
 }

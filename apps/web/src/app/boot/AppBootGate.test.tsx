@@ -3,17 +3,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { AppBootGate } from './AppBootGate';
 import { useWorker } from '@/shared/hooks/useWorker';
-import { loadSaveSafely, type LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
+import {
+  loadSaveSafely,
+  resolveSaveSessionTarget,
+  type LoadSaveSafelyResult,
+} from '@/shared/lib/saveSystem';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import {
   activateActiveSavePersistenceMetadata,
-  prepareActiveSavePersistenceForLoad,
-  releaseActiveSavePersistenceLoad,
+  abortActiveSaveSessionTransition,
+  completeActiveSaveSessionTransition,
+  markActiveSaveSessionTransitionOwnershipCommitted,
+  prepareActiveSaveSessionTransition,
   restoreInactiveSaveIntegrityBackup,
 } from '@/shared/lib/activeSavePersistence';
+import {
+  abortSaveSessionOwnership,
+  beginSaveSessionOwnership,
+  commitSaveSessionOwnership,
+  SaveSessionOwnershipError,
+  withSaveSessionImportAuthorization,
+} from '@/shared/lib/saveSessionOwnership';
+import {
+  captureOutgoingSaveSessionSnapshot,
+  recoverWorkerAfterCandidateImportFailure,
+} from '@/shared/lib/saveSessionTransitionRecovery';
 import { toast } from 'sonner';
 
 const recoveryMock = vi.hoisted(() => ({
+  close: vi.fn(),
   showFailure: vi.fn(),
 }));
 
@@ -23,13 +41,42 @@ vi.mock('@/shared/hooks/useWorker', () => ({
 
 vi.mock('@/shared/lib/saveSystem', () => ({
   loadSaveSafely: vi.fn(),
+  resolveSaveSessionTarget: vi.fn(),
 }));
 
 vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  abortActiveSaveSessionTransition: vi.fn(),
   activateActiveSavePersistenceMetadata: vi.fn(),
-  prepareActiveSavePersistenceForLoad: vi.fn().mockResolvedValue(undefined),
-  releaseActiveSavePersistenceLoad: vi.fn(),
+  completeActiveSaveSessionTransition: vi.fn(),
+  markActiveSaveSessionTransitionOwnershipCommitted: vi.fn(),
+  prepareActiveSaveSessionTransition: vi.fn(),
   restoreInactiveSaveIntegrityBackup: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/saveSessionOwnership', () => {
+  class MockSaveSessionOwnershipError extends Error {
+    constructor(
+      readonly kind: 'contended' | 'unavailable' | 'request_failed' | 'unknown_tree' | 'not_owner',
+      message: string,
+      readonly rootSaveId: string | null = null,
+    ) {
+      super(message);
+      this.name = 'SaveSessionOwnershipError';
+    }
+  }
+  return {
+    abortSaveSessionOwnership: vi.fn(),
+    beginSaveSessionOwnership: vi.fn(),
+    commitSaveSessionOwnership: vi.fn(),
+    isSaveSessionOwnershipError: (error: unknown) => error instanceof MockSaveSessionOwnershipError,
+    SaveSessionOwnershipError: MockSaveSessionOwnershipError,
+    withSaveSessionImportAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
+  };
+});
+
+vi.mock('@/shared/lib/saveSessionTransitionRecovery', () => ({
+  captureOutgoingSaveSessionSnapshot: vi.fn(),
+  recoverWorkerAfterCandidateImportFailure: vi.fn(),
 }));
 
 vi.mock('@/features/save-recovery', () => ({
@@ -133,8 +180,10 @@ describe('AppBootGate', () => {
   let container: HTMLDivElement;
   let root: Root;
   let workerMock: {
+    exportSnapshot: ReturnType<typeof vi.fn>;
     isReady: boolean;
     importSnapshot: ReturnType<typeof vi.fn>;
+    restartWorker: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -154,6 +203,7 @@ describe('AppBootGate', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     workerMock = {
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34 }),
       isReady: true,
       importSnapshot: vi.fn().mockResolvedValue({
         success: true,
@@ -166,9 +216,33 @@ describe('AppBootGate', () => {
         gmName: 'General Manager',
         difficulty: 'standard',
       }),
+      restartWorker: vi.fn().mockResolvedValue(undefined),
     };
     vi.mocked(useWorker).mockReturnValue(workerMock as unknown as ReturnType<typeof useWorker>);
+    vi.mocked(resolveSaveSessionTarget).mockImplementation(async (saveId) => ({
+      saveId,
+      rootSaveId: /^save-slot-\d+$/.test(saveId) ? saveId : 'save-slot-1',
+      slotNumber: Number(/^save-slot-(\d+)$/.exec(saveId)?.[1] ?? 1),
+      name: saveId === 'save-slot-1' ? 'Tycoons Year 4' : null,
+    }));
+    vi.mocked(beginSaveSessionOwnership).mockImplementation(async (rootSaveId) => ({
+      rootSaveId,
+      resourceName: `mbd-save-tree-v1:${rootSaveId}`,
+      claimId: Symbol(rootSaveId),
+    }));
+    vi.mocked(prepareActiveSaveSessionTransition).mockImplementation(async (targetSaveId) => ({
+      transitionId: Symbol(targetSaveId),
+      targetSaveId,
+      outgoingSaveId: null,
+    }));
+    vi.mocked(abortSaveSessionOwnership).mockResolvedValue(undefined);
+    vi.mocked(commitSaveSessionOwnership).mockResolvedValue(undefined);
+    vi.mocked(captureOutgoingSaveSessionSnapshot).mockResolvedValue(null);
+    vi.mocked(recoverWorkerAfterCandidateImportFailure).mockResolvedValue({
+      kind: 'discarded_candidate',
+    });
     recoveryMock.showFailure.mockReset();
+    recoveryMock.close.mockReset();
     vi.mocked(toast.info).mockReset();
     vi.mocked(toast.error).mockReset();
   });
@@ -208,9 +282,20 @@ describe('AppBootGate', () => {
 
     expect(loadSaveSafely).toHaveBeenCalledWith('save-slot-1');
     expect(workerMock.importSnapshot).toHaveBeenCalledWith(okLoadResult.snapshot);
-    expect(prepareActiveSavePersistenceForLoad).toHaveBeenCalledWith('save-slot-1');
+    expect(resolveSaveSessionTarget).toHaveBeenCalledWith('save-slot-1');
+    expect(beginSaveSessionOwnership).toHaveBeenCalledWith('save-slot-1');
+    expect(prepareActiveSaveSessionTransition).toHaveBeenCalledWith(
+      'save-slot-1',
+      expect.objectContaining({ persistOutgoingSnapshot: expect.any(Function) }),
+    );
+    expect(withSaveSessionImportAuthorization).toHaveBeenCalled();
     expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(okLoadResult.save);
-    expect(releaseActiveSavePersistenceLoad).not.toHaveBeenCalled();
+    expect(completeActiveSaveSessionTransition).toHaveBeenCalled();
+    expect(commitSaveSessionOwnership).toHaveBeenCalledWith(
+      expect.objectContaining({ rootSaveId: 'save-slot-1' }),
+      'save-slot-1',
+    );
+    expect(markActiveSaveSessionTransitionOwnershipCommitted).toHaveBeenCalledTimes(1);
     expect(useGameStore.getState()).toMatchObject({
       isInitialized: true,
       activeSaveId: 'save-slot-1',
@@ -221,6 +306,52 @@ describe('AppBootGate', () => {
       teamName: 'New York Tycoons',
     });
     expect(container.textContent).toContain('Dashboard Route');
+  });
+
+  it('discards an imported candidate before aborting when ownership commit fails', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(commitSaveSessionOwnership).mockRejectedValueOnce(
+      new SaveSessionOwnershipError(
+        'not_owner',
+        'Exclusive ownership ended before activation.',
+        'save-slot-1',
+      ),
+    );
+
+    await act(async () => {
+      root.render(
+        <AppBootGate>
+          <div>Dashboard Route</div>
+        </AppBootGate>,
+      );
+      await flushAsync();
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(workerMock.importSnapshot).toHaveBeenCalledWith(okLoadResult.snapshot);
+    expect(recoverWorkerAfterCandidateImportFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        importSnapshot: workerMock.importSnapshot,
+        outgoingSnapshot: null,
+        restartWorker: workerMock.restartWorker,
+      }),
+    );
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(abortActiveSaveSessionTransition).toHaveBeenCalledTimes(1);
+    expect(abortSaveSessionOwnership).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(recoverWorkerAfterCandidateImportFailure).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(abortActiveSaveSessionTransition).mock.invocationCallOrder[0]!);
+    await act(async () => {
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('Editing ownership changed');
+    expect(container.textContent).toContain('browser did not reject this request');
+    expect(container.querySelector('[role="alertdialog"]')?.getAttribute('data-failure-kind')).toBe('ownership_lost');
+    expect(container.textContent).not.toContain('Dashboard Route');
   });
 
   it('clears a missing persisted save id and falls through to children without recovery', async () => {
@@ -250,7 +381,8 @@ describe('AppBootGate', () => {
     expect(useGameStore.getState().activeSaveSlot).toBeNull();
     expect(recoveryMock.showFailure).not.toHaveBeenCalled();
     expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
-    expect(releaseActiveSavePersistenceLoad).toHaveBeenCalledWith('save-slot-404');
+    expect(abortActiveSaveSessionTransition).toHaveBeenCalled();
+    expect(abortSaveSessionOwnership).toHaveBeenCalled();
     expect(toast.info).toHaveBeenCalled();
     expect(container.textContent).toContain('Save Hub Route');
   });
@@ -283,7 +415,8 @@ describe('AppBootGate', () => {
       onRetry: expect.any(Function),
     }));
     expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
-    expect(releaseActiveSavePersistenceLoad).toHaveBeenCalledWith('save-slot-1');
+    expect(abortActiveSaveSessionTransition).toHaveBeenCalled();
+    expect(abortSaveSessionOwnership).toHaveBeenCalled();
     expect(useGameStore.getState().activeSaveId).toBeNull();
     expect(container.textContent).toContain('Save Hub Route');
   });
@@ -356,8 +489,109 @@ describe('AppBootGate', () => {
 
     expect(loadSaveSafely).not.toHaveBeenCalled();
     expect(workerMock.importSnapshot).not.toHaveBeenCalled();
-    expect(prepareActiveSavePersistenceForLoad).not.toHaveBeenCalled();
+    expect(beginSaveSessionOwnership).not.toHaveBeenCalled();
+    expect(prepareActiveSaveSessionTransition).not.toHaveBeenCalled();
     expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Save Hub Route');
+  });
+
+  it('blocks a contending tab before load/import without clearing the shared target, then retries fresh', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(beginSaveSessionOwnership)
+      .mockRejectedValueOnce(new SaveSessionOwnershipError(
+        'contended',
+        'This dynasty is already open.',
+        'save-slot-1',
+      ));
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+
+    await act(async () => {
+      root.render(
+        <AppBootGate>
+          <div>Dashboard Route</div>
+        </AppBootGate>,
+      );
+      await flushAsync();
+    });
+    await act(async () => {
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Dynasty already open');
+    expect(container.textContent).toContain('Tycoons Year 4');
+    expect(loadSaveSafely).not.toHaveBeenCalled();
+    expect(workerMock.importSnapshot).not.toHaveBeenCalled();
+    expect(useGameStore.getState().activeSaveId).toBe('save-slot-1');
+
+    const checkAgain = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Check again'));
+    expect(checkAgain).toBeDefined();
+    await act(async () => {
+      checkAgain?.click();
+      await flushAsync();
+      await flushAsync();
+    });
+
+    expect(loadSaveSafely).toHaveBeenCalledWith('save-slot-1');
+    expect(workerMock.importSnapshot).toHaveBeenCalledWith(okLoadResult.snapshot);
+    expect(container.textContent).toContain('Dashboard Route');
+    expect(useGameStore.getState().activeSaveId).toBe('save-slot-1');
+  });
+
+  it('supersedes recovery after a contended recovery retry later acquires ownership', async () => {
+    const failure: Extract<LoadSaveSafelyResult, { ok: false }> = {
+      ok: false,
+      reason: 'zod',
+      detail: {
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+        message: 'Snapshot payload is invalid.',
+        rawJson: '{"id":"save-slot-1"}',
+      },
+    };
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(loadSaveSafely)
+      .mockResolvedValueOnce(failure)
+      .mockResolvedValueOnce(okLoadResult);
+
+    await act(async () => {
+      root.render(
+        <AppBootGate>
+          <div>Dashboard Route</div>
+        </AppBootGate>,
+      );
+      await flushAsync();
+    });
+    const retry = recoveryMock.showFailure.mock.calls[0]?.[0]?.onRetry as
+      | (() => Promise<boolean>)
+      | undefined;
+    expect(retry).toEqual(expect.any(Function));
+    vi.mocked(beginSaveSessionOwnership).mockRejectedValueOnce(
+      new SaveSessionOwnershipError(
+        'contended',
+        'This dynasty is already open.',
+        'save-slot-1',
+      ),
+    );
+
+    await act(async () => {
+      await expect(retry!()).resolves.toBe(false);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+    const checkAgain = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Check again'));
+    expect(checkAgain).toBeDefined();
+
+    await act(async () => {
+      checkAgain?.click();
+      await flushAsync();
+      await flushAsync();
+    });
+
+    expect(recoveryMock.close).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Dashboard Route');
+    expect(container.textContent).not.toContain('Dynasty already open');
   });
 });

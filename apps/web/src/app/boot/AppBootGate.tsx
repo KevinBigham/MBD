@@ -1,23 +1,70 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { toast } from 'sonner';
 import { useSaveRecovery } from '@/features/save-recovery';
+import type { SaveSessionConflictKind } from '@/features/save-session/SaveSessionConflictDialog';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
-import { loadSaveSafely, type LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
+import {
+  loadSaveSafely,
+  resolveSaveSessionTarget,
+  type LoadSaveSafelyResult,
+  type SaveSessionTarget,
+} from '@/shared/lib/saveSystem';
 import { logger } from '@/shared/lib/logger';
 import {
   activateActiveSavePersistenceMetadata,
-  prepareActiveSavePersistenceForLoad,
-  releaseActiveSavePersistenceLoad,
+  abortActiveSaveSessionTransition,
+  completeActiveSaveSessionTransition,
+  markActiveSaveSessionTransitionOwnershipCommitted,
+  prepareActiveSaveSessionTransition,
   restoreInactiveSaveIntegrityBackup,
+  type ActiveSaveSessionTransition,
 } from '@/shared/lib/activeSavePersistence';
+import {
+  abortSaveSessionOwnership,
+  beginSaveSessionOwnership,
+  commitSaveSessionOwnership,
+  isSaveSessionOwnershipError,
+  SaveSessionOwnershipError,
+  withSaveSessionImportAuthorization,
+  type SaveSessionClaim,
+} from '@/shared/lib/saveSessionOwnership';
+import {
+  captureOutgoingSaveSessionSnapshot,
+  recoverWorkerAfterCandidateImportFailure,
+} from '@/shared/lib/saveSessionTransitionRecovery';
 
 type AutoResumeFailure = Extract<LoadSaveSafelyResult, { ok: false }>;
 type AutoResumeStatus = 'idle' | 'resuming' | 'finished';
 type ResumeOptions = {
   fromRecovery?: boolean;
+  fromSessionConflict?: boolean;
   resumePath?: string | null;
 };
+
+interface SessionConflictState {
+  kind: SaveSessionConflictKind;
+  saveId: string;
+  slotNumber: number | null;
+  resumePath: string | null;
+  target: SaveSessionTarget | null;
+  actionError: string | null;
+  fromRecovery: boolean;
+}
+
+const SaveSessionConflictDialog = lazy(async () => {
+  const module = await import('@/features/save-session/SaveSessionConflictDialog');
+  return { default: module.SaveSessionConflictDialog };
+});
 
 function currentBrowserPath(): string | null {
   if (typeof window === 'undefined') {
@@ -58,6 +105,10 @@ function storageFailure(saveId: string, slotNumber: number | null, message: stri
   };
 }
 
+function conflictKind(error: SaveSessionOwnershipError): SaveSessionConflictKind {
+  return error.kind === 'not_owner' ? 'ownership_lost' : error.kind;
+}
+
 function ResumeFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-dynasty-base px-6 py-24 text-dynasty-text">
@@ -86,13 +137,17 @@ function ResumeFallback() {
 
 export function AppBootGate({ children }: { children: ReactNode }) {
   const worker = useWorker();
+  const persistActiveSave = useActiveSaveAutosave();
   const recovery = useSaveRecovery();
   const activeSaveId = useGameStore((state) => state.activeSaveId);
   const activeSaveSlot = useGameStore((state) => state.activeSaveSlot);
   const isInitialized = useGameStore((state) => state.isInitialized);
   const initializeGame = useGameStore((state) => state.initializeGame);
   const setActiveSave = useGameStore((state) => state.setActiveSave);
+  const setInitialized = useGameStore((state) => state.setInitialized);
   const [resumeStatus, setResumeStatus] = useState<AutoResumeStatus>('idle');
+  const [sessionConflict, setSessionConflict] = useState<SessionConflictState | null>(null);
+  const [checkingSession, setCheckingSession] = useState(false);
   const attemptedSaveIdRef = useRef<string | null>(null);
 
   const attemptResume = useCallback(async (
@@ -102,13 +157,57 @@ export function AppBootGate({ children }: { children: ReactNode }) {
   ): Promise<boolean> => {
     const resumePath = options.resumePath ?? currentBrowserPath();
     setResumeStatus('resuming');
+    if (options.fromSessionConflict) {
+      setCheckingSession(true);
+    }
+
+    let claim: SaveSessionClaim | null = null;
+    let transition: ActiveSaveSessionTransition | null = null;
+    let target: SaveSessionTarget | null = null;
+    let outgoingSnapshot: object | null = null;
+    let workerMayBeReplaced = false;
+    let candidateCommitted = false;
+    const cancelAttempt = async () => {
+      const pendingTransition = transition;
+      const pendingClaim = claim;
+      transition = null;
+      claim = null;
+      if (pendingTransition) {
+        try {
+          abortActiveSaveSessionTransition(pendingTransition);
+        } catch (error) {
+          logger.error('Failed to roll back an incomplete save-session transition:', error);
+        }
+      }
+      if (pendingClaim) {
+        try {
+          await abortSaveSessionOwnership(pendingClaim);
+        } catch (error) {
+          logger.error('Failed to release an incomplete save-session claim:', error);
+        }
+      }
+    };
 
     try {
-      await prepareActiveSavePersistenceForLoad(saveId);
+      target = await resolveSaveSessionTarget(saveId);
+      if (!target) {
+        throw new SaveSessionOwnershipError(
+          'unknown_tree',
+          'MBD could not identify the root dynasty for this saved branch.',
+          null,
+        );
+      }
+      claim = await beginSaveSessionOwnership(target.rootSaveId);
+      transition = await prepareActiveSaveSessionTransition(saveId, {
+        persistOutgoingSnapshot: (outgoingSaveId) => persistActiveSave({
+          transitionSaveId: outgoingSaveId,
+        }),
+      });
       const loadResult = await loadSaveSafely(saveId);
 
       if (!loadResult.ok) {
-        releaseActiveSavePersistenceLoad(saveId);
+        await cancelAttempt();
+        setSessionConflict(null);
         setActiveSave(null, null);
         setResumeStatus('finished');
 
@@ -133,9 +232,35 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         return false;
       }
 
-      const imported = await worker.importSnapshot(loadResult.snapshot);
+      if ((loadResult.save.parentSaveId ?? loadResult.save.id) !== target.rootSaveId) {
+        throw new SaveSessionOwnershipError(
+          'unknown_tree',
+          'The save-tree relationship changed while exclusive access was being prepared.',
+          target.rootSaveId,
+        );
+      }
+      workerMayBeReplaced = transition.outgoingSaveId != null;
+      outgoingSnapshot = await captureOutgoingSaveSessionSnapshot(
+        transition,
+        worker.exportSnapshot,
+      );
+      workerMayBeReplaced = true;
+      const imported = await withSaveSessionImportAuthorization(
+        claim,
+        () => worker.importSnapshot(loadResult.snapshot),
+      );
       if (!imported.success) {
-        releaseActiveSavePersistenceLoad(saveId);
+        await recoverWorkerAfterCandidateImportFailure({
+          importSnapshot: worker.importSnapshot,
+          candidateCommitted,
+          outgoingSnapshot,
+          restartWorker: worker.restartWorker,
+          setInitialized,
+          transition,
+        });
+        workerMayBeReplaced = false;
+        await cancelAttempt();
+        setSessionConflict(null);
         const failure = storageFailure(
           saveId,
           loadResult.save.slotNumber ?? slotNumber,
@@ -157,6 +282,10 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         return false;
       }
 
+      await commitSaveSessionOwnership(claim, loadResult.save.id);
+      markActiveSaveSessionTransitionOwnershipCommitted(transition);
+      candidateCommitted = true;
+      claim = null;
       activateActiveSavePersistenceMetadata(loadResult.save);
       initializeGame({
         season: imported.season,
@@ -170,11 +299,51 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         activeSaveId: loadResult.save.id,
         activeSaveSlot: loadResult.save.slotNumber,
       });
+      completeActiveSaveSessionTransition(transition);
+      transition = null;
+      if (options.fromSessionConflict && options.fromRecovery) {
+        recovery.close();
+      }
+      setSessionConflict(null);
       restoreBrowserPath(resumePath);
       setResumeStatus('finished');
       return true;
     } catch (error) {
-      releaseActiveSavePersistenceLoad(saveId);
+      if (workerMayBeReplaced && transition) {
+        const recoveryResult = await recoverWorkerAfterCandidateImportFailure({
+          importSnapshot: worker.importSnapshot,
+          candidateCommitted,
+          outgoingSnapshot,
+          restartWorker: worker.restartWorker,
+          setInitialized,
+          transition,
+        });
+        if (recoveryResult.kind === 'reload_required') {
+          logger.error(
+            'Failed to restore the outgoing worker after auto-resume:',
+            recoveryResult.error,
+          );
+        }
+        workerMayBeReplaced = false;
+      }
+      await cancelAttempt();
+      if (isSaveSessionOwnershipError(error)) {
+        const kind = conflictKind(error);
+        setSessionConflict({
+          kind,
+          saveId,
+          slotNumber: target?.slotNumber ?? slotNumber,
+          resumePath,
+          target,
+          actionError: options.fromSessionConflict && (kind === 'request_failed' || kind === 'ownership_lost')
+            ? errorMessage(error)
+            : null,
+          fromRecovery: Boolean(options.fromRecovery),
+        });
+        setResumeStatus('finished');
+        return false;
+      }
+      setSessionConflict(null);
       logger.error('Failed to auto-resume save:', error);
       const failure = storageFailure(saveId, slotNumber, errorMessage(error));
       setActiveSave(null, null);
@@ -190,11 +359,16 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         });
       }
       return false;
+    } finally {
+      if (options.fromSessionConflict) {
+        setCheckingSession(false);
+      }
     }
-  }, [initializeGame, recovery, setActiveSave, worker]);
+  }, [initializeGame, persistActiveSave, recovery, setActiveSave, setInitialized, worker]);
 
   useEffect(() => {
     if (isInitialized) {
+      attemptedSaveIdRef.current = null;
       setResumeStatus('finished');
       return;
     }
@@ -217,6 +391,28 @@ export function AppBootGate({ children }: { children: ReactNode }) {
     attemptedSaveIdRef.current = activeSaveId;
     void attemptResume(activeSaveId, activeSaveSlot);
   }, [activeSaveId, activeSaveSlot, attemptResume, isInitialized, worker.isReady]);
+
+  if (sessionConflict) {
+    return (
+      <Suspense fallback={<ResumeFallback />}>
+        <SaveSessionConflictDialog
+          targetName={sessionConflict.target?.name}
+          targetLabel={sessionConflict.saveId}
+          slotNumber={sessionConflict.slotNumber}
+          failureKind={sessionConflict.kind}
+          checking={checkingSession}
+          actionError={sessionConflict.actionError}
+          onCheckAgain={() => {
+            void attemptResume(sessionConflict.saveId, sessionConflict.slotNumber, {
+              fromRecovery: sessionConflict.fromRecovery,
+              fromSessionConflict: true,
+              resumePath: sessionConflict.resumePath,
+            });
+          }}
+        />
+      </Suspense>
+    );
+  }
 
   if (activeSaveId && !isInitialized && resumeStatus !== 'finished') {
     return <ResumeFallback />;

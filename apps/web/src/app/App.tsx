@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { dynasty } from '@mbd/design-tokens';
 import { SaveLoadErrorBoundary, SaveRecoveryProvider } from '@/features/save-recovery';
+import { SaveSessionOwnershipProvider } from '@/features/save-session';
 import { AppBootGate } from './boot/AppBootGate';
 import { AppRoutes } from './routes';
 import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
@@ -29,31 +30,33 @@ export function App() {
   }, [highContrast]);
 
   return (
-    <SaveRecoveryProvider>
-      <SaveLoadErrorBoundary>
-        <AppBootGate>
-          <BrowserRouter basename={ROUTER_BASENAME}>
-            <AppRoutes />
-          </BrowserRouter>
-        </AppBootGate>
-        <Toaster
-          theme="dark"
-          position="top-center"
-          offset={{ top: 64 }}
-          mobileOffset={{ top: 160 }}
-          closeButton
-          containerAriaLabel="Save and application notifications"
-          toastOptions={{
-            style: {
-              background: highContrast ? HC_BASE : dynasty.surface,
-              border: `1px solid ${highContrast ? dynasty.textBright : dynasty.border}`,
-              color: highContrast ? dynasty.textBright : dynasty.text,
-              fontFamily: "'Space Grotesk', sans-serif",
-              fontSize: '0.875rem',
-            },
-          }}
-        />
-      </SaveLoadErrorBoundary>
-    </SaveRecoveryProvider>
+    <SaveSessionOwnershipProvider>
+      <SaveRecoveryProvider>
+        <SaveLoadErrorBoundary>
+          <AppBootGate>
+            <BrowserRouter basename={ROUTER_BASENAME}>
+              <AppRoutes />
+            </BrowserRouter>
+          </AppBootGate>
+          <Toaster
+            theme="dark"
+            position="top-center"
+            offset={{ top: 64 }}
+            mobileOffset={{ top: 160 }}
+            closeButton
+            containerAriaLabel="Save and application notifications"
+            toastOptions={{
+              style: {
+                background: highContrast ? HC_BASE : dynasty.surface,
+                border: `1px solid ${highContrast ? dynasty.textBright : dynasty.border}`,
+                color: highContrast ? dynasty.textBright : dynasty.text,
+                fontFamily: "'Space Grotesk', sans-serif",
+                fontSize: '0.875rem',
+              },
+            }}
+          />
+        </SaveLoadErrorBoundary>
+      </SaveRecoveryProvider>
+    </SaveSessionOwnershipProvider>
   );
 }

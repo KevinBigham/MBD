@@ -2,12 +2,14 @@ import { Clock } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { PageShell } from '@/shared/components/PageShell';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import { PulseContentPanel } from '../components/PulseContentPanel';
 import { usePulseRouteData } from '../hooks/usePulseRouteData';
 
 export default function PulsePage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
+  const persistActiveSave = useActiveSaveAutosave();
   const { isInitialized, season, day, phase } = useGameStore();
   const {
     handleAcknowledge,
@@ -24,6 +26,7 @@ export default function PulsePage() {
     getCurrentLeagueEvents: worker.getCurrentLeagueEvents,
     getMonthlyPulse: worker.getMonthlyPulse,
     isInitialized,
+    persistActiveSave,
     phase,
     season,
     workerReady,

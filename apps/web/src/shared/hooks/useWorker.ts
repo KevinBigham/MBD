@@ -10,6 +10,19 @@ import {
   measureAsyncOperation,
 } from '@/shared/lib/performance';
 import { logger } from '@/shared/lib/logger';
+import {
+  assertActiveSaveSessionOwned,
+  assertSaveSessionNewGameAuthorized,
+  assertSaveSessionImportAuthorized,
+  assertSaveSessionSnapshotExportAuthorized,
+  SaveSessionOwnershipError,
+} from '@/shared/lib/saveSessionOwnership';
+import { useGameStore } from './useGameStore';
+import {
+  beginWorkerMutation,
+  finishWorkerMutation,
+  type WorkerMutationPermit,
+} from '@/shared/lib/workerMutationSession';
 
 type WorkerMethodName = keyof WorkerApi;
 type WorkerMethodParameters<K extends WorkerMethodName> =
@@ -48,6 +61,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'simPlayoffRound',
   'simRemainingPlayoffs',
   'importSnapshot',
+  'exportSnapshot',
   'archiveOldSeasons',
   'pruneStaleData',
   'scoutPlayerReport',
@@ -74,6 +88,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'designateForAssignment',
   'claimOffWaivers',
   'makeContractOffer',
+  'getFreeAgents',
   'negotiateExtension',
   'issueQualifyingOffer',
   'resolveQualifyingOffers',
@@ -93,6 +108,37 @@ const mutationMethods = new Set<WorkerMethodName>([
   'applyScoutingHire',
   'completeRevisedOnboarding',
 ]);
+
+function assertWorkerMutationOwnership<K extends WorkerMethodName>(
+  methodName: K,
+  args: WorkerMethodParameters<K>,
+  expectedActiveSaveId: string | null,
+): boolean {
+  if (!mutationMethods.has(methodName)) {
+    return false;
+  }
+  if (methodName === 'importSnapshot') {
+    assertSaveSessionImportAuthorized();
+    return true;
+  }
+  if (methodName === 'newGame') {
+    const saveSlot = (args[0] as { saveSlot?: unknown } | undefined)?.saveSlot;
+    if (typeof saveSlot !== 'number' || !Number.isInteger(saveSlot) || saveSlot <= 0) {
+      throw new SaveSessionOwnershipError(
+        'unknown_tree',
+        'A new dynasty requires a stable target save slot before simulation starts.',
+        null,
+      );
+    }
+    assertSaveSessionNewGameAuthorized(`save-slot-${saveSlot}`);
+    return true;
+  }
+  if (methodName === 'exportSnapshot') {
+    return assertSaveSessionSnapshotExportAuthorized(expectedActiveSaveId) === 'transition';
+  }
+  assertActiveSaveSessionOwned(expectedActiveSaveId ?? '__no-active-save__');
+  return false;
+}
 
 function notifyListeners() {
   for (const l of listeners) l();
@@ -134,7 +180,23 @@ async function restartWorkerInternal() {
 async function invokeWorkerMethod<K extends WorkerMethodName>(
   methodName: K,
   args: WorkerMethodParameters<K>,
+  expectedActiveSaveId: string | null,
 ): Promise<WorkerMethodReturn<K>> {
+  // Ownership failures are not worker failures. Check before touching Comlink
+  // so callers receive the session conflict without a false worker-restart
+  // toast or any in-memory gameplay mutation.
+  const bypassOrdinaryMutationLane = assertWorkerMutationOwnership(
+    methodName,
+    args,
+    expectedActiveSaveId,
+  );
+  let mutationPermit: WorkerMutationPermit | null = null;
+  if (mutationMethods.has(methodName)
+    && methodName !== 'newGame'
+    && methodName !== 'importSnapshot'
+    && !bypassOrdinaryMutationLane) {
+    mutationPermit = beginWorkerMutation(expectedActiveSaveId);
+  }
   const call = async (api: Comlink.Remote<WorkerApi>) => {
     const methodMap = api as unknown as Record<string, ((...methodArgs: unknown[]) => Promise<unknown>) | undefined>;
     const method = methodMap[methodName as string];
@@ -175,6 +237,10 @@ async function invokeWorkerMethod<K extends WorkerMethodName>(
 
     toast.error('The simulation worker failed. Please try again.');
     throw error;
+  } finally {
+    if (mutationPermit) {
+      finishWorkerMutation(mutationPermit);
+    }
   }
 }
 
@@ -254,6 +320,7 @@ function isFlowAwareResult(value: unknown): value is { flowStateChanged?: boolea
 export function useWorker() {
   const isReady = useSyncExternalStore(subscribe, getSnapshot);
   const currentWorkerStatus = useSyncExternalStore(subscribe, getWorkerStatusSnapshot);
+  const expectedActiveSaveId = useGameStore((state) => state.activeSaveId);
   const api = useMemo(
     () =>
       new Proxy({} as Comlink.Remote<WorkerApi>, {
@@ -266,10 +333,11 @@ export function useWorker() {
             invokeWorkerMethod(
               property as WorkerMethodName,
               args as WorkerMethodParameters<WorkerMethodName>,
+              expectedActiveSaveId,
             );
         },
       }),
-    [],
+    [expectedActiveSaveId],
   ) as WorkerProxy;
   type ScoutIFAResult = Awaited<ReturnType<WorkerApi['scoutIFAPlayer']>>;
   type SignIFAResult = Awaited<ReturnType<WorkerApi['signIFAPlayer']>>;
@@ -895,13 +963,10 @@ export function useWorker() {
   );
 
   // Stabilize the return object so consumers can safely include `worker` in
-  // useCallback / useEffect dep arrays. Every method above is a useCallback
-  // with stable deps (`[api]` or `[api, runMutation]`, both of which are
-  // initialized once with `[]` deps), so the only dynamic values are
-  // `isReady` and `currentWorkerStatus`. Without this memo, useWorker()
-  // returns a fresh object literal on every render and any consumer that
-  // depends on `worker` infinite-loops when that consumer also calls
-  // setState in a useEffect.
+  // useCallback / useEffect dep arrays. Rebuild it when the save-bound proxy
+  // changes: mounted consumers must receive callbacks for the newly active
+  // save while already-captured callbacks stay bound to their originating
+  // save and fail closed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => ({
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
@@ -937,5 +1002,5 @@ export function useWorker() {
     restartWorker,
     workerStatus: currentWorkerStatus,
     isReady,
-  }), [isReady, currentWorkerStatus]);
+  }), [api, isReady, currentWorkerStatus]);
 }
