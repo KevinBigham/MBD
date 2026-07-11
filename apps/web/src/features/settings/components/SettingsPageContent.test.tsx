@@ -24,6 +24,7 @@ function createProps(overrides: Partial<Parameters<typeof SettingsPageContent>[0
           briefingItems: 1,
           newsItems: 3,
           resolvedWatchers: 1,
+          staleWatchers: 1,
           scoutConflicts: 0,
           staleTickerEntries: 1,
           tickerEntries: 4,
@@ -46,6 +47,8 @@ function createProps(overrides: Partial<Parameters<typeof SettingsPageContent>[0
         },
       },
       diagnosticsBusy: null,
+      localEstimate: null,
+      originEstimate: null,
       handleArchiveOldSeasons: vi.fn(),
       handlePruneStaleData: vi.fn(),
       refreshDiagnostics: vi.fn(),
@@ -174,13 +177,7 @@ describe('SettingsPageContent', () => {
     });
     expect(props.saveData.refreshSaves).toHaveBeenCalledTimes(1);
 
-    const archiveButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Archive Older Seasons'),
-    );
-    await act(async () => {
-      archiveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
-    expect(props.diagnosticsData.handleArchiveOldSeasons).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Detailed season history is protected');
 
     const assistantReplayButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Replay Assistant Help'),
@@ -202,5 +199,22 @@ describe('SettingsPageContent', () => {
       dataToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(props.onToggleSection).toHaveBeenCalledWith('data' satisfies SettingsSectionKey);
+  });
+
+  it('visually disables prune while the shared Settings save-data operation owns the latch', async () => {
+    const props = createProps({
+      saveData: {
+        ...createProps().saveData,
+        operationBusy: true,
+      },
+    });
+    await act(async () => {
+      root.render(<SettingsPageContent {...props} />);
+    });
+    const prune = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Prune Stale Data'));
+    expect(prune).toBeInstanceOf(HTMLButtonElement);
+    expect((prune as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { prune?.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(props.diagnosticsData.handlePruneStaleData).not.toHaveBeenCalled();
   });
 });

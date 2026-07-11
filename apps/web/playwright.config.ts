@@ -4,10 +4,11 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['reload-smoke.spec.ts', 'multitab-guard.spec.ts'],
+  testMatch: ['reload-smoke.spec.ts', 'multitab-guard.spec.ts', 'storage-pressure.spec.ts'],
   fullyParallel: false,
   forbidOnly: isCi,
-  retries: isCi ? 1 : 0,
+  // Storage-pressure causality is never retried: a first-attempt result is the evidence.
+  retries: 0,
   workers: 1,
   failOnFlakyTests: isCi,
   timeout: 8 * 60 * 1_000,

@@ -45,6 +45,7 @@ export interface PerformanceDiagnosticsView {
     staleTickerEntries: number;
     activeWatchers: number;
     resolvedWatchers: number;
+    staleWatchers: number;
     scoutConflicts: number;
   };
   runtime: RuntimeDiagnosticsState;
@@ -140,8 +141,12 @@ function toArchivedSeason(entry: SeasonArchiveEntry, userTeamId: string): Archiv
   };
 }
 
+function absoluteDay(season: number, day: number): number {
+  return (season * 1000) + day;
+}
+
 function isTickerStale(state: FullGameState, entry: TickerEntry): boolean {
-  return entry.expiresDay < state.day;
+  return entry.expiresDay < absoluteDay(state.season, state.day);
 }
 
 function isWatcherStale(state: FullGameState, watcher: ConsequenceWatcher): boolean {
@@ -281,15 +286,17 @@ export function normalizePerformanceDiagnostics(state: FullGameState) {
 }
 
 export function buildPerformanceDiagnosticsView(state: FullGameState): PerformanceDiagnosticsView {
-  normalizePerformanceDiagnostics(state);
   const staleTickerEntries = state.tickerFeed.filter((entry) => isTickerStale(state, entry)).length;
   const resolvedWatchers = state.consequenceWatchers.filter((watcher) => watcher.resolved).length;
+  const staleWatchers = state.consequenceWatchers.filter((watcher) => isWatcherStale(state, watcher)).length;
   const activeWatchers = state.consequenceWatchers.filter((watcher) => !isWatcherStale(state, watcher)).length;
 
   return {
     totals: {
-      totalSeasons: state.performanceDiagnostics.totalSeasons,
-      snapshotSizeBytes: state.performanceDiagnostics.snapshotSizeBytes,
+      totalSeasons: Math.max(state.performanceDiagnostics.totalSeasons, state.season),
+      // This field is a legacy in-memory hint. Queries must not trust a
+      // persisted positive value as current snapshot or quota evidence.
+      snapshotSizeBytes: 0,
       liveArchiveSeasons: state.seasonArchive.length,
       archivedSeasons: state.archivedSeasons.length,
     },
@@ -300,6 +307,7 @@ export function buildPerformanceDiagnosticsView(state: FullGameState): Performan
       staleTickerEntries,
       activeWatchers,
       resolvedWatchers,
+      staleWatchers,
       scoutConflicts: state.scoutConflicts.length,
     },
     runtime: { ...runtimeDiagnostics },
@@ -308,7 +316,6 @@ export function buildPerformanceDiagnosticsView(state: FullGameState): Performan
 }
 
 export function archiveOldSeasonsInState(state: FullGameState): number {
-  normalizePerformanceDiagnostics(state);
   const keepThresholdSeason = Math.max(1, state.season - ARCHIVE_KEEP_SEASONS);
   const existingArchived = new Set(state.archivedSeasons.map((entry) => entry.season));
   const seasonsToArchive = state.seasonArchive.filter((entry) =>
@@ -319,6 +326,7 @@ export function archiveOldSeasonsInState(state: FullGameState): number {
     return 0;
   }
 
+  normalizePerformanceDiagnostics(state);
   state.archivedSeasons = [
     ...state.archivedSeasons,
     ...seasonsToArchive.map((entry) => toArchivedSeason(entry, state.userTeamId)),
@@ -328,6 +336,11 @@ export function archiveOldSeasonsInState(state: FullGameState): number {
 }
 
 export function pruneStaleWorkerData(state: FullGameState): number {
+  const eligibleTickerEntries = state.tickerFeed.filter((entry) => isTickerStale(state, entry));
+  const eligibleWatchers = state.consequenceWatchers.filter((watcher) => isWatcherStale(state, watcher));
+  if (eligibleTickerEntries.length === 0 && eligibleWatchers.length === 0) {
+    return 0;
+  }
   const beforeTickerCount = state.tickerFeed.length;
   const beforeWatcherCount = state.consequenceWatchers.length;
 

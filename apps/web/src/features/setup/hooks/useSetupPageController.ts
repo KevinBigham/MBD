@@ -163,6 +163,8 @@ export function useSetupPageController({
     previewMap,
     refreshSaves,
     saveTree,
+    storageEstimate,
+    originEstimate,
     scenarioCatalog,
     selectedScenario,
     selectedScenarioId,
@@ -250,6 +252,8 @@ export function useSetupPageController({
       onOpenWizard: openWizard,
       saveHubPanelProps: {
         saveTree,
+        storageEstimate,
+        originEstimate,
         selectedSlot,
         busySlot,
         branchLimit,

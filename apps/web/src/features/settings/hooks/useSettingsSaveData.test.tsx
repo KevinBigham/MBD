@@ -43,6 +43,7 @@ import {
   recoverWorkerAfterCandidateImportFailure,
 } from '@/shared/lib/saveSessionTransitionRecovery';
 import { useSettingsSaveData } from './useSettingsSaveData';
+import { resetSettingsOperationCoordinatorForTesting } from '../lib/settingsOperationCoordinator';
 
 vi.mock('@/shared/lib/activeSavePersistence', () => ({
   abortActiveSaveSessionTransition: vi.fn(),
@@ -192,6 +193,7 @@ describe('useSettingsSaveData', () => {
   const mockedSaveGame = vi.mocked(saveGame);
 
   beforeEach(() => {
+    resetSettingsOperationCoordinatorForTesting();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -258,6 +260,7 @@ describe('useSettingsSaveData', () => {
       root.unmount();
     });
     container.remove();
+    resetSettingsOperationCoordinatorForTesting();
     vi.clearAllMocks();
   });
 
@@ -442,6 +445,60 @@ describe('useSettingsSaveData', () => {
       await loadPromise;
     });
     expect(latestResult?.operationBusy).toBe(false);
+  });
+
+  it('exposes one shared Settings operation latch for a maintenance owner to consume', async () => {
+    await renderHook(baseOptions());
+    let owner: ReturnType<HookResult['beginSettingsOperation']> = null;
+    await act(async () => {
+      owner = latestResult?.beginSettingsOperation() ?? null;
+    });
+    expect(owner).not.toBeNull();
+    expect(latestResult?.operationBusy).toBe(true);
+    await act(async () => {
+      expect(latestResult?.beginSettingsOperation()).toBeNull();
+    });
+    expect(latestResult?.status).toBe('Finish the current save operation before starting another one.');
+    await act(async () => { latestResult?.finishSettingsOperation(owner!); });
+    expect(latestResult?.operationBusy).toBe(false);
+    expect(latestResult?.status).toBe('');
+  });
+
+  it('keeps the shared operation owned across a route-instance remount', async () => {
+    let resolveFirstSave!: (value: { saved: boolean; saveName: string | null }) => void;
+    const firstPersist = vi.fn().mockReturnValue(new Promise((resolve) => {
+      resolveFirstSave = resolve;
+    }));
+    const firstOptions = baseOptions({ persistActiveSave: firstPersist });
+    await renderHook(firstOptions);
+
+    let firstOperation!: Promise<void>;
+    await act(async () => {
+      firstOperation = latestResult!.handleSave(1);
+      await Promise.resolve();
+    });
+    expect(latestResult?.operationBusy).toBe(true);
+    expect(firstPersist).toHaveBeenCalledTimes(1);
+
+    const secondPersist = vi.fn().mockResolvedValue({ saved: true, saveName: 'Second' });
+    const secondOptions = baseOptions({ persistActiveSave: secondPersist });
+    await act(async () => {
+      root.render(<HookHarness key="remounted" options={secondOptions} onRender={(result) => {
+        latestResult = result;
+      }} />);
+    });
+    expect(latestResult?.operationBusy).toBe(true);
+    await act(async () => { await latestResult?.handleSave(1); });
+    expect(secondPersist).not.toHaveBeenCalled();
+    expect(latestResult?.status).toBe('Finish the current save operation before starting another one.');
+
+    await act(async () => {
+      resolveFirstSave({ saved: true, saveName: 'First' });
+      await firstOperation;
+    });
+    await waitForAssertion(() => expect(latestResult?.operationBusy).toBe(false));
+    expect(firstPersist).toHaveBeenCalledTimes(1);
+    expect(latestResult?.status).toBe('');
   });
 
   it('restores the outgoing worker when ownership commit fails after candidate import', async () => {

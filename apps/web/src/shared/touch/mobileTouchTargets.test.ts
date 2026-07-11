@@ -197,7 +197,7 @@ const routeCriticalControlFiles = [
   {
     label: 'Settings maintenance',
     file: 'src/features/settings/components/SettingsDiagnosticsPanel.tsx',
-    controls: ['settings-maintenance-archive', 'settings-maintenance-prune'],
+    controls: ['settings-maintenance-prune'],
   },
   {
     label: 'Setup launch actions',

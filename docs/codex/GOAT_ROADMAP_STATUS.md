@@ -1,18 +1,18 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-11 on the item-6 closeout checkout; the landed revision is recorded by repository history and the closeout report.
+Last reconciled: 2026-07-11 on the item-7 closeout checkout; Goal 19 and its run artifacts record the verified storage-pressure scope.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
 Current invariants: GameSnapshot v34; Dexie v5; worker canonical; no bare simulation `Math.random()`; no fabricated old-save history; no hidden CPU advantage; no UI finalization before durable persistence. The three pre-existing user-owned dirty files remain outside campaign scope and must stay unstaged: `.agents/skills/mbd-implement-slice/SKILL.md`, `AGENTS.md`, and `docs/codex/PROGRAM.md`.
 
-Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `ACTIVE`, `PENDING`, `BLOCKED — ORACLE`, and `BLOCKED — EXTERNAL AUTHORIZATION`.
+Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `PENDING`, `BLOCKED — ORACLE`, and `BLOCKED — EXTERNAL AUTHORIZATION`.
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–6 and 80.
-- First incomplete item: **7 — storage-pressure size/quota/pruning UX**.
-- Item 6 is verified complete through Goal 18 and its closeout report; item 7 remains pending and was not started.
+- Verified complete: items 1–7 and 80.
+- First incomplete item: **8 — write-ahead sim-day intent journal**, now **PENDING**; no item-8 work started in the item-7 closeout.
+- Item 7 is verified complete through Goal 19 and its closeout report; the commit containing this ledger is the item-7 landing commit. No item-8 source was added.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
 
@@ -26,7 +26,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `ACTIVE`, `PENDING`, `BLOCK
 | 4 | 1 | Integrity checksum and guided repair | VERIFIED COMPLETE | Goal 16 / `TRUST-SAVE-INTEGRITY-1` | `runs/TRUST-SAVE-INTEGRITY-1/COMPLETION.md`; integrity DB/browser proof | `c006ab9` | Historical route not recorded in completion artifact | Items 1–3 | Preserve v34/Dexie-v5 envelope |
 | 5 | 1 | Exclusive same-save-tree multi-tab guard | VERIFIED COMPLETE | Goal 17 / `TRUST-MULTITAB-GUARD-1` | `runs/TRUST-MULTITAB-GUARD-1/COMPLETION.md`; 137 focused; full gates; Playwright 1/1 + 2/2 | `203cb48` | Terra `019f51c9…` (`gpt-5.6-terra`, high, CORRECTIONS_READY); Sol `019f51c7…` (`gpt-5.6-sol`, xhigh, MERGE_READY); Luna `019f51e1…` (`gpt-5.6-luna`, medium, LANDED_ON_MAIN) | Items 1–4 | Preserve mixed-version warning |
 | 6 | 1 | Every-supported-version export/import CI matrix | VERIFIED COMPLETE | Goal 18 / `TRUST-EXPORT-SCHEMA-MATRIX-1` | `runs/TRUST-EXPORT-SCHEMA-MATRIX-1/COMPLETION.md`; 33-version worker/JSON matrix; focused/full gates; zero-retry reload-smoke | See landed item-6 revision in repository history | Terra `019f51f7-5277-7570-add0-fd4a2acb1778` (`gpt-5.6-terra`, high→xhigh); Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` (`gpt-5.6-sol`, xhigh, MERGE_READY); Luna closeout (`gpt-5.6-luna`, medium) | Item 5 | Preserve v34/Dexie-v5 contract; item 7 is next |
-| 7 | 1 | Storage-pressure size/quota/pruning UX | PENDING | No goal/run | Quota classification exists; no estimate/size/pruning surface | — | — | Item 6 | Create later trust slice |
+| 7 | 1 | Storage-pressure size/quota/pruning UX | VERIFIED COMPLETE | Goal 19 / `TRUST-STORAGE-PRESSURE-1` | `runs/TRUST-STORAGE-PRESSURE-1/COMPLETION.md`; focused 49 suites / 372 tests; full gates; fresh 3,022-module / 167-entry PWA; zero-retry storage-pressure, multitab, and reload-smoke Chromium proof | Commit containing this report; verify from landing history | Terra `019f529d-211d-7590-b834-3014f5a3a102` (`gpt-5.6-terra`, high→xhigh, archived); manual relay-pattern fallback writer; replacement Sol `019f534c-8009-7ab1-8849-e9c59b7c49cc` (`gpt-5.6-sol`, xhigh, MERGE_READY, zero P0–P2); Luna `gpt-5.6-luna`, medium, LANDED_ON_MAIN | Item 6 | Preserve truthful storage metrics, exact-save retry, and narrow prune; do not begin item 8 in this closeout |
 | 8 | 1 | Write-ahead sim-day intent journal | PENDING | No goal/run | Transition rollback exists; no persisted day intent/replay journal | — | — | Items 5–7 | Design bounded journal after trust foundation |
 | 9 | 2 | Living contract clock | PENDING | Goal 11 `ECON-CLOCK-1`; no run | `advanceContracts` exists but has no production caller | — | — | Tier 1 | Execute goal 11 before dependent economy work |
 | 10 | 2 | Symmetric option-year resolution | PENDING | Goal 11 owns semantics; no run | Option fields exist; no resolution lane/symmetry proof | — | — | Item 9 | Complete inside/reconcile after ECON-CLOCK-1 |

@@ -3173,10 +3173,6 @@ export const queryApi = {
     }
 
     const diagnostics = buildPerformanceDiagnosticsView(state);
-    if (diagnostics.totals.snapshotSizeBytes > 0) {
-      return diagnostics;
-    }
-
     return {
       ...diagnostics,
       totals: {

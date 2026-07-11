@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SaveData, SaveTreeEntry } from '@/shared/lib/saveSystem';
@@ -208,5 +208,68 @@ describe('SetupSaveHubPanel', () => {
     expect(buttonByText(container, 'Refresh').disabled).toBe(true);
     expect(buttonByText(container, 'Open Branch').disabled).toBe(true);
     expect(buttonByText(container, 'Use This Slot').disabled).toBe(true);
+  });
+
+  it('labels complete, partial, and unavailable local evidence separately from exact origin thresholds', async () => {
+    const renderWithEvidence = async (storageEstimate: NonNullable<ComponentProps<typeof SetupSaveHubPanel>['storageEstimate']>, percentage: number) => {
+      await act(async () => {
+        root.render(
+          <SetupSaveHubPanel
+            saveTree={saveTree}
+            selectedSlot={1}
+            busySlot={null}
+            branchLimit={3}
+            storageEstimate={storageEstimate}
+            originEstimate={{ status: 'available', usage: percentage, quota: 100, percentage, pressure: percentage >= 90 ? 'critical' : percentage >= 80 ? 'warning' : 'normal' }}
+            onRefresh={vi.fn()}
+            onUseSlot={vi.fn()}
+            onContinueSave={vi.fn()}
+            onDeleteSlot={vi.fn()}
+          />,
+        );
+      });
+    };
+    const complete = {
+      status: 'available' as const, allMbdBytes: 9000, allMbdBytesKnown: true, unattributedBytes: 0, message: null,
+      trees: [{ rootSaveId: 'save-slot-1', slotNumber: 1, saveIds: ['save-slot-1', 'branch-1'], primaryBytes: 2000, shadowBytes: 3000, leaderboardBytes: 4000, totalBytes: 9000, attribution: 'complete' as const }],
+    };
+    await renderWithEvidence(complete, 80);
+    expect(container.textContent).toContain('All-MBD raw records: 9.0 KB.');
+    expect(container.textContent).toContain('2.0 KB primary + 3.0 KB shadow + 4.0 KB leaderboard');
+    expect(container.textContent).toContain('80.00% (80% to under 90% warning)');
+
+    await renderWithEvidence({ ...complete, status: 'partial', allMbdBytes: 5000, allMbdBytesKnown: false, trees: [] }, 90);
+    expect(container.textContent).toContain('5.0 KB known lower bound');
+    expect(container.textContent).toContain('Protected-tree estimate is partial or unattributable');
+    expect(container.textContent).toContain('90.00% (90% or more critical)');
+
+    await renderWithEvidence({ ...complete, status: 'unavailable', allMbdBytes: null, allMbdBytesKnown: false, trees: [] }, 79.99);
+    expect(container.textContent).toContain('All-MBD raw-record estimate is unavailable.');
+    expect(container.textContent).toContain('Protected-tree estimate unavailable.');
+    expect(container.textContent).toContain('79.99% (below 80% normal)');
+  });
+
+  it.each([
+    [79.99, 'normal', '79.99% (below 80% normal)'],
+    [80, 'warning', '80.00% (80% to under 90% warning)'],
+    [89.99, 'warning', '89.99% (80% to under 90% warning)'],
+    [90, 'critical', '90.00% (90% or more critical)'],
+  ] as const)('renders the %s origin boundary without contradictory rounding', async (percentage, pressure, copy) => {
+    await act(async () => {
+      root.render(
+        <SetupSaveHubPanel
+          saveTree={saveTree}
+          selectedSlot={1}
+          busySlot={null}
+          branchLimit={3}
+          originEstimate={{ status: 'available', usage: percentage, quota: 100, percentage, pressure }}
+          onRefresh={vi.fn()}
+          onUseSlot={vi.fn()}
+          onContinueSave={vi.fn()}
+          onDeleteSlot={vi.fn()}
+        />,
+      );
+    });
+    expect(container.textContent).toContain(copy);
   });
 });

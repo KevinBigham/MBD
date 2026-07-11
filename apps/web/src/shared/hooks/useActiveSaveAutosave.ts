@@ -2,7 +2,10 @@ import { useCallback } from 'react';
 import { useGameStore } from './useGameStore';
 import { useWorker } from './useWorker';
 import { logger } from '@/shared/lib/logger';
-import { persistActiveSaveSnapshot } from '@/shared/lib/activeSavePersistence';
+import {
+  persistActiveSaveSnapshot,
+  type ActiveSavePersistenceReceipt,
+} from '@/shared/lib/activeSavePersistence';
 import { withActiveSaveSessionSnapshotExportAuthorization } from '@/shared/lib/saveSessionOwnership';
 
 interface ActiveSaveAutosaveOptions {
@@ -22,19 +25,23 @@ export function useActiveSaveAutosave() {
   } = useGameStore();
 
   return useCallback(async (options: ActiveSaveAutosaveOptions = {}) => {
+    let acceptedReceipt: ActiveSavePersistenceReceipt | null = null;
     try {
       if (options.transitionSaveId && options.transitionSaveId !== activeSaveId) {
         throw new Error(
           `Cannot capture ${options.transitionSaveId} from worker state bound to ${activeSaveId ?? 'no active save'}.`,
         );
       }
-      return await persistActiveSaveSnapshot({
+      const result = await persistActiveSaveSnapshot({
         activeSaveId,
         activeSaveSlot,
         gmName,
         teamName,
         season: options.season ?? season,
         saveName: options.saveName,
+        onSnapshotAccepted: (receipt) => {
+          acceptedReceipt = receipt;
+        },
         exportSnapshot: () => options.transitionSaveId
           ? withActiveSaveSessionSnapshotExportAuthorization(
               options.transitionSaveId,
@@ -42,9 +49,10 @@ export function useActiveSaveAutosave() {
             )
           : worker.exportSnapshot() as Promise<object>,
       });
+      return { ...result, acceptedReceipt };
     } catch (error) {
       logger.error('Failed to autosave active game:', error);
-      return { saved: false, saveName: null };
+      return { saved: false, saveName: null, acceptedReceipt };
     }
   }, [activeSaveId, activeSaveSlot, gmName, season, teamName, worker]);
 }

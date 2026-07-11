@@ -1,9 +1,15 @@
 import { Play, Shield, Trash2, Trophy } from 'lucide-react';
 import { humanizeLabel } from '@/shared/lib/labels';
-import { SAVE_SLOTS, type SaveData, type SaveTreeEntry } from '@/shared/lib/saveSystem';
+import { SAVE_SLOTS, type LocalStorageEstimate, type SaveData, type SaveTreeEntry } from '@/shared/lib/saveSystem';
+import {
+  formatOriginStoragePercentage,
+  type OriginStorageEstimate,
+} from '@/shared/lib/storagePressure';
 
 export interface SetupSaveHubPanelProps {
   saveTree: SaveTreeEntry[];
+  storageEstimate?: LocalStorageEstimate | null;
+  originEstimate?: OriginStorageEstimate | null;
   selectedSlot: number;
   busySlot: number | null;
   branchLimit: number;
@@ -11,6 +17,12 @@ export interface SetupSaveHubPanelProps {
   onUseSlot: (slot: number) => void;
   onContinueSave: (save: SaveData) => void;
   onDeleteSlot: (slot: number) => void;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1000) return `${bytes} B`;
+  if (bytes < 1_000_000) return `${(bytes / 1000).toFixed(1)} KB`;
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
 function snapshotRecord(save: SaveData): string | null {
@@ -30,6 +42,8 @@ function saveAchievementCount(save: SaveData): number {
 
 export default function SetupSaveHubPanel({
   saveTree,
+  storageEstimate,
+  originEstimate,
   selectedSlot,
   busySlot,
   branchLimit,
@@ -49,6 +63,18 @@ export default function SetupSaveHubPanel({
           <p className="mt-1 font-heading text-sm text-dynasty-muted">
             Five dynasty slots. Continue, replace, or clear them from one hub.
           </p>
+          <p className="mt-1 font-heading text-xs text-dynasty-muted">
+            {originEstimate?.status === 'available' ? `Approximate origin-wide usage: ${formatOriginStoragePercentage(originEstimate.percentage!)}% (${originEstimate.pressure === 'normal' ? 'below 80% normal' : originEstimate.pressure === 'warning' ? '80% to under 90% warning' : '90% or more critical'}).` : 'Approximate origin-wide storage is unavailable.'} Local tree totals below estimate serialized MBD records only.
+          </p>
+          {storageEstimate ? (
+            <p className="mt-1 font-heading text-xs text-dynasty-muted">
+              {storageEstimate.allMbdBytes == null
+                ? 'All-MBD raw-record estimate is unavailable.'
+                : storageEstimate.allMbdBytesKnown
+                  ? `All-MBD raw records: ${formatBytes(storageEstimate.allMbdBytes)}.`
+                  : `All-MBD raw records: ${formatBytes(storageEstimate.allMbdBytes)} known lower bound; one or more rows could not be serialized.`}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -93,6 +119,13 @@ export default function SetupSaveHubPanel({
                   <>
                     <div>Season {save.season} · {snapshotRecord(save) ?? `${save.day} days logged`}</div>
                     <div>{humanizeLabel(save.phase)} · Updated {new Date(save.updatedAt).toLocaleString()}</div>
+                    {storageEstimate?.trees.find((tree) => tree.rootSaveId === save.id) ? (() => {
+                      const tree = storageEstimate.trees.find((candidate) => candidate.rootSaveId === save.id)!;
+                      return <div>Protected tree: {formatBytes(tree.totalBytes)} · {tree.saveIds.length} save {tree.saveIds.length === 1 ? 'record' : 'records'} · {formatBytes(tree.primaryBytes)} primary + {formatBytes(tree.shadowBytes)} shadow + {formatBytes(tree.leaderboardBytes)} leaderboard{tree.attribution === 'partial' ? ' (partial attribution)' : ''}</div>;
+                    })() : null}
+                    {storageEstimate && !storageEstimate.trees.some((tree) => tree.rootSaveId === save.id) ? (
+                      <div>{storageEstimate.status === 'unavailable' ? 'Protected-tree estimate unavailable.' : 'Protected-tree estimate is partial or unattributable; all local MBD records remain counted separately.'}</div>
+                    ) : null}
                   </>
                 ) : (
                   <div>Reserved for a fresh dynasty build.</div>

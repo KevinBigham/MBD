@@ -23,7 +23,7 @@ interface SettingsPageContentProps {
   installPrompt: ReturnType<typeof useSettingsInstallPrompt>;
   openSections: Record<SettingsSectionKey, boolean>;
   preferences: ReturnType<typeof useSettingsPreferenceControls>;
-  saveData: ReturnType<typeof useSettingsSaveData>;
+  saveData: Omit<ReturnType<typeof useSettingsSaveData>, 'beginSettingsOperation' | 'finishSettingsOperation'>;
   session: {
     day: number;
     phase: string;
@@ -59,7 +59,7 @@ export default function SettingsPageContent({
         </div>
 
         {saveData.status && (
-          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 font-heading text-sm text-accent-info">
+          <div role="status" aria-live="polite" className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 font-heading text-sm text-accent-info">
             {saveData.status}
           </div>
         )}
@@ -150,8 +150,9 @@ export default function SettingsPageContent({
           <SettingsDiagnosticsPanel
             activeManagedSaveId={saveData.activeManagedSaveId}
             diagnostics={diagnosticsData.diagnostics}
-            diagnosticsBusy={diagnosticsData.diagnosticsBusy}
-            onArchiveOldSeasons={diagnosticsData.handleArchiveOldSeasons}
+            diagnosticsBusy={Boolean(diagnosticsData.diagnosticsBusy || saveData.operationBusy)}
+            localEstimate={diagnosticsData.localEstimate}
+            originEstimate={diagnosticsData.originEstimate}
             onPruneStaleData={diagnosticsData.handlePruneStaleData}
           />
         </SettingsSection>

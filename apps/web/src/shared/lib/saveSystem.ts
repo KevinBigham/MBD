@@ -30,6 +30,13 @@ import {
 
 export const SAVE_SLOTS = [1, 2, 3, 4, 5] as const;
 
+function isSupportedSaveSlot(value: unknown): value is (typeof SAVE_SLOTS)[number] {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && Number.isInteger(value)
+    && SAVE_SLOTS.includes(value as (typeof SAVE_SLOTS)[number]);
+}
+
 export interface SaveData {
   id: string;
   slotNumber: number | null;
@@ -201,6 +208,175 @@ class MBDDatabase extends Dexie {
 }
 
 export const db = new MBDDatabase();
+
+/**
+ * Logical JSON measurements of the records MBD owns in IndexedDB.  These are
+ * deliberately not a claim about IndexedDB's physical footprint: indexes,
+ * structured-clone overhead, compression, and other origin data are browser
+ * implementation details.
+ */
+export interface LocalStorageTreeEstimate {
+  rootSaveId: string;
+  slotNumber: number;
+  saveIds: string[];
+  primaryBytes: number;
+  shadowBytes: number;
+  leaderboardBytes: number;
+  totalBytes: number;
+  attribution: 'complete' | 'partial';
+}
+
+export interface LocalStorageEstimate {
+  status: 'available' | 'partial' | 'unavailable';
+  /** Bytes from rows that serialized successfully; not a claimed total if partial. */
+  allMbdBytes: number | null;
+  allMbdBytesKnown: boolean;
+  /** Null means unsafe rows exist but one or more cannot be serialized. */
+  unattributedBytes: number | null;
+  trees: LocalStorageTreeEstimate[];
+  message: string | null;
+}
+
+function rawJsonBytes(value: unknown): number | null {
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) return null;
+    return new TextEncoder().encode(serialized).byteLength;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Take one read-only Dexie snapshot before sizing.  This intentionally never
+ * parses, normalizes, repairs, reseals, or updates any record: malformed and
+ * orphaned rows still consume local MBD storage and therefore remain in the
+ * all-MBD total instead of being silently assigned to a dynasty.
+ */
+export async function getLocalStorageEstimate(): Promise<LocalStorageEstimate> {
+  if (!hasIndexedDBSupport()) {
+    return { status: 'unavailable', allMbdBytes: null, allMbdBytesKnown: false, unattributedBytes: null, trees: [], message: 'Local IndexedDB is unavailable in this browser context.' };
+  }
+
+  try {
+    const [primaries, shadows, leaderboard] = await db.transaction(
+      'r', db.saves, db.saveIntegrityBackups, db.leaderboard,
+      async () => Promise.all([db.saves.toArray(), db.saveIntegrityBackups.toArray(), db.leaderboard.toArray()]),
+    );
+    const primaryById = new Map(primaries.map((record) => [record.id, record]));
+    const shadowById = new Map(shadows.map((record) => [record.id, record]));
+    const bytesByPrimary = new Map(primaries.map((record) => [record.id, rawJsonBytes(record)]));
+    const bytesByShadow = new Map(shadows.map((record) => [record.id, rawJsonBytes(record)]));
+    const leaderboardBytes = leaderboard.map((record) => ({ record, bytes: rawJsonBytes(record) }));
+    const allRows = [...bytesByPrimary.values(), ...bytesByShadow.values(), ...leaderboardBytes.map((entry) => entry.bytes)];
+    const allMbdBytes = allRows.reduce<number>((total, bytes) => total + (bytes ?? 0), 0);
+    const serializingFailed = allRows.some((bytes) => bytes == null);
+    const trees: LocalStorageTreeEstimate[] = [];
+    const attributed = new Set<string>();
+
+    const isTrustedTopologyRecord = (record: SaveData): boolean => {
+      const shadow = shadowById.get(record.id);
+      // v4-era checksumless primaries legitimately have no shadow. Once a
+      // shadow exists, only exact copies are safe relationship evidence.
+      return shadow
+        ? recordsAreExactCopies(record.id, record, shadow)
+        : !record.integrity;
+    };
+    const isCanonicalRoot = (record: SaveData): boolean => (
+      record.isRootSave
+      && isSupportedSaveSlot(record.slotNumber)
+      && record.id === rootSaveId(record.slotNumber)
+      && record.parentSaveId === null
+      && record.branchMeta == null
+      && isTrustedTopologyRecord(record)
+    );
+    const isTrustedBranchForRoot = (record: SaveData, root: SaveData): boolean => (
+      !record.isRootSave
+      && record.slotNumber == null
+      && record.parentSaveId === root.id
+      && record.branchMeta?.saveId === record.id
+      && isTrustedTopologyRecord(record)
+    );
+    for (const root of primaries.filter(isCanonicalRoot)) {
+      const rootId = root.id;
+      const saveIds = [rootId, ...primaries
+        .filter((record) => isTrustedBranchForRoot(record, root))
+        .map((record) => record.id)
+        .sort((left, right) => left.localeCompare(right))];
+      let primaryBytes = 0;
+      let shadowBytes = 0;
+      let partial = false;
+      for (const saveId of saveIds) {
+        const primaryBytesForId = bytesByPrimary.get(saveId);
+        const shadowBytesForId = bytesByShadow.get(saveId);
+        if (primaryBytesForId == null) partial = true;
+        else primaryBytes += primaryBytesForId;
+        // A checksumless legacy primary with no shadow is a single actual row,
+        // not an invented duplicate. A present but mismatched shadow is unsafe
+        // to attribute and remains in the all-MBD total.
+        const primary = primaryById.get(saveId);
+        const shadow = shadowById.get(saveId);
+        if (shadow) {
+          if (shadowBytesForId == null || !primary || !recordsAreExactCopies(saveId, primary, shadow)) {
+            partial = true;
+          } else {
+            shadowBytes += shadowBytesForId;
+          }
+        }
+        attributed.add(`save:${saveId}`);
+        if (shadow && shadowBytesForId != null) attributed.add(`shadow:${saveId}`);
+      }
+      // A slot is only a safe leaderboard owner when it has exactly one
+      // canonical root. A duplicate/rogue root can make slot-only leaderboard
+      // rows ambiguous, so retain their bytes in the all-MBD lower bound.
+      const conflictingRootSlot = primaries.some((record) => record.id !== rootId
+        && record.isRootSave
+        && record.slotNumber === root.slotNumber);
+      const slotLeaderboard = leaderboardBytes.filter(({ record }) => record.slotNumber === root.slotNumber);
+      const slotLeaderboardBytes = conflictingRootSlot
+        ? 0
+        : slotLeaderboard.reduce((total, entry) => total + (entry.bytes ?? 0), 0);
+      const hasBadLeaderboard = slotLeaderboard.some(({ bytes }) => bytes == null);
+      if (!conflictingRootSlot) {
+        slotLeaderboard.forEach(({ record }) => attributed.add(`leaderboard:${record.id}`));
+      }
+      trees.push({
+        rootSaveId: rootId,
+        slotNumber: root.slotNumber!,
+        saveIds,
+        primaryBytes,
+        shadowBytes,
+        leaderboardBytes: slotLeaderboardBytes,
+        totalBytes: primaryBytes + shadowBytes + slotLeaderboardBytes,
+        attribution: partial || hasBadLeaderboard || conflictingRootSlot ? 'partial' : 'complete',
+      });
+    }
+    const unattributedRows = [
+      ...primaries.map((record) => ({ key: `save:${record.id}`, bytes: bytesByPrimary.get(record.id) })),
+      ...shadows.map((record) => ({ key: `shadow:${record.id}`, bytes: bytesByShadow.get(record.id) })),
+      ...leaderboardBytes.map(({ record, bytes }) => ({ key: `leaderboard:${record.id}`, bytes })),
+    ].filter((entry) => !attributed.has(entry.key));
+    const unattributedBytes = unattributedRows.some((entry) => entry.bytes == null)
+      ? null
+      : unattributedRows.reduce<number>((total, entry) => total + entry.bytes!, 0);
+    const partial = serializingFailed || unattributedBytes == null || unattributedBytes > 0 || trees.some((tree) => tree.attribution === 'partial');
+    const message = serializingFailed
+      ? 'One or more local MBD rows could not be serialized; the all-MBD value is a known lower bound.'
+      : partial
+        ? 'Some local MBD rows could not be safely attributed; they remain included in the all-MBD estimate.'
+        : null;
+    return {
+      status: partial ? 'partial' : 'available',
+      allMbdBytes,
+      allMbdBytesKnown: !serializingFailed,
+      unattributedBytes,
+      trees: trees.sort((left, right) => left.slotNumber - right.slotNumber),
+      message,
+    };
+  } catch {
+    return { status: 'unavailable', allMbdBytes: null, allMbdBytesKnown: false, unattributedBytes: null, trees: [], message: 'MBD could not read local save records without changing them.' };
+  }
+}
 const MAX_BRANCHES_PER_SAVE = 3;
 let branchIdCounter = 0;
 const saveWriteTails = new Map<string, Promise<void>>();
@@ -1575,7 +1751,7 @@ async function findTrustedParentIdForBranch(branchSaveId: string): Promise<strin
 
 function knownRootSlot(saveId: string | null | undefined): number | null {
   const slotNumber = parseSlotNumberFromId(saveId ?? undefined);
-  return slotNumber != null && SAVE_SLOTS.includes(slotNumber as (typeof SAVE_SLOTS)[number])
+  return isSupportedSaveSlot(slotNumber)
     ? slotNumber
     : null;
 }

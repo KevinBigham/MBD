@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { logger } from '@/shared/lib/logger';
-import { SAVE_SLOTS, type SaveTreeEntry } from '@/shared/lib/saveSystem';
+import { getLocalStorageEstimate, SAVE_SLOTS, type LocalStorageEstimate, type SaveTreeEntry } from '@/shared/lib/saveSystem';
+import { readOriginStorageEstimate, type OriginStorageEstimate } from '@/shared/lib/storagePressure';
 import type {
   ScenarioCatalogEntry,
   SetupDifficulty,
@@ -20,6 +21,8 @@ interface UseSetupRouteDataOptions {
   getSetupPreview: (options: SetupPreviewOptions) => Promise<unknown>;
   isWorkerReady: boolean;
   listSaveTree: () => Promise<SaveTreeEntry[]>;
+  readLocalStorageEstimate?: () => Promise<LocalStorageEstimate>;
+  readOriginStorageEstimate?: () => Promise<OriginStorageEstimate>;
   seed: number;
   teamId: string;
   teamOptions: readonly SetupTeamOption[];
@@ -32,6 +35,8 @@ interface UseSetupRouteDataResult {
   previewMap: Record<string, SetupPreview>;
   refreshSaves: () => Promise<void>;
   saveTree: SaveTreeEntry[];
+  storageEstimate: LocalStorageEstimate | null;
+  originEstimate: OriginStorageEstimate | null;
   scenarioCatalog: ScenarioCatalogEntry[];
   selectedScenario: ScenarioCatalogEntry | null;
   selectedScenarioId: string | null;
@@ -43,12 +48,16 @@ interface UseSetupRouteDataResult {
   status: string;
 }
 
+const SAVE_REFRESH_FAILURE_STATUS = 'Failed to refresh save and storage evidence. Prior values are unchanged.';
+
 export function useSetupRouteData({
   difficulty,
   getScenarioCatalog,
   getSetupPreview,
   isWorkerReady,
   listSaveTree,
+  readLocalStorageEstimate = getLocalStorageEstimate,
+  readOriginStorageEstimate: readOriginEstimate = readOriginStorageEstimate,
   seed,
   teamId,
   teamOptions,
@@ -56,11 +65,23 @@ export function useSetupRouteData({
   wizardOpen,
 }: UseSetupRouteDataOptions): UseSetupRouteDataResult {
   const [saveTree, setSaveTree] = useState<SaveTreeEntry[]>([]);
+  const [storageEstimate, setStorageEstimate] = useState<LocalStorageEstimate | null>(null);
+  const [originEstimate, setOriginEstimate] = useState<OriginStorageEstimate | null>(null);
   const [status, setStatus] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<number>(2);
   const [previewMap, setPreviewMap] = useState<Record<string, SetupPreview>>({});
   const [scenarioCatalog, setScenarioCatalog] = useState<ScenarioCatalogEntry[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+  const saveRefreshRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      saveRefreshRequestRef.current += 1;
+    };
+  }, []);
 
   const selectedScenario = useMemo(
     () => scenarioCatalog.find((entry) => entry.id === selectedScenarioId) ?? null,
@@ -72,12 +93,25 @@ export function useSetupRouteData({
     : preview;
 
   const refreshSaves = useCallback(async () => {
-    const nextSaveTree = await listSaveTree();
-    setSaveTree(nextSaveTree);
-    const taken = new Set(nextSaveTree.map((entry) => entry.save.slotNumber));
-    const firstEmpty = SAVE_SLOTS.find((slot) => !taken.has(slot)) ?? SAVE_SLOTS[0];
-    setSelectedSlot(firstEmpty);
-  }, [listSaveTree]);
+    const request = ++saveRefreshRequestRef.current;
+    try {
+      const [nextSaveTree, nextStorageEstimate, nextOriginEstimate] = await Promise.all([
+        listSaveTree(), readLocalStorageEstimate(), readOriginEstimate(),
+      ]);
+      if (!mountedRef.current || request !== saveRefreshRequestRef.current) return;
+      setSaveTree(nextSaveTree);
+      setStorageEstimate(nextStorageEstimate);
+      setOriginEstimate(nextOriginEstimate);
+      setStatus((current) => current === SAVE_REFRESH_FAILURE_STATUS ? '' : current);
+      const taken = new Set(nextSaveTree.map((entry) => entry.save.slotNumber));
+      const firstEmpty = SAVE_SLOTS.find((slot) => !taken.has(slot)) ?? SAVE_SLOTS[0];
+      setSelectedSlot(firstEmpty);
+    } catch (error) {
+      if (!mountedRef.current || request !== saveRefreshRequestRef.current) return;
+      logger.error('Failed to refresh save and storage evidence:', error);
+      setStatus(SAVE_REFRESH_FAILURE_STATUS);
+    }
+  }, [listSaveTree, readLocalStorageEstimate, readOriginEstimate]);
 
   useEffect(() => {
     void refreshSaves();
@@ -158,6 +192,8 @@ export function useSetupRouteData({
     previewMap,
     refreshSaves,
     saveTree,
+    storageEstimate,
+    originEstimate,
     scenarioCatalog,
     selectedScenario,
     selectedScenarioId,

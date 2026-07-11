@@ -13,10 +13,26 @@ import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { assistantStorageKey } from '@/features/assistant/lib/assistantState';
 import { guidedStartNudgeStorageKey } from '@/features/onboarding/nudges';
 import { resetAudioEngineForTest } from '@/shared/lib/audio';
+import { resetSettingsOperationCoordinatorForTesting } from '../lib/settingsOperationCoordinator';
 import { listBranches, listSaves, loadGameSafe, loadSaveSafely, repairSave } from '@/shared/lib/saveSystem';
 
 const recoveryMockState = vi.hoisted(() => ({
   showFailure: vi.fn(),
+}));
+const activePersistenceMockState = vi.hoisted(() => ({
+  status: {
+    state: 'idle' as const,
+    saveId: 'save-slot-1',
+    saveName: 'Healthy Save',
+    desiredGeneration: 0,
+    durableGeneration: 0,
+    pendingWrites: 0,
+    canRetry: false,
+    lastSavedAt: null,
+    errorMessage: null,
+    failureKind: null,
+    recovery: null,
+  },
 }));
 
 vi.mock('@/shared/hooks/useWorker', () => ({
@@ -56,6 +72,7 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   createBranchSave: vi.fn(),
   deleteSave: vi.fn(),
   deleteSaveById: vi.fn(),
+  getLocalStorageEstimate: vi.fn(async () => ({ status: 'available', allMbdBytes: 0, allMbdBytesKnown: true, unattributedBytes: 0, trees: [], message: null })),
   listBranches: vi.fn(),
   listSaves: vi.fn(),
   loadGameById: vi.fn(),
@@ -94,6 +111,9 @@ vi.mock('@/shared/lib/activeSavePersistence', () => ({
   trackActiveSavePersistenceOperation: vi.fn(
     async (_saveId: string, operation: () => Promise<unknown>) => operation(),
   ),
+  getActiveSavePersistenceStatus: vi.fn(() => activePersistenceMockState.status),
+  isActiveSavePersistenceReceiptDurable: vi.fn(() => false),
+  subscribeToActiveSavePersistenceStatus: vi.fn(() => () => {}),
 }));
 
 vi.mock('@/shared/lib/saveSessionOwnership', () => ({
@@ -162,6 +182,7 @@ describe('SettingsPage', () => {
   let persistActiveSave: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    resetSettingsOperationCoordinatorForTesting();
     resetAudioEngineForTest();
     const storage = createStorageMock();
     Object.defineProperty(window, 'localStorage', {
@@ -284,6 +305,7 @@ describe('SettingsPage', () => {
       root.unmount();
     });
     container.remove();
+    resetSettingsOperationCoordinatorForTesting();
     vi.clearAllMocks();
   });
 
@@ -498,6 +520,7 @@ describe('SettingsPage', () => {
         staleTickerEntries: 2,
         activeWatchers: 3,
         resolvedWatchers: 1,
+        staleWatchers: 1,
         scoutConflicts: 2,
       },
       runtime: {
@@ -538,6 +561,7 @@ describe('SettingsPage', () => {
           staleTickerEntries: 2,
           activeWatchers: 3,
           resolvedWatchers: 1,
+          staleWatchers: 1,
           scoutConflicts: 2,
         },
         runtime: {
@@ -564,6 +588,7 @@ describe('SettingsPage', () => {
           staleTickerEntries: 0,
           activeWatchers: 2,
           resolvedWatchers: 0,
+          staleWatchers: 0,
           scoutConflicts: 2,
         },
         runtime: {
@@ -597,30 +622,26 @@ describe('SettingsPage', () => {
     expect(container.textContent).toContain('95.0 ms max');
     expect(container.textContent).toContain('Over 80.0 ms budget');
 
-    const archiveButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Archive Older Seasons'),
-    );
     const pruneButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Prune Stale Data'),
     );
 
     await act(async () => {
-      archiveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      pruneButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
-
-    expect(archiveOldSeasons).toHaveBeenCalledWith();
-    expect(persistActiveSave).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('Archived 2 older seasons');
+    expect(archiveOldSeasons).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alertdialog"]')).toBeTruthy();
+    const confirmPrune = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Prune stale data'));
 
     await act(async () => {
-      pruneButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      confirmPrune?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
 
     expect(pruneStaleData).toHaveBeenCalledWith();
-    expect(persistActiveSave).toHaveBeenCalledTimes(2);
-    expect(container.textContent).toContain('Pruned 3 stale entries');
+    expect(persistActiveSave).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Pruned 3 expired ticker entries or resolved/expired consequence watchers');
   });
 
   it('replays assistant and guided-start guidance from Settings without editing saves', async () => {

@@ -22,6 +22,14 @@ export interface IndexedDbSaveIntegrityPair {
   primaryUpdatedAt: string;
 }
 
+/** Read-only raw-row evidence used to corroborate the public storage metrics. */
+export interface IndexedDbStoragePressureEvidence {
+  activeSnapshotJsonBytes: number;
+  activeTreeJsonBytes: number;
+  allMbdJsonBytes: number;
+  rootSaveId: string;
+}
+
 export const appMain = (page: Page) => page.locator('main#main-content');
 export const mainNavigation = (page: Page) => page.getByRole('navigation', { name: 'Main navigation' });
 export const saveSummary = (page: Page) => page.getByTestId('save-persistence-summary');
@@ -391,6 +399,81 @@ export async function readIndexedDbSaveIntegrityPair(
       };
       backupRequest.onsuccess = () => {
         backupRecord = backupRequest.result as StoredIntegrityRecord | undefined;
+      };
+    });
+  }, saveId);
+}
+
+export async function readIndexedDbStoragePressureEvidence(
+  page: Page,
+  saveId: string,
+): Promise<IndexedDbStoragePressureEvidence> {
+  return page.evaluate(async (exactSaveId) => {
+    type StoredRow = {
+      id?: unknown;
+      slotNumber?: unknown;
+      parentSaveId?: unknown;
+      isRootSave?: unknown;
+      snapshot?: unknown;
+      [key: string]: unknown;
+    };
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('mbd-saves');
+      request.onerror = () => reject(new Error(`Unable to open MBD IndexedDB: ${request.error?.message ?? 'unknown error'}`));
+      request.onblocked = () => reject(new Error('Opening MBD IndexedDB was blocked.'));
+      request.onsuccess = () => resolve(request.result);
+    });
+    const stores = ['saves', 'saveIntegrityBackups', 'leaderboard'];
+    if (stores.some((store) => !database.objectStoreNames.contains(store))) {
+      database.close();
+      throw new Error('MBD IndexedDB is missing a storage-pressure evidence table.');
+    }
+    return new Promise<IndexedDbStoragePressureEvidence>((resolve, reject) => {
+      const transaction = database.transaction(stores, 'readonly');
+      const requests = stores.map((store) => transaction.objectStore(store).getAll());
+      let settled = false;
+      const fail = (message: string) => {
+        if (settled) return;
+        settled = true;
+        database.close();
+        reject(new Error(message));
+      };
+      transaction.onerror = () => fail(`MBD storage evidence transaction failed: ${transaction.error?.message ?? 'unknown error'}`);
+      transaction.onabort = () => fail(`MBD storage evidence transaction aborted: ${transaction.error?.message ?? 'unknown error'}`);
+      transaction.oncomplete = () => {
+        try {
+          const rows = requests.map((request) => request.result as StoredRow[]);
+          const saves = rows[0] ?? [];
+          const shadows = rows[1] ?? [];
+          const leaderboard = rows[2] ?? [];
+          const active = saves.find((row) => row.id === exactSaveId);
+          if (!active) throw new Error(`Exact active save "${exactSaveId}" is missing.`);
+          const rootSaveId = typeof active.parentSaveId === 'string' ? active.parentSaveId : exactSaveId;
+          const root = saves.find((row) => row.id === rootSaveId);
+          if (!root || typeof root.slotNumber !== 'number') throw new Error(`Root save "${rootSaveId}" is missing a valid slot.`);
+          const saveIds = new Set(saves
+            .filter((row) => row.id === rootSaveId || (row.isRootSave === false && row.parentSaveId === rootSaveId))
+            .map((row) => String(row.id)));
+          const bytes = (row: unknown) => new TextEncoder().encode(JSON.stringify(row)).byteLength;
+          const allRows = [...saves, ...shadows, ...leaderboard];
+          const treeRows = [
+            ...saves.filter((row) => saveIds.has(String(row.id))),
+            ...shadows.filter((row) => saveIds.has(String(row.id))),
+            ...leaderboard.filter((row) => row.slotNumber === root.slotNumber),
+          ];
+          const snapshot = active.snapshot;
+          if (snapshot == null) throw new Error(`Exact active save "${exactSaveId}" has no snapshot.`);
+          settled = true;
+          database.close();
+          resolve({
+            activeSnapshotJsonBytes: bytes(snapshot),
+            activeTreeJsonBytes: treeRows.reduce((total, row) => total + bytes(row), 0),
+            allMbdJsonBytes: allRows.reduce((total, row) => total + bytes(row), 0),
+            rootSaveId,
+          });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
       };
     });
   }, saveId);

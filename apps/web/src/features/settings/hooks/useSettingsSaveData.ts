@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import type { ShowSaveRecoveryOptions } from '@/features/save-recovery';
 import type { GameState } from '@/shared/hooks/useGameStore';
 import type { useWorker } from '@/shared/hooks/useWorker';
@@ -51,6 +51,15 @@ import {
   captureOutgoingSaveSessionSnapshot,
   recoverWorkerAfterCandidateImportFailure,
 } from '@/shared/lib/saveSessionTransitionRecovery';
+import {
+  beginSettingsOperation,
+  finishSettingsOperation,
+  getSettingsOperationBusySnapshot,
+  subscribeToSettingsOperationBusy,
+  type SettingsOperationOwner,
+} from '../lib/settingsOperationCoordinator';
+
+const SETTINGS_OPERATION_BUSY_STATUS = 'Finish the current save operation before starting another one.';
 
 type SettingsSaveDataWorker = Pick<
   ReturnType<typeof useWorker>,
@@ -93,26 +102,32 @@ export function useSettingsSaveData({
   const [status, setStatus] = useState<string>('');
   const [busySlot, setBusySlot] = useState<number | null>(null);
   const [branchBusy, setBranchBusy] = useState(false);
-  const [operationBusy, setOperationBusy] = useState(false);
-  const operationInFlightRef = useRef(false);
+  const operationBusy = useSyncExternalStore(
+    subscribeToSettingsOperationBusy,
+    getSettingsOperationBusySnapshot,
+    getSettingsOperationBusySnapshot,
+  );
+  useEffect(() => {
+    if (!operationBusy) {
+      setStatus((current) => current === SETTINGS_OPERATION_BUSY_STATUS ? '' : current);
+    }
+  }, [operationBusy]);
   const [branchDescription, setBranchDescription] = useState('');
   const [branches, setBranches] = useState<SaveData[]>([]);
   const activeRootSaveId = activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : null;
   const activeManagedSaveId = activeSaveId ?? activeRootSaveId;
 
-  const beginSaveDataOperation = useCallback((): boolean => {
-    if (operationInFlightRef.current) {
-      setStatus('Finish the current save operation before starting another one.');
-      return false;
+  const beginSaveDataOperation = useCallback((): SettingsOperationOwner | null => {
+    const owner = beginSettingsOperation();
+    if (!owner) {
+      setStatus(SETTINGS_OPERATION_BUSY_STATUS);
+      return null;
     }
-    operationInFlightRef.current = true;
-    setOperationBusy(true);
-    return true;
+    return owner;
   }, []);
 
-  const finishSaveDataOperation = useCallback((): void => {
-    operationInFlightRef.current = false;
-    setOperationBusy(false);
+  const finishSaveDataOperation = useCallback((owner: SettingsOperationOwner): void => {
+    finishSettingsOperation(owner);
   }, []);
 
   const refreshSaves = useCallback(async () => {
@@ -135,7 +150,8 @@ export function useSettingsSaveData({
 
   const handleSave = useCallback(async (slot: number) => {
     if (!workerReady) return;
-    if (!beginSaveDataOperation()) return;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return;
     setBusySlot(slot);
     setStatus('');
     try {
@@ -172,12 +188,13 @@ export function useSettingsSaveData({
         : `Failed to save slot ${slot}.`);
     } finally {
       setBusySlot(null);
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [activeManagedSaveId, activeRootSaveId, activeSaveId, beginSaveDataOperation, day, finishSaveDataOperation, persistActiveSave, refreshSaves, season, worker, workerReady]);
 
   const handleDelete = useCallback(async (slot: number) => {
-    if (!beginSaveDataOperation()) return false;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return false;
     const targetSaveId = `save-slot-${slot}`;
     try {
       if (
@@ -215,7 +232,7 @@ export function useSettingsSaveData({
       return false;
     } finally {
       setBusySlot(null);
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [activeManagedSaveId, activeRootSaveId, activeSaveId, beginSaveDataOperation, finishSaveDataOperation, refreshSaves]);
 
@@ -301,7 +318,8 @@ export function useSettingsSaveData({
     options: { fromRecovery?: boolean } = {},
   ): Promise<boolean> => {
     if (!workerReady) return false;
-    if (!beginSaveDataOperation()) return false;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return false;
     const targetSaveId = `save-slot-${slot}`;
     setBusySlot(slot);
     setStatus('');
@@ -376,7 +394,7 @@ export function useSettingsSaveData({
       return false;
     } finally {
       setBusySlot(null);
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [beginSaveDataOperation, continueFromSafeLoad, finishSaveDataOperation, handleDelete, persistActiveSave, recoveryShowFailure, workerReady]);
 
@@ -385,7 +403,8 @@ export function useSettingsSaveData({
       setStatus('Start or load a dynasty before exporting.');
       return;
     }
-    if (!beginSaveDataOperation()) return;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return;
 
     try {
       const snapshot = await worker.exportSnapshot();
@@ -402,7 +421,7 @@ export function useSettingsSaveData({
       logger.error('Failed to export snapshot:', error);
       setStatus('Failed to export the current dynasty snapshot.');
     } finally {
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [beginSaveDataOperation, day, finishSaveDataOperation, season, worker, workerReady]);
 
@@ -410,7 +429,8 @@ export function useSettingsSaveData({
     if (!file) {
       return;
     }
-    if (!beginSaveDataOperation()) return;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return;
 
     try {
       const text = await file.text();
@@ -436,20 +456,21 @@ export function useSettingsSaveData({
           )
         : 'Failed to import save file.');
     } finally {
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [beginSaveDataOperation, finishSaveDataOperation, refreshSaves, saves]);
 
   const handleClearAllSaves = useCallback(async () => {
-    if (!beginSaveDataOperation()) return;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return;
     if (activeManagedSaveId) {
       setStatus('Cannot clear local saves while a dynasty is active.');
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
       return;
     }
 
     if (typeof window !== 'undefined' && !window.confirm('Delete every save slot? This cannot be undone.')) {
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
       return;
     }
 
@@ -470,7 +491,7 @@ export function useSettingsSaveData({
           )
         : 'Failed to clear local save slots.');
     } finally {
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [activeManagedSaveId, beginSaveDataOperation, finishSaveDataOperation, refreshSaves]);
 
@@ -483,7 +504,8 @@ export function useSettingsSaveData({
       setStatus('Name the what-if branch before creating it.');
       return;
     }
-    if (!beginSaveDataOperation()) return;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return;
 
     setBranchBusy(true);
     setStatus('');
@@ -507,7 +529,7 @@ export function useSettingsSaveData({
         : 'Failed to create a what-if branch.');
     } finally {
       setBranchBusy(false);
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [activeRootSaveId, beginSaveDataOperation, branchDescription, finishSaveDataOperation, refreshBranches, worker, workerReady]);
 
@@ -519,7 +541,8 @@ export function useSettingsSaveData({
     if (!activeRootSaveId) {
       return;
     }
-    if (!beginSaveDataOperation()) return;
+    const operationOwner = beginSaveDataOperation();
+    if (!operationOwner) return;
 
     setBranchBusy(true);
     setStatus('');
@@ -555,17 +578,19 @@ export function useSettingsSaveData({
         : 'Failed to delete the selected what-if branch.');
     } finally {
       setBranchBusy(false);
-      finishSaveDataOperation();
+      finishSaveDataOperation(operationOwner);
     }
   }, [activeManagedSaveId, activeRootSaveId, beginSaveDataOperation, finishSaveDataOperation, refreshBranches]);
 
   return {
     activeManagedSaveId,
     activeRootSaveId,
+    beginSettingsOperation: beginSaveDataOperation,
     branchBusy,
     branchDescription,
     branches,
     busySlot,
+    finishSettingsOperation: finishSaveDataOperation,
     operationBusy,
     handleClearAllSaves,
     handleCreateBranch,

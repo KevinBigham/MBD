@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
+import { useActiveSavePersistenceStatus } from '@/shared/hooks/useActiveSavePersistenceStatus';
 import { useSaveRecovery } from '@/features/save-recovery';
 import SettingsPageContent, { type SettingsSectionKey } from '../components/SettingsPageContent';
 import { useSettingsDiagnosticsData } from '../hooks/useSettingsDiagnosticsData';
@@ -49,13 +50,19 @@ export default function SettingsPage() {
     season,
     worker,
   });
+  const persistenceStatus = useActiveSavePersistenceStatus(saveData.activeManagedSaveId);
   const diagnosticsData = useSettingsDiagnosticsData({
     activeManagedSaveId: saveData.activeManagedSaveId,
-    archiveOldSeasons: typeof worker.archiveOldSeasons === 'function' ? worker.archiveOldSeasons : undefined,
+    persistenceFailureKind: persistenceStatus.failureKind,
+    persistenceState: persistenceStatus.state,
+    persistenceStatus,
+    beginSettingsOperation: saveData.beginSettingsOperation,
+    finishSettingsOperation: saveData.finishSettingsOperation,
     getPerformanceDiagnostics: typeof worker.getPerformanceDiagnostics === 'function' ? worker.getPerformanceDiagnostics : undefined,
     onStatusChange: saveData.setStatus,
     persistActiveSave,
     pruneStaleData: typeof worker.pruneStaleData === 'function' ? worker.pruneStaleData : undefined,
+    settingsOperationBusy: saveData.operationBusy,
     workerReady,
   });
   const installPrompt = useSettingsInstallPrompt({

@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import SettingsDiagnosticsPanel from './SettingsDiagnosticsPanel';
+import type { LocalStorageEstimate } from '@/shared/lib/saveSystem';
 import type { PerformanceDiagnosticsView } from '@/workers/sim.worker.diagnostics';
 
 (
@@ -22,6 +23,7 @@ const diagnostics: PerformanceDiagnosticsView = {
     staleTickerEntries: 2,
     activeWatchers: 3,
     resolvedWatchers: 1,
+    staleWatchers: 1,
     scoutConflicts: 2,
   },
   runtime: {
@@ -46,6 +48,24 @@ const diagnostics: PerformanceDiagnosticsView = {
   },
 };
 
+const localEstimate: LocalStorageEstimate = {
+  status: 'available',
+  allMbdBytes: 9000,
+  allMbdBytesKnown: true,
+  unattributedBytes: 0,
+  trees: [{
+    rootSaveId: 'save-slot-1',
+    slotNumber: 1,
+    saveIds: ['save-slot-1'],
+    primaryBytes: 3000,
+    shadowBytes: 4000,
+    leaderboardBytes: 2000,
+    totalBytes: 9000,
+    attribution: 'complete',
+  }],
+  message: null,
+};
+
 describe('SettingsDiagnosticsPanel', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -64,7 +84,6 @@ describe('SettingsDiagnosticsPanel', () => {
   });
 
   it('renders runtime, storage, maintenance, and worker query diagnostics', async () => {
-    const onArchiveOldSeasons = vi.fn();
     const onPruneStaleData = vi.fn();
 
     await act(async () => {
@@ -73,7 +92,8 @@ describe('SettingsDiagnosticsPanel', () => {
           activeManagedSaveId="save-slot-1"
           diagnostics={diagnostics}
           diagnosticsBusy={null}
-          onArchiveOldSeasons={onArchiveOldSeasons}
+          localEstimate={localEstimate}
+          originEstimate={{ status: 'available', usage: 85, quota: 100, percentage: 85, pressure: 'warning' }}
           onPruneStaleData={onPruneStaleData}
         />,
       );
@@ -92,9 +112,6 @@ describe('SettingsDiagnosticsPanel', () => {
     expect(container.textContent).toContain('95.0 ms max');
     expect(container.textContent).toContain('Over 80.0 ms budget');
 
-    const archiveButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Archive Older Seasons'),
-    );
     const pruneButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Prune Stale Data'),
     );
@@ -107,32 +124,150 @@ describe('SettingsDiagnosticsPanel', () => {
       expect(control?.className).toContain('focus-ring');
     };
 
-    expectMobileCriticalControl('settings-maintenance-archive');
     expectMobileCriticalControl('settings-maintenance-prune');
 
     await act(async () => {
-      archiveButton?.click();
       pruneButton?.click();
     });
 
-    expect(onArchiveOldSeasons).toHaveBeenCalledTimes(1);
-    expect(onPruneStaleData).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[role="alertdialog"]')).toBeTruthy();
+    expect(onPruneStaleData).not.toHaveBeenCalled();
   });
 
-  it('renders unavailable and disabled maintenance states', async () => {
+  it('keeps local and origin evidence visible when worker diagnostics are unavailable', async () => {
+    const onPruneStaleData = vi.fn();
     await act(async () => {
       root.render(
         <SettingsDiagnosticsPanel
-          activeManagedSaveId={null}
+          activeManagedSaveId="save-slot-1"
           diagnostics={null}
-          diagnosticsBusy="archive"
-          onArchiveOldSeasons={vi.fn()}
-          onPruneStaleData={vi.fn()}
+          diagnosticsBusy={false}
+          localEstimate={localEstimate}
+          originEstimate={{ status: 'available', usage: 85, quota: 100, percentage: 85, pressure: 'warning' }}
+          onPruneStaleData={onPruneStaleData}
         />,
       );
     });
 
-    expect(container.textContent).toContain('Diagnostics are unavailable until the simulation worker finishes booting.');
+    expect(container.textContent).toContain('Worker runtime diagnostics unavailable.');
+    expect(container.textContent).toContain('Current worker snapshot estimate unavailable.');
+    expect(container.textContent).toContain('9.0 KB');
+    expect(container.textContent).toContain('85.00% approximate origin usage');
+    const pruneButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Prune Stale Data')) as HTMLButtonElement;
+    expect(pruneButton.disabled).toBe(true);
+    await act(async () => { pruneButton.click(); });
+    expect(onPruneStaleData).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it('focus-traps the sibling alertdialog and restores the opener on Escape', async () => {
+    const onPruneStaleData = vi.fn();
+    await act(async () => {
+      root.render(<SettingsDiagnosticsPanel activeManagedSaveId="save-slot-1" diagnostics={diagnostics} diagnosticsBusy={false} onPruneStaleData={onPruneStaleData} />);
+    });
+    const opener = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Prune Stale Data'))!;
+    await act(async () => { opener.click(); });
+    const dialog = container.querySelector('[role="alertdialog"]')!;
+    const controls = Array.from(dialog.querySelectorAll('button')) as HTMLButtonElement[];
+    const cancel = controls[0]!;
+    const confirm = controls[1]!;
+    expect(dialog.closest('[aria-hidden="true"]')).toBeNull();
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => { cancel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })); });
+    expect(document.activeElement).toBe(confirm);
+    await act(async () => { confirm.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })); });
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => { cancel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })); });
+    expect(document.activeElement).toBe(confirm);
+    await act(async () => { confirm.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })); });
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    expect(onPruneStaleData).not.toHaveBeenCalled();
+  });
+
+  it('closes and fully releases modal fencing when worker diagnostics disappear', async () => {
+    const onPruneStaleData = vi.fn();
+    const renderPanel = async (nextDiagnostics: PerformanceDiagnosticsView | null) => {
+      await act(async () => {
+        root.render(
+          <SettingsDiagnosticsPanel
+            activeManagedSaveId="save-slot-1"
+            diagnostics={nextDiagnostics}
+            diagnosticsBusy={false}
+            onPruneStaleData={onPruneStaleData}
+          />,
+        );
+      });
+    };
+
+    await renderPanel(diagnostics);
+    const opener = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Prune Stale Data'))!;
+    await act(async () => { opener.click(); });
+    expect(container.querySelector('[role="alertdialog"]')).toBeTruthy();
+    expect(document.documentElement.dataset.mbdModalOpen).toBe('true');
+    expect((container.firstElementChild as HTMLDivElement).inert).toBe(true);
+
+    await renderPanel(null);
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.documentElement.dataset.mbdModalOpen).toBeUndefined();
+    expect((container.firstElementChild as HTMLDivElement).inert).toBe(false);
+    expect(container.firstElementChild?.hasAttribute('aria-hidden')).toBe(false);
+    expect(onPruneStaleData).not.toHaveBeenCalled();
+
+    await renderPanel(diagnostics);
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.documentElement.dataset.mbdModalOpen).toBeUndefined();
+  });
+
+  it('closes and fully releases modal fencing when the active save changes', async () => {
+    const onPruneStaleData = vi.fn();
+    const renderPanel = async (activeManagedSaveId: string) => {
+      await act(async () => {
+        root.render(
+          <SettingsDiagnosticsPanel
+            activeManagedSaveId={activeManagedSaveId}
+            diagnostics={diagnostics}
+            diagnosticsBusy={false}
+            onPruneStaleData={onPruneStaleData}
+          />,
+        );
+      });
+    };
+
+    await renderPanel('save-slot-1');
+    const opener = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Prune Stale Data'))!;
+    await act(async () => { opener.click(); });
+    expect(container.querySelector('[role="alertdialog"]')).toBeTruthy();
+
+    await renderPanel('save-slot-2');
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.documentElement.dataset.mbdModalOpen).toBeUndefined();
+    expect((container.firstElementChild as HTMLDivElement).inert).toBe(false);
+    expect(container.firstElementChild?.hasAttribute('aria-hidden')).toBe(false);
+    expect(onPruneStaleData).not.toHaveBeenCalled();
+
+    await renderPanel('save-slot-1');
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it('shows quota failure as critical even when navigator reports a low estimate', async () => {
+    await act(async () => {
+      root.render(<SettingsDiagnosticsPanel activeManagedSaveId="save-slot-1" diagnostics={diagnostics} diagnosticsBusy={false} originEstimate={{ status: 'unavailable', usage: null, quota: null, percentage: null, pressure: 'critical' }} onPruneStaleData={vi.fn()} />);
+    });
+    expect(container.textContent).toContain('Critical: a future save may fail.');
+  });
+
+  it('renders unavailable local records as unavailable rather than a 0 B estimate', async () => {
+    await act(async () => {
+      root.render(<SettingsDiagnosticsPanel activeManagedSaveId="save-slot-1" diagnostics={diagnostics} diagnosticsBusy={false} localEstimate={{ status: 'unavailable', allMbdBytes: null, allMbdBytesKnown: false, unattributedBytes: null, trees: [], message: 'Unavailable.' }} onPruneStaleData={vi.fn()} />);
+    });
+    expect(container.textContent).toContain('Local MBD record estimate unavailable');
+    expect(container.textContent).not.toContain('0 B in-memory JSON estimate');
   });
 
   it('renders disabled maintenance controls without an active managed save', async () => {
@@ -142,17 +277,66 @@ describe('SettingsDiagnosticsPanel', () => {
           activeManagedSaveId={null}
           diagnostics={diagnostics}
           diagnosticsBusy={null}
-          onArchiveOldSeasons={vi.fn()}
           onPruneStaleData={vi.fn()}
         />,
       );
     });
 
     const buttons = Array.from(container.querySelectorAll('button'));
-    const archiveButton = buttons.find((button) => button.textContent?.includes('Archive Older Seasons'));
     const pruneButton = buttons.find((button) => button.textContent?.includes('Prune Stale Data'));
 
-    expect((archiveButton as HTMLButtonElement | undefined)?.disabled).toBe(true);
     expect((pruneButton as HTMLButtonElement | undefined)?.disabled).toBe(true);
+  });
+
+  it.each([
+    [79.99, 'normal', '79.99% approximate origin usage'],
+    [80, 'warning', '80.00% approximate origin usage'],
+    [89.99, 'warning', '89.99% approximate origin usage'],
+    [90, 'critical', '90.00% approximate origin usage'],
+  ] as const)('renders the %s boundary without contradictory rounding', async (percentage, pressure, copy) => {
+    await act(async () => {
+      root.render(
+        <SettingsDiagnosticsPanel
+          activeManagedSaveId="save-slot-1"
+          diagnostics={diagnostics}
+          diagnosticsBusy={false}
+          originEstimate={{ status: 'available', usage: percentage, quota: 100, percentage, pressure }}
+          onPruneStaleData={vi.fn()}
+        />,
+      );
+    });
+    expect(container.textContent).toContain(copy);
+  });
+
+  it('allows scoped keyboard activation while blocking modified shortcuts', async () => {
+    const onPruneStaleData = vi.fn();
+    await act(async () => {
+      root.render(<SettingsDiagnosticsPanel activeManagedSaveId="save-slot-1" diagnostics={diagnostics} diagnosticsBusy={false} onPruneStaleData={onPruneStaleData} />);
+    });
+    const opener = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Prune Stale Data'))!;
+    await act(async () => { opener.click(); });
+    const dialog = container.querySelector('[role="alertdialog"]')!;
+    const [cancel, confirm] = Array.from(dialog.querySelectorAll('button')) as HTMLButtonElement[];
+    await act(async () => {
+      cancel!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', shiftKey: true, bubbles: true }));
+      cancel!.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
+    });
+    expect(container.querySelector('[role="alertdialog"]')).toBeTruthy();
+    expect(onPruneStaleData).not.toHaveBeenCalled();
+    await act(async () => {
+      confirm!.focus();
+      confirm!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(onPruneStaleData).toHaveBeenCalledTimes(1);
+    expect(onPruneStaleData).toHaveBeenCalledWith('save-slot-1', { staleTickerEntries: 2, staleWatchers: 1 });
+
+    await act(async () => { opener.click(); });
+    const cancelAgain = container.querySelector('[role="alertdialog"] button') as HTMLButtonElement;
+    await act(async () => {
+      cancelAgain.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    });
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    expect(onPruneStaleData).toHaveBeenCalledTimes(1);
   });
 });

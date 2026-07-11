@@ -9,6 +9,7 @@ import {
   markActiveSaveSessionTransitionOwnershipCommitted,
   createActiveSavePersistenceBackup,
   getActiveSavePersistenceStatus,
+  isActiveSavePersistenceReceiptDurable,
   persistActiveSaveSnapshot,
   prepareActiveSaveSessionTransition,
   prepareActiveSavePersistenceForLoad,
@@ -21,6 +22,7 @@ import {
   retryActiveSavePersistence,
   subscribeToActiveSavePersistenceStatus,
   trackActiveSavePersistenceOperation,
+  type ActiveSavePersistenceReceipt,
 } from './activeSavePersistence';
 import {
   deleteSaveById,
@@ -386,6 +388,7 @@ describe('persistActiveSaveSnapshot', () => {
     const snapshot = { schemaVersion: 34, season: 5, day: 120, phase: 'regular' };
     const exportSnapshot = vi.fn().mockResolvedValue(snapshot);
     const storageError = new Error('QuotaExceededError');
+    let acceptedReceipt: ActiveSavePersistenceReceipt | null = null;
     reconcileActiveSavePersistenceMetadata(savedRecord(
       'save-slot-5',
       '2026-04-02T19:40:00.000Z',
@@ -401,7 +404,11 @@ describe('persistActiveSaveSnapshot', () => {
       teamName: 'Tycoons',
       season: 5,
       exportSnapshot,
+      onSnapshotAccepted: (receipt) => { acceptedReceipt = receipt; },
     })).rejects.toThrow('QuotaExceededError');
+
+    expect(acceptedReceipt).toMatchObject({ saveId: 'save-slot-5', generation: 1 });
+    expect(isActiveSavePersistenceReceiptDurable(acceptedReceipt!)).toBe(false);
 
     expect(getActiveSavePersistenceStatus('save-slot-5')).toMatchObject({
       state: 'failed',
@@ -431,6 +438,13 @@ describe('persistActiveSaveSnapshot', () => {
       pendingWrites: 0,
       lastSavedAt: '2026-04-02T19:45:00.000Z',
     });
+    expect(isActiveSavePersistenceReceiptDurable(acceptedReceipt!)).toBe(true);
+
+    activateActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-5',
+      '2026-04-02T19:45:00.000Z',
+    ));
+    expect(isActiveSavePersistenceReceiptDurable(acceptedReceipt!)).toBe(false);
   });
 
   it('runs exactly two automatic persistence retries before exposing fallback', async () => {

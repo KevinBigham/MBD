@@ -7215,7 +7215,9 @@ describe('sim worker narrative APIs', () => {
     state.season = 13;
     state.performanceDiagnostics = {
       totalSeasons: 13,
-      snapshotSizeBytes: 0,
+      // A persisted legacy size is deliberately not evidence of the current
+      // snapshot. The diagnostics query must recompute without writing it.
+      snapshotSizeBytes: 9_999_999,
     };
     state.seasonArchive = Array.from({ length: 12 }, (_, index) => ({
       season: index + 1,
@@ -7250,14 +7252,24 @@ describe('sim worker narrative APIs', () => {
     state.archivedSeasons = [];
     state.tickerFeed = [
       {
-        id: 'ticker-old',
+        id: 'ticker-old-same-season',
         timestamp: 'S13D1',
         category: 'rumor',
-        text: 'Old ticker',
+        text: 'Old same-season ticker',
         priority: 4,
         relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
-        expiresDay: 3,
+        expiresDay: 13003,
+      },
+      {
+        id: 'ticker-old-prior-season',
+        timestamp: 'S12D50',
+        category: 'rumor',
+        text: 'Old prior-season ticker',
+        priority: 4,
+        relatedTeamIds: ['nym'],
+        relatedPlayerIds: [],
+        expiresDay: 12050,
       },
       {
         id: 'ticker-live',
@@ -7267,7 +7279,7 @@ describe('sim worker narrative APIs', () => {
         priority: 2,
         relatedTeamIds: ['nym'],
         relatedPlayerIds: [],
-        expiresDay: 30,
+        expiresDay: 13030,
       },
     ];
     state.consequenceWatchers = [
@@ -7302,8 +7314,21 @@ describe('sim worker narrative APIs', () => {
         resolved: false,
       },
     ];
+    const narrativePlayer = state.players.find((player) => player.teamId === 'nym')!;
+    state.playerStoryArcs = [{
+      playerId: narrativePlayer.id,
+      arcType: 'protected_narrative_memory',
+      startSeason: 12,
+      startDay: 1,
+      phase: 'rising',
+      milestones: ['This unrelated arc must survive stale presentation pruning.'],
+      resolvedSeason: null,
+    }];
     state.day = 10;
 
+    const snapshotBeforeDiagnostics = workerApi.exportSnapshot();
+    const rngBeforeDiagnostics = state.rng.getState();
+    const persistedSizeBeforeDiagnostics = state.performanceDiagnostics.snapshotSizeBytes;
     const diagnosticsBefore = workerApi.getPerformanceDiagnostics();
     expect(diagnosticsBefore).not.toBeNull();
     if (!diagnosticsBefore) {
@@ -7311,8 +7336,16 @@ describe('sim worker narrative APIs', () => {
     }
     expect(diagnosticsBefore.runtime.lastLoadMs).not.toBeNull();
     expect(diagnosticsBefore.runtime.lastSimDayMs).not.toBeNull();
-    expect(diagnosticsBefore.queues.staleTickerEntries).toBe(1);
+    expect(diagnosticsBefore.totals.snapshotSizeBytes).toBe(
+      new TextEncoder().encode(JSON.stringify(snapshotBeforeDiagnostics)).byteLength,
+    );
+    expect(state.performanceDiagnostics.snapshotSizeBytes).toBe(persistedSizeBeforeDiagnostics);
+    expect(workerApi.exportSnapshot()).toEqual(snapshotBeforeDiagnostics);
+    expect(state.rng.getState()).toEqual(rngBeforeDiagnostics);
+    expect(diagnosticsBefore.queues.staleTickerEntries).toBe(2);
     expect(diagnosticsBefore.queues.resolvedWatchers).toBe(1);
+    expect(diagnosticsBefore.queues.staleWatchers).toBe(2);
+    expect(diagnosticsBefore.queues.activeWatchers).toBe(1);
 
     const archived = await workerApi.archiveOldSeasons();
     expect(archived.success).toBe(true);
@@ -7320,12 +7353,37 @@ describe('sim worker narrative APIs', () => {
     expect(archived.diagnostics.totals.liveArchiveSeasons).toBe(10);
     expect(archived.diagnostics.totals.archivedSeasons).toBe(2);
 
+    state.performanceDiagnostics.totalSeasons = 1;
+    const snapshotBeforeNoOpArchive = workerApi.exportSnapshot();
+    const rngBeforeNoOpArchive = state.rng.getState();
+    const noOpArchive = await workerApi.archiveOldSeasons();
+    expect(noOpArchive.archivedCount).toBe(0);
+    expect(workerApi.exportSnapshot()).toEqual(snapshotBeforeNoOpArchive);
+    expect(state.rng.getState()).toEqual(rngBeforeNoOpArchive);
+
     const pruned = await workerApi.pruneStaleData();
     expect(pruned.success).toBe(true);
-    expect(pruned.prunedCount).toBe(3);
+    expect(pruned.prunedCount).toBe(4);
     expect(pruned.diagnostics.queues.tickerEntries).toBe(1);
     expect(pruned.diagnostics.queues.activeWatchers).toBe(1);
+    expect(pruned.diagnostics.queues.staleTickerEntries).toBe(0);
+    expect(pruned.diagnostics.queues.staleWatchers).toBe(0);
     expect(pruned.diagnostics.runtime.lastSaveMs).toBe(diagnosticsBefore.runtime.lastSaveMs);
+    expect(state.playerStoryArcs).toEqual([{
+      playerId: narrativePlayer.id,
+      arcType: 'protected_narrative_memory',
+      startSeason: 12,
+      startDay: 1,
+      phase: 'rising',
+      milestones: ['This unrelated arc must survive stale presentation pruning.'],
+      resolvedSeason: null,
+    }]);
+    const rngAfterPrune = state.rng.getState();
+    const snapshotAfterPrune = workerApi.exportSnapshot();
+    const noOp = await workerApi.pruneStaleData();
+    expect(noOp.prunedCount).toBe(0);
+    expect(workerApi.exportSnapshot()).toEqual(snapshotAfterPrune);
+    expect(state.rng.getState()).toEqual(rngAfterPrune);
     expect(mockedLoadGameById).not.toHaveBeenCalled();
     expect(mockedSaveGameById).not.toHaveBeenCalled();
   });

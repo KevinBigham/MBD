@@ -430,6 +430,9 @@ export function AppLayout() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (document.documentElement.dataset.mbdModalOpen === 'true') {
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setCommandPaletteOpen((prev) => !prev);

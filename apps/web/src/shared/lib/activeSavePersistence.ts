@@ -68,6 +68,19 @@ interface PersistActiveSaveSnapshotOptions {
   season: number;
   saveName?: string;
   exportSnapshot: () => Promise<object>;
+  onSnapshotAccepted?: (receipt: ActiveSavePersistenceReceipt) => void;
+}
+
+declare const activeSavePersistenceReceiptBrand: unique symbol;
+
+/**
+ * Opaque runtime identity for one accepted snapshot capture. Object identity is
+ * retained across persistence-only Retry and is never serialized into a save.
+ */
+export interface ActiveSavePersistenceReceipt {
+  readonly generation: number;
+  readonly saveId: string;
+  readonly [activeSavePersistenceReceiptBrand]: true;
 }
 
 interface PersistActiveSaveSnapshotResult {
@@ -81,6 +94,7 @@ interface PersistedSnapshotJob {
   activeSaveSlot: number | null | undefined;
   saveName: string;
   snapshot: object;
+  receipt: ActiveSavePersistenceReceipt;
   writeReason: 'capture' | 'automatic' | 'manual';
 }
 
@@ -100,6 +114,7 @@ interface SaveCoordinatorState {
   status: ActiveSavePersistenceStatus;
   desiredGeneration: number;
   durableGeneration: number;
+  durableReceipt: ActiveSavePersistenceReceipt | null;
   latestJob: PersistedSnapshotJob | null;
   failedJob: PersistedSnapshotJob | null;
   running: boolean;
@@ -247,6 +262,7 @@ function ensureState(saveId: string): SaveCoordinatorState {
     },
     desiredGeneration: 0,
     durableGeneration: 0,
+    durableReceipt: null,
     latestJob: null,
     failedJob: null,
     running: false,
@@ -456,6 +472,7 @@ function cancelPersistenceForLostSessionOwnership(
   state.desiredGeneration = state.durableGeneration;
   state.latestJob = null;
   state.failedJob = null;
+  state.durableReceipt = null;
   clearRecoveryEpisode(state);
   state.captureBlocked = true;
   state.captureEpoch += 1;
@@ -554,6 +571,7 @@ function tombstoneSavePersistenceBarrier(barrier: SavePersistenceBarrier) {
   state.durableGeneration = 0;
   state.latestJob = null;
   state.failedJob = null;
+  state.durableReceipt = null;
   clearRecoveryEpisode(state);
   state.status = {
     ...IDLE_STATUS,
@@ -618,6 +636,7 @@ function flushSave(saveId: string) {
       try {
         const savedRecord = await writeSnapshotJob(job);
         state.durableGeneration = Math.max(state.durableGeneration, job.generation);
+        state.durableReceipt = job.receipt;
         state.failedJob = null;
         const durableLatest = state.durableGeneration >= state.desiredGeneration && !state.latestJob;
         const episode = state.recoveryEpisode;
@@ -681,6 +700,13 @@ export function getActiveSavePersistenceStatus(saveId?: string | null): ActiveSa
     return IDLE_STATUS;
   }
   return states.get(resolvedSaveId)?.status ?? IDLE_STATUS;
+}
+
+/** True only after the exact accepted snapshot represented by this receipt wrote durably. */
+export function isActiveSavePersistenceReceiptDurable(
+  receipt: ActiveSavePersistenceReceipt,
+): boolean {
+  return states.get(receipt.saveId)?.durableReceipt === receipt;
 }
 
 export function subscribeToActiveSavePersistenceStatus(listener: () => void): () => void {
@@ -897,6 +923,7 @@ export function activateActiveSavePersistenceMetadata(
   state.durableGeneration = 0;
   state.latestJob = null;
   state.failedJob = null;
+  state.durableReceipt = null;
   clearRecoveryEpisode(state);
   state.captureBlocked = false;
   state.captureEpoch += 1;
@@ -1162,6 +1189,7 @@ export async function retireActiveSavePersistenceForDelete(
     state.durableGeneration = 0;
     state.latestJob = null;
     state.failedJob = null;
+    state.durableReceipt = null;
     clearRecoveryEpisode(state);
     state.status = {
       ...IDLE_STATUS,
@@ -1213,6 +1241,7 @@ export async function persistActiveSaveSnapshot({
   season,
   saveName: explicitSaveName,
   exportSnapshot,
+  onSnapshotAccepted,
 }: PersistActiveSaveSnapshotOptions): Promise<PersistActiveSaveSnapshotResult> {
   if (activeSaveId == null) {
     return { saved: false, saveName: null };
@@ -1269,6 +1298,10 @@ export async function persistActiveSaveSnapshot({
   assertActiveSaveSessionOwned(activeSaveId);
 
   const generation = state.desiredGeneration + 1;
+  const receipt = Object.freeze({
+    generation,
+    saveId: activeSaveId,
+  }) as ActiveSavePersistenceReceipt;
   const saveName = explicitSaveName?.trim()
     || saveNameForSnapshot(snapshot, season, gmName, teamName);
   const job: PersistedSnapshotJob = {
@@ -1277,12 +1310,18 @@ export async function persistActiveSaveSnapshot({
     activeSaveSlot,
     saveName,
     snapshot,
+    receipt,
     writeReason: 'capture',
   };
 
   state.desiredGeneration = generation;
   state.latestJob = job;
   state.failedJob = null;
+  try {
+    onSnapshotAccepted?.(receipt);
+  } catch {
+    // Receipt observation is advisory and must never strand an accepted write.
+  }
   latestSaveId = activeSaveId;
   updateStatus(activeSaveId, state, {
     state: 'saving',

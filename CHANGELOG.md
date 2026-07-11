@@ -34,6 +34,10 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 7, Goal 19 `TRUST-STORAGE-PRESSURE-1`: Settings and Save Hub now distinguish current logical snapshot size, estimated serialized local MBD records, and approximate origin usage/quota; preserve exact primary/shadow/root-tree evidence; disable lossy archive compaction; and offer only exact-active narrow stale-data pruning with confirmation, shared operation ownership, durable-snapshot receipts, quota truth, retry without mutation replay, and hard-reload/successor proof.
+- Final item-7 evidence: focused 49 suites / 372 tests, full repository gates, fresh 3,022-module / 167-entry PWA, determinism 3/3, and serial Chromium storage-pressure 1/1 (42.5s), multitab 1/1 (11.9s), and reload-smoke 1/1 (4.5m), all with one worker, zero retries, and no flaky classification. No schema or dependency change; save schema remains v34 and Dexie v5.
+- Closeout route: Terra `019f529d-211d-7590-b834-3014f5a3a102` high→xhigh implementation, manual relay-pattern fallback writer, replacement Sol `019f534c-8009-7ab1-8849-e9c59b7c49cc` xhigh `MERGE_READY` with zero P0–P2, and Luna `gpt-5.6-luna` medium closeout. No push, deploy, tag, release, or item-8 work.
+
 - Verified roadmap item 6, Goal 18 `TRUST-EXPORT-SCHEMA-MATRIX-1`: every live-supported GameSnapshot version v2–v34 now has a deterministic worker import/export plus canonical JSON export/re-import proof, with explicit historical builders, normalization expectations, rejection boundaries, and the Season-10 v33 no-fabricated-history assertion.
 - Final closeout route: Terra `019f51f7-5277-7570-add0-fd4a2acb1778` high→xhigh, Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` xhigh `MERGE_READY` with zero P0–P2, and Luna medium checkout closeout. Focused matrix/recovery 27/27, focused worker/save/recovery/toast 151/151, contracts migration 24/24, full gates, and fresh zero-retry reload-smoke 2/2 passed. The landed commit is available in repository history; no push, deploy, tag, release, or item 7 work was started.
 
