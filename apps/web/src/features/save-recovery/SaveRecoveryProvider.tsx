@@ -7,6 +7,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
+import { retireSaveTreePersistenceForDelete } from '@/shared/lib/activeSavePersistence';
 import { deleteSaveById, type LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
 import { logger } from '@/shared/lib/logger';
 import { downloadRawRecoveryJson } from './download';
@@ -22,7 +23,7 @@ import {
 type RetryResult = boolean | void | Promise<boolean | void>;
 
 interface SaveRecoveryActions {
-  onDelete?: () => Promise<void> | void;
+  onDelete?: () => Promise<boolean | void> | boolean | void;
   onRetry?: () => RetryResult;
 }
 
@@ -92,9 +93,18 @@ export function SaveRecoveryProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'delete_start' });
     try {
       if (actionsRef.current.onDelete) {
-        await actionsRef.current.onDelete();
+        const deleted = await actionsRef.current.onDelete();
+        if (deleted === false) {
+          dispatch({ type: 'show_failure', request });
+          return;
+        }
       } else {
-        await deleteSaveById(request.failure.detail.slotId);
+        await retireSaveTreePersistenceForDelete(
+          request.failure.detail.slotId,
+          async () => {
+            await deleteSaveById(request.failure.detail.slotId);
+          },
+        );
       }
       actionsRef.current = {};
       dispatch({ type: 'delete_finish' });

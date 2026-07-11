@@ -1,3 +1,23 @@
+import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
+
+// Reinstall the node-only IndexedDB test backend before each test module so
+// Dexie never binds to a dependency that an earlier node test removed. Keep
+// jsdom's browser globals unchanged because UI tests intentionally mock saves.
+if (typeof window === 'undefined') {
+  Object.defineProperties(globalThis, {
+    indexedDB: {
+      configurable: true,
+      writable: true,
+      value: indexedDB,
+    },
+    IDBKeyRange: {
+      configurable: true,
+      writable: true,
+      value: IDBKeyRange,
+    },
+  });
+}
+
 function createMediaQueryList(query: string): MediaQueryList {
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
 

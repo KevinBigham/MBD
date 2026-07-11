@@ -99,6 +99,10 @@ describe('useSettingsDiagnosticsData', () => {
       }),
       getPerformanceDiagnostics: vi.fn().mockResolvedValue(makeDiagnostics()),
       onStatusChange: vi.fn(),
+      persistActiveSave: vi.fn().mockResolvedValue({
+        saved: true,
+        saveName: 'Healthy Save',
+      }),
       pruneStaleData: vi.fn().mockResolvedValue({
         prunedCount: 3,
         diagnostics: makeDiagnostics({
@@ -183,7 +187,11 @@ describe('useSettingsDiagnosticsData', () => {
       await latestResult?.handleArchiveOldSeasons();
     });
 
-    expect(options.archiveOldSeasons).toHaveBeenCalledWith('save-slot-1');
+    expect(options.archiveOldSeasons).toHaveBeenCalledWith();
+    expect(options.persistActiveSave).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.archiveOldSeasons!).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(options.persistActiveSave).mock.invocationCallOrder[0]!,
+    );
     expect(options.onStatusChange).toHaveBeenCalledWith('');
     expect(options.onStatusChange).toHaveBeenCalledWith('Archived 2 older seasons into the long-term archive.');
     expect(latestResult?.diagnostics?.totals.archivedSeasons).toBe(4);
@@ -192,8 +200,63 @@ describe('useSettingsDiagnosticsData', () => {
       await latestResult?.handlePruneStaleData();
     });
 
-    expect(options.pruneStaleData).toHaveBeenCalledWith('save-slot-1');
+    expect(options.pruneStaleData).toHaveBeenCalledWith();
+    expect(options.persistActiveSave).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(options.pruneStaleData!).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(options.persistActiveSave).mock.invocationCallOrder[1]!,
+    );
     expect(options.onStatusChange).toHaveBeenCalledWith('Pruned 3 stale entries from the active save.');
     expect(latestResult?.diagnostics?.queues.staleTickerEntries).toBe(0);
+  });
+
+  it('reports a completed mutation separately when coordinator persistence fails', async () => {
+    const persistActiveSave = vi.fn().mockResolvedValue({
+      saved: false,
+      saveName: 'Healthy Save',
+    });
+    const options = baseOptions({ persistActiveSave });
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleArchiveOldSeasons();
+    });
+
+    expect(options.archiveOldSeasons).toHaveBeenCalledTimes(1);
+    expect(persistActiveSave).toHaveBeenCalledTimes(1);
+    expect(latestResult?.diagnostics?.totals.archivedSeasons).toBe(4);
+    expect(options.onStatusChange).toHaveBeenLastCalledWith(
+      'Archived 2 older seasons, but the updated save was not durable. Use Retry in the save status.',
+    );
+  });
+
+  it('does not enqueue persistence when maintenance finds nothing to mutate', async () => {
+    const persistActiveSave = vi.fn().mockResolvedValue({
+      saved: true,
+      saveName: 'Healthy Save',
+    });
+    const options = baseOptions({
+      archiveOldSeasons: vi.fn().mockResolvedValue({
+        archivedCount: 0,
+        diagnostics: makeDiagnostics(),
+      }),
+      persistActiveSave,
+      pruneStaleData: vi.fn().mockResolvedValue({
+        prunedCount: 0,
+        diagnostics: makeDiagnostics(),
+      }),
+    });
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleArchiveOldSeasons();
+    });
+    expect(persistActiveSave).not.toHaveBeenCalled();
+    expect(options.onStatusChange).toHaveBeenLastCalledWith('No older seasons needed archiving.');
+
+    await act(async () => {
+      await latestResult?.handlePruneStaleData();
+    });
+    expect(persistActiveSave).not.toHaveBeenCalled();
+    expect(options.onStatusChange).toHaveBeenLastCalledWith('No stale entries needed pruning.');
   });
 });

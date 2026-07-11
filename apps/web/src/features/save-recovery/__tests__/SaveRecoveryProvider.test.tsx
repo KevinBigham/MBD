@@ -19,7 +19,11 @@ const failure: Extract<LoadSaveSafelyResult, { ok: false }> = {
   },
 };
 
-function TriggerRecovery() {
+function TriggerRecovery({
+  onDelete,
+}: {
+  onDelete?: () => Promise<boolean | void> | boolean | void;
+}) {
   const recovery = useSaveRecovery();
   const firedRef = useRef(false);
 
@@ -28,8 +32,8 @@ function TriggerRecovery() {
       return;
     }
     firedRef.current = true;
-    recovery.showFailure({ failure });
-  }, [recovery]);
+    recovery.showFailure({ failure, onDelete });
+  }, [onDelete, recovery]);
 
   return null;
 }
@@ -95,5 +99,25 @@ describe('SaveRecoveryProvider', () => {
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
     expect(anchorClick).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:save-recovery');
+  });
+
+  it('keeps recovery open when a guarded delete reports that nothing was deleted', async () => {
+    const onDelete = vi.fn().mockResolvedValue(false);
+    await act(async () => {
+      root.render(
+        <SaveRecoveryProvider>
+          <TriggerRecovery onDelete={onDelete} />
+        </SaveRecoveryProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      buttonByText(container, 'Delete this slot').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(buttonByText(container, 'Delete this slot')).toBeTruthy();
   });
 });

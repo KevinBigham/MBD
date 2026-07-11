@@ -5,6 +5,13 @@ import type { ShowSaveRecoveryOptions } from '@/features/save-recovery';
 import type { GameState } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
 import {
+  activateActiveSavePersistenceMetadata,
+  prepareActiveSavePersistenceForLoad,
+  releaseActiveSavePersistenceLoad,
+  replaceInactiveSavePersistenceRecord,
+  retireSaveTreePersistenceForDelete,
+} from '@/shared/lib/activeSavePersistence';
+import {
   deleteSave,
   inspectSaveById,
   loadSaveSafely,
@@ -52,6 +59,8 @@ interface NewGameResult {
 }
 
 export interface UseSetupActionHandlersOptions {
+  activeSaveId: string | null;
+  activeSaveSlot: number | null;
   dayOneExperience: SetupDayOneExperience;
   difficulty: SetupDifficulty;
   exportSnapshot: () => Promise<GameSnapshot | object>;
@@ -79,10 +88,12 @@ export interface UseSetupActionHandlersResult {
   busySlot: number | null;
   handleBeginDynasty: () => Promise<void>;
   handleContinueSave: (save: SaveData) => Promise<boolean>;
-  handleDelete: (slot: number) => Promise<void>;
+  handleDelete: (slot: number) => Promise<boolean>;
 }
 
 export function useSetupActionHandlers({
+  activeSaveId,
+  activeSaveSlot,
   dayOneExperience,
   difficulty,
   exportSnapshot,
@@ -105,13 +116,15 @@ export function useSetupActionHandlers({
 }: UseSetupActionHandlersOptions): UseSetupActionHandlersResult {
   const [busySlot, setBusySlot] = useState<number | null>(null);
 
-  const continueFromSave = useCallback(async (save: SaveData, snapshot: object | null) => {
+  const continueFromSave = useCallback(async (save: SaveData, snapshot: object | null): Promise<boolean> => {
     const imported = await importSnapshot(snapshot);
     if (!imported.success) {
+      releaseActiveSavePersistenceLoad(save.id);
       const msg = imported.error ?? 'Incompatible save.';
       setStatus(typeof msg === 'string' ? msg : 'This save is from an older version and is no longer compatible. Please start a new dynasty.');
-      return;
+      return false;
     }
+    activateActiveSavePersistenceMetadata(save);
     initializeGame({
       season: imported.season,
       day: imported.day,
@@ -125,29 +138,40 @@ export function useSetupActionHandlers({
       activeSaveSlot: save.slotNumber,
     });
     navigate('/dashboard');
+    return true;
   }, [importSnapshot, initializeGame, navigate, setStatus]);
 
-  const continueFromInspection = useCallback(async (result: Extract<SaveInspectionResult, { status: 'ok' }>) => {
-    await continueFromSave(result.save, result.save.snapshot);
+  const continueFromInspection = useCallback(async (result: Extract<SaveInspectionResult, { status: 'ok' }>): Promise<boolean> => {
+    return continueFromSave(result.save, result.save.snapshot);
   }, [continueFromSave]);
 
-  const continueFromSafeLoad = useCallback(async (result: Extract<LoadSaveSafelyResult, { ok: true }>) => {
-    await continueFromSave(result.save, result.snapshot);
+  const continueFromSafeLoad = useCallback(async (result: Extract<LoadSaveSafelyResult, { ok: true }>): Promise<boolean> => {
+    return continueFromSave(result.save, result.snapshot);
   }, [continueFromSave]);
 
   const handleDelete = useCallback(async (slot: number) => {
+    const targetSaveId = `save-slot-${slot}`;
+    const deletingActiveRoot = activeSaveId === targetSaveId;
+    const activeBranchParentIsUnknown = activeSaveId != null && activeSaveSlot == null;
+    if (deletingActiveRoot || activeBranchParentIsUnknown) {
+      setStatus(`Cannot delete slot ${slot} while its dynasty or a what-if branch is active.`);
+      return false;
+    }
+
     setBusySlot(slot);
     setStatus('');
     try {
-      await deleteSave(slot);
+      await retireSaveTreePersistenceForDelete(targetSaveId, () => deleteSave(slot));
       await refreshSaves();
+      return true;
     } catch (error) {
       logger.error('Failed to delete save:', error);
       setStatus(`Failed to delete slot ${slot}.`);
+      return false;
     } finally {
       setBusySlot(null);
     }
-  }, [refreshSaves, setStatus]);
+  }, [activeSaveId, activeSaveSlot, refreshSaves, setStatus]);
 
   const handleContinueSave = useCallback(async (save: SaveData): Promise<boolean> => {
     if (!workerIsReady) {
@@ -156,9 +180,11 @@ export function useSetupActionHandlers({
     setBusySlot(save.slotNumber);
     setStatus('');
     try {
+      await prepareActiveSavePersistenceForLoad(save.id);
       if (save.isRootSave && save.slotNumber != null) {
         const result = await loadSaveSafely(save.slotNumber);
         if (!result.ok) {
+          releaseActiveSavePersistenceLoad(save.id);
           recovery.showFailure({
             failure: result,
             onDelete: () => handleDelete(save.slotNumber!),
@@ -167,21 +193,21 @@ export function useSetupActionHandlers({
           return false;
         }
 
-        await continueFromSafeLoad(result);
-        return true;
+        return await continueFromSafeLoad(result);
       }
 
       const result = await inspectSaveById(save.id);
       if (result.status !== 'ok') {
+        releaseActiveSavePersistenceLoad(save.id);
         if (save.slotNumber == null) {
           setStatus(`Unable to load branch "${save.name}".`);
         }
         return false;
       }
 
-      await continueFromInspection(result);
-      return true;
+      return await continueFromInspection(result);
     } catch (error) {
+      releaseActiveSavePersistenceLoad(save.id);
       logger.error('Failed to continue save:', error);
       setStatus(save.slotNumber != null ? `Failed to load slot ${save.slotNumber}.` : `Failed to load branch "${save.name}".`);
       return false;
@@ -203,6 +229,7 @@ export function useSetupActionHandlers({
     }
 
     const finalGmName = gmName.trim() || generateDefaultGMName(seed);
+    const targetSaveId = `save-slot-${selectedSlot}`;
     setBusySlot(selectedSlot);
     setStatus('');
     try {
@@ -221,8 +248,17 @@ export function useSetupActionHandlers({
         dayOneExperience: wizardMode === 'dynasty' ? dayOneExperience : undefined,
       });
       const snapshot = await exportSnapshot();
-      await saveGame(selectedSlot, `${finalGmName} • ${result.teamName}`, snapshot);
-      registerGuidedStartSave(`save-slot-${selectedSlot}`);
+      const savedRecord = await replaceInactiveSavePersistenceRecord(
+        targetSaveId,
+        () => saveGame(
+          selectedSlot,
+          `${finalGmName} • ${result.teamName}`,
+          snapshot,
+          { replaceExistingRootBranchMetadata: true },
+        ),
+      );
+      activateActiveSavePersistenceMetadata(savedRecord);
+      registerGuidedStartSave(targetSaveId);
       initializeGame({
         season: result.season,
         day: result.day,
@@ -232,7 +268,7 @@ export function useSetupActionHandlers({
         teamName: result.teamName,
         gmName: result.gmName,
         difficulty: result.difficulty,
-        activeSaveId: `save-slot-${selectedSlot}`,
+        activeSaveId: targetSaveId,
         activeSaveSlot: selectedSlot,
       });
       navigate(wizardMode === 'scenario' ? '/dashboard' : '/onboarding');

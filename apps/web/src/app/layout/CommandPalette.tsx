@@ -16,9 +16,7 @@ import {
   PlusCircle,
   Keyboard,
 } from 'lucide-react';
-import { useWorker } from '@/shared/hooks/useWorker';
-import { useGameStore } from '@/shared/hooks/useGameStore';
-import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import {
   NAVIGATION_GROUPS,
   getNavigationSearchValue,
@@ -51,8 +49,7 @@ function getActionSearchValue(label: string, aliases: readonly string[] = []): s
 export function CommandPalette({ open, onOpenChange, onOpenShortcuts }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const worker = useWorker();
-  const { season, day, teamName, gmName, activeSaveId, activeSaveSlot } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
 
   useEffect(() => {
     if (!open) {
@@ -81,20 +78,7 @@ export function CommandPalette({ open, onOpenChange, onOpenShortcuts }: CommandP
       label: 'Quick Save',
       icon: <Save className="h-4 w-4" />,
       action: async () => {
-        if (!worker.isReady || activeSaveId == null) return;
-        const snapshot = await worker.exportSnapshot();
-        const saveName = `${gmName} • ${teamName} • Season ${season}`;
-        if (activeSaveSlot != null) {
-          await saveGame(activeSaveSlot, saveName, snapshot);
-          return;
-        }
-        const existing = await loadGameById(activeSaveId);
-        await saveGameById(activeSaveId, saveName, snapshot, {
-          slotNumber: existing?.slotNumber ?? null,
-          parentSaveId: existing?.parentSaveId ?? null,
-          isRootSave: existing?.isRootSave ?? false,
-          branchMeta: existing?.branchMeta ?? null,
-        });
+        await autosaveActiveGame();
       },
       value: getActionSearchValue('Quick Save', ['save game', 'write save']),
     },

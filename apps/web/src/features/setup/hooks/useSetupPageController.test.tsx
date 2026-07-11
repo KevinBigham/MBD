@@ -76,6 +76,8 @@ describe('useSetupPageController', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
+      activeSaveId: null,
+      activeSaveSlot: null,
       initializeGame: vi.fn(),
       isInitialized: false,
       listSaveTree: vi.fn().mockResolvedValue([]),

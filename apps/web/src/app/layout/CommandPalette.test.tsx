@@ -3,19 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { CommandPalette } from './CommandPalette';
-import { useWorker } from '@/shared/hooks/useWorker';
-import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 
-vi.mock('@/shared/hooks/useWorker', () => ({
-  useWorker: vi.fn(),
+vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
+  useActiveSaveAutosave: vi.fn(),
 }));
 
-vi.mock('@/shared/hooks/useGameStore', () => ({
-  useGameStore: vi.fn(),
-}));
-
-const mockedUseWorker = vi.mocked(useWorker);
-const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedUseActiveSaveAutosave = vi.mocked(useActiveSaveAutosave);
 const navigateSpy = vi.hoisted(() => vi.fn());
 
 vi.mock('react-router-dom', async () => {
@@ -49,6 +43,7 @@ class ScrollIntoViewMock {
 describe('CommandPalette', () => {
   let container: HTMLDivElement;
   let root: Root;
+  let autosaveActiveGame: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     container = document.createElement('div');
@@ -56,36 +51,8 @@ describe('CommandPalette', () => {
     root = createRoot(container);
     globalThis.ResizeObserver = ResizeObserverMock as typeof ResizeObserver;
     ScrollIntoViewMock.install();
-
-    mockedUseGameStore.mockReturnValue({
-      season: 4,
-      day: 88,
-      phase: 'regular',
-      isInitialized: true,
-      userTeamId: 'nym',
-      teamName: 'Tycoons',
-      gmName: 'Alex Rivera',
-      activeSaveId: null,
-      activeSaveSlot: null,
-      playerCount: 780,
-      gamesPlayed: 88,
-      isSimulating: false,
-      setSeason: vi.fn(),
-      setDay: vi.fn(),
-      setPhase: vi.fn(),
-      setSimulating: vi.fn(),
-      setInitialized: vi.fn(),
-      setUserTeamId: vi.fn(),
-      setActiveSave: vi.fn(),
-      setActiveSaveSlot: vi.fn(),
-      updateFromSim: vi.fn(),
-      initializeGame: vi.fn(),
-    });
-
-    mockedUseWorker.mockReturnValue({
-      isReady: true,
-      exportSnapshot: vi.fn(),
-    } as unknown as ReturnType<typeof useWorker>);
+    autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true, saveName: 'Test Dynasty' });
+    mockedUseActiveSaveAutosave.mockReturnValue(autosaveActiveGame);
     navigateSpy.mockClear();
   });
 
@@ -181,6 +148,30 @@ describe('CommandPalette', () => {
       await Promise.resolve();
     });
     expect(navigateSpy).toHaveBeenLastCalledWith('/trade?mode=market');
+  });
+
+  it('routes Quick Save through the active-save persistence coordinator', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <CommandPalette open onOpenChange={vi.fn()} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const quickSave = Array.from(container.querySelectorAll('[cmdk-item]')).find((item) =>
+      item.textContent?.includes('Quick Save'),
+    ) as HTMLElement | undefined;
+
+    expect(quickSave).toBeTruthy();
+
+    await act(async () => {
+      quickSave?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(autosaveActiveGame).toHaveBeenCalledTimes(1);
   });
 
   it('renders as a mobile-safe dialog with a 16px command input', async () => {

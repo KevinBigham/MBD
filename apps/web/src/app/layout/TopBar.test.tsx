@@ -63,6 +63,7 @@ describe('TopBar', () => {
   let container: HTMLDivElement;
   let root: Root;
   let unsubscribe: ReturnType<typeof vi.fn>;
+  let gameStoreValue: Record<string, unknown>;
 
   beforeEach(() => {
     container = document.createElement('div');
@@ -70,7 +71,7 @@ describe('TopBar', () => {
     root = createRoot(container);
     unsubscribe = vi.fn();
 
-    mockedUseGameStore.mockReturnValue({
+    gameStoreValue = {
       season: 2,
       day: 81,
       phase: 'regular',
@@ -90,13 +91,15 @@ describe('TopBar', () => {
       setUserTeamId: vi.fn(),
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
-    });
+    };
+    mockedUseGameStore.mockReturnValue(gameStoreValue);
     mockedUseActiveSavePersistenceStatus.mockReturnValue({
       state: 'idle',
       saveId: 'save-slot-2',
       saveName: null,
       desiredGeneration: 0,
       durableGeneration: 0,
+      pendingWrites: 0,
       canRetry: false,
       lastSavedAt: null,
       errorMessage: null,
@@ -161,8 +164,9 @@ describe('TopBar', () => {
       saveName: 'Alex Rivera • Tycoons • Season 2',
       desiredGeneration: 2,
       durableGeneration: 1,
+      pendingWrites: 1,
       canRetry: false,
-      lastSavedAt: null,
+      lastSavedAt: '2026-04-02T19:42:03.000Z',
       errorMessage: null,
       failureKind: null,
     });
@@ -177,8 +181,14 @@ describe('TopBar', () => {
     });
 
     const status = container.querySelector('[data-testid="save-persistence-status"]');
+    const summary = container.querySelector('[data-testid="save-persistence-summary"]');
     expect(status?.textContent).toContain('Saving...');
     expect(status?.getAttribute('aria-live')).toBe('polite');
+    expect(summary?.textContent).toMatch(/^Last saved .+ · 1 pending write$/);
+    expect(summary?.getAttribute('data-last-saved-at')).toBe('2026-04-02T19:42:03.000Z');
+    expect(summary?.getAttribute('data-pending-writes')).toBe('1');
+    expect(summary?.className).toContain('order-3');
+    expect(summary?.className).toContain('lg:order-2');
   });
 
   it('surfaces failed save status with retry for the active save', async () => {
@@ -188,8 +198,9 @@ describe('TopBar', () => {
       saveName: 'Alex Rivera • Tycoons • Season 2',
       desiredGeneration: 2,
       durableGeneration: 1,
+      pendingWrites: 1,
       canRetry: true,
-      lastSavedAt: null,
+      lastSavedAt: '2026-04-02T19:42:03.000Z',
       errorMessage: 'QuotaExceededError',
       failureKind: 'storage',
     });
@@ -208,6 +219,8 @@ describe('TopBar', () => {
     expect(status?.textContent).toContain('Retry');
     expect(status?.getAttribute('aria-live')).toBe('assertive');
     expect(status?.className).toContain('z-[80]');
+    expect(container.querySelector('[data-testid="save-persistence-summary"]')?.textContent)
+      .toMatch(/^Last saved .+ · 1 pending write$/);
 
     await act(async () => {
       container.querySelector('button[aria-label="Retry failed save"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -215,6 +228,68 @@ describe('TopBar', () => {
     });
 
     expect(mockedRetryActiveSavePersistence).toHaveBeenCalledWith('save-slot-2');
+  });
+
+  it('keeps durable recency visible while the transient coordinator state is idle', async () => {
+    mockedUseActiveSavePersistenceStatus.mockReturnValue({
+      state: 'idle',
+      saveId: 'save-slot-2',
+      saveName: 'Alex Rivera • Tycoons • Season 2',
+      desiredGeneration: 0,
+      durableGeneration: 0,
+      pendingWrites: 0,
+      canRetry: false,
+      lastSavedAt: '2026-04-02T19:42:03.000Z',
+      errorMessage: null,
+      failureKind: null,
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <TopBar onOpenCommandPalette={vi.fn()} flow={null} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const summary = container.querySelector('[data-testid="save-persistence-summary"]');
+    expect(summary?.textContent).toMatch(/^Last saved .+ · 0 pending writes$/);
+    expect(summary?.getAttribute('aria-label')).toBe(summary?.textContent);
+    expect(container.querySelector('[data-testid="save-persistence-status"]')).toBeNull();
+  });
+
+  it('shows an honest fallback for an active save without trustworthy metadata', async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <TopBar onOpenCommandPalette={vi.fn()} flow={null} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-testid="save-persistence-summary"]')?.textContent)
+      .toBe('Not saved yet · 0 pending writes');
+  });
+
+  it('does not render persistence metadata when there is no active save', async () => {
+    mockedUseGameStore.mockReturnValue({
+      ...gameStoreValue,
+      activeSaveId: null,
+      activeSaveSlot: null,
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <TopBar onOpenCommandPalette={vi.fn()} flow={null} />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-testid="save-persistence-summary"]')).toBeNull();
   });
 
   it('maps each storage failure kind to distinct, accessible copy with retry', async () => {
@@ -233,6 +308,7 @@ describe('TopBar', () => {
         saveName: 'Alex Rivera • Tycoons • Season 2',
         desiredGeneration: 2,
         durableGeneration: 1,
+        pendingWrites: 1,
         canRetry: true,
         lastSavedAt: null,
         errorMessage: testCase.errorMessage,

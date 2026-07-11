@@ -9,6 +9,13 @@ import {
   type SaveData,
 } from '@/shared/lib/saveSystem';
 import { registerGuidedStartSave } from '@/features/onboarding/nudges';
+import {
+  activateActiveSavePersistenceMetadata,
+  prepareActiveSavePersistenceForLoad,
+  releaseActiveSavePersistenceLoad,
+  replaceInactiveSavePersistenceRecord,
+  retireSaveTreePersistenceForDelete,
+} from '@/shared/lib/activeSavePersistence';
 import { useSetupActionHandlers } from './useSetupActionHandlers';
 
 vi.mock('@/shared/lib/logger', () => ({
@@ -26,6 +33,14 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   inspectSaveById: vi.fn(),
   loadSaveSafely: vi.fn(),
   saveGame: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  activateActiveSavePersistenceMetadata: vi.fn(),
+  prepareActiveSavePersistenceForLoad: vi.fn().mockResolvedValue(undefined),
+  releaseActiveSavePersistenceLoad: vi.fn(),
+  replaceInactiveSavePersistenceRecord: vi.fn(),
+  retireSaveTreePersistenceForDelete: vi.fn(),
 }));
 
 (
@@ -77,6 +92,8 @@ describe('useSetupActionHandlers', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     latestResult = null;
+    vi.mocked(replaceInactiveSavePersistenceRecord).mockImplementation(async (_saveId, replaceRecord) => replaceRecord());
+    vi.mocked(retireSaveTreePersistenceForDelete).mockImplementation(async (_saveId, deleteRecord) => deleteRecord());
     vi.mocked(loadSaveSafely).mockResolvedValue({
       ok: true,
       save: saveData(),
@@ -94,6 +111,16 @@ describe('useSetupActionHandlers', () => {
         parentSaveId: 'save-slot-1',
       }),
     } as never);
+    vi.mocked(saveGame).mockResolvedValue(saveData({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Alex Rivera • New York Tycoons',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      createdAt: '2026-04-02T13:00:00.000Z',
+      updatedAt: '2026-04-02T13:00:00.000Z',
+    }));
   });
 
   afterEach(async () => {
@@ -106,6 +133,8 @@ describe('useSetupActionHandlers', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
+      activeSaveId: null,
+      activeSaveSlot: null,
       dayOneExperience: 'full',
       difficulty: 'hard',
       exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34 }),
@@ -168,7 +197,9 @@ describe('useSetupActionHandlers', () => {
     });
 
     expect(loadSaveSafely).toHaveBeenCalledWith(1);
+    expect(prepareActiveSavePersistenceForLoad).toHaveBeenCalledWith('save-slot-1');
     expect(options.importSnapshot).toHaveBeenCalledWith({ schemaVersion: 34, season: 4, day: 88, phase: 'regular' });
+    expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(saveData());
     expect(options.initializeGame).toHaveBeenCalledWith(expect.objectContaining({
       activeSaveId: 'save-slot-1',
       activeSaveSlot: 1,
@@ -202,6 +233,8 @@ describe('useSetupActionHandlers', () => {
       onDelete: expect.any(Function),
       onRetry: expect.any(Function),
     }));
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(releaseActiveSavePersistenceLoad).toHaveBeenCalledWith('save-slot-1');
     const recoveryOptions = vi.mocked(options.recovery.showFailure).mock.calls[0]?.[0] as {
       onDelete: () => Promise<void>;
       onRetry: () => Promise<boolean>;
@@ -236,11 +269,52 @@ describe('useSetupActionHandlers', () => {
     });
 
     expect(inspectSaveById).toHaveBeenCalledWith('branch-1');
+    expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'branch-1',
+      slotNumber: null,
+      isRootSave: false,
+      parentSaveId: 'save-slot-1',
+    }));
     expect(options.initializeGame).toHaveBeenCalledWith(expect.objectContaining({
       activeSaveId: 'branch-1',
       activeSaveSlot: null,
     }));
     expect(options.navigate).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('does not delete the active root save or an unknown active branch parent', async () => {
+    const rootOptions = baseOptions({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+    });
+    await renderHook(rootOptions);
+
+    await act(async () => {
+      await latestResult?.handleDelete(1);
+    });
+
+    expect(deleteSave).not.toHaveBeenCalled();
+    expect(rootOptions.setStatus).toHaveBeenCalledWith(
+      'Cannot delete slot 1 while its dynasty or a what-if branch is active.',
+    );
+
+    const branchOptions = baseOptions({
+      activeSaveId: 'branch-1',
+      activeSaveSlot: null,
+    });
+    await act(async () => {
+      root.render(<HookHarness options={branchOptions} onRender={(result) => {
+        latestResult = result;
+      }} />);
+    });
+    await act(async () => {
+      await latestResult?.handleDelete(2);
+    });
+
+    expect(deleteSave).not.toHaveBeenCalled();
+    expect(branchOptions.setStatus).toHaveBeenCalledWith(
+      'Cannot delete slot 2 while its dynasty or a what-if branch is active.',
+    );
   });
 
   it('creates a new dynasty, saves the exported snapshot, registers guided start, and routes by mode', async () => {
@@ -260,7 +334,22 @@ describe('useSetupActionHandlers', () => {
       playMode: 'standard',
       dayOneExperience: 'full',
     }));
-    expect(saveGame).toHaveBeenCalledWith(2, expect.stringContaining('Alex Rivera'), { schemaVersion: 34 });
+    expect(saveGame).toHaveBeenCalledWith(
+      2,
+      expect.stringContaining('Alex Rivera'),
+      { schemaVersion: 34 },
+      { replaceExistingRootBranchMetadata: true },
+    );
+    expect(replaceInactiveSavePersistenceRecord).toHaveBeenCalledWith(
+      'save-slot-2',
+      expect.any(Function),
+    );
+    expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Alex Rivera • New York Tycoons',
+      updatedAt: '2026-04-02T13:00:00.000Z',
+    }));
     expect(registerGuidedStartSave).toHaveBeenCalledWith('save-slot-2');
     expect(options.initializeGame).toHaveBeenCalledWith(expect.objectContaining({
       activeSaveId: 'save-slot-2',

@@ -3,6 +3,7 @@ import {
   appMain,
   dismissGuidedStartNudges,
   drainDurableOverlays,
+  expectDurableSaveSummary,
   escapeRegExp,
   expectFreshMutationRuntime,
   expectMutationSaved,
@@ -12,9 +13,27 @@ import {
   navigateFromSidebar,
   normalizeVisibleLabel,
   runGlobalSimulation,
+  saveSummary,
   saveStatus,
   waitForAppReady,
 } from './helpers/dynasty';
+
+const ACCEPTED_TRADE_SAVED_AT = '2026-04-02T19:42:03.000Z';
+const ACCEPTED_TRADE_SUMMARY = 'Last saved 7:42:03 PM · 0 pending writes';
+
+interface BoundingRect {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}
+
+function rectanglesOverlap(first: BoundingRect, second: BoundingRect): boolean {
+  return first.x < second.x + second.width
+    && first.x + first.width > second.x
+    && first.y < second.y + second.height
+    && first.y + first.height > second.y;
+}
 
 interface DevelopmentCandidate {
   category: string;
@@ -271,13 +290,25 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     expect(incomingPlayerOriginalTeam).not.toBe('SEA');
     await handlePressConference(page, 'skip');
     await expectFreshMutationRuntime(page);
+    const durableSummaryBeforeTrade = await expectDurableSaveSummary(page);
+    expect(durableSummaryBeforeTrade.lastSavedAt).not.toBe(ACCEPTED_TRADE_SAVED_AT);
+    await page.clock.setFixedTime(new Date(ACCEPTED_TRADE_SAVED_AT));
     await offer.getByRole('button', { name: 'Accept', exact: true }).click();
     await expect(
       appMain(page).getByRole('heading', { name: 'Deal Completed', exact: true }),
     ).toBeVisible();
     await expectMutationSaved(page);
 
+    const durableSummaryAfterTrade = await expectDurableSaveSummary(page, {
+      lastSavedAt: ACCEPTED_TRADE_SAVED_AT,
+      text: ACCEPTED_TRADE_SUMMARY,
+    });
+    expect(durableSummaryAfterTrade.lastSavedAt).not.toBe(
+      durableSummaryBeforeTrade.lastSavedAt,
+    );
+
     await freshRuntimeReload(page, { press: 'skip' });
+    await expectDurableSaveSummary(page, durableSummaryAfterTrade);
     await navigateFromSidebar(page, '/players', 'Players');
     await page.getByPlaceholder('Search players or nicknames...').fill(incomingPlayerName);
     const playerLink = appMain(page)
@@ -435,5 +466,87 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     contentType: 'application/json',
   });
 
+  await test.step('keeps the durable summary bounded and controls reachable on desktop', async () => {
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+    if (!viewport) throw new Error('Desktop viewport geometry was unavailable.');
+    expect(viewport.width).toBeGreaterThanOrEqual(1024);
+
+    const summary = saveSummary(page);
+    const header = summary.locator('xpath=ancestor::header[1]');
+    const command = page.getByRole('button', { name: 'Open command palette', exact: true });
+    const settings = header.getByRole('link', { name: 'Settings', exact: true });
+    await expectDurableSaveSummary(page);
+    await expect(header).toBeVisible();
+    await expect(command).toBeVisible();
+    await expect(settings).toBeVisible();
+
+    const summaryBox = await summary.boundingBox();
+    const headerBox = await header.boundingBox();
+    const commandBox = await command.boundingBox();
+    const settingsBox = await settings.boundingBox();
+    if (!summaryBox || !headerBox || !commandBox || !settingsBox) {
+      throw new Error('Desktop save-summary geometry was unavailable.');
+    }
+
+    expect(summaryBox.x).toBeGreaterThanOrEqual(0);
+    expect(summaryBox.y).toBeGreaterThanOrEqual(0);
+    expect(summaryBox.x + summaryBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(viewport.height);
+    expect(summaryBox.x).toBeGreaterThanOrEqual(headerBox.x);
+    expect(summaryBox.y).toBeGreaterThanOrEqual(headerBox.y);
+    expect(summaryBox.x + summaryBox.width).toBeLessThanOrEqual(
+      headerBox.x + headerBox.width,
+    );
+    expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(
+      headerBox.y + headerBox.height,
+    );
+    expect(rectanglesOverlap(summaryBox, commandBox)).toBe(false);
+    expect(rectanglesOverlap(summaryBox, settingsBox)).toBe(false);
+
+    await command.click({ trial: true });
+    await settings.click({ trial: true });
+
+    await test.info().attach('save-persistence-summary-desktop.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+  });
+
+  await test.step('keeps the durable summary visible and non-occluding at 375x667', async () => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    const summary = saveSummary(page);
+    await expectDurableSaveSummary(page);
+
+    const summaryBox = await summary.boundingBox();
+    const mainBox = await appMain(page).boundingBox();
+    const footerBox = await page.locator('footer[data-tour="sim-controls"]').boundingBox();
+    expect(summaryBox).not.toBeNull();
+    expect(mainBox).not.toBeNull();
+    expect(footerBox).not.toBeNull();
+    if (!summaryBox || !mainBox || !footerBox) {
+      throw new Error('Mobile shell geometry was unavailable.');
+    }
+
+    expect(summaryBox.x).toBeGreaterThanOrEqual(0);
+    expect(summaryBox.y).toBeGreaterThanOrEqual(0);
+    expect(summaryBox.x + summaryBox.width).toBeLessThanOrEqual(375);
+    expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(667);
+    expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(mainBox.y + 1);
+    expect(summaryBox.y + summaryBox.height).toBeLessThan(footerBox.y);
+
+    await page.getByRole('button', { name: 'Open command palette', exact: true }).click({ trial: true });
+    await summary
+      .locator('xpath=ancestor::header[1]')
+      .getByRole('link', { name: 'Settings', exact: true })
+      .click({ trial: true });
+
+    await test.info().attach('save-persistence-summary-mobile.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+  });
+
   await expect(saveStatus(page)).toHaveCount(0);
+  await expectDurableSaveSummary(page);
 });

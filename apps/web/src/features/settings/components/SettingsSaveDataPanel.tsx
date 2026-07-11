@@ -19,7 +19,7 @@ export interface SettingsSaveDataPanelProps {
   onClearAllSaves: () => void | Promise<void>;
   onCreateBranch: () => void | Promise<void>;
   onDeleteBranch: (branchSaveId: string) => void | Promise<void>;
-  onDeleteSlot: (slot: number) => void | Promise<void>;
+  onDeleteSlot: (slot: number) => void | Promise<boolean | void>;
   onExportCurrent: () => void | Promise<void>;
   onImportFile: (file: File | null) => void | Promise<void>;
   onInstallApp: () => void | Promise<void>;

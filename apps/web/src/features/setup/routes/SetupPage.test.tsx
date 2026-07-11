@@ -52,6 +52,7 @@ vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
   deleteSave: vi.fn(),
   inspectSaveById: vi.fn(),
+  listBranches: vi.fn().mockResolvedValue([]),
   listSaveTree: vi.fn(),
   listSaves: vi.fn(),
   loadGame: vi.fn(),
@@ -82,6 +83,8 @@ describe('SetupPage', () => {
   let root: Root;
   let workerMock: ReturnType<typeof useWorker>;
   let storeMock: {
+    activeSaveId: string | null;
+    activeSaveSlot: number | null;
     isInitialized: boolean;
     initializeGame: ReturnType<typeof vi.fn>;
   };
@@ -94,6 +97,8 @@ describe('SetupPage', () => {
     mockedNavigate.mockReset();
     recoveryMockState.showFailure.mockReset();
     storeMock = {
+      activeSaveId: null,
+      activeSaveSlot: null,
       isInitialized: false,
       initializeGame: vi.fn(),
     };
@@ -152,6 +157,23 @@ describe('SetupPage', () => {
       }),
     } as unknown as ReturnType<typeof useWorker>;
     mockedUseWorker.mockReturnValue(workerMock);
+    mockedSaveGame.mockResolvedValue({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Alex Rivera • New York Tycoons',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 34,
+      hasSnapshot: true,
+      snapshot: null,
+      legacyState: null,
+      createdAt: '2026-04-02T13:00:00.000Z',
+      updatedAt: '2026-04-02T13:00:00.000Z',
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+    });
 
     mockedListSaves.mockResolvedValue([
       {
@@ -554,7 +576,12 @@ describe('SetupPage', () => {
       saveSlot: 2,
       dayOneExperience: 'full',
     });
-    expect(mockedSaveGame).toHaveBeenCalledWith(2, expect.stringContaining('Alex Rivera'), expect.any(Object));
+    expect(mockedSaveGame).toHaveBeenCalledWith(
+      2,
+      expect.stringContaining('Alex Rivera'),
+      expect.any(Object),
+      { replaceExistingRootBranchMetadata: true },
+    );
     expect(mockedRegisterGuidedStartSave).toHaveBeenCalledWith('save-slot-2');
     expect(storeMock.initializeGame).toHaveBeenCalled();
     expect(mockedNavigate).toHaveBeenCalledWith('/onboarding');

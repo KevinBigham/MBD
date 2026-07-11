@@ -1,19 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  activateActiveSavePersistenceMetadata,
   getActiveSavePersistenceStatus,
   persistActiveSaveSnapshot,
+  prepareActiveSavePersistenceForLoad,
+  reconcileActiveSavePersistenceMetadata,
+  releaseActiveSavePersistenceLoad,
+  replaceInactiveSavePersistenceRecord,
   resetActiveSavePersistenceForTesting,
+  retireActiveSavePersistenceForDelete,
   retryActiveSavePersistence,
+  subscribeToActiveSavePersistenceStatus,
+  trackActiveSavePersistenceOperation,
 } from './activeSavePersistence';
-import { loadGameById, saveGameById, scheduleAutoSave } from './saveSystem';
+import {
+  deleteSaveById,
+  listBranches,
+  loadGameById,
+  saveGameById,
+  scheduleAutoSave,
+  type SaveData,
+} from './saveSystem';
 
 vi.mock('./saveSystem', () => ({
+  deleteSaveById: vi.fn(),
+  listBranches: vi.fn(),
   loadGameById: vi.fn(),
   saveGameById: vi.fn(),
   scheduleAutoSave: vi.fn(),
 }));
 
 const mockedLoadGameById = vi.mocked(loadGameById);
+const mockedDeleteSaveById = vi.mocked(deleteSaveById);
+const mockedListBranches = vi.mocked(listBranches);
 const mockedSaveGameById = vi.mocked(saveGameById);
 const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
 
@@ -23,12 +42,59 @@ async function flushPromises(times = 5) {
   }
 }
 
+function savedRecord(
+  id: string,
+  updatedAt = '2026-04-02T19:42:03.000Z',
+): SaveData {
+  return {
+    id,
+    name: 'Durable Dynasty',
+    updatedAt,
+  } as SaveData;
+}
+
 describe('persistActiveSaveSnapshot', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetActiveSavePersistenceForTesting();
     mockedScheduleAutoSave.mockResolvedValue(undefined);
-    mockedSaveGameById.mockResolvedValue({ id: 'save-slot-1' } as Awaited<ReturnType<typeof saveGameById>>);
+    mockedDeleteSaveById.mockResolvedValue(null);
+    mockedListBranches.mockResolvedValue([]);
+    mockedSaveGameById.mockImplementation(async (id) => savedRecord(id));
+  });
+
+  it('hydrates exact durable metadata with zero pending work and never regresses or fabricates time', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeToActiveSavePersistenceStatus(listener);
+
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-2',
+      '2026-04-02T19:42:03.000Z',
+    ));
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'idle',
+      saveId: 'save-slot-2',
+      saveName: 'Durable Dynasty',
+      desiredGeneration: 0,
+      durableGeneration: 0,
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T19:42:03.000Z',
+    });
+
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-2',
+      '2026-04-01T19:42:03.000Z',
+    ));
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-2',
+      '1970-01-01T00:00:00.000Z',
+    ));
+    expect(getActiveSavePersistenceStatus('save-slot-2').lastSavedAt).toBe(
+      '2026-04-02T19:42:03.000Z',
+    );
+    expect(listener).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
   });
 
   it('persists a root-slot snapshot through the ordered active-save coordinator', async () => {
@@ -59,8 +125,10 @@ describe('persistActiveSaveSnapshot', () => {
       state: 'saved',
       desiredGeneration: 1,
       durableGeneration: 1,
+      pendingWrites: 0,
       saveName: 'Alex Rivera • Tycoons • Season 7',
       canRetry: false,
+      lastSavedAt: '2026-04-02T19:42:03.000Z',
     });
   });
 
@@ -102,15 +170,16 @@ describe('persistActiveSaveSnapshot', () => {
     );
   });
 
-  it('keeps burst writes ordered and resolves superseded callers after the latest snapshot is durable', async () => {
+  it('keeps a three-generation burst ordered and reports exact logical pending depth through coalescing', async () => {
     const writeReleases: Array<() => void> = [];
     const writtenStates: object[] = [];
-    mockedSaveGameById.mockImplementation(async (_id, _name, state) => {
+    mockedSaveGameById.mockImplementation(async (id, _name, state) => {
       writtenStates.push(state);
       await new Promise<void>((resolve) => {
         writeReleases.push(resolve);
       });
-      return { id: 'save-slot-1' } as Awaited<ReturnType<typeof saveGameById>>;
+      const day = (state as { day: number }).day;
+      return savedRecord(id, `2026-04-02T19:42:${String(day - 100).padStart(2, '0')}.000Z`);
     });
 
     const first = persistActiveSaveSnapshot({
@@ -133,6 +202,16 @@ describe('persistActiveSaveSnapshot', () => {
     });
     await Promise.resolve();
 
+    const third = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Alex Rivera',
+      teamName: 'Tycoons',
+      season: 4,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 103 }),
+    });
+    await Promise.resolve();
+
     let firstSettled = false;
     first.then(() => {
       firstSettled = true;
@@ -142,8 +221,10 @@ describe('persistActiveSaveSnapshot', () => {
     expect(writtenStates).toEqual([{ schemaVersion: 34, season: 4, day: 101 }]);
     expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
       state: 'saving',
-      desiredGeneration: 2,
+      desiredGeneration: 3,
       durableGeneration: 0,
+      pendingWrites: 3,
+      lastSavedAt: null,
     });
 
     writeReleases.shift()?.();
@@ -153,17 +234,26 @@ describe('persistActiveSaveSnapshot', () => {
     expect(mockedSaveGameById).toHaveBeenCalledTimes(2);
     expect(writtenStates).toEqual([
       { schemaVersion: 34, season: 4, day: 101 },
-      { schemaVersion: 34, season: 4, day: 102 },
+      { schemaVersion: 34, season: 4, day: 103 },
     ]);
+    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
+      state: 'saving',
+      desiredGeneration: 3,
+      durableGeneration: 1,
+      pendingWrites: 2,
+      lastSavedAt: '2026-04-02T19:42:01.000Z',
+    });
 
     writeReleases.shift()?.();
-    await Promise.all([first, second]);
+    await Promise.all([first, second, third]);
 
     expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
       state: 'saved',
-      desiredGeneration: 2,
-      durableGeneration: 2,
+      desiredGeneration: 3,
+      durableGeneration: 3,
+      pendingWrites: 0,
       canRetry: false,
+      lastSavedAt: '2026-04-02T19:42:03.000Z',
     });
   });
 
@@ -173,7 +263,7 @@ describe('persistActiveSaveSnapshot', () => {
       await new Promise<void>((resolve) => {
         writeReleases.push(resolve);
       });
-      return { id } as Awaited<ReturnType<typeof saveGameById>>;
+      return savedRecord(id);
     });
 
     const slotOne = persistActiveSaveSnapshot({
@@ -212,8 +302,8 @@ describe('persistActiveSaveSnapshot', () => {
     writeReleases.splice(0).forEach((release) => release());
     await Promise.all([slotOne, slotTwo]);
 
-    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({ state: 'saved', durableGeneration: 1 });
-    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'saved', durableGeneration: 1 });
+    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({ state: 'saved', durableGeneration: 1, pendingWrites: 0 });
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'saved', durableGeneration: 1, pendingWrites: 0 });
   });
 
   it('binds a delayed export to the save id captured before an active-save switch', async () => {
@@ -269,9 +359,13 @@ describe('persistActiveSaveSnapshot', () => {
     const snapshot = { schemaVersion: 34, season: 5, day: 120, phase: 'regular' };
     const exportSnapshot = vi.fn().mockResolvedValue(snapshot);
     const storageError = new Error('QuotaExceededError');
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-5',
+      '2026-04-02T19:40:00.000Z',
+    ));
     mockedSaveGameById
       .mockRejectedValueOnce(storageError)
-      .mockResolvedValueOnce({ id: 'save-slot-5' } as Awaited<ReturnType<typeof saveGameById>>);
+      .mockResolvedValueOnce(savedRecord('save-slot-5', '2026-04-02T19:45:00.000Z'));
 
     await expect(persistActiveSaveSnapshot({
       activeSaveId: 'save-slot-5',
@@ -288,6 +382,8 @@ describe('persistActiveSaveSnapshot', () => {
       failureKind: 'quota',
       desiredGeneration: 1,
       durableGeneration: 0,
+      pendingWrites: 1,
+      lastSavedAt: '2026-04-02T19:40:00.000Z',
     });
 
     await retryActiveSavePersistence('save-slot-5');
@@ -305,7 +401,473 @@ describe('persistActiveSaveSnapshot', () => {
       state: 'saved',
       canRetry: false,
       durableGeneration: 1,
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T19:45:00.000Z',
     });
+  });
+
+  it('does not let a metadata operation supersede a failed gameplay snapshot or destroy Retry', async () => {
+    mockedSaveGameById
+      .mockRejectedValueOnce(new Error('QuotaExceededError'))
+      .mockResolvedValueOnce(savedRecord('save-slot-5', '2026-04-02T19:45:00.000Z'));
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-5',
+      activeSaveSlot: 5,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 5,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 5, day: 120 }),
+    })).rejects.toThrow('QuotaExceededError');
+
+    const metadataOperation = vi.fn().mockResolvedValue(
+      savedRecord('save-slot-5', '2026-04-02T19:44:00.000Z'),
+    );
+    await expect(trackActiveSavePersistenceOperation(
+      'save-slot-5',
+      metadataOperation,
+    )).rejects.toThrow('unresolved persistence work');
+
+    expect(metadataOperation).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-5')).toMatchObject({
+      state: 'failed',
+      desiredGeneration: 1,
+      durableGeneration: 0,
+      pendingWrites: 1,
+      canRetry: true,
+      lastSavedAt: null,
+    });
+
+    await retryActiveSavePersistence('save-slot-5');
+    expect(getActiveSavePersistenceStatus('save-slot-5')).toMatchObject({
+      state: 'saved',
+      desiredGeneration: 1,
+      durableGeneration: 1,
+      pendingWrites: 0,
+      canRetry: false,
+      lastSavedAt: '2026-04-02T19:45:00.000Z',
+    });
+  });
+
+  it('preserves Retry for a failed durable snapshot when a later export also fails', async () => {
+    const retainedSnapshot = { schemaVersion: 34, season: 5, day: 120 };
+    mockedSaveGameById
+      .mockRejectedValueOnce(new Error('QuotaExceededError'))
+      .mockResolvedValueOnce(savedRecord('save-slot-5', '2026-04-02T19:45:00.000Z'));
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-5',
+      activeSaveSlot: 5,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 5,
+      exportSnapshot: vi.fn().mockResolvedValue(retainedSnapshot),
+    })).rejects.toThrow('QuotaExceededError');
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-5',
+      activeSaveSlot: 5,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 5,
+      exportSnapshot: vi.fn().mockRejectedValue(new Error('Worker export failed.')),
+    })).rejects.toThrow('Worker export failed.');
+
+    expect(getActiveSavePersistenceStatus('save-slot-5')).toMatchObject({
+      state: 'failed',
+      desiredGeneration: 1,
+      durableGeneration: 0,
+      pendingWrites: 1,
+      canRetry: true,
+      failureKind: 'quota',
+      errorMessage: 'QuotaExceededError',
+    });
+
+    await retryActiveSavePersistence('save-slot-5');
+    expect(mockedSaveGameById).toHaveBeenLastCalledWith(
+      'save-slot-5',
+      'Current GM • Tycoons • Season 5',
+      retainedSnapshot,
+      expect.objectContaining({ slotNumber: 5 }),
+    );
+    expect(getActiveSavePersistenceStatus('save-slot-5')).toMatchObject({
+      state: 'saved',
+      pendingWrites: 0,
+      canRetry: false,
+      lastSavedAt: '2026-04-02T19:45:00.000Z',
+    });
+  });
+
+  it('makes an explicit load supersede a retained failed snapshot and its retry', async () => {
+    const storageError = new Error('QuotaExceededError');
+    mockedSaveGameById.mockRejectedValueOnce(storageError);
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-4',
+      activeSaveSlot: 4,
+      gmName: 'Old Runtime GM',
+      teamName: 'Tycoons',
+      season: 4,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 88 }),
+    })).rejects.toThrow('QuotaExceededError');
+
+    await prepareActiveSavePersistenceForLoad('save-slot-4');
+    activateActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-4',
+      '2026-04-02T18:00:00.000Z',
+    ));
+
+    expect(getActiveSavePersistenceStatus('save-slot-4')).toMatchObject({
+      state: 'idle',
+      desiredGeneration: 0,
+      durableGeneration: 0,
+      pendingWrites: 0,
+      canRetry: false,
+      lastSavedAt: '2026-04-02T18:00:00.000Z',
+    });
+    await expect(retryActiveSavePersistence('save-slot-4')).resolves.toEqual({
+      saved: false,
+      saveName: null,
+    });
+    expect(mockedSaveGameById).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a newer coordinator capture supersede a retained failed snapshot', async () => {
+    mockedSaveGameById
+      .mockRejectedValueOnce(new Error('QuotaExceededError'))
+      .mockResolvedValueOnce(savedRecord('save-slot-5', '2026-04-02T19:55:00.000Z'));
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-5',
+      activeSaveSlot: 5,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 5,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 5, day: 40 }),
+    })).rejects.toThrow('QuotaExceededError');
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-5',
+      activeSaveSlot: 5,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 5,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 5, day: 41 }),
+    })).resolves.toMatchObject({ saved: true });
+
+    expect(mockedSaveGameById).toHaveBeenLastCalledWith(
+      'save-slot-5',
+      expect.any(String),
+      expect.objectContaining({ day: 41 }),
+      expect.objectContaining({ slotNumber: 5 }),
+    );
+    expect(getActiveSavePersistenceStatus('save-slot-5')).toMatchObject({
+      state: 'saved',
+      desiredGeneration: 2,
+      durableGeneration: 2,
+      pendingWrites: 0,
+      canRetry: false,
+      lastSavedAt: '2026-04-02T19:55:00.000Z',
+    });
+    await expect(retryActiveSavePersistence('save-slot-5')).resolves.toEqual({
+      saved: false,
+      saveName: null,
+    });
+    expect(mockedSaveGameById).toHaveBeenCalledTimes(2);
+  });
+
+  it('blocks delayed captures during a load boundary without writing the stale snapshot', async () => {
+    let releaseExport: (snapshot: object) => void = () => {};
+    const delayedCapture = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
+      gmName: 'Old Runtime GM',
+      teamName: 'Tycoons',
+      season: 3,
+      exportSnapshot: () => new Promise<object>((resolve) => {
+        releaseExport = resolve;
+      }),
+    });
+    await Promise.resolve();
+
+    await prepareActiveSavePersistenceForLoad('save-slot-3');
+    releaseExport({ schemaVersion: 34, season: 3, day: 77 });
+
+    await expect(delayedCapture).resolves.toEqual({ saved: false, saveName: null });
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+
+    releaseActiveSavePersistenceLoad('save-slot-3');
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-3'));
+    expect(getActiveSavePersistenceStatus('save-slot-3')).toMatchObject({
+      state: 'idle',
+      pendingWrites: 0,
+      canRetry: false,
+    });
+  });
+
+  it('waits for an already accepted write before opening the durable load boundary', async () => {
+    let releaseWrite: () => void = () => {};
+    mockedSaveGameById.mockImplementationOnce(async (id) => {
+      await new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      return savedRecord(id, '2026-04-02T19:50:00.000Z');
+    });
+
+    const persistence = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2',
+      activeSaveSlot: 2,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 2,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 2, day: 30 }),
+    });
+    await Promise.resolve();
+
+    let prepared = false;
+    const preparation = prepareActiveSavePersistenceForLoad('save-slot-2').then(() => {
+      prepared = true;
+    });
+    await Promise.resolve();
+    expect(prepared).toBe(false);
+
+    releaseWrite();
+    await Promise.all([persistence, preparation]);
+    expect(prepared).toBe(true);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'saved',
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T19:50:00.000Z',
+    });
+
+    activateActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-2',
+      '2026-04-02T19:50:00.000Z',
+    ));
+    expect(getActiveSavePersistenceStatus('save-slot-2').state).toBe('idle');
+  });
+
+  it('tracks an active-save metadata operation as one pending generation and queues new captures behind it', async () => {
+    let releaseOperation: () => void = () => {};
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-1',
+      '2026-04-02T19:40:00.000Z',
+    ));
+    const operation = trackActiveSavePersistenceOperation(
+      'save-slot-1',
+      async () => {
+        await new Promise<void>((resolve) => {
+          releaseOperation = resolve;
+        });
+        return savedRecord('save-slot-1', '2026-04-02T19:41:00.000Z');
+      },
+    );
+    await flushPromises();
+
+    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
+      state: 'saving',
+      desiredGeneration: 1,
+      durableGeneration: 0,
+      pendingWrites: 1,
+      lastSavedAt: '2026-04-02T19:40:00.000Z',
+    });
+
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 92 });
+    const queuedCapture = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 4,
+      exportSnapshot,
+    });
+    await flushPromises();
+    expect(exportSnapshot).not.toHaveBeenCalled();
+
+    releaseOperation();
+    await operation;
+    await queuedCapture;
+
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
+      state: 'saved',
+      desiredGeneration: 2,
+      durableGeneration: 2,
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T19:42:03.000Z',
+    });
+  });
+
+  it('rolls back a rejected atomic metadata generation without phantom pending work', async () => {
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-1',
+      '2026-04-02T19:40:00.000Z',
+    ));
+
+    await expect(trackActiveSavePersistenceOperation(
+      'save-slot-1',
+      vi.fn().mockRejectedValue(new Error('Branch transaction aborted.')),
+    )).rejects.toThrow('Branch transaction aborted.');
+
+    expect(getActiveSavePersistenceStatus('save-slot-1')).toMatchObject({
+      state: 'idle',
+      desiredGeneration: 0,
+      durableGeneration: 0,
+      pendingWrites: 0,
+      canRetry: false,
+      lastSavedAt: '2026-04-02T19:40:00.000Z',
+    });
+  });
+
+  it('invalidates a metadata intent waiting on capture when load activates a newer record', async () => {
+    let releaseExport: (snapshot: object) => void = () => {};
+    const delayedCapture = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2',
+      activeSaveSlot: 2,
+      gmName: 'Old Runtime GM',
+      teamName: 'Tycoons',
+      season: 2,
+      exportSnapshot: () => new Promise<object>((resolve) => {
+        releaseExport = resolve;
+      }),
+    });
+    await Promise.resolve();
+
+    const metadataOperation = vi.fn().mockResolvedValue(savedRecord('save-slot-2'));
+    const metadataIntent = trackActiveSavePersistenceOperation('save-slot-2', metadataOperation);
+    const metadataIntentAssertion = expect(metadataIntent).rejects.toThrow('not available for persistence');
+    await Promise.resolve();
+
+    await prepareActiveSavePersistenceForLoad('save-slot-2');
+    activateActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-2',
+      '2026-04-02T20:00:00.000Z',
+    ));
+    releaseExport({ schemaVersion: 34, season: 2, day: 50 });
+
+    await expect(delayedCapture).resolves.toEqual({ saved: false, saveName: null });
+    await metadataIntentAssertion;
+    expect(metadataOperation).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'idle',
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T20:00:00.000Z',
+    });
+  });
+
+  it('replaces an inactive target behind an epoch boundary so its delayed export cannot overwrite it', async () => {
+    let releaseExport: (snapshot: object) => void = () => {};
+    const delayedCapture = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-4',
+      activeSaveSlot: 4,
+      gmName: 'Old Slot GM',
+      teamName: 'Old Club',
+      season: 8,
+      exportSnapshot: () => new Promise<object>((resolve) => {
+        releaseExport = resolve;
+      }),
+    });
+    await Promise.resolve();
+
+    const replacement = savedRecord('save-slot-4', '2026-04-02T21:00:00.000Z');
+    const replaceRecord = vi.fn().mockResolvedValue(replacement);
+    await expect(replaceInactiveSavePersistenceRecord(
+      'save-slot-4',
+      replaceRecord,
+    )).resolves.toBe(replacement);
+    expect(replaceRecord).toHaveBeenCalledTimes(1);
+
+    releaseExport({ schemaVersion: 34, season: 8, day: 140 });
+    await expect(delayedCapture).resolves.toEqual({ saved: false, saveName: null });
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-4')).toMatchObject({
+      state: 'idle',
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T21:00:00.000Z',
+    });
+
+    const staleExport = vi.fn();
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-4',
+      activeSaveSlot: 4,
+      gmName: 'Old Slot GM',
+      teamName: 'Old Club',
+      season: 8,
+      exportSnapshot: staleExport,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(staleExport).not.toHaveBeenCalled();
+  });
+
+  it('fails a tree replacement closed when child coordinator discovery rejects', async () => {
+    reconcileActiveSavePersistenceMetadata(savedRecord(
+      'save-slot-4',
+      '2026-04-02T19:40:00.000Z',
+    ));
+    mockedListBranches.mockRejectedValueOnce(new Error('Branch enumeration failed.'));
+    const replaceRecord = vi.fn();
+
+    await expect(replaceInactiveSavePersistenceRecord(
+      'save-slot-4',
+      replaceRecord,
+    )).rejects.toThrow('Branch enumeration failed.');
+
+    expect(replaceRecord).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-4')).toMatchObject({
+      state: 'idle',
+      pendingWrites: 0,
+      lastSavedAt: '2026-04-02T19:40:00.000Z',
+    });
+    const resumedExport = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 4, day: 90 });
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-4',
+      activeSaveSlot: 4,
+      gmName: 'Current GM',
+      teamName: 'Tycoons',
+      season: 4,
+      exportSnapshot: resumedExport,
+    })).resolves.toMatchObject({ saved: true });
+    expect(resumedExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires a save before deletion so a delayed export cannot recreate it', async () => {
+    let releaseExport: (snapshot: object) => void = () => {};
+    const delayedCapture = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
+      gmName: 'Old Runtime GM',
+      teamName: 'Tycoons',
+      season: 3,
+      exportSnapshot: () => new Promise<object>((resolve) => {
+        releaseExport = resolve;
+      }),
+    });
+    await Promise.resolve();
+
+    await retireActiveSavePersistenceForDelete('save-slot-3');
+    expect(mockedDeleteSaveById).toHaveBeenCalledWith('save-slot-3');
+
+    releaseExport({ schemaVersion: 34, season: 3, day: 78 });
+    await expect(delayedCapture).resolves.toEqual({ saved: false, saveName: null });
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-3')).toMatchObject({
+      state: 'idle',
+      desiredGeneration: 0,
+      durableGeneration: 0,
+      pendingWrites: 0,
+      canRetry: false,
+    });
+
+    const tombstonedCapture = vi.fn();
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
+      gmName: 'Old Runtime GM',
+      teamName: 'Tycoons',
+      season: 3,
+      exportSnapshot: tombstonedCapture,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(tombstonedCapture).not.toHaveBeenCalled();
   });
 
   it('classifies durable-write failures into distinct storage-family kinds', async () => {
@@ -350,6 +912,7 @@ describe('persistActiveSaveSnapshot', () => {
     expect(getActiveSavePersistenceStatus('save-slot-21')).toMatchObject({
       state: 'failed',
       failureKind: 'export',
+      pendingWrites: 0,
     });
   });
 
@@ -369,6 +932,7 @@ describe('persistActiveSaveSnapshot', () => {
     expect(getActiveSavePersistenceStatus(null)).toMatchObject({
       state: 'idle',
       canRetry: false,
+      pendingWrites: 0,
     });
   });
 });

@@ -10,7 +10,8 @@ import {
   type StaffHireChoices,
   type StaffHiringSlate,
 } from '@mbd/sim-core';
-import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
+import { loadGameById } from '@/shared/lib/saveSystem';
+import { persistActiveSaveSnapshot } from '@/shared/lib/activeSavePersistence';
 import type { RevisedOnboardingData } from '@/workers/sim.worker.onboarding';
 import {
   useRevisedOnboardingPageController,
@@ -21,13 +22,14 @@ import {
 
 vi.mock('@/shared/lib/saveSystem', () => ({
   loadGameById: vi.fn(),
-  saveGame: vi.fn(),
-  saveGameById: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  persistActiveSaveSnapshot: vi.fn(),
 }));
 
 const mockedLoadGameById = vi.mocked(loadGameById);
-const mockedSaveGame = vi.mocked(saveGame);
-const mockedSaveGameById = vi.mocked(saveGameById);
+const mockedPersistActiveSaveSnapshot = vi.mocked(persistActiveSaveSnapshot);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -115,6 +117,31 @@ const GAME_STATE: RevisedOnboardingPageControllerGameState = {
   gmName: 'General Manager',
 };
 
+const EXISTING_SAVE_RECORD = {
+  id: 'save-slot-1',
+  slotNumber: 1,
+  name: 'General Manager • New York Tycoons',
+  season: 1,
+  day: 1,
+  phase: 'preseason',
+  schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  hasSnapshot: true,
+  snapshot: null,
+  legacyState: null,
+  createdAt: '2026-04-13T00:00:00.000Z',
+  updatedAt: '2026-04-13T00:00:00.000Z',
+  parentSaveId: 'root-save',
+  isRootSave: false,
+  branchMeta: {
+    id: 'branch-a',
+    saveId: 'save-slot-1',
+    description: 'Branch A',
+    branchedAtSeason: 1,
+    branchedAtDay: 1,
+    createdAt: '2026-04-13T00:00:00.000Z',
+  },
+} as const;
+
 function ControllerHarness({
   game = GAME_STATE,
   navigate,
@@ -160,32 +187,11 @@ describe('useRevisedOnboardingPageController', () => {
     root = createRoot(container);
     latest = null;
     navigate = vi.fn();
-    mockedLoadGameById.mockResolvedValue({
-      id: 'save-slot-1',
-      slotNumber: 1,
-      name: 'General Manager • New York Tycoons',
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-      hasSnapshot: true,
-      snapshot: null,
-      legacyState: null,
-      createdAt: '2026-04-13T00:00:00.000Z',
-      updatedAt: '2026-04-13T00:00:00.000Z',
-      parentSaveId: 'root-save',
-      isRootSave: false,
-      branchMeta: {
-        id: 'branch-a',
-        saveId: 'save-slot-1',
-        description: 'Branch A',
-        branchedAtSeason: 1,
-        branchedAtDay: 1,
-        createdAt: '2026-04-13T00:00:00.000Z',
-      },
+    mockedLoadGameById.mockResolvedValue(EXISTING_SAVE_RECORD as never);
+    mockedPersistActiveSaveSnapshot.mockResolvedValue({
+      saved: true,
+      saveName: EXISTING_SAVE_RECORD.name,
     });
-    mockedSaveGame.mockResolvedValue(undefined);
-    mockedSaveGameById.mockResolvedValue(undefined as never);
   });
 
   afterEach(async () => {
@@ -319,26 +325,16 @@ describe('useRevisedOnboardingPageController', () => {
       }),
     }));
     expect(worker.exportSnapshot).toHaveBeenCalledTimes(1);
-    expect(mockedSaveGameById).toHaveBeenCalledWith(
-      'save-slot-1',
-      'General Manager • New York Tycoons',
-      expect.objectContaining({
-        schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-      }),
-      expect.objectContaining({
-        slotNumber: 1,
-        parentSaveId: 'root-save',
-        isRootSave: false,
-        branchMeta: {
-          id: 'branch-a',
-          saveId: 'save-slot-1',
-          description: 'Branch A',
-          branchedAtSeason: 1,
-          branchedAtDay: 1,
-          createdAt: '2026-04-13T00:00:00.000Z',
-        },
-      }),
-    );
+    expect(mockedPersistActiveSaveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      saveName: 'General Manager • New York Tycoons',
+      season: 1,
+    }));
+    const capturedSnapshot = await mockedPersistActiveSaveSnapshot.mock.calls[0]![0].exportSnapshot();
+    expect(capturedSnapshot).toEqual(expect.objectContaining({
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    }));
     expect(navigate).toHaveBeenCalledWith('/dashboard');
   });
 });

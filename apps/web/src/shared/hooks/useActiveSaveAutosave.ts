@@ -6,6 +6,7 @@ import { persistActiveSaveSnapshot } from '@/shared/lib/activeSavePersistence';
 
 interface ActiveSaveAutosaveOptions {
   season?: number;
+  saveName?: string;
 }
 
 export function useActiveSaveAutosave() {
@@ -26,6 +27,7 @@ export function useActiveSaveAutosave() {
         gmName,
         teamName,
         season: options.season ?? season,
+        saveName: options.saveName,
         exportSnapshot: () => worker.exportSnapshot() as Promise<object>,
       });
     } catch (error) {

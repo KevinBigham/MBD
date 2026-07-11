@@ -18,10 +18,11 @@ interface PruneStaleDataResult extends SettingsDiagnosticsMutationResult {
 
 interface UseSettingsDiagnosticsDataOptions {
   activeManagedSaveId: string | null;
-  archiveOldSeasons?: (saveId: string) => Promise<unknown>;
+  archiveOldSeasons?: () => Promise<unknown>;
   getPerformanceDiagnostics?: () => Promise<unknown>;
   onStatusChange: (status: string) => void;
-  pruneStaleData?: (saveId: string) => Promise<unknown>;
+  persistActiveSave: () => Promise<{ saved: boolean; saveName: string | null }>;
+  pruneStaleData?: () => Promise<unknown>;
   workerReady: boolean;
 }
 
@@ -38,6 +39,7 @@ export function useSettingsDiagnosticsData({
   archiveOldSeasons,
   getPerformanceDiagnostics,
   onStatusChange,
+  persistActiveSave,
   pruneStaleData,
   workerReady,
 }: UseSettingsDiagnosticsDataOptions): UseSettingsDiagnosticsDataResult {
@@ -65,8 +67,22 @@ export function useSettingsDiagnosticsData({
     setDiagnosticsBusy('archive');
     onStatusChange('');
     try {
-      const result = await archiveOldSeasons(activeManagedSaveId) as ArchiveOldSeasonsResult;
+      const result = await archiveOldSeasons() as ArchiveOldSeasonsResult;
       setDiagnostics(result.diagnostics);
+      if (result.archivedCount === 0) {
+        onStatusChange('No older seasons needed archiving.');
+        return;
+      }
+      const persistence = await persistActiveSave().catch((error: unknown) => {
+        logger.error('Failed to persist archived seasons:', error);
+        return { saved: false as const, saveName: null };
+      });
+      if (!persistence.saved) {
+        onStatusChange(
+          `Archived ${result.archivedCount} older seasons, but the updated save was not durable. Use Retry in the save status.`,
+        );
+        return;
+      }
       onStatusChange(`Archived ${result.archivedCount} older seasons into the long-term archive.`);
     } catch (error) {
       logger.error('Failed to archive older seasons:', error);
@@ -74,7 +90,7 @@ export function useSettingsDiagnosticsData({
     } finally {
       setDiagnosticsBusy(null);
     }
-  }, [activeManagedSaveId, archiveOldSeasons, onStatusChange]);
+  }, [activeManagedSaveId, archiveOldSeasons, onStatusChange, persistActiveSave]);
 
   const handlePruneStaleData = useCallback(async () => {
     if (!activeManagedSaveId || !pruneStaleData) {
@@ -84,8 +100,22 @@ export function useSettingsDiagnosticsData({
     setDiagnosticsBusy('prune');
     onStatusChange('');
     try {
-      const result = await pruneStaleData(activeManagedSaveId) as PruneStaleDataResult;
+      const result = await pruneStaleData() as PruneStaleDataResult;
       setDiagnostics(result.diagnostics);
+      if (result.prunedCount === 0) {
+        onStatusChange('No stale entries needed pruning.');
+        return;
+      }
+      const persistence = await persistActiveSave().catch((error: unknown) => {
+        logger.error('Failed to persist pruned save state:', error);
+        return { saved: false as const, saveName: null };
+      });
+      if (!persistence.saved) {
+        onStatusChange(
+          `Pruned ${result.prunedCount} stale entries, but the updated save was not durable. Use Retry in the save status.`,
+        );
+        return;
+      }
       onStatusChange(`Pruned ${result.prunedCount} stale entries from the active save.`);
     } catch (error) {
       logger.error('Failed to prune stale data:', error);
@@ -93,7 +123,7 @@ export function useSettingsDiagnosticsData({
     } finally {
       setDiagnosticsBusy(null);
     }
-  }, [activeManagedSaveId, onStatusChange, pruneStaleData]);
+  }, [activeManagedSaveId, onStatusChange, persistActiveSave, pruneStaleData]);
 
   return {
     diagnostics,

@@ -6,8 +6,14 @@ const MAX_OVERLAY_PASSES = 48;
 
 export const appMain = (page: Page) => page.locator('main#main-content');
 export const mainNavigation = (page: Page) => page.getByRole('navigation', { name: 'Main navigation' });
+export const saveSummary = (page: Page) => page.getByTestId('save-persistence-summary');
 export const saveStatus = (page: Page) => page.getByTestId('save-persistence-status');
 export const simFooter = (page: Page) => page.locator('footer[data-tour="sim-controls"]');
+
+export interface DurableSaveSummarySnapshot {
+  lastSavedAt: string;
+  text: string;
+}
 
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -63,8 +69,26 @@ async function dismissTransientOverlay(
   if (!(await action.isVisible({ timeout: 1_000 }).catch(() => false))) {
     if (!(await overlay.isVisible().catch(() => false))) return false;
   }
-  await expect(action).toBeEnabled();
-  await action.click();
+
+  await expect.poll(async () => {
+    if (!(await overlay.isVisible().catch(() => false))) return 'advanced';
+    const currentText = await overlay.innerText({ timeout: 1_000 }).catch(() => null);
+    if (currentText == null || currentText !== previousText) return 'advanced';
+    return await action.isEnabled({ timeout: 1_000 }).catch(() => false)
+      ? 'ready'
+      : 'waiting';
+  }, {
+    message: 'blocking overlay should become actionable or advance while its dismissal is busy',
+    timeout: 60_000,
+  }).not.toBe('waiting');
+
+  const currentText = await overlay.innerText({ timeout: 1_000 }).catch(() => null);
+  if (currentText == null || currentText !== previousText) return true;
+
+  const actionHandle = await action.elementHandle();
+  if (actionHandle && !(await actionHandle.isDisabled().catch(() => true))) {
+    await actionHandle.click({ timeout: 5_000 }).catch(() => undefined);
+  }
   await waitForOverlayAdvance(overlay, previousText);
   return true;
 }
@@ -72,6 +96,7 @@ async function dismissTransientOverlay(
 async function acceptServiceWorkerRefresh(page: Page): Promise<boolean> {
   const updateToast = page.getByText(APP_UPDATED_COPY, { exact: true });
   if (!(await updateToast.isVisible().catch(() => false))) return false;
+  const durableSummaryBeforeRefresh = await expectDurableSaveSummary(page);
 
   const navigation = page.waitForEvent('framenavigated', {
     predicate: (frame) => frame === page.mainFrame(),
@@ -81,6 +106,7 @@ async function acceptServiceWorkerRefresh(page: Page): Promise<boolean> {
   await navigation;
   await page.waitForLoadState('domcontentloaded');
   await waitForAppReady(page);
+  await expectDurableSaveSummary(page, durableSummaryBeforeRefresh);
   return true;
 }
 
@@ -159,6 +185,7 @@ export async function freshRuntimeReload(
   if (durableOverlayChanged || await saveStatus(page).count() > 0) {
     await expect(saveStatus(page)).toHaveText('Saved', { timeout: 60_000 });
   }
+  const durableSummaryBeforeReload = await expectDurableSaveSummary(page);
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForAppReady(page);
@@ -169,17 +196,46 @@ export async function freshRuntimeReload(
   await options.ready?.();
   await handlePressConference(page, options.press ?? 'skip');
   await expect(saveStatus(page)).toHaveCount(0);
+  await expectDurableSaveSummary(page, durableSummaryBeforeReload);
 }
 
 export async function expectFreshMutationRuntime(page: Page): Promise<void> {
   await expect(saveStatus(page)).toHaveCount(0);
+  await expectDurableSaveSummary(page);
   await expect(
     page.locator('[data-overlay="moment-card"], [data-overlay="monthly-pulse"]'),
   ).toHaveCount(0);
 }
 
+export async function expectDurableSaveSummary(
+  page: Page,
+  expected?: DurableSaveSummarySnapshot,
+): Promise<DurableSaveSummarySnapshot> {
+  const summary = saveSummary(page);
+  await expect(summary).toBeVisible();
+  await expect(summary).toHaveAttribute('data-pending-writes', '0');
+  await expect(summary).toHaveAttribute(
+    'data-last-saved-at',
+    expected?.lastSavedAt ?? /.+/,
+  );
+  await expect(summary).toHaveText(
+    expected?.text ?? /^Last saved .+ · 0 pending writes$/,
+  );
+
+  const lastSavedAt = await summary.getAttribute('data-last-saved-at');
+  if (!lastSavedAt) {
+    throw new Error('Durable save summary did not expose a non-empty data-last-saved-at value.');
+  }
+
+  return {
+    lastSavedAt,
+    text: (await summary.innerText()).trim(),
+  };
+}
+
 export async function expectMutationSaved(page: Page): Promise<void> {
   await expect(saveStatus(page)).toHaveText('Saved', { timeout: 60_000 });
+  await expectDurableSaveSummary(page);
 }
 
 export async function runGlobalSimulation(

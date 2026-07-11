@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import SettingsPage from './SettingsPage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import {
   AUDIO_PREFERENCES_DEFAULTS,
   useAudioPreferencesStore,
@@ -12,7 +13,7 @@ import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 import { assistantStorageKey } from '@/features/assistant/lib/assistantState';
 import { guidedStartNudgeStorageKey } from '@/features/onboarding/nudges';
 import { resetAudioEngineForTest } from '@/shared/lib/audio';
-import { listSaves, loadGameSafe, loadSaveSafely, repairSave } from '@/shared/lib/saveSystem';
+import { listBranches, listSaves, loadGameSafe, loadSaveSafely, repairSave } from '@/shared/lib/saveSystem';
 
 const recoveryMockState = vi.hoisted(() => ({
   showFailure: vi.fn(),
@@ -24,6 +25,10 @@ vi.mock('@/shared/hooks/useWorker', () => ({
 
 vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
+}));
+
+vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
+  useActiveSaveAutosave: vi.fn(),
 }));
 
 vi.mock('@/shared/components/TourProvider', () => ({
@@ -48,8 +53,12 @@ vi.mock('@/features/save-recovery', () => ({
 
 vi.mock('@/shared/lib/saveSystem', () => ({
   SAVE_SLOTS: [1, 2, 3, 4, 5],
+  createBranchSave: vi.fn(),
   deleteSave: vi.fn(),
+  deleteSaveById: vi.fn(),
+  listBranches: vi.fn(),
   listSaves: vi.fn(),
+  loadGameById: vi.fn(),
   loadGame: vi.fn(),
   loadGameSafe: vi.fn(),
   loadSaveSafely: vi.fn(),
@@ -59,7 +68,9 @@ vi.mock('@/shared/lib/saveSystem', () => ({
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedUseActiveSaveAutosave = vi.mocked(useActiveSaveAutosave);
 const mockedListSaves = vi.mocked(listSaves);
+const mockedListBranches = vi.mocked(listBranches);
 const mockedLoadGameSafe = vi.mocked(loadGameSafe);
 const mockedLoadSaveSafely = vi.mocked(loadSaveSafely);
 const mockedRepairSave = vi.mocked(repairSave);
@@ -96,6 +107,7 @@ function createStorageMock(): Storage {
 describe('SettingsPage', () => {
   let container: HTMLDivElement;
   let root: Root;
+  let persistActiveSave: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     resetAudioEngineForTest();
@@ -114,6 +126,11 @@ describe('SettingsPage', () => {
     });
     usePreferencesStore.getState().reset();
     recoveryMockState.showFailure.mockReset();
+    persistActiveSave = vi.fn().mockResolvedValue({
+      saved: true,
+      saveName: 'Healthy Save',
+    });
+    mockedUseActiveSaveAutosave.mockReturnValue(persistActiveSave);
 
     mockedUseWorker.mockReturnValue({
       isReady: false,
@@ -130,6 +147,7 @@ describe('SettingsPage', () => {
     } as unknown as ReturnType<typeof useGameStore>);
 
     mockedListSaves.mockResolvedValue([]);
+    mockedListBranches.mockResolvedValue([]);
     mockedLoadGameSafe.mockResolvedValue({
       status: 'ok',
       save: {
@@ -369,36 +387,35 @@ describe('SettingsPage', () => {
   });
 
   it('shows what-if branch management for the active root save', async () => {
+    mockedListBranches.mockResolvedValue([
+      {
+        id: 'branch-1',
+        slotNumber: null,
+        name: 'Aggressive deadline push',
+        season: 3,
+        day: 87,
+        phase: 'regular',
+        schemaVersion: 15,
+        hasSnapshot: true,
+        snapshot: null,
+        legacyState: null,
+        createdAt: '2026-04-04T00:00:00.000Z',
+        updatedAt: '2026-04-04T00:00:00.000Z',
+        parentSaveId: 'save-slot-1',
+        isRootSave: false,
+        branchMeta: {
+          id: 'branch-1',
+          saveId: 'branch-1',
+          branchedAtSeason: 3,
+          branchedAtDay: 87,
+          description: 'Aggressive deadline push',
+          createdAt: '2026-04-04T00:00:00.000Z',
+        },
+      },
+    ] as never);
     mockedUseWorker.mockReturnValue({
       isReady: true,
-      getBranches: vi.fn().mockResolvedValue([
-        {
-          id: 'branch-1',
-          slotNumber: null,
-          name: 'Aggressive deadline push',
-          season: 3,
-          day: 87,
-          phase: 'regular',
-          schemaVersion: 15,
-          hasSnapshot: true,
-          snapshot: null,
-          legacyState: null,
-          createdAt: '2026-04-04T00:00:00.000Z',
-          updatedAt: '2026-04-04T00:00:00.000Z',
-          parentSaveId: 'save-slot-1',
-          isRootSave: false,
-          branchMeta: {
-            id: 'branch-1',
-            saveId: 'branch-1',
-            branchedAtSeason: 3,
-            branchedAtDay: 87,
-            description: 'Aggressive deadline push',
-            createdAt: '2026-04-04T00:00:00.000Z',
-          },
-        },
-      ]),
-      createWhatIfBranch: vi.fn().mockResolvedValue({ id: 'branch-2' }),
-      deleteWhatIfBranch: vi.fn().mockResolvedValue({ success: true }),
+      exportSnapshot: vi.fn(),
     } as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -540,7 +557,8 @@ describe('SettingsPage', () => {
       await Promise.resolve();
     });
 
-    expect(archiveOldSeasons).toHaveBeenCalledWith('save-slot-1');
+    expect(archiveOldSeasons).toHaveBeenCalledWith();
+    expect(persistActiveSave).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('Archived 2 older seasons');
 
     await act(async () => {
@@ -548,7 +566,8 @@ describe('SettingsPage', () => {
       await Promise.resolve();
     });
 
-    expect(pruneStaleData).toHaveBeenCalledWith('save-slot-1');
+    expect(pruneStaleData).toHaveBeenCalledWith();
+    expect(persistActiveSave).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain('Pruned 3 stale entries');
   });
 

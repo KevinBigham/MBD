@@ -48,8 +48,6 @@ const mutationMethods = new Set<WorkerMethodName>([
   'simPlayoffRound',
   'simRemainingPlayoffs',
   'importSnapshot',
-  'createWhatIfBranch',
-  'deleteWhatIfBranch',
   'archiveOldSeasons',
   'pruneStaleData',
   'scoutPlayerReport',
@@ -356,21 +354,12 @@ export function useWorker() {
       })),
     [api, runMutation],
   );
-  const createWhatIfBranch = useCallback(
-    async (parentSaveId: string, description: string) =>
-      runMutation(() => api.createWhatIfBranch(parentSaveId, description)),
-    [api, runMutation],
-  );
-  const deleteWhatIfBranch = useCallback(
-    async (branchSaveId: string) => runMutation(() => api.deleteWhatIfBranch(branchSaveId)),
-    [api, runMutation],
-  );
   const archiveOldSeasons = useCallback(
-    async (saveId: string) => runMutation(() => api.archiveOldSeasons(saveId)),
+    async () => runMutation(() => api.archiveOldSeasons()),
     [api, runMutation],
   );
   const pruneStaleData = useCallback(
-    async (saveId: string) => runMutation(() => api.pruneStaleData(saveId)),
+    async () => runMutation(() => api.pruneStaleData()),
     [api, runMutation],
   );
 
@@ -918,7 +907,7 @@ export function useWorker() {
     ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
-    exportSnapshot, importSnapshot, createWhatIfBranch, deleteWhatIfBranch, archiveOldSeasons, pruneStaleData,
+    exportSnapshot, importSnapshot, archiveOldSeasons, pruneStaleData,
     getStandings, getScheduleView, getTeamRoster, getFullRoster, getPlayer, getPlayerProfileView, getPlayerMoments, getTeamMoments, getRecentLeagueMoments, getRecentTeamMoments, getThisWeekInHistory, getPlayerArcsOfSeason, getNicknamesForPlayer, getRelationships, getRelationshipWith, getPlayerStoryArcs, getMilestoneAlerts, getAdvancedStats,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getBranches, compareWithBranch, getAchievements, getPerformanceDiagnostics, getDashboardSummary, getGamePlayByPlay, getRecentGameRecaps, getSeasonRecap, getOffseasonHeadline, getMonthlyPulse, getCurrentLeagueEvents, getLeagueEventHistory, getCeremonyState, getTickerFeed, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,

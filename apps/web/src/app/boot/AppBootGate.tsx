@@ -5,6 +5,11 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { loadSaveSafely, type LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
 import { logger } from '@/shared/lib/logger';
+import {
+  activateActiveSavePersistenceMetadata,
+  prepareActiveSavePersistenceForLoad,
+  releaseActiveSavePersistenceLoad,
+} from '@/shared/lib/activeSavePersistence';
 
 type AutoResumeFailure = Extract<LoadSaveSafelyResult, { ok: false }>;
 type AutoResumeStatus = 'idle' | 'resuming' | 'finished';
@@ -78,9 +83,11 @@ export function AppBootGate({ children }: { children: ReactNode }) {
     setResumeStatus('resuming');
 
     try {
+      await prepareActiveSavePersistenceForLoad(saveId);
       const loadResult = await loadSaveSafely(saveId);
 
       if (!loadResult.ok) {
+        releaseActiveSavePersistenceLoad(saveId);
         setActiveSave(null, null);
         setResumeStatus('finished');
 
@@ -100,6 +107,7 @@ export function AppBootGate({ children }: { children: ReactNode }) {
 
       const imported = await worker.importSnapshot(loadResult.snapshot);
       if (!imported.success) {
+        releaseActiveSavePersistenceLoad(saveId);
         const failure = storageFailure(
           saveId,
           loadResult.save.slotNumber ?? slotNumber,
@@ -118,6 +126,7 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         return false;
       }
 
+      activateActiveSavePersistenceMetadata(loadResult.save);
       initializeGame({
         season: imported.season,
         day: imported.day,
@@ -133,6 +142,7 @@ export function AppBootGate({ children }: { children: ReactNode }) {
       setResumeStatus('finished');
       return true;
     } catch (error) {
+      releaseActiveSavePersistenceLoad(saveId);
       logger.error('Failed to auto-resume save:', error);
       const failure = storageFailure(saveId, slotNumber, errorMessage(error));
       setActiveSave(null, null);

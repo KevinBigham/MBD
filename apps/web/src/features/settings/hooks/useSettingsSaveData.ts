@@ -4,12 +4,25 @@ import type { GameState } from '@/shared/hooks/useGameStore';
 import type { useWorker } from '@/shared/hooks/useWorker';
 import { logger } from '@/shared/lib/logger';
 import {
+  activateActiveSavePersistenceMetadata,
+  prepareActiveSavePersistenceForLoad,
+  releaseActiveSavePersistenceLoad,
+  replaceInactiveSavePersistenceRecord,
+  retireActiveSavePersistenceForDelete,
+  retireSaveTreePersistenceForDelete,
+  trackActiveSavePersistenceOperation,
+} from '@/shared/lib/activeSavePersistence';
+import {
   SAVE_SLOTS,
   clearAllSaves,
+  createBranchSave,
   deleteSave,
+  deleteSaveById,
   exportSnapshotToJson,
   importSnapshotFromJson,
+  listBranches,
   listSaves,
+  loadGameById,
   loadSaveSafely,
   saveGame,
   type LoadSaveSafelyResult,
@@ -18,10 +31,7 @@ import {
 
 type SettingsSaveDataWorker = Pick<
   ReturnType<typeof useWorker>,
-  | 'createWhatIfBranch'
-  | 'deleteWhatIfBranch'
   | 'exportSnapshot'
-  | 'getBranches'
   | 'importSnapshot'
   | 'isReady'
 >;
@@ -34,6 +44,7 @@ export interface UseSettingsSaveDataOptions {
   activeSaveSlot: number | null;
   day: number;
   initializeGame: InitializeGame;
+  persistActiveSave: () => Promise<{ saved: boolean; saveName: string | null }>;
   recoveryShowFailure: RecoveryShowFailure;
   season: number;
   worker: SettingsSaveDataWorker;
@@ -44,6 +55,7 @@ export function useSettingsSaveData({
   activeSaveSlot,
   day,
   initializeGame,
+  persistActiveSave,
   recoveryShowFailure,
   season,
   worker,
@@ -63,13 +75,13 @@ export function useSettingsSaveData({
   }, []);
 
   const refreshBranches = useCallback(async () => {
-    if (!workerReady || !activeRootSaveId || typeof worker.getBranches !== 'function') {
+    if (!workerReady || !activeRootSaveId) {
       setBranches([]);
       return;
     }
 
-    setBranches(await worker.getBranches(activeRootSaveId));
-  }, [activeRootSaveId, worker, workerReady]);
+    setBranches(await listBranches(activeRootSaveId));
+  }, [activeRootSaveId, workerReady]);
 
   useEffect(() => {
     void refreshSaves();
@@ -81,8 +93,28 @@ export function useSettingsSaveData({
     setBusySlot(slot);
     setStatus('');
     try {
-      const snapshot = await worker.exportSnapshot();
-      await saveGame(slot, `Season ${season} Day ${day}`, snapshot);
+      const targetSaveId = `save-slot-${slot}`;
+      if (activeManagedSaveId === targetSaveId) {
+        const result = await persistActiveSave();
+        if (!result.saved) {
+          setStatus(`Failed to save slot ${slot}.`);
+          return;
+        }
+      } else {
+        if (activeSaveId && activeSaveId !== activeRootSaveId) {
+          const activeRecord = await loadGameById(activeSaveId);
+          if (!activeRecord || activeRecord.parentSaveId === targetSaveId) {
+            setStatus(`Cannot overwrite slot ${slot} while its what-if branch is active.`);
+            return;
+          }
+        }
+        await replaceInactiveSavePersistenceRecord(targetSaveId, async () => {
+          const snapshot = await worker.exportSnapshot();
+          return saveGame(slot, `Season ${season} Day ${day}`, snapshot, {
+            replaceExistingRootBranchMetadata: true,
+          });
+        });
+      }
       await refreshSaves();
       setStatus(`Saved snapshot to slot ${slot}.`);
     } catch (error) {
@@ -91,30 +123,61 @@ export function useSettingsSaveData({
     } finally {
       setBusySlot(null);
     }
-  }, [day, refreshSaves, season, worker, workerReady]);
+  }, [activeManagedSaveId, activeRootSaveId, activeSaveId, day, persistActiveSave, refreshSaves, season, worker, workerReady]);
 
   const handleDelete = useCallback(async (slot: number) => {
+    const targetSaveId = `save-slot-${slot}`;
+    if (
+      activeManagedSaveId === targetSaveId
+      || (activeManagedSaveId && activeRootSaveId === targetSaveId)
+    ) {
+      setStatus(`Cannot delete slot ${slot} while its dynasty is active.`);
+      return false;
+    }
+
+    if (activeSaveId && activeSaveId !== activeRootSaveId) {
+      try {
+        const activeRecord = await loadGameById(activeSaveId);
+        if (!activeRecord) {
+          setStatus(`Cannot delete slot ${slot} while active branch ownership cannot be verified.`);
+          return false;
+        }
+        if (activeRecord.parentSaveId === targetSaveId) {
+          setStatus(`Cannot delete slot ${slot} because it owns the active what-if branch.`);
+          return false;
+        }
+      } catch (error) {
+        logger.error('Failed to verify active branch ownership:', error);
+        setStatus(`Cannot delete slot ${slot} while active branch ownership cannot be verified.`);
+        return false;
+      }
+    }
+
     setBusySlot(slot);
     setStatus('');
     try {
-      await deleteSave(slot);
+      await retireSaveTreePersistenceForDelete(targetSaveId, () => deleteSave(slot));
       await refreshSaves();
       setStatus(`Deleted slot ${slot}.`);
+      return true;
     } catch (error) {
       logger.error('Failed to delete save:', error);
       setStatus(`Failed to delete slot ${slot}.`);
+      return false;
     } finally {
       setBusySlot(null);
     }
-  }, [refreshSaves]);
+  }, [activeManagedSaveId, activeRootSaveId, activeSaveId, refreshSaves]);
 
-  const continueFromSave = useCallback(async (save: SaveData, snapshot: object | null) => {
+  const continueFromSave = useCallback(async (save: SaveData, snapshot: object | null): Promise<boolean> => {
     const imported = await worker.importSnapshot(snapshot);
     if (!imported.success) {
+      releaseActiveSavePersistenceLoad(save.id);
       const errorMsg = 'error' in imported ? imported.error : 'Failed to load save.';
       logger.error('Save incompatible:', errorMsg);
-      return;
+      return false;
     }
+    activateActiveSavePersistenceMetadata(save);
     initializeGame({
       season: imported.season,
       day: imported.day,
@@ -127,19 +190,25 @@ export function useSettingsSaveData({
       activeSaveId: save.id,
       activeSaveSlot: save.slotNumber,
     });
+    return true;
   }, [initializeGame, worker]);
 
-  const continueFromSafeLoad = useCallback(async (result: Extract<LoadSaveSafelyResult, { ok: true }>) => {
-    await continueFromSave(result.save, result.snapshot);
+  const continueFromSafeLoad = useCallback(async (
+    result: Extract<LoadSaveSafelyResult, { ok: true }>,
+  ): Promise<boolean> => {
+    return continueFromSave(result.save, result.snapshot);
   }, [continueFromSave]);
 
   const handleLoad = useCallback(async (slot: number): Promise<boolean> => {
     if (!workerReady) return false;
+    const targetSaveId = `save-slot-${slot}`;
     setBusySlot(slot);
     setStatus('');
     try {
+      await prepareActiveSavePersistenceForLoad(targetSaveId);
       const result = await loadSaveSafely(slot);
       if (!result.ok) {
+        releaseActiveSavePersistenceLoad(targetSaveId);
         recoveryShowFailure({
           failure: result,
           onDelete: () => handleDelete(slot),
@@ -147,10 +216,15 @@ export function useSettingsSaveData({
         });
         return false;
       }
-      await continueFromSafeLoad(result);
+      const continued = await continueFromSafeLoad(result);
+      if (!continued) {
+        setStatus(`Failed to load slot ${slot}.`);
+        return false;
+      }
       setStatus(`Loaded slot ${slot}.`);
       return true;
     } catch (error) {
+      releaseActiveSavePersistenceLoad(targetSaveId);
       logger.error('Failed to load game:', error);
       setStatus(`Failed to load slot ${slot}.`);
       return false;
@@ -206,6 +280,11 @@ export function useSettingsSaveData({
   }, [refreshSaves, saves]);
 
   const handleClearAllSaves = useCallback(async () => {
+    if (activeManagedSaveId) {
+      setStatus('Cannot clear local saves while a dynasty is active.');
+      return;
+    }
+
     if (typeof window !== 'undefined' && !window.confirm('Delete every save slot? This cannot be undone.')) {
       return;
     }
@@ -213,10 +292,10 @@ export function useSettingsSaveData({
     await clearAllSaves();
     await refreshSaves();
     setStatus('Cleared every local save slot.');
-  }, [refreshSaves]);
+  }, [activeManagedSaveId, refreshSaves]);
 
   const handleCreateBranch = useCallback(async () => {
-    if (!workerReady || !activeRootSaveId || typeof worker.createWhatIfBranch !== 'function') {
+    if (!workerReady || !activeRootSaveId) {
       return;
     }
     const description = branchDescription.trim();
@@ -228,7 +307,11 @@ export function useSettingsSaveData({
     setBranchBusy(true);
     setStatus('');
     try {
-      await worker.createWhatIfBranch(activeRootSaveId, description);
+      const snapshot = await worker.exportSnapshot();
+      await trackActiveSavePersistenceOperation(activeRootSaveId, async () => {
+        const created = await createBranchSave(activeRootSaveId, snapshot, description);
+        return created.parent;
+      });
       await refreshBranches();
       setBranchDescription('');
       setStatus('Created a new what-if branch from the active root save.');
@@ -241,14 +324,27 @@ export function useSettingsSaveData({
   }, [activeRootSaveId, branchDescription, refreshBranches, worker, workerReady]);
 
   const handleDeleteBranch = useCallback(async (branchSaveId: string) => {
-    if (typeof worker.deleteWhatIfBranch !== 'function') {
+    if (activeManagedSaveId === branchSaveId) {
+      setStatus('Cannot delete the active what-if branch.');
+      return;
+    }
+    if (!activeRootSaveId) {
       return;
     }
 
     setBranchBusy(true);
     setStatus('');
     try {
-      await worker.deleteWhatIfBranch(branchSaveId);
+      await trackActiveSavePersistenceOperation(activeRootSaveId, async () => {
+        const parent = await retireActiveSavePersistenceForDelete(
+          branchSaveId,
+          () => deleteSaveById(branchSaveId),
+        );
+        if (!parent) {
+          throw new Error('The active root save disappeared after branch deletion.');
+        }
+        return parent;
+      });
       await refreshBranches();
       setStatus('Deleted the selected what-if branch.');
     } catch (error) {
@@ -257,7 +353,7 @@ export function useSettingsSaveData({
     } finally {
       setBranchBusy(false);
     }
-  }, [refreshBranches, worker]);
+  }, [activeManagedSaveId, activeRootSaveId, refreshBranches]);
 
   return {
     activeManagedSaveId,

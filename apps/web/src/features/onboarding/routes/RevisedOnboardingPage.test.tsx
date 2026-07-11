@@ -13,7 +13,8 @@ import {
 import RevisedOnboardingPage from './RevisedOnboardingPage';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
-import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
+import { loadGameById } from '@/shared/lib/saveSystem';
+import { persistActiveSaveSnapshot } from '@/shared/lib/activeSavePersistence';
 import type { RevisedOnboardingData } from '@/workers/sim.worker.onboarding';
 import {
   readGuidedStartNudgeRecord,
@@ -40,15 +41,16 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 
 vi.mock('@/shared/lib/saveSystem', () => ({
   loadGameById: vi.fn(),
-  saveGame: vi.fn(),
-  saveGameById: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  persistActiveSaveSnapshot: vi.fn(),
 }));
 
 const mockedUseGameStore = vi.mocked(useGameStore);
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedLoadGameById = vi.mocked(loadGameById);
-const mockedSaveGame = vi.mocked(saveGame);
-const mockedSaveGameById = vi.mocked(saveGameById);
+const mockedPersistActiveSaveSnapshot = vi.mocked(persistActiveSaveSnapshot);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -482,23 +484,9 @@ describe('RevisedOnboardingPage', () => {
     mockedNavigate.mockReset();
     mockGameStore();
     mockedLoadGameById.mockResolvedValue(undefined);
-    mockedSaveGame.mockResolvedValue(undefined);
-    mockedSaveGameById.mockResolvedValue({
-      id: 'save-slot-1',
-      slotNumber: 1,
-      name: 'General Manager • New York Tycoons',
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-      hasSnapshot: true,
-      snapshot: null,
-      legacyState: null,
-      createdAt: '2026-04-13T00:00:00.000Z',
-      updatedAt: '2026-04-13T00:00:00.000Z',
-      parentSaveId: null,
-      isRootSave: true,
-      branchMeta: null,
+    mockedPersistActiveSaveSnapshot.mockResolvedValue({
+      saved: true,
+      saveName: 'General Manager • New York Tycoons',
     });
   });
 
@@ -640,23 +628,20 @@ describe('RevisedOnboardingPage', () => {
     }));
     expect(worker.exportSnapshot).toHaveBeenCalledTimes(1);
     expect(mockedLoadGameById).toHaveBeenCalledWith('save-slot-1');
-    expect(mockedSaveGameById).toHaveBeenCalledWith(
-      'save-slot-1',
-      'General Manager • New York Tycoons',
-      expect.objectContaining({
-        schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
-        franchise: expect.objectContaining({
-          assistantGMId: 'marcus_chen',
-          onboarding: expect.objectContaining({ welcomeBriefingSeen: true }),
-        }),
+    expect(mockedPersistActiveSaveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      saveName: 'General Manager • New York Tycoons',
+      season: 1,
+    }));
+    const capturedSnapshot = await mockedPersistActiveSaveSnapshot.mock.calls[0]![0].exportSnapshot();
+    expect(capturedSnapshot).toEqual(expect.objectContaining({
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+      franchise: expect.objectContaining({
+        assistantGMId: 'marcus_chen',
+        onboarding: expect.objectContaining({ welcomeBriefingSeen: true }),
       }),
-      expect.objectContaining({
-        slotNumber: 1,
-        parentSaveId: null,
-        isRootSave: true,
-        branchMeta: null,
-      }),
-    );
+    }));
     expect(mockedNavigate).toHaveBeenCalledWith('/dashboard');
   });
 

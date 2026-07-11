@@ -79,4 +79,4 @@
 - Test/screenshot expectations: Add focused Vitest coverage for route/control behavior and use browser smoke for meaningful playable UI changes.
 
 ## Open questions
-- [ ] Should the app expose a visible autosave timestamp in the app shell? Owner: product. Impact: could further increase player confidence after sim controls mutate state.
+- [x] Should the app expose a visible autosave timestamp in the app shell? Resolved 2026-07-11: show the active save's exact durable record time and logical pending-write depth as a persistent TopBar summary, separate from transient save announcements.

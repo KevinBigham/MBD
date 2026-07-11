@@ -13,6 +13,7 @@ import {
   type ActiveSavePersistenceFailureKind,
 } from '@/shared/lib/activeSavePersistence';
 import type { SeasonFlowState } from './seasonFlow';
+import { formatSavePersistenceSummary } from './savePersistenceSummary';
 
 function describeSaveFailure(failureKind: ActiveSavePersistenceFailureKind | null): string {
   switch (failureKind) {
@@ -63,6 +64,11 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   const detailLabel = flow?.detailLabel ?? phase;
   const progress = Math.round((flow?.progress ?? 0) * 100);
   const unreadNewsCount = unreadNewsIds.size;
+  const saveSummaryVisible = activeSaveId != null;
+  const saveSummary = formatSavePersistenceSummary(
+    saveStatus.lastSavedAt,
+    saveStatus.pendingWrites,
+  );
   const saveStatusVisible = saveStatus.state !== 'idle';
   const saveStatusLabel = saveStatus.state === 'saving'
     ? 'Saving...'
@@ -101,9 +107,9 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   }), []);
 
   return (
-    <header className="flex h-12 items-center justify-between border-b border-dynasty-border bg-dynasty-surface px-4">
+    <header className="flex shrink-0 flex-wrap items-center border-b border-dynasty-border bg-dynasty-surface">
       {/* Left: Brand + Season context */}
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="order-1 flex h-12 min-w-0 flex-1 items-center gap-3 pl-4">
         <span className="font-brand text-2xl tracking-wide text-accent-primary">
           MBD
         </span>
@@ -134,8 +140,21 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
         </div>
       </div>
 
+      {saveSummaryVisible && (
+        <span
+          data-testid="save-persistence-summary"
+          data-last-saved-at={saveStatus.lastSavedAt ?? ''}
+          data-pending-writes={saveStatus.pendingWrites}
+          aria-label={saveSummary}
+          title={saveSummary}
+          className="order-3 block w-full truncate border-t border-dynasty-border px-4 py-1.5 font-data text-[11px] text-dynasty-muted lg:order-2 lg:w-auto lg:max-w-[22rem] lg:border-t-0 lg:px-2 lg:py-0"
+        >
+          {saveSummary}
+        </span>
+      )}
+
       {/* Right: Help + Command palette trigger + Settings */}
-      <div className="flex items-center gap-2">
+      <div className="order-2 flex h-12 shrink-0 items-center gap-2 pr-4 lg:order-3">
         {saveStatusVisible && (
           <span
             data-testid="save-persistence-status"

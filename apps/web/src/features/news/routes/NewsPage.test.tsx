@@ -19,7 +19,10 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
 vi.mock('@/shared/lib/saveSystem', () => ({
   loadGameById: vi.fn(),
   saveGame: vi.fn().mockResolvedValue(undefined),
-  saveGameById: vi.fn().mockResolvedValue(undefined),
+  saveGameById: vi.fn().mockResolvedValue({
+    id: 'save-slot-1',
+    updatedAt: '2026-04-02T12:00:00.000Z',
+  }),
 }));
 
 const mockedUseWorker = vi.mocked(useWorker);

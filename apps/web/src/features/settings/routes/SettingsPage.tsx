@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import { useSaveRecovery } from '@/features/save-recovery';
 import SettingsPageContent, { type SettingsSectionKey } from '../components/SettingsPageContent';
 import { useSettingsDiagnosticsData } from '../hooks/useSettingsDiagnosticsData';
@@ -22,6 +23,7 @@ const DEFAULT_OPEN_SECTIONS: Record<SettingsSectionKey, boolean> = {
 
 export default function SettingsPage() {
   const worker = useWorker();
+  const persistActiveSave = useActiveSaveAutosave();
   const recovery = useSaveRecovery();
   const workerReady = worker.isReady;
   const { season, day, phase, userTeamId, initializeGame, activeSaveId, activeSaveSlot } = useGameStore();
@@ -32,6 +34,7 @@ export default function SettingsPage() {
     activeSaveSlot,
     day,
     initializeGame,
+    persistActiveSave,
     recoveryShowFailure: recovery.showFailure,
     season,
     worker,
@@ -41,6 +44,7 @@ export default function SettingsPage() {
     archiveOldSeasons: typeof worker.archiveOldSeasons === 'function' ? worker.archiveOldSeasons : undefined,
     getPerformanceDiagnostics: typeof worker.getPerformanceDiagnostics === 'function' ? worker.getPerformanceDiagnostics : undefined,
     onStatusChange: saveData.setStatus,
+    persistActiveSave,
     pruneStaleData: typeof worker.pruneStaleData === 'function' ? worker.pruneStaleData : undefined,
     workerReady,
   });

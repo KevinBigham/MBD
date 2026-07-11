@@ -21,8 +21,6 @@ vi.mock('comlink', () => ({
 }));
 
 vi.mock('../shared/lib/saveSystem.js', () => ({
-  createBranchSave: vi.fn(),
-  deleteSaveById: vi.fn(),
   listBranches: vi.fn(),
   loadGameById: vi.fn(),
   saveGameById: vi.fn(),
@@ -44,15 +42,11 @@ import {
   getWeeklyMomentCheckpointDays,
 } from './sim.worker.narrativeFarm';
 import {
-  createBranchSave,
-  deleteSaveById,
   listBranches,
   loadGameById,
   saveGameById,
 } from '../shared/lib/saveSystem.js';
 
-const mockedCreateBranchSave = vi.mocked(createBranchSave);
-const mockedDeleteSaveById = vi.mocked(deleteSaveById);
 const mockedListBranches = vi.mocked(listBranches);
 const mockedLoadGameById = vi.mocked(loadGameById);
 const mockedSaveGameById = vi.mocked(saveGameById);
@@ -466,12 +460,12 @@ interface MinorLeagueWorkerApi {
       lastLoadMs: number | null;
     };
   };
-  archiveOldSeasons: (saveId: string) => Promise<{
+  archiveOldSeasons: () => Promise<{
     success: boolean;
     archivedCount: number;
     diagnostics: ReturnType<MinorLeagueWorkerApi['getPerformanceDiagnostics']>;
   }>;
-  pruneStaleData: (saveId: string) => Promise<{
+  pruneStaleData: () => Promise<{
     success: boolean;
     prunedCount: number;
     diagnostics: ReturnType<MinorLeagueWorkerApi['getPerformanceDiagnostics']>;
@@ -484,15 +478,6 @@ interface MinorLeagueWorkerApi {
       description: string;
     } | null;
   }>>;
-  createWhatIfBranch: (parentSaveId: string, description: string) => Promise<{
-    id: string;
-    parentSaveId: string | null;
-    isRootSave: boolean;
-    branchMeta: {
-      description: string;
-    } | null;
-  }>;
-  deleteWhatIfBranch: (branchSaveId: string) => Promise<{ success: boolean }>;
   compareWithBranch: (parentSaveId: string, branchSaveId: string) => Promise<{
     branchMeta: {
       id: string;
@@ -697,8 +682,6 @@ function configureMonthlyTradeScenario() {
 
 describe('sim worker narrative APIs', () => {
   beforeEach(() => {
-    mockedCreateBranchSave.mockReset();
-    mockedDeleteSaveById.mockReset();
     mockedListBranches.mockReset();
     mockedLoadGameById.mockReset();
   });
@@ -7220,203 +7203,7 @@ describe('sim worker narrative APIs', () => {
     expect(fipLeader?.advanced?.fip).toBeCloseTo(pitcherAdvanced?.fip ?? 0, 3);
   });
 
-  it('creates a what-if branch and loads it by id', async () => {
-    startGame(123, 'nym');
-    mockedCreateBranchSave.mockResolvedValue({
-      id: 'branch-1',
-      slotNumber: null,
-      name: 'Aggressive deadline push',
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      schemaVersion: 15,
-      hasSnapshot: true,
-      snapshot: null,
-      legacyState: null,
-      createdAt: '2026-04-04T00:00:00.000Z',
-      updatedAt: '2026-04-04T00:00:00.000Z',
-      parentSaveId: 'save-slot-1',
-      isRootSave: false,
-      branchMeta: {
-        id: 'branch-1',
-        saveId: 'branch-1',
-        description: 'Aggressive deadline push',
-        branchedAtSeason: 1,
-        branchedAtDay: 1,
-        createdAt: '2026-04-04T00:00:00.000Z',
-      },
-    });
-    mockedListBranches.mockResolvedValue([{
-      id: 'branch-1',
-      slotNumber: null,
-      name: 'Aggressive deadline push',
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      schemaVersion: 15,
-      hasSnapshot: true,
-      snapshot: null,
-      legacyState: null,
-      createdAt: '2026-04-04T00:00:00.000Z',
-      updatedAt: '2026-04-04T00:00:00.000Z',
-      parentSaveId: 'save-slot-1',
-      isRootSave: false,
-      branchMeta: {
-        id: 'branch-1',
-        saveId: 'branch-1',
-        description: 'Aggressive deadline push',
-        branchedAtSeason: 1,
-        branchedAtDay: 1,
-        createdAt: '2026-04-04T00:00:00.000Z',
-      },
-    }]);
-
-    const branchApi = api as typeof api & MinorLeagueWorkerApi;
-    const branch = await branchApi.createWhatIfBranch('save-slot-1', 'Aggressive deadline push');
-    const branches = await branchApi.getBranches('save-slot-1');
-
-    expect(branch.parentSaveId).toBe('save-slot-1');
-    expect(branch.isRootSave).toBe(false);
-    expect(branch.branchMeta?.description).toBe('Aggressive deadline push');
-    expect(branches).toHaveLength(1);
-    expect(branches[0]?.id).toBe(branch.id);
-    expect(mockedCreateBranchSave).toHaveBeenCalledWith(
-      'save-slot-1',
-      expect.objectContaining({
-        season: 1,
-        day: 1,
-        userTeamId: 'nym',
-      }),
-      'Aggressive deadline push',
-    );
-    expect(mockedListBranches).toHaveBeenCalledWith('save-slot-1');
-  });
-
-  it('enforces the 3-branch cap per parent save', async () => {
-    startGame(321, 'nym');
-    mockedCreateBranchSave
-      .mockResolvedValueOnce({
-        id: 'branch-1',
-        slotNumber: null,
-        name: 'Branch one',
-        season: 1,
-        day: 1,
-        phase: 'preseason',
-        schemaVersion: 15,
-        hasSnapshot: true,
-        snapshot: null,
-        legacyState: null,
-        createdAt: '2026-04-04T00:00:00.000Z',
-        updatedAt: '2026-04-04T00:00:00.000Z',
-        parentSaveId: 'save-slot-1',
-        isRootSave: false,
-        branchMeta: {
-          id: 'branch-1',
-          saveId: 'branch-1',
-          description: 'Branch one',
-          branchedAtSeason: 1,
-          branchedAtDay: 1,
-          createdAt: '2026-04-04T00:00:00.000Z',
-        },
-      })
-      .mockResolvedValueOnce({
-        id: 'branch-2',
-        slotNumber: null,
-        name: 'Branch two',
-        season: 1,
-        day: 1,
-        phase: 'preseason',
-        schemaVersion: 15,
-        hasSnapshot: true,
-        snapshot: null,
-        legacyState: null,
-        createdAt: '2026-04-04T00:00:00.000Z',
-        updatedAt: '2026-04-04T00:00:00.000Z',
-        parentSaveId: 'save-slot-1',
-        isRootSave: false,
-        branchMeta: {
-          id: 'branch-2',
-          saveId: 'branch-2',
-          description: 'Branch two',
-          branchedAtSeason: 1,
-          branchedAtDay: 1,
-          createdAt: '2026-04-04T00:00:00.000Z',
-        },
-      })
-      .mockResolvedValueOnce({
-        id: 'branch-3',
-        slotNumber: null,
-        name: 'Branch three',
-        season: 1,
-        day: 1,
-        phase: 'preseason',
-        schemaVersion: 15,
-        hasSnapshot: true,
-        snapshot: null,
-        legacyState: null,
-        createdAt: '2026-04-04T00:00:00.000Z',
-        updatedAt: '2026-04-04T00:00:00.000Z',
-        parentSaveId: 'save-slot-1',
-        isRootSave: false,
-        branchMeta: {
-          id: 'branch-3',
-          saveId: 'branch-3',
-          description: 'Branch three',
-          branchedAtSeason: 1,
-          branchedAtDay: 1,
-          createdAt: '2026-04-04T00:00:00.000Z',
-        },
-      })
-      .mockRejectedValueOnce(new Error('A save can only keep 3 what-if branches.'));
-    const branchApi = api as typeof api & MinorLeagueWorkerApi;
-    await branchApi.createWhatIfBranch('save-slot-1', 'Branch one');
-    await branchApi.createWhatIfBranch('save-slot-1', 'Branch two');
-    await branchApi.createWhatIfBranch('save-slot-1', 'Branch three');
-
-    await expect(branchApi.createWhatIfBranch('save-slot-1', 'Branch four')).rejects.toThrow('3');
-    expect(mockedCreateBranchSave).toHaveBeenCalledTimes(4);
-  });
-
-  it('deletes a branch and removes it from parent metadata', async () => {
-    startGame(456, 'nym');
-    mockedCreateBranchSave.mockResolvedValue({
-      id: 'branch-rollback',
-      slotNumber: null,
-      name: 'Rollback candidate',
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      schemaVersion: 15,
-      hasSnapshot: true,
-      snapshot: null,
-      legacyState: null,
-      createdAt: '2026-04-04T00:00:00.000Z',
-      updatedAt: '2026-04-04T00:00:00.000Z',
-      parentSaveId: 'save-slot-1',
-      isRootSave: false,
-      branchMeta: {
-        id: 'branch-rollback',
-        saveId: 'branch-rollback',
-        description: 'Rollback candidate',
-        branchedAtSeason: 1,
-        branchedAtDay: 1,
-        createdAt: '2026-04-04T00:00:00.000Z',
-      },
-    });
-    mockedListBranches.mockResolvedValue([]);
-
-    const branchApi = api as typeof api & MinorLeagueWorkerApi;
-    const branch = await branchApi.createWhatIfBranch('save-slot-1', 'Rollback candidate');
-
-    await expect(branchApi.deleteWhatIfBranch(branch.id)).resolves.toEqual({ success: true });
-
-    const branches = await branchApi.getBranches('save-slot-1');
-
-    expect(branches).toEqual([]);
-    expect(mockedDeleteSaveById).toHaveBeenCalledWith('branch-rollback');
-  });
-
-  it('reports runtime diagnostics and persists archive and prune maintenance to an explicit save id', async () => {
+  it('reports runtime diagnostics while archive and prune maintenance mutate worker state only', async () => {
     startGame(654, 'nym');
     const workerApi = api as typeof api & MinorLeagueWorkerApi;
     const snapshot = workerApi.exportSnapshot();
@@ -7517,41 +7304,6 @@ describe('sim worker narrative APIs', () => {
     ];
     state.day = 10;
 
-    mockedLoadGameById.mockResolvedValue({
-      id: 'save-slot-1',
-      slotNumber: 1,
-      name: 'Dynasty Save',
-      season: 13,
-      day: 10,
-      phase: 'regular',
-      schemaVersion: 15,
-      hasSnapshot: true,
-      snapshot,
-      legacyState: null,
-      createdAt: '2026-04-04T00:00:00.000Z',
-      updatedAt: '2026-04-04T00:00:00.000Z',
-      parentSaveId: null,
-      isRootSave: true,
-      branchMeta: null,
-    });
-    mockedSaveGameById.mockResolvedValue({
-      id: 'save-slot-1',
-      slotNumber: 1,
-      name: 'Dynasty Save',
-      season: 13,
-      day: 10,
-      phase: 'regular',
-      schemaVersion: 15,
-      hasSnapshot: true,
-      snapshot,
-      legacyState: null,
-      createdAt: '2026-04-04T00:00:00.000Z',
-      updatedAt: '2026-04-04T00:00:00.000Z',
-      parentSaveId: null,
-      isRootSave: true,
-      branchMeta: null,
-    });
-
     const diagnosticsBefore = workerApi.getPerformanceDiagnostics();
     expect(diagnosticsBefore).not.toBeNull();
     if (!diagnosticsBefore) {
@@ -7562,31 +7314,19 @@ describe('sim worker narrative APIs', () => {
     expect(diagnosticsBefore.queues.staleTickerEntries).toBe(1);
     expect(diagnosticsBefore.queues.resolvedWatchers).toBe(1);
 
-    const archived = await workerApi.archiveOldSeasons('save-slot-1');
+    const archived = await workerApi.archiveOldSeasons();
     expect(archived.success).toBe(true);
     expect(archived.archivedCount).toBe(2);
     expect(archived.diagnostics.totals.liveArchiveSeasons).toBe(10);
     expect(archived.diagnostics.totals.archivedSeasons).toBe(2);
 
-    const pruned = await workerApi.pruneStaleData('save-slot-1');
+    const pruned = await workerApi.pruneStaleData();
     expect(pruned.success).toBe(true);
     expect(pruned.prunedCount).toBe(3);
     expect(pruned.diagnostics.queues.tickerEntries).toBe(1);
     expect(pruned.diagnostics.queues.activeWatchers).toBe(1);
-    expect(pruned.diagnostics.runtime.lastSaveMs).not.toBeNull();
-
-    expect(mockedSaveGameById).toHaveBeenCalledTimes(2);
-    expect(mockedSaveGameById).toHaveBeenCalledWith(
-      'save-slot-1',
-      'Dynasty Save',
-      expect.objectContaining({
-        season: 13,
-        day: 10,
-      }),
-      expect.objectContaining({
-        slotNumber: 1,
-        isRootSave: true,
-      }),
-    );
+    expect(pruned.diagnostics.runtime.lastSaveMs).toBe(diagnosticsBefore.runtime.lastSaveMs);
+    expect(mockedLoadGameById).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
   });
 });

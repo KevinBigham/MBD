@@ -1,9 +1,10 @@
 // @vitest-environment node
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
   type GameSnapshot,
+  type WhatIfBranchMeta,
 } from '@mbd/contracts';
 import {
   buildSaveRecord,
@@ -27,6 +28,7 @@ import {
   saveGame,
   saveGameById,
   scheduleAutoSave,
+  type SaveData,
 } from './saveSystem';
 import {
   clearPerformanceMetrics,
@@ -191,8 +193,16 @@ function createSnapshot(): GameSnapshot {
 }
 
 describe('saveSystem helpers', () => {
+  beforeEach(() => {
+    // These are interaction-focused unit tests. The separate transaction suite
+    // exercises the real fake-IndexedDB backend and rollback behavior.
+    vi.stubGlobal('indexedDB', undefined);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
     clearPerformanceMetrics();
   });
 
@@ -238,6 +248,286 @@ describe('saveSystem helpers', () => {
       decisionQueue: [],
     });
     expect(record.legacyState).toBeNull();
+  });
+
+  it('commits a root save and its derived leaderboard entry atomically with one persisted timestamp', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-02T19:42:03.000Z'));
+    vi.stubGlobal('indexedDB', {});
+    vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+    const savePut = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-2' as never);
+    const leaderboardPut = vi.spyOn(db.leaderboard, 'put').mockResolvedValue('leaderboard-dynasty-2' as never);
+    const transaction = vi.spyOn(db, 'transaction').mockImplementation((async (...args: unknown[]) => {
+      const scope = args.at(-1) as () => Promise<unknown>;
+      return scope();
+    }) as typeof db.transaction);
+
+    const record = await saveGameById('save-slot-2', 'Atomic Dynasty', createSnapshot(), {
+      slotNumber: 2,
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+    });
+
+    expect(transaction).toHaveBeenCalledWith(
+      'rw',
+      db.saves,
+      db.leaderboard,
+      expect.any(Function),
+    );
+    expect(record.updatedAt).toBe('2026-04-02T19:42:03.000Z');
+    expect(savePut).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'save-slot-2',
+      updatedAt: record.updatedAt,
+    }));
+    expect(leaderboardPut).toHaveBeenCalledWith(expect.objectContaining({
+      slotNumber: 2,
+      updatedAt: record.updatedAt,
+    }));
+  });
+
+  it('serializes same-save writes by invocation so a newer snapshot cannot finish first', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-02T19:42:03.000Z'));
+    vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+
+    let announceFirstPut: () => void = () => undefined;
+    const firstPutStarted = new Promise<void>((resolve) => {
+      announceFirstPut = resolve;
+    });
+    let releaseFirstPut: () => void = () => undefined;
+    const firstPutCanFinish = new Promise<void>((resolve) => {
+      releaseFirstPut = resolve;
+    });
+    const persisted: SaveData[] = [];
+    const putSpy = vi.spyOn(db.saves, 'put')
+      .mockImplementationOnce((async (record: SaveData) => {
+        persisted.push(record);
+        announceFirstPut();
+        await firstPutCanFinish;
+        return record.id;
+      }) as unknown as typeof db.saves.put)
+      .mockImplementationOnce((async (record: SaveData) => {
+        persisted.push(record);
+        return record.id;
+      }) as unknown as typeof db.saves.put);
+
+    const firstSnapshot = {
+      ...createSnapshot(),
+      day: 98,
+    };
+    const first = saveGameById('save-slot-1', 'First Snapshot', firstSnapshot, {
+      slotNumber: 1,
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+    });
+    await firstPutStarted;
+
+    vi.setSystemTime(new Date('2026-04-02T19:42:04.000Z'));
+    const secondSnapshot = {
+      ...createSnapshot(),
+      day: 99,
+    };
+    const second = saveGameById('save-slot-1', 'Second Snapshot', secondSnapshot, {
+      slotNumber: 1,
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(db.saves.get).toHaveBeenCalledTimes(1);
+    expect(putSpy).toHaveBeenCalledTimes(1);
+
+    releaseFirstPut();
+    const [firstRecord, secondRecord] = await Promise.all([first, second]);
+
+    expect(persisted.map((record) => ({
+      name: record.name,
+      day: record.snapshot?.day,
+      updatedAt: record.updatedAt,
+    }))).toEqual([
+      {
+        name: 'First Snapshot',
+        day: 98,
+        updatedAt: '2026-04-02T19:42:03.000Z',
+      },
+      {
+        name: 'Second Snapshot',
+        day: 99,
+        updatedAt: '2026-04-02T19:42:04.000Z',
+      },
+    ]);
+    expect(firstRecord.updatedAt).toBe('2026-04-02T19:42:03.000Z');
+    expect(secondRecord.updatedAt).toBe('2026-04-02T19:42:04.000Z');
+  });
+
+  it('preserves persisted root branch references when a full snapshot is stale', async () => {
+    const branchMeta: WhatIfBranchMeta = {
+      id: 'branch-history',
+      saveId: 'branch-history',
+      branchedAtSeason: 3,
+      branchedAtDay: 97,
+      description: 'Keep the ace',
+      createdAt: '2026-04-02T19:40:00.000Z',
+    };
+    const persistedRoot = buildSaveRecord(1, 'Root Dynasty', {
+      ...createSnapshot(),
+      narrative: {
+        ...createSnapshot().narrative,
+        whatIfBranches: [branchMeta],
+      },
+    });
+    vi.spyOn(db.saves, 'get').mockResolvedValue(persistedRoot as never);
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-1' as never);
+
+    const record = await saveGameById('save-slot-1', 'Root Dynasty', createSnapshot(), {
+      slotNumber: 1,
+      parentSaveId: null,
+      isRootSave: true,
+      branchMeta: null,
+    });
+
+    expect(record.snapshot?.narrative.whatIfBranches).toEqual([branchMeta]);
+    expect(putSpy).toHaveBeenCalledWith(expect.objectContaining({
+      snapshot: expect.objectContaining({
+        narrative: expect.objectContaining({
+          whatIfBranches: [branchMeta],
+        }),
+      }),
+    }));
+  });
+
+  it('clears old dynasty branch references only for an explicit root replacement', async () => {
+    const oldBranchMeta: WhatIfBranchMeta = {
+      id: 'branch-old-dynasty',
+      saveId: 'branch-old-dynasty',
+      branchedAtSeason: 8,
+      branchedAtDay: 120,
+      description: 'Old dynasty timeline',
+      createdAt: '2026-04-01T19:40:00.000Z',
+    };
+    const oldSnapshot = createSnapshot();
+    const persistedRoot = buildSaveRecord(1, 'Old Dynasty', {
+      ...oldSnapshot,
+      narrative: {
+        ...oldSnapshot.narrative,
+        whatIfBranches: [oldBranchMeta],
+      },
+    });
+    vi.spyOn(db.saves, 'get').mockResolvedValue(persistedRoot as never);
+    const deleteChildRows = vi.fn().mockResolvedValue(1);
+    vi.spyOn(db.saves, 'where').mockReturnValue({
+      equals: vi.fn(() => ({ delete: deleteChildRows })),
+    } as never);
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-1' as never);
+    const incomingSnapshot = createSnapshot();
+    const incomingBranchMeta: WhatIfBranchMeta = {
+      ...oldBranchMeta,
+      id: 'branch-from-other-dynasty',
+      saveId: 'branch-from-other-dynasty',
+      description: 'Must not cross into replacement',
+    };
+
+    const replacement = await saveGame(1, 'New Dynasty', {
+      ...incomingSnapshot,
+      narrative: {
+        ...incomingSnapshot.narrative,
+        whatIfBranches: [incomingBranchMeta],
+      },
+    }, {
+      replaceExistingRootBranchMetadata: true,
+    });
+
+    expect(replacement.snapshot?.narrative.whatIfBranches).toEqual([]);
+    expect(deleteChildRows).toHaveBeenCalledTimes(1);
+    expect(putSpy).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'New Dynasty',
+      snapshot: expect.objectContaining({
+        narrative: expect.objectContaining({
+          whatIfBranches: [],
+        }),
+      }),
+    }));
+  });
+
+  it('serializes parent branch merges so concurrent deletions cannot resurrect a reference', async () => {
+    const branchA: WhatIfBranchMeta = {
+      id: 'branch-a',
+      saveId: 'branch-a',
+      branchedAtSeason: 3,
+      branchedAtDay: 96,
+      description: 'Timeline A',
+      createdAt: '2026-04-02T19:40:00.000Z',
+    };
+    const branchB: WhatIfBranchMeta = {
+      id: 'branch-b',
+      saveId: 'branch-b',
+      branchedAtSeason: 3,
+      branchedAtDay: 97,
+      description: 'Timeline B',
+      createdAt: '2026-04-02T19:41:00.000Z',
+    };
+    const snapshotWithBranches: GameSnapshot = {
+      ...createSnapshot(),
+      narrative: {
+        ...createSnapshot().narrative,
+        whatIfBranches: [branchA, branchB],
+      },
+    };
+    const root = buildSaveRecord(1, 'Root Dynasty', snapshotWithBranches);
+    const branchRecordA: SaveData = {
+      ...root,
+      id: branchA.saveId,
+      slotNumber: null,
+      name: branchA.description,
+      parentSaveId: root.id,
+      isRootSave: false,
+      branchMeta: branchA,
+    };
+    const branchRecordB: SaveData = {
+      ...root,
+      id: branchB.saveId,
+      slotNumber: null,
+      name: branchB.description,
+      parentSaveId: root.id,
+      isRootSave: false,
+      branchMeta: branchB,
+    };
+    const records = new Map<string, SaveData>([
+      [root.id, root],
+      [branchRecordA.id, branchRecordA],
+      [branchRecordB.id, branchRecordB],
+    ]);
+    const parentWrites: SaveData[] = [];
+    vi.spyOn(db.saves, 'get').mockImplementation((async (id: string) => (
+      records.get(id)
+    )) as unknown as typeof db.saves.get);
+    vi.spyOn(db.saves, 'put').mockImplementation((async (record: SaveData) => {
+      records.set(record.id, record);
+      if (record.id === root.id) {
+        parentWrites.push(record);
+      }
+      return record.id;
+    }) as unknown as typeof db.saves.put);
+    vi.spyOn(db.saves, 'delete').mockImplementation((async (id: string) => {
+      records.delete(id);
+    }) as unknown as typeof db.saves.delete);
+
+    await Promise.all([
+      deleteSaveById(branchRecordA.id),
+      deleteSaveById(branchRecordB.id),
+    ]);
+
+    expect(parentWrites.map((record) => (
+      record.snapshot?.narrative.whatIfBranches.map((branch) => branch.saveId)
+    ))).toEqual([
+      ['branch-b'],
+      [],
+    ]);
+    expect(records.get(root.id)?.snapshot?.narrative.whatIfBranches).toEqual([]);
   });
 
   it('round-trips exported snapshot json through the import parser', () => {

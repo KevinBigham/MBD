@@ -9,8 +9,6 @@ vi.mock('comlink', () => ({
 }));
 
 vi.mock('../shared/lib/saveSystem.js', () => ({
-  createBranchSave: vi.fn(),
-  deleteSaveById: vi.fn(),
   listBranches: vi.fn(),
   loadGameById: vi.fn(),
   saveGameById: vi.fn(),

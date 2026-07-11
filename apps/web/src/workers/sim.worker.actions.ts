@@ -262,12 +262,6 @@ import {
   normalizePerformanceDiagnostics,
   pruneStaleWorkerData,
 } from './sim.worker.diagnostics.js';
-import {
-  createBranchSave,
-  deleteSaveById,
-  loadGameById,
-  saveGameById,
-} from '../shared/lib/saveSystem.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -963,25 +957,6 @@ function exportSnapshotWithDiagnostics(s: FullGameState) {
   }
 
   return snapshot;
-}
-
-async function persistCurrentStateToSave(saveId: string) {
-  const save = await loadGameById(saveId);
-  if (!save) {
-    throw new Error(`Save ${saveId} was not found.`);
-  }
-
-  const snapshot = exportSnapshotWithDiagnostics(requireState());
-  await measureRuntimeAsync('lastSaveMs', async () => {
-    await saveGameById(saveId, save.name, snapshot, {
-      slotNumber: save.slotNumber,
-      parentSaveId: save.parentSaveId,
-      isRootSave: save.isRootSave,
-      branchMeta: save.branchMeta,
-    });
-  });
-
-  return buildPerformanceDiagnosticsView(requireState());
 }
 
 function queueContractReactionWatcher(
@@ -2540,38 +2515,23 @@ export const actionApi = {
     });
   },
 
-  async createWhatIfBranch(parentSaveId: string, description: string) {
-    return measureRuntimeAsync('lastSaveMs', async () => createBranchSave(
-      parentSaveId,
-      exportSnapshotWithDiagnostics(requireState()),
-      description.trim() || 'What If Branch',
-    ));
-  },
-
-  async deleteWhatIfBranch(branchSaveId: string) {
-    await deleteSaveById(branchSaveId);
-    return { success: true as const };
-  },
-
-  async archiveOldSeasons(saveId: string) {
+  async archiveOldSeasons() {
     const s = requireState();
     const archivedCount = archiveOldSeasonsInState(s);
-    const diagnostics = await persistCurrentStateToSave(saveId);
     return {
       success: true as const,
       archivedCount,
-      diagnostics,
+      diagnostics: buildPerformanceDiagnosticsView(s),
     };
   },
 
-  async pruneStaleData(saveId: string) {
+  async pruneStaleData() {
     const s = requireState();
     const prunedCount = pruneStaleWorkerData(s);
-    const diagnostics = await persistCurrentStateToSave(saveId);
     return {
       success: true as const,
       prunedCount,
-      diagnostics,
+      diagnostics: buildPerformanceDiagnosticsView(s),
     };
   },
 

@@ -10,8 +10,10 @@ export default function SetupPage() {
   const navigate = useNavigate();
   const worker = useWorker();
   const recovery = useSaveRecovery();
-  const { isInitialized, initializeGame } = useGameStore();
+  const { activeSaveId, activeSaveSlot, isInitialized, initializeGame } = useGameStore();
   const { contentProps } = useSetupPageController({
+    activeSaveId,
+    activeSaveSlot,
     initializeGame,
     isInitialized,
     navigate,

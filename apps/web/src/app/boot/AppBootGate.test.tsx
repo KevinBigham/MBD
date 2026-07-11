@@ -5,6 +5,11 @@ import { AppBootGate } from './AppBootGate';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { loadSaveSafely, type LoadSaveSafelyResult } from '@/shared/lib/saveSystem';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import {
+  activateActiveSavePersistenceMetadata,
+  prepareActiveSavePersistenceForLoad,
+  releaseActiveSavePersistenceLoad,
+} from '@/shared/lib/activeSavePersistence';
 import { toast } from 'sonner';
 
 const recoveryMock = vi.hoisted(() => ({
@@ -17,6 +22,12 @@ vi.mock('@/shared/hooks/useWorker', () => ({
 
 vi.mock('@/shared/lib/saveSystem', () => ({
   loadSaveSafely: vi.fn(),
+}));
+
+vi.mock('@/shared/lib/activeSavePersistence', () => ({
+  activateActiveSavePersistenceMetadata: vi.fn(),
+  prepareActiveSavePersistenceForLoad: vi.fn().mockResolvedValue(undefined),
+  releaseActiveSavePersistenceLoad: vi.fn(),
 }));
 
 vi.mock('@/features/save-recovery', () => ({
@@ -193,6 +204,9 @@ describe('AppBootGate', () => {
 
     expect(loadSaveSafely).toHaveBeenCalledWith('save-slot-1');
     expect(workerMock.importSnapshot).toHaveBeenCalledWith(okLoadResult.snapshot);
+    expect(prepareActiveSavePersistenceForLoad).toHaveBeenCalledWith('save-slot-1');
+    expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(okLoadResult.save);
+    expect(releaseActiveSavePersistenceLoad).not.toHaveBeenCalled();
     expect(useGameStore.getState()).toMatchObject({
       isInitialized: true,
       activeSaveId: 'save-slot-1',
@@ -231,6 +245,8 @@ describe('AppBootGate', () => {
     expect(useGameStore.getState().activeSaveId).toBeNull();
     expect(useGameStore.getState().activeSaveSlot).toBeNull();
     expect(recoveryMock.showFailure).not.toHaveBeenCalled();
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(releaseActiveSavePersistenceLoad).toHaveBeenCalledWith('save-slot-404');
     expect(toast.info).toHaveBeenCalled();
     expect(container.textContent).toContain('Save Hub Route');
   });
@@ -262,6 +278,8 @@ describe('AppBootGate', () => {
       failure,
       onRetry: expect.any(Function),
     }));
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(releaseActiveSavePersistenceLoad).toHaveBeenCalledWith('save-slot-1');
     expect(useGameStore.getState().activeSaveId).toBeNull();
     expect(container.textContent).toContain('Save Hub Route');
   });
@@ -278,6 +296,8 @@ describe('AppBootGate', () => {
 
     expect(loadSaveSafely).not.toHaveBeenCalled();
     expect(workerMock.importSnapshot).not.toHaveBeenCalled();
+    expect(prepareActiveSavePersistenceForLoad).not.toHaveBeenCalled();
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Save Hub Route');
   });
 });

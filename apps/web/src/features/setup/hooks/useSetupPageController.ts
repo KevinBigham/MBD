@@ -93,6 +93,8 @@ interface SetupPageWorker {
 }
 
 export interface UseSetupPageControllerOptions {
+  activeSaveId: string | null;
+  activeSaveSlot: number | null;
   branchLimit?: number;
   initializeGame: GameState['initializeGame'];
   isInitialized: boolean;
@@ -110,6 +112,8 @@ interface UseSetupPageControllerResult {
 }
 
 export function useSetupPageController({
+  activeSaveId,
+  activeSaveSlot,
   branchLimit = WHAT_IF_BRANCH_LIMIT,
   initializeGame,
   isInitialized,
@@ -182,6 +186,8 @@ export function useSetupPageController({
     handleContinueSave,
     handleDelete,
   } = useSetupActionHandlers({
+    activeSaveId,
+    activeSaveSlot,
     dayOneExperience,
     difficulty,
     exportSnapshot: worker.exportSnapshot,

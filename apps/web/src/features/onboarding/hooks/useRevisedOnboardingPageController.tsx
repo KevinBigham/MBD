@@ -16,7 +16,8 @@ import {
 } from '@mbd/sim-core';
 import type { GameState } from '@/shared/hooks/useGameStore';
 import type { useWorker } from '@/shared/hooks/useWorker';
-import { loadGameById, saveGame, saveGameById } from '@/shared/lib/saveSystem';
+import { loadGameById } from '@/shared/lib/saveSystem';
+import { persistActiveSaveSnapshot } from '@/shared/lib/activeSavePersistence';
 import type { RevisedOnboardingData } from '@/workers/sim.worker.onboarding';
 import { AGMRuntimePanel } from '../components/AGMRuntimePanel';
 import RevisedOnboardingFlowContent from '../components/RevisedOnboardingFlowContent';
@@ -157,21 +158,37 @@ export function useRevisedOnboardingPageController({
   }, [loadCandidates]);
 
   const persistCompletion = useCallback(async (snapshot: object) => {
+    let targetSaveId = activeSaveId;
+    let targetSaveSlot = activeSaveSlot;
+    let targetSaveName = `${gmName} • Franchise`;
+
     if (activeSaveId) {
       const existingSave = await loadGameById(activeSaveId);
       if (existingSave) {
-        await saveGameById(existingSave.id, existingSave.name, snapshot, {
-          slotNumber: existingSave.slotNumber,
-          parentSaveId: existingSave.parentSaveId,
-          isRootSave: existingSave.isRootSave,
-          branchMeta: existingSave.branchMeta,
-        });
-        return;
+        targetSaveId = existingSave.id;
+        targetSaveSlot = existingSave.slotNumber;
+        targetSaveName = existingSave.name;
+      } else if (activeSaveSlot == null) {
+        throw new Error('The active onboarding save was not found.');
       }
     }
 
-    if (activeSaveSlot != null) {
-      await saveGame(activeSaveSlot, `${gmName} • Franchise`, snapshot);
+    targetSaveId ??= activeSaveSlot != null ? `save-slot-${activeSaveSlot}` : null;
+    if (!targetSaveId) {
+      throw new Error('Onboarding has no active save target.');
+    }
+
+    const result = await persistActiveSaveSnapshot({
+      activeSaveId: targetSaveId,
+      activeSaveSlot: targetSaveSlot,
+      gmName,
+      teamName: null,
+      season: (snapshot as { season?: number }).season ?? 1,
+      saveName: targetSaveName,
+      exportSnapshot: async () => snapshot,
+    });
+    if (!result.saved) {
+      throw new Error('The active onboarding save changed before persistence completed.');
     }
   }, [activeSaveId, activeSaveSlot, gmName]);
 
