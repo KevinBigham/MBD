@@ -34,6 +34,9 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 6, Goal 18 `TRUST-EXPORT-SCHEMA-MATRIX-1`: every live-supported GameSnapshot version v2–v34 now has a deterministic worker import/export plus canonical JSON export/re-import proof, with explicit historical builders, normalization expectations, rejection boundaries, and the Season-10 v33 no-fabricated-history assertion.
+- Final closeout route: Terra `019f51f7-5277-7570-add0-fd4a2acb1778` high→xhigh, Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` xhigh `MERGE_READY` with zero P0–P2, and Luna medium checkout closeout. Focused matrix/recovery 27/27, focused worker/save/recovery/toast 151/151, contracts migration 24/24, full gates, and fresh zero-retry reload-smoke 2/2 passed. The landed commit is available in repository history; no push, deploy, tag, release, or item 7 work was started.
+
 - Current save schema: v34.
 - Added a same-origin save-tree guard so a supported browser allows only one current MBD tab to load, mutate, or persist a root dynasty and its what-if branches at a time; blocked tabs can check again after the owner closes.
 - Rollout note: an older MBD tab that was already running before this update cannot participate in the guard. Close or reload every older open MBD tab before relying on multi-tab protection; mixed-version tabs are not protected.

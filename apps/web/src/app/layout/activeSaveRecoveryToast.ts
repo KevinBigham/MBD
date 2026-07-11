@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type MouseEvent } from 'react';
 import { toast, type ExternalToast } from 'sonner';
 import {
   createActiveSavePersistenceBackup,
@@ -41,7 +41,10 @@ function persistentToastOptions(saveId: string): ExternalToast {
 
 function requestBackup(saveId: string): void {
   const options = persistentToastOptions(saveId);
-  const repeatDownload = () => requestBackup(saveId);
+  const repeatDownload = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    requestBackup(saveId);
+  };
   try {
     const backup = createActiveSavePersistenceBackup(saveId);
     if (!backup) {
@@ -109,7 +112,10 @@ function showRecoveryToast(saveId: string, status: ActiveSavePersistenceStatus):
       description: 'Download a backup, then use Retry when browser storage is available.',
       action: {
         label: 'Download backup',
-        onClick: () => requestBackup(saveId),
+        onClick: (event) => {
+          event.preventDefault();
+          requestBackup(saveId);
+        },
       },
     });
     return;

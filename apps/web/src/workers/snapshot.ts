@@ -41,6 +41,7 @@ import {
   type TickerEntry,
   type WhatIfBranchMeta,
   CURRENT_GAME_SNAPSHOT_VERSION,
+  MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION,
   parseGameSnapshot,
 } from '@mbd/contracts';
 import {
@@ -289,8 +290,6 @@ function backfillGMCareer(
   };
 }
 
-const MINIMUM_SUPPORTED_SNAPSHOT_VERSION = 2;
-
 function validateSnapshot(snapshot: unknown): GameSnapshot {
   const schemaVersion =
     typeof snapshot === 'object' &&
@@ -302,7 +301,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
 
   if (
     schemaVersion !== null &&
-    (schemaVersion < MINIMUM_SUPPORTED_SNAPSHOT_VERSION ||
+    (schemaVersion < MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION ||
       schemaVersion > CURRENT_GAME_SNAPSHOT_VERSION)
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(schemaVersion)}`);

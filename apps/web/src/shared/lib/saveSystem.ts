@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
+  MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION,
   GameSnapshotSchema,
   parseGameSnapshot,
   type GameSnapshot,
@@ -201,7 +202,6 @@ class MBDDatabase extends Dexie {
 
 export const db = new MBDDatabase();
 const MAX_BRANCHES_PER_SAVE = 3;
-const MINIMUM_SUPPORTED_SNAPSHOT_VERSION = 2;
 let branchIdCounter = 0;
 const saveWriteTails = new Map<string, Promise<void>>();
 
@@ -1244,10 +1244,10 @@ export async function loadSaveSafely(slotId: number | string): Promise<LoadSaveS
     });
   }
 
-  if (schemaVersion != null && schemaVersion < MINIMUM_SUPPORTED_SNAPSHOT_VERSION) {
+  if (schemaVersion != null && schemaVersion < MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION) {
     return saveLoadFailure('version_too_old', raw, id, `Save schema v${schemaVersion} is older than the supported migration floor.`, {
       schemaVersion,
-      minimumSupportedVersion: MINIMUM_SUPPORTED_SNAPSHOT_VERSION,
+      minimumSupportedVersion: MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION,
     });
   }
 

@@ -495,6 +495,10 @@ export const DraftStateSchema = z.object({
   signingDecisions: z.array(DraftSigningDecisionSchema),
 });
 export type DraftState = z.infer<typeof DraftStateSchema>;
+const DraftStateV7Schema = DraftStateSchema.omit({
+  qualifyingOffers: true,
+  signingDecisions: true,
+});
 
 export type MinorLeagueState = z.infer<typeof MinorLeagueStateSchema>;
 
@@ -513,6 +517,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
 export const CURRENT_GAME_SNAPSHOT_VERSION = 34;
+export const MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION = 2;
 
 const Rule5SessionSchema = z.unknown().nullable();
 const Rule5StateEntrySchema = z.unknown();
@@ -818,7 +823,7 @@ export const GameSnapshotV7Schema = z.object({
   narrative: NarrativeSnapshotSchema,
   tradeState: TradeStateSchema,
   internationalScoutingState: InternationalScoutingStateSchema,
-  draftState: DraftStateSchema,
+  draftState: DraftStateV7Schema,
   minorLeagueState: MinorLeagueStateV7Schema,
   rule5Session: Rule5SessionSchema,
   rule5Obligations: z.array(Rule5StateEntrySchema),
@@ -924,7 +929,7 @@ export const GameSnapshotV3Schema = z.object({
   freeAgencyMarket: z.unknown().nullable(),
   news: z.array(NewsItemSchema),
   rosterStates: z.array(RosterStateEntrySchema),
-  narrative: NarrativeSnapshotSchema,
+  narrative: NarrativeSnapshotV4Schema,
 });
 export type GameSnapshotV3 = z.infer<typeof GameSnapshotV3Schema>;
 
@@ -2213,6 +2218,11 @@ function migrateGameSnapshotV7(snapshot: GameSnapshotV7): GameSnapshot {
       briefingQueue: snapshot.narrative.briefingQueue.map(normalizeSavedNewsItemTag),
     },
     minorLeagueState: upgradeMinorLeagueState(snapshot.minorLeagueState),
+    draftState: {
+      ...snapshot.draftState,
+      qualifyingOffers: [],
+      signingDecisions: [],
+    },
     monthlyPulse: createEmptyMonthlyPulseState(),
     ...createEmptyPhase7State(snapshot.season, teamIds),
     ...createEmptyPhase9State(snapshot.userTeamId, snapshot.season, snapshot.day),

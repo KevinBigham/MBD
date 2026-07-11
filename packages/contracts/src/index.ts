@@ -449,6 +449,7 @@ export {
   SaveMetaSchema,
   SaveSlotSchema,
   CURRENT_GAME_SNAPSHOT_VERSION,
+  MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION,
   GameRNGStateSchema,
   SimPhaseEnum,
   SnapshotPlayerSchema,

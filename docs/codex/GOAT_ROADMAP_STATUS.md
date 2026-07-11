@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-11 on local `main` revision `203cb48d61319b3d18fc10531710eddce95e3c71`.
+Last reconciled: 2026-07-11 on the item-6 closeout checkout; the landed revision is recorded by repository history and the closeout report.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -10,9 +10,9 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `ACTIVE`, `PENDING`, `BLOCK
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–5 and 80.
-- First incomplete item: **6 — export/import round-trip CI matrix across every supported schema version**.
-- Item 6 has selected migration/import coverage, but no exact goal/run, no every-supported-version export/import matrix, and no item-specific completion/landing proof.
+- Verified complete: items 1–6 and 80.
+- First incomplete item: **7 — storage-pressure size/quota/pruning UX**.
+- Item 6 is verified complete through Goal 18 and its closeout report; item 7 remains pending and was not started.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
 
@@ -25,7 +25,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `ACTIVE`, `PENDING`, `BLOCK
 | 3 | 1 | Autosave failure surfacing, retry, export fallback | VERIFIED COMPLETE | Goal 15 / `TRUST-AUTOSAVE-RECOVERY-1` | `runs/TRUST-AUTOSAVE-RECOVERY-1/COMPLETION.md`; failure/reload proof | `0a6c64c` | Historical route not recorded in completion artifact | Items 1–2 | Preserve recovery semantics |
 | 4 | 1 | Integrity checksum and guided repair | VERIFIED COMPLETE | Goal 16 / `TRUST-SAVE-INTEGRITY-1` | `runs/TRUST-SAVE-INTEGRITY-1/COMPLETION.md`; integrity DB/browser proof | `c006ab9` | Historical route not recorded in completion artifact | Items 1–3 | Preserve v34/Dexie-v5 envelope |
 | 5 | 1 | Exclusive same-save-tree multi-tab guard | VERIFIED COMPLETE | Goal 17 / `TRUST-MULTITAB-GUARD-1` | `runs/TRUST-MULTITAB-GUARD-1/COMPLETION.md`; 137 focused; full gates; Playwright 1/1 + 2/2 | `203cb48` | Terra `019f51c9…` (`gpt-5.6-terra`, high, CORRECTIONS_READY); Sol `019f51c7…` (`gpt-5.6-sol`, xhigh, MERGE_READY); Luna `019f51e1…` (`gpt-5.6-luna`, medium, LANDED_ON_MAIN) | Items 1–4 | Preserve mixed-version warning |
-| 6 | 1 | Every-supported-version export/import CI matrix | PARTIAL | No goal/run | `save.migration.test.ts` covers v17–v34 migration/current round trip; worker support is broader and matrix gaps remain | — | — | Item 5 | Create bounded item-6 goal/run; prove every supported version |
+| 6 | 1 | Every-supported-version export/import CI matrix | VERIFIED COMPLETE | Goal 18 / `TRUST-EXPORT-SCHEMA-MATRIX-1` | `runs/TRUST-EXPORT-SCHEMA-MATRIX-1/COMPLETION.md`; 33-version worker/JSON matrix; focused/full gates; zero-retry reload-smoke | See landed item-6 revision in repository history | Terra `019f51f7-5277-7570-add0-fd4a2acb1778` (`gpt-5.6-terra`, high→xhigh); Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` (`gpt-5.6-sol`, xhigh, MERGE_READY); Luna closeout (`gpt-5.6-luna`, medium) | Item 5 | Preserve v34/Dexie-v5 contract; item 7 is next |
 | 7 | 1 | Storage-pressure size/quota/pruning UX | PENDING | No goal/run | Quota classification exists; no estimate/size/pruning surface | — | — | Item 6 | Create later trust slice |
 | 8 | 1 | Write-ahead sim-day intent journal | PENDING | No goal/run | Transition rollback exists; no persisted day intent/replay journal | — | — | Items 5–7 | Design bounded journal after trust foundation |
 | 9 | 2 | Living contract clock | PENDING | Goal 11 `ECON-CLOCK-1`; no run | `advanceContracts` exists but has no production caller | — | — | Tier 1 | Execute goal 11 before dependent economy work |
@@ -131,8 +131,14 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `ACTIVE`, `PENDING`, `BLOCK
 - Sol review closed occupied-retry proof, blocked-Space proof, and truthful `ownership_lost` mapping; final verdict `MERGE_READY`, no remaining P0–P2.
 - Independent post-landing verification: `HEAD`, `main`, and `codex/multitab-guard-5` all equal the commit; index empty; only the three protected files remain dirty and unstaged.
 
+## Item 6 landing receipt
+
+- Goal 18 is verified complete on the local checkout after final focused/full gates, explicit item-only staging, intentional commit, and fast-forward of local `main`. The exact commit is intentionally reported by the closeout command/history rather than embedded self-referentially in this pre-commit ledger update.
+- Final route: Terra `019f51f7-5277-7570-add0-fd4a2acb1778` high→xhigh implementation/corrections; Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` xhigh definitive `MERGE_READY`, zero P0–P2; Luna `gpt-5.6-luna` medium closeout writer. No item 7 work began.
+- Final gates: focused 27/27, 151/151, 24/24; root typecheck, full test, production build/PWA, determinism, and fresh zero-retry Chromium reload-smoke 2/2 all passed. Protected files remained unchanged, dirty, and unstaged.
+
 ## First incomplete item source contract
 
 Item 6 is not a generic import/export feature request. The live app already has canonical export/import, a v34 JSON round trip, migration tests, worker legacy-import tests, and recovery fallback coverage. The missing finish line is one authoritative CI matrix proving canonical export/import round-trip behavior for **every version the live migration boundary claims to support**, with explicit fixtures/builders, expected normalization, rejection boundaries, deterministic equality, and no fabricated history.
 
-No exact item-6 goal or run exists. The next legal slice must create a new goal and run rather than reopening TRUST-A or duplicating an existing goal.
+Item 6 now has Goal 18, a reconciled source/plan, a 33-version canonical matrix, and a verified closeout. The next legal slice is item 7 and must create its own goal/run rather than reopening this run or starting item 8.

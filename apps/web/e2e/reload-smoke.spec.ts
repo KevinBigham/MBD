@@ -665,7 +665,13 @@ test('four high-emotion mutations remain durable after real browser reloads', as
       durableSummaryBeforeTrade.lastSavedAt,
     );
 
-    await freshRuntimeReload(page, { press: 'skip' });
+    await freshRuntimeReload(page, { press: 'preserve' });
+    const acceptedTradeConference = page.getByRole('dialog', { name: /press conference/i });
+    await expect(acceptedTradeConference).toBeVisible({ timeout: 60_000 });
+    await expect(acceptedTradeConference).toContainText('Season 1 · Day 92');
+    await expect(acceptedTradeConference).toContainText('That recent deal is being debated around the league.');
+    await acceptedTradeConference.getByRole('button', { name: 'Skip', exact: true }).click();
+    await expect(acceptedTradeConference).toBeHidden();
     await expectDurableSaveSummary(page, durableSummaryAfterTrade);
     await navigateFromSidebar(page, '/players', 'Players');
     await page.getByPlaceholder('Search players or nicknames...').fill(incomingPlayerName);

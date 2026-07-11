@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
-import { toast, type Action } from 'sonner';
+import { toast, type Action, type ExternalToast } from 'sonner';
 import {
   createActiveSavePersistenceBackup,
   type ActiveSavePersistenceStatus,
@@ -32,6 +32,41 @@ vi.mock('@/shared/lib/browserDownload', () => ({
 
 const mockedCreateBackup = vi.mocked(createActiveSavePersistenceBackup);
 const mockedRequestDownload = vi.mocked(requestBrowserDownload);
+
+function actionEvent() {
+  let defaultPrevented = false;
+  return {
+    get defaultPrevented() {
+      return defaultPrevented;
+    },
+    preventDefault: vi.fn(() => {
+      defaultPrevented = true;
+    }),
+  };
+}
+
+type VisibleToast = {
+  title: string;
+  options: ExternalToast;
+};
+
+const visibleToasts = new Map<string | number, VisibleToast>();
+
+function recordVisibleToast(title: unknown, options: ExternalToast | undefined): void {
+  if (options?.id === undefined) return;
+  visibleToasts.set(options.id, { title: String(title), options });
+}
+
+/**
+ * Sonner normally dismisses an action toast after `onClick`.  This miniature
+ * lifecycle model applies that default *after* the callback, which is exactly
+ * the order that used to delete the same-id confirmation toast.  A callback
+ * must prevent default for the replacement to remain visible.
+ */
+function invokeSonnerAction(options: ExternalToast, event: ReturnType<typeof actionEvent>): void {
+  (options.action as Action | undefined)?.onClick(event as never);
+  if (!event.defaultPrevented && options.id !== undefined) visibleToasts.delete(options.id);
+}
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -79,6 +114,13 @@ describe('useActiveSaveRecoveryToast', () => {
       filename: 'mbd-save-slot-2-pending-2.json',
       payload: '{"kind":"mbd-save-export"}',
     });
+    visibleToasts.clear();
+    for (const method of [toast.error, toast.info, toast.loading, toast.success]) {
+      vi.mocked(method).mockImplementation((title, options) => {
+        recordVisibleToast(title, options);
+        return options?.id ?? 'mock-toast-id';
+      });
+    }
   });
 
   afterEach(async () => {
@@ -151,7 +193,7 @@ describe('useActiveSaveRecoveryToast', () => {
     }));
   });
 
-  it('offers a repeatable canonical backup action without claiming local recovery', async () => {
+  it('keeps the same Sonner confirmation visible for initial and repeated canonical backup actions', async () => {
     const fallback = status({
       phase: 'fallback_ready',
       automaticAttempts: 2,
@@ -170,8 +212,9 @@ describe('useActiveSaveRecoveryToast', () => {
     }));
     expect(options?.action).toMatchObject({ label: 'Download backup' });
 
+    const click = actionEvent();
     await act(async () => {
-      (options?.action as Action | undefined)?.onClick({} as never);
+      invokeSonnerAction(options!, click);
     });
 
     expect(mockedCreateBackup).toHaveBeenCalledWith('save-slot-2');
@@ -179,10 +222,41 @@ describe('useActiveSaveRecoveryToast', () => {
       filename: 'mbd-save-slot-2-pending-2.json',
       payload: '{"kind":"mbd-save-export"}',
     });
+    expect(click.preventDefault).toHaveBeenCalledTimes(1);
+    expect(click.defaultPrevented).toBe(true);
     expect(toast.info).toHaveBeenCalledWith('Backup download requested.', expect.objectContaining({
+      id: activeSaveRecoveryToastId('save-slot-2'),
       description: expect.stringContaining('Local saving is still pending'),
       action: expect.objectContaining({ label: 'Download again' }),
     }));
+    const confirmationAfterInitial = visibleToasts.get(activeSaveRecoveryToastId('save-slot-2'));
+    expect(confirmationAfterInitial).toMatchObject({
+      title: 'Backup download requested.',
+      options: expect.objectContaining({
+        action: expect.objectContaining({ label: 'Download again' }),
+      }),
+    });
+
+    const repeatClick = actionEvent();
+    await act(async () => {
+      invokeSonnerAction(confirmationAfterInitial!.options, repeatClick);
+    });
+    expect(repeatClick.preventDefault).toHaveBeenCalledTimes(1);
+    expect(repeatClick.defaultPrevented).toBe(true);
+    expect(mockedCreateBackup).toHaveBeenCalledTimes(2);
+    expect(mockedRequestDownload).toHaveBeenCalledTimes(2);
+    expect(visibleToasts.get(activeSaveRecoveryToastId('save-slot-2'))).toMatchObject({
+      title: 'Backup download requested.',
+      options: expect.objectContaining({
+        description: expect.stringContaining('Local saving is still pending'),
+        action: expect.objectContaining({ label: 'Download again' }),
+      }),
+    });
+    expect(fallback).toMatchObject({
+      state: 'failed',
+      pendingWrites: 1,
+      canRetry: true,
+    });
     expect(toast.success).not.toHaveBeenCalled();
   });
 
@@ -202,7 +276,7 @@ describe('useActiveSaveRecoveryToast', () => {
     });
     const options = vi.mocked(toast.error).mock.calls.at(-1)?.[1];
     await act(async () => {
-      (options?.action as Action | undefined)?.onClick({} as never);
+      (options?.action as Action | undefined)?.onClick(actionEvent() as never);
     });
 
     expect(toast.error).toHaveBeenLastCalledWith(
@@ -233,7 +307,7 @@ describe('useActiveSaveRecoveryToast', () => {
     });
     const options = vi.mocked(toast.error).mock.calls.at(-1)?.[1];
     await act(async () => {
-      (options?.action as Action | undefined)?.onClick({} as never);
+      (options?.action as Action | undefined)?.onClick(actionEvent() as never);
     });
 
     expect(mockedRequestDownload).not.toHaveBeenCalled();

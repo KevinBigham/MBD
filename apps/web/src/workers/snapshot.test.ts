@@ -20,6 +20,7 @@ import {
 } from '@mbd/sim-core';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
+  MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION,
   type ArchivedGameBoxScore,
   type ArchivedSeason,
   type BriefingItem,
@@ -47,14 +48,539 @@ import {
   createEmptyAchievementState,
   createEmptyCeremonyState,
 } from './sim.worker.ceremony';
+import { exportSnapshotToJson, importSnapshotFromJson } from '../shared/lib/saveSystem';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot';
 
-function loadContractSaveFixture(version: number): unknown {
+function loadContractSaveFixture(version: number, name = 'core'): unknown {
   return JSON.parse(readFileSync(
-    new URL(`../../../../packages/contracts/tests/fixtures/save/v${version}/core.json`, import.meta.url),
+    new URL(`../../../../packages/contracts/tests/fixtures/save/v${version}/${name}.json`, import.meta.url),
     'utf8',
   )) as unknown;
 }
+
+type MatrixRecord = Record<string, unknown>;
+
+function cloneSnapshot<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+let legacyMatrixBase: GameSnapshot | null = null;
+
+function assertVersionSpecificNormalization(version: number, snapshot: GameSnapshot): void {
+  expect(snapshot.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+  expect(snapshot.performanceDiagnostics.totalSeasons).toBeGreaterThanOrEqual(1);
+  if (version < 14) {
+    expect(snapshot.performanceDiagnostics.snapshotSizeBytes).toBe(0);
+  }
+  if (version >= 14 && version < CURRENT_GAME_SNAPSHOT_VERSION) {
+    expect(snapshot.performanceDiagnostics.snapshotSizeBytes, `v${version} migration should recalculate snapshot size`)
+      .toBeGreaterThan(0);
+  }
+
+  if (version === 2) {
+    expect(snapshot.narrative.awardHistory[0]?.league).toBe('MLB');
+    expect(snapshot.narrative.seasonHistory[0]).toMatchObject({
+      runnerUpTeamId: null,
+      worldSeriesRecord: null,
+      statLeaders: { hr: [] },
+    });
+  }
+  if (version <= 3) {
+    expect(snapshot.tradeState).toEqual({ pendingOffers: [], tradeHistory: [], negotiations: [], multiTeamPendingTrades: [] });
+  }
+  if (version <= 4) {
+    expect(snapshot.rule5Session).toBeNull();
+    expect(snapshot.rule5Obligations).toEqual([]);
+  }
+  if (version <= 6) {
+    expect(snapshot.players.every((player) => player.optionYearsUsed === 0 && !player.isOutOfOptions)).toBe(true);
+  }
+  if (version <= 7) {
+    expect(snapshot.minorLeagueState.processedDevelopmentMonths).toEqual([]);
+  }
+  if (version <= 8) {
+    expect(snapshot.seasonState.playerSeasonStats.every(([, stats]) => (
+      stats.hbp === 0 && stats.sacFlies === 0 && stats.gamesMissedToInjury === 0
+    ))).toBe(true);
+  }
+  if (version <= 9) {
+    expect(snapshot.monthlyPulse).toEqual({ pendingReport: null, decisionQueue: [] });
+  }
+  if (version === 10) {
+    expect(snapshot.franchise.gmName).toBe('General Manager');
+    expect(snapshot.ceremony.pendingMoments).toEqual([]);
+  }
+  if (version === 11) {
+    expect(snapshot.narrative.recordWatch).toEqual([]);
+    expect(snapshot.narrative.mentorRelationships).toEqual([]);
+  }
+  if (version === 12) {
+    expect(snapshot.narrative.jobMarket.availableJobs).toEqual([]);
+    expect(snapshot.narrative.challengeState).toBeNull();
+  }
+  if (version === 13) {
+    expect(snapshot.narrative.tickerFeed).toEqual([]);
+    expect(snapshot.minorLeagueState.minorLeagueStatHistory).toEqual([]);
+  }
+  if (version === 14) {
+    expect(snapshot.narrative.archivedSeasons).toEqual([]);
+  }
+  if (version <= 16) {
+    expect(snapshot.narrative.playerMoments).toEqual([]);
+    expect(snapshot.tradeState.negotiations).toEqual([]);
+  }
+  if (version <= 18) {
+    expect(snapshot.players.every((player) => (
+      player.arbitrationHistory.length === 0 && player.holdoutState === null && !player.superTwoQualified
+    ))).toBe(true);
+  }
+  if (version <= 21) {
+    expect(snapshot.narrative.teamMoments).toEqual([]);
+  }
+  if (version === 26) {
+    expect(snapshot.narrative.playoffSeriesHistory).toEqual([]);
+    expect(snapshot.narrative.rookieOfTheYearVoting).toEqual([]);
+  }
+  if (version === 28) {
+    expect(snapshot.players.every((player) => player.priorSeasonEstimatedWar === null)).toBe(true);
+  }
+  if (version === 33) {
+    expect(snapshot.narrative.archivedGames).toEqual([]);
+  }
+}
+
+type MatrixCase = {
+  version: number;
+  name: string;
+  historicalRationale: string;
+  build: () => unknown;
+  assertRawShape: (raw: unknown) => void;
+};
+
+const LEGACY_PLAYER_KEYS = [
+  'id', 'firstName', 'lastName', 'age', 'position', 'hitterAttributes', 'pitcherAttributes',
+  'personality', 'contract', 'rosterStatus', 'developmentPhase', 'teamId', 'nationality', 'overallRating',
+] as const;
+const V6_PLAYER_KEYS = [...LEGACY_PLAYER_KEYS, 'rule5EligibleAfterSeason'] as const;
+const V7_PLAYER_KEYS = [...V6_PLAYER_KEYS, 'serviceTimeDays', 'optionYearsUsed', 'isOutOfOptions', 'minorLeagueLevel'] as const;
+const LEGACY_STAT_KEYS = [
+  'pa', 'ab', 'hits', 'doubles', 'triples', 'hr', 'rbi', 'bb', 'k', 'runs', 'ip', 'earnedRuns',
+  'strikeouts', 'walks', 'hitsAllowed',
+] as const;
+const V8_STAT_KEYS = [...LEGACY_STAT_KEYS, 'wins', 'losses'] as const;
+const V9_STAT_KEYS = [
+  ...V8_STAT_KEYS, 'hbp', 'sacFlies', 'homeRunsAllowed', 'hitBatters', 'flyBallsAllowed',
+] as const;
+const CORE_ROOT_KEYS = [
+  'schemaVersion', 'rng', 'season', 'day', 'phase', 'userTeamId', 'players', 'schedule', 'seasonState',
+  'playoffBracket', 'injuries', 'serviceTime', 'scoutingStaffs', 'gmPersonalities', 'offseasonState',
+  'draftClass', 'freeAgencyMarket', 'news', 'rosterStates', 'narrative',
+] as const;
+const V4_ROOT_KEYS = [...CORE_ROOT_KEYS, 'tradeState'] as const;
+const V6_ROOT_KEYS = [...V4_ROOT_KEYS, 'rule5Session', 'rule5Obligations', 'rule5OfferBackStates'] as const;
+const V7_ROOT_KEYS = [...V6_ROOT_KEYS, 'internationalScoutingState', 'draftState', 'minorLeagueState'] as const;
+const V8_ROOT_KEYS = [...V7_ROOT_KEYS, 'coachingStaffs', 'coachFreeAgentPool'] as const;
+const V10_ROOT_KEYS = [...V8_ROOT_KEYS, 'monthlyPulse'] as const;
+const V11_ROOT_KEYS = [...V10_ROOT_KEYS, 'franchise', 'ceremony', 'achievements'] as const;
+const V15_ROOT_KEYS = [...V11_ROOT_KEYS, 'performanceDiagnostics'] as const;
+const LEGACY_NARRATIVE_KEYS = [
+  'playerMorale', 'teamChemistry', 'ownerState', 'briefingQueue', 'storyFlags', 'rivalries', 'awardHistory', 'seasonHistory',
+] as const;
+const V5_NARRATIVE_KEYS = [...LEGACY_NARRATIVE_KEYS, 'hallOfFame', 'hallOfFameBallot', 'franchiseTimeline', 'careerStats'] as const;
+const V12_NARRATIVE_KEYS = [...V5_NARRATIVE_KEYS, 'recordBook', 'recordWatch', 'seasonArchive', 'historicalPlayers', 'mentorRelationships', 'frontOfficeState'] as const;
+const V13_NARRATIVE_KEYS = [...V12_NARRATIVE_KEYS, 'gmCareer', 'jobMarket', 'consequenceWatchers', 'fanSentiment', 'scoutConflicts', 'dynastyCards', 'challengeState'] as const;
+const V14_NARRATIVE_KEYS = [...V13_NARRATIVE_KEYS, 'tickerFeed', 'playerStoryArcs', 'prospectBonds', 'playerOrigins', 'debutFlashbacks'] as const;
+const V15_NARRATIVE_KEYS = [...V14_NARRATIVE_KEYS, 'archivedSeasons', 'whatIfBranches'] as const;
+const SEASON_STATE_KEYS = ['season', 'currentDay', 'standings', 'playerSeasonStats', 'gameLog', 'completed'] as const;
+const V7_MINOR_LEAGUE_KEYS = ['serviceTimeLedger', 'optionUsage', 'waiverClaims', 'affiliateStates', 'affiliateBoxScores'] as const;
+const V8_MINOR_LEAGUE_KEYS = [
+  ...V7_MINOR_LEAGUE_KEYS, 'processedDevelopmentMonths', 'developmentLedger', 'developmentReports', 'conversionRecommendations',
+] as const;
+const V14_MINOR_LEAGUE_KEYS = [...V8_MINOR_LEAGUE_KEYS, 'minorLeagueStatHistory', 'activeDevelopmentSetbacks'] as const;
+// `35d436f` introduced the optional contract economics fields with the v8
+// coaching snapshot.  Earlier writers only emitted the five foundation keys.
+// Keep this table deliberately versioned so an early raw case cannot inherit a
+// current contract and let the parser's permissive optional fields hide it.
+const V2_TO_V7_CONTRACT_KEYS = ['years', 'annualSalary', 'noTradeClause', 'playerOption', 'teamOption'] as const;
+const V8_TO_V15_CONTRACT_KEYS = [
+  ...V2_TO_V7_CONTRACT_KEYS,
+  'totalValue', 'noTradeClauseType', 'optOutYears', 'signingBonus', 'buyoutAmount', 'deferredMoney',
+] as const;
+const LEGACY_TRADE_KEYS = ['pendingOffers', 'tradeHistory'] as const;
+const V7_DRAFT_KEYS = ['scoutingReports', 'signability', 'compensatoryPicks', 'pickOwnership', 'bigBoards'] as const;
+const V8_TO_V15_DRAFT_KEYS = [...V7_DRAFT_KEYS, 'qualifyingOffers', 'signingDecisions'] as const;
+const V11_FRANCHISE_KEYS = ['gmName', 'difficulty', 'createdAt', 'teamId', 'teamName', 'teamAbbreviation', 'teamDivision', 'onboarding'] as const;
+const V12_FRANCHISE_KEYS = [...V11_FRANCHISE_KEYS, 'status', 'endedAt', 'endReason'] as const;
+const V13_FRANCHISE_KEYS = [...V12_FRANCHISE_KEYS, 'playMode'] as const;
+const FRANCHISE_ONBOARDING_KEYS = ['welcomeBriefingSeen', 'firstMonthlyPulseSeen'] as const;
+// The version-introducing writers through initial v15 serialized the sim-core
+// box score verbatim. `b7498f6` later changed the *still-v15* writer, so this
+// matrix intentionally models the initial-v15 writer boundary used by the
+// numbered v15 introduction commit (`577643c`), not that later same-version
+// shape. The v16+ checked-in fixtures cover their own persisted era.
+const INITIAL_V15_GAME_BOX_SCORE_KEYS = [
+  'homeTeamId', 'awayTeamId', 'homeScore', 'awayScore', 'innings', 'homeHits', 'awayHits',
+  'paResults', 'date', 'isPlayoff',
+] as const;
+const INITIAL_V15_PA_RESULT_KEYS = ['outcome', 'batterId', 'pitcherId'] as const;
+// These interfaces are stable from the v2 writer through the initial v15
+// writer. save.ts deliberately stores their inner values as unknown, so the
+// matrix must fence them instead of inheriting current object keys wholesale.
+const LEGACY_SCOUT_KEYS = ['id', 'name', 'quality', 'specialty', 'bias', 'salary'] as const;
+const LEGACY_ROSTER_STATE_KEYS = ['teamId', 'mlbRoster', 'fortyManRoster', 'transactions'] as const;
+
+function pickFields(source: MatrixRecord, keys: readonly string[]): MatrixRecord {
+  return Object.fromEntries(keys.map((key) => [key, source[key]]));
+}
+
+function seededHistoricalSource(): MatrixRecord {
+  legacyMatrixBase ??= exportGameSnapshot(createState());
+  const source = cloneSnapshot(legacyMatrixBase) as MatrixRecord;
+  const players = source.players as MatrixRecord[];
+  const seasonState = source.seasonState as MatrixRecord;
+  const playerSeasonStats = seasonState.playerSeasonStats as Array<[string, MatrixRecord]>;
+  const player = players[0]!;
+  const stats = playerSeasonStats[0]![1];
+
+  player.rule5EligibleAfterSeason = 99;
+  player.serviceTimeDays = 344;
+  player.optionYearsUsed = 2;
+  player.isOutOfOptions = true;
+  player.contract = {
+    ...(player.contract as MatrixRecord),
+    totalValue: 36_000_000,
+    noTradeClauseType: 'partial',
+    optOutYears: [2],
+    signingBonus: 750_000,
+    buyoutAmount: 250_000,
+    deferredMoney: [{ yearOffset: 3, amount: 1_250_000 }],
+  };
+  stats.pa = 123;
+  stats.wins = 7;
+  stats.losses = 3;
+  (source.franchise as MatrixRecord).gmName = 'Historical Matrix GM';
+  return source;
+}
+
+function historicalSeasonState(source: MatrixRecord, statKeys: readonly string[]): MatrixRecord {
+  const seasonState = source.seasonState as MatrixRecord;
+  const raw = pickFields(seasonState, SEASON_STATE_KEYS);
+  raw.playerSeasonStats = (seasonState.playerSeasonStats as Array<[string, MatrixRecord]>).map(([playerId, stats]) => [
+    playerId,
+    pickFields(stats, statKeys),
+  ]);
+  raw.gameLog = (seasonState.gameLog as MatrixRecord[]).map((game) => ({
+    ...pickFields(game, INITIAL_V15_GAME_BOX_SCORE_KEYS),
+    paResults: (game.paResults as MatrixRecord[]).map((pa) => (
+      pickFields(pa, INITIAL_V15_PA_RESULT_KEYS)
+    )),
+  }));
+  return raw;
+}
+
+function historicalScoutingStaffs(source: MatrixRecord): Array<[string, MatrixRecord[]]> {
+  return (source.scoutingStaffs as Array<[string, MatrixRecord[]]>).map(([teamId, staff]) => [
+    teamId,
+    staff.map((scout) => pickFields(scout, LEGACY_SCOUT_KEYS)),
+  ]);
+}
+
+function historicalRosterStates(source: MatrixRecord): Array<[string, MatrixRecord]> {
+  const rosterIds = (value: unknown): string[] => (
+    Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
+  );
+  return (source.rosterStates as Array<[string, MatrixRecord]>).map(([teamId, roster]) => [
+    teamId,
+    {
+      teamId: roster.teamId,
+      mlbRoster: rosterIds(roster.mlbRoster),
+      fortyManRoster: rosterIds(roster.fortyManRoster),
+      // Day-one writer state has no transactions; retain rather than invent it.
+      transactions: [...(roster.transactions as unknown[])],
+    },
+  ]);
+}
+
+function historicalRaw(
+  version: number,
+  rootKeys: readonly string[],
+  narrativeKeys: readonly string[],
+  playerKeys: readonly string[],
+  statKeys: readonly string[],
+): MatrixRecord {
+  const source = seededHistoricalSource();
+  const raw = pickFields(source, rootKeys);
+  raw.schemaVersion = version;
+  raw.players = (source.players as MatrixRecord[]).map((player) => pickFields(player, playerKeys));
+  for (const player of raw.players as MatrixRecord[]) {
+    player.contract = pickFields(
+      player.contract as MatrixRecord,
+      version <= 7 ? V2_TO_V7_CONTRACT_KEYS : V8_TO_V15_CONTRACT_KEYS,
+    );
+  }
+  raw.seasonState = historicalSeasonState(source, statKeys);
+  raw.scoutingStaffs = historicalScoutingStaffs(source);
+  raw.rosterStates = historicalRosterStates(source);
+  raw.narrative = pickFields(source.narrative as MatrixRecord, narrativeKeys);
+  if (version >= 4) raw.tradeState = pickFields(raw.tradeState as MatrixRecord, LEGACY_TRADE_KEYS);
+  if (version === 7) raw.draftState = pickFields(raw.draftState as MatrixRecord, V7_DRAFT_KEYS);
+  if (version >= 8) raw.draftState = pickFields(raw.draftState as MatrixRecord, V8_TO_V15_DRAFT_KEYS);
+  if (version >= 11) raw.franchise = pickFields(raw.franchise as MatrixRecord, version === 11 ? V11_FRANCHISE_KEYS : version === 12 ? V12_FRANCHISE_KEYS : V13_FRANCHISE_KEYS);
+  return raw;
+}
+
+function buildV2Raw(): MatrixRecord {
+  const raw = historicalRaw(2, CORE_ROOT_KEYS, LEGACY_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, LEGACY_STAT_KEYS);
+  raw.narrative = {
+    ...(raw.narrative as MatrixRecord),
+    awardHistory: [{ season: 1, award: 'MVP', playerId: 'player-1', teamId: 'nym', summary: 'Historic season.' }],
+    seasonHistory: [{ season: 1, championTeamId: 'nym', summary: 'Won the title.', awards: [], keyMoments: ['Won Game 6 at home.'] }],
+  };
+  return raw;
+}
+function buildV3Raw(): MatrixRecord { return historicalRaw(3, CORE_ROOT_KEYS, LEGACY_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, V8_STAT_KEYS); }
+function buildV4Raw(): MatrixRecord { return historicalRaw(4, V4_ROOT_KEYS, LEGACY_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, V8_STAT_KEYS); }
+function buildV5Raw(): MatrixRecord { return historicalRaw(5, V4_ROOT_KEYS, V5_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, V8_STAT_KEYS); }
+function buildV6Raw(): MatrixRecord { return historicalRaw(6, V6_ROOT_KEYS, V5_NARRATIVE_KEYS, V6_PLAYER_KEYS, V8_STAT_KEYS); }
+function buildV7Raw(): MatrixRecord {
+  const raw = historicalRaw(7, V7_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V8_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V7_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV8Raw(): MatrixRecord {
+  const raw = historicalRaw(8, V8_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V8_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V8_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV9Raw(): MatrixRecord {
+  const raw = historicalRaw(9, V8_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V8_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV10Raw(): MatrixRecord {
+  const raw = historicalRaw(10, V10_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V8_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV11Raw(): MatrixRecord {
+  const raw = historicalRaw(11, V11_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V8_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV12Raw(): MatrixRecord {
+  const raw = historicalRaw(12, V11_ROOT_KEYS, V12_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V8_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV13Raw(): MatrixRecord {
+  const raw = historicalRaw(13, V11_ROOT_KEYS, V13_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V8_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV14Raw(): MatrixRecord {
+  const raw = historicalRaw(14, V11_ROOT_KEYS, V14_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V14_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+function buildV15Raw(): MatrixRecord {
+  const raw = historicalRaw(15, V15_ROOT_KEYS, V15_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS);
+  raw.minorLeagueState = pickFields(raw.minorLeagueState as MatrixRecord, V14_MINOR_LEAGUE_KEYS);
+  return raw;
+}
+
+function assertHistoricalRawShape(
+  name: string,
+  raw: unknown,
+  rootKeys: readonly string[],
+  narrativeKeys: readonly string[],
+  playerKeys: readonly string[],
+  statKeys: readonly string[],
+): void {
+  const snapshot = raw as MatrixRecord;
+  expect(Object.keys(snapshot).sort(), `${name} must not retain future root fields`).toEqual([...rootKeys].sort());
+  expect(Object.keys(snapshot.narrative as MatrixRecord).sort(), `${name} narrative shape`).toEqual([...narrativeKeys].sort());
+  expect(Object.keys((snapshot.players as MatrixRecord[])[0]!).sort(), `${name} player shape`).toEqual([...playerKeys].sort());
+  const version = snapshot.schemaVersion as number;
+  expect(Object.keys(((snapshot.players as MatrixRecord[])[0]!.contract as MatrixRecord)).sort(), `${name} contract shape`).toEqual(
+    [...(version <= 7 ? V2_TO_V7_CONTRACT_KEYS : V8_TO_V15_CONTRACT_KEYS)].sort(),
+  );
+  if (snapshot.tradeState) expect(Object.keys(snapshot.tradeState as MatrixRecord).sort(), `${name} trade shape`).toEqual([...LEGACY_TRADE_KEYS].sort());
+  if (version === 7) expect(Object.keys(snapshot.draftState as MatrixRecord).sort(), `${name} draft shape`).toEqual([...V7_DRAFT_KEYS].sort());
+  if (version >= 8) expect(Object.keys(snapshot.draftState as MatrixRecord).sort(), `${name} draft shape`).toEqual([...V8_TO_V15_DRAFT_KEYS].sort());
+  if (version >= 11) {
+    const franchiseKeys = version === 11 ? V11_FRANCHISE_KEYS : version === 12 ? V12_FRANCHISE_KEYS : V13_FRANCHISE_KEYS;
+    expect(Object.keys(snapshot.franchise as MatrixRecord).sort(), `${name} franchise shape`).toEqual([...franchiseKeys].sort());
+    expect(Object.keys((snapshot.franchise as MatrixRecord).onboarding as MatrixRecord).sort(), `${name} franchise onboarding shape`).toEqual(
+      [...FRANCHISE_ONBOARDING_KEYS].sort(),
+    );
+  }
+  if (version >= 7) {
+    const minorLeagueKeys = version <= 13 ? V8_MINOR_LEAGUE_KEYS : V14_MINOR_LEAGUE_KEYS;
+    if (version === 7) {
+      expect(Object.keys(snapshot.minorLeagueState as MatrixRecord).sort(), `${name} minor-league shape`).toEqual([...V7_MINOR_LEAGUE_KEYS].sort());
+    } else {
+      expect(Object.keys(snapshot.minorLeagueState as MatrixRecord).sort(), `${name} minor-league shape`).toEqual([...minorLeagueKeys].sort());
+    }
+  }
+  expect(Object.keys(snapshot.seasonState as MatrixRecord).sort(), `${name} season-state shape`).toEqual([...SEASON_STATE_KEYS].sort());
+  const stats = ((snapshot.seasonState as MatrixRecord).playerSeasonStats as Array<[string, MatrixRecord]>)[0]![1];
+  expect(Object.keys(stats).sort(), `${name} stat shape`).toEqual([...statKeys].sort());
+  const gameLog = (snapshot.seasonState as MatrixRecord).gameLog as MatrixRecord[];
+  expect(gameLog.length, `${name} must preserve a historical game`).toBeGreaterThan(0);
+  for (const [gameIndex, game] of gameLog.entries()) {
+    expect(Object.keys(game).sort(), `${name} game ${gameIndex} shape`).toEqual([...INITIAL_V15_GAME_BOX_SCORE_KEYS].sort());
+    const paResults = game.paResults as MatrixRecord[];
+    expect(paResults.length, `${name} game ${gameIndex} must preserve plate appearances`).toBeGreaterThan(0);
+    for (const [paIndex, pa] of paResults.entries()) {
+      expect(Object.keys(pa).sort(), `${name} game ${gameIndex} PA ${paIndex} shape`).toEqual([...INITIAL_V15_PA_RESULT_KEYS].sort());
+    }
+  }
+  const scoutingStaffs = snapshot.scoutingStaffs as Array<[string, MatrixRecord[]]>;
+  expect(scoutingStaffs.length, `${name} must preserve scouting staffs`).toBeGreaterThan(0);
+  for (const [staffIndex, [teamId, staff]] of scoutingStaffs.entries()) {
+    expect(typeof teamId, `${name} staff ${staffIndex} team key`).toBe('string');
+    expect(staff.length, `${name} staff ${staffIndex} must preserve scouts`).toBeGreaterThan(0);
+    for (const [scoutIndex, scout] of staff.entries()) {
+      expect(Object.keys(scout).sort(), `${name} staff ${staffIndex} scout ${scoutIndex} shape`).toEqual([...LEGACY_SCOUT_KEYS].sort());
+    }
+  }
+  const rosterStates = snapshot.rosterStates as Array<[string, MatrixRecord]>;
+  expect(rosterStates.length, `${name} must preserve roster states`).toBeGreaterThan(0);
+  for (const [rosterIndex, [teamId, roster]] of rosterStates.entries()) {
+    expect(Object.keys(roster).sort(), `${name} roster ${rosterIndex} shape`).toEqual([...LEGACY_ROSTER_STATE_KEYS].sort());
+    expect(teamId, `${name} roster ${rosterIndex} tuple/state team identity`).toBe(roster.teamId);
+    expect((roster.mlbRoster as unknown[]).length, `${name} roster ${rosterIndex} MLB identity`).toBeGreaterThan(0);
+    expect((roster.fortyManRoster as unknown[]).length, `${name} roster ${rosterIndex} 40-man identity`).toBeGreaterThan(0);
+    expect((roster.mlbRoster as unknown[]).every((id) => typeof id === 'string'), `${name} roster ${rosterIndex} MLB IDs`).toBe(true);
+    expect((roster.fortyManRoster as unknown[]).every((id) => typeof id === 'string'), `${name} roster ${rosterIndex} 40-man IDs`).toBe(true);
+    expect(roster.transactions, `${name} roster ${rosterIndex} day-one transactions`).toEqual([]);
+  }
+}
+
+/**
+ * Preservation oracle deliberately compares facts from each raw historical
+ * document with its migrated v34 result.  It complements (rather than
+ * duplicates) normalized equality, so a migration that drops valid old facts
+ * cannot pass merely because two later canonical exports are both empty.
+ */
+function assertHistoricalFactOracle(version: number, raw: unknown, migrated: GameSnapshot): void {
+  const input = raw as MatrixRecord;
+  const inputPlayer = (input.players as MatrixRecord[])[0]!;
+  const migratedPlayer = migrated.players[0]!;
+  const inputStats = ((input.seasonState as MatrixRecord).playerSeasonStats as Array<[string, MatrixRecord]>)[0]![1];
+  const migratedStats = migrated.seasonState.playerSeasonStats[0]![1];
+
+  expect(migratedPlayer.id, `v${version} player identity`).toBe(inputPlayer.id);
+  expect(migratedPlayer.firstName, `v${version} player first name`).toBe(inputPlayer.firstName);
+  expect(migratedPlayer.lastName, `v${version} player last name`).toBe(inputPlayer.lastName);
+  expect(migratedPlayer.overallRating, `v${version} player rating`).toBe(inputPlayer.overallRating);
+  expect(migratedPlayer.hitterAttributes, `v${version} hitter ratings`).toEqual(inputPlayer.hitterAttributes);
+  expect(migratedStats.pa, `v${version} PA`).toBe(inputStats.pa);
+  const inputGame = ((input.seasonState as MatrixRecord).gameLog as MatrixRecord[])[0]!;
+  const migratedGame = (migrated.seasonState.gameLog as MatrixRecord[])[0]!;
+  const inputGamePa = (inputGame.paResults as MatrixRecord[])[0]!;
+  const migratedGamePa = (migratedGame.paResults as MatrixRecord[])[0]!;
+  expect(migratedGame).toMatchObject({
+    homeTeamId: inputGame.homeTeamId,
+    awayTeamId: inputGame.awayTeamId,
+    homeScore: inputGame.homeScore,
+    awayScore: inputGame.awayScore,
+    date: inputGame.date,
+    isPlayoff: inputGame.isPlayoff,
+  });
+  expect(migratedGamePa).toMatchObject({
+    outcome: inputGamePa.outcome,
+    batterId: inputGamePa.batterId,
+    pitcherId: inputGamePa.pitcherId,
+  });
+  const [inputScoutTeamId, inputStaff] = (input.scoutingStaffs as Array<[string, MatrixRecord[]]>)[0]!;
+  const [migratedScoutTeamId, migratedStaff] = (migrated.scoutingStaffs as Array<[string, MatrixRecord[]]>)[0]!;
+  const inputScout = inputStaff[0]!;
+  const migratedScout = migratedStaff[0]!;
+  expect(migratedScoutTeamId, `v${version} scout team identity`).toBe(inputScoutTeamId);
+  expect(migratedScout, `v${version} scout facts`).toMatchObject({
+    id: inputScout.id,
+    name: inputScout.name,
+    quality: inputScout.quality,
+    specialty: inputScout.specialty,
+    bias: inputScout.bias,
+    salary: inputScout.salary,
+  });
+  const [inputRosterTeamId, inputRoster] = (input.rosterStates as Array<[string, MatrixRecord]>)[0]!;
+  const [migratedRosterTeamId, migratedRoster] = (migrated.rosterStates as Array<[string, MatrixRecord]>)[0]!;
+  expect(migratedRosterTeamId, `v${version} roster team identity`).toBe(inputRosterTeamId);
+  expect(migratedRoster.teamId, `v${version} roster state identity`).toBe(inputRoster.teamId);
+  expect((migratedRoster.mlbRoster as string[])[0], `v${version} representative MLB player`).toBe(
+    (inputRoster.mlbRoster as string[])[0]!,
+  );
+  expect((migratedRoster.fortyManRoster as string[])[0], `v${version} representative 40-man player`).toBe(
+    (inputRoster.fortyManRoster as string[])[0]!,
+  );
+  expect(migratedRoster.transactions, `v${version} day-one transactions`).toEqual([]);
+  if (version >= 3) {
+    expect(migratedStats.wins, `v${version} wins`).toBe(inputStats.wins);
+    expect(migratedStats.losses, `v${version} losses`).toBe(inputStats.losses);
+  }
+  if (version >= 6) expect(migratedPlayer.rule5EligibleAfterSeason, `v${version} Rule 5`).toBe(99);
+  if (version >= 7) {
+    expect(migratedPlayer.serviceTimeDays, `v${version} service time`).toBe(344);
+    expect(migratedPlayer.optionYearsUsed, `v${version} option years`).toBe(2);
+    expect(migratedPlayer.isOutOfOptions, `v${version} out of options`).toBe(true);
+  }
+  if (version >= 8) {
+    const inputContract = inputPlayer.contract as MatrixRecord;
+    expect(migratedPlayer.contract).toMatchObject({
+      years: inputContract.years,
+      annualSalary: inputContract.annualSalary,
+      totalValue: 36_000_000,
+      noTradeClauseType: 'partial',
+      optOutYears: [2],
+      signingBonus: 750_000,
+      buyoutAmount: 250_000,
+      deferredMoney: [{ yearOffset: 3, amount: 1_250_000 }],
+    });
+  }
+  expect(migrated.narrative.playerMorale, `v${version} narrative morale`).toEqual((input.narrative as MatrixRecord).playerMorale);
+  if (version >= 11) expect(migrated.franchise.gmName, `v${version} franchise identity`).toBe('Historical Matrix GM');
+}
+
+function historicalCase(
+  version: number,
+  name: string,
+  historicalRationale: string,
+  build: () => MatrixRecord,
+  rootKeys: readonly string[],
+  narrativeKeys: readonly string[],
+  playerKeys: readonly string[],
+  statKeys: readonly string[],
+): MatrixCase {
+  return {
+    version,
+    name,
+    historicalRationale,
+    build,
+    assertRawShape(raw) {
+      assertHistoricalRawShape(name, raw, rootKeys, narrativeKeys, playerKeys, statKeys);
+    },
+  };
+}
+
+const HISTORICAL_MATRIX_CASES: MatrixCase[] = [
+  historicalCase(2, 'v2 legacy narrative foundation', 'Initial persistence shape before trade and phase-state roots.', buildV2Raw, CORE_ROOT_KEYS, LEGACY_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, LEGACY_STAT_KEYS),
+  historicalCase(3, 'v3 recap-era raw shape', 'Pre-trade root with the eight-lane narrative written by v3.', buildV3Raw, CORE_ROOT_KEYS, LEGACY_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, V8_STAT_KEYS),
+  historicalCase(4, 'v4 trade root', 'Trade state arrives; narrative remains the eight-lane historical shape.', buildV4Raw, V4_ROOT_KEYS, LEGACY_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, V8_STAT_KEYS),
+  historicalCase(5, 'v5 legacy history lanes', 'Hall/timeline/career narrative facts arrive before Rule 5.', buildV5Raw, V4_ROOT_KEYS, V5_NARRATIVE_KEYS, LEGACY_PLAYER_KEYS, V8_STAT_KEYS),
+  historicalCase(6, 'v6 Rule 5 eligibility', 'Rule 5 roots and player eligibility arrive before international/coaching state.', buildV6Raw, V6_ROOT_KEYS, V5_NARRATIVE_KEYS, V6_PLAYER_KEYS, V8_STAT_KEYS),
+  historicalCase(7, 'v7 international and minors foundation', 'International, draft, and compact minor-league state arrive.', buildV7Raw, V7_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V8_STAT_KEYS),
+  historicalCase(8, 'v8 coaching and advanced stats', 'Coaching roots arrive with win/loss stat shape.', buildV8Raw, V8_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V8_STAT_KEYS),
+  historicalCase(9, 'v9 pre-monthly-pulse', 'v8 roots remain; monthly pulse is historically absent.', buildV9Raw, V8_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS),
+  historicalCase(10, 'v10 monthly pulse', 'Monthly pulse arrives before franchise/ceremony/achievements.', buildV10Raw, V10_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS),
+  historicalCase(11, 'v11 franchise ceremony', 'Franchise/ceremony/achievement roots arrive before record lanes.', buildV11Raw, V11_ROOT_KEYS, V5_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS),
+  historicalCase(12, 'v12 record and front-office history', 'Record, archive, and front-office narrative lanes arrive.', buildV12Raw, V11_ROOT_KEYS, V12_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS),
+  historicalCase(13, 'v13 career and consequence state', 'GM career/job/consequence narrative lanes arrive.', buildV13Raw, V11_ROOT_KEYS, V13_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS),
+  historicalCase(14, 'v14 prospect and ticker state', 'Ticker/prospect/debut narrative lanes arrive before archival v15.', buildV14Raw, V11_ROOT_KEYS, V14_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS),
+  historicalCase(15, 'v15 archival and diagnostics', 'Archived-season/branch facts and diagnostics arrive; v16 moment lanes remain absent.', buildV15Raw, V15_ROOT_KEYS, V15_NARRATIVE_KEYS, V7_PLAYER_KEYS, V9_STAT_KEYS),
+];
 
 function createNarrativeSample(userTeamId: string) {
   const playerMorale = new Map<string, PlayerMorale>();
@@ -1294,6 +1820,62 @@ describe('snapshot helpers', () => {
     expect(restored.rule5Session).toBeNull();
     expect(restored.rule5Obligations).toEqual([]);
     expect(restored.rule5OfferBackStates).toEqual([]);
+  });
+
+  it('round-trips every declared supported schema through worker and canonical JSON paths', () => {
+    const supportedVersions = Array.from(
+      { length: CURRENT_GAME_SNAPSHOT_VERSION - MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION + 1 },
+      (_, index) => MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION + index,
+    );
+    const fixtureCases: MatrixCase[] = supportedVersions
+      .filter((version) => version >= 16)
+      .map((version) => ({
+        version,
+        name: `v${version} persisted contract fixture`,
+        historicalRationale: 'Checked-in canonical contract fixture.',
+        build: () => loadContractSaveFixture(version),
+        assertRawShape: () => {},
+      }));
+    const matrix = [...HISTORICAL_MATRIX_CASES, ...fixtureCases];
+
+    expect(matrix).toHaveLength(33);
+    expect(matrix.map(({ version }) => version)).toEqual(supportedVersions);
+
+    for (const entry of matrix) {
+      const raw = entry.build();
+      expect(entry.historicalRationale, `${entry.name} source rationale`).not.toBe('');
+      expect(Number.isInteger((raw as { schemaVersion?: unknown }).schemaVersion), `${entry.name} raw schemaVersion integer`).toBe(true);
+      expect((raw as { schemaVersion?: unknown }).schemaVersion, `${entry.name} row/input binding`).toBe(entry.version);
+      entry.assertRawShape(raw);
+
+      const normalizedWorkerSnapshot = exportGameSnapshot(importGameSnapshot(raw));
+      assertVersionSpecificNormalization(entry.version, normalizedWorkerSnapshot);
+      if (entry.version <= 15) assertHistoricalFactOracle(entry.version, raw, normalizedWorkerSnapshot);
+
+      const exportedJson = exportSnapshotToJson(`Schema ${entry.version} ${entry.name}`, normalizedWorkerSnapshot);
+      const importedJson = importSnapshotFromJson(exportedJson);
+      const rehydratedWorkerSnapshot = exportGameSnapshot(importGameSnapshot(importedJson.snapshot));
+      const reexportedJson = exportSnapshotToJson(`Schema ${entry.version} ${entry.name}`, rehydratedWorkerSnapshot);
+      const canonicalExport = JSON.parse(exportedJson) as { exportedAt?: string; snapshot: unknown };
+      const canonicalReexport = JSON.parse(reexportedJson) as { exportedAt?: string; snapshot: unknown };
+      delete canonicalExport.exportedAt;
+      delete canonicalReexport.exportedAt;
+
+      expect(importedJson.snapshot).toEqual(normalizedWorkerSnapshot);
+      expect(rehydratedWorkerSnapshot).toEqual(normalizedWorkerSnapshot);
+      expect(canonicalReexport).toEqual(canonicalExport);
+    }
+  });
+
+  it('preserves the Season 10 v33 boundary without fabricating archived games through canonical JSON', () => {
+    const normalizedWorkerSnapshot = exportGameSnapshot(
+      importGameSnapshot(loadContractSaveFixture(33, 'season10')),
+    );
+    const imported = importSnapshotFromJson(exportSnapshotToJson('Season 10 v33', normalizedWorkerSnapshot));
+
+    expect(normalizedWorkerSnapshot.season).toBe(10);
+    expect(normalizedWorkerSnapshot.narrative.archivedGames).toEqual([]);
+    expect(imported.snapshot).toEqual(normalizedWorkerSnapshot);
   });
 
   it('rejects unsupported snapshot schema versions', () => {

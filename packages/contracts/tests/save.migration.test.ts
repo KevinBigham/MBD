@@ -9,9 +9,68 @@ function loadFixture(pathname: string) {
   return JSON.parse(readFileSync(new URL(pathname, import.meta.url), 'utf8'));
 }
 
+function pick<T extends Record<string, unknown>>(source: T, keys: readonly string[]) {
+  return Object.fromEntries(keys.map((key) => [key, source[key]]));
+}
+
 describe('save schema migration', () => {
   it('tracks the current additive save schema as v34', () => {
     expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(34);
+  });
+
+  it('parses an authentic v3 eight-lane narrative and preserves it through v34 migration', () => {
+    // The repository has no checked-in v3 JSON fixture.  This is deliberately
+    // projected from the archived v16 contract fixture using the exact v3 root
+    // and NarrativeSnapshotV4 lane sets, rather than relabeling a v34 object.
+    const laterFixture = loadFixture('./fixtures/save/v16/core.json');
+    const v3RootKeys = [
+      'rng', 'season', 'day', 'phase', 'userTeamId', 'players', 'schedule', 'seasonState',
+      'playoffBracket', 'injuries', 'serviceTime', 'scoutingStaffs', 'gmPersonalities',
+      'offseasonState', 'draftClass', 'freeAgencyMarket', 'news', 'rosterStates',
+    ];
+    const narrativeKeys = [
+      'playerMorale', 'teamChemistry', 'ownerState', 'briefingQueue', 'storyFlags', 'rivalries',
+      'awardHistory', 'seasonHistory',
+    ];
+    const rawV3 = {
+      schemaVersion: 3,
+      ...pick(laterFixture, v3RootKeys),
+      narrative: pick(laterFixture.narrative, narrativeKeys),
+    };
+
+    expect(Object.keys(rawV3.narrative).sort()).toEqual([...narrativeKeys].sort());
+    const migrated = parseGameSnapshot(rawV3);
+
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(migrated.narrative.playerMorale).toEqual(rawV3.narrative.playerMorale);
+    expect(migrated.narrative.teamChemistry).toEqual(rawV3.narrative.teamChemistry);
+    expect(migrated.narrative.ownerState).toEqual(rawV3.narrative.ownerState);
+    expect(migrated.narrative.briefingQueue).toEqual(rawV3.narrative.briefingQueue);
+    expect(migrated.narrative.storyFlags).toEqual(rawV3.narrative.storyFlags);
+    expect(migrated.narrative.rivalries).toEqual(rawV3.narrative.rivalries);
+    expect(migrated.narrative.awardHistory).toEqual(rawV3.narrative.awardHistory);
+    expect(migrated.narrative.seasonHistory).toEqual(rawV3.narrative.seasonHistory);
+    expect(migrated.narrative.hallOfFame).toEqual([]);
+    expect(migrated.tradeState).toEqual({ pendingOffers: [], tradeHistory: [], negotiations: [], multiTeamPendingTrades: [] });
+    expect(migrated.narrative.playerMoments).toEqual([]);
+  });
+
+  it('keeps v8-and-current draft schemas strict while v7 owns the compatibility default', () => {
+    const current = loadFixture('./fixtures/save/v34/core.json');
+    const missingQualifyingOffers = {
+      ...current,
+      draftState: { ...current.draftState },
+    };
+    delete missingQualifyingOffers.draftState.qualifyingOffers;
+    const missingSigningDecisions = {
+      ...current,
+      draftState: { ...current.draftState },
+    };
+    delete missingSigningDecisions.draftState.signingDecisions;
+
+    expect(() => parseGameSnapshot(missingQualifyingOffers)).toThrow();
+    expect(() => parseGameSnapshot(missingSigningDecisions)).toThrow();
+    expect(() => parseGameSnapshot({ ...missingQualifyingOffers, schemaVersion: 8 })).toThrow();
   });
 
   it('migrates the v17 fixture into the additive v25 shape', () => {
