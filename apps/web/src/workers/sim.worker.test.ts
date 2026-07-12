@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AwardHistoryEntry, GameSnapshot } from '@mbd/contracts';
+import { parseGameSnapshot, type AwardHistoryEntry, type GameSnapshot } from '@mbd/contracts';
 import {
   buildRosterState,
   createOffseasonState,
@@ -13,6 +13,7 @@ import {
   type PAOutcome,
   type PAResult,
   type PlayerGameStats,
+  materializeSimulationImportDefaults,
   TEAMS,
 } from '@mbd/sim-core';
 
@@ -46,6 +47,8 @@ import {
   loadGameById,
   saveGameById,
 } from '../shared/lib/saveSystem.js';
+import v17SnapshotFixture from '../../../../packages/contracts/tests/fixtures/save/v17/core.json';
+import v34SnapshotFixture from '../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 
 const mockedListBranches = vi.mocked(listBranches);
 const mockedLoadGameById = vi.mocked(loadGameById);
@@ -1144,6 +1147,41 @@ describe('sim worker narrative APIs', () => {
     expect(review!.rosterIssues[0]).toContain('not controlled');
     expect(review!.fairnessScore).toBeNull();
     expect(review!.narrative).toContain('Roster validation blocked');
+  });
+
+  it('keeps an immediately rejected player-only negotiation snapshot-exact', () => {
+    startGame(1808, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 75;
+    state.gmPersonalities.set('bos', 'aggressive');
+    const offered = state.players
+      .filter((player) => player.teamId === state.userTeamId && player.rosterStatus === 'MLB')
+      .sort((left, right) =>
+        evaluatePlayerTradeValue(left).overall - evaluatePlayerTradeValue(right).overall
+        || left.id.localeCompare(right.id),
+      )[0]!;
+    const requested = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')
+      .sort((left, right) =>
+        evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall
+        || left.id.localeCompare(right.id),
+      )[0]!;
+    const before = JSON.stringify(api.exportSnapshot());
+
+    const result = api.startNegotiation(
+      [{ type: 'player', playerId: offered.id }],
+      [{ type: 'player', playerId: requested.id }],
+      'bos',
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      decision: 'rejected',
+      tradeExecuted: false,
+      flowStateChanged: false,
+    });
+    expect(JSON.stringify(api.exportSnapshot()) === before).toBe(true);
   });
 
   it('evaluates and executes a multi-team framework with a persisted conditional clause', () => {
@@ -2282,7 +2320,7 @@ describe('sim worker narrative APIs', () => {
     expect(enteredQualifyingOffers?.currentPhase).toBe('qualifying_offers');
   });
 
-  it('resets extension negotiations when a fresh offer is requested', () => {
+  it('keeps extension offer queries pure without erasing an active negotiation', () => {
     startGame(127, 'nym');
     const state = requireState();
     const candidate = state.players.find(
@@ -2318,7 +2356,9 @@ describe('sim worker narrative APIs', () => {
     };
 
     const firstResponse = extensionApi.negotiateExtension(candidate.id, lowballOffer);
+    const beforeOfferQuery = JSON.stringify(api.exportSnapshot());
     const resetOffer = extensionApi.getExtensionOffer(candidate.id, 5);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(beforeOfferQuery);
     const secondResponse = extensionApi.negotiateExtension(candidate.id, lowballOffer);
 
     expect(firstResponse).toBeTruthy();
@@ -2335,7 +2375,7 @@ describe('sim worker narrative APIs', () => {
     expect(firstResponse!.review!.evidence.join(' ')).toContain('below current ask');
     expect(resetOffer?.annualSalary).toBe(openingOffer?.annualSalary);
     expect(secondResponse!.status).toBe('countered');
-    expect(secondResponse!.rounds).toHaveLength(1);
+    expect(secondResponse!.rounds).toHaveLength(2);
   });
 
   it('applies runtime team-building identity to promotion and extension candidate priorities', () => {
@@ -2609,6 +2649,38 @@ describe('sim worker narrative APIs', () => {
 
     expect(api.getTeamChemistry('nym')).toEqual(beforeChemistry);
     expect(api.getBriefing(10)).toEqual(beforeBriefing);
+  });
+
+  it('imports a current scenario snapshot repeatedly without changing canonical state or RNG', () => {
+    api.newGame({
+      seed: 1_783_849_480_775,
+      userTeamId: 'sea',
+      gmName: 'Journal Browser GM',
+      difficulty: 'hard',
+      saveSlot: 1,
+      scenarioId: 'trade_shark',
+    });
+    const baseline = api.exportSnapshot();
+
+    expect(api.importSnapshot(structuredClone(baseline)).success).toBe(true);
+    expect(api.exportSnapshot()).toEqual(baseline);
+    expect(api.getAchievements()).toHaveLength(42);
+    expect(api.exportSnapshot()).toEqual(baseline);
+    expect(api.importSnapshot(structuredClone(baseline)).success).toBe(true);
+    expect(api.exportSnapshot()).toEqual(baseline);
+  });
+
+  it.each([
+    ['current v34', () => parseGameSnapshot(v34SnapshotFixture)],
+    ['normalized deep v17', () => parseGameSnapshot(v17SnapshotFixture)],
+  ])('imports and exports an exact %s snapshot', (_label, snapshot) => {
+    const accepted = snapshot();
+    const canonical = materializeSimulationImportDefaults(accepted);
+
+    expect(api.importSnapshot(structuredClone(accepted)).success).toBe(true);
+    expect(api.exportSnapshot()).toEqual(canonical);
+    expect(api.importSnapshot(structuredClone(canonical)).success).toBe(true);
+    expect(api.exportSnapshot()).toEqual(canonical);
   });
 
   it('exposes minor league management queries and affiliate box scores', () => {
@@ -2928,6 +3000,7 @@ describe('sim worker narrative APIs', () => {
     player.overallRating = 240;
 
     const demotionResult = api.demotePlayer(player.id);
+    const beforeRejectedClaim = JSON.stringify(api.exportSnapshot());
     const claimResult = api.claimOffWaivers(player.id);
     const pendingClaim = requireState().minorLeagueState.waiverClaims.find((claim) => claim.playerId === player.id);
 
@@ -2936,6 +3009,7 @@ describe('sim worker narrative APIs', () => {
     expect(claimResult.error).toContain('priority');
     expect(pendingClaim?.status).toBe('pending');
     expect(pendingClaim?.toTeamId).toBeNull();
+    expect(JSON.stringify(api.exportSnapshot())).toBe(beforeRejectedClaim);
   });
 
   it('adds trade consequences after an accepted user trade', () => {
@@ -3000,6 +3074,116 @@ describe('sim worker narrative APIs', () => {
     expect(afterState.playerMorale.get(target.player.id)?.score).toBeGreaterThan(0);
     expect(afterState.playerMorale.get(teammate.id)?.score).toBeGreaterThan(baselineTeammateMorale);
     expect(afterOwner?.summary).not.toBe(beforeOwner?.summary);
+  });
+
+  it('keeps free-agent listing pure until an actual offer installs the deterministic market', () => {
+    startGame(654, 'nym');
+    requireState().freeAgencyMarket = null;
+    const before = api.exportSnapshot() as GameSnapshot;
+
+    const first = api.getFreeAgents(50);
+    const second = api.getFreeAgents(50);
+    const afterQueries = api.exportSnapshot() as GameSnapshot;
+
+    expect(first).toEqual(second);
+    expect(first.length).toBeGreaterThan(0);
+    expect(before.freeAgencyMarket).toBeNull();
+    expect(afterQueries.freeAgencyMarket).toBeNull();
+
+    const target = first[0]!;
+    const result = api.makeContractOffer(target.player.id, 4, Math.ceil(target.marketValue));
+
+    expect(result.accepted).toBe(true);
+    expect(requireState().freeAgencyMarket).not.toBeNull();
+    expect(requireState().freeAgencyMarket?.freeAgents.some((entry) => entry.player.id === target.player.id))
+      .toBe(false);
+  });
+
+  it('keeps a rejected first offer from installing a hidden free-agent market', () => {
+    startGame(654, 'nym');
+    requireState().freeAgencyMarket = null;
+    const target = api.getFreeAgents(50)[0]!;
+    const before = JSON.stringify(api.exportSnapshot());
+
+    const rejected = api.makeContractOffer(target.player.id, 1, 0.01);
+
+    expect(rejected.accepted).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(requireState().freeAgencyMarket).toBeNull();
+  });
+
+  it('keeps Draft and IFA route views pure when fresh-save scaffolding is missing', () => {
+    startGame(655, 'nym');
+    const state = requireState();
+    state.draftState = {
+      ...state.draftState,
+      pickOwnership: [],
+      signability: [],
+      scoutingReports: [],
+      bigBoards: [],
+    };
+    state.internationalScoutingState = {
+      ...state.internationalScoutingState,
+      season: state.season,
+      budgets: new Map(),
+      ifaPool: [],
+      scoutingHistory: new Map(),
+    };
+    state.scoutConflicts = [];
+    const before = JSON.stringify(api.exportSnapshot());
+
+    const draft = api.getDraftClass();
+    const ifa = api.getIFAPool();
+    const tradeInventory = api.getTradeAssetInventory('nym');
+
+    expect(draft).toBeNull();
+    expect(ifa.prospects.length).toBeGreaterThan(0);
+    expect(tradeInventory.draftPicks.length).toBeGreaterThan(0);
+    expect(JSON.stringify(api.exportSnapshot()) === before).toBe(true);
+    expect(requireState().draftState.pickOwnership).toEqual([]);
+    expect(requireState().internationalScoutingState.budgets.size).toBe(0);
+    expect(requireState().scoutConflicts).toEqual([]);
+  });
+
+  it('rolls back lazy Draft and IFA initialization for rejected actions', () => {
+    startGame(656, 'nym');
+    let state = requireState();
+    state.draftState = {
+      ...state.draftState,
+      pickOwnership: [],
+      signability: [],
+      scoutingReports: [],
+      bigBoards: [],
+    };
+    const beforeDraftRejects = JSON.stringify(api.exportSnapshot());
+
+    expect(api.scoutDraftPlayer('missing-prospect').success).toBe(false);
+    expect(api.toggleDraftBigBoard('missing-prospect').success).toBe(false);
+    expect(api.signDraftPick('missing-prospect', 1).success).toBe(false);
+    expect(api.makeDraftPick('missing-prospect').success).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(beforeDraftRejects);
+
+    state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'international_signing',
+    };
+    state.internationalScoutingState = {
+      ...state.internationalScoutingState,
+      season: state.season,
+      budgets: new Map(),
+      ifaPool: [],
+      scoutingHistory: new Map(),
+    };
+    const beforeIFARejects = JSON.stringify(api.exportSnapshot());
+
+    expect(api.scoutIFAPlayer('missing-prospect').success).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot()) === beforeIFARejects).toBe(true);
+    expect(api.signIFAPlayer('missing-prospect', 1).success).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot()) === beforeIFARejects).toBe(true);
+    expect(api.tradeIFAPoolSpace('missing-team', -1).success).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot()) === beforeIFARejects).toBe(true);
   });
 
   it('adds postseason consequences before recording season history', () => {
@@ -4245,6 +4429,21 @@ describe('sim worker narrative APIs', () => {
     expect(locked?.rule5?.phase).toBe('rule5_draft');
   });
 
+  it('rolls back lazy Rule 5 draft creation for a rejected pick', () => {
+    startGame(3401, 'nym');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'rule5_draft',
+    };
+    state.rule5Session = null;
+    state.rule5Obligations = [];
+    const beforeDraftReject = JSON.stringify(api.exportSnapshot());
+    expect(api.makeRule5Pick('missing-player').success).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot()) === beforeDraftReject).toBe(true);
+  });
+
   it('blocks demoting active rule 5 players until the offer-back flow resolves', () => {
     startGame(341, 'nym');
     const state = requireState();
@@ -4266,12 +4465,17 @@ describe('sim worker narrative APIs', () => {
 
     expect(blocked.success).toBe(false);
     expect(blocked.error).toMatch(/rule 5/i);
+    expect('flowStateChanged' in blocked && blocked.flowStateChanged).toBe(true);
     expect(state.rule5OfferBackStates[0]).toEqual(expect.objectContaining({
       playerId: player.id,
       originalTeamId: 'bos',
       draftingTeamId: 'nym',
       status: 'pending',
     }));
+    const afterFirstBlock = JSON.stringify(api.exportSnapshot());
+    const repeatedBlock = api.demotePlayerAction(player.id);
+    expect('flowStateChanged' in repeatedBlock && repeatedBlock.flowStateChanged).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(afterFirstBlock);
 
     const resolved = (api as typeof api & {
       resolveRule5OfferBack: (playerId: string, acceptReturn: boolean) => { success: boolean };
@@ -5668,6 +5872,59 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().playoffBracket).toBeNull();
     expect(flow.status).toBe('regular_season_complete');
     expect(flow.action).toBe('watch_playoffs');
+  }, 60_000);
+
+  it.each([
+    ['simDay', 'playoffs'],
+    ['simWeek', 'playoffs'],
+    ['simMonth', 'playoffs'],
+    ['simDay', 'offseason'],
+    ['simWeek', 'offseason'],
+    ['simMonth', 'offseason'],
+  ] as const)('routes exact legacy %s only from authorized %s phase', (operation, expectedPhase) => {
+    startGame(10_000 + operation.length + expectedPhase.length, 'nym');
+    const state = requireState();
+    state.phase = expectedPhase;
+    state.day = 1;
+    if (expectedPhase === 'playoffs') {
+      state.playoffBracket = null;
+    } else {
+      state.offseasonState = createOffseasonState(state.season);
+    }
+    const before = JSON.stringify(api.exportSnapshot());
+    const legacyApi = api as typeof api & {
+      simLegacyAdvance: (
+        requested: 'simDay' | 'simWeek' | 'simMonth',
+        phase: 'playoffs' | 'offseason',
+      ) => { season: number; day: number; phase: string };
+    };
+
+    const result = legacyApi.simLegacyAdvance(operation, expectedPhase);
+
+    expect(result).toEqual(expect.objectContaining({ season: expect.any(Number), day: expect.any(Number), phase: expect.any(String) }));
+    expect(JSON.stringify(api.exportSnapshot())).not.toBe(before);
+  }, 60_000);
+
+  it('rejects wrong phase and unsupported legacy operations before any mutation or RNG use', () => {
+    startGame(10_021, 'nym');
+    const legacyApi = api as typeof api & {
+      simLegacyAdvance: (operation: string, phase: string) => unknown;
+    };
+    const assertRejectedWithoutMutation = (operation: string, expectedPhase: string) => {
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngCalls = requireState().rng.getState().callCount;
+      expect(() => legacyApi.simLegacyAdvance(operation, expectedPhase)).toThrow(
+        'Legacy simulation phase authorization failed before mutation.',
+      );
+      expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+      expect(requireState().rng.getState().callCount).toBe(rngCalls);
+    };
+
+    assertRejectedWithoutMutation('simDay', 'playoffs');
+    requireState().phase = 'playoffs';
+    assertRejectedWithoutMutation('simDay', 'offseason');
+    assertRejectedWithoutMutation('simYear', 'playoffs');
+    assertRejectedWithoutMutation('simDay', 'regular');
   }, 60_000);
 
   it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GamePlayByPlayView, GameRecapView } from '../components/gameDayBroadcast';
 import type { DashboardSummary, ScheduleGameEntry } from '../lib/dashboardPageTransforms';
 import type { SeasonRecapView, OffseasonHeadlineView } from '@/workers/sim.worker.seasonNarrative';
@@ -39,9 +39,14 @@ interface UseDashboardRouteDataOptions {
   workerReady: boolean;
 }
 
+export interface DashboardRefreshOptions {
+  throwOnError?: boolean;
+  context?: { season: number; phase: string };
+}
+
 interface UseDashboardRouteDataResult {
   career: GMCareerView | null;
-  fetchDashboardData: () => Promise<void>;
+  fetchDashboardData: (options?: DashboardRefreshOptions) => Promise<void>;
   jobMarket: JobMarketView | null;
   loading: boolean;
   offseasonHeadline: OffseasonHeadlineView | null;
@@ -81,9 +86,19 @@ export function useDashboardRouteData({
   const [selectedGameDetail, setSelectedGameDetail] = useState<GamePlayByPlayView | null>(null);
   const [playByPlayLoading, setPlayByPlayLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const latestRequestRef = useRef(0);
+  const strictRequestRef = useRef<number | null>(null);
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (options: DashboardRefreshOptions = {}) => {
     if (!isInitialized || !workerReady) return;
+    // A post-durable strict refresh is authoritative presentation work. A
+    // stale normal route effect must neither publish over it nor clear its
+    // loading state.
+    if (!options.throwOnError && strictRequestRef.current != null) return;
+    const request = ++latestRequestRef.current;
+    if (options.throwOnError) strictRequestRef.current = request;
+    const querySeason = options.context?.season ?? season;
+    const queryPhase = options.context?.phase ?? phase;
     setLoading(true);
     try {
       const [nextSummary, nextCareer, nextJobMarket, nextRecaps, nextSeasonRecap, nextOffseasonHeadline, nextSchedule] = await Promise.all([
@@ -91,10 +106,11 @@ export function useDashboardRouteData({
         getGMCareer(),
         getJobMarket(),
         getRecentGameRecaps(3),
-        phase === 'offseason' ? getSeasonRecap(season) : Promise.resolve(null),
-        phase === 'offseason' ? getOffseasonHeadline(season) : Promise.resolve(null),
+        queryPhase === 'offseason' ? getSeasonRecap(querySeason) : Promise.resolve(null),
+        queryPhase === 'offseason' ? getOffseasonHeadline(querySeason) : Promise.resolve(null),
         getScheduleView?.() ?? Promise.resolve(null),
       ]);
+      if (request !== latestRequestRef.current) return;
       setSummary((nextSummary ?? null) as DashboardSummary | null);
       setCareer((nextCareer ?? null) as GMCareerView | null);
       setJobMarket((nextJobMarket ?? null) as JobMarketView | null);
@@ -114,9 +130,11 @@ export function useDashboardRouteData({
         return recapViews[0]?.gameIndex ?? null;
       });
     } catch (error) {
+      if (options.throwOnError) throw error;
       logger.error('Failed to fetch dashboard data:', error);
     } finally {
-      setLoading(false);
+      if (strictRequestRef.current === request) strictRequestRef.current = null;
+      if (request === latestRequestRef.current) setLoading(false);
     }
   }, [
     getDashboardSummary,

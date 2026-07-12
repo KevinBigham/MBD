@@ -256,6 +256,11 @@ describe('saveSystem helpers', () => {
     vi.stubGlobal('indexedDB', {});
     vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
     vi.spyOn(db.saveIntegrityBackups, 'get').mockResolvedValue(undefined as never);
+    const intentFirst = vi.fn().mockResolvedValue(undefined);
+    const intentEquals = vi.fn(() => ({ first: intentFirst }));
+    const intentWhere = vi.spyOn(db.simAdvanceIntents, 'where').mockReturnValue({
+      equals: intentEquals,
+    } as never);
     const savePut = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-2' as never);
     const backupPut = vi.spyOn(db.saveIntegrityBackups, 'put').mockResolvedValue('save-slot-2' as never);
     const leaderboardPut = vi.spyOn(db.leaderboard, 'put').mockResolvedValue('leaderboard-dynasty-2' as never);
@@ -276,8 +281,12 @@ describe('saveSystem helpers', () => {
       db.saves,
       db.saveIntegrityBackups,
       db.leaderboard,
+      db.simAdvanceIntents,
       expect.any(Function),
     );
+    expect(intentWhere).toHaveBeenCalledWith('rootSaveId');
+    expect(intentEquals).toHaveBeenCalledWith('save-slot-2');
+    expect(intentFirst).toHaveBeenCalledTimes(1);
     expect(record.updatedAt).toBe('2026-04-02T19:42:03.000Z');
     expect(savePut).toHaveBeenCalledWith(expect.objectContaining({
       id: 'save-slot-2',

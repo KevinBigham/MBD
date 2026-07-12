@@ -3,6 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import type { DashboardSummary } from '../lib/dashboardPageTransforms';
 import { useDashboardPageController } from './useDashboardPageController';
+import { isSimAdvanceCoordinatorBusy, useSimAdvanceExecutor } from '@/shared/hooks/useSimAdvanceExecutor';
+import { useGameStore } from '@/shared/hooks/useGameStore';
+
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  useSimAdvanceExecutor: vi.fn(),
+  isSimAdvanceCoordinatorBusy: vi.fn(() => false),
+}));
+
+const mockedUseSimAdvanceExecutor = vi.mocked(useSimAdvanceExecutor);
+const mockedIsSimAdvanceCoordinatorBusy = vi.mocked(isSimAdvanceCoordinatorBusy);
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -10,6 +20,14 @@ import { useDashboardPageController } from './useDashboardPageController';
 
 type HookOptions = Parameters<typeof useDashboardPageController>[0];
 type HookResult = ReturnType<typeof useDashboardPageController>;
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
 
 function HookHarness({
   options,
@@ -120,9 +138,8 @@ function createWorkerMock(overrides: Partial<HookOptions['worker']> = {}): HookO
       { day: 2, isCompleted: false },
     ]),
     getSeasonRecap: vi.fn().mockResolvedValue(null),
-    simDay: vi.fn().mockResolvedValue({ season: 1, day: 2, phase: 'regular', playerCount: 780 }),
-    simMonth: vi.fn().mockResolvedValue({ season: 1, day: 31, phase: 'regular', playerCount: 780 }),
-    simWeek: vi.fn().mockResolvedValue({ season: 1, day: 8, phase: 'regular', playerCount: 780 }),
+    simAdvance: {},
+    simLegacyAdvance: vi.fn(),
     ...overrides,
   } as HookOptions['worker'];
 }
@@ -151,10 +168,18 @@ describe('useDashboardPageController', () => {
   let latestResult: HookResult | null;
 
   beforeEach(() => {
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(false);
+    useGameStore.getState().setActiveSave('save-root', 1);
+    useGameStore.getState().setInitialized(true);
+    useGameStore.getState().setPhase('regular');
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
     latestResult = null;
+    mockedUseSimAdvanceExecutor.mockReturnValue({
+      execute: vi.fn().mockResolvedValue({ kind: 'durable' }),
+      status: { kind: 'idle' },
+    } as unknown as ReturnType<typeof useSimAdvanceExecutor>);
   });
 
   afterEach(async () => {
@@ -215,14 +240,75 @@ describe('useDashboardPageController', () => {
     });
 
     await waitForAssertion(() => {
-      expect(worker.simDay).toHaveBeenCalledTimes(1);
-      expect(game.updateFromSim).toHaveBeenCalledWith({
-        season: 1,
-        day: 2,
-        phase: 'regular',
-        playerCount: 780,
-      });
-      expect(autosaveActiveGame).toHaveBeenCalledWith({ season: 1 });
+      expect(mockedUseSimAdvanceExecutor.mock.results[0]?.value.execute).toHaveBeenCalledWith('sim_day');
+      expect(game.updateFromSim).not.toHaveBeenCalled();
+      expect(autosaveActiveGame).not.toHaveBeenCalled();
+    });
+  });
+
+  it('projects coordinator busy into rendered dashboard sim controls', async () => {
+    mockedUseSimAdvanceExecutor.mockReturnValue({ execute: vi.fn(), status: { kind: 'running', operation: 'sim_day' } } as unknown as ReturnType<typeof useSimAdvanceExecutor>);
+    await renderHook({ autosaveActiveGame: vi.fn(), game: createGameState(), worker: createWorkerMock() });
+    await waitForAssertion(() => expect(latestResult?.contentProps.simBusy).toBe(true));
+    expect(latestResult?.contentProps.onSimDay).toBeTypeOf('function'); expect(latestResult?.contentProps.onSimWeek).toBeTypeOf('function'); expect(latestResult?.contentProps.onSimMonth).toBeTypeOf('function');
+  });
+
+  it('keeps playoff dashboard handlers rendered and projects a held local legacy simulation as busy', async () => {
+    let resolveLegacy!: (value: { season: number; day: number; phase: string; success: boolean }) => void;
+    const simLegacyAdvance = vi.fn().mockReturnValue(new Promise((resolve) => { resolveLegacy = resolve; }));
+    const worker = createWorkerMock({ simLegacyAdvance });
+    const game = createGameState({ phase: 'playoffs' });
+    useGameStore.getState().setPhase('playoffs');
+    const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
+    await renderHook({ autosaveActiveGame, game, worker });
+    await waitForAssertion(() => {
+      expect(latestResult?.contentProps.onSimDay).toBeTypeOf('function');
+      expect(latestResult?.contentProps.onSimWeek).toBeTypeOf('function');
+      expect(latestResult?.contentProps.onSimMonth).toBeTypeOf('function');
+    });
+    await act(async () => { latestResult?.contentProps.onSimDay(); await Promise.resolve(); });
+    expect(simLegacyAdvance).toHaveBeenCalledWith('simDay', 'playoffs');
+    await waitForAssertion(() => expect(latestResult?.contentProps.simBusy).toBe(true));
+    await act(async () => { resolveLegacy({ season: 1, day: 2, phase: 'playoffs', success: true }); await Promise.resolve(); await Promise.resolve(); });
+    await waitForAssertion(() => expect(latestResult?.contentProps.simBusy).toBe(false));
+  });
+
+  it('projects held playoff legacy work as busy while keeping every sim control represented', async () => {
+    const legacy = createDeferred<{ season: number; day: number; phase: string; gamesPlayed: number }>();
+    const simLegacyAdvance = vi.fn().mockReturnValue(legacy.promise);
+    const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
+    const game = createGameState({ phase: 'playoffs' });
+    useGameStore.getState().setPhase('playoffs');
+
+    await renderHook({
+      autosaveActiveGame,
+      game,
+      worker: createWorkerMock({ simLegacyAdvance }),
+    });
+
+    expect(latestResult?.contentProps.onSimDay).toBeTypeOf('function');
+    expect(latestResult?.contentProps.onSimWeek).toBeTypeOf('function');
+    expect(latestResult?.contentProps.onSimMonth).toBeTypeOf('function');
+
+    await act(async () => {
+      latestResult?.contentProps.onSimDay();
+      await Promise.resolve();
+    });
+
+    await waitForAssertion(() => {
+      expect(simLegacyAdvance).toHaveBeenCalledWith('simDay', 'playoffs');
+      expect(latestResult?.contentProps.simBusy).toBe(true);
+    });
+
+    await act(async () => {
+      legacy.resolve({ season: 1, day: 1, phase: 'playoffs', gamesPlayed: 4 });
+      await legacy.promise;
+      await Promise.resolve();
+    });
+
+    await waitForAssertion(() => {
+      expect(latestResult?.contentProps.simBusy).toBe(false);
+      expect(autosaveActiveGame).toHaveBeenCalledTimes(1);
     });
   });
 });

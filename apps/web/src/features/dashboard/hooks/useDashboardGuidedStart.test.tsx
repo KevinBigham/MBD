@@ -7,6 +7,7 @@ import {
   registerGuidedStartSave,
 } from '@/features/onboarding/nudges';
 import { exportSnapshotToJson } from '@/shared/lib/saveSystem';
+import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useDashboardGuidedStart } from './useDashboardGuidedStart';
 
 vi.mock('@/shared/lib/saveSystem', () => ({
@@ -143,6 +144,7 @@ describe('useDashboardGuidedStart', () => {
 
   it('exports a guided-start backup from the route snapshot', async () => {
     const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34 });
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
     await renderHook(baseOptions({
       day: 88,
       exportSnapshot,
@@ -161,5 +163,26 @@ describe('useDashboardGuidedStart', () => {
     expect(createObjectUrlSpy).toHaveBeenCalledWith(expect.any(Blob));
     expect(linkClickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:guided-start-backup');
+  });
+
+  it('returns false without creating a download when the active save changes during export', async () => {
+    let resolveExport!: (snapshot: { schemaVersion: number }) => void;
+    const exportSnapshot = vi.fn().mockReturnValue(new Promise<{ schemaVersion: number }>((resolve) => { resolveExport = resolve; }));
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    await renderHook(baseOptions({ exportSnapshot }));
+    const pending = latestResult?.handleExportGuidedStartBackup();
+    useGameStore.getState().setActiveSave('save-slot-2', 2);
+    await act(async () => { resolveExport({ schemaVersion: 34 }); await pending; });
+    expect(exportSnapshotToJson).not.toHaveBeenCalled();
+    expect(createObjectUrlSpy).not.toHaveBeenCalled();
+    expect(linkClickSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns false and leaves no download when snapshot export rejects', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    await renderHook(baseOptions({ exportSnapshot: vi.fn().mockRejectedValue(new Error('worker held')) }));
+    await expect(latestResult?.handleExportGuidedStartBackup()).resolves.toBe(false);
+    expect(createObjectUrlSpy).not.toHaveBeenCalled();
+    expect(linkClickSpy).not.toHaveBeenCalled();
   });
 });

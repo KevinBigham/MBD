@@ -219,9 +219,9 @@ export default function SettingsDiagnosticsPanel({
           <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Local MBD Records</div>
           <div className="mt-3 space-y-2 font-heading text-sm text-dynasty-text">
             <div>{localEstimate ? (localEstimate.allMbdBytes == null ? 'Local MBD record estimate unavailable' : localEstimate.allMbdBytesKnown ? formatBytes(localEstimate.allMbdBytes) : `${formatBytes(localEstimate.allMbdBytes)} known lower bound`) : 'Reading local records…'}</div>
-            <div className="text-dynasty-muted">Estimated serialized save, shadow, and leaderboard records; browser overhead is not measured.</div>
+            <div className="text-dynasty-muted">Estimated serialized save, shadow, leaderboard, and small operational simulation-journal records; browser overhead is not measured.</div>
             {activeTree ? (
-              <div className="text-dynasty-muted">Active protected tree (slot {activeTree.slotNumber}): {formatBytes(activeTree.primaryBytes)} primary + {formatBytes(activeTree.shadowBytes)} shadow + {formatBytes(activeTree.leaderboardBytes)} leaderboard{activeTree.attribution === 'partial' ? ' (partial attribution)' : ''}.</div>
+              <div className="text-dynasty-muted">Active protected tree (slot {activeTree.slotNumber}): {formatBytes(activeTree.primaryBytes)} primary + {formatBytes(activeTree.shadowBytes)} shadow + {formatBytes(activeTree.leaderboardBytes)} leaderboard + {formatBytes(activeTree.journalBytes)} operational simulation journal{activeTree.attribution === 'partial' ? ' (partial attribution)' : ''}.</div>
             ) : localEstimate ? (
               <div className="text-dynasty-muted">Active protected tree {localEstimate.status === 'unavailable' ? 'is unavailable' : 'is partial or unattributable'}; its bytes are not inferred from another save.</div>
             ) : null}

@@ -2124,6 +2124,20 @@ export const actionApi = {
     return simMonthInternal();
   },
 
+  simLegacyAdvance(operation: 'simDay' | 'simWeek' | 'simMonth', expectedPhase: 'playoffs' | 'offseason'): SimResultDTO {
+    const state = requireState();
+    if ((operation !== 'simDay' && operation !== 'simWeek' && operation !== 'simMonth')
+      || (expectedPhase !== 'playoffs' && expectedPhase !== 'offseason')
+      || state.phase !== expectedPhase) {
+      throw new Error('Legacy simulation phase authorization failed before mutation.');
+    }
+    switch (operation) {
+      case 'simDay': return simDayInternal();
+      case 'simWeek': return simWeekInternal();
+      case 'simMonth': return simMonthInternal();
+    }
+  },
+
   acknowledgeMonthlyReport(reportId: string) {
     return acknowledgeMonthlyReport(requireState(), reportId);
   },
@@ -2135,7 +2149,7 @@ export const actionApi = {
   dismissWelcomeBriefing() {
     const s = requireState();
     if (s.franchise.onboarding.welcomeBriefingSeen) {
-      return { success: true as const };
+      return { success: true as const, flowStateChanged: false as const };
     }
 
     s.franchise = {
@@ -2145,7 +2159,7 @@ export const actionApi = {
         welcomeBriefingSeen: true,
       },
     };
-    return { success: true as const };
+    return { success: true as const, flowStateChanged: true as const };
   },
 
   dismissCeremonyMoment(momentId: string) {
@@ -2493,13 +2507,13 @@ export const actionApi = {
         return { success: false as const, error: compat.reason ?? 'Incompatible save.' };
       }
       resetTradeDeadlineState();
-      const importedState = importGameSnapshot(snapshot);
-      const preservedBriefing = importedState.briefingQueue.map((item) => ({ ...item }));
-      setState(importedState);
+      // Import is a trust boundary, not a gameplay mutation. The snapshot has
+      // already been migrated to canonical v34 by importGameSnapshot; running
+      // narrative or achievement synchronizers here would make the singleton
+      // worker disagree with the exact durable bytes before any accepted
+      // mutation could persist those changes.
+      setState(importGameSnapshot(snapshot));
       const s = requireState();
-      ensureNarrativeState(s);
-      s.briefingQueue = preservedBriefing;
-      syncAchievementState(s, { publish: false });
       return {
         success: true as const,
         season: s.season,
@@ -2634,9 +2648,10 @@ export const actionApi = {
         negotiation: null,
         tradeExecuted: false,
         review: null,
+        flowStateChanged: false,
       };
     }
-    pruneExpiredNegotiations(s);
+    const pruned = pruneExpiredNegotiations(s);
     const result = startNegotiation(
       s,
       offeringAssets,
@@ -2646,7 +2661,7 @@ export const actionApi = {
     if (result.tradeExecuted) {
       syncAchievementState(s);
     }
-    return result;
+    return { ...result, flowStateChanged: pruned || result.flowStateChanged };
   },
 
   advanceNegotiation(negotiationId: string, counterPackage: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] }) {
@@ -2659,10 +2674,12 @@ export const actionApi = {
         negotiation: null,
         tradeExecuted: false,
         review: null,
+        flowStateChanged: false,
       };
     }
-    pruneExpiredNegotiations(s);
-    return advanceNegotiationSession(s, negotiationId, counterPackage);
+    const pruned = pruneExpiredNegotiations(s);
+    const result = advanceNegotiationSession(s, negotiationId, counterPackage);
+    return { ...result, flowStateChanged: pruned || result.flowStateChanged };
   },
 
   resolveNegotiation(negotiationId: string, action: 'accept' | 'reject') {
@@ -2675,14 +2692,15 @@ export const actionApi = {
         negotiation: null,
         tradeExecuted: false,
         review: null,
+        flowStateChanged: false,
       };
     }
-    pruneExpiredNegotiations(s);
+    const pruned = pruneExpiredNegotiations(s);
     const result = resolveNegotiationSession(s, negotiationId, action);
     if (result.tradeExecuted) {
       syncAchievementState(s);
     }
-    return result;
+    return { ...result, flowStateChanged: pruned || result.flowStateChanged };
   },
 
   proposeMultiTeam(proposal: Parameters<typeof proposeMultiTeamFramework>[1]) {
@@ -2726,7 +2744,12 @@ export const actionApi = {
   ) {
     const s = requireState();
     if (syncFranchiseTerminationFromOwner(s)) {
-      return { success: false, decision: 'rejected' as const, message: franchiseLockMessage(s) };
+      return {
+        success: false,
+        decision: 'rejected' as const,
+        message: franchiseLockMessage(s),
+        flowStateChanged: false,
+      };
     }
     const result = respondToTradeOffer(s, offerId, action, counterPackage);
     if (result.success && result.decision === 'accepted') {
@@ -2777,6 +2800,9 @@ export const actionApi = {
     }
 
     const result = promotePlayer(playerId, s.players, rosterState, timestamp());
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
     s.players = result.players.map((candidate) =>
       candidate.id === playerId
         ? {
@@ -2834,8 +2860,17 @@ export const actionApi = {
       return rule5Restriction;
     }
 
+    const previousPlayers = s.players;
+    const previousMinorLeagueState = s.minorLeagueState;
+    const previousRosterStates = new Map(s.rosterStates);
     const requiresWaivers = prepareMlbDemotionOptionLedger(s, playerId);
     const result = demotePlayer(playerId, s.players, rosterState, timestamp());
+    if (!result.success) {
+      s.players = previousPlayers;
+      s.minorLeagueState = previousMinorLeagueState;
+      s.rosterStates = previousRosterStates;
+      return { success: false, error: result.error };
+    }
     s.players = result.players.map((candidate) =>
       candidate.id === playerId
         ? {
@@ -2873,6 +2908,9 @@ export const actionApi = {
     }
 
     const result = dfaPlayer(playerId, s.players, rosterState, timestamp());
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
     s.players = result.players.map((candidate) =>
       candidate.id === playerId
         ? {
@@ -2914,11 +2952,9 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { accepted: false, reason: franchiseLockMessage(s) };
     }
-    if (!s.freeAgencyMarket) {
-      s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
-    }
+    const market = s.freeAgencyMarket ?? createFreeAgencyMarket(s.season, s.players);
 
-    const freeAgent = s.freeAgencyMarket.freeAgents.find((candidate) => candidate.player.id === playerId);
+    const freeAgent = market.freeAgents.find((candidate) => candidate.player.id === playerId);
     const offer: ContractOffer = {
       teamId: s.userTeamId,
       playerId,
@@ -2930,7 +2966,7 @@ export const actionApi = {
       teamOption: false,
       signingBonus: 0,
     };
-    const result = makeUserOffer(s.freeAgencyMarket, {
+    const result = makeUserOffer(market, {
       ...offer,
       annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
     }, getLoyaltyAdjustedAppeal(
@@ -2947,6 +2983,7 @@ export const actionApi = {
     if (!player) {
       return result;
     }
+    s.freeAgencyMarket = market;
 
     const previousTeamId = player.teamId;
     updatePlayerTeamAssignment(player, s.userTeamId, s.season);
@@ -2964,10 +3001,10 @@ export const actionApi = {
       deferredMoney: [],
     };
 
-    s.freeAgencyMarket.freeAgents = s.freeAgencyMarket.freeAgents.filter(
+    market.freeAgents = market.freeAgents.filter(
       (candidate) => candidate.player.id !== playerId,
     );
-    s.freeAgencyMarket.signedPlayers.push({
+    market.signedPlayers.push({
       ...freeAgent,
       player,
       signedWith: s.userTeamId,

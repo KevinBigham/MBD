@@ -54,7 +54,7 @@ describe('PressConferenceModal', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     onDismiss = vi.fn();
-    onRespond = vi.fn().mockResolvedValue(undefined);
+    onRespond = vi.fn().mockResolvedValue(true);
   });
 
   afterEach(async () => {
@@ -65,13 +65,14 @@ describe('PressConferenceModal', () => {
     vi.clearAllMocks();
   });
 
-  async function renderModal() {
+  async function renderModal(disabled = false) {
     await act(async () => {
       root.render(
         <PressConferenceModal
           conference={conference}
           onDismiss={onDismiss}
           onRespond={onRespond}
+          disabled={disabled}
         />,
       );
     });
@@ -191,5 +192,31 @@ describe('PressConferenceModal', () => {
 
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(launcher);
+  });
+
+  it('does not claim a delivered response when the live handler is fenced', async () => {
+    await renderModal(true);
+    const choice = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Set the standard')) as HTMLButtonElement;
+    const skip = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Skip')) as HTMLButtonElement;
+    expect(choice.disabled).toBe(true);
+    expect(skip.disabled).toBe(true);
+    await act(async () => { choice.dispatchEvent(new MouseEvent('click', { bubbles: true })); await Promise.resolve(); });
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(onRespond).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain('Response delivered.');
+  });
+
+  it('disables the result continuation if the live coordinator fences the dialog after delivery', async () => {
+    await renderModal();
+    const choice = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Set the standard')) as HTMLButtonElement;
+    await act(async () => { choice.click(); });
+    const submit = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Deliver Response')) as HTMLButtonElement;
+    await act(async () => { submit.click(); await Promise.resolve(); });
+    await renderModal(true);
+    const continueButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Continue')) as HTMLButtonElement;
+    expect(continueButton.disabled).toBe(true);
+    await act(async () => { continueButton.click(); });
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 });

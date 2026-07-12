@@ -18,6 +18,13 @@ function formatDevelopmentProgramLabel(program: string | null | undefined): stri
   return (program ?? 'development').replaceAll('_', ' ');
 }
 
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
 export default function MinorsPage() {
   const worker = useWorker();
   const workerReady = worker.isReady;
@@ -55,7 +62,12 @@ export default function MinorsPage() {
       }
       // Persist the applied plan before refreshing the overview so a refresh
       // failure cannot drop the durable post-mutation snapshot.
-      await autosaveActiveGame({ season });
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) {
+        setDevelopmentPlanMessage(
+          'The development plan changed in memory. Save status is the authority for durability.',
+        );
+        return;
+      }
       try {
         await fetchOverview();
       } catch {

@@ -79,11 +79,13 @@ export function OnboardingEmptyState({
   title,
   body,
   actionLabel,
+  actionDisabled = false,
   onAction,
 }: {
   title: string;
   body: string;
   actionLabel: string;
+  actionDisabled?: boolean;
   onAction: () => void;
 }) {
   return (
@@ -93,8 +95,9 @@ export function OnboardingEmptyState({
       <p className="mx-auto mt-3 max-w-2xl font-heading text-sm leading-6 text-dynasty-muted">{body}</p>
       <button
         type="button"
+        disabled={actionDisabled}
         onClick={onAction}
-        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover"
+        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:opacity-50"
       >
         {actionLabel}
         <ArrowRight className="h-4 w-4" />

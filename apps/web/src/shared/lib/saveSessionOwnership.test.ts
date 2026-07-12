@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SAVE_TREE_LOCK_PREFIX,
   SaveSessionOwnershipCoordinator,
@@ -391,7 +391,7 @@ describe('save session ownership', () => {
     expect(() => owner.assertActiveOwner()).not.toThrow();
   });
 
-  it('authorizes worker snapshot import only inside an active candidate scope', async () => {
+  it('authorizes exactly one call-bound worker import without an awaited-scope piggyback', async () => {
     const manager = new MemoryWebLockManager();
     const owner = coordinator(manager);
     owner.enableEnforcement();
@@ -400,16 +400,24 @@ describe('save session ownership', () => {
     expect(() => owner.assertImportAuthorized()).toThrowError(
       expect.objectContaining({ kind: 'not_owner' }),
     );
-    await owner.withImportAuthorization(claim, async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const pending = owner.withImportAuthorization(claim, async () => {
       expect(() => owner.assertImportAuthorized()).not.toThrow();
+      expect(() => owner.assertImportAuthorized()).toThrowError(
+        expect.objectContaining({ kind: 'not_owner' }),
+      );
+      await held;
     });
     expect(() => owner.assertImportAuthorized()).toThrowError(
       expect.objectContaining({ kind: 'not_owner' }),
     );
+    release();
+    await pending;
     await owner.abort(claim);
   });
 
-  it('authorizes newGame only for the exact activation candidate root', async () => {
+  it('authorizes exactly one call-bound newGame for the exact candidate root', async () => {
     const manager = new MemoryWebLockManager();
     const owner = coordinator(manager);
     owner.enableEnforcement();
@@ -418,15 +426,23 @@ describe('save session ownership', () => {
     expect(() => owner.assertNewGameAuthorized('save-slot-2')).toThrowError(
       expect.objectContaining({ kind: 'not_owner' }),
     );
-    await owner.withNewGameAuthorization(claim, async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const pending = owner.withNewGameAuthorization(claim, async () => {
       expect(() => owner.assertNewGameAuthorized('save-slot-2')).not.toThrow();
+      expect(() => owner.assertNewGameAuthorized('save-slot-2')).toThrowError(
+        expect.objectContaining({ kind: 'not_owner' }),
+      );
       expect(() => owner.assertNewGameAuthorized('save-slot-1')).toThrowError(
         expect.objectContaining({ kind: 'not_owner' }),
       );
+      await held;
     });
     expect(() => owner.assertNewGameAuthorized('save-slot-2')).toThrowError(
       expect.objectContaining({ kind: 'not_owner' }),
     );
+    release();
+    await pending;
     await owner.abort(claim);
   });
 
@@ -442,18 +458,84 @@ describe('save session ownership', () => {
     );
     await owner.withActiveSnapshotExportAuthorization('save-slot-1', async () => {
       expect(owner.assertSnapshotExportAuthorized('save-slot-1')).toBe('transition');
+      expect(owner.assertSnapshotExportAuthorized('save-slot-1')).toBe('ordinary');
     });
     await owner.withActiveImportAuthorization('save-slot-1', async () => {
       expect(() => owner.assertImportAuthorized()).not.toThrow();
+      expect(() => owner.assertImportAuthorized()).toThrowError(
+        expect.objectContaining({ kind: 'not_owner' }),
+      );
     });
 
     const candidate = await owner.begin('save-slot-2');
-    await owner.withCandidateSnapshotExportAuthorization(candidate, async () => {
-      expect(owner.assertSnapshotExportAuthorized(null)).toBe('transition');
+    await owner.withCandidateSnapshotExportAuthorization(candidate, 'save-slot-2', async () => {
+      expect(owner.assertSnapshotExportAuthorized('save-slot-2')).toBe('transition');
+      expect(() => owner.assertSnapshotExportAuthorized(null)).toThrowError(
+        expect.objectContaining({ kind: 'not_owner' }),
+      );
       expect(owner.assertSnapshotExportAuthorized('save-slot-1')).toBe('ordinary');
     });
     expect(owner.assertSnapshotExportAuthorized('save-slot-1')).toBe('ordinary');
     await owner.abort(candidate);
+  });
+
+  it('authorizes exactly one call-bound candidate export without an awaited-scope piggyback', async () => {
+    const manager = new MemoryWebLockManager();
+    const owner = coordinator(manager);
+    owner.enableEnforcement();
+    const candidate = await owner.begin('save-slot-2');
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const pending = owner.withCandidateSnapshotExportAuthorization(candidate, 'save-slot-2', async () => {
+      expect(owner.assertSnapshotExportAuthorized('save-slot-2')).toBe('transition');
+      expect(() => owner.assertSnapshotExportAuthorized('save-slot-2')).toThrowError(
+        expect.objectContaining({ kind: 'not_owner' }),
+      );
+      expect(() => owner.assertSnapshotExportAuthorized(null)).toThrowError(
+        expect.objectContaining({ kind: 'not_owner' }),
+      );
+      expect(() => owner.assertSnapshotExportAuthorized('save-slot-3')).toThrowError(
+        expect.objectContaining({ kind: 'not_owner' }),
+      );
+      await held;
+    });
+    expect(() => owner.assertSnapshotExportAuthorized('save-slot-2')).toThrowError(
+      expect.objectContaining({ kind: 'not_owner' }),
+    );
+    release();
+    await pending;
+    expect(() => owner.assertSnapshotExportAuthorized('save-slot-2')).toThrowError(
+      expect.objectContaining({ kind: 'not_owner' }),
+    );
+    await expect(owner.withCandidateSnapshotExportAuthorization(
+      candidate,
+      'save-slot-2',
+      async () => { throw new Error('export failed'); },
+    )).rejects.toThrow('export failed');
+    expect(() => owner.assertSnapshotExportAuthorized('save-slot-2')).toThrowError(
+      expect.objectContaining({ kind: 'not_owner' }),
+    );
+    await owner.abort(candidate);
+  });
+
+  it('rejects copied and stale candidate export claims before the callback', async () => {
+    const manager = new MemoryWebLockManager();
+    const owner = coordinator(manager);
+    owner.enableEnforcement();
+    const candidate = await owner.begin('save-slot-2');
+    const callback = vi.fn().mockResolvedValue({});
+    await expect(owner.withCandidateSnapshotExportAuthorization(
+      { ...candidate },
+      'save-slot-2',
+      callback,
+    )).rejects.toThrowError(expect.objectContaining({ kind: 'not_owner' }));
+    expect(callback).not.toHaveBeenCalled();
+    await owner.abort(candidate);
+    await expect(owner.withCandidateSnapshotExportAuthorization(
+      candidate,
+      'save-slot-2',
+      callback,
+    )).rejects.toThrowError(expect.objectContaining({ kind: 'not_owner' }));
   });
 
   it('releases every candidate and active lock when the document coordinator disposes', async () => {

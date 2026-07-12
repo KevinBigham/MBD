@@ -230,7 +230,7 @@ describe('usePlayoffsPageController', () => {
     ]);
   });
 
-  it('persists after the store update and before refreshing playoff data', async () => {
+  it('publishes the playoff mirror only after the save is durable and before refreshing playoff data', async () => {
     const events: string[] = [];
     const options = baseOptions({
       updateFromSim: vi.fn(() => {
@@ -252,7 +252,27 @@ describe('usePlayoffsPageController', () => {
       await latestResult?.handleSimNextGame();
     });
 
-    expect(events).toEqual(['update', 'autosave', 'refresh']);
+    expect(events).toEqual(['autosave', 'update', 'refresh']);
+  });
+
+  it('does not refresh playoff presentation when persistence resolves unsaved', async () => {
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false, saveName: null }),
+    });
+    await renderHook(options);
+    vi.mocked(options.getPlayoffBracket).mockClear();
+    vi.mocked(options.getSeasonFlowState).mockClear();
+    vi.mocked(options.getDynastyScore).mockClear();
+
+    await act(async () => {
+      await latestResult?.handleSimNextGame();
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.getPlayoffBracket).not.toHaveBeenCalled();
+    expect(options.getSeasonFlowState).not.toHaveBeenCalled();
+    expect(options.getDynastyScore).not.toHaveBeenCalled();
+    expect(latestResult?.busyAction).toBeNull();
   });
 
   it('does not autosave or rerun the mutation when a playoff sim fails', async () => {

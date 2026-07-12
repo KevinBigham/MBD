@@ -106,6 +106,16 @@ const playByPlay = new Map([
   [102, { gameIndex: 102, recap: 'Boston answers late.', highlights: [], plays: [], boxScore: null }],
 ]);
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 describe('useDashboardRouteData', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -247,5 +257,83 @@ describe('useDashboardRouteData', () => {
     expect(options.getSeasonRecap).toHaveBeenCalledWith(4);
     expect(options.getOffseasonHeadline).toHaveBeenCalledWith(4);
     expect(options.getGamePlayByPlay).not.toHaveBeenCalled();
+  });
+
+  it('lets a strict post-durable refresh supersede an older normal request without stale publish or loading cleanup', async () => {
+    const normalSummary = deferred<unknown>();
+    const strictSummary = deferred<unknown>();
+    const strictDashboard = {
+      ...dashboardSummary,
+      franchise: { ...dashboardSummary.franchise, teamName: 'Durable Season 5 Tycoons', season: 5 },
+    };
+    const getDashboardSummary = vi.fn()
+      .mockReturnValueOnce(normalSummary.promise)
+      .mockReturnValueOnce(strictSummary.promise);
+    const options = baseOptions({ getDashboardSummary });
+    await renderHook(options);
+    let strict!: Promise<void>;
+    await act(async () => {
+      strict = latestResult!.fetchDashboardData({
+        throwOnError: true,
+        context: { season: 5, phase: 'offseason' },
+      });
+      await Promise.resolve();
+    });
+    expect(getDashboardSummary).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      normalSummary.resolve(dashboardSummary);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(latestResult?.loading).toBe(true);
+    expect(latestResult?.summary).toBeNull();
+
+    await act(async () => {
+      strictSummary.resolve(strictDashboard);
+      await strict;
+    });
+    expect(latestResult?.loading).toBe(false);
+    expect(latestResult?.summary?.franchise.teamName).toBe('Durable Season 5 Tycoons');
+    expect(options.getSeasonRecap).toHaveBeenCalledWith(5);
+    expect(options.getOffseasonHeadline).toHaveBeenCalledWith(5);
+  });
+
+  it('does not admit an ordinary refresh while a strict refresh owns presentation', async () => {
+    const strictSummary = deferred<unknown>();
+    const options = baseOptions();
+    await renderHook(options);
+    await waitForAssertion(() => expect(latestResult?.loading).toBe(false));
+    vi.mocked(options.getDashboardSummary).mockReturnValueOnce(strictSummary.promise);
+    let strict!: Promise<void>;
+    await act(async () => {
+      strict = latestResult!.fetchDashboardData({ throwOnError: true });
+      await Promise.resolve();
+      await latestResult!.fetchDashboardData();
+    });
+    expect(options.getDashboardSummary).toHaveBeenCalledTimes(2);
+    await act(async () => { strictSummary.resolve(dashboardSummary); await strict; });
+    expect(latestResult?.loading).toBe(false);
+  });
+
+  it('rethrows strict refresh rejection, clears loading, and releases the strict epoch', async () => {
+    const options = baseOptions();
+    await renderHook(options);
+    await waitForAssertion(() => expect(latestResult?.loading).toBe(false));
+    vi.mocked(options.getDashboardSummary).mockRejectedValueOnce(new Error('strict dashboard rejected'));
+    let rejection: unknown;
+    await act(async () => {
+      try {
+        await latestResult!.fetchDashboardData({ throwOnError: true });
+      } catch (error) {
+        rejection = error;
+      }
+    });
+    expect(rejection).toEqual(expect.objectContaining({ message: 'strict dashboard rejected' }));
+    expect(latestResult?.loading).toBe(false);
+
+    await act(async () => { await latestResult!.fetchDashboardData(); });
+    expect(options.getDashboardSummary).toHaveBeenCalledTimes(3);
+    expect(latestResult?.loading).toBe(false);
   });
 });

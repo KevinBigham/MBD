@@ -31,6 +31,13 @@ interface UseRosterExtensionNegotiationResult {
   submitExtensionOffer: () => Promise<void>;
 }
 
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
 export function useRosterExtensionNegotiation({
   autosaveActiveGame,
   fetchRoster,
@@ -86,11 +93,9 @@ export function useRosterExtensionNegotiation({
         optOutYears: offerOptOut ? [Math.max(2, offerYears - 1)] : [],
       };
       const response = await negotiateExtension(selectedExtension.playerId, nextOffer);
-      setNegotiationResponse((response ?? null) as ExtensionResponseView | null);
-      if (response) {
-        await autosaveActiveGame({ season });
-      }
-      if ((response as ExtensionResponseView | null)?.status === 'accepted') {
+      if (!response || !snapshotSaved(await autosaveActiveGame({ season }))) return;
+      setNegotiationResponse(response as ExtensionResponseView);
+      if ((response as ExtensionResponseView).status === 'accepted') {
         await fetchRoster();
       }
     } finally {

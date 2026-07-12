@@ -15,14 +15,40 @@ import {
   assertSaveSessionNewGameAuthorized,
   assertSaveSessionImportAuthorized,
   assertSaveSessionSnapshotExportAuthorized,
+  withActiveSaveSessionImportAuthorization,
+  withActiveSaveSessionSnapshotExportAuthorization,
   SaveSessionOwnershipError,
 } from '@/shared/lib/saveSessionOwnership';
 import { useGameStore } from './useGameStore';
 import {
+  assertCapturedBootRecoveryOrdinaryAdmission,
+  captureBootRecoveryOrdinaryAdmission,
+  isBootRecoveryAdmissionBlocked,
+  consumeBootRecoveryCandidateOperationAuthorization,
+} from '@/shared/lib/bootRecoveryAdmission';
+import {
   beginWorkerMutation,
+  beginSimAdvanceWorkerMutation,
+  consumeSimAdvanceWorkerAuthorization,
+  assertSimAdvanceWorkerSessionCurrent,
   finishWorkerMutation,
+  type SimAdvanceWorkerAuthorization,
+  type SimAdvanceWorkerSession,
   type WorkerMutationPermit,
 } from '@/shared/lib/workerMutationSession';
+import {
+  getSimAdvanceCoordinatorStatus,
+  subscribeToSimAdvanceCoordinator,
+} from '@/shared/lib/simAdvanceCoordinator';
+
+export type SimAdvanceWorkerOperation = 'simDay' | 'simWeek' | 'simMonth' | 'simToPlayoffs';
+export type LegacySimAdvanceOperation = 'simDay' | 'simWeek' | 'simMonth';
+function isSimAdvanceWorkerOperation(value: unknown): value is SimAdvanceWorkerOperation {
+  return value === 'simDay' || value === 'simWeek' || value === 'simMonth' || value === 'simToPlayoffs';
+}
+type SimAdvancePhase = 'open' | 'baseline_exported' | 'mutating' | 'mutated' | 'post_exported' | 'completed' | 'poisoned' | 'restoring';
+type SimAdvanceSessionState = { phase: SimAdvancePhase; flowStateChanged: boolean };
+const simAdvanceSessionStates = new WeakMap<SimAdvanceWorkerSession, SimAdvanceSessionState>();
 
 type WorkerMethodName = keyof WorkerApi;
 type WorkerMethodParameters<K extends WorkerMethodName> =
@@ -49,6 +75,7 @@ const mutationMethods = new Set<WorkerMethodName>([
   'simDay',
   'simWeek',
   'simMonth',
+  'simLegacyAdvance',
   'acknowledgeMonthlyReport',
   'dismissDecisionSpotlight',
   'dismissCeremonyMoment',
@@ -87,8 +114,10 @@ const mutationMethods = new Set<WorkerMethodName>([
   'demotePlayer',
   'designateForAssignment',
   'claimOffWaivers',
-  'makeContractOffer',
+  // This query lazily creates the free-agent market in the worker. Treat it
+  // as a mutation so it cannot materialize state outside save ownership.
   'getFreeAgents',
+  'makeContractOffer',
   'negotiateExtension',
   'issueQualifyingOffer',
   'resolveQualifyingOffers',
@@ -140,12 +169,62 @@ function assertWorkerMutationOwnership<K extends WorkerMethodName>(
   return false;
 }
 
+/**
+ * The ordinary worker proxy is deliberately not a second simulation lane.
+ * During an exact-save regular-season advance, writes (including snapshot
+ * import/export) must fail before Comlink, while route/background reads wait
+ * until the coordinator has reached a coherent post-durable presentation
+ * phase. The authorized `simAdvance` adapter bypasses this boundary through
+ * its exact worker-session permits below.
+ */
+async function awaitOrdinaryWorkerAdmission(methodName: WorkerMethodName): Promise<void> {
+  const current = getSimAdvanceCoordinatorStatus();
+  if (current.kind === 'idle' || current.kind === 'publishing') return;
+
+  if (current.kind === 'fail_closed' || mutationMethods.has(methodName)) {
+    throw new SaveSessionOwnershipError(
+      'not_owner',
+      current.kind === 'fail_closed'
+        ? 'Worker access is unavailable until this dynasty is reloaded.'
+        : 'Worker mutation and snapshot access is held by an exact simulation save.',
+      null,
+    );
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const unsubscribe = subscribeToSimAdvanceCoordinator(() => {
+      if (settled) return;
+      const status = getSimAdvanceCoordinatorStatus();
+      if (status.kind === 'idle' || status.kind === 'publishing') {
+        settled = true;
+        unsubscribe();
+        resolve();
+      } else if (status.kind === 'fail_closed') {
+        settled = true;
+        unsubscribe();
+        reject(new SaveSessionOwnershipError(
+          'not_owner',
+          'Worker reads were retired because the dynasty requires a reload.',
+          null,
+        ));
+      }
+    });
+  });
+}
+
 function notifyListeners() {
   for (const l of listeners) l();
 }
 
 function notifyFlowListeners() {
-  for (const listener of flowListeners) listener();
+  for (const listener of flowListeners) {
+    try {
+      listener();
+    } catch (error) {
+      console.error('Worker flow observer failed:', error);
+    }
+  }
 }
 
 function setWorkerStatus(nextStatus: typeof workerStatus) {
@@ -182,14 +261,33 @@ async function invokeWorkerMethod<K extends WorkerMethodName>(
   args: WorkerMethodParameters<K>,
   expectedActiveSaveId: string | null,
 ): Promise<WorkerMethodReturn<K>> {
-  // Ownership failures are not worker failures. Check before touching Comlink
-  // so callers receive the session conflict without a false worker-restart
-  // toast or any in-memory gameplay mutation.
+  const bootCandidateAllowed = (methodName === 'importSnapshot' || methodName === 'exportSnapshot')
+    && consumeBootRecoveryCandidateOperationAuthorization(expectedActiveSaveId);
+  if (isBootRecoveryAdmissionBlocked() && !bootCandidateAllowed) {
+    throw new SaveSessionOwnershipError(
+      'not_owner',
+      'Boot recovery is active; ordinary worker work is blocked.',
+      null,
+    );
+  }
+  const ordinaryAdmission = bootCandidateAllowed
+    ? null
+    : captureBootRecoveryOrdinaryAdmission();
+  // Transition authorization is a call-bound synchronous scope. Classify it
+  // before the first await so an authorized invocation retains its local
+  // provenance without leaving a save-wide authorization open for another
+  // callback to borrow while Comlink is in flight.
   const bypassOrdinaryMutationLane = assertWorkerMutationOwnership(
     methodName,
     args,
     expectedActiveSaveId,
   );
+  // Coordinator admission still precedes every Comlink channel, worker
+  // permit, and fatal-worker recovery path.
+  await awaitOrdinaryWorkerAdmission(methodName);
+  if (ordinaryAdmission) {
+    assertCapturedBootRecoveryOrdinaryAdmission(ordinaryAdmission);
+  }
   let mutationPermit: WorkerMutationPermit | null = null;
   if (mutationMethods.has(methodName)
     && methodName !== 'newGame'
@@ -213,6 +311,9 @@ async function invokeWorkerMethod<K extends WorkerMethodName>(
     }
     return result as WorkerMethodReturn<K>;
   } catch (error) {
+    if (error instanceof SaveSessionOwnershipError) {
+      throw error;
+    }
     logger.error(`Worker ${String(methodName)} failed:`, error);
     const fatal = isFatalWorkerError(error);
 
@@ -356,6 +457,104 @@ export function useWorker() {
     await restartWorkerInternal();
   }, []);
 
+  const simAdvance = useMemo(() => {
+    const assertSession = (session: SimAdvanceWorkerSession) => {
+      assertSimAdvanceWorkerSessionCurrent(session, expectedActiveSaveId, session.expectedRootSaveId);
+      assertActiveSaveSessionOwned(session.expectedSaveId);
+      const state = simAdvanceSessionStates.get(session) ?? { phase: 'open' as const, flowStateChanged: false };
+      simAdvanceSessionStates.set(session, state);
+      return state;
+    };
+    const withPermit = async <T,>(session: SimAdvanceWorkerSession, operation: () => Promise<T>): Promise<T> => {
+      const permit = beginSimAdvanceWorkerMutation(session, expectedActiveSaveId);
+      try { return await operation(); } finally { finishWorkerMutation(permit); }
+    };
+    return {
+      exportSnapshot: async (session: SimAdvanceWorkerSession): Promise<object> => {
+        const state = assertSession(session);
+        if (state.phase !== 'open' && state.phase !== 'mutated') throw new Error('Simulation snapshot export is not allowed in this session phase.');
+        try {
+          const snapshot = await withPermit(session, () => withActiveSaveSessionSnapshotExportAuthorization(
+            session.expectedSaveId,
+            async () => {
+              assertSaveSessionSnapshotExportAuthorized(session.expectedSaveId);
+              return measureAsyncOperation('worker.exportSnapshot', () => getOrCreateWorker().exportSnapshot(), { budgetMs: Math.max(SAVE_IO_BUDGET_MS, 1000) });
+            },
+          ));
+          state.phase = state.phase === 'open' ? 'baseline_exported' : 'post_exported';
+          return snapshot;
+        } catch (error) { state.phase = 'poisoned'; throw error; }
+      },
+      execute: async (
+        session: SimAdvanceWorkerSession,
+        authorization: SimAdvanceWorkerAuthorization,
+        operation: SimAdvanceWorkerOperation,
+      ) => {
+        const state = assertSession(session);
+        if (state.phase !== 'baseline_exported') throw new Error('Simulation execution is not allowed before its baseline export.');
+        if (!isSimAdvanceWorkerOperation(operation)) throw new Error('Unsupported regular-season simulation operation.');
+        // The exact one-shot token binds this worker call to the coordinator's
+        // already-durable journal intent. Consume before phase/permit/Comlink.
+        consumeSimAdvanceWorkerAuthorization(
+          authorization,
+          session,
+          expectedActiveSaveId,
+          session.expectedRootSaveId,
+          operation,
+        );
+        state.phase = 'mutating';
+        try {
+          const result = await withPermit(session, async () => {
+            const worker = getOrCreateWorker();
+            switch (operation) {
+              case 'simDay': return worker.simDay();
+              case 'simWeek': return worker.simWeek();
+              case 'simMonth': return measureAsyncOperation('worker.simMonth', () => worker.simMonth(), { budgetMs: SIM_MONTH_BENCHMARK_MS });
+              case 'simToPlayoffs': return worker.simToPlayoffs();
+              default: throw new Error('Unsupported regular-season simulation operation.');
+            }
+          });
+          state.flowStateChanged = isFlowAwareResult(result) && result.flowStateChanged === true;
+          state.phase = 'mutated';
+          return { result, flowStateChanged: state.flowStateChanged };
+        } catch (error) { state.phase = 'poisoned'; throw error; }
+      },
+      publishFlow: (session: SimAdvanceWorkerSession) => {
+        const state = assertSession(session);
+        if (state.phase !== 'post_exported') throw new Error('Simulation flow cannot publish before post snapshot durability.');
+        state.phase = 'completed';
+        if (state.flowStateChanged) notifyFlowListeners();
+      },
+      discardFlow: (session: SimAdvanceWorkerSession) => {
+        const state = assertSession(session);
+        if (!['open', 'baseline_exported', 'mutated', 'post_exported'].includes(state.phase)) throw new Error('Simulation flow cannot be discarded in this session phase.');
+        state.flowStateChanged = false;
+        state.phase = 'completed';
+      },
+      restoreBaseline: async (session: SimAdvanceWorkerSession, snapshot: object) => {
+        const state = assertSession(session);
+        if (state.phase === 'completed') throw new Error('Completed simulation sessions cannot restore a baseline.');
+        state.phase = 'restoring'; state.flowStateChanged = false;
+        try {
+          return await withPermit(session, async () => {
+            const worker = await restartWorkerInternal();
+            const importResult = await withActiveSaveSessionImportAuthorization(session.expectedSaveId, async () => {
+              assertSaveSessionImportAuthorized();
+              return worker.importSnapshot(snapshot);
+            });
+            if (!importResult.success) throw new Error('Baseline snapshot import failed.');
+            const restoredSnapshot = await withActiveSaveSessionSnapshotExportAuthorization(session.expectedSaveId, async () => {
+              assertSaveSessionSnapshotExportAuthorized(session.expectedSaveId);
+              return worker.exportSnapshot();
+            });
+            state.phase = 'completed';
+            return { importResult, restoredSnapshot };
+          });
+        } catch (error) { invalidateWorker('error'); state.phase = 'poisoned'; throw error; }
+      },
+    };
+  }, [expectedActiveSaveId]);
+
   const newGame = useCallback(
     async (options: Parameters<typeof api.newGame>[0]) => runMutation(() => api.newGame(options)),
     [api, runMutation],
@@ -376,6 +575,15 @@ export function useWorker() {
       measureAsyncOperation('worker.simMonth', () => api.simMonth(), {
         budgetMs: SIM_MONTH_BENCHMARK_MS,
       })),
+    [api, runMutation],
+  );
+  const simLegacyAdvance = useCallback(
+    async (operation: LegacySimAdvanceOperation, expectedPhase: 'playoffs' | 'offseason') => {
+      if (operation !== 'simDay' && operation !== 'simWeek' && operation !== 'simMonth') {
+        throw new Error('Unsupported legacy simulation operation.');
+      }
+      return runMutation(() => api.simLegacyAdvance(operation, expectedPhase));
+    },
     [api, runMutation],
   );
   const acknowledgeMonthlyReport = useCallback(
@@ -969,7 +1177,7 @@ export function useWorker() {
   // save and fail closed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => ({
-    ping, newGame, getSetupPreview, simDay, simWeek, simMonth, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
+    ping, newGame, getSetupPreview, simDay, simWeek, simMonth, simLegacyAdvance, acknowledgeMonthlyReport, dismissDecisionSpotlight, dismissCeremonyMoment, dismissWelcomeBriefing, getInteractivePressConference, respondToPressConference, simToPlayoffs,
     simPlayoffGame, simPlayoffSeries, simPlayoffRound, simRemainingPlayoffs,
     getState,
     exportSnapshot, importSnapshot, archiveOldSeasons, pruneStaleData,
@@ -1000,7 +1208,8 @@ export function useWorker() {
     getAGMCandidates, getRevisedOnboardingData, applyStaffHires, applyScoutingHire, completeRevisedOnboarding,
     subscribeToFlowUpdates,
     restartWorker,
+    simAdvance,
     workerStatus: currentWorkerStatus,
     isReady,
-  }), [api, isReady, currentWorkerStatus]);
+  }), [api, isReady, currentWorkerStatus, simAdvance]);
 }

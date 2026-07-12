@@ -38,6 +38,14 @@ interface ExtensionResponseView {
 interface RosterActionView {
   success: boolean;
   error?: string;
+  flowStateChanged?: boolean;
+}
+
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
 }
 
 interface PlayerProfileActionWorker {
@@ -84,13 +92,20 @@ export function usePlayerProfileActions({
           : await worker.designateForAssignment(player.id)) as RosterActionView;
 
       if (!result.success) {
+        if (result.flowStateChanged === true) {
+          if (!snapshotSaved(await autosaveActiveGame({ season }))) return;
+        }
         setActionState({
           tone: 'error',
           message: result.error ?? 'The roster move could not be completed.',
         });
+        if (result.flowStateChanged === true) {
+          await fetchProfile();
+        }
         return;
       }
 
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) return;
       setActionState({
         tone: 'success',
         message: action === 'promote'
@@ -100,7 +115,6 @@ export function usePlayerProfileActions({
             : 'Player designated for assignment and profile refreshed.',
       });
       await fetchProfile();
-      await autosaveActiveGame({ season });
     } finally {
       setBusyAction(null);
     }
@@ -163,6 +177,7 @@ export function usePlayerProfileActions({
         return;
       }
 
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) return;
       if (result.status === 'accepted') {
         setActionState({
           tone: 'success',
@@ -184,7 +199,6 @@ export function usePlayerProfileActions({
       }
 
       await fetchProfile();
-      await autosaveActiveGame({ season });
     } finally {
       setBusyAction(null);
     }

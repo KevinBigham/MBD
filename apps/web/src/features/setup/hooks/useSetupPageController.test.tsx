@@ -4,6 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SetupPreview, SetupTeamOption } from '../components/SetupTeamPickerPanel';
 import { useSetupPageController } from './useSetupPageController';
 
+const simAdvanceRuntime = vi.hoisted(() => ({
+  status: { kind: 'idle' } as { kind: string },
+}));
+
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  useSimAdvanceCoordinatorStatus: () => simAdvanceRuntime.status,
+}));
+
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -64,6 +72,7 @@ describe('useSetupPageController', () => {
     root = createRoot(container);
     latestResult = null;
     dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(42);
+    simAdvanceRuntime.status = { kind: 'idle' };
   });
 
   afterEach(async () => {
@@ -182,5 +191,42 @@ describe('useSetupPageController', () => {
     });
 
     expect(latestResult?.contentProps.wizardOpen).toBe(false);
+  });
+
+  it('keeps read-only refresh available while visibly blocking save-tree changes during coordinator work', async () => {
+    const listSaveTree = vi.fn().mockResolvedValue([]);
+    const options = baseOptions({ listSaveTree });
+    simAdvanceRuntime.status = { kind: 'persisting' };
+    await renderHook(options);
+    await waitForAssertion(() => expect(listSaveTree).toHaveBeenCalled());
+
+    expect(latestResult?.contentProps.saveHubPanelProps.mutationBlocked).toBe(true);
+    expect(latestResult?.contentProps.wizardPanelProps.mutationBlocked).toBe(true);
+    expect(latestResult?.contentProps.status).toContain('Save-tree changes are paused');
+    await act(async () => {
+      latestResult?.contentProps.onOpenWizard();
+      latestResult?.contentProps.saveHubPanelProps.onUseSlot(4);
+      latestResult?.contentProps.saveHubPanelProps.onDeleteSlot(1);
+      latestResult?.contentProps.wizardPanelProps.onBeginDynasty();
+      latestResult?.contentProps.saveHubPanelProps.onRefresh();
+    });
+
+    expect(latestResult?.contentProps.wizardOpen).toBe(false);
+    expect(options.worker.newGame).not.toHaveBeenCalled();
+    expect(listSaveTree.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('gives live coordinator-busy truth precedence over an older setup status', async () => {
+    const options = baseOptions({ listSaveTree: vi.fn().mockRejectedValue(new Error('old refresh failure')) });
+    await renderHook(options);
+    await waitForAssertion(() => expect(latestResult?.contentProps.status).not.toBe(''));
+
+    simAdvanceRuntime.status = { kind: 'running' };
+    await act(async () => {
+      root.render(<HookHarness options={options} onRender={(result) => { latestResult = result; }} />);
+    });
+    expect(latestResult?.contentProps.status).toBe(
+      'Simulation save activity is still settling. Save-tree changes are paused; read-only refresh remains available.',
+    );
   });
 });

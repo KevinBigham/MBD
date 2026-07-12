@@ -35,6 +35,13 @@ interface UseDraftActionHandlersResult {
   signingPlayerId: string | null;
 }
 
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
 export function useDraftActionHandlers({
   autosaveActiveGame,
   loadDraft,
@@ -81,7 +88,7 @@ export function useDraftActionHandlers({
   }, [setDraft, setRevealedPickCount, setWatchTargetCount]);
 
   const autosaveDraftMutation = useCallback(async () => {
-    await autosaveActiveGame({ season });
+    return snapshotSaved(await autosaveActiveGame({ season }));
   }, [autosaveActiveGame, season]);
 
   const handleStartDraft = useCallback(async () => {
@@ -89,9 +96,8 @@ export function useDraftActionHandlers({
     setError(null);
     try {
       const result = await startDraft();
-      if (applyDraftResult(result as DraftActionResult)) {
-        await autosaveDraftMutation();
-      }
+      if (!isSuccessfulDraftMutation(result) || !await autosaveDraftMutation()) return;
+      applyDraftResult(result as DraftActionResult);
     } catch {
       setError('Draft system unavailable.');
     } finally {
@@ -105,9 +111,8 @@ export function useDraftActionHandlers({
     setError(null);
     try {
       const result = await makeDraftPick(selectedProspect.id);
-      if (applyDraftResult(result as DraftActionResult)) {
-        await autosaveDraftMutation();
-      }
+      if (!isSuccessfulDraftMutation(result) || !await autosaveDraftMutation()) return;
+      applyDraftResult(result as DraftActionResult);
     } catch {
       setError('Failed to submit draft pick.');
     } finally {
@@ -128,7 +133,7 @@ export function useDraftActionHandlers({
       // Persist the accepted mutation before refreshing the room so a refresh
       // failure cannot drop the durable post-mutation snapshot. The refresh is
       // display-only, so its failure must not surface as a mutation error.
-      await autosaveDraftMutation();
+      if (!await autosaveDraftMutation()) return;
       await loadDraft().catch(() => undefined);
     } catch {
       setError('Failed to update scouting report.');
@@ -148,7 +153,7 @@ export function useDraftActionHandlers({
       }
       // Persist before refreshing so a refresh failure cannot drop the write.
       // The refresh is display-only and must not surface as a mutation error.
-      await autosaveDraftMutation();
+      if (!await autosaveDraftMutation()) return;
       await loadDraft().catch(() => undefined);
     } catch {
       setError('Failed to update big board.');
@@ -173,7 +178,7 @@ export function useDraftActionHandlers({
       // Persist the accepted signing before refreshing the room so a refresh
       // failure cannot drop the durable post-signing snapshot. The refresh is
       // display-only, so its failure must not surface as a signing error.
-      await autosaveDraftMutation();
+      if (!await autosaveDraftMutation()) return;
       await loadDraft().catch(() => undefined);
     } catch {
       setError('Failed to complete draft signing.');
@@ -187,9 +192,8 @@ export function useDraftActionHandlers({
     setError(null);
     try {
       const result = await simulateRemainingDraft();
-      if (applyDraftResult(result as DraftActionResult, { watch: true })) {
-        await autosaveDraftMutation();
-      }
+      if (!isSuccessfulDraftMutation(result) || !await autosaveDraftMutation()) return;
+      applyDraftResult(result as DraftActionResult, { watch: true });
     } catch {
       setError('Failed to simulate the remaining draft.');
     } finally {
@@ -222,4 +226,13 @@ function isFailedDraftMutation(result: unknown): result is { success: false; err
     && result !== null
     && 'success' in result
     && (result as { success?: unknown }).success === false;
+}
+
+function isSuccessfulDraftMutation(result: unknown): result is DraftActionResult {
+  return typeof result === 'object'
+    && result !== null
+    && 'success' in result
+    && (result as { success?: unknown }).success === true
+    && 'draft' in result
+    && Boolean((result as { draft?: unknown }).draft);
 }

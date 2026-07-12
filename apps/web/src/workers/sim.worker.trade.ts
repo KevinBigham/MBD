@@ -6,6 +6,7 @@ import type {
   TradeHistoryEntry,
 } from '@mbd/contracts';
 import {
+  GameRNG,
   addTradeMemory,
   applyMoraleEvent,
   adjustDraftPickTradeValue,
@@ -219,6 +220,7 @@ export interface TradeOfferResponseResult {
   success: boolean;
   decision: 'accepted' | 'declined' | 'countered' | 'rejected';
   message: string;
+  flowStateChanged: boolean;
 }
 
 export interface TradeNegotiationView {
@@ -256,6 +258,7 @@ export interface TradeNegotiationActionResult {
   negotiation: TradeNegotiationView | null;
   tradeExecuted: boolean;
   review: TradeNegotiationReviewView | null;
+  flowStateChanged: boolean;
 }
 
 export interface MultiTeamTradeParticipantInput {
@@ -560,15 +563,16 @@ function removeNegotiation(state: FullGameState, negotiationId: string) {
   };
 }
 
-export function pruneExpiredNegotiations(state: FullGameState) {
+export function pruneExpiredNegotiations(state: FullGameState): boolean {
   const active = state.tradeState.negotiations.filter((entry) => entry.expiresAtDay >= state.day);
   if (active.length === state.tradeState.negotiations.length) {
-    return;
+    return false;
   }
   state.tradeState = {
     ...state.tradeState,
     negotiations: active,
   };
+  return true;
 }
 
 function negotiationPostureLabel(
@@ -2488,6 +2492,8 @@ export function buildTradeDeadlineStateView(state: FullGameState): TradeDeadline
 }
 
 export function buildTradeAssetInventoryView(state: FullGameState, teamId: string): TradeAssetInventoryView {
+  const previousDraftState = state.draftState;
+  try {
   ensureDraftPickOwnership(state, state.season);
   const draftPicks = state.draftState.pickOwnership
     .filter((pick) =>
@@ -2516,6 +2522,11 @@ export function buildTradeAssetInventoryView(state: FullGameState, teamId: strin
     draftPicks,
     ifaRemaining: budget ? getRemainingIFABudget(budget) : 0,
   };
+  } finally {
+    // Inventory is a deterministic projection. Opening Trade must not install
+    // missing draft-pick ownership into the canonical snapshot.
+    state.draftState = previousDraftState;
+  }
 }
 
 export function clearPendingTradeOffers(state: FullGameState) {
@@ -2967,7 +2978,12 @@ function validateTradeAssetsForTeam(
   teamId: string,
   assets: TradeAsset[],
 ): string | null {
-  ensureDraftPickOwnership(state, state.season);
+  const pickOwnership = state.draftState.pickOwnership.length > 0
+    ? state.draftState.pickOwnership
+    : createDefaultDraftPickOwnership(
+      Array.from(new Set(state.players.map((player) => player.teamId).filter(Boolean))),
+      state.season,
+    );
 
   for (const asset of assets) {
     if (asset.type === 'player') {
@@ -2979,7 +2995,7 @@ function validateTradeAssetsForTeam(
     }
 
     if (asset.type === 'draft_pick') {
-      const pick = state.draftState.pickOwnership.find((entry) =>
+      const pick = pickOwnership.find((entry) =>
         entry.season === asset.season
         && entry.round === asset.round
         && entry.originalTeamId === asset.originalTeamId,
@@ -3192,6 +3208,7 @@ export function startNegotiation(
       negotiation: null,
       tradeExecuted: false,
       review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', message),
+      flowStateChanged: false,
     };
   }
 
@@ -3205,6 +3222,7 @@ export function startNegotiation(
       negotiation: null,
       tradeExecuted: false,
       review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', message),
+      flowStateChanged: false,
     };
   }
 
@@ -3217,6 +3235,7 @@ export function startNegotiation(
       negotiation: null,
       tradeExecuted: false,
       review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', offeredValidation),
+      flowStateChanged: false,
     };
   }
 
@@ -3229,6 +3248,7 @@ export function startNegotiation(
       negotiation: null,
       tradeExecuted: false,
       review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', requestedValidation),
+      flowStateChanged: false,
     };
   }
 
@@ -3247,9 +3267,11 @@ export function startNegotiation(
       negotiation: null,
       tradeExecuted: directResult.decision === 'accepted',
       review: buildTradePackageReviewFromEvidence(reviewEvidence, toTeamId, decision, directResult.reason),
+      flowStateChanged: directResult.decision !== 'rejected',
     };
   }
 
+  const rngCheckpoint = state.rng.getState();
   const liveState = initiateNegotiation(
     state.rng.fork(),
     {
@@ -3270,6 +3292,11 @@ export function startNegotiation(
 
   if (!isNegotiationComplete(liveState) || liveState.phase === 'accepted') {
     upsertNegotiation(state, liveState);
+  } else {
+    // A rejected proposal is a no-op. Its transient negotiation ID/dialogue
+    // generation must not advance canonical simulation truth when the result
+    // is deliberately reported as flowStateChanged: false.
+    state.rng = GameRNG.fromState(rngCheckpoint);
   }
 
   const decision =
@@ -3289,6 +3316,7 @@ export function startNegotiation(
     negotiation: buildNegotiationView(state, liveState),
     tradeExecuted: false,
     review: buildNegotiationReviewFromState(state, liveState, decision, message),
+    flowStateChanged: !isNegotiationComplete(liveState) || liveState.phase === 'accepted',
   };
 }
 
@@ -3306,6 +3334,7 @@ export function advanceNegotiationSession(
       negotiation: null,
       tradeExecuted: false,
       review: null,
+      flowStateChanged: false,
     };
   }
 
@@ -3362,6 +3391,7 @@ export function advanceNegotiationSession(
       : buildNegotiationView(state, nextState),
     tradeExecuted: false,
     review: buildNegotiationReviewFromState(state, nextState, decision, message),
+    flowStateChanged: true,
   };
 }
 
@@ -3379,6 +3409,7 @@ export function resolveNegotiationSession(
       negotiation: null,
       tradeExecuted: false,
       review: null,
+      flowStateChanged: false,
     };
   }
 
@@ -3413,6 +3444,7 @@ export function resolveNegotiationSession(
     negotiation: null,
     tradeExecuted: outcome.accepted,
     review,
+    flowStateChanged: true,
   };
 }
 
@@ -3424,7 +3456,7 @@ export function respondToTradeOffer(
 ): TradeOfferResponseResult {
   const offer = state.tradeState.pendingOffers.find((candidate) => candidate.id === offerId);
   if (!offer) {
-    return { success: false, decision: 'rejected', message: 'Trade offer no longer exists.' };
+    return { success: false, decision: 'rejected', message: 'Trade offer no longer exists.', flowStateChanged: false };
   }
 
   const proposal: TradeProposal = {
@@ -3453,6 +3485,7 @@ export function respondToTradeOffer(
       success: true,
       decision: 'declined',
       message: 'Offer declined and the room took note.',
+      flowStateChanged: true,
     };
   }
 
@@ -3463,6 +3496,7 @@ export function respondToTradeOffer(
         success: false,
         decision: 'rejected',
         message: 'That offer is no longer actionable.',
+        flowStateChanged: true,
       };
     }
 
@@ -3497,6 +3531,7 @@ export function respondToTradeOffer(
       success: true,
       decision: 'accepted',
       message: 'Trade accepted.',
+      flowStateChanged: true,
     };
   }
 
@@ -3505,6 +3540,7 @@ export function respondToTradeOffer(
       success: false,
       decision: 'rejected',
       message: 'Counter-offer could not be sent.',
+      flowStateChanged: false,
     };
   }
 
@@ -3520,7 +3556,7 @@ export function respondToTradeOffer(
 
   const gm = state.gmPersonalities.get(offer.fromTeamId);
   if (!gm) {
-    return { success: false, decision: 'rejected', message: 'Unable to reach the other front office.' };
+    return { success: false, decision: 'rejected', message: 'Unable to reach the other front office.', flowStateChanged: false };
   }
 
   const usesNonPlayerAssets = hasNonPlayerAssets(counterPackage.offeringAssets) || hasNonPlayerAssets(counterPackage.requestingAssets);
@@ -3589,6 +3625,7 @@ export function respondToTradeOffer(
       success: true,
       decision: 'accepted',
       message: 'Counter-offer accepted.',
+      flowStateChanged: true,
     };
   }
 
@@ -3610,6 +3647,7 @@ export function respondToTradeOffer(
       success: true,
       decision: 'countered',
       message: 'The other GM sent a revised proposal.',
+      flowStateChanged: true,
     };
   }
 
@@ -3624,5 +3662,6 @@ export function respondToTradeOffer(
     success: true,
     decision: 'rejected',
     message: result.reason,
+    flowStateChanged: true,
   };
 }

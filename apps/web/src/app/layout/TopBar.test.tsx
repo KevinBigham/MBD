@@ -9,6 +9,14 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useActiveSavePersistenceStatus } from '@/shared/hooks/useActiveSavePersistenceStatus';
 import { retryActiveSavePersistence } from '@/shared/lib/activeSavePersistence';
 
+const simAdvanceRuntime = vi.hoisted(() => ({
+  status: { kind: 'idle' } as { kind: string; operation?: string; resume?: string; error?: unknown },
+}));
+
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  useSimAdvanceCoordinatorStatus: () => simAdvanceRuntime.status,
+}));
+
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
 }));
@@ -74,6 +82,7 @@ describe('TopBar', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     unsubscribe = vi.fn();
+    simAdvanceRuntime.status = { kind: 'idle' };
 
     gameStoreValue = {
       season: 2,
@@ -268,6 +277,67 @@ describe('TopBar', () => {
     expect(summary?.textContent).toMatch(/^Last saved .+ · 0 pending writes$/);
     expect(summary?.getAttribute('aria-label')).toBe(summary?.textContent);
     expect(container.querySelector('[data-testid="save-persistence-status"]')).toBeNull();
+  });
+
+  it.each([
+    ['preparing', 'Preparing verified simulation'],
+    ['running', 'Simulation in progress'],
+    ['persisting', 'Saving simulation result'],
+    ['publishing', 'Updating saved simulation'],
+    ['rolling_back', 'Restoring last saved state'],
+  ] as const)('shows truthful %s stage copy and hides generic durable summaries', async (kind, label) => {
+    mockedUseActiveSavePersistenceStatus.mockReturnValue({
+      state: 'idle', saveId: 'save-slot-2', saveName: 'Dynasty', desiredGeneration: 0,
+      durableGeneration: 0, pendingWrites: 0, canRetry: false,
+      lastSavedAt: '2026-04-02T19:42:03.000Z', errorMessage: null, failureKind: null, recovery: null,
+    });
+    simAdvanceRuntime.status = { kind, operation: 'sim_day' };
+    await act(async () => {
+      root.render(<MemoryRouter><TopBar onOpenCommandPalette={vi.fn()} flow={null} /></MemoryRouter>);
+      await Promise.resolve();
+    });
+
+    const status = container.querySelector('[data-testid="save-persistence-status"]');
+    expect(status?.textContent).toBe(label);
+    expect(container.querySelector('[data-testid="save-persistence-summary"]')).toBeNull();
+    expect(status?.textContent).not.toContain('0 pending writes');
+  });
+
+  it('shows only the exact persistence Retry lane during retry_wait', async () => {
+    mockedUseActiveSavePersistenceStatus.mockReturnValue({
+      state: 'failed', saveId: 'save-slot-2', saveName: 'Dynasty', desiredGeneration: 2,
+      durableGeneration: 1, pendingWrites: 1, canRetry: true,
+      lastSavedAt: '2026-04-02T19:42:03.000Z', errorMessage: 'quota', failureKind: 'quota', recovery: null,
+    });
+    simAdvanceRuntime.status = { kind: 'retry_wait', operation: 'sim_day', resume: 'persisting' };
+    await act(async () => {
+      root.render(<MemoryRouter><TopBar onOpenCommandPalette={vi.fn()} flow={null} /></MemoryRouter>);
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-testid="save-persistence-status"]')?.textContent)
+      .toBe('Simulation paused — retry exact saveRetry');
+    expect(container.querySelector('button[aria-label="Retry failed save"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="save-persistence-summary"]')).toBeNull();
+  });
+
+  it('announces fail-closed reload truth assertively without exposing Retry', async () => {
+    mockedUseActiveSavePersistenceStatus.mockReturnValue({
+      state: 'failed', saveId: 'save-slot-2', saveName: 'Dynasty', desiredGeneration: 2,
+      durableGeneration: 1, pendingWrites: 1, canRetry: true,
+      lastSavedAt: null, errorMessage: 'worker mismatch', failureKind: 'storage', recovery: null,
+    });
+    simAdvanceRuntime.status = { kind: 'fail_closed', error: new Error('reload') };
+    await act(async () => {
+      root.render(<MemoryRouter><TopBar onOpenCommandPalette={vi.fn()} flow={null} /></MemoryRouter>);
+      await Promise.resolve();
+    });
+
+    const status = container.querySelector('[data-testid="save-persistence-status"]');
+    expect(status?.textContent).toBe('Reload required');
+    expect(status?.getAttribute('aria-live')).toBe('assertive');
+    expect(container.querySelector('button[aria-label="Retry failed save"]')).toBeNull();
+    expect(container.querySelector('[data-testid="save-persistence-summary"]')).toBeNull();
   });
 
   it('shows an honest fallback for an active save without trustworthy metadata', async () => {

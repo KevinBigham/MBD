@@ -3463,10 +3463,10 @@ export const queryApi = {
 
   getFreeAgents(limit: number = 25): FreeAgent[] {
     const s = requireState();
-    if (!s.freeAgencyMarket) {
-      s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
-    }
-    return getTopFreeAgents(s.freeAgencyMarket, undefined, limit);
+    // Route reads must not create canonical snapshot divergence. The actual
+    // offer mutation installs the same deterministic market when needed.
+    const market = s.freeAgencyMarket ?? createFreeAgencyMarket(s.season, s.players);
+    return getTopFreeAgents(market, undefined, limit);
   },
 
   getOffseasonState() {

@@ -34,6 +34,22 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 8, Goal 20 `TRUST-SIM-ADVANCE-JOURNAL-1`: Dexie v6
+  adds an exact-save/root write-ahead intent journal while GameSnapshot remains
+  v34; regular-season simulation commands now commit exact post snapshots or
+  roll back to the verified baseline without gameplay replay, and persistence
+  retry never reruns the command.
+- Final evidence: focused correction matrix 14 files / 460 tests; root
+  typecheck 9/9; full suite 459 web files passed + 1 skipped and 2283
+  assertions passed + 2 skipped; production build 3026 modules / PWA 166
+  entries; determinism 3/3; fresh serial Chromium reload-smoke 2/2 and the
+  four-spec matrix 5/5 with zero retries. The relay used Terra as sole writer,
+  Sol final review, and Luna closeout with an explicitly labeled manual relay
+  fallback for host browser commands.
+- Compatibility warning: already-open older builds must close or reload before
+  relying on the v6 journal/write authority; mixed-version tabs are not
+  protected by the new write boundary.
+
 - Verified roadmap item 7, Goal 19 `TRUST-STORAGE-PRESSURE-1`: Settings and Save Hub now distinguish current logical snapshot size, estimated serialized local MBD records, and approximate origin usage/quota; preserve exact primary/shadow/root-tree evidence; disable lossy archive compaction; and offer only exact-active narrow stale-data pruning with confirmation, shared operation ownership, durable-snapshot receipts, quota truth, retry without mutation replay, and hard-reload/successor proof.
 - Final item-7 evidence: focused 49 suites / 372 tests, full repository gates, fresh 3,022-module / 167-entry PWA, determinism 3/3, and serial Chromium storage-pressure 1/1 (42.5s), multitab 1/1 (11.9s), and reload-smoke 1/1 (4.5m), all with one worker, zero retries, and no flaky classification. No schema or dependency change; save schema remains v34 and Dexie v5.
 - Closeout route: Terra `019f529d-211d-7590-b834-3014f5a3a102` high→xhigh implementation, manual relay-pattern fallback writer, replacement Sol `019f534c-8009-7ab1-8849-e9c59b7c49cc` xhigh `MERGE_READY` with zero P0–P2, and Luna `gpt-5.6-luna` medium closeout. No push, deploy, tag, release, or item-8 work.

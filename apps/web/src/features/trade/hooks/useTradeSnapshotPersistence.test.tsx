@@ -83,14 +83,14 @@ describe('useTradeSnapshotPersistence', () => {
     };
   }
 
-  it('skips snapshot export when there is no active save', async () => {
+  it('rejects before snapshot export when there is no active save', async () => {
     const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34 });
     const persist = await renderHook(baseOptions({
       activeSaveId: null,
       exportSnapshot,
     }));
 
-    await persist();
+    await expect(persist()).rejects.toThrow('requires an active save');
 
     expect(mockedPersistActiveSaveSnapshot).not.toHaveBeenCalled();
   });
@@ -141,15 +141,27 @@ describe('useTradeSnapshotPersistence', () => {
     expect(exportSnapshot).not.toHaveBeenCalled();
   });
 
-  it('logs and swallows autosave errors so trade actions can finish', async () => {
+  it('logs and rethrows autosave errors so trade actions cannot refresh unsaved state', async () => {
     const error = new Error('export failed');
     mockedPersistActiveSaveSnapshot.mockRejectedValueOnce(error);
     const persist = await renderHook(baseOptions({
       exportSnapshot: vi.fn(),
     }));
 
-    await expect(persist()).resolves.toBeUndefined();
+    await expect(persist()).rejects.toBe(error);
 
     expect(mockedLogger.error).toHaveBeenCalledWith('Failed to autosave trade negotiation state:', error);
+  });
+
+  it('rejects a resolved unsaved coordinator result', async () => {
+    mockedPersistActiveSaveSnapshot.mockResolvedValueOnce({ saved: false, saveName: null });
+    const persist = await renderHook(baseOptions());
+
+    await expect(persist()).rejects.toThrow('did not become durable');
+
+    expect(mockedLogger.error).toHaveBeenCalledWith(
+      'Failed to autosave trade negotiation state:',
+      expect.objectContaining({ message: 'Trade snapshot persistence did not become durable.' }),
+    );
   });
 });

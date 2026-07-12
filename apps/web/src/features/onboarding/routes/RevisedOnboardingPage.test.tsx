@@ -446,6 +446,10 @@ function mockGameStore(overrides: Partial<{
   };
 
   mockedUseGameStore.mockImplementation(((selector: (value: typeof state) => unknown) => selector(state)) as typeof useGameStore);
+  Object.assign(mockedUseGameStore, {
+    getState: () => state,
+    subscribe: vi.fn(() => () => {}),
+  });
 }
 
 async function flush() {
@@ -484,9 +488,12 @@ describe('RevisedOnboardingPage', () => {
     mockedNavigate.mockReset();
     mockGameStore();
     mockedLoadGameById.mockResolvedValue(undefined);
-    mockedPersistActiveSaveSnapshot.mockResolvedValue({
-      saved: true,
-      saveName: 'General Manager • New York Tycoons',
+    mockedPersistActiveSaveSnapshot.mockImplementation(async (options) => {
+      await options.exportSnapshot();
+      return {
+        saved: true,
+        saveName: 'General Manager • New York Tycoons',
+      };
     });
   });
 
@@ -626,7 +633,7 @@ describe('RevisedOnboardingPage', () => {
         mediaTone: 'confident',
       }),
     }));
-    expect(worker.exportSnapshot).toHaveBeenCalledTimes(1);
+    expect(worker.exportSnapshot).toHaveBeenCalledTimes(3);
     expect(mockedLoadGameById).toHaveBeenCalledWith('save-slot-1');
     expect(mockedPersistActiveSaveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
       activeSaveId: 'save-slot-1',
@@ -634,6 +641,7 @@ describe('RevisedOnboardingPage', () => {
       saveName: 'General Manager • New York Tycoons',
       season: 1,
     }));
+    expect(mockedPersistActiveSaveSnapshot).toHaveBeenCalledTimes(3);
     const capturedSnapshot = await mockedPersistActiveSaveSnapshot.mock.calls[0]![0].exportSnapshot();
     expect(capturedSnapshot).toEqual(expect.objectContaining({
       schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,

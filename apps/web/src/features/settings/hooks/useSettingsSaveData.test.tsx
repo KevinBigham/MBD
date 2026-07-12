@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ShowSaveRecoveryOptions } from '@/features/save-recovery';
 import type { useWorker } from '@/shared/hooks/useWorker';
+import { useGameStore } from '@/shared/hooks/useGameStore';
 import {
   abortActiveSaveSessionTransition,
   activateActiveSavePersistenceMetadata,
@@ -43,6 +44,13 @@ import {
   recoverWorkerAfterCandidateImportFailure,
 } from '@/shared/lib/saveSessionTransitionRecovery';
 import { useSettingsSaveData } from './useSettingsSaveData';
+import { isSimAdvanceCoordinatorBusy } from '@/shared/hooks/useSimAdvanceExecutor';
+
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  isSimAdvanceCoordinatorBusy: vi.fn(),
+}));
+
+const mockedIsSimAdvanceCoordinatorBusy = vi.mocked(isSimAdvanceCoordinatorBusy);
 import { resetSettingsOperationCoordinatorForTesting } from '../lib/settingsOperationCoordinator';
 
 vi.mock('@/shared/lib/activeSavePersistence', () => ({
@@ -106,6 +114,16 @@ vi.mock('@/shared/lib/saveSessionTransitionRecovery', () => ({
 type HookOptions = Parameters<typeof useSettingsSaveData>[0];
 type HookResult = ReturnType<typeof useSettingsSaveData>;
 type SettingsWorker = HookOptions['worker'];
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 const baseSave: SaveData = {
   id: 'save-slot-1',
@@ -193,6 +211,8 @@ describe('useSettingsSaveData', () => {
   const mockedSaveGame = vi.mocked(saveGame);
 
   beforeEach(() => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(false);
     resetSettingsOperationCoordinatorForTesting();
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -801,6 +821,24 @@ describe('useSettingsSaveData', () => {
     expect(mockedLoadGameById).not.toHaveBeenCalled();
   });
 
+  it.each(['save-slot-2', null] as const)(
+    'abandons an import after held file text when live save becomes %s',
+    async (successorSaveId) => {
+      let resolveText!: (text: string) => void;
+      const text = new Promise<string>((resolve) => { resolveText = resolve; });
+      await renderHook(baseOptions());
+      const pending = latestResult!.handleImportFile({ text: () => text } as unknown as File);
+      await Promise.resolve();
+      useGameStore.setState({ activeSaveId: successorSaveId, activeSaveSlot: successorSaveId ? 2 : null });
+      await act(async () => {
+        resolveText('{}');
+        await pending;
+      });
+      expect(mockedImportSnapshotFromJson).not.toHaveBeenCalled();
+      expect(mockedSaveGame).not.toHaveBeenCalled();
+    },
+  );
+
   it('reports exact branch cleanup truthfully when a damaged parent is left untouched', async () => {
     mockedDeleteSaveByIdWithResult.mockResolvedValueOnce({
       outcome: 'deleted_exact_parent_untouched',
@@ -935,4 +973,60 @@ describe('useSettingsSaveData', () => {
     expect(latestResult?.status).toBe('Cleared every local save slot.');
     confirm.mockRestore();
   });
+
+  it('uses neutral save-activity copy for an ordinary in-progress simulation rather than instructing reload', async () => {
+    const options = baseOptions();
+    await renderHook(options);
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(true);
+    await act(async () => { await latestResult?.handleSave(2); });
+    expect(latestResult?.status).toBe('Finish the current simulation save activity before changing save data.');
+    expect(options.worker.exportSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('retires a held branch export when simulation save activity starts before branch creation', async () => {
+    const heldExport = deferred<object>();
+    const worker = makeWorker({ exportSnapshot: vi.fn().mockReturnValue(heldExport.promise) });
+    await renderHook(baseOptions({ worker }));
+    await act(async () => { latestResult?.setBranchDescription('Held branch'); });
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = latestResult!.handleCreateBranch();
+      await Promise.resolve();
+    });
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(true);
+    await act(async () => {
+      heldExport.resolve({ schemaVersion: 34, season: 4, day: 91 });
+      await pending;
+    });
+
+    expect(mockedTrackActiveSavePersistenceOperation).not.toHaveBeenCalled();
+    expect(mockedCreateBranchSave).not.toHaveBeenCalled();
+    expect(latestResult?.branchDescription).toBe('Held branch');
+    expect(latestResult?.status).toBe('');
+  });
+
+  it.each(['branch-2', null] as const)(
+    'retires a held branch export when live save A becomes %s without rerender',
+    async (successorSaveId) => {
+      const heldExport = deferred<object>();
+      const worker = makeWorker({ exportSnapshot: vi.fn().mockReturnValue(heldExport.promise) });
+      await renderHook(baseOptions({ worker }));
+      await act(async () => { latestResult?.setBranchDescription('Held branch'); });
+      let pending!: Promise<void>;
+      await act(async () => {
+        pending = latestResult!.handleCreateBranch();
+        await Promise.resolve();
+      });
+      useGameStore.setState({ activeSaveId: successorSaveId, activeSaveSlot: successorSaveId ? 1 : null });
+      await act(async () => {
+        heldExport.resolve({ schemaVersion: 34, season: 4, day: 91 });
+        await pending;
+      });
+
+      expect(mockedTrackActiveSavePersistenceOperation).not.toHaveBeenCalled();
+      expect(mockedCreateBranchSave).not.toHaveBeenCalled();
+      expect(latestResult?.branchDescription).toBe('Held branch');
+      expect(latestResult?.status).toBe('');
+    },
+  );
 });

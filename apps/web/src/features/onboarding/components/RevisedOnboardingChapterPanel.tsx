@@ -24,6 +24,7 @@ export interface RevisedOnboardingChapterPanelProps {
   script: RevisedChapterScript | null;
   data: RevisedOnboardingData;
   isComplete: boolean;
+  mutationBlocked: boolean;
   isSubmitting: boolean;
   onChoice: <K extends ChoiceField>(field: K, value: GMPhilosophy[K]) => void;
   onRosterAdvance: () => void;
@@ -65,6 +66,7 @@ export default function RevisedOnboardingChapterPanel({
   script,
   data,
   isComplete,
+  mutationBlocked,
   isSubmitting,
   onChoice,
   onRosterAdvance,
@@ -76,7 +78,7 @@ export default function RevisedOnboardingChapterPanel({
     return (
       <CompletionPanel
         data={data}
-        isSubmitting={isSubmitting}
+        isSubmitting={mutationBlocked}
         onEnterFrontOffice={onEnterFrontOffice}
       />
     );
@@ -87,6 +89,7 @@ export default function RevisedOnboardingChapterPanel({
       chapterId={chapterId}
       script={script}
       data={data}
+      mutationBlocked={mutationBlocked}
       isSubmitting={isSubmitting}
       onChoice={onChoice}
       onRosterAdvance={onRosterAdvance}
@@ -100,6 +103,7 @@ function ChapterBody({
   chapterId,
   script,
   data,
+  mutationBlocked,
   isSubmitting,
   onChoice,
   onRosterAdvance,
@@ -109,6 +113,7 @@ function ChapterBody({
   chapterId: RevisedChapterId;
   script: RevisedChapterScript | null;
   data: RevisedOnboardingData;
+  mutationBlocked: boolean;
   isSubmitting: boolean;
   onChoice: <K extends ChoiceField>(field: K, value: GMPhilosophy[K]) => void;
   onRosterAdvance: () => void;
@@ -152,7 +157,7 @@ function ChapterBody({
             slate={data.staffSlate}
             opinions={data.script.staffOpinions}
             onConfirm={onStaffHires}
-            isSubmitting={isSubmitting}
+            isSubmitting={mutationBlocked}
           />
         </ChapterLayout>
       );
@@ -175,7 +180,7 @@ function ChapterBody({
             slate={data.scoutingSlate}
             opinions={data.script.scoutOpinions}
             onConfirm={onScoutingHire}
-            isSubmitting={isSubmitting}
+            isSubmitting={mutationBlocked}
           />
         </ChapterLayout>
       );

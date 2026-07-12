@@ -27,7 +27,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 5 | 1 | Exclusive same-save-tree multi-tab guard | VERIFIED COMPLETE | Goal 17 / `TRUST-MULTITAB-GUARD-1` | `runs/TRUST-MULTITAB-GUARD-1/COMPLETION.md`; 137 focused; full gates; Playwright 1/1 + 2/2 | `203cb48` | Terra `019f51c9…` (`gpt-5.6-terra`, high, CORRECTIONS_READY); Sol `019f51c7…` (`gpt-5.6-sol`, xhigh, MERGE_READY); Luna `019f51e1…` (`gpt-5.6-luna`, medium, LANDED_ON_MAIN) | Items 1–4 | Preserve mixed-version warning |
 | 6 | 1 | Every-supported-version export/import CI matrix | VERIFIED COMPLETE | Goal 18 / `TRUST-EXPORT-SCHEMA-MATRIX-1` | `runs/TRUST-EXPORT-SCHEMA-MATRIX-1/COMPLETION.md`; 33-version worker/JSON matrix; focused/full gates; zero-retry reload-smoke | See landed item-6 revision in repository history | Terra `019f51f7-5277-7570-add0-fd4a2acb1778` (`gpt-5.6-terra`, high→xhigh); Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` (`gpt-5.6-sol`, xhigh, MERGE_READY); Luna closeout (`gpt-5.6-luna`, medium) | Item 5 | Preserve v34/Dexie-v5 contract; item 7 is next |
 | 7 | 1 | Storage-pressure size/quota/pruning UX | VERIFIED COMPLETE | Goal 19 / `TRUST-STORAGE-PRESSURE-1` | `runs/TRUST-STORAGE-PRESSURE-1/COMPLETION.md`; focused 49 suites / 372 tests; full gates; fresh 3,022-module / 167-entry PWA; zero-retry storage-pressure, multitab, and reload-smoke Chromium proof | Commit containing this report; verify from landing history | Terra `019f529d-211d-7590-b834-3014f5a3a102` (`gpt-5.6-terra`, high→xhigh, archived); manual relay-pattern fallback writer; replacement Sol `019f534c-8009-7ab1-8849-e9c59b7c49cc` (`gpt-5.6-sol`, xhigh, MERGE_READY, zero P0–P2); Luna `gpt-5.6-luna`, medium, LANDED_ON_MAIN | Item 6 | Preserve truthful storage metrics, exact-save retry, and narrow prune; do not begin item 8 in this closeout |
-| 8 | 1 | Write-ahead sim-day intent journal | PENDING | No goal/run | Transition rollback exists; no persisted day intent/replay journal | — | — | Items 5–7 | Design bounded journal after trust foundation |
+| 8 | 1 | Write-ahead sim-day intent journal | VERIFIED COMPLETE | Goal 20 / `TRUST-SIM-ADVANCE-JOURNAL-1` | `runs/TRUST-SIM-ADVANCE-JOURNAL-1/{SOURCE_TRUTH,PLAN,COMPLETION}.md`; Dexie-v6 WAL, exact whole-command rollback, no replay; focused 14 files/460 tests; root gates; Chromium reload 2/2 and four-spec 5/5 | Commit containing this report; final SHA recorded below after landing | Terra `019f537c-cd7a-7d71-92f5-50edf41ac54c` (`gpt-5.6-terra`, high) sole writer; Sol `019f552e-4389-7501-8f16-a1256dcd1824` (`gpt-5.6-sol`, xhigh) `MERGE_READY` 0/0/0; Luna `019f564f-3366-70e1-8e73-ba1ebdb1f2ae` (`gpt-5.6-luna`, medium) closeout; parent manual relay fallback for host browser commands | Items 5–7 | Item 9/10 next only after live Goal 11 confirms one coherent HIGH_RISK seam |
 | 9 | 2 | Living contract clock | PENDING | Goal 11 `ECON-CLOCK-1`; no run | `advanceContracts` exists but has no production caller | — | — | Tier 1 | Execute goal 11 before dependent economy work |
 | 10 | 2 | Symmetric option-year resolution | PENDING | Goal 11 owns semantics; no run | Option fields exist; no resolution lane/symmetry proof | — | — | Item 9 | Complete inside/reconcile after ECON-CLOCK-1 |
 | 11 | 2 | Service-time arbitration drama | PARTIAL | No run | Finance/arbitration/holdout source and tests exist | Historical commits | — | Items 9–10 | Prove full offseason→persistence loop |
@@ -136,6 +136,46 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 - Goal 18 is verified complete on the local checkout after final focused/full gates, explicit item-only staging, intentional commit, and fast-forward of local `main`. The exact commit is intentionally reported by the closeout command/history rather than embedded self-referentially in this pre-commit ledger update.
 - Final route: Terra `019f51f7-5277-7570-add0-fd4a2acb1778` high→xhigh implementation/corrections; Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` xhigh definitive `MERGE_READY`, zero P0–P2; Luna `gpt-5.6-luna` medium closeout writer. No item 7 work began.
 - Final gates: focused 27/27, 151/151, 24/24; root typecheck, full test, production build/PWA, determinism, and fresh zero-retry Chromium reload-smoke 2/2 all passed. Protected files remained unchanged, dirty, and unstaged.
+
+## Item 8 landing receipt and permanent workflow reset
+
+- Item 8 is `VERIFIED COMPLETE` on the commit containing
+  `runs/TRUST-SIM-ADVANCE-JOURNAL-1/COMPLETION.md`; the final commit SHA is
+  intentionally filled from repository history after the landing commit, never
+  invented self-referentially here.
+- Dexie is v6 for the operational journal and GameSnapshot remains v34. Item 9
+  and item 10 are next, but item 9 remains untouched until a new high-risk
+  Goal 11 reconciliation proves one owner, persistence boundary, migration
+  policy, proof harness, and rollback plan.
+- Permanent campaign classes are `VERIFY_ONLY`, `FINISH_PARTIAL`,
+  `NEW_FEATURE`, and `HIGH_RISK`. Existing meaningful implementation defaults
+  to `FINISH_PARTIAL`; HIGH_RISK is reserved for schema/persistence,
+  worker-authority, deterministic RNG, contract/offseason rollover,
+  world-generation, and historical enrichment seams.
+- Hard limits: one pre-implementation Sol gate, one final Sol gate, at most two
+  correction loops, one independent auditor by default, and two context
+  compactions before split-or-land review. A third correction loop requires a
+  new bounded goal or explicit P0/P1 justification. Every future run's
+  `CURRENT.md` contains only Phase, Writer, Changed paths, Last green command,
+  Current blocker, and Next action. Every slice reports `LIGHT`, `NORMAL`,
+  `HEAVY`, or `EXCEPTIONAL`; a NORMAL slice that becomes HEAVY is split.
+- Pre-coding evidence budgets must name focused domain tests, compatibility and
+  old-save proof, deterministic/soak proof, UI/browser proof, final root gates,
+  and a maximum of two correction loops. Item 8 is recorded as `EXCEPTIONAL`.
+- Impact-first overlay:
+
+| Item | Impact rank | Dependency ready | Work class | Size | Shared seam/bundle | Required proof | Active writer | Next eligible action |
+|---:|---:|---|---|---|---|---|---|---|
+| 8 | 1 | Verified | EXCEPTIONAL | XL | worker authority + Dexie v6 + boot/save tree | focused, negative control, root gates, production Chromium two-page/reload/mobile | Closed; Luna landed | Verify local-main commit; no reopen |
+| 9 | 2 | Conditional on Goal 11 | HIGH_RISK | L | living contract clock/offseason owner | contract/offseason, old-save, deterministic rollover, economy soak, UI/browser, root gates, rollback | Unassigned | Reconcile Goal 11 and define evidence budget |
+| 10 | 3 | Conditional on Goal 11 | HIGH_RISK | L | option-year resolution with item 9 only if one seam | same as item 9; no adjacent arbitration/revenue expansion | Unassigned | Bundle only after seam confirmation |
+| 19 | 4 | After economy dependency | VERIFY_ONLY or FINISH_PARTIAL | M | existing onboarding/day-one calibration | focused calibration and bounded browser proof | Unassigned | Reconcile live goal/source |
+| 20 | 5 | After memory dependency | FINISH_PARTIAL | M | narrative/history factual event ownership | deterministic history, old-save honesty, reload/export proof | Unassigned | Reconcile live goal/source |
+| 21 | 6 | After item 20 seam | FINISH_PARTIAL | M | derived franchise/league era read model | factual derivation, old-save, deterministic multi-season and browser proof | Unassigned | Reconcile live goal/source |
+| 22 | 7 | After item 21 seam | FINISH_PARTIAL | M | memory continuity and player-to-legend history | provenance, no fabricated history, export/reload proof | Unassigned | Reconcile live goal/source |
+
+- Release state remains `READY — AWAITING EXPLICIT RELEASE AUTHORIZATION`; no
+  push, deploy, tag, publish, or release is implied by local landing.
 
 ## First incomplete item source contract
 

@@ -12,6 +12,13 @@ type PlayoffMutationResult = {
 
 type PlayoffBusyAction = 'game' | 'series' | 'round' | 'all';
 
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
 export interface PlayoffsPageControllerOptions {
   autosaveActiveGame: (options?: { season?: number }) => Promise<unknown>;
   day: number;
@@ -73,8 +80,8 @@ export function usePlayoffsPageController({
     setBusyAction(key);
     try {
       const result = await action();
+      if (!snapshotSaved(await autosaveActiveGame({ season: result.season }))) return;
       updateFromSim(result);
-      await autosaveActiveGame({ season: result.season });
       await refreshPlayoffs();
     } finally {
       setBusyAction(null);

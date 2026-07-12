@@ -43,7 +43,7 @@ describe('useScoutingPageController', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
-      autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
       isInitialized: true,
       season: 7,
       userTeamId: 'nym',
@@ -199,6 +199,70 @@ describe('useScoutingPageController', () => {
       expect(latestResult?.contentProps.searchResults).toEqual([]);
     });
     expect(options.worker.scoutPlayerReport).toHaveBeenCalledWith('player-1');
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
+  });
+
+  it('persists an accepted IFA mutation before refreshing its presentation pool', async () => {
+    const options = baseOptions();
+    await renderHook(options);
+    await waitForAssertion(() => {
+      expect(options.worker.getIFAPool).toHaveBeenCalled();
+    });
+    vi.mocked(options.worker.getIFAPool).mockClear();
+    vi.mocked(options.autosaveActiveGame).mockClear();
+
+    await act(async () => {
+      await latestResult?.contentProps.onScoutProspect({ id: 'ifa-1' } as never);
+    });
+
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 7 });
+    expect(options.worker.getIFAPool).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.worker.getIFAPool).mock.invocationCallOrder[0]!);
+  });
+
+  it('does not begin an IFA refresh while the accepted snapshot persistence is held', async () => {
+    let releasePersistence!: () => void;
+    const autosaveActiveGame = vi.fn(() => new Promise<{ saved: true }>((resolve) => {
+      releasePersistence = () => resolve({ saved: true });
+    }));
+    const options = baseOptions({ autosaveActiveGame });
+    await renderHook(options);
+    await waitForAssertion(() => {
+      expect(options.worker.getIFAPool).toHaveBeenCalled();
+    });
+    vi.mocked(options.worker.getIFAPool).mockClear();
+    let pending!: Promise<void>;
+
+    await act(async () => {
+      pending = Promise.resolve(latestResult!.contentProps.onScoutProspect({ id: 'ifa-held' } as never));
+      await vi.waitFor(() => expect(autosaveActiveGame).toHaveBeenCalledTimes(1));
+    });
+    expect(options.worker.getIFAPool).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releasePersistence();
+      await pending;
+    });
+    expect(options.worker.getIFAPool).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh or publish an IFA report when persistence resolves unsaved', async () => {
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    await renderHook(options);
+    await waitForAssertion(() => {
+      expect(options.worker.getIFAPool).toHaveBeenCalled();
+    });
+    vi.mocked(options.worker.getIFAPool).mockClear();
+
+    await act(async () => {
+      await latestResult?.contentProps.onScoutProspect({ id: 'ifa-unsaved' } as never);
+    });
+
+    expect(options.worker.getIFAPool).not.toHaveBeenCalled();
+    expect(latestResult?.contentProps.ifaReport).toBeNull();
+    expect(latestResult?.contentProps.actionMessage).toContain('could not be saved');
   });
 });

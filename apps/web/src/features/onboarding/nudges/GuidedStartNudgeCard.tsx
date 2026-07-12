@@ -51,13 +51,15 @@ const NUDGE_COPY: Record<GuidedStartNudgeId, GuidedStartNudgeCopy> = {
 export interface GuidedStartNudgeCardProps {
   current: GuidedStartNudgeId | null;
   onDismiss: (id: GuidedStartNudgeId) => void;
-  onExportBackup?: () => Promise<void> | void;
+  onExportBackup?: () => Promise<boolean> | boolean;
+  exportDisabled?: boolean;
 }
 
 export function GuidedStartNudgeCard({
   current,
   onDismiss,
   onExportBackup,
+  exportDisabled = false,
 }: GuidedStartNudgeCardProps) {
   const [exporting, setExporting] = useState(false);
 
@@ -72,8 +74,8 @@ export function GuidedStartNudgeCard({
   const handleExport = async () => {
     setExporting(true);
     try {
-      await onExportBackup?.();
-      onDismiss(current);
+      const exported = await onExportBackup?.();
+      if (exported) onDismiss(current);
     } finally {
       setExporting(false);
     }
@@ -103,7 +105,7 @@ export function GuidedStartNudgeCard({
             {isExportPrompt ? (
               <button
                 type="button"
-                disabled={exporting || !onExportBackup}
+                disabled={exportDisabled || exporting || !onExportBackup}
                 onClick={() => {
                   void handleExport();
                 }}

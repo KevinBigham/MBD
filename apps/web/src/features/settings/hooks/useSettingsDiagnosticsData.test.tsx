@@ -10,6 +10,16 @@ import type { LocalStorageEstimate } from '@/shared/lib/saveSystem';
 import type { OriginStorageEstimate } from '@/shared/lib/storagePressure';
 import type { PerformanceDiagnosticsView } from '@/workers/sim.worker.diagnostics';
 import type { SettingsOperationOwner } from '../lib/settingsOperationCoordinator';
+import { useGameStore } from '@/shared/hooks/useGameStore';
+
+const simAdvanceRuntime = vi.hoisted(() => ({
+  status: { kind: 'idle' } as { kind: string },
+}));
+
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  isSimAdvanceCoordinatorBusy: () => simAdvanceRuntime.status.kind !== 'idle',
+  useSimAdvanceCoordinatorStatus: () => simAdvanceRuntime.status,
+}));
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -140,6 +150,8 @@ describe('useSettingsDiagnosticsData', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     latestResult = null;
+    useGameStore.setState({ activeSaveId: 'save-slot-1', activeSaveSlot: 1 });
+    simAdvanceRuntime.status = { kind: 'idle' };
   });
 
   afterEach(async () => {
@@ -148,6 +160,7 @@ describe('useSettingsDiagnosticsData', () => {
     });
     container.remove();
     vi.clearAllMocks();
+    useGameStore.setState({ activeSaveId: null, activeSaveSlot: null });
   });
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
@@ -414,14 +427,178 @@ describe('useSettingsDiagnosticsData', () => {
       await Promise.resolve();
     });
     const optionsB = { ...optionsA, activeManagedSaveId: 'save-slot-2' };
+    useGameStore.setState({ activeSaveId: 'save-slot-2', activeSaveSlot: 2 });
     await act(async () => { root.render(<HookHarness options={optionsB} onRender={(result) => { latestResult = result; }} />); });
     await act(async () => { resolveRevalidation(initial); await pending; });
     expect(optionsA.pruneStaleData).not.toHaveBeenCalled();
     expect(optionsA.persistActiveSave).not.toHaveBeenCalled();
-    expect(optionsA.onStatusChange).toHaveBeenLastCalledWith(
-      'Prune confirmation expired because the active save changed. Reopen it to review current facts.',
-    );
+    expect(optionsA.onStatusChange).toHaveBeenCalledTimes(1);
+    expect(optionsA.onStatusChange).toHaveBeenLastCalledWith('');
   });
+
+  it('rejects prune admission while the simulation coordinator is busy', async () => {
+    const beginSettingsOperation = vi.fn().mockReturnValue(makeSettingsOwner());
+    const options = baseOptions({ beginSettingsOperation });
+    simAdvanceRuntime.status = { kind: 'running' };
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult!.handlePruneStaleData('save-slot-1', { staleTickerEntries: 2, staleWatchers: 1 });
+    });
+
+    expect(beginSettingsOperation).not.toHaveBeenCalled();
+    expect(options.pruneStaleData).not.toHaveBeenCalled();
+    expect(options.persistActiveSave).not.toHaveBeenCalled();
+    expect(options.onStatusChange).not.toHaveBeenCalled();
+  });
+
+  it('does not prune when coordinator authority changes during exact eligibility revalidation', async () => {
+    const eligibility = deferred<PerformanceDiagnosticsView>();
+    const getPerformanceDiagnostics = vi.fn()
+      .mockResolvedValueOnce(makeDiagnostics())
+      .mockReturnValueOnce(eligibility.promise);
+    const options = baseOptions({ getPerformanceDiagnostics });
+    await renderHook(options);
+    await waitForAssertion(() => expect(latestResult?.diagnostics).not.toBeNull());
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = latestResult!.handlePruneStaleData('save-slot-1', { staleTickerEntries: 2, staleWatchers: 1 });
+      await Promise.resolve();
+    });
+    simAdvanceRuntime.status = { kind: 'running' };
+    await act(async () => { eligibility.resolve(makeDiagnostics()); await pending; });
+
+    expect(options.pruneStaleData).not.toHaveBeenCalled();
+    expect(options.persistActiveSave).not.toHaveBeenCalled();
+    expect(options.onStatusChange).toHaveBeenCalledTimes(1);
+    expect(options.onStatusChange).toHaveBeenLastCalledWith('');
+  });
+
+  it.each([
+    ['save-slot-2', 3],
+    [null, 3],
+    ['save-slot-2', 0],
+    [null, 0],
+  ] as const)(
+    'does not persist or report held prune A after live save becomes %s (count %s)',
+    async (successorSaveId, prunedCount) => {
+      const heldPrune = deferred<{ prunedCount: number; diagnostics: PerformanceDiagnosticsView }>();
+      const onStatusChange = vi.fn();
+      const options = baseOptions({
+        onStatusChange,
+        pruneStaleData: vi.fn().mockReturnValue(heldPrune.promise),
+      });
+      await renderHook(options);
+      await waitForAssertion(() => expect(latestResult?.diagnostics).not.toBeNull());
+      let pending!: Promise<void>;
+      await act(async () => {
+        pending = latestResult!.handlePruneStaleData('save-slot-1', { staleTickerEntries: 2, staleWatchers: 1 });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      useGameStore.setState({ activeSaveId: successorSaveId, activeSaveSlot: successorSaveId ? 2 : null });
+      await act(async () => {
+        heldPrune.resolve({ prunedCount, diagnostics: makeDiagnostics() });
+        await pending;
+      });
+
+      expect(options.persistActiveSave).not.toHaveBeenCalled();
+      expect(onStatusChange).toHaveBeenCalledTimes(1);
+      expect(onStatusChange).toHaveBeenLastCalledWith('');
+    },
+  );
+
+  it('rejects held prune work after an A to B to A activation cycle', async () => {
+    const heldPrune = deferred<{ prunedCount: number; diagnostics: PerformanceDiagnosticsView }>();
+    const onStatusChange = vi.fn();
+    const options = baseOptions({
+      onStatusChange,
+      pruneStaleData: vi.fn().mockReturnValue(heldPrune.promise),
+    });
+    await renderHook(options);
+    await waitForAssertion(() => expect(latestResult?.diagnostics).not.toBeNull());
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = latestResult!.handlePruneStaleData('save-slot-1', { staleTickerEntries: 2, staleWatchers: 1 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    useGameStore.setState({ activeSaveId: 'save-slot-2', activeSaveSlot: 2 });
+    useGameStore.setState({ activeSaveId: 'save-slot-1', activeSaveSlot: 1 });
+    await act(async () => {
+      heldPrune.resolve({ prunedCount: 3, diagnostics: makeDiagnostics() });
+      await pending;
+    });
+
+    expect(options.persistActiveSave).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenCalledTimes(1);
+    expect(onStatusChange).toHaveBeenLastCalledWith('');
+  });
+
+  it('rejects held prune work after the originating diagnostics surface unmounts', async () => {
+    const heldPrune = deferred<{ prunedCount: number; diagnostics: PerformanceDiagnosticsView }>();
+    const onStatusChange = vi.fn();
+    const options = baseOptions({
+      onStatusChange,
+      pruneStaleData: vi.fn().mockReturnValue(heldPrune.promise),
+    });
+    await renderHook(options);
+    await waitForAssertion(() => expect(latestResult?.diagnostics).not.toBeNull());
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = latestResult!.handlePruneStaleData('save-slot-1', { staleTickerEntries: 2, staleWatchers: 1 });
+      await Promise.resolve();
+      await Promise.resolve();
+      root.unmount();
+    });
+    await act(async () => {
+      heldPrune.resolve({ prunedCount: 3, diagnostics: makeDiagnostics() });
+      await pending;
+    });
+
+    expect(options.persistActiveSave).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenCalledTimes(1);
+    expect(onStatusChange).toHaveBeenLastCalledWith('');
+    root = createRoot(container);
+  });
+
+  it.each(['save-slot-2', null] as const)(
+    'does not associate retry truth or report completion when persistence A settles after live save becomes %s',
+    async (successorSaveId) => {
+      const heldPersistence = deferred<{
+        acceptedReceipt: ActiveSavePersistenceReceipt;
+        saved: boolean;
+        saveName: string | null;
+      }>();
+      const receipt = makeReceipt();
+      const onStatusChange = vi.fn();
+      const options = baseOptions({
+        getPersistenceStatus: vi.fn().mockReturnValue(makePersistenceStatus({
+          state: 'failed', desiredGeneration: 1, durableGeneration: 0, pendingWrites: 1, canRetry: true,
+        })),
+        onStatusChange,
+        persistActiveSave: vi.fn().mockReturnValue(heldPersistence.promise),
+      });
+      await renderHook(options);
+      await waitForAssertion(() => expect(latestResult?.diagnostics).not.toBeNull());
+      let pending!: Promise<void>;
+      await act(async () => {
+        pending = latestResult!.handlePruneStaleData('save-slot-1', { staleTickerEntries: 2, staleWatchers: 1 });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(options.persistActiveSave).toHaveBeenCalledTimes(1);
+      useGameStore.setState({ activeSaveId: successorSaveId, activeSaveSlot: successorSaveId ? 2 : null });
+      await act(async () => {
+        heldPersistence.resolve({ acceptedReceipt: receipt, saved: false, saveName: null });
+        await pending;
+      });
+
+      expect(onStatusChange).toHaveBeenCalledTimes(1);
+      expect(onStatusChange).toHaveBeenLastCalledWith('');
+      expect(onStatusChange).not.toHaveBeenCalledWith(expect.stringContaining('Retry'));
+    },
+  );
 
   it('does not install a slower diagnostics read after the active save changes', async () => {
     let resolveA!: (value: PerformanceDiagnosticsView) => void;
@@ -432,6 +609,7 @@ describe('useSettingsDiagnosticsData', () => {
     const optionsA = baseOptions({ activeManagedSaveId: 'save-slot-1', getPerformanceDiagnostics });
     await renderHook(optionsA);
     const optionsB = { ...optionsA, activeManagedSaveId: 'save-slot-2' };
+    useGameStore.setState({ activeSaveId: 'save-slot-2', activeSaveSlot: 2 });
     await act(async () => { root.render(<HookHarness options={optionsB} onRender={(result) => { latestResult = result; }} />); });
     await act(async () => { resolveB(makeDiagnostics({ totals: { ...makeDiagnostics().totals, totalSeasons: 22 } })); });
     await act(async () => { resolveA(makeDiagnostics({ totals: { ...makeDiagnostics().totals, totalSeasons: 11 } })); });
@@ -447,6 +625,7 @@ describe('useSettingsDiagnosticsData', () => {
     const optionsA = baseOptions({ activeManagedSaveId: 'save-slot-1', getPerformanceDiagnostics });
     await renderHook(optionsA);
     const optionsB = { ...optionsA, activeManagedSaveId: 'save-slot-2' };
+    useGameStore.setState({ activeSaveId: 'save-slot-2', activeSaveSlot: 2 });
     await act(async () => { root.render(<HookHarness options={optionsB} onRender={(result) => { latestResult = result; }} />); });
     expect(latestResult?.diagnostics).toBeNull();
     await act(async () => { resolveA(makeDiagnostics()); rejectB(new Error('B rejected')); });

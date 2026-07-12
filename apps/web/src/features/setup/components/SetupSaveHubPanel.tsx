@@ -13,6 +13,7 @@ export interface SetupSaveHubPanelProps {
   selectedSlot: number;
   busySlot: number | null;
   branchLimit: number;
+  mutationBlocked?: boolean;
   onRefresh: () => void;
   onUseSlot: (slot: number) => void;
   onContinueSave: (save: SaveData) => void;
@@ -47,6 +48,7 @@ export default function SetupSaveHubPanel({
   selectedSlot,
   busySlot,
   branchLimit,
+  mutationBlocked = false,
   onRefresh,
   onUseSlot,
   onContinueSave,
@@ -54,6 +56,7 @@ export default function SetupSaveHubPanel({
 }: SetupSaveHubPanelProps) {
   const saveMap = new Map(saveTree.map((entry) => [entry.save.slotNumber, entry]));
   const operationBusy = busySlot != null;
+  const treeMutationBusy = operationBusy || mutationBlocked;
 
   return (
     <section className="rounded-2xl border border-dynasty-border bg-dynasty-surface p-6">
@@ -121,7 +124,7 @@ export default function SetupSaveHubPanel({
                     <div>{humanizeLabel(save.phase)} · Updated {new Date(save.updatedAt).toLocaleString()}</div>
                     {storageEstimate?.trees.find((tree) => tree.rootSaveId === save.id) ? (() => {
                       const tree = storageEstimate.trees.find((candidate) => candidate.rootSaveId === save.id)!;
-                      return <div>Protected tree: {formatBytes(tree.totalBytes)} · {tree.saveIds.length} save {tree.saveIds.length === 1 ? 'record' : 'records'} · {formatBytes(tree.primaryBytes)} primary + {formatBytes(tree.shadowBytes)} shadow + {formatBytes(tree.leaderboardBytes)} leaderboard{tree.attribution === 'partial' ? ' (partial attribution)' : ''}</div>;
+                      return <div>Protected tree: {formatBytes(tree.totalBytes)} · {tree.saveIds.length} save {tree.saveIds.length === 1 ? 'record' : 'records'} · {formatBytes(tree.primaryBytes)} primary + {formatBytes(tree.shadowBytes)} shadow + {formatBytes(tree.leaderboardBytes)} leaderboard + {formatBytes(tree.journalBytes)} small operational simulation journal{tree.attribution === 'partial' ? ' (partial attribution)' : ''}</div>;
                     })() : null}
                     {storageEstimate && !storageEstimate.trees.some((tree) => tree.rootSaveId === save.id) ? (
                       <div>{storageEstimate.status === 'unavailable' ? 'Protected-tree estimate unavailable.' : 'Protected-tree estimate is partial or unattributable; all local MBD records remain counted separately.'}</div>
@@ -137,7 +140,7 @@ export default function SetupSaveHubPanel({
                   <>
                     <button
                       type="button"
-                      disabled={operationBusy}
+                      disabled={treeMutationBusy}
                       data-mobile-critical-control="setup-save-continue"
                       onClick={() => onContinueSave(save)}
                       className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:opacity-50"
@@ -147,7 +150,7 @@ export default function SetupSaveHubPanel({
                     </button>
                     <button
                       type="button"
-                      disabled={operationBusy}
+                      disabled={treeMutationBusy}
                       data-mobile-critical-control="setup-save-delete"
                       onClick={() => onDeleteSlot(slot)}
                       className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-accent-danger/40 px-3 py-2 font-heading text-xs uppercase tracking-wide text-accent-danger hover:bg-accent-danger/10 disabled:opacity-50"
@@ -159,7 +162,7 @@ export default function SetupSaveHubPanel({
                 ) : null}
                 <button
                   type="button"
-                  disabled={operationBusy}
+                  disabled={treeMutationBusy}
                   data-mobile-critical-control="setup-save-use-slot"
                   onClick={() => onUseSlot(slot)}
                   className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-xs uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"
@@ -196,7 +199,7 @@ export default function SetupSaveHubPanel({
                             </div>
                             <button
                               type="button"
-                              disabled={operationBusy}
+                              disabled={treeMutationBusy}
                               data-mobile-critical-control="setup-save-open-branch"
                               onClick={() => onContinueSave(branch)}
                               className="mobile-critical-control focus-ring inline-flex items-center gap-2 rounded border border-dynasty-border px-3 py-2 font-heading text-[11px] uppercase tracking-wide text-dynasty-text hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-50"

@@ -64,7 +64,11 @@ function createNegotiationView() {
   };
 }
 
-function createWorkerMock() {
+function createWorkerMock({
+  startNegotiationFlowStateChanged = false,
+}: {
+  startNegotiationFlowStateChanged?: boolean;
+} = {}) {
   const gmDialogue = {
     mode: 'buyer' as const,
     urgency: 'high' as const,
@@ -410,6 +414,7 @@ function createWorkerMock() {
       decision: 'countered',
       message: 'Boston kicked back a firmer counter and asked for a cleaner fit.',
       tradeExecuted: false,
+      flowStateChanged: startNegotiationFlowStateChanged,
       review: {
         fairnessScore: -4,
         rosterValid: true,
@@ -781,7 +786,7 @@ describe('TradePage', () => {
       initializeGame: vi.fn(),
     });
 
-    const worker = createWorkerMock();
+    const worker = createWorkerMock({ startNegotiationFlowStateChanged: true });
     mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
 
     await renderPage();

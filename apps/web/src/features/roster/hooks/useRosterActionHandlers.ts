@@ -36,11 +36,18 @@ function moneyLabel(value: number): string {
   return `$${value.toFixed(1)}M`;
 }
 
-function rosterActionFailed(result: unknown): result is { success: false; error?: string } {
+function rosterActionFailed(result: unknown): result is { success: false; error?: string; flowStateChanged?: boolean } {
   return typeof result === 'object'
     && result !== null
     && 'success' in result
     && (result as { success?: unknown }).success === false;
+}
+
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
 }
 
 export function useRosterActionHandlers({
@@ -62,11 +69,17 @@ export function useRosterActionHandlers({
     try {
       const result = await operation();
       if (rosterActionFailed(result)) {
+        if (result.flowStateChanged === true) {
+          if (!snapshotSaved(await autosaveActiveGame({ season }))) return;
+        }
         setActionMessage(result.error ?? 'That roster move could not be completed.');
+        if (result.flowStateChanged === true) {
+          await fetchRoster();
+        }
         return;
       }
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) return;
       await fetchRoster();
-      await autosaveActiveGame({ season });
     } finally {
       setBusyAction(null);
     }

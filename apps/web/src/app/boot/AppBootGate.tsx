@@ -8,24 +8,34 @@ import {
   type ReactNode,
 } from 'react';
 import { toast } from 'sonner';
+import { GameSnapshotSchema } from '@mbd/contracts';
+import { materializeSimulationImportDefaults } from '@mbd/sim-core';
 import { useSaveRecovery } from '@/features/save-recovery';
 import type { SaveSessionConflictKind } from '@/features/save-session/SaveSessionConflictDialog';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useSimAdvanceCoordinatorStatus } from '@/shared/hooks/useSimAdvanceExecutor';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
 import {
   loadSaveSafely,
+  consumeSimAdvanceIntentRollback,
+  inspectSimAdvanceIntentForCandidate,
   resolveSaveSessionTarget,
   type LoadSaveSafelyResult,
   type SaveSessionTarget,
 } from '@/shared/lib/saveSystem';
+import { canonicalizeSaveIntegrityValue } from '@/shared/lib/saveIntegrity';
 import { logger } from '@/shared/lib/logger';
 import {
   activateActiveSavePersistenceMetadata,
   abortActiveSaveSessionTransition,
   completeActiveSaveSessionTransition,
   markActiveSaveSessionTransitionOwnershipCommitted,
+  failCloseActiveSaveSessionTransition,
   prepareActiveSaveSessionTransition,
+  reserveActiveSaveSessionTransitionCommit,
+  stageActiveSavePersistenceMetadataForTransition,
+  finishReservedActiveSaveSessionTransition,
   restoreInactiveSaveIntegrityBackup,
   type ActiveSaveSessionTransition,
 } from '@/shared/lib/activeSavePersistence';
@@ -36,12 +46,24 @@ import {
   isSaveSessionOwnershipError,
   SaveSessionOwnershipError,
   withSaveSessionImportAuthorization,
+  withSaveSessionCandidateSnapshotExportAuthorization,
+  releaseActiveSaveSessionOwnership,
   type SaveSessionClaim,
 } from '@/shared/lib/saveSessionOwnership';
 import {
   captureOutgoingSaveSessionSnapshot,
   recoverWorkerAfterCandidateImportFailure,
 } from '@/shared/lib/saveSessionTransitionRecovery';
+import {
+  beginBootRecoveryAdmission,
+  cancelBootRecoveryAdmission,
+  commitBootRecoverySuccess,
+  failBootRecoveryAdmission,
+  getBootRecoveryAdmissionStatus,
+  reserveBootRecoverySuccess,
+  withBootRecoveryCandidateAuthorization,
+  type BootRecoveryPermit,
+} from '@/shared/lib/bootRecoveryAdmission';
 
 type AutoResumeFailure = Extract<LoadSaveSafelyResult, { ok: false }>;
 type AutoResumeStatus = 'idle' | 'resuming' | 'finished';
@@ -135,8 +157,39 @@ function ResumeFallback() {
   );
 }
 
+function ReloadRequiredSurface() {
+  return (
+    <main
+      className="flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-dynasty-base px-5 py-8 text-dynasty-text"
+    >
+      <section
+        className="w-full max-w-lg rounded-2xl border border-dynasty-border bg-dynasty-surface p-6 shadow-2xl"
+        role="alertdialog"
+        aria-modal="true"
+        aria-live="assertive"
+        aria-labelledby="simulation-reload-title"
+        aria-describedby="simulation-reload-detail"
+      >
+        <p className="font-data text-[11px] uppercase tracking-[0.22em] text-accent-warning">Saved dynasty protection</p>
+        <h1 id="simulation-reload-title" className="mt-2 font-brand text-3xl text-dynasty-textBright">Reload required</h1>
+        <p id="simulation-reload-detail" className="mt-3 text-sm leading-6 text-dynasty-muted">
+          Your last verified durable save is preserved. Reload this dynasty to recover it; the simulation will not be replayed.
+        </p>
+        <button
+          type="button"
+          className="mt-6 min-h-11 w-full rounded-lg bg-accent-primary px-4 py-3 font-heading text-sm font-semibold text-dynasty-base"
+          onClick={() => window.location.reload()}
+        >
+          Reload dynasty
+        </button>
+      </section>
+    </main>
+  );
+}
+
 export function AppBootGate({ children }: { children: ReactNode }) {
   const worker = useWorker();
+  const simAdvanceStatus = useSimAdvanceCoordinatorStatus();
   const persistActiveSave = useActiveSaveAutosave();
   const recovery = useSaveRecovery();
   const activeSaveId = useGameStore((state) => state.activeSaveId);
@@ -148,6 +201,7 @@ export function AppBootGate({ children }: { children: ReactNode }) {
   const [resumeStatus, setResumeStatus] = useState<AutoResumeStatus>('idle');
   const [sessionConflict, setSessionConflict] = useState<SessionConflictState | null>(null);
   const [checkingSession, setCheckingSession] = useState(false);
+  const [journalRecoveryFailed, setJournalRecoveryFailed] = useState(false);
   const attemptedSaveIdRef = useRef<string | null>(null);
 
   const attemptResume = useCallback(async (
@@ -167,6 +221,9 @@ export function AppBootGate({ children }: { children: ReactNode }) {
     let outgoingSnapshot: object | null = null;
     let workerMayBeReplaced = false;
     let candidateCommitted = false;
+    let journalRollback = false;
+    let journalInspectionFailed = false;
+    let bootPermit: BootRecoveryPermit | null = null;
     const cancelAttempt = async () => {
       const pendingTransition = transition;
       const pendingClaim = claim;
@@ -239,12 +296,104 @@ export function AppBootGate({ children }: { children: ReactNode }) {
           target.rootSaveId,
         );
       }
+      // Inspect durable journal evidence after tree ownership/transition
+      // preparation but before any candidate worker import. An exact-key row
+      // with malformed topology is an integrity failure, never ordinary boot.
+      // Capture the outgoing realm while the transition's exact export
+      // authorization is still the only active lane. Recovery admission then
+      // fences it permanently before inspecting/importing the candidate.
       workerMayBeReplaced = transition.outgoingSaveId != null;
       outgoingSnapshot = await captureOutgoingSaveSessionSnapshot(
         transition,
         worker.exportSnapshot,
       );
       workerMayBeReplaced = true;
+
+      // Latch before touching the journal: malformed/missing-root evidence is
+      // itself a terminal recovery condition, not ordinary boot work.
+      bootPermit = beginBootRecoveryAdmission(saveId, target.rootSaveId);
+      let journal;
+      try {
+        journal = await inspectSimAdvanceIntentForCandidate(
+          loadResult.save.id,
+          target.rootSaveId,
+        );
+      } catch (error) {
+        journalInspectionFailed = true;
+        throw error;
+      }
+      if (journal.kind === 'none') {
+        cancelBootRecoveryAdmission(bootPermit);
+        bootPermit = null;
+      }
+      if (journal.kind === 'rollback') {
+        journalRollback = true;
+        const rollbackPermit = bootPermit;
+        if (!rollbackPermit) {
+          throw new Error('Boot rollback lost its exact recovery admission before candidate import.');
+        }
+        await worker.restartWorker();
+        const importedBaseline = await withBootRecoveryCandidateAuthorization(
+          rollbackPermit,
+          () => withSaveSessionImportAuthorization(
+            claim!,
+            () => worker.importSnapshot(journal.baseline.snapshot as object),
+          ),
+        );
+        if (!importedBaseline.success) {
+          throw new Error('The verified simulation baseline could not be imported.');
+        }
+        const restoredSnapshot = await withBootRecoveryCandidateAuthorization(
+          rollbackPermit,
+          () => withSaveSessionCandidateSnapshotExportAuthorization(
+            claim!,
+            loadResult.save.id,
+            () => worker.exportSnapshot(),
+          ),
+        );
+        const expectedSnapshot = materializeSimulationImportDefaults(
+          GameSnapshotSchema.parse(journal.baseline.snapshot),
+        );
+        const actualSnapshot = GameSnapshotSchema.parse(restoredSnapshot);
+        if (canonicalizeSaveIntegrityValue(expectedSnapshot) !== canonicalizeSaveIntegrityValue(actualSnapshot)) {
+          throw new Error('The restored simulation baseline did not exactly match the verified durable snapshot.');
+        }
+        await commitSaveSessionOwnership(claim, loadResult.save.id);
+        markActiveSaveSessionTransitionOwnershipCommitted(transition);
+        candidateCommitted = true;
+        claim = null;
+        stageActiveSavePersistenceMetadataForTransition(transition, journal.baseline);
+        initializeGame({
+          season: importedBaseline.season,
+          day: importedBaseline.day,
+          phase: importedBaseline.phase,
+          playerCount: importedBaseline.playerCount,
+          userTeamId: importedBaseline.userTeamId,
+          teamName: importedBaseline.teamName,
+          gmName: importedBaseline.gmName,
+          difficulty: importedBaseline.difficulty,
+          activeSaveId: journal.baseline.id,
+          activeSaveSlot: journal.baseline.slotNumber,
+        });
+        const transitionReservation = reserveActiveSaveSessionTransitionCommit(transition);
+        const bootSuccess = reserveBootRecoverySuccess(rollbackPermit);
+        await finishReservedActiveSaveSessionTransition(
+          transitionReservation,
+          () => consumeSimAdvanceIntentRollback(journal.intent),
+        );
+        commitBootRecoverySuccess(bootSuccess);
+        bootPermit = null;
+        transition = null;
+        setSessionConflict(null);
+        setResumeStatus('finished');
+        // The durable rollback is already complete. Route/toast presentation
+        // is deliberately best-effort and must never re-enter journal cleanup.
+        try { restoreBrowserPath(resumePath); }
+        catch (presentationError) { logger.error('Restored boot path could not be applied:', presentationError); }
+        try { toast.info('Restored the last verified saved dynasty. The interrupted simulation was not replayed.'); }
+        catch (presentationError) { logger.error('Restored boot notice could not be shown:', presentationError); }
+        return true;
+      }
       const imported = await withSaveSessionImportAuthorization(
         claim,
         () => worker.importSnapshot(loadResult.snapshot),
@@ -282,6 +431,23 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         return false;
       }
 
+      // Ordinary boot must prove that import was load-pure before the
+      // candidate becomes authoritative. A future import-time normalizer may
+      // not silently move the singleton worker ahead of the exact durable
+      // primary/shadow baseline.
+      const importedSnapshot = await withSaveSessionCandidateSnapshotExportAuthorization(
+        claim,
+        loadResult.save.id,
+        () => worker.exportSnapshot(),
+      );
+      const expectedSnapshot = materializeSimulationImportDefaults(
+        GameSnapshotSchema.parse(loadResult.snapshot),
+      );
+      const actualSnapshot = GameSnapshotSchema.parse(importedSnapshot);
+      if (canonicalizeSaveIntegrityValue(expectedSnapshot) !== canonicalizeSaveIntegrityValue(actualSnapshot)) {
+        throw new Error('The imported worker did not exactly match the verified durable snapshot.');
+      }
+
       await commitSaveSessionOwnership(claim, loadResult.save.id);
       markActiveSaveSessionTransitionOwnershipCommitted(transition);
       candidateCommitted = true;
@@ -309,6 +475,36 @@ export function AppBootGate({ children }: { children: ReactNode }) {
       setResumeStatus('finished');
       return true;
     } catch (error) {
+      if (journalRollback || journalInspectionFailed) {
+        // Enter the global fence before any pause/barrier can reopen. Each
+        // cleanup is isolated: preserving the durable journal beats restoring
+        // a possibly stale outgoing worker realm.
+        if (bootPermit) {
+          try { failBootRecoveryAdmission(bootPermit, error); }
+          catch (latchError) { logger.error('Boot recovery latch could not fail closed:', latchError); }
+        }
+        try { setInitialized(false); }
+        catch (stateError) { logger.error('Boot rollback could not clear initialization:', stateError); }
+        try { await releaseActiveSaveSessionOwnership(); }
+        catch (releaseError) { logger.error('Boot rollback could not release active ownership:', releaseError); }
+        try { await worker.restartWorker(); }
+        catch (discardError) { logger.error('Boot rollback could not discard the candidate worker:', discardError); }
+        if (transition) {
+          try { failCloseActiveSaveSessionTransition(transition); }
+          catch (transitionError) { logger.error('Boot rollback could not terminally close its transition:', transitionError); }
+          transition = null;
+        }
+        if (claim) {
+          try { await abortSaveSessionOwnership(claim); }
+          catch (claimError) { logger.error('Boot rollback could not abort its candidate claim:', claimError); }
+          claim = null;
+        }
+        setJournalRecoveryFailed(true);
+        setSessionConflict(null);
+        setResumeStatus('finished');
+        logger.error('Simulation journal rollback failed; durable evidence was preserved:', error);
+        return false;
+      }
       if (workerMayBeReplaced && transition) {
         const recoveryResult = await recoverWorkerAfterCandidateImportFailure({
           importSnapshot: worker.importSnapshot,
@@ -367,6 +563,12 @@ export function AppBootGate({ children }: { children: ReactNode }) {
   }, [initializeGame, persistActiveSave, recovery, setActiveSave, setInitialized, worker]);
 
   useEffect(() => {
+    // S4 only owns presentation/suppression. S5 will inspect journal evidence
+    // before import; for now a fail-closed coordinator result must never start
+    // a new resume, ownership claim, worker export, or repair flow.
+    if (simAdvanceStatus.kind === 'fail_closed' || journalRecoveryFailed) {
+      return;
+    }
     if (isInitialized) {
       attemptedSaveIdRef.current = null;
       setResumeStatus('finished');
@@ -390,7 +592,11 @@ export function AppBootGate({ children }: { children: ReactNode }) {
 
     attemptedSaveIdRef.current = activeSaveId;
     void attemptResume(activeSaveId, activeSaveSlot);
-  }, [activeSaveId, activeSaveSlot, attemptResume, isInitialized, worker.isReady]);
+  }, [activeSaveId, activeSaveSlot, attemptResume, isInitialized, journalRecoveryFailed, simAdvanceStatus.kind, worker.isReady]);
+
+  if (simAdvanceStatus.kind === 'fail_closed' || journalRecoveryFailed) {
+    return <ReloadRequiredSurface />;
+  }
 
   if (sessionConflict) {
     return (
@@ -412,6 +618,10 @@ export function AppBootGate({ children }: { children: ReactNode }) {
         />
       </Suspense>
     );
+  }
+
+  if (getBootRecoveryAdmissionStatus().kind === 'recovering') {
+    return <ResumeFallback />;
   }
 
   if (activeSaveId && !isInitialized && resumeStatus !== 'finished') {

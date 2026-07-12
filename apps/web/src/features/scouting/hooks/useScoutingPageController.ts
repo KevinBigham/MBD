@@ -14,6 +14,13 @@ function formatMoney(value: number): string {
   return formatScoutingMoney(value);
 }
 
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
 interface ScoutingPageWorker {
   getIFAPool: () => Promise<unknown>;
   getOwnerState: (teamId: string) => Promise<unknown>;
@@ -114,13 +121,12 @@ export function useScoutingPageController({
       if (report) {
         setScoutReport(report as ScoutReportView);
         setRecentReports((prev) => [report as ScoutReportView, ...prev].slice(0, 20));
-        await autosaveActiveGame({ season });
       }
     } catch (err) {
       logger.error('Failed to scout player:', err);
     }
     setLoading(false);
-  }, [autosaveActiveGame, season, worker]);
+  }, [worker]);
 
   const handleScoutIFA = useCallback(async (prospect: IFAProspectView) => {
     setActionMessage(null);
@@ -133,10 +139,13 @@ export function useScoutingPageController({
         setActionMessage(result.error);
         return;
       }
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) {
+        setActionMessage('That scouting report could not be saved.');
+        return;
+      }
       setIFAReport(result.report);
       setIFABonus(result.report.expectedBonus.toFixed(2));
       await refreshIFAPool();
-      await autosaveActiveGame({ season });
     } catch (err) {
       logger.error('Failed to scout IFA player:', err);
       setActionMessage('Unable to scout that prospect right now.');
@@ -158,10 +167,13 @@ export function useScoutingPageController({
         setActionMessage(result.error);
         return;
       }
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) {
+        setActionMessage('That international signing could not be saved.');
+        return;
+      }
       setActionMessage(`Signed ${ifaReport.playerName}. Remaining pool: ${formatMoney(result.remainingBudget)}.`);
       await refreshIFAPool();
       setIFAReport(null);
-      await autosaveActiveGame({ season });
     } catch (err) {
       logger.error('Failed to sign IFA player:', err);
       setActionMessage('Unable to finalize that signing.');
@@ -182,9 +194,12 @@ export function useScoutingPageController({
         setActionMessage(result.error);
         return;
       }
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) {
+        setActionMessage('That pool-space transfer could not be saved.');
+        return;
+      }
       setActionMessage(`Transferred ${formatMoney(amount)} of pool space. Remaining pool: ${formatMoney(result.remainingBudget)}.`);
       await refreshIFAPool();
-      await autosaveActiveGame({ season });
     } catch (err) {
       logger.error('Failed to trade IFA pool space:', err);
       setActionMessage('Unable to move pool space right now.');

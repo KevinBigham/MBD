@@ -4,15 +4,19 @@ import Dexie from 'dexie';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
+  MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION,
   parseGameSnapshot,
   type GameSnapshot,
 } from '@mbd/contracts';
 import currentSnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 import v17SnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v17/core.json';
 import deepV33SnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v33/season10.json';
+import { materializeSimulationImportDefaults } from '@mbd/sim-core';
 import {
   buildLeaderboardEntry,
+  assessSimAdvanceBaseline,
   clearAllSaves,
+  consumeSimAdvanceIntentRollback,
   createBranchSave,
   db,
   deleteSaveById,
@@ -23,19 +27,29 @@ import {
   listSaveTreeChildIds,
   loadSaveSafely,
   repairSave,
+  prepareSimAdvanceIntent,
+  readSimAdvanceIntentBaseline,
   restoreSaveIntegrityBackup,
   saveGame,
   saveGameById,
   type LeaderboardEntry,
   type SaveData,
 } from './saveSystem';
-import { verifySaveRecordIntegrity } from './saveIntegrity';
+import {
+  canonicalizeSaveIntegrityValue,
+  sealSaveRecord,
+  verifySaveRecordIntegrity,
+} from './saveIntegrity';
 
 const ROOT_ID = 'save-slot-1';
 const OTHER_ROOT_ID = 'save-slot-2';
 
+function materializedSnapshot(snapshot: unknown): GameSnapshot {
+  return materializeSimulationImportDefaults(parseGameSnapshot(snapshot));
+}
+
 function currentSnapshot(): GameSnapshot {
-  return parseGameSnapshot(currentSnapshotFixture);
+  return materializedSnapshot(currentSnapshotFixture);
 }
 
 function rootWriteMetadata(slotNumber = 1) {
@@ -77,6 +91,31 @@ function unsealedFixtureRecord(
     isRootSave: true,
     branchMeta: null,
   };
+}
+
+async function putSealedExactPair(record: SaveData): Promise<SaveData> {
+  const sealed = await sealSaveRecord(record);
+  await db.saves.put(sealed);
+  await db.saveIntegrityBackups.put(sealed);
+  return sealed;
+}
+
+function branchFixtureRecord(snapshot: unknown): SaveData {
+  return {
+    ...unsealedFixtureRecord(1, 'Branch baseline', snapshot),
+    id: 'branch-1',
+    slotNumber: null,
+    parentSaveId: ROOT_ID,
+    isRootSave: false,
+    branchMeta: null,
+  };
+}
+
+function rngOnlyMismatch(snapshot: GameSnapshot): GameSnapshot {
+  return parseGameSnapshot({
+    ...snapshot,
+    rng: { ...snapshot.rng, seed: snapshot.rng.seed + 1 },
+  });
 }
 
 async function expectValidPrimaryShadowPair(saveId: string): Promise<{
@@ -134,11 +173,11 @@ describe('saveSystem persisted integrity', () => {
     await db.delete();
   });
 
-  it('upgrades a real Dexie v4 database by adding an empty shadow store without rewriting checksumless data', async () => {
+  it('upgrades a real Dexie v5 database by adding an empty journal store without rewriting saved rows', async () => {
     db.close();
     await db.delete();
-    const currentRecord = unsealedFixtureRecord(1, 'Current v34 Primary', currentSnapshotFixture);
-    const oldRecord = unsealedFixtureRecord(2, 'Old v17 Primary', v17SnapshotFixture);
+    const currentRecord = await sealSaveRecord(unsealedFixtureRecord(1, 'Current v34 Primary', currentSnapshotFixture));
+    const oldRecord = await sealSaveRecord(unsealedFixtureRecord(2, 'Old v17 Primary', v17SnapshotFixture));
     const leaderboard = buildLeaderboardEntry(
       1,
       currentSnapshot(),
@@ -148,19 +187,25 @@ describe('saveSystem persisted integrity', () => {
     const oldBytes = JSON.stringify(oldRecord);
     const leaderboardBytes = JSON.stringify(leaderboard);
     const legacyDb = new Dexie('mbd-saves');
-    legacyDb.version(4).stores({
+    legacyDb.version(5).stores({
       saves: 'id, slotNumber, parentSaveId, updatedAt, hasSnapshot',
+      saveIntegrityBackups: 'id, parentSaveId, updatedAt',
       leaderboard: 'id, slotNumber, scenarioId, score, updatedAt',
     });
 
     try {
       await legacyDb.open();
-      expect(legacyDb.verno).toBe(4);
+      expect(legacyDb.verno).toBe(5);
       expect(legacyDb.tables.map((table) => table.name).sort()).toEqual([
         'leaderboard',
+        'saveIntegrityBackups',
         'saves',
       ]);
       await legacyDb.table<SaveData, string>('saves').bulkPut([
+        currentRecord,
+        oldRecord,
+      ]);
+      await legacyDb.table<SaveData, string>('saveIntegrityBackups').bulkPut([
         currentRecord,
         oldRecord,
       ]);
@@ -171,11 +216,12 @@ describe('saveSystem persisted integrity', () => {
 
     await db.open();
 
-    expect(db.verno).toBe(5);
+    expect(db.verno).toBe(6);
     expect(db.tables.map((table) => table.name).sort()).toEqual([
       'leaderboard',
       'saveIntegrityBackups',
       'saves',
+      'simAdvanceIntents',
     ]);
     const [persistedCurrent, persistedOld, persistedLeaderboard] = await Promise.all([
       db.saves.get(currentRecord.id),
@@ -188,7 +234,9 @@ describe('saveSystem persisted integrity', () => {
     expect(persistedCurrent?.updatedAt).toBe(currentRecord.updatedAt);
     expect(persistedOld?.updatedAt).toBe(oldRecord.updatedAt);
     expect(persistedLeaderboard?.updatedAt).toBe(leaderboard.updatedAt);
-    expect(await db.saveIntegrityBackups.count()).toBe(0);
+    expect(JSON.stringify(await db.saveIntegrityBackups.get(currentRecord.id))).toBe(currentBytes);
+    expect(JSON.stringify(await db.saveIntegrityBackups.get(oldRecord.id))).toBe(oldBytes);
+    expect(await db.simAdvanceIntents.count()).toBe(0);
 
     await expect(loadSaveSafely(currentRecord.id)).resolves.toMatchObject({
       ok: true,
@@ -213,7 +261,55 @@ describe('saveSystem persisted integrity', () => {
     expect(JSON.stringify(await db.saves.get(currentRecord.id))).toBe(currentBytes);
     expect(JSON.stringify(await db.saves.get(oldRecord.id))).toBe(oldBytes);
     expect(JSON.stringify(await db.leaderboard.get(leaderboard.id))).toBe(leaderboardBytes);
+    expect(JSON.stringify(await db.saveIntegrityBackups.get(currentRecord.id))).toBe(currentBytes);
+    expect(JSON.stringify(await db.saveIntegrityBackups.get(oldRecord.id))).toBe(oldBytes);
+    expect(await db.simAdvanceIntents.count()).toBe(0);
+  });
+
+  it('still opens a direct v4 checksumless/no-shadow database through the v5 and v6 declarations', async () => {
+    db.close();
+    await db.delete();
+    const currentRecord = unsealedFixtureRecord(1, 'Direct v4 Current', currentSnapshotFixture);
+    const oldRecord = unsealedFixtureRecord(2, 'Direct v4 Old', v17SnapshotFixture);
+    const leaderboard = buildLeaderboardEntry(1, currentSnapshot(), currentRecord.updatedAt);
+    const currentBytes = JSON.stringify(currentRecord);
+    const oldBytes = JSON.stringify(oldRecord);
+    const leaderboardBytes = JSON.stringify(leaderboard);
+    const legacyDb = new Dexie('mbd-saves');
+    legacyDb.version(4).stores({
+      saves: 'id, slotNumber, parentSaveId, updatedAt, hasSnapshot',
+      leaderboard: 'id, slotNumber, scenarioId, score, updatedAt',
+    });
+
+    try {
+      await legacyDb.open();
+      await legacyDb.table<SaveData, string>('saves').bulkPut([currentRecord, oldRecord]);
+      await legacyDb.table<LeaderboardEntry, string>('leaderboard').put(leaderboard);
+    } finally {
+      legacyDb.close();
+    }
+
+    await db.open();
+    expect(db.verno).toBe(6);
+    expect(db.tables.map((table) => table.name).sort()).toEqual([
+      'leaderboard',
+      'saveIntegrityBackups',
+      'saves',
+      'simAdvanceIntents',
+    ]);
+    await expect(loadSaveSafely(currentRecord.id)).resolves.toMatchObject({
+      ok: true,
+      snapshot: { schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION },
+    });
+    await expect(loadSaveSafely(oldRecord.id)).resolves.toMatchObject({
+      ok: true,
+      snapshot: { schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION },
+    });
+    expect(JSON.stringify(await db.saves.get(currentRecord.id))).toBe(currentBytes);
+    expect(JSON.stringify(await db.saves.get(oldRecord.id))).toBe(oldBytes);
+    expect(JSON.stringify(await db.leaderboard.get(leaderboard.id))).toBe(leaderboardBytes);
     expect(await db.saveIntegrityBackups.count()).toBe(0);
+    expect(await db.simAdvanceIntents.count()).toBe(0);
   });
 
   it('supports a v5-aware rollback tombstone before any legacy writer is re-enabled', async () => {
@@ -1525,5 +1621,397 @@ describe('saveSystem persisted integrity', () => {
     expect(await db.saves.get(ROOT_ID)).toEqual(racedDamage);
     expect(await db.saveIntegrityBackups.get(ROOT_ID)).toEqual(shadowBefore);
     expect(await db.leaderboard.get('leaderboard-dynasty-1')).toEqual(leaderboardBefore);
+  });
+
+  it('assesses an exact sealed current-v34 pair as ready without mutating any durable row', async () => {
+    await saveGame(1, 'Ready baseline', currentSnapshot());
+    const before = await Promise.all([
+      db.saves.get(ROOT_ID),
+      db.saveIntegrityBackups.get(ROOT_ID),
+      db.leaderboard.get('leaderboard-dynasty-1'),
+      db.simAdvanceIntents.toArray(),
+    ]);
+
+    const assessment = await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot());
+
+    expect(assessment.kind).toBe('ready');
+    if (assessment.kind === 'ready') {
+      expect(assessment.proof).toMatchObject({
+        saveId: ROOT_ID,
+        rootSaveId: ROOT_ID,
+        baseline: { id: ROOT_ID, schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION },
+        workerSnapshot: currentSnapshot(),
+      });
+    }
+    await expect(Promise.all([
+      db.saves.get(ROOT_ID),
+      db.saveIntegrityBackups.get(ROOT_ID),
+      db.leaderboard.get('leaderboard-dynasty-1'),
+      db.simAdvanceIntents.toArray(),
+    ])).resolves.toEqual(before);
+  });
+
+  it.each([
+    ['v17', v17SnapshotFixture],
+    ['deep v33', deepV33SnapshotFixture],
+  ] as const)('marks an exact sealed %s pair as a verified noncanonical seal candidate', async (_label, fixture) => {
+    const raw = unsealedFixtureRecord(1, 'Old exact pair', fixture);
+    await putSealedExactPair(raw);
+
+    const assessment = await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, materializedSnapshot(fixture));
+
+    expect(assessment).toMatchObject({
+      kind: 'seal_required',
+      proof: {
+        saveId: ROOT_ID,
+        rootSaveId: ROOT_ID,
+        source: 'verified_noncanonical_pair',
+        shadowCanonical: expect.any(String),
+      },
+    });
+  });
+
+  it.each([
+    ['current v34', currentSnapshotFixture],
+    ['v17', v17SnapshotFixture],
+    ['deep v33', deepV33SnapshotFixture],
+  ] as const)('marks checksumless/no-shadow %s primary as an unsealed seal candidate', async (_label, fixture) => {
+    await db.saves.put(unsealedFixtureRecord(1, 'Checksumless baseline', fixture));
+
+    const assessment = await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, materializedSnapshot(fixture));
+
+    expect(assessment).toMatchObject({
+      kind: 'seal_required',
+      proof: {
+        saveId: ROOT_ID,
+        rootSaveId: ROOT_ID,
+        source: 'unsealed_primary_no_shadow',
+        shadowCanonical: null,
+      },
+    });
+  });
+
+  it('marks an independently valid sealed current primary without a shadow as a seal candidate', async () => {
+    const sealed = await sealSaveRecord(unsealedFixtureRecord(1, 'Sealed without shadow', currentSnapshotFixture));
+    await db.saves.put(sealed);
+
+    const assessment = await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot());
+
+    expect(assessment).toMatchObject({
+      kind: 'seal_required',
+      proof: {
+        source: 'sealed_primary_no_shadow',
+        primaryCanonical: expect.any(String),
+        shadowCanonical: null,
+      },
+    });
+  });
+
+  it('binds a branch assessment to its exact save and verified root topology', async () => {
+    await saveGame(1, 'Branch root', currentSnapshot());
+    await putSealedExactPair(branchFixtureRecord(currentSnapshot()));
+
+    const assessment = await assessSimAdvanceBaseline('branch-1', ROOT_ID, currentSnapshot());
+
+    expect(assessment.kind).toBe('ready');
+    if (assessment.kind === 'ready') {
+      expect(assessment.proof.saveId).toBe('branch-1');
+      expect(assessment.proof.rootSaveId).toBe(ROOT_ID);
+      expect(assessment.proof.baseline.id).toBe('branch-1');
+    }
+  });
+
+  it.each(['ready pair', 'old pair', 'checksumless primary', 'sealed primary without shadow'] as const)(
+    'rejects an RNG-only worker mismatch for each %s assessment source',
+    async (source) => {
+      await db.saves.clear();
+      await db.saveIntegrityBackups.clear();
+      await db.leaderboard.clear();
+      const fixture = source === 'old pair' ? v17SnapshotFixture : currentSnapshotFixture;
+      const worker = materializedSnapshot(fixture);
+      if (source === 'ready pair') {
+        await saveGame(1, 'Ready pair', worker);
+      } else if (source === 'old pair') {
+        await putSealedExactPair(unsealedFixtureRecord(1, 'Old pair', fixture));
+      } else if (source === 'sealed primary without shadow') {
+        await db.saves.put(await sealSaveRecord(
+          unsealedFixtureRecord(1, 'Sealed primary without shadow', fixture),
+        ));
+      } else {
+        await db.saves.put(unsealedFixtureRecord(1, 'Checksumless primary', fixture));
+      }
+
+      await expect(assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, rngOnlyMismatch(worker)))
+        .rejects.toThrow('worker snapshot');
+    },
+  );
+
+  it('rejects valid but different primary/shadow generations instead of sealing them', async () => {
+    const raw = unsealedFixtureRecord(1, 'Generation primary', currentSnapshotFixture);
+    const primary = await sealSaveRecord(raw);
+    const shadow = await sealSaveRecord({
+      ...raw,
+      name: 'Generation shadow',
+      updatedAt: '2025-01-03T03:04:05.000Z',
+    });
+    await db.saves.put(primary);
+    await db.saveIntegrityBackups.put(shadow);
+
+    await expect(assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('exact baseline pair');
+  });
+
+  it('rejects a corrupt primary even when its shadow remains independently valid', async () => {
+    const sealed = await sealSaveRecord(unsealedFixtureRecord(1, 'Good shadow', currentSnapshotFixture));
+    await db.saves.put({ ...sealed, name: 'Tampered primary' });
+    await db.saveIntegrityBackups.put(sealed);
+
+    await expect(assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('exact baseline pair');
+  });
+
+  it('rejects checksumless primary/shadow pairs rather than treating them as a seal candidate', async () => {
+    const raw = unsealedFixtureRecord(1, 'Unsealed pair', currentSnapshotFixture);
+    await db.saves.put(raw);
+    await db.saveIntegrityBackups.put(raw);
+
+    await expect(assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('integrity-verified');
+  });
+
+  it('rejects wrong-root and missing-primary assessment evidence', async () => {
+    await saveGame(1, 'Root one', currentSnapshot());
+    await expect(assessSimAdvanceBaseline(ROOT_ID, OTHER_ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('requested exact save and dynasty tree');
+
+    await db.saves.clear();
+    const sealed = await sealSaveRecord(unsealedFixtureRecord(1, 'Shadow only', currentSnapshotFixture));
+    await db.saveIntegrityBackups.put(sealed);
+    await expect(assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('requested exact save and dynasty tree');
+  });
+
+  it('deep-freezes cloned ready and seal-required evidence without changing canonical proof material', async () => {
+    const assessments = [] as Array<Awaited<ReturnType<typeof assessSimAdvanceBaseline>>>;
+    await saveGame(1, 'Frozen ready baseline', currentSnapshot());
+    assessments.push(await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot()));
+
+    await db.saves.clear();
+    await db.saveIntegrityBackups.clear();
+    await db.leaderboard.clear();
+    await putSealedExactPair(unsealedFixtureRecord(1, 'Frozen old baseline', v17SnapshotFixture));
+    assessments.push(await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, materializedSnapshot(v17SnapshotFixture)));
+
+    for (const assessment of assessments) {
+      const { proof } = assessment;
+      const baselineCanonical = canonicalizeSaveIntegrityValue(proof.baseline);
+      const workerCanonical = canonicalizeSaveIntegrityValue(proof.workerSnapshot);
+      const snapshot = proof.baseline.snapshot!;
+      try { snapshot.rng.seed += 1; } catch { /* frozen evidence rejects mutation */ }
+      try { proof.workerSnapshot.rng.seed += 1; } catch { /* frozen evidence rejects mutation */ }
+      try { proof.baseline.parentSaveId = 'forged-root'; } catch { /* frozen evidence rejects mutation */ }
+      try { (snapshot.narrative.whatIfBranches as unknown as unknown[]).push('forged-branch'); } catch { /* frozen evidence rejects mutation */ }
+
+      expect(Object.isFrozen(assessment)).toBe(true);
+      expect(Object.isFrozen(proof)).toBe(true);
+      expect(Object.isFrozen(proof.baseline)).toBe(true);
+      expect(Object.isFrozen(snapshot)).toBe(true);
+      expect(Object.isFrozen(snapshot.rng)).toBe(true);
+      expect(Object.isFrozen(snapshot.narrative.whatIfBranches)).toBe(true);
+      expect(Object.isFrozen(proof.workerSnapshot)).toBe(true);
+      expect(Object.isFrozen(proof.workerSnapshot.rng)).toBe(true);
+      expect(canonicalizeSaveIntegrityValue(proof.baseline)).toBe(baselineCanonical);
+      expect(canonicalizeSaveIntegrityValue(proof.baseline)).toBe(proof.primaryCanonical);
+      expect(canonicalizeSaveIntegrityValue(proof.workerSnapshot)).toBe(workerCanonical);
+    }
+  });
+
+  it.each([
+    ['root slot mismatch', {
+      ...unsealedFixtureRecord(1, 'Wrong slot', currentSnapshot()),
+      slotNumber: 2,
+    }, ROOT_ID],
+    ['arbitrary root id', {
+      ...unsealedFixtureRecord(1, 'Arbitrary root', currentSnapshot()),
+      id: 'arbitrary-root',
+    }, 'arbitrary-root'],
+    ['leading-zero root identity', {
+      ...unsealedFixtureRecord(1, 'Leading-zero root', currentSnapshot()),
+      id: 'save-slot-01',
+    }, 'save-slot-01'],
+  ] as const)('rejects a validly sealed canonical root with %s', async (_label, record, rootId) => {
+    await putSealedExactPair(record);
+    await expect(assessSimAdvanceBaseline(record.id, rootId, currentSnapshot()))
+      .rejects.toThrow('requested exact save and dynasty tree');
+  });
+
+  it('rejects a structurally valid branch rooted at a leading-zero root identity', async () => {
+    const leadingZeroRootId = 'save-slot-01';
+    await putSealedExactPair({
+      ...unsealedFixtureRecord(1, 'Leading-zero root', currentSnapshot()),
+      id: leadingZeroRootId,
+    });
+    await putSealedExactPair({
+      ...branchFixtureRecord(currentSnapshot()),
+      parentSaveId: leadingZeroRootId,
+    });
+
+    await expect(assessSimAdvanceBaseline('branch-1', leadingZeroRootId, currentSnapshot()))
+      .rejects.toThrow('requested exact save and dynasty tree');
+  });
+
+  it('rejects a branch with a non-null slot number', async () => {
+    await saveGame(1, 'Canonical root', currentSnapshot());
+    await putSealedExactPair({ ...branchFixtureRecord(currentSnapshot()), slotNumber: 1 });
+
+    await expect(assessSimAdvanceBaseline('branch-1', ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('requested exact save and dynasty tree');
+  });
+
+  it.each([
+    ['stale slot', { slotNumber: 2 }],
+    ['non-null parent', { parentSaveId: 'save-slot-2' }],
+    ['non-root flag', { isRootSave: false }],
+  ] as const)('rejects a branch when its coherently read root has a %s', async (_label, mutation) => {
+    await saveGame(1, 'Canonical root', currentSnapshot());
+    const root = (await db.saves.get(ROOT_ID))!;
+    const malformedRoot = await sealSaveRecord({ ...root, ...mutation });
+    await db.saves.put(malformedRoot);
+    await db.saveIntegrityBackups.put(malformedRoot);
+    await putSealedExactPair(branchFixtureRecord(currentSnapshot()));
+
+    await expect(assessSimAdvanceBaseline('branch-1', ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('requested exact save and dynasty tree');
+  });
+
+  it.each([
+    ['old exact pair', 'verified_noncanonical_pair'],
+    ['checksumless/no-shadow', 'unsealed_primary_no_shadow'],
+    ['sealed/no-shadow', 'sealed_primary_no_shadow'],
+  ] as const)('binds a branch %s seal-required proof to the exact branch/root', async (source, expectedSource) => {
+    await saveGame(1, 'Canonical root', currentSnapshot());
+    if (source === 'old exact pair') {
+      await putSealedExactPair(branchFixtureRecord(v17SnapshotFixture));
+    } else if (source === 'checksumless/no-shadow') {
+      await db.saves.put(branchFixtureRecord(currentSnapshotFixture));
+    } else {
+      await db.saves.put(await sealSaveRecord(branchFixtureRecord(currentSnapshot())));
+    }
+
+    const worker = source === 'old exact pair' ? materializedSnapshot(v17SnapshotFixture) : currentSnapshot();
+    const assessment = await assessSimAdvanceBaseline('branch-1', ROOT_ID, worker);
+
+    expect(assessment).toMatchObject({
+      kind: 'seal_required',
+      proof: { saveId: 'branch-1', rootSaveId: ROOT_ID, source: expectedSource },
+    });
+  });
+
+  it('keeps the canonical branch journal path usable through exact intent prepare/read/rollback', async () => {
+    await saveGame(1, 'Canonical root', currentSnapshot());
+    await putSealedExactPair(branchFixtureRecord(currentSnapshot()));
+    const assessment = await assessSimAdvanceBaseline('branch-1', ROOT_ID, currentSnapshot());
+    expect(assessment.kind).toBe('ready');
+    if (assessment.kind !== 'ready') throw new Error('Expected canonical branch baseline to be ready.');
+
+    const intent = await prepareSimAdvanceIntent(assessment.proof, 'sim_day');
+    await expect(readSimAdvanceIntentBaseline('branch-1', ROOT_ID)).resolves.toMatchObject({
+      intent,
+      baseline: { id: 'branch-1', parentSaveId: ROOT_ID },
+    });
+    await consumeSimAdvanceIntentRollback(intent);
+    await expect(readSimAdvanceIntentBaseline('branch-1', ROOT_ID)).resolves.toBeNull();
+  });
+
+  it.each([
+    ['below minimum', MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION - 1],
+    ['above current', CURRENT_GAME_SNAPSHOT_VERSION + 1],
+  ] as const)('rejects a %s stored snapshot version before it can become seal evidence', async (_label, schemaVersion) => {
+    const unsupportedSnapshot = { ...currentSnapshot(), schemaVersion } as GameSnapshot;
+    const record = {
+      ...unsealedFixtureRecord(1, 'Unsupported baseline', unsupportedSnapshot),
+      schemaVersion,
+    };
+    await putSealedExactPair(record);
+
+    await expect(assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot()))
+      .rejects.toThrow('unsupported snapshot version');
+  });
+
+  it('marks a valid v34 pair with legacy gameState residue as noncanonical without writing', async () => {
+    const record = {
+      ...unsealedFixtureRecord(1, 'Legacy state residue', currentSnapshot()),
+      gameState: JSON.stringify({ stale: true }),
+    };
+    await putSealedExactPair(record);
+    const before = await Promise.all([
+      db.saves.get(ROOT_ID), db.saveIntegrityBackups.get(ROOT_ID),
+      db.leaderboard.toArray(), db.simAdvanceIntents.toArray(),
+    ]);
+
+    const assessment = await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot());
+
+    expect(assessment).toMatchObject({ kind: 'seal_required', proof: { source: 'verified_noncanonical_pair' } });
+    await expect(Promise.all([
+      db.saves.get(ROOT_ID), db.saveIntegrityBackups.get(ROOT_ID),
+      db.leaderboard.toArray(), db.simAdvanceIntents.toArray(),
+    ])).resolves.toEqual(before);
+  });
+
+  it('does not mint attempts for seal-required assessment evidence', async () => {
+    await saveGame(1, 'First ready', currentSnapshot());
+    const first = await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot());
+    if (first.kind !== 'ready') throw new Error('Expected first canonical baseline to be ready.');
+
+    await db.saves.clear();
+    await db.saveIntegrityBackups.clear();
+    await db.leaderboard.clear();
+    await putSealedExactPair(unsealedFixtureRecord(1, 'Old pair', v17SnapshotFixture));
+    expect((await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, materializedSnapshot(v17SnapshotFixture))).kind).toBe('seal_required');
+    await db.saves.clear();
+    await db.saveIntegrityBackups.clear();
+    await db.saves.put(unsealedFixtureRecord(1, 'Unsealed', currentSnapshotFixture));
+    expect((await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot())).kind).toBe('seal_required');
+    await db.saves.clear();
+    await db.saveIntegrityBackups.clear();
+    await db.saves.put(await sealSaveRecord(unsealedFixtureRecord(1, 'Sealed no shadow', currentSnapshot())));
+    expect((await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot())).kind).toBe('seal_required');
+
+    await db.saves.clear();
+    await db.saveIntegrityBackups.clear();
+    await db.leaderboard.clear();
+    await saveGame(1, 'Second ready', currentSnapshot());
+    const second = await assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, currentSnapshot());
+    if (second.kind !== 'ready') throw new Error('Expected second canonical baseline to be ready.');
+    expect(second.proof.attempt).toBe(first.proof.attempt + 1);
+  });
+
+  it.each([
+    ['verified noncanonical pair', 'pair'],
+    ['unsealed primary without shadow', 'unsealed'],
+    ['sealed primary without shadow', 'sealed'],
+  ] as const)('does not mutate any durable store while assessing %s', async (_label, source) => {
+    await saveGame(1, 'Leaderboard must remain', currentSnapshot());
+    if (source === 'pair') {
+      await putSealedExactPair(unsealedFixtureRecord(1, 'Old pair', v17SnapshotFixture));
+    } else if (source === 'unsealed') {
+      await db.saves.put(unsealedFixtureRecord(1, 'Unsealed no shadow', currentSnapshotFixture));
+      await db.saveIntegrityBackups.delete(ROOT_ID);
+    } else {
+      await db.saves.put(await sealSaveRecord(unsealedFixtureRecord(1, 'Sealed no shadow', currentSnapshot())));
+      await db.saveIntegrityBackups.delete(ROOT_ID);
+    }
+    const worker = source === 'pair' ? materializedSnapshot(v17SnapshotFixture) : currentSnapshot();
+    const before = await Promise.all([
+      db.saves.get(ROOT_ID), db.saveIntegrityBackups.get(ROOT_ID),
+      db.leaderboard.toArray(), db.simAdvanceIntents.toArray(),
+    ]);
+
+    await expect(assessSimAdvanceBaseline(ROOT_ID, ROOT_ID, worker)).resolves.toMatchObject({ kind: 'seal_required' });
+
+    await expect(Promise.all([
+      db.saves.get(ROOT_ID), db.saveIntegrityBackups.get(ROOT_ID),
+      db.leaderboard.toArray(), db.simAdvanceIntents.toArray(),
+    ])).resolves.toEqual(before);
   });
 });

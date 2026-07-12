@@ -3,14 +3,20 @@ import { parseGameSnapshot } from '@mbd/contracts';
 import snapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 import {
   ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS,
+  beginSimAdvancePersistenceLease,
+  captureSimAdvanceBaselineSeal,
+  captureSimAdvanceSnapshot,
+  closeCommittedSimAdvancePersistenceLeaseFailClosed,
   abortActiveSaveSessionTransition,
   activateActiveSavePersistenceMetadata,
   completeActiveSaveSessionTransition,
   markActiveSaveSessionTransitionOwnershipCommitted,
   createActiveSavePersistenceBackup,
+  finishSimAdvancePersistenceLease,
   getActiveSavePersistenceStatus,
   isActiveSavePersistenceReceiptDurable,
   persistActiveSaveSnapshot,
+  poisonSimAdvancePersistenceLease,
   prepareActiveSaveSessionTransition,
   prepareActiveSavePersistenceForLoad,
   reconcileActiveSavePersistenceMetadata,
@@ -19,13 +25,18 @@ import {
   resetActiveSavePersistenceForTesting,
   restoreInactiveSaveIntegrityBackup,
   retireActiveSavePersistenceForDelete,
+  retireSaveTreePersistenceForDelete,
   retryActiveSavePersistence,
   subscribeToActiveSavePersistenceStatus,
   trackActiveSavePersistenceOperation,
+  waitForActiveSavePersistenceReceipt,
+  SimAdvancePersistenceAdmissionBlockedError,
   type ActiveSavePersistenceReceipt,
 } from './activeSavePersistence';
 import {
   deleteSaveById,
+  commitSimAdvanceSnapshot,
+  commitSimAdvanceBaselineSeal,
   importSnapshotFromJson,
   listSaveTreeChildIds,
   loadGameById,
@@ -33,11 +44,16 @@ import {
   saveGameById,
   scheduleAutoSave,
   type SaveData,
+  type SimAdvanceBaselineSealProof,
+  type SimAdvanceIntent,
+  SimAdvanceEvidenceConflictError,
 } from './saveSystem';
+import { SaveIntegrityUnavailableError } from './saveIntegrity';
 import {
   beginWorkerMutation,
   finishWorkerMutation,
 } from './workerMutationSession';
+import { SaveSessionOwnershipError } from './saveSessionOwnership';
 
 vi.mock('./saveSystem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./saveSystem')>();
@@ -48,6 +64,8 @@ vi.mock('./saveSystem', async (importOriginal) => {
     loadGameById: vi.fn(),
     restoreSaveIntegrityBackup: vi.fn(),
     saveGameById: vi.fn(),
+    commitSimAdvanceBaselineSeal: vi.fn(),
+    commitSimAdvanceSnapshot: vi.fn(),
     scheduleAutoSave: vi.fn(),
   };
 });
@@ -57,6 +75,8 @@ const mockedDeleteSaveById = vi.mocked(deleteSaveById);
 const mockedListSaveTreeChildIds = vi.mocked(listSaveTreeChildIds);
 const mockedRestoreSaveIntegrityBackup = vi.mocked(restoreSaveIntegrityBackup);
 const mockedSaveGameById = vi.mocked(saveGameById);
+const mockedCommitSimAdvanceBaselineSeal = vi.mocked(commitSimAdvanceBaselineSeal);
+const mockedCommitSimAdvanceSnapshot = vi.mocked(commitSimAdvanceSnapshot);
 const mockedScheduleAutoSave = vi.mocked(scheduleAutoSave);
 
 async function flushPromises(times = 5) {
@@ -76,6 +96,45 @@ function savedRecord(
   } as SaveData;
 }
 
+function baselineSealProof(
+  saveId = 'save-slot-2',
+  rootSaveId = saveId,
+  name = 'Assessed Baseline Name',
+): SimAdvanceBaselineSealProof {
+  return {
+    saveId,
+    rootSaveId,
+    source: 'unsealed_primary_no_shadow',
+    baseline: { id: saveId, name } as SaveData,
+    workerSnapshot: { schemaVersion: 34, season: 7, day: 12, phase: 'regular' } as never,
+    primaryCanonical: `primary:${saveId}`,
+    shadowCanonical: null,
+  } as unknown as SimAdvanceBaselineSealProof;
+}
+
+function simAdvanceIntent(
+  overrides: Partial<SimAdvanceIntent> = {},
+): SimAdvanceIntent {
+  return {
+    journalVersion: 1,
+    saveId: 'save-slot-2',
+    rootSaveId: 'save-slot-2',
+    operation: 'sim_day',
+    baselineChecksum: 'a'.repeat(64),
+    baselineSeason: 7,
+    baselineDay: 12,
+    baselinePhase: 'regular',
+    attempt: 100,
+    token: 'sim-intent-100',
+    ...overrides,
+  };
+}
+
+async function beginActivatedSimAdvanceLease(saveId = 'save-slot-2', rootSaveId = saveId) {
+  activateActiveSavePersistenceMetadata(savedRecord(saveId));
+  return beginSimAdvancePersistenceLease(saveId, rootSaveId);
+}
+
 describe('persistActiveSaveSnapshot', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -85,6 +144,8 @@ describe('persistActiveSaveSnapshot', () => {
     mockedListSaveTreeChildIds.mockResolvedValue([]);
     mockedRestoreSaveIntegrityBackup.mockImplementation(async (id) => savedRecord(id));
     mockedSaveGameById.mockImplementation(async (id) => savedRecord(id));
+    mockedCommitSimAdvanceBaselineSeal.mockImplementation(async (proof) => savedRecord(proof.saveId));
+    mockedCommitSimAdvanceSnapshot.mockImplementation(async (intent) => savedRecord(intent.saveId));
   });
 
   afterEach(() => {
@@ -160,6 +221,898 @@ describe('persistActiveSaveSnapshot', () => {
       lastSavedAt: '2026-04-02T19:42:03.000Z',
     });
   });
+
+  it('does not reclassify a committed save as failed when a status observer throws', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const unsubscribe = subscribeToActiveSavePersistenceStatus(() => {
+      throw new Error('observer failure');
+    });
+    const snapshot = { schemaVersion: 34, season: 7, day: 12, phase: 'regular' };
+
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2',
+      activeSaveSlot: 2,
+      gmName: 'Alex Rivera',
+      teamName: 'Tycoons',
+      season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue(snapshot),
+    })).resolves.toEqual({ saved: true, saveName: 'Alex Rivera • Tycoons • Season 7' });
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'saved',
+      pendingWrites: 0,
+      failureKind: null,
+    });
+    expect(consoleError).toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it('settles a journal receipt only after its exact intent-bearing commit is durable', async () => {
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2',
+      operation: 'sim_day' as const, baselineChecksum: 'a'.repeat(64), baselineSeason: 7,
+      baselineDay: 12, baselinePhase: 'regular' as const, attempt: 1, token: 'token',
+    };
+    const snapshot = { schemaVersion: 34, season: 7, day: 13, phase: 'regular' };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue(snapshot),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledWith(intent, 'Alex • Tycoons • Season 7', snapshot);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('requires the exact activated persistence owner before leasing a simulation save', async () => {
+    const before = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+    await expect(beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2'))
+      .rejects.toThrow('exact activated active save owner');
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(before);
+    const lease = await beginActivatedSimAdvanceLease();
+    await expect(beginSimAdvancePersistenceLease('save-slot-3', 'save-slot-3'))
+      .rejects.toThrow('exact activated active save owner');
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('keeps a journal receipt pending through first storage failure and manually retries the exact frozen job', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (intent) => savedRecord(intent.saveId));
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' });
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_day' as const,
+      baselineChecksum: 'b'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 2, token: 'token-2',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    await vi.runAllTicks();
+    expect(getActiveSavePersistenceStatus('save-slot-2').state).toBe('failed');
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ pendingWrites: 1, canRetry: true });
+    await retryActiveSavePersistence('save-slot-2');
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(2);
+    const retainedIntent = mockedCommitSimAdvanceSnapshot.mock.calls[0]?.[0];
+    expect(retainedIntent).not.toBe(intent);
+    expect(retainedIntent).toEqual(intent);
+    expect(Object.isFrozen(retainedIntent)).toBe(true);
+    expect(mockedCommitSimAdvanceSnapshot.mock.calls[1]?.[0]).toBe(retainedIntent);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('automatically retries the exact retained journal job without a second export', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (intent) => savedRecord(intent.saveId));
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' });
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_week' as const,
+      baselineChecksum: 'c'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 3, token: 'token-3',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', pendingWrites: 1 });
+    await vi.advanceTimersByTimeAsync(ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[0]);
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(2);
+    const retainedIntent = mockedCommitSimAdvanceSnapshot.mock.calls[0]?.[0];
+    expect(retainedIntent).not.toBe(intent);
+    expect(retainedIntent).toEqual(intent);
+    expect(Object.isFrozen(retainedIntent)).toBe(true);
+    expect(mockedCommitSimAdvanceSnapshot.mock.calls[1]?.[0]).toBe(retainedIntent);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('keeps a journal receipt pending through exhausted automatic retries until manual recovery', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (intent) => savedRecord(intent.saveId));
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' });
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_month' as const,
+      baselineChecksum: 'd'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 4, token: 'token-4',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    await vi.advanceTimersByTimeAsync(ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[0]);
+    await vi.advanceTimersByTimeAsync(ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[1]);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: true, pendingWrites: 1, recovery: { phase: 'fallback_ready' } });
+    await retryActiveSavePersistence('save-slot-2');
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(4);
+    const retainedIntent = mockedCommitSimAdvanceSnapshot.mock.calls[0]?.[0];
+    expect(retainedIntent).not.toBe(intent);
+    expect(mockedCommitSimAdvanceSnapshot.mock.calls.every((call) => call[0] === retainedIntent)).toBe(true);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('blocks ordinary capture before export while a simulation lease owns the save', async () => {
+    const lease = await beginActivatedSimAdvanceLease();
+    const ordinaryExport = vi.fn();
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: ordinaryExport,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(ordinaryExport).not.toHaveBeenCalled();
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('writes a baseline seal through its exact lease and settles only after durable save', async () => {
+    const lease = await beginActivatedSimAdvanceLease();
+    const proof = baselineSealProof();
+    const snapshot = { schemaVersion: 34, season: 7, day: 12, phase: 'regular' };
+    const receipt = await captureSimAdvanceBaselineSeal(lease, proof, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue(snapshot),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+    const committedSnapshot = mockedCommitSimAdvanceBaselineSeal.mock.calls[0]?.[1];
+    expect(mockedCommitSimAdvanceBaselineSeal).toHaveBeenCalledWith(proof, committedSnapshot);
+    expect(committedSnapshot).not.toBe(snapshot);
+    expect(Object.isFrozen(committedSnapshot!)).toBe(true);
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    expect(mockedLoadGameById).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'saved', pendingWrites: 0, saveName: proof.baseline.name });
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('rejects wrong baseline proof save/root before export or status mutation', async () => {
+    const lease = await beginActivatedSimAdvanceLease();
+    const exportSnapshot = vi.fn();
+    const before = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+
+    expect(() => captureSimAdvanceBaselineSeal(lease, baselineSealProof('save-slot-3'), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    })).toThrow('does not match persistence lease');
+    expect(() => captureSimAdvanceBaselineSeal(lease, baselineSealProof('save-slot-2', 'save-slot-3'), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    })).toThrow('does not match persistence lease');
+
+    expect(exportSnapshot).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(before);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('dispatches root and branch baseline proof/lease pairs directly without ordinary save reads', async () => {
+    const rootLease = await beginActivatedSimAdvanceLease();
+    const rootProof = baselineSealProof();
+    const rootExport = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular', nested: { value: 1 } });
+    const rootReceipt = await captureSimAdvanceBaselineSeal(rootLease, rootProof, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7, exportSnapshot: rootExport,
+    });
+    await expect(waitForActiveSavePersistenceReceipt(rootReceipt)).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceBaselineSeal.mock.calls[0]?.[0]).toBe(rootProof);
+    expect(mockedCommitSimAdvanceBaselineSeal.mock.calls[0]?.[1]).not.toBeUndefined();
+    expect(mockedLoadGameById).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    finishSimAdvancePersistenceLease(rootLease);
+
+    const branchLease = await beginActivatedSimAdvanceLease('branch-2', 'save-slot-2');
+    const branchProof = baselineSealProof('branch-2', 'save-slot-2', 'Branch assessed name');
+    const branchExport = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' });
+    const branchReceipt = await captureSimAdvanceBaselineSeal(branchLease, branchProof, {
+      activeSaveId: 'branch-2', activeSaveSlot: null, gmName: 'Ignored', teamName: 'Ignored', season: 7, exportSnapshot: branchExport,
+    });
+    await expect(waitForActiveSavePersistenceReceipt(branchReceipt)).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceBaselineSeal.mock.calls[1]?.[0]).toBe(branchProof);
+    expect(mockedLoadGameById).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    finishSimAdvancePersistenceLease(branchLease);
+  });
+
+  it('automatically retries one immutable baseline job without re-exporting or replacing proof/snapshot identity', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceBaselineSeal
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (proof) => savedRecord(proof.saveId));
+    const lease = await beginActivatedSimAdvanceLease();
+    const proof = baselineSealProof();
+    const exported = { schemaVersion: 34, season: 7, day: 12, phase: 'regular', nested: { seed: 7 } };
+    const exportSnapshot = vi.fn().mockResolvedValue(exported);
+    const receipt = await captureSimAdvanceBaselineSeal(lease, proof, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Wrong', teamName: 'Wrong', season: 7, exportSnapshot,
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    const firstSnapshot = mockedCommitSimAdvanceBaselineSeal.mock.calls[0]?.[1];
+    expect(Object.isFrozen(firstSnapshot!)).toBe(true);
+    expect(Object.isFrozen((firstSnapshot as { nested: object }).nested)).toBe(true);
+    expect(firstSnapshot).not.toBe(exported);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ desiredGeneration: 1, durableGeneration: 0, pendingWrites: 1 });
+
+    await vi.advanceTimersByTimeAsync(ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[0]);
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceBaselineSeal).toHaveBeenCalledTimes(2);
+    expect(mockedCommitSimAdvanceBaselineSeal.mock.calls[0]?.[0]).toBe(proof);
+    expect(mockedCommitSimAdvanceBaselineSeal.mock.calls[1]?.[0]).toBe(proof);
+    expect(mockedCommitSimAdvanceBaselineSeal.mock.calls[1]?.[1]).toBe(firstSnapshot);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('retains the same baseline proof/snapshot/receipt through exhausted automatic recovery until manual retry', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceBaselineSeal
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (proof) => savedRecord(proof.saveId));
+    const lease = await beginActivatedSimAdvanceLease();
+    const proof = baselineSealProof();
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' });
+    const receipt = await captureSimAdvanceBaselineSeal(lease, proof, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7, exportSnapshot,
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    const snapshot = mockedCommitSimAdvanceBaselineSeal.mock.calls[0]?.[1];
+    await vi.advanceTimersByTimeAsync(ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[0]);
+    await vi.advanceTimersByTimeAsync(ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[1]);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: true, pendingWrites: 1, recovery: { phase: 'fallback_ready' } });
+
+    await retryActiveSavePersistence('save-slot-2');
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceBaselineSeal).toHaveBeenCalledTimes(4);
+    expect(mockedCommitSimAdvanceBaselineSeal.mock.calls.every((call) => call[0] === proof && call[1] === snapshot)).toBe(true);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it.each([
+    ['CAS evidence', new SimAdvanceEvidenceConflictError('IndexedDB transaction storage blocked by CAS evidence')],
+    ['snapshot evidence', new SimAdvanceEvidenceConflictError('storage snapshot proof mismatch')],
+    ['topology evidence', new SimAdvanceEvidenceConflictError('transaction topology changed')],
+    ['intent evidence', new SimAdvanceEvidenceConflictError('blocked journal intent evidence')],
+  ])('treats typed %s failure as terminal even when its message resembles storage', async (_label, error) => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceBaselineSeal.mockRejectedValueOnce(error);
+    const lease = await beginActivatedSimAdvanceLease();
+    const proof = baselineSealProof();
+    const receipt = await captureSimAdvanceBaselineSeal(lease, proof, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toEqual({ kind: 'retired', reason: 'fail_closed' });
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: false, pendingWrites: 1, recovery: null });
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(retryActiveSavePersistence('save-slot-2')).resolves.toEqual({ saved: false, saveName: null });
+    expect(mockedCommitSimAdvanceBaselineSeal).toHaveBeenCalledTimes(1);
+    await expect(beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2')).rejects.toThrow('fail-closed');
+  });
+
+  it('treats baseline ownership loss as terminal without scheduling recovery', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceBaselineSeal.mockRejectedValueOnce(new SaveSessionOwnershipError('not_owner', 'ownership lost', 'save-slot-2'));
+    const lease = await beginActivatedSimAdvanceLease();
+    const receipt = await captureSimAdvanceBaselineSeal(lease, baselineSealProof(), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toEqual({ kind: 'retired', reason: 'ownership_lost' });
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: false, pendingWrites: 1, recovery: null });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('committed-closes the exact durable baseline receipt without falsifying durable status', async () => {
+    const lease = await beginActivatedSimAdvanceLease();
+    const proof = baselineSealProof();
+    const receipt = await captureSimAdvanceBaselineSeal(lease, proof, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    const outcome = await waitForActiveSavePersistenceReceipt(receipt);
+    const before = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+
+    closeCommittedSimAdvancePersistenceLeaseFailClosed(lease, receipt);
+
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(before);
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toEqual(outcome);
+    expect(isActiveSavePersistenceReceiptDurable(receipt)).toBe(true);
+    const ordinaryExport = vi.fn();
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot: ordinaryExport,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(ordinaryExport).not.toHaveBeenCalled();
+    await expect(beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2')).rejects.toThrow('fail-closed');
+
+    await prepareActiveSavePersistenceForLoad('save-slot-2');
+    releaseActiveSavePersistenceLoad('save-slot-2');
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot: ordinaryExport,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(ordinaryExport).not.toHaveBeenCalled();
+
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    const reopenedLease = await beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2');
+    finishSimAdvancePersistenceLease(reopenedLease);
+  });
+
+  it('rejects stale, non-durable, and nonquiescent committed-close requests without state mutation', async () => {
+    let resolveCommit!: (record: SaveData) => void;
+    mockedCommitSimAdvanceBaselineSeal.mockImplementationOnce(() => new Promise<SaveData>((resolve) => {
+      resolveCommit = resolve;
+    }));
+    const lease = await beginActivatedSimAdvanceLease();
+    const receipt = await captureSimAdvanceBaselineSeal(lease, baselineSealProof(), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await flushPromises();
+    const beforeRunning = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+    const staleReceipt = { generation: receipt.generation + 1, saveId: receipt.saveId } as ActiveSavePersistenceReceipt;
+    expect(() => closeCommittedSimAdvancePersistenceLeaseFailClosed(lease, receipt)).toThrow('exact quiescent durable receipt');
+    expect(() => closeCommittedSimAdvancePersistenceLeaseFailClosed(lease, staleReceipt)).toThrow('not an exact issued simulation receipt');
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(beforeRunning);
+
+    resolveCommit(savedRecord('save-slot-2'));
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+    const beforeDurable = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+    expect(() => closeCommittedSimAdvancePersistenceLeaseFailClosed(lease, staleReceipt)).toThrow('not an exact issued simulation receipt');
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(beforeDurable);
+    expect(() => poisonSimAdvancePersistenceLease(lease)).toThrow('durable simulation receipt');
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(beforeDurable);
+    closeCommittedSimAdvancePersistenceLeaseFailClosed(lease, receipt);
+  });
+
+  it('keeps poison fail-closed through load release until coherent activation', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceBaselineSeal.mockRejectedValueOnce(new Error('IndexedDB storage failure'));
+    const lease = await beginActivatedSimAdvanceLease();
+    const receipt = await captureSimAdvanceBaselineSeal(lease, baselineSealProof(), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await flushPromises(10);
+    poisonSimAdvancePersistenceLease(lease);
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toEqual({ kind: 'retired', reason: 'fail_closed' });
+    releaseActiveSavePersistenceLoad('save-slot-2');
+    const ordinaryExport = vi.fn();
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot: ordinaryExport,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(ordinaryExport).not.toHaveBeenCalled();
+    await expect(beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2')).rejects.toThrow('fail-closed');
+
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    const reopenedLease = await beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2');
+    finishSimAdvancePersistenceLease(reopenedLease);
+  });
+
+  it('poisons a retained journal receipt without leaving a retry waiter', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot.mockRejectedValueOnce(new Error('IndexedDB storage failure'));
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_day' as const,
+      baselineChecksum: 'f'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 6, token: 'token-6',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' }),
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    poisonSimAdvancePersistenceLease(lease);
+    await expect(settlement).resolves.toEqual({ kind: 'retired', reason: 'fail_closed' });
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: false, pendingWrites: 1 });
+    await expect(retryActiveSavePersistence('save-slot-2')).resolves.toEqual({ saved: false, saveName: null });
+    expect(() => finishSimAdvancePersistenceLease(lease)).toThrow();
+  });
+
+  it.each(['baseline seal', 'post snapshot'] as const)(
+    'does not pre-settle a running %s receipt when fail-closed poison races a later durable commit',
+    async (kind) => {
+      let resolveCommit!: (record: SaveData) => void;
+      if (kind === 'baseline seal') {
+        mockedCommitSimAdvanceBaselineSeal.mockImplementationOnce(() => new Promise<SaveData>((resolve) => {
+          resolveCommit = resolve;
+        }));
+      } else {
+        mockedCommitSimAdvanceSnapshot.mockImplementationOnce(() => new Promise<SaveData>((resolve) => {
+          resolveCommit = resolve;
+        }));
+      }
+      const lease = await beginActivatedSimAdvanceLease();
+      const receipt = kind === 'baseline seal'
+        ? await captureSimAdvanceBaselineSeal(lease, baselineSealProof(), {
+          activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+          exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+        })
+        : await captureSimAdvanceSnapshot(lease, simAdvanceIntent({ attempt: 701 }), {
+          activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+          exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' }),
+        });
+      const settlement = waitForActiveSavePersistenceReceipt(receipt);
+      await flushPromises();
+      poisonSimAdvancePersistenceLease(lease);
+      expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: false, pendingWrites: 1 });
+
+      resolveCommit(savedRecord('save-slot-2'));
+      await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+      expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+        state: 'saved', pendingWrites: 0, canRetry: false, recovery: null,
+      });
+      const ordinaryExport = vi.fn();
+      await expect(persistActiveSaveSnapshot({
+        activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot: ordinaryExport,
+      })).resolves.toEqual({ saved: false, saveName: null });
+      expect(ordinaryExport).not.toHaveBeenCalled();
+      await expect(beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2')).rejects.toThrow('fail-closed');
+    },
+  );
+
+  it.each(['baseline seal', 'post snapshot'] as const)(
+    'retires a running fail-closed %s receipt once on later storage rejection without retry resurrection',
+    async (kind) => {
+    vi.useFakeTimers();
+    let rejectCommit!: (error: Error) => void;
+    const holdRejection = () => new Promise<SaveData>((_resolve, reject) => {
+      rejectCommit = reject;
+    });
+    if (kind === 'baseline seal') {
+      mockedCommitSimAdvanceBaselineSeal.mockImplementationOnce(holdRejection);
+    } else {
+      mockedCommitSimAdvanceSnapshot.mockImplementationOnce(holdRejection);
+    }
+    const lease = await beginActivatedSimAdvanceLease();
+    const receipt = kind === 'baseline seal'
+      ? await captureSimAdvanceBaselineSeal(lease, baselineSealProof(), {
+        activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+        exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+      })
+      : await captureSimAdvanceSnapshot(lease, simAdvanceIntent({ attempt: 702 }), {
+        activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+        exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' }),
+      });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises();
+    poisonSimAdvancePersistenceLease(lease);
+    rejectCommit(new Error('IndexedDB storage failure'));
+    await expect(settlement).resolves.toEqual({ kind: 'retired', reason: 'fail_closed' });
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'failed', pendingWrites: 1, canRetry: false, recovery: null,
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(retryActiveSavePersistence('save-slot-2')).resolves.toEqual({ saved: false, saveName: null });
+    expect(kind === 'baseline seal'
+      ? mockedCommitSimAdvanceBaselineSeal
+      : mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(1);
+  },
+  );
+
+  it('preserves the exact retained journal job across every conflicting persistence lifecycle API', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (intent) => savedRecord(intent.saveId));
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' });
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_day' as const,
+      baselineChecksum: '1'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 7, token: 'token-7',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    const before = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+    const assertUnchanged = () => expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(before);
+    const replace = vi.fn();
+    const deleteRecord = vi.fn();
+    const metadata = vi.fn();
+    const ordinaryExport = vi.fn();
+    const treeDelete = vi.fn();
+    const restoreCalls = mockedRestoreSaveIntegrityBackup.mock.calls.length;
+
+    expect(() => reconcileActiveSavePersistenceMetadata(savedRecord('save-slot-2'))).toThrow('active simulation persistence lease');
+    assertUnchanged();
+    await expect(prepareActiveSavePersistenceForLoad('save-slot-2')).rejects.toThrow('active simulation persistence lease');
+    assertUnchanged();
+    expect(() => releaseActiveSavePersistenceLoad('save-slot-2')).toThrow('active simulation persistence lease');
+    assertUnchanged();
+    expect(() => activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'))).toThrow('active simulation persistence lease');
+    assertUnchanged();
+    const transitionExport = vi.fn();
+    await expect(prepareActiveSaveSessionTransition('save-slot-3', {
+      persistOutgoingSnapshot: () => persistActiveSaveSnapshot({
+        activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+        exportSnapshot: transitionExport,
+      }),
+    })).rejects.toThrow();
+    expect(transitionExport).not.toHaveBeenCalled();
+    assertUnchanged();
+    const permit = beginWorkerMutation('save-slot-2');
+    finishWorkerMutation(permit);
+    assertUnchanged();
+    await expect(replaceInactiveSavePersistenceRecord('save-slot-2', replace)).rejects.toThrow('active simulation persistence lease');
+    expect(replace).not.toHaveBeenCalled();
+    assertUnchanged();
+    await expect(retireActiveSavePersistenceForDelete('save-slot-2', deleteRecord)).rejects.toThrow('active simulation persistence lease');
+    expect(deleteRecord).not.toHaveBeenCalled();
+    assertUnchanged();
+    await expect(restoreInactiveSaveIntegrityBackup('save-slot-2')).rejects.toThrow('active simulation persistence lease');
+    expect(mockedRestoreSaveIntegrityBackup.mock.calls).toHaveLength(restoreCalls);
+    assertUnchanged();
+    await expect(retireSaveTreePersistenceForDelete('save-slot-2', treeDelete)).rejects.toThrow('active simulation persistence lease');
+    expect(treeDelete).not.toHaveBeenCalled();
+    assertUnchanged();
+    await expect(trackActiveSavePersistenceOperation('save-slot-2', metadata)).rejects.toThrow('active simulation persistence lease');
+    expect(metadata).not.toHaveBeenCalled();
+    assertUnchanged();
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot: ordinaryExport,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(ordinaryExport).not.toHaveBeenCalled();
+    assertUnchanged();
+
+    await retryActiveSavePersistence('save-slot-2');
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceSnapshot.mock.calls.map((call) => call[0])).toEqual([intent, intent]);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('rejects metadata persistence before its operation can run while a lease is held', async () => {
+    const lease = await beginActivatedSimAdvanceLease();
+    const operation = vi.fn();
+    await expect(trackActiveSavePersistenceOperation('save-slot-2', operation)).rejects.toThrow('active simulation persistence lease');
+    expect(operation).not.toHaveBeenCalled();
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('retires a journal receipt without scheduling retry when journal evidence fails terminally', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot.mockRejectedValueOnce(new Error('Simulation journal baseline CAS evidence mismatch'));
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_day' as const,
+      baselineChecksum: 'e'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 5, token: 'token-5',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' }),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toEqual({ kind: 'retired', reason: 'fail_closed' });
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: false, pendingWrites: 1 });
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(retryActiveSavePersistence('save-slot-2')).resolves.toEqual({ saved: false, saveName: null });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires an in-flight journal receipt as ownership_lost without retry', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot.mockRejectedValueOnce(new SaveSessionOwnershipError(
+      'not_owner', 'This tab does not own the dynasty save tree.', 'save-slot-2',
+    ));
+    const lease = await beginActivatedSimAdvanceLease();
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' });
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_day' as const,
+      baselineChecksum: '2'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 8, token: 'token-8',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    });
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toEqual({ kind: 'retired', reason: 'ownership_lost' });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(1);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', canRetry: false, pendingWrites: 1, recovery: null });
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(retryActiveSavePersistence('save-slot-2')).resolves.toEqual({ saved: false, saveName: null });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(1);
+    expect(() => finishSimAdvancePersistenceLease(lease)).toThrow();
+  });
+
+  it('reset settles a pending retained journal receipt exactly once', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot.mockRejectedValueOnce(new Error('IndexedDB storage failure'));
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = {
+      journalVersion: 1 as const, saveId: 'save-slot-2', rootSaveId: 'save-slot-2', operation: 'sim_day' as const,
+      baselineChecksum: '3'.repeat(64), baselineSeason: 7, baselineDay: 12, baselinePhase: 'regular' as const, attempt: 9, token: 'token-9',
+    };
+    const receipt = await captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' }),
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ recovery: { phase: 'retry_scheduled' } });
+    resetActiveSavePersistenceForTesting();
+    await expect(settlement).resolves.toEqual({ kind: 'retired', reason: 'reset' });
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts receipt waiters only for the exact issued live simulation receipt', async () => {
+    let ordinaryReceipt: ActiveSavePersistenceReceipt | undefined;
+    await persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+      onSnapshotAccepted: (receipt) => { ordinaryReceipt = receipt; },
+    });
+    expect(ordinaryReceipt).toBeDefined();
+    expect(() => waitForActiveSavePersistenceReceipt(ordinaryReceipt!))
+      .toThrow('not an exact issued simulation receipt');
+
+    const lease = await beginActivatedSimAdvanceLease();
+    const receipt = await captureSimAdvanceBaselineSeal(lease, baselineSealProof(), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+    const spreadReceipt = { ...receipt } as ActiveSavePersistenceReceipt;
+    expect(() => waitForActiveSavePersistenceReceipt(spreadReceipt))
+      .toThrow('not an exact issued simulation receipt');
+
+    resetActiveSavePersistenceForTesting();
+    expect(() => waitForActiveSavePersistenceReceipt(receipt))
+      .toThrow('not an exact issued simulation receipt');
+  });
+
+  it('retains one frozen private intent across caller mutation and retry', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (intent) => savedRecord(intent.saveId));
+    let resolveExport!: (snapshot: object) => void;
+    const exportSnapshot = vi.fn(() => new Promise<object>((resolve) => { resolveExport = resolve; }));
+    const lease = await beginActivatedSimAdvanceLease();
+    const intent = simAdvanceIntent({ attempt: 101, token: 'before-export' });
+    const capture = captureSimAdvanceSnapshot(lease, intent, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    });
+    (intent as { token: string; operation: SimAdvanceIntent['operation'] }).token = 'caller-mutated-before-export';
+    (intent as { operation: SimAdvanceIntent['operation'] }).operation = 'sim_month';
+    resolveExport({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' });
+    const receipt = await capture;
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    (intent as { token: string; baselineDay: number }).token = 'caller-mutated-after-failure';
+    (intent as { token: string; baselineDay: number }).baselineDay = 99;
+    await retryActiveSavePersistence('save-slot-2');
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+
+    const retained = mockedCommitSimAdvanceSnapshot.mock.calls[0]?.[0];
+    expect(retained).not.toBe(intent);
+    expect(retained).toMatchObject({ token: 'before-export', operation: 'sim_day', baselineDay: 12 });
+    expect(Object.isFrozen(retained)).toBe(true);
+    expect(mockedCommitSimAdvanceSnapshot.mock.calls[1]?.[0]).toBe(retained);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('rejects a non-cloneable intent before export without accepting a receipt or job', async () => {
+    const lease = await beginActivatedSimAdvanceLease();
+    const before = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+    const exportSnapshot = vi.fn();
+    const nonCloneable = {
+      ...simAdvanceIntent({ attempt: 102 }),
+      unsupportedRuntimeField: () => undefined,
+    } as unknown as SimAdvanceIntent;
+
+    await expect(captureSimAdvanceSnapshot(lease, nonCloneable, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    })).rejects.toThrow();
+    expect(exportSnapshot).not.toHaveBeenCalled();
+    expect(mockedCommitSimAdvanceSnapshot).not.toHaveBeenCalled();
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(before);
+
+    // No receipt or generation was accepted, so the still-current lease can
+    // be terminally poisoned without pretending a durable write existed.
+    expect(() => poisonSimAdvancePersistenceLease(lease)).not.toThrow();
+  });
+
+  it('keeps an integrity-unavailable journal commit retryable without re-exporting', async () => {
+    vi.useFakeTimers();
+    mockedCommitSimAdvanceSnapshot
+      .mockRejectedValueOnce(new SaveIntegrityUnavailableError('Web Crypto is temporarily unavailable.'))
+      .mockImplementationOnce(async (intent) => savedRecord(intent.saveId));
+    const exportSnapshot = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' });
+    const lease = await beginActivatedSimAdvanceLease();
+    const receipt = await captureSimAdvanceSnapshot(lease, simAdvanceIntent({ attempt: 103 }), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7, exportSnapshot,
+    });
+    const settlement = waitForActiveSavePersistenceReceipt(receipt);
+    await flushPromises(10);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'failed', failureKind: 'unavailable', pendingWrites: 1,
+    });
+    await retryActiveSavePersistence('save-slot-2');
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(2);
+    expect(mockedCommitSimAdvanceSnapshot.mock.calls[0]?.[0])
+      .toBe(mockedCommitSimAdvanceSnapshot.mock.calls[1]?.[0]);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it.each([
+    ['root', 'save-slot-2', 'save-slot-2'],
+    ['branch', 'branch-2', 'save-slot-2'],
+  ])('rejects an old %s baseline receipt while its accepted post receipt is pending, then closes only that post', async (_kind, saveId, rootSaveId) => {
+    const lease = await beginActivatedSimAdvanceLease(saveId, rootSaveId);
+    const baselineReceipt = await captureSimAdvanceBaselineSeal(lease, baselineSealProof(saveId, rootSaveId), {
+      activeSaveId: saveId, activeSaveSlot: null, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(baselineReceipt)).resolves.toMatchObject({ kind: 'durable' });
+    let resolvePost!: (record: SaveData) => void;
+    mockedCommitSimAdvanceSnapshot.mockImplementationOnce(() => new Promise<SaveData>((resolve) => {
+      resolvePost = resolve;
+    }));
+    const postReceipt = await captureSimAdvanceSnapshot(lease, simAdvanceIntent({
+      saveId, rootSaveId, attempt: 104, token: `post-${saveId}`,
+    }), {
+      activeSaveId: saveId, activeSaveSlot: null, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'regular' }),
+    });
+    await flushPromises();
+    expect(mockedCommitSimAdvanceSnapshot).toHaveBeenCalledTimes(1);
+    const beforePendingPost = structuredClone(getActiveSavePersistenceStatus(saveId));
+    expect(beforePendingPost).toMatchObject({ state: 'saving', pendingWrites: 1 });
+
+    expect(() => closeCommittedSimAdvancePersistenceLeaseFailClosed(lease, baselineReceipt))
+      .toThrow('exact quiescent durable receipt');
+    expect(getActiveSavePersistenceStatus(saveId)).toEqual(beforePendingPost);
+
+    resolvePost(savedRecord(saveId));
+    await expect(waitForActiveSavePersistenceReceipt(postReceipt)).resolves.toMatchObject({ kind: 'durable' });
+    const beforeCommittedClose = structuredClone(getActiveSavePersistenceStatus(saveId));
+    closeCommittedSimAdvancePersistenceLeaseFailClosed(lease, postReceipt);
+    expect(getActiveSavePersistenceStatus(saveId)).toEqual(beforeCommittedClose);
+  });
+
+  it('does not let ordinary or completed-old-lease durability block a fresh lease poison', async () => {
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    let ordinaryReceipt: ActiveSavePersistenceReceipt | undefined;
+    await persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+      onSnapshotAccepted: (receipt) => { ordinaryReceipt = receipt; },
+    });
+    const ordinaryDurableStatus = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+    const ordinaryLease = await beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2');
+    expect(() => poisonSimAdvancePersistenceLease(ordinaryLease)).not.toThrow();
+    expect(ordinaryReceipt).toBeDefined();
+    expect(isActiveSavePersistenceReceiptDurable(ordinaryReceipt!)).toBe(true);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'failed',
+      pendingWrites: 0,
+      canRetry: false,
+      failureKind: 'unknown',
+      desiredGeneration: ordinaryDurableStatus.desiredGeneration,
+      durableGeneration: ordinaryDurableStatus.durableGeneration,
+      saveName: ordinaryDurableStatus.saveName,
+      lastSavedAt: ordinaryDurableStatus.lastSavedAt,
+    });
+
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    const completedLease = await beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2');
+    const oldReceipt = await captureSimAdvanceBaselineSeal(completedLease, baselineSealProof(), {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Ignored', teamName: 'Ignored', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await expect(waitForActiveSavePersistenceReceipt(oldReceipt)).resolves.toMatchObject({ kind: 'durable' });
+    finishSimAdvancePersistenceLease(completedLease);
+
+    const nextLease = await beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2');
+    const before = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+    expect(() => closeCommittedSimAdvancePersistenceLeaseFailClosed(nextLease, oldReceipt))
+      .toThrow('exact quiescent durable receipt');
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(before);
+    expect(() => poisonSimAdvancePersistenceLease(nextLease)).not.toThrow();
+  });
+
+  it('quiesces an already accepted ordinary write before minting a simulation lease', async () => {
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    let releaseWrite!: () => void;
+    mockedSaveGameById.mockImplementationOnce(() => new Promise<SaveData>((resolve) => {
+      releaseWrite = () => resolve(savedRecord('save-slot-2'));
+    }));
+    const ordinaryExport = vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' });
+    const ordinary = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: ordinaryExport,
+    });
+    await vi.waitFor(() => expect(mockedSaveGameById).toHaveBeenCalledTimes(1));
+
+    let leaseSettled = false;
+    const pendingLease = beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2')
+      .then((value) => {
+        leaseSettled = true;
+        return value;
+      });
+    await flushPromises();
+    expect(leaseSettled).toBe(false);
+    expect(ordinaryExport).toHaveBeenCalledTimes(1);
+
+    releaseWrite();
+    await expect(ordinary).resolves.toMatchObject({ saved: true });
+    const lease = await pendingLease;
+    expect(lease.saveId).toBe('save-slot-2');
+    finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('cleanly blocks simulation admission behind retained ordinary recovery without changing that recovery truth', async () => {
+    vi.useFakeTimers();
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    mockedSaveGameById.mockRejectedValueOnce(new Error('IndexedDB storage failure'));
+    const ordinary = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await expect(ordinary).rejects.toThrow('IndexedDB storage failure');
+    await flushPromises(10);
+    const before = structuredClone(getActiveSavePersistenceStatus('save-slot-2'));
+
+    await expect(beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2'))
+      .rejects.toBeInstanceOf(SimAdvancePersistenceAdmissionBlockedError);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toEqual(before);
+  });
+
+  it('waits for an already accepted ordinary write that later retains recovery, then cleanly blocks lease admission', async () => {
+    vi.useFakeTimers();
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    let rejectWrite!: (error: Error) => void;
+    mockedSaveGameById.mockImplementationOnce(() => new Promise<SaveData>((_resolve, reject) => {
+      rejectWrite = reject;
+    }));
+    const ordinary = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
+    });
+    await vi.waitFor(() => expect(mockedSaveGameById).toHaveBeenCalledTimes(1));
+    const admission = beginSimAdvancePersistenceLease('save-slot-2', 'save-slot-2');
+    rejectWrite(new Error('IndexedDB storage failure'));
+    await expect(ordinary).rejects.toThrow('IndexedDB storage failure');
+    await expect(admission).rejects.toBeInstanceOf(SimAdvancePersistenceAdmissionBlockedError);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({
+      state: 'failed', pendingWrites: 1,
+    });
+  });
+
 
   it('preserves branch metadata when saving a non-slot active save', async () => {
     const snapshot = { schemaVersion: 34, season: 3, day: 44, phase: 'regular' };

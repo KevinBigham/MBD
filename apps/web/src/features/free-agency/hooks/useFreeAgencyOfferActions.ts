@@ -11,6 +11,13 @@ interface ContractOfferResult {
   reason?: string;
 }
 
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
 export interface FreeAgencyOfferActionsOptions {
   autosaveActiveGame: (context: { season: number }) => Promise<unknown>;
   fetchFreeAgents: () => Promise<void>;
@@ -62,15 +69,18 @@ export function useFreeAgencyOfferActions({
 
     try {
       const result = await makeContractOffer(selectedPlayer.id, offerYears, offerSalary);
-      setOfferResult(result.accepted
-        ? `Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.`
-        : `Rejected: ${result.reason}`);
       if (result.accepted) {
+        if (!snapshotSaved(await autosaveActiveGame({ season }))) {
+          setOfferResult('The signing was accepted, but its save is not yet durable.');
+          return;
+        }
+        setOfferResult(`Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.`);
         playEffect('free_agent_signed');
         removeAgentById(selectedPlayer.id);
         setSelectedPlayer(null);
-        await autosaveActiveGame({ season });
         await fetchFreeAgents();
+      } else {
+        setOfferResult(`Rejected: ${result.reason}`);
       }
     } catch {
       setOfferResult('Contract offers not available yet.');

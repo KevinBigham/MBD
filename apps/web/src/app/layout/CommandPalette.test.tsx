@@ -4,12 +4,18 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { CommandPalette } from './CommandPalette';
 import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
+import { isSimAdvanceCoordinatorBusy } from '@/shared/hooks/useSimAdvanceExecutor';
 
 vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
   useActiveSaveAutosave: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  isSimAdvanceCoordinatorBusy: vi.fn(),
+}));
+
 const mockedUseActiveSaveAutosave = vi.mocked(useActiveSaveAutosave);
+const mockedIsSimAdvanceCoordinatorBusy = vi.mocked(isSimAdvanceCoordinatorBusy);
 const navigateSpy = vi.hoisted(() => vi.fn());
 
 vi.mock('react-router-dom', async () => {
@@ -53,6 +59,7 @@ describe('CommandPalette', () => {
     ScrollIntoViewMock.install();
     autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true, saveName: 'Test Dynasty' });
     mockedUseActiveSaveAutosave.mockReturnValue(autosaveActiveGame);
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(false);
     navigateSpy.mockClear();
   });
 
@@ -172,6 +179,25 @@ describe('CommandPalette', () => {
     });
 
     expect(autosaveActiveGame).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks stale direct Quick Save and Save Hub selections while exact simulation work is busy', async () => {
+    await act(async () => {
+      root.render(<MemoryRouter><CommandPalette open onOpenChange={vi.fn()} /></MemoryRouter>);
+      await Promise.resolve();
+    });
+    // The palette was rendered while idle; flip the live module admission
+    // before invoking its already-captured callbacks.
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(true);
+    const save = Array.from(container.querySelectorAll('[cmdk-item]')).find((item) => item.textContent?.includes('Quick Save'));
+    const hub = Array.from(container.querySelectorAll('[cmdk-item]')).find((item) => item.textContent?.includes('Open Save Hub'));
+    await act(async () => {
+      save?.dispatchEvent(new Event('cmdk-item-select', { bubbles: true }));
+      hub?.dispatchEvent(new Event('cmdk-item-select', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(autosaveActiveGame).not.toHaveBeenCalled();
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it('renders as a mobile-safe dialog with a 16px command input', async () => {

@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import type { GameState } from '@/shared/hooks/useGameStore';
 import type { useWorker } from '@/shared/hooks/useWorker';
+import { useSimAdvanceExecutor } from '@/shared/hooks/useSimAdvanceExecutor';
 import type { DashboardPageContentProps } from '../components/DashboardPageContent';
 import { useDashboardActionHandlers } from './useDashboardActionHandlers';
+import { DASHBOARD_QUICK_SIM_COMMANDS } from './useDashboardActionHandlers';
 import { useDashboardGuidedStart } from './useDashboardGuidedStart';
 import { useDashboardRouteData } from './useDashboardRouteData';
 import {
@@ -25,9 +27,8 @@ export type DashboardPageControllerWorker = Pick<
   | 'getScheduleView'
   | 'getSeasonRecap'
   | 'isReady'
-  | 'simDay'
-  | 'simMonth'
-  | 'simWeek'
+  | 'simAdvance'
+  | 'simLegacyAdvance'
 >;
 
 export type DashboardPageControllerGameState = Pick<
@@ -55,6 +56,16 @@ export interface UseDashboardPageControllerOptions {
 interface UseDashboardPageControllerResult {
   contentProps: DashboardPageContentProps;
   pageShellLoading: boolean;
+}
+
+function regularSimAction(status: ReturnType<typeof useSimAdvanceExecutor>['status']) {
+  if (!('operation' in status)) return null;
+  switch (status.operation) {
+    case 'sim_day': return 'day' as const;
+    case 'sim_week': return 'week' as const;
+    case 'sim_month': return 'month' as const;
+    default: return null;
+  }
 }
 
 export function useDashboardPageController({
@@ -107,6 +118,20 @@ export function useDashboardPageController({
     workerReady: worker.isReady,
   });
 
+  const regularAdvance = useSimAdvanceExecutor({
+    worker: worker.simAdvance,
+    workerReady: worker.isReady,
+    refreshAfterDurable: async (result) => {
+      await fetchDashboardData({
+        throwOnError: true,
+        context: {
+          season: (result as { season?: number }).season ?? season,
+          phase: (result as { phase?: string }).phase ?? phase,
+        },
+      });
+    },
+  });
+
   const {
     applyingTeamId,
     handleApplyForJob,
@@ -120,6 +145,8 @@ export function useDashboardPageController({
     autosaveActiveGame,
     day,
     dismissWelcomeBriefing: worker.dismissWelcomeBriefing,
+    executeRegularSim: regularAdvance.execute,
+    executeLegacySim: worker.simLegacyAdvance,
     fetchDashboardData,
     initializeGame,
     phase,
@@ -183,9 +210,9 @@ export function useDashboardPageController({
       },
       onExportGuidedStartBackup: handleExportGuidedStartBackup,
       onSelectGame: setSelectedGameIndex,
-      onSimDay: () => void handleSim('day', () => worker.simDay()),
-      onSimMonth: () => void handleSim('month', () => worker.simMonth()),
-      onSimWeek: () => void handleSim('week', () => worker.simWeek()),
+      onSimDay: () => void handleSim(DASHBOARD_QUICK_SIM_COMMANDS.day),
+      onSimMonth: () => void handleSim(DASHBOARD_QUICK_SIM_COMMANDS.month),
+      onSimWeek: () => void handleSim(DASHBOARD_QUICK_SIM_COMMANDS.week),
       phase,
       playByPlayLoading,
       recentRecaps,
@@ -194,7 +221,10 @@ export function useDashboardPageController({
       selectedGameDetail,
       selectedGameIndex,
       showOpeningDayChecklist,
-      simAction,
+      simAction: regularAdvance.status.kind === 'idle'
+        ? simAction
+        : (regularSimAction(regularAdvance.status) ?? simAction),
+      simBusy: regularAdvance.status.kind !== 'idle' || simAction !== null,
       summary,
       userTeamId,
     },

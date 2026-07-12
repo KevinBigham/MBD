@@ -129,7 +129,7 @@ vi.mock('@/shared/lib/saveSessionOwnership', () => ({
     async (_claim: unknown, operation: () => Promise<unknown>) => operation(),
   ),
   withSaveSessionCandidateSnapshotExportAuthorization: vi.fn(
-    async (_claim: unknown, operation: () => Promise<unknown>) => operation(),
+    async (_claim: unknown, _candidateSaveId: string | null, operation: () => Promise<unknown>) => operation(),
   ),
   withTransientSaveSessionOwnership: vi.fn(
     async (_rootSaveId: string, operation: () => Promise<unknown>) => operation(),

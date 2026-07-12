@@ -202,7 +202,7 @@ describe('GuidedStartNudgeCard', () => {
 
   it('offers an export action for the first off-day autosave prompt', async () => {
     const onDismiss = vi.fn();
-    const onExportBackup = vi.fn().mockResolvedValue(undefined);
+    const onExportBackup = vi.fn().mockResolvedValue(true);
 
     await act(async () => {
       root.render(
@@ -232,5 +232,30 @@ describe('GuidedStartNudgeCard', () => {
     });
 
     expect(onDismiss).toHaveBeenCalledWith('first_offday_autosave_prompt');
+  });
+
+  it('keeps the off-day backup nudge visible when export admission returns false', async () => {
+    const onDismiss = vi.fn();
+    const onExportBackup = vi.fn().mockResolvedValue(false);
+    await act(async () => {
+      root.render(<GuidedStartNudgeCard current="first_offday_autosave_prompt" onDismiss={onDismiss} onExportBackup={onExportBackup} />);
+    });
+    const exportButton = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Export backup');
+    await act(async () => { exportButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })); await Promise.resolve(); });
+    expect(onExportBackup).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Grab a backup');
+  });
+
+  it('visibly disables only guided backup export while simulation save activity is busy', async () => {
+    const onDismiss = vi.fn();
+    const onExportBackup = vi.fn().mockResolvedValue(true);
+    await act(async () => {
+      root.render(<GuidedStartNudgeCard current="first_offday_autosave_prompt" onDismiss={onDismiss} onExportBackup={onExportBackup} exportDisabled />);
+    });
+    const exportButton = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Export backup') as HTMLButtonElement;
+    expect(exportButton.disabled).toBe(true);
+    const dismiss = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Not now') as HTMLButtonElement;
+    expect(dismiss.disabled).toBe(false);
   });
 });

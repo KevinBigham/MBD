@@ -22,15 +22,11 @@ type TradePackage = {
 };
 
 function shouldPersistIncomingOfferResponse(response: TradeOfferResponseResult): boolean {
-  return response.success && (
-    response.decision === 'accepted'
-    || response.decision === 'declined'
-    || response.decision === 'countered'
-  );
+  return response.flowStateChanged;
 }
 
 function shouldPersistNegotiationAction(result: TradeNegotiationActionResult): boolean {
-  return result.success;
+  return result.flowStateChanged;
 }
 
 export interface UseTradeActionHandlersOptions {
@@ -116,20 +112,18 @@ export function useTradeActionHandlers({
   const [proposing, setProposing] = useState(false);
 
   const refreshTradeWorkspace = useCallback(async (persistSnapshot: boolean) => {
-    const refreshTasks: Array<Promise<void>> = [
+    if (persistSnapshot) {
+      await persistTradeSnapshot();
+    }
+
+    await Promise.all([
       loadUserRoster(),
       loadTargetRoster(),
       loadUserInventory(),
       loadTargetInventory(),
       loadTradeActivity(),
       loadOpenNegotiations(),
-    ];
-
-    if (persistSnapshot) {
-      refreshTasks.push(persistTradeSnapshot());
-    }
-
-    await Promise.all(refreshTasks);
+    ]);
   }, [
     loadOpenNegotiations,
     loadTargetInventory,
@@ -168,6 +162,7 @@ export function useTradeActionHandlers({
         });
         const response = result as TradeOfferResponseResult;
         shouldPersistSnapshot = shouldPersistIncomingOfferResponse(response);
+        if (shouldPersistSnapshot) await persistTradeSnapshot();
         setActiveNegotiation(null);
         setTradeResult(tradeResultFromOfferResponse(response));
         resetBuilder();
@@ -177,6 +172,7 @@ export function useTradeActionHandlers({
           requestingAssets,
         }) as TradeNegotiationActionResult;
         shouldPersistSnapshot = shouldPersistNegotiationAction(result);
+        if (shouldPersistSnapshot) await persistTradeSnapshot();
         setTradeResult(tradeResultFromNegotiationAction(result));
         setActiveNegotiation(result.negotiation);
         applyNegotiationToBuilder(result.negotiation);
@@ -191,6 +187,7 @@ export function useTradeActionHandlers({
           selectedTeam,
         ) as TradeNegotiationActionResult;
         shouldPersistSnapshot = shouldPersistNegotiationAction(result);
+        if (shouldPersistSnapshot) await persistTradeSnapshot();
         setTradeResult(tradeResultFromNegotiationAction(result));
         setActiveNegotiation(result.negotiation);
         applyNegotiationToBuilder(result.negotiation);
@@ -200,7 +197,7 @@ export function useTradeActionHandlers({
         }
       }
 
-      await refreshTradeWorkspace(shouldPersistSnapshot);
+      await refreshTradeWorkspace(false);
     } finally {
       setProposing(false);
     }
@@ -233,18 +230,20 @@ export function useTradeActionHandlers({
     setProposing(true);
     try {
       const result = await resolveNegotiation(activeNegotiation.id, action) as TradeNegotiationActionResult;
+      if (shouldPersistNegotiationAction(result)) await persistTradeSnapshot();
       setTradeResult(tradeResultFromNegotiationAction(result));
       setActiveNegotiation(result.negotiation);
       updateNegotiationDeepLink(result.negotiation?.id ?? null);
       if (result.tradeExecuted || action === 'reject') {
         resetBuilder();
       }
-      await refreshTradeWorkspace(shouldPersistNegotiationAction(result));
+      await refreshTradeWorkspace(false);
     } finally {
       setProposing(false);
     }
   }, [
     activeNegotiation,
+    persistTradeSnapshot,
     refreshTradeWorkspace,
     resetBuilder,
     resolveNegotiation,
@@ -258,6 +257,9 @@ export function useTradeActionHandlers({
     try {
       const result = await respondToTradeOffer(offerId, 'accept');
       const response = result as TradeOfferResponseResult;
+      if (shouldPersistIncomingOfferResponse(response)) {
+        await persistTradeSnapshot();
+      }
       setTradeResult(tradeResultFromOfferResponse(response));
       await Promise.all([
         loadUserRoster(),
@@ -265,7 +267,6 @@ export function useTradeActionHandlers({
         loadUserInventory(),
         loadTargetInventory(),
         loadTradeActivity(),
-        shouldPersistIncomingOfferResponse(response) ? persistTradeSnapshot() : Promise.resolve(),
       ]);
     } finally {
       setProposing(false);
@@ -286,11 +287,11 @@ export function useTradeActionHandlers({
     try {
       const result = await respondToTradeOffer(offerId, 'decline');
       const response = result as TradeOfferResponseResult;
+      if (shouldPersistIncomingOfferResponse(response)) {
+        await persistTradeSnapshot();
+      }
       setTradeResult(tradeResultFromOfferResponse(response));
-      await Promise.all([
-        loadTradeActivity(),
-        shouldPersistIncomingOfferResponse(response) ? persistTradeSnapshot() : Promise.resolve(),
-      ]);
+      await loadTradeActivity();
     } finally {
       setProposing(false);
     }

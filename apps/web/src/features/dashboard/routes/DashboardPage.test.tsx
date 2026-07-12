@@ -7,6 +7,10 @@ import DashboardPage from './DashboardPage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import {
+  isSimAdvanceCoordinatorBusy,
+  useSimAdvanceExecutor,
+} from '@/shared/hooks/useSimAdvanceExecutor';
+import {
   markGuidedStartNudgeSeen,
   readGuidedStartNudgeRecord,
   registerGuidedStartSave,
@@ -21,6 +25,11 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  isSimAdvanceCoordinatorBusy: vi.fn(() => false),
+  useSimAdvanceExecutor: vi.fn(),
+}));
+
 vi.mock('@/shared/lib/saveSystem', () => ({
   exportSnapshotToJson: vi.fn().mockReturnValue('{"kind":"mbd-save-export"}'),
   loadGameById: vi.fn().mockResolvedValue(undefined),
@@ -33,6 +42,8 @@ vi.mock('@/shared/lib/saveSystem', () => ({
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedIsSimAdvanceCoordinatorBusy = vi.mocked(isSimAdvanceCoordinatorBusy);
+const mockedUseSimAdvanceExecutor = vi.mocked(useSimAdvanceExecutor);
 const mockedExportSnapshotToJson = vi.mocked(exportSnapshotToJson);
 const mockedSaveGameById = vi.mocked(saveGameById);
 (
@@ -198,6 +209,12 @@ describe('DashboardPage', () => {
     });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
 
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(false);
+    mockedUseSimAdvanceExecutor.mockReturnValue({
+      execute: vi.fn().mockResolvedValue({ kind: 'durable' }),
+      status: { kind: 'idle' },
+    });
+
     mockedUseGameStore.mockReturnValue({
       season: 4,
       day: 88,
@@ -219,6 +236,9 @@ describe('DashboardPage', () => {
       updateFromSim: vi.fn(),
       initializeGame: vi.fn(),
       activeSaveSlot: 1,
+    });
+    Object.assign(mockedUseGameStore, {
+      getState: () => mockedUseGameStore.mock.results.at(-1)?.value,
     });
 
     mockedUseWorker.mockReturnValue({
@@ -506,8 +526,13 @@ describe('DashboardPage', () => {
     expect(container.textContent).toContain('Boston grabs the lead late.');
   });
 
-  it('autosaves after a dashboard quick sim completes', async () => {
+  it('routes a regular dashboard quick sim through the journal executor', async () => {
     const updateFromSim = vi.fn();
+    const executeRegularSim = vi.fn().mockResolvedValue({ kind: 'durable' });
+    mockedUseSimAdvanceExecutor.mockReturnValue({
+      execute: executeRegularSim,
+      status: { kind: 'idle' },
+    });
     mockedUseGameStore.mockReturnValue({
       season: 4,
       day: 88,
@@ -530,8 +555,6 @@ describe('DashboardPage', () => {
       updateFromSim,
       initializeGame: vi.fn(),
     });
-    const worker = mockedUseWorker();
-
     await act(async () => {
       root.render(
         <MemoryRouter>
@@ -553,18 +576,9 @@ describe('DashboardPage', () => {
       await Promise.resolve();
     });
 
-    expect(worker.exportSnapshot).toHaveBeenCalled();
-    expect(updateFromSim).toHaveBeenCalledWith(expect.objectContaining({ day: 89 }));
-    expect(mockedSaveGameById).toHaveBeenCalledWith(
-      'save-slot-1',
-      expect.stringContaining('Alex Rivera'),
-      expect.objectContaining({ schemaVersion: 34 }),
-      expect.objectContaining({
-        slotNumber: 1,
-        parentSaveId: null,
-        isRootSave: true,
-      }),
-    );
+    expect(executeRegularSim).toHaveBeenCalledWith('sim_day');
+    expect(updateFromSim).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
   });
 
   it('shows the first-series pointer once on the first season opening series', async () => {
@@ -960,10 +974,12 @@ describe('DashboardPage', () => {
     });
 
     expect(applyForJob).toHaveBeenCalledWith('bos');
-    expect(initializeGame).toHaveBeenCalledWith(expect.objectContaining({
-      userTeamId: 'bos',
-      teamName: 'Boston Noreasters',
-    }));
+    await vi.waitFor(() => {
+      expect(initializeGame).toHaveBeenCalledWith(expect.objectContaining({
+        userTeamId: 'bos',
+        teamName: 'Boston Noreasters',
+      }));
+    });
   });
 
   it('renders an offseason recap panel from dedicated narrative queries', async () => {

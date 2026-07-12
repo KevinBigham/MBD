@@ -16,7 +16,6 @@ import {
   type FranchiseState,
   type GameSnapshot,
   type GMRelationship,
-  type GMCareer,
   type HallOfFameBallotEntry,
   type HallOfFameEntry,
   type HistoricalPlayer,
@@ -46,7 +45,6 @@ import {
 } from '@mbd/contracts';
 import {
   GameRNG,
-  TEAMS,
   type IFAScoutingHistoryEntry,
   type IFATeamBudget,
   type InternationalScoutingState,
@@ -65,8 +63,8 @@ import {
   type TeamRecord,
   type GameBoxScore,
   type NewsItem,
-  createRelationshipMap,
   getTeamById,
+  materializeSimulationImportDefaults,
 } from '@mbd/sim-core';
 import {
   createEmptyDraftState,
@@ -186,20 +184,6 @@ function fromEntries<T>(entries: [string, T][]): Map<string, T> {
   return new Map(entries);
 }
 
-function deserializeGMRelationships(
-  entries: [string, GMRelationship][] | undefined,
-  userTeamId: string,
-): Map<string, GMRelationship> {
-  if (entries != null && entries.length > 0) {
-    return new Map(entries);
-  }
-
-  return createRelationshipMap(
-    TEAMS.map((team) => team.id),
-    userTeamId,
-  );
-}
-
 function serializeInternationalScoutingState(
   state: InternationalScoutingState,
 ): GameSnapshot['internationalScoutingState'] {
@@ -219,74 +203,6 @@ function deserializeInternationalScoutingState(
     ifaPool: serialized.ifaPool,
     budgets: new Map(serialized.budgets as [string, IFATeamBudget][]),
     scoutingHistory: new Map(serialized.scoutingHistory as [string, IFAScoutingHistoryEntry[]][]),
-  };
-}
-
-function parseRecord(record: string, fallbackWins: number) {
-  const match = /^(\d+)-(\d+)$/.exec(record);
-  if (match) {
-    return {
-      wins: Number(match[1]),
-      losses: Number(match[2]),
-    };
-  }
-
-  return {
-    wins: fallbackWins,
-    losses: Math.max(0, 162 - fallbackWins),
-  };
-}
-
-function backfillGMCareer(
-  snapshot: GameSnapshot,
-  franchise: FranchiseState,
-): GMCareer {
-  const existingCareer = snapshot.narrative.gmCareer as GMCareer | undefined;
-  if (existingCareer) {
-    return existingCareer;
-  }
-
-  const franchiseHistory = (snapshot.narrative.franchiseTimeline as FranchiseTimelineEntry[])
-    .filter((entry) => entry.teamId === snapshot.userTeamId)
-    .sort((left, right) => left.season - right.season);
-  const currentRecord = snapshot.seasonState.standings.find((entry) => entry.teamId === snapshot.userTeamId);
-  const totals = franchiseHistory.reduce((record, entry) => {
-    const parsed = parseRecord(entry.record, entry.winTotal);
-    return {
-      wins: record.wins + parsed.wins,
-      losses: record.losses + parsed.losses,
-    };
-  }, {
-    wins: currentRecord?.wins ?? 0,
-    losses: currentRecord?.losses ?? 0,
-  });
-  const reputation = (snapshot.narrative.frontOfficeState as [string, FrontOfficeState][])
-    .find(([teamId]) => teamId === snapshot.userTeamId)?.[1]?.reputation ?? 50;
-  const championships = franchiseHistory.filter((entry) => entry.championship).length;
-  const hiredSeason = franchiseHistory[0]?.season ?? Math.max(1, snapshot.season - franchiseHistory.length);
-
-  return {
-    careerHistory: [
-      {
-        teamId: snapshot.userTeamId,
-        seasons: Math.max(1, franchiseHistory.length + ((totals.wins + totals.losses) > 0 ? 1 : 0)),
-        record: totals,
-        championships,
-        hiredSeason,
-        firedSeason: null,
-        firedReason: null,
-        reputation,
-      },
-    ],
-    currentTeamId: snapshot.userTeamId,
-    reputation,
-    overallRecord: totals,
-    championships,
-    hiredSeason,
-    firedSeasons: [],
-    careerAchievements: championships > 0 ? [`Won ${championships} championship${championships === 1 ? '' : 's'}.`] : [],
-    jobSearchActive: false,
-    lastFiredReason: null,
   };
 }
 
@@ -415,14 +331,14 @@ export function isSaveCompatible(snapshotLike: unknown): { compatible: boolean; 
 }
 
 export function importGameSnapshot(snapshotLike: unknown): FullGameState {
-  const snapshot = validateSnapshot(snapshotLike);
+  const snapshot = materializeSimulationImportDefaults(validateSnapshot(snapshotLike));
   const players = snapshot.players as GeneratedPlayer[];
   ensurePlayersHaveRule5Eligibility(players, snapshot.season);
   const serviceTime = fromEntries(snapshot.serviceTime);
   const seasonState = deserializeSeasonState(snapshot.seasonState);
   const franchise = (snapshot.franchise as FranchiseState | undefined)
     ?? createDefaultFranchiseState(snapshot.userTeamId, snapshot.season, snapshot.day);
-  const gmCareer = backfillGMCareer(snapshot, franchise);
+  const gmCareer = snapshot.narrative.gmCareer!;
 
   return {
     rng: GameRNG.fromState(snapshot.rng),
@@ -477,10 +393,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     playerNicknames: fromEntries((snapshot.narrative.playerNicknames as [string, PlayerNicknameState][] | undefined) ?? []),
     playerStoryArcs: (snapshot.narrative.playerStoryArcs as PlayerStoryArc[] | undefined) ?? [],
     prospectBonds: (snapshot.narrative.prospectBonds as ProspectBond[] | undefined) ?? [],
-    gmRelationships: deserializeGMRelationships(
-      snapshot.narrative.gmRelationships as [string, GMRelationship][] | undefined,
-      snapshot.userTeamId,
-    ),
+    gmRelationships: fromEntries(snapshot.narrative.gmRelationships as [string, GMRelationship][]),
     leagueEvents: (snapshot.narrative.leagueEvents as LeagueEvent[] | undefined) ?? [],
     playerOrigins: fromEntries((snapshot.narrative.playerOrigins as [string, PlayerOrigin][] | undefined) ?? []),
     debutFlashbacks: (snapshot.narrative.debutFlashbacks as DebutFlashback[] | undefined) ?? [],

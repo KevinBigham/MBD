@@ -68,7 +68,7 @@ describe('useOffseasonActionHandlers', () => {
     return {
       advanceOffseason: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'draft' })),
       applyOffseasonData: vi.fn(),
-      autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
       fetchOffseason: vi.fn().mockResolvedValue(buildOffseasonState()),
       issueQualifyingOffer: vi.fn().mockResolvedValue({ success: true }),
       lockRule5Protection: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'rule5_draft' })),
@@ -123,12 +123,17 @@ describe('useOffseasonActionHandlers', () => {
     expect(options.resolveQualifyingOffers).toHaveBeenCalledTimes(1);
     expect(options.fetchOffseason).toHaveBeenCalledTimes(2);
     expect(options.autosaveActiveGame).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.fetchOffseason).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[1]!)
+      .toBeLessThan(vi.mocked(options.fetchOffseason).mock.invocationCallOrder[1]!);
   });
 
   it('does not autosave targeted actions when worker results are not successful', async () => {
     const options = baseOptions({
       makeRule5Pick: vi.fn().mockResolvedValue({ success: false }),
       passRule5Pick: vi.fn().mockResolvedValue({}),
+      resolveQualifyingOffers: vi.fn().mockResolvedValue({ resolved: [], error: 'phase inactive' }),
       toggleRule5Protection: vi.fn().mockResolvedValue(null),
     });
     const hook = await renderHook(options);
@@ -137,6 +142,7 @@ describe('useOffseasonActionHandlers', () => {
       await hook.handleToggleProtection('risk-1');
       await hook.handleRule5Pick('pool-1');
       await hook.handlePassRule5Pick();
+      await hook.handleResolveQualifyingOffers();
     });
 
     expect(options.fetchOffseason).not.toHaveBeenCalled();
@@ -155,5 +161,45 @@ describe('useOffseasonActionHandlers', () => {
     expect(options.resolveRule5OfferBack).toHaveBeenCalledWith('offer-1', true);
     expect(options.fetchOffseason).toHaveBeenCalledTimes(1);
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.fetchOffseason).mock.invocationCallOrder[0]!);
+  });
+
+  it('does not start the presentation refresh until an accepted mutation enters persistence', async () => {
+    let releasePersistence!: () => void;
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn(() => new Promise<{ saved: true }>((resolve) => {
+        releasePersistence = () => resolve({ saved: true });
+      })),
+    });
+    const hook = await renderHook(options);
+    let pending!: Promise<void>;
+
+    await act(async () => {
+      pending = hook.handleIssueQualifyingOffer('qo-held');
+      await vi.waitFor(() => expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1));
+    });
+    expect(options.fetchOffseason).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releasePersistence();
+      await pending;
+    });
+    expect(options.fetchOffseason).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh offseason presentation when persistence resolves unsaved', async () => {
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    const hook = await renderHook(options);
+
+    await act(async () => {
+      await hook.handleIssueQualifyingOffer('qo-unsaved');
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.fetchOffseason).not.toHaveBeenCalled();
+    expect(latestResult?.advancing).toBe(false);
   });
 });

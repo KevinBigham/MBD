@@ -74,7 +74,7 @@ describe('useRosterExtensionNegotiation', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
-      autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
       fetchRoster: vi.fn().mockResolvedValue(undefined),
       getExtensionOffer: vi.fn().mockResolvedValue(offer),
       negotiateExtension: vi.fn().mockResolvedValue(acceptedResponse),
@@ -143,6 +143,23 @@ describe('useRosterExtensionNegotiation', () => {
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
     expect(options.fetchRoster).toHaveBeenCalledTimes(1);
     expect(latestResult?.negotiationResponse).toEqual(acceptedResponse);
+    expect(latestResult?.extensionBusyAction).toBeNull();
+  });
+
+  it('does not refresh an accepted extension when persistence resolves unsaved', async () => {
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    await renderHook(options);
+    await act(async () => {
+      await latestResult?.openNegotiation(candidate);
+    });
+    await act(async () => {
+      await latestResult?.submitExtensionOffer();
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.fetchRoster).not.toHaveBeenCalled();
     expect(latestResult?.extensionBusyAction).toBeNull();
   });
 

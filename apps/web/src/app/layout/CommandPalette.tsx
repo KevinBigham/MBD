@@ -17,6 +17,7 @@ import {
   Keyboard,
 } from 'lucide-react';
 import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
+import { isSimAdvanceCoordinatorBusy } from '@/shared/hooks/useSimAdvanceExecutor';
 import {
   NAVIGATION_GROUPS,
   getNavigationSearchValue,
@@ -78,6 +79,7 @@ export function CommandPalette({ open, onOpenChange, onOpenShortcuts }: CommandP
       label: 'Quick Save',
       icon: <Save className="h-4 w-4" />,
       action: async () => {
+        if (isSimAdvanceCoordinatorBusy()) return;
         await autosaveActiveGame();
       },
       value: getActionSearchValue('Quick Save', ['save game', 'write save']),
@@ -229,6 +231,7 @@ export function CommandPalette({ open, onOpenChange, onOpenShortcuts }: CommandP
                   key={item.id}
                   value={item.value}
                   onSelect={() => {
+                    if (isSimAdvanceCoordinatorBusy()) return;
                     item.action();
                     onOpenChange(false);
                   }}
@@ -251,8 +254,9 @@ export function CommandPalette({ open, onOpenChange, onOpenShortcuts }: CommandP
               <Command.Item
                 key={item.id}
                 value={item.value}
-                onSelect={() => {
-                  item.action();
+                  onSelect={() => {
+                    if (isSimAdvanceCoordinatorBusy()) return;
+                    item.action();
                   onOpenChange(false);
                 }}
                 className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-dynasty-text aria-selected:bg-dynasty-elevated aria-selected:text-accent-primary"

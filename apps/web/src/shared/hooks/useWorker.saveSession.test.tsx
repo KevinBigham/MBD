@@ -45,6 +45,8 @@ function installRuntimeMocks(
 
   class MockWorker {
     addEventListener = vi.fn();
+    postMessage = vi.fn();
+    start = vi.fn();
     terminate = vi.fn();
   }
   vi.stubGlobal('Worker', MockWorker as unknown as typeof Worker);
@@ -272,10 +274,11 @@ describe('useWorker save-session ownership', () => {
     resumeWorkerMutationsAfterSaveTransition(pause);
   });
 
-  it('allows only an explicitly authorized transition snapshot export while paused', async () => {
+  it('captures call-bound transition export authority before async admission without allowing piggyback', async () => {
+    let transitionAuthorized = false;
     const ownership: OwnershipMocks = {
       assertActive: vi.fn(),
-      assertExport: vi.fn(() => 'transition'),
+      assertExport: vi.fn(() => transitionAuthorized ? 'transition' : 'ordinary'),
       assertImport: vi.fn(),
       assertNewGame: vi.fn(),
     };
@@ -293,8 +296,52 @@ describe('useWorker save-session ownership', () => {
     } = await import('@/shared/lib/workerMutationSession');
     const pause = pauseWorkerMutationsForSaveTransition();
 
-    await expect(worker.exportSnapshot()).resolves.toEqual({ schemaVersion: 34 });
+    transitionAuthorized = true;
+    const authorizedExport = worker.exportSnapshot();
+    transitionAuthorized = false;
+    const ordinaryExport = worker.exportSnapshot();
+    const ordinaryExportRejected = expect(ordinaryExport).rejects.toMatchObject({ kind: 'not_owner' });
+
+    await expect(authorizedExport).resolves.toEqual({ schemaVersion: 34 });
+    await ordinaryExportRejected;
     expect(workerApi.exportSnapshot).toHaveBeenCalledTimes(1);
+    resumeWorkerMutationsAfterSaveTransition(pause);
+  });
+
+  it('captures call-bound active import authority before async admission without allowing piggyback', async () => {
+    const unauthorized = new Error('Import is not authorized.');
+    let importAuthorized = false;
+    const ownership: OwnershipMocks = {
+      assertActive: vi.fn(),
+      assertExport: vi.fn(() => 'ordinary'),
+      assertImport: vi.fn(() => {
+        if (!importAuthorized) throw unauthorized;
+      }),
+      assertNewGame: vi.fn(),
+    };
+    const workerApi = {
+      ping: vi.fn().mockResolvedValue({ pong: true }),
+      importSnapshot: vi.fn().mockResolvedValue({ success: true }),
+    };
+    installRuntimeMocks(workerApi, ownership);
+    const worker = await renderProbe<{
+      importSnapshot: (snapshot: object) => Promise<object>;
+    }>();
+    const {
+      pauseWorkerMutationsForSaveTransition,
+      resumeWorkerMutationsAfterSaveTransition,
+    } = await import('@/shared/lib/workerMutationSession');
+    const pause = pauseWorkerMutationsForSaveTransition();
+
+    importAuthorized = true;
+    const authorizedImport = worker.importSnapshot({ schemaVersion: 34 });
+    importAuthorized = false;
+    const ordinaryImport = worker.importSnapshot({ schemaVersion: 34 });
+    const ordinaryImportRejected = expect(ordinaryImport).rejects.toBe(unauthorized);
+
+    await expect(authorizedImport).resolves.toEqual({ success: true });
+    await ordinaryImportRejected;
+    expect(workerApi.importSnapshot).toHaveBeenCalledTimes(1);
     resumeWorkerMutationsAfterSaveTransition(pause);
   });
 

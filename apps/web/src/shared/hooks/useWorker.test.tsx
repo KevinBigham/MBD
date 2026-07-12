@@ -49,6 +49,8 @@ describe('useWorker', () => {
 
     class MockWorker {
       addEventListener = vi.fn();
+      postMessage = vi.fn();
+      start = vi.fn();
       terminate = vi.fn();
     }
 
@@ -110,6 +112,8 @@ describe('useWorker', () => {
 
     class MockWorker {
       addEventListener = vi.fn();
+      postMessage = vi.fn();
+      start = vi.fn();
       terminate = vi.fn();
     }
 
@@ -171,6 +175,8 @@ describe('useWorker', () => {
 
     class MockWorker {
       addEventListener = vi.fn();
+      postMessage = vi.fn();
+      start = vi.fn();
       terminate = vi.fn();
     }
 
@@ -203,5 +209,75 @@ describe('useWorker', () => {
       pairings: [{ mentorName: 'Elias Anchor', protegeeName: 'Milo Spark' }],
     });
     expect(getMentorships).toHaveBeenCalledWith();
+  });
+
+  it('defers ordinary reads and rejects ordinary mutation/export before Comlink while an exact advance is active', async () => {
+    type WorkerHookProbe = {
+      getFreeAgents: (limit?: number) => Promise<unknown>;
+      getStandings: () => Promise<unknown>;
+      simDay: () => Promise<unknown>;
+      simLegacyAdvance: (operation: 'simDay', expectedPhase: 'playoffs') => Promise<unknown>;
+      exportSnapshot: () => Promise<unknown>;
+    };
+    const getFreeAgents = vi.fn().mockResolvedValue([{ id: 'fa-1' }]);
+    const getStandings = vi.fn().mockResolvedValue([{ teamId: 'nym' }]);
+    const simDay = vi.fn();
+    const simLegacyAdvance = vi.fn();
+    const exportSnapshot = vi.fn();
+    let status: { kind: string } = { kind: 'running' };
+    const statusListeners = new Set<() => void>();
+    vi.doMock('comlink', () => ({ wrap: vi.fn(() => ({ ping: vi.fn().mockResolvedValue({ pong: true }), getFreeAgents, getStandings, simDay, simLegacyAdvance, exportSnapshot })) }));
+    vi.doMock('sonner', () => ({ toast: { error: vi.fn() } }));
+    vi.doMock('@/shared/lib/simAdvanceCoordinator', () => ({
+      getSimAdvanceCoordinatorStatus: () => status,
+      subscribeToSimAdvanceCoordinator: (callback: () => void) => {
+        statusListeners.add(callback);
+        return () => { statusListeners.delete(callback); };
+      },
+      resetSimAdvanceCoordinatorForTesting: () => {
+        status = { kind: 'fail_closed' };
+        for (const callback of [...statusListeners]) callback();
+        status = { kind: 'idle' };
+      },
+    }));
+    class MockWorker {
+      addEventListener = vi.fn();
+      postMessage = vi.fn();
+      start = vi.fn();
+      terminate = vi.fn();
+    }
+    vi.stubGlobal('Worker', MockWorker as unknown as typeof Worker);
+    const { useWorker } = await import('./useWorker');
+    const { resetSimAdvanceCoordinatorForTesting } = await import('@/shared/lib/simAdvanceCoordinator');
+    let latest: WorkerHookProbe | null = null;
+    function Probe() { latest = useWorker() as unknown as WorkerHookProbe; return null; }
+    await act(async () => { root.render(<Probe />); await Promise.resolve(); });
+    const worker = latest!;
+    const delayedRead = worker.getStandings();
+    const blockedFreeAgents = worker.getFreeAgents(25);
+    await Promise.resolve();
+    expect(getStandings).not.toHaveBeenCalled();
+    expect(getFreeAgents).not.toHaveBeenCalled();
+    await expect(worker.simDay()).rejects.toThrow('held');
+    await expect(worker.simLegacyAdvance('simDay', 'playoffs')).rejects.toThrow('held');
+    await expect(worker.exportSnapshot()).rejects.toThrow('held');
+    expect(simDay).not.toHaveBeenCalled();
+    expect(simLegacyAdvance).not.toHaveBeenCalled();
+    expect(exportSnapshot).not.toHaveBeenCalled();
+    status = { kind: 'publishing' };
+    for (const callback of [...statusListeners]) callback();
+    await expect(delayedRead).resolves.toEqual([{ teamId: 'nym' }]);
+    await expect(blockedFreeAgents).rejects.toThrow('held');
+    expect(getFreeAgents).not.toHaveBeenCalled();
+    status = { kind: 'fail_closed' };
+    const retiredRead = worker.getStandings();
+    await expect(retiredRead).rejects.toThrow('reload');
+    expect(getStandings).toHaveBeenCalledTimes(1);
+    status = { kind: 'running' };
+    const resetRead = worker.getStandings();
+    await Promise.resolve();
+    resetSimAdvanceCoordinatorForTesting();
+    await expect(resetRead).rejects.toThrow('reload');
+    expect(getStandings).toHaveBeenCalledTimes(1);
   });
 });

@@ -133,7 +133,7 @@ describe('useRosterActionHandlers', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
-      autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
       claimOffWaivers: vi.fn().mockResolvedValue({ success: true }),
       demotePlayer: vi.fn().mockResolvedValue({ success: true }),
       designateForAssignment: vi.fn().mockResolvedValue({ success: true }),
@@ -184,6 +184,8 @@ describe('useRosterActionHandlers', () => {
     expect(options.demotePlayer).toHaveBeenCalledWith('demote-1');
     expect(options.fetchRoster).toHaveBeenCalledTimes(1);
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.fetchRoster).mock.invocationCallOrder[0]!);
     expect(latestResult?.pendingRosterAction).toBeNull();
     expect(latestResult?.busyAction).toBeNull();
     expect(latestResult?.actionMessage).toBeNull();
@@ -217,6 +219,51 @@ describe('useRosterActionHandlers', () => {
     expect(latestResult?.busyAction).toBeNull();
   });
 
+  it('persists a failed Rule 5 move when it opened the offer-back flow', async () => {
+    const options = baseOptions({
+      designateForAssignment: vi.fn().mockResolvedValue({
+        success: false,
+        error: 'Rule 5 offer-back required.',
+        flowStateChanged: true,
+      }),
+    });
+    await renderHook(options);
+    act(() => {
+      latestResult?.openDfaAction(dfaCandidate);
+    });
+
+    await act(async () => {
+      await latestResult?.confirmRosterAction();
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
+    expect(options.fetchRoster).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.fetchRoster).mock.invocationCallOrder[0]!);
+    expect(latestResult?.actionMessage).toContain('offer-back');
+  });
+
+  it('publishes a durable failed Rule 5 message before a held display-only refresh', async () => {
+    let releaseRefresh!: () => void;
+    const options = baseOptions({
+      designateForAssignment: vi.fn().mockResolvedValue({
+        success: false,
+        error: 'Rule 5 offer-back required.',
+        flowStateChanged: true,
+      }),
+      fetchRoster: vi.fn(() => new Promise<void>((resolve) => { releaseRefresh = resolve; })),
+    });
+    await renderHook(options);
+    act(() => { latestResult?.openDfaAction(dfaCandidate); });
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = latestResult!.confirmRosterAction();
+      await vi.waitFor(() => expect(options.fetchRoster).toHaveBeenCalledTimes(1));
+    });
+    expect(latestResult?.actionMessage).toBe('Rule 5 offer-back required.');
+    await act(async () => { releaseRefresh(); await pending; });
+  });
+
   it('handles promotion candidates and waiver claims through the same action pipeline', async () => {
     const options = baseOptions();
     await renderHook(options);
@@ -246,5 +293,56 @@ describe('useRosterActionHandlers', () => {
     expect(options.claimOffWaivers).toHaveBeenCalledWith('waive-1');
     expect(options.fetchRoster).toHaveBeenCalledTimes(2);
     expect(options.autosaveActiveGame).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.fetchRoster).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[1]!)
+      .toBeLessThan(vi.mocked(options.fetchRoster).mock.invocationCallOrder[1]!);
+  });
+
+  it('does not refresh a confirmed roster mutation until its persistence call settles', async () => {
+    let releasePersistence!: () => void;
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn(() => new Promise<{ saved: true }>((resolve) => {
+        releasePersistence = () => resolve({ saved: true });
+      })),
+    });
+    await renderHook(options);
+    act(() => {
+      latestResult?.openDemoteAction(player({ id: 'held-demote' }));
+    });
+    let pending!: Promise<void>;
+
+    await act(async () => {
+      pending = latestResult!.confirmRosterAction();
+      await vi.waitFor(() => expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1));
+    });
+    expect(options.fetchRoster).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releasePersistence();
+      await pending;
+    });
+    expect(options.fetchRoster).toHaveBeenCalledTimes(1);
+    expect(latestResult?.pendingRosterAction).toBeNull();
+    expect(latestResult?.busyAction).toBeNull();
+  });
+
+  it('does not refresh a roster mutation when persistence resolves unsaved', async () => {
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    await renderHook(options);
+    act(() => {
+      latestResult?.openDemoteAction(player({ id: 'unsaved-demote' }));
+    });
+
+    await act(async () => {
+      await latestResult?.confirmRosterAction();
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.fetchRoster).not.toHaveBeenCalled();
+    expect(latestResult?.pendingRosterAction).toBeNull();
+    expect(latestResult?.busyAction).toBeNull();
   });
 });

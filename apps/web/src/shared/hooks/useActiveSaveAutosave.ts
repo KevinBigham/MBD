@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useGameStore } from './useGameStore';
 import { useWorker } from './useWorker';
 import { logger } from '@/shared/lib/logger';
+import { isSimAdvanceCoordinatorBusy } from './useSimAdvanceExecutor';
 import {
   persistActiveSaveSnapshot,
   type ActiveSavePersistenceReceipt,
@@ -27,6 +28,12 @@ export function useActiveSaveAutosave() {
   return useCallback(async (options: ActiveSaveAutosaveOptions = {}) => {
     let acceptedReceipt: ActiveSavePersistenceReceipt | null = null;
     try {
+      // This is a handler-independent backstop. UI controls also fence
+      // themselves, but an already-captured callback must not export a worker
+      // snapshot into an exact journal lease.
+      if (isSimAdvanceCoordinatorBusy()) {
+        return { saved: false, saveName: null, acceptedReceipt };
+      }
       if (options.transitionSaveId && options.transitionSaveId !== activeSaveId) {
         throw new Error(
           `Cannot capture ${options.transitionSaveId} from worker state bound to ${activeSaveId ?? 'no active save'}.`,

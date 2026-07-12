@@ -153,7 +153,7 @@ describe('useDraftActionHandlers', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
-      autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
       loadDraft: vi.fn().mockResolvedValue(undefined),
       makeDraftPick: vi.fn().mockResolvedValue(actionResult(draftView([pick(1)]))),
       scoutDraftPlayer: vi.fn().mockResolvedValue(undefined),
@@ -221,7 +221,7 @@ describe('useDraftActionHandlers', () => {
   });
 
   it('autosaves successful draft start, pick, and watch mutations', async () => {
-    const autosaveActiveGame = vi.fn().mockResolvedValue(undefined);
+    const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
     const options = {
       ...baseOptions(),
       autosaveActiveGame,
@@ -282,8 +282,23 @@ describe('useDraftActionHandlers', () => {
     expect(latestResult?.error).toBeNull();
   });
 
+  it('does not reload Draft after an accepted mutation resolves unsaved', async () => {
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleScoutProspect();
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.loadDraft).not.toHaveBeenCalled();
+    expect(latestResult?.scouting).toBe(false);
+  });
+
   it('autosaves successful draft scouting, big-board, and signing mutations', async () => {
-    const autosaveActiveGame = vi.fn().mockResolvedValue(undefined);
+    const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
     const selectedProspect = prospect({ id: 'prospect-42' });
     const options = {
       ...baseOptions({ selectedProspect }),
@@ -311,11 +326,12 @@ describe('useDraftActionHandlers', () => {
   });
 
   it('persists an accepted signing before the room refresh, even when the refresh rejects', async () => {
-    const autosaveActiveGame = vi.fn().mockResolvedValue(undefined);
+    const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
     const loadDraft = vi.fn().mockRejectedValue(new Error('refresh offline'));
     const order: string[] = [];
     autosaveActiveGame.mockImplementation(async () => {
       order.push('autosave');
+      return { saved: true };
     });
     loadDraft.mockImplementation(async () => {
       order.push('refresh');
@@ -346,7 +362,7 @@ describe('useDraftActionHandlers', () => {
   });
 
   it('does not autosave failed or invalid draft mutations', async () => {
-    const autosaveActiveGame = vi.fn().mockResolvedValue(undefined);
+    const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
     const options = {
       ...baseOptions({
         makeDraftPick: vi.fn().mockResolvedValue({ success: false, error: 'Board locked.' }),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   REVISED_CHAPTER_ORDER,
   advanceRevisedChapter,
@@ -15,6 +15,11 @@ import {
   type StaffHireChoices,
 } from '@mbd/sim-core';
 import type { GameState } from '@/shared/hooks/useGameStore';
+import { useGameStore } from '@/shared/hooks/useGameStore';
+import {
+  isSimAdvanceCoordinatorBusy,
+  useSimAdvanceCoordinatorStatus,
+} from '@/shared/hooks/useSimAdvanceExecutor';
 import type { useWorker } from '@/shared/hooks/useWorker';
 import { loadGameById } from '@/shared/lib/saveSystem';
 import { persistActiveSaveSnapshot } from '@/shared/lib/activeSavePersistence';
@@ -31,6 +36,17 @@ import { GuidedStartNudgeCard, useNudges } from '../nudges';
 interface WorkerMutationResult {
   success: boolean;
   flowStateChanged: boolean;
+}
+
+interface SaveActivationToken {
+  epoch: number;
+  saveId: string;
+}
+
+interface CompletionPersistenceTarget {
+  saveId: string;
+  saveSlot: number | null;
+  saveName: string;
 }
 
 type RevisedOnboardingFlowContentProps = ComponentProps<typeof RevisedOnboardingFlowContent>;
@@ -65,6 +81,7 @@ export type RevisedOnboardingPageScreen =
   }
   | {
     kind: 'missing-save';
+    actionDisabled: boolean;
     body: string;
     nudgeCard: ReactNode;
     onReturnToSaveHub: () => void;
@@ -122,12 +139,62 @@ export function useRevisedOnboardingPageController({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const coordinatorStatus = useSimAdvanceCoordinatorStatus();
+  const mountedRef = useRef(false);
+  const activationRef = useRef<{ epoch: number; saveId: string | null }>({ epoch: 0, saveId: activeSaveId });
+  if (activationRef.current.saveId !== activeSaveId) {
+    activationRef.current = { epoch: activationRef.current.epoch + 1, saveId: activeSaveId };
+  }
 
-  const hasSaveTarget = Boolean(activeSaveId) || activeSaveSlot != null;
+  const hasSaveTarget = Boolean(activeSaveId);
   const currentChapter = getCurrentRevisedChapter(flowState);
   const currentScript = data?.script.chapters[currentChapter.id] ?? null;
   const selectedAGM = data?.script.agm ?? candidates.find((candidate) => candidate.id === flowState.selectedAGMId) ?? null;
   const isBusy = loading || submitting;
+  const workerLaneBlocked = submitting || coordinatorStatus.kind !== 'idle';
+
+  const isSaveActivationCurrent = useCallback((captured: SaveActivationToken): boolean => (
+    mountedRef.current
+    && activationRef.current.epoch === captured.epoch
+    && activationRef.current.saveId === captured.saveId
+    && useGameStore.getState().activeSaveId === captured.saveId
+  ), []);
+
+  const captureAdmissibleSave = useCallback((): SaveActivationToken | null => {
+    const current = activationRef.current;
+    if (!mountedRef.current
+      || !current.saveId
+      || useGameStore.getState().activeSaveId !== current.saveId
+      || isSimAdvanceCoordinatorBusy()) {
+      return null;
+    }
+    return { epoch: current.epoch, saveId: current.saveId };
+  }, []);
+
+  const isSaveStillAdmissible = useCallback((captured: SaveActivationToken): boolean => (
+    isSaveActivationCurrent(captured)
+    && !isSimAdvanceCoordinatorBusy()
+  ), [isSaveActivationCurrent]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const unsubscribe = useGameStore.subscribe((state, previous) => {
+      if (state.activeSaveId !== previous.activeSaveId) {
+        activationRef.current = {
+          epoch: activationRef.current.epoch + 1,
+          saveId: state.activeSaveId,
+        };
+      }
+    });
+    return () => {
+      mountedRef.current = false;
+      activationRef.current = {
+        epoch: activationRef.current.epoch + 1,
+        saveId: activationRef.current.saveId,
+      };
+      unsubscribe();
+    };
+  }, []);
 
   const nudgeCard = (
     <GuidedStartNudgeCard
@@ -137,33 +204,54 @@ export function useRevisedOnboardingPageController({
   );
 
   const loadCandidates = useCallback(async () => {
-    if (!worker.isReady) {
+    const captured = captureAdmissibleSave();
+    if (!worker.isReady || !captured) {
       return;
     }
 
     setLoading(true);
     try {
       const nextCandidates = await worker.getAGMCandidates();
+      if (!isSaveStillAdmissible(captured)) return;
       setCandidates(nextCandidates);
       setError(null);
     } catch (caughtError) {
-      setError(readErrorMessage(caughtError, 'Failed to load AGM candidates.'));
+      if (isSaveStillAdmissible(captured)) {
+        setError(readErrorMessage(caughtError, 'Failed to load AGM candidates.'));
+      }
     } finally {
-      setLoading(false);
+      if (isSaveActivationCurrent(captured)) setLoading(false);
     }
-  }, [worker]);
+  }, [captureAdmissibleSave, isSaveActivationCurrent, isSaveStillAdmissible, worker]);
 
   useEffect(() => {
-    void loadCandidates();
-  }, [loadCandidates]);
+    setCandidates([]);
+    setData(null);
+    setFlowState(createRevisedOnboardingState());
+    setLoading(true);
+    setSubmitting(false);
+    setError(null);
+  }, [activeSaveId]);
 
-  const persistCompletion = useCallback(async (snapshot: object) => {
-    let targetSaveId = activeSaveId;
+  useEffect(() => {
+    if (coordinatorStatus.kind === 'idle') void loadCandidates();
+  }, [activeSaveId, coordinatorStatus.kind, loadCandidates]);
+
+  const resolveCompletionPersistenceTarget = useCallback(async (
+    captured: SaveActivationToken,
+  ): Promise<CompletionPersistenceTarget> => {
+    if (!isSaveStillAdmissible(captured)) {
+      throw new Error('The active onboarding save changed before metadata resolution began.');
+    }
+    let targetSaveId: string | null = captured.saveId;
     let targetSaveSlot = activeSaveSlot;
     let targetSaveName = `${gmName} • Franchise`;
 
-    if (activeSaveId) {
-      const existingSave = await loadGameById(activeSaveId);
+    if (captured.saveId) {
+      const existingSave = await loadGameById(captured.saveId);
+      if (!isSaveStillAdmissible(captured)) {
+        throw new Error('The active onboarding save changed while its metadata was loading.');
+      }
       if (existingSave) {
         targetSaveId = existingSave.id;
         targetSaveSlot = existingSave.slotNumber;
@@ -178,33 +266,64 @@ export function useRevisedOnboardingPageController({
       throw new Error('Onboarding has no active save target.');
     }
 
+    return {
+      saveId: targetSaveId,
+      saveSlot: targetSaveSlot,
+      saveName: targetSaveName,
+    };
+  }, [activeSaveSlot, gmName, isSaveStillAdmissible]);
+
+  const persistCompletion = useCallback(async (
+    target: CompletionPersistenceTarget,
+    captured: SaveActivationToken,
+  ) => {
+    if (!isSaveStillAdmissible(captured)) {
+      throw new Error('The active onboarding save changed before persistence began.');
+    }
     const result = await persistActiveSaveSnapshot({
-      activeSaveId: targetSaveId,
-      activeSaveSlot: targetSaveSlot,
+      activeSaveId: target.saveId,
+      activeSaveSlot: target.saveSlot,
       gmName,
       teamName: null,
-      season: (snapshot as { season?: number }).season ?? 1,
-      saveName: targetSaveName,
-      exportSnapshot: async () => snapshot,
+      season: 1,
+      saveName: target.saveName,
+      exportSnapshot: async () => {
+        if (!isSaveStillAdmissible(captured)) {
+          throw new Error('The active onboarding save changed before snapshot export began.');
+        }
+        const snapshot = requireSnapshotObject(await worker.exportSnapshot());
+        if (!isSaveStillAdmissible(captured)) {
+          throw new Error('The active onboarding save changed during snapshot export.');
+        }
+        return snapshot;
+      },
     });
+    if (!isSaveStillAdmissible(captured)) {
+      throw new Error('The active onboarding save changed before persistence completed.');
+    }
     if (!result.saved) {
       throw new Error('The active onboarding save changed before persistence completed.');
     }
-  }, [activeSaveId, activeSaveSlot, gmName]);
+  }, [gmName, isSaveStillAdmissible, worker]);
 
   const handleSelectAGM = useCallback(async (agmId: AGMCandidateId) => {
+    const captured = captureAdmissibleSave();
+    if (!captured) return;
     setSubmitting(true);
     try {
       const nextData = await worker.getRevisedOnboardingData(agmId);
+      if (!isSaveStillAdmissible(captured)) return;
       setData(nextData);
       setFlowState(selectAGMInFlow(createRevisedOnboardingState(), agmId));
       setError(null);
     } catch (caughtError) {
-      setError(readErrorMessage(caughtError, 'Failed to load revised onboarding.'));
+      if (isSaveStillAdmissible(captured)) {
+        setError(readErrorMessage(caughtError, 'Failed to load revised onboarding.'));
+      }
     } finally {
-      setSubmitting(false);
+      if (isSaveActivationCurrent(captured)) setSubmitting(false);
     }
-  }, [worker]);
+  }, [captureAdmissibleSave, isSaveActivationCurrent, isSaveStillAdmissible, worker]);
 
   const completeLocalChapter = useCallback((nextState: OnboardingFlowState) => {
     setFlowState(nextState);
@@ -220,51 +339,83 @@ export function useRevisedOnboardingPageController({
   }, [completeLocalChapter, flowState]);
 
   const handleStaffHires = useCallback(async (hires: StaffHireChoices) => {
+    const captured = captureAdmissibleSave();
+    if (!captured) return;
     setSubmitting(true);
     try {
-      await worker.applyStaffHires(hires) as WorkerMutationResult;
+      const persistenceTarget = await resolveCompletionPersistenceTarget(captured);
+      if (!isSaveStillAdmissible(captured)) return;
+      const result = await worker.applyStaffHires(hires) as WorkerMutationResult;
+      if (!isSaveStillAdmissible(captured)) return;
+      if (!result.success) throw new Error('The worker rejected the staff hires.');
+      await persistCompletion(persistenceTarget, captured);
+      if (!isSaveStillAdmissible(captured)) return;
       setFlowState(setStaffHiresInFlow(flowState, hires));
       setError(null);
     } catch (caughtError) {
-      setError(readErrorMessage(caughtError, 'Failed to apply staff hires.'));
+      if (isSaveStillAdmissible(captured)) {
+        setError(readErrorMessage(caughtError, 'Failed to apply staff hires.'));
+      }
     } finally {
-      setSubmitting(false);
+      if (isSaveActivationCurrent(captured)) setSubmitting(false);
     }
-  }, [flowState, worker]);
+  }, [captureAdmissibleSave, flowState, isSaveActivationCurrent, isSaveStillAdmissible, persistCompletion, resolveCompletionPersistenceTarget, worker]);
 
   const handleScoutingHire = useCallback(async (scoutingDirectorId: string) => {
+    const captured = captureAdmissibleSave();
+    if (!captured) return;
     setSubmitting(true);
     try {
-      await worker.applyScoutingHire(scoutingDirectorId) as WorkerMutationResult;
+      const persistenceTarget = await resolveCompletionPersistenceTarget(captured);
+      if (!isSaveStillAdmissible(captured)) return;
+      const result = await worker.applyScoutingHire(scoutingDirectorId) as WorkerMutationResult;
+      if (!isSaveStillAdmissible(captured)) return;
+      if (!result.success) throw new Error('The worker rejected the scouting hire.');
+      await persistCompletion(persistenceTarget, captured);
+      if (!isSaveStillAdmissible(captured)) return;
       setFlowState(setScoutingHireInFlow(flowState, scoutingDirectorId));
       setError(null);
     } catch (caughtError) {
-      setError(readErrorMessage(caughtError, 'Failed to apply scouting hire.'));
+      if (isSaveStillAdmissible(captured)) {
+        setError(readErrorMessage(caughtError, 'Failed to apply scouting hire.'));
+      }
     } finally {
-      setSubmitting(false);
+      if (isSaveActivationCurrent(captured)) setSubmitting(false);
     }
-  }, [flowState, worker]);
+  }, [captureAdmissibleSave, flowState, isSaveActivationCurrent, isSaveStillAdmissible, persistCompletion, resolveCompletionPersistenceTarget, worker]);
 
   const handleEnterFrontOffice = useCallback(async () => {
     if (data == null) {
       setError('Revised onboarding data is missing.');
       return;
     }
+    const captured = captureAdmissibleSave();
+    if (!captured) return;
 
     setSubmitting(true);
     try {
+      // Resolve presentation metadata before the canonical worker mutation.
+      // Once the mutation succeeds, the next async boundary is the exact
+      // persistence capture itself; no retained-export or route-read gap can
+      // admit a simulation command against divergent worker/durable state.
+      const persistenceTarget = await resolveCompletionPersistenceTarget(captured);
+      if (!isSaveStillAdmissible(captured)) return;
       const result = getOnboardingResult(flowState, data.scoutingSlate);
-      await worker.completeRevisedOnboarding(result) as WorkerMutationResult;
-      const snapshot = requireSnapshotObject(await worker.exportSnapshot());
-      await persistCompletion(snapshot);
+      const mutation = await worker.completeRevisedOnboarding(result) as WorkerMutationResult;
+      if (!isSaveStillAdmissible(captured)) return;
+      if (!mutation.success) throw new Error('The worker rejected onboarding completion.');
+      await persistCompletion(persistenceTarget, captured);
+      if (!isSaveStillAdmissible(captured)) return;
       setError(null);
       navigate('/dashboard');
     } catch (caughtError) {
-      setError(readErrorMessage(caughtError, 'Failed to complete revised onboarding.'));
+      if (isSaveStillAdmissible(captured)) {
+        setError(readErrorMessage(caughtError, 'Failed to complete revised onboarding.'));
+      }
     } finally {
-      setSubmitting(false);
+      if (isSaveActivationCurrent(captured)) setSubmitting(false);
     }
-  }, [data, flowState, navigate, persistCompletion, worker]);
+  }, [captureAdmissibleSave, data, flowState, isSaveActivationCurrent, isSaveStillAdmissible, navigate, persistCompletion, resolveCompletionPersistenceTarget, worker]);
 
   const agmPanel = useMemo(() => {
     if (selectedAGM == null || data == null) {
@@ -287,8 +438,22 @@ export function useRevisedOnboardingPageController({
   }, [currentChapter, currentScript, data, flowState.isComplete, selectedAGM]);
 
   const handleReturnToSaveHub = useCallback(() => {
+    if (isSimAdvanceCoordinatorBusy()) return;
     navigate('/');
   }, [navigate]);
+
+  if (!hasSaveTarget) {
+    return {
+      screen: {
+        kind: 'missing-save',
+        actionDisabled: coordinatorStatus.kind !== 'idle',
+        title: 'No active save selected',
+        body: 'Revised onboarding needs an active save slot so the final front-office snapshot can be preserved.',
+        onReturnToSaveHub: handleReturnToSaveHub,
+        nudgeCard,
+      },
+    };
+  }
 
   if (loading && candidates.length === 0) {
     return {
@@ -300,25 +465,13 @@ export function useRevisedOnboardingPageController({
     };
   }
 
-  if (!hasSaveTarget) {
-    return {
-      screen: {
-        kind: 'missing-save',
-        title: 'No active save selected',
-        body: 'Revised onboarding needs an active save slot so the final front-office snapshot can be preserved.',
-        onReturnToSaveHub: handleReturnToSaveHub,
-        nudgeCard,
-      },
-    };
-  }
-
   if (data == null) {
     return {
       screen: {
         kind: 'agm-selection',
         candidates,
         error,
-        isBusy,
+        isBusy: isBusy || coordinatorStatus.kind !== 'idle',
         onSelectAGM: handleSelectAGM,
         nudgeCard,
       },
@@ -340,6 +493,7 @@ export function useRevisedOnboardingPageController({
         onRosterAdvance: handleRosterAdvance,
         onScoutingHire: handleScoutingHire,
         onStaffHires: handleStaffHires,
+        mutationBlocked: workerLaneBlocked,
         submitting,
       },
       nudgeCard,

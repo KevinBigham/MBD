@@ -32,6 +32,7 @@ interface RevisedOnboardingFlowContentProps {
   onRosterAdvance: () => void;
   onScoutingHire: (scoutingDirectorId: string) => void;
   onStaffHires: (hires: StaffHireChoices) => void;
+  mutationBlocked: boolean;
   submitting: boolean;
 }
 
@@ -47,6 +48,7 @@ export default function RevisedOnboardingFlowContent({
   onRosterAdvance,
   onScoutingHire,
   onStaffHires,
+  mutationBlocked,
   submitting,
 }: RevisedOnboardingFlowContentProps) {
   return (
@@ -75,6 +77,7 @@ export default function RevisedOnboardingFlowContent({
             script={currentScript}
             data={data}
             isComplete={flowState.isComplete}
+            mutationBlocked={mutationBlocked}
             isSubmitting={submitting}
             onChoice={onChoice}
             onRosterAdvance={onRosterAdvance}

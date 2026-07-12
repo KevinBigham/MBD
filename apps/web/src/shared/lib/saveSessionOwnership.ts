@@ -71,6 +71,7 @@ interface HeldRootLock {
 }
 
 interface InternalClaim extends SaveSessionClaim {
+  publicClaim: SaveSessionClaim;
   released: boolean;
   purpose: 'activation' | 'transient';
 }
@@ -151,7 +152,10 @@ export class SaveSessionOwnershipCoordinator {
   private readonly claims = new Map<symbol, InternalClaim>();
   private readonly importAuthorizations = new Map<symbol, number>();
   private readonly newGameAuthorizations = new Map<symbol, number>();
-  private readonly candidateSnapshotExportAuthorizations = new Map<symbol, number>();
+  private readonly candidateSnapshotExportAuthorizations = new Map<symbol, {
+    candidateSaveId: string | null;
+    references: number;
+  }>();
   private readonly activeSnapshotExportAuthorizations = new Map<string, number>();
   private readonly activeImportAuthorizations = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
@@ -217,6 +221,7 @@ export class SaveSessionOwnershipCoordinator {
     // separate internal record keyed by its opaque symbol.
     const internal: InternalClaim = {
       ...claim,
+      publicClaim: claim,
       released: false,
       purpose,
     };
@@ -235,6 +240,7 @@ export class SaveSessionOwnershipCoordinator {
     const internal = this.claims.get(claim.claimId);
     if (!internal
       || internal.released
+      || internal.publicClaim !== claim
       || internal.rootSaveId !== claim.rootSaveId
       || internal.resourceName !== claim.resourceName) {
       throw new SaveSessionOwnershipError(
@@ -618,7 +624,10 @@ export class SaveSessionOwnershipCoordinator {
       (this.importAuthorizations.get(internal.claimId) ?? 0) + 1,
     );
     try {
-      return await operation();
+      // The worker proxy consumes this one-shot authority synchronously before
+      // its first await. Do not keep a save-wide scope open while Comlink is
+      // in flight, where another callback could borrow it.
+      return operation();
     } finally {
       const remaining = (this.importAuthorizations.get(internal.claimId) ?? 1) - 1;
       if (remaining <= 0) {
@@ -639,7 +648,7 @@ export class SaveSessionOwnershipCoordinator {
       (this.newGameAuthorizations.get(internal.claimId) ?? 0) + 1,
     );
     try {
-      return await operation();
+      return operation();
     } finally {
       const remaining = (this.newGameAuthorizations.get(internal.claimId) ?? 1) - 1;
       if (remaining <= 0) {
@@ -650,25 +659,36 @@ export class SaveSessionOwnershipCoordinator {
     }
   }
 
-  withCandidateSnapshotExportAuthorization<T>(
+  async withCandidateSnapshotExportAuthorization<T>(
     claim: SaveSessionClaim,
-    operation: () => T,
-  ): T {
+    candidateSaveId: string | null,
+    operation: () => Promise<T>,
+  ): Promise<T> {
     const internal = this.requireClaim(claim);
-    this.candidateSnapshotExportAuthorizations.set(
-      internal.claimId,
-      (this.candidateSnapshotExportAuthorizations.get(internal.claimId) ?? 0) + 1,
-    );
+    const current = this.candidateSnapshotExportAuthorizations.get(internal.claimId);
+    if (current && current.candidateSaveId !== candidateSaveId) {
+      throw new SaveSessionOwnershipError(
+        'not_owner',
+        'A save-session candidate cannot export a snapshot for another save.',
+        internal.rootSaveId,
+      );
+    }
+    this.candidateSnapshotExportAuthorizations.set(internal.claimId, {
+      candidateSaveId,
+      references: (current?.references ?? 0) + 1,
+    });
     try {
       return operation();
     } finally {
-      const remaining = (
-        this.candidateSnapshotExportAuthorizations.get(internal.claimId) ?? 1
-      ) - 1;
-      if (remaining <= 0) {
+      const active = this.candidateSnapshotExportAuthorizations.get(internal.claimId);
+      const remaining = (active?.references ?? 1) - 1;
+      if (!active || remaining <= 0) {
         this.candidateSnapshotExportAuthorizations.delete(internal.claimId);
       } else {
-        this.candidateSnapshotExportAuthorizations.set(internal.claimId, remaining);
+        this.candidateSnapshotExportAuthorizations.set(internal.claimId, {
+          candidateSaveId: active.candidateSaveId,
+          references: remaining,
+        });
       }
     }
   }
@@ -774,21 +794,28 @@ export class SaveSessionOwnershipCoordinator {
     if (!this.enforcementEnabled) {
       return;
     }
-    const authorized = Array.from(this.importAuthorizations.keys()).some((claimId) => {
+    const authorizedClaimId = Array.from(this.importAuthorizations.keys()).find((claimId) => {
       const claim = this.claims.get(claimId);
       return Boolean(claim && !claim.released && this.ownsRoot(claim.rootSaveId));
     });
-    const activeAuthorized = this.activeSaveId != null
-      && this.activeRootSaveId != null
-      && (this.activeImportAuthorizations.get(this.activeSaveId) ?? 0) > 0
-      && this.ownsRoot(this.activeRootSaveId);
-    if (!authorized && !activeAuthorized) {
-      throw new SaveSessionOwnershipError(
-        'not_owner',
-        'Snapshot import requires an owned save-session candidate.',
-        null,
-      );
+    if (authorizedClaimId != null) {
+      this.importAuthorizations.delete(authorizedClaimId);
+      return;
     }
+    const activeSaveId = this.activeSaveId;
+    const activeAuthorized = activeSaveId != null
+      && this.activeRootSaveId != null
+      && (this.activeImportAuthorizations.get(activeSaveId) ?? 0) > 0
+      && this.ownsRoot(this.activeRootSaveId);
+    if (activeAuthorized) {
+      this.activeImportAuthorizations.delete(activeSaveId);
+      return;
+    }
+    throw new SaveSessionOwnershipError(
+      'not_owner',
+      'Snapshot import requires an owned save-session candidate.',
+      null,
+    );
   }
 
   assertSnapshotExportAuthorized(
@@ -798,28 +825,36 @@ export class SaveSessionOwnershipCoordinator {
       return 'ordinary';
     }
 
-    const candidateAuthorized = Array.from(
-      this.candidateSnapshotExportAuthorizations.keys(),
-    ).some((claimId) => {
+    const candidateAuthorization = Array.from(
+      this.candidateSnapshotExportAuthorizations.entries(),
+    ).find(([claimId, authorization]) => {
       const claim = this.claims.get(claimId);
-      return Boolean(claim && !claim.released && this.ownsRoot(claim.rootSaveId));
+      return Boolean(
+        claim
+        && !claim.released
+        && authorization.candidateSaveId === expectedActiveSaveId
+        && this.ownsRoot(claim.rootSaveId),
+      );
     });
-    if (candidateAuthorized && expectedActiveSaveId == null) {
+    if (candidateAuthorization) {
+      this.candidateSnapshotExportAuthorizations.delete(candidateAuthorization[0]);
       return 'transition';
     }
 
     this.assertActiveOwner(expectedActiveSaveId ?? '__no-active-save__');
-    return expectedActiveSaveId != null
-      && (this.activeSnapshotExportAuthorizations.get(expectedActiveSaveId) ?? 0) > 0
-      ? 'transition'
-      : 'ordinary';
+    if (expectedActiveSaveId != null
+      && (this.activeSnapshotExportAuthorizations.get(expectedActiveSaveId) ?? 0) > 0) {
+      this.activeSnapshotExportAuthorizations.delete(expectedActiveSaveId);
+      return 'transition';
+    }
+    return 'ordinary';
   }
 
   assertNewGameAuthorized(rootSaveId: string): void {
     if (!this.enforcementEnabled) {
       return;
     }
-    const authorized = Array.from(this.newGameAuthorizations.keys()).some((claimId) => {
+    const authorizedClaimId = Array.from(this.newGameAuthorizations.keys()).find((claimId) => {
       const claim = this.claims.get(claimId);
       return Boolean(
         claim
@@ -828,13 +863,15 @@ export class SaveSessionOwnershipCoordinator {
         && this.ownsRoot(claim.rootSaveId)
       );
     });
-    if (!authorized) {
-      throw new SaveSessionOwnershipError(
-        'not_owner',
-        'New-dynasty simulation requires an owned activation candidate.',
-        rootSaveId,
-      );
+    if (authorizedClaimId != null) {
+      this.newGameAuthorizations.delete(authorizedClaimId);
+      return;
     }
+    throw new SaveSessionOwnershipError(
+      'not_owner',
+      'New-dynasty simulation requires an owned activation candidate.',
+      rootSaveId,
+    );
   }
 
   async dispose(): Promise<void> {
@@ -925,9 +962,14 @@ export function withSaveSessionNewGameAuthorization<T>(
 
 export function withSaveSessionCandidateSnapshotExportAuthorization<T>(
   claim: SaveSessionClaim,
+  candidateSaveId: string | null,
   operation: () => Promise<T>,
 ): Promise<T> {
-  return activeSaveSessionOwnership.withCandidateSnapshotExportAuthorization(claim, operation);
+  return activeSaveSessionOwnership.withCandidateSnapshotExportAuthorization(
+    claim,
+    candidateSaveId,
+    operation,
+  );
 }
 
 export function withActiveSaveSessionSnapshotExportAuthorization<T>(

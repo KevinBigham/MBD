@@ -30,8 +30,10 @@ interface InteractivePressConference {
 
 interface PressConferenceModalProps {
   conference: InteractivePressConference;
-  onRespond: (conferenceId: string, responseId: string) => Promise<void>;
+  /** False means the live handler was fenced; do not fabricate success UI. */
+  onRespond: (conferenceId: string, responseId: string) => Promise<boolean>;
   onDismiss: () => void;
+  disabled?: boolean;
 }
 
 function toneIcon(tone: string) {
@@ -75,7 +77,7 @@ function ownerToneLabel(tone: string): string {
   }
 }
 
-export function PressConferenceModal({ conference, onRespond, onDismiss }: PressConferenceModalProps) {
+export function PressConferenceModal({ conference, onRespond, onDismiss, disabled = false }: PressConferenceModalProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ tone: string; moraleDelta: number; ownerDelta: number } | null>(null);
@@ -87,26 +89,27 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting) {
+      if (event.key === 'Escape' && !disabled && !submitting) {
         onDismiss();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onDismiss, submitting]);
+  }, [disabled, onDismiss, submitting]);
 
   const handleSelect = (responseId: string) => {
-    if (submitting || result) return;
+    if (disabled || submitting || result) return;
     getAudioEngine().playEffect('tab_switch');
     setSelectedId(responseId);
   };
 
   const handleSubmit = async () => {
-    if (!selectedId || submitting || result) return;
+    if (disabled || !selectedId || submitting || result) return;
     setSubmitting(true);
     getAudioEngine().playEffect('button_click');
     try {
-      await onRespond(conference.id, selectedId);
+      const accepted = await onRespond(conference.id, selectedId);
+      if (!accepted) return;
       const response = conference.responses.find((r) => r.id === selectedId);
       if (response) {
         setResult({ tone: response.tone, moraleDelta: response.moraleDelta, ownerDelta: response.ownerDelta });
@@ -150,7 +153,7 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
             <button
               type="button"
               onClick={onDismiss}
-              disabled={submitting}
+              disabled={disabled || submitting}
               className="rounded-lg p-2 text-dynasty-muted transition-colors hover:bg-dynasty-elevated hover:text-dynasty-text disabled:opacity-40"
               aria-label="Close press conference"
             >
@@ -175,7 +178,7 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
                   key={response.id}
                   type="button"
                   onClick={() => handleSelect(response.id)}
-                  disabled={submitting}
+                  disabled={disabled || submitting}
                   className={`w-full rounded-lg border bg-dynasty-elevated/50 p-4 text-left transition-all ${toneBorderClass(response.tone, isSelected)}`}
                 >
                   <div className="flex items-center gap-3">
@@ -225,14 +228,15 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
               <button
                 type="button"
                 onClick={onDismiss}
-                className="rounded-md border border-dynasty-border px-4 py-2 font-heading text-xs text-dynasty-muted transition-colors hover:text-dynasty-text"
+                disabled={disabled || submitting}
+                className="rounded-md border border-dynasty-border px-4 py-2 font-heading text-xs text-dynasty-muted transition-colors hover:text-dynasty-text disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Skip
               </button>
               <button
                 type="button"
                 onClick={() => void handleSubmit()}
-                disabled={!selectedId || submitting}
+                disabled={disabled || !selectedId || submitting}
                 className="flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-xs font-semibold text-white transition-opacity disabled:opacity-40"
               >
                 Deliver Response
@@ -243,7 +247,8 @@ export function PressConferenceModal({ conference, onRespond, onDismiss }: Press
             <button
               type="button"
               onClick={onDismiss}
-              className="rounded-md bg-accent-primary px-4 py-2 font-heading text-xs font-semibold text-white"
+              disabled={disabled || submitting}
+              className="rounded-md bg-accent-primary px-4 py-2 font-heading text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               Continue
             </button>

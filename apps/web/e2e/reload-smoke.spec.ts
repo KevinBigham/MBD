@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import {
   appMain,
+  clickFreshOverlayAction,
   disableIndexedDbSaveFault,
   dismissGuidedStartNudges,
   drainDurableOverlays,
@@ -19,11 +20,43 @@ import {
   normalizeVisibleLabel,
   readIndexedDbSaveIntegrityPair,
   runGlobalSimulation,
+  selectExactlyOneVisibleOverlayAction,
   saveSummary,
   saveStatus,
   tamperIndexedDbSaveChecksum,
   waitForAppReady,
 } from './helpers/dynasty';
+
+test('fresh overlay-action oracle never retains a stale report control', async () => {
+  const firstRead = selectExactlyOneVisibleOverlayAction([
+    { name: 'Continue', visible: true, enabled: true },
+    { name: 'Dismiss', visible: false, enabled: false },
+  ] as const);
+  const secondRead = selectExactlyOneVisibleOverlayAction([
+    { name: 'Continue', visible: false, enabled: false },
+    { name: 'Dismiss', visible: true, enabled: true },
+  ] as const);
+  const clicked: string[] = [];
+  expect(firstRead).toEqual({ kind: 'ready', name: 'Continue' });
+  expect(secondRead).toEqual({ kind: 'ready', name: 'Dismiss' });
+  if (secondRead.kind === 'ready') clicked.push(secondRead.name);
+  expect(clicked).toEqual(['Dismiss']);
+
+  expect(() => selectExactlyOneVisibleOverlayAction([
+    { name: 'Continue', visible: true, enabled: true },
+    { name: 'Dismiss', visible: true, enabled: true },
+  ] as const)).toThrow('multiple visible actions');
+  expect(selectExactlyOneVisibleOverlayAction([
+    { name: 'Continue', visible: false, enabled: false },
+    { name: 'Dismiss', visible: false, enabled: false },
+  ] as const)).toEqual({ kind: 'waiting' });
+  expect(selectExactlyOneVisibleOverlayAction([
+    { name: 'Dismiss', visible: true, enabled: false },
+  ] as const)).toEqual({ kind: 'waiting' });
+  await expect(clickFreshOverlayAction({
+    click: async () => { throw new Error('detached fresh action'); },
+  } as never)).rejects.toThrow('detached fresh action');
+});
 
 const DEVELOPMENT_RECOVERY_SAVED_AT = '2026-04-02T19:41:02.000Z';
 const DEVELOPMENT_RECOVERY_SUMMARY = 'Last saved 7:41:02 PM · 0 pending writes';
@@ -293,21 +326,12 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     const result = appMain(page).getByText(
       new RegExp(`^${escapeRegExp(developmentPlayer)}: (.+) plan applied\\.$`),
     );
-    await expect(result).toBeVisible();
-    const resultText = (await result.innerText()).trim();
-    const match = resultText.match(
-      new RegExp(`^${escapeRegExp(developmentPlayer)}: (.+) plan applied\\.$`),
+    await expect(result).toHaveCount(0);
+    const pendingDevelopmentCopy = appMain(page).getByText(
+      'The development plan changed in memory. Save status is the authority for durability.',
+      { exact: true },
     );
-    expect(match?.[1]).toBeTruthy();
-    developmentProgram = match?.[1] ?? '';
-    expect(normalizeVisibleLabel(developmentProgram)).not.toBe(
-      normalizeVisibleLabel(selection.beforeProgram),
-    );
-    if (selection.candidate.expectedProgram) {
-      expect(normalizeVisibleLabel(developmentProgram)).toBe(
-        normalizeVisibleLabel(selection.candidate.expectedProgram),
-      );
-    }
+    await expect(pendingDevelopmentCopy).toBeVisible();
 
     const exhaustedAttempts = await indexedDbSaveFaultState(page);
     expect(exhaustedAttempts).toMatchObject({ blockedAttempts: 3, totalAttempts: 3 });
@@ -429,6 +453,16 @@ test('four high-emotion mutations remain durable after real browser reloads', as
       (player) => player.id === selection.candidate.playerId,
     );
     expect(downloadedPlayer).toBeTruthy();
+    developmentProgram = String(downloadedPlayer?.developmentProgram ?? '');
+    expect(developmentProgram).not.toBe('');
+    expect(normalizeVisibleLabel(developmentProgram)).not.toBe(
+      normalizeVisibleLabel(selection.beforeProgram),
+    );
+    if (selection.candidate.expectedProgram) {
+      expect(normalizeVisibleLabel(developmentProgram)).toBe(
+        normalizeVisibleLabel(selection.candidate.expectedProgram),
+      );
+    }
     expect(normalizeVisibleLabel(String(downloadedPlayer?.developmentProgram ?? ''))).toBe(
       normalizeVisibleLabel(developmentProgram),
     );
@@ -463,6 +497,7 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     ).toHaveCount(0);
     await expect.poll(async () => (await indexedDbSaveFaultState(page)).totalAttempts).toBe(4);
     await expect.poll(async () => (await indexedDbSaveFaultState(page)).blockedAttempts).toBe(3);
+    await expect(pendingDevelopmentCopy).toBeVisible();
 
     await freshRuntimeReload(page);
     const persistedProgram = await readCurrentProgram(

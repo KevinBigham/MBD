@@ -5,6 +5,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './AppLayout';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
+import { isSimAdvanceCoordinatorBusy, useSimAdvanceExecutor } from '@/shared/hooks/useSimAdvanceExecutor';
 import { saveGameById } from '@/shared/lib/saveSystem';
 import { getAudioEngine } from '@/shared/lib/audio';
 import {
@@ -33,6 +35,16 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
+  useActiveSaveAutosave: vi.fn(),
+}));
+
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  useSimAdvanceExecutor: vi.fn(),
+  useSimAdvanceCoordinatorStatus: vi.fn(() => ({ kind: 'idle' })),
+  isSimAdvanceCoordinatorBusy: vi.fn(() => false),
+}));
+
 vi.mock('@/shared/lib/saveSystem', () => ({
   loadGameById: vi.fn().mockResolvedValue(undefined),
   saveGameById: vi.fn().mockResolvedValue({
@@ -54,6 +66,9 @@ vi.mock('@/shared/lib/logger', () => ({
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedUseActiveSaveAutosave = vi.mocked(useActiveSaveAutosave);
+const mockedUseSimAdvanceExecutor = vi.mocked(useSimAdvanceExecutor);
+const mockedIsSimAdvanceCoordinatorBusy = vi.mocked(isSimAdvanceCoordinatorBusy);
 const mockedSaveGameById = vi.mocked(saveGameById);
 const mockedGetAudioEngine = vi.mocked(getAudioEngine);
 const audioEngineMock = {
@@ -96,12 +111,19 @@ function createWorkerMock(flow: Record<string, unknown>) {
     simDay: vi.fn().mockResolvedValue({ season: 3, day: 88, phase: 'regular', gamesPlayed: 1 }),
     simWeek: vi.fn().mockResolvedValue({ season: 3, day: 94, phase: 'regular', gamesPlayed: 7 }),
     simMonth: vi.fn().mockResolvedValue({ season: 3, day: 117, phase: 'regular', gamesPlayed: 30 }),
+    simLegacyAdvance: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'playoffs', gamesPlayed: 0 }),
     simToPlayoffs: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'playoffs', gamesPlayed: 75 }),
     simRemainingPlayoffs: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'playoffs', gamesPlayed: 11 }),
     proceedToOffseason: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'offseason', gamesPlayed: 0 }),
     startNextSeason: vi.fn().mockResolvedValue({ season: 4, day: 1, phase: 'preseason', gamesPlayed: 0 }),
     exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 11, season: 3, day: 117, phase: 'regular' }),
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
 }
 
 describe('AppLayout', () => {
@@ -121,6 +143,15 @@ describe('AppLayout', () => {
     audioEngineMock.setEffectVolume.mockReset();
     audioEngineMock.setAmbientVolume.mockReset();
     audioEngineMock.setMuted.mockReset();
+    mockedUseSimAdvanceExecutor.mockReturnValue({
+      execute: vi.fn().mockResolvedValue({ kind: 'durable' }),
+      status: { kind: 'idle' },
+    } as unknown as ReturnType<typeof useSimAdvanceExecutor>);
+    mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(false);
+    mockedUseActiveSaveAutosave.mockReturnValue(vi.fn().mockResolvedValue({ saved: true, saveName: 'Tycoons' }));
+    Object.assign(mockedUseGameStore, {
+      getState: () => mockedUseGameStore.mock.results.at(-1)?.value,
+    });
   });
 
   afterEach(async () => {
@@ -143,8 +174,8 @@ describe('AppLayout', () => {
       teamName: 'Tycoons',
       gmName: 'Alex Rivera',
       difficulty: 'standard',
-      activeSaveId: null,
-      activeSaveSlot: null,
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -209,7 +240,8 @@ describe('AppLayout', () => {
       await Promise.resolve();
     });
 
-    expect(worker.simToPlayoffs).toHaveBeenCalledTimes(1);
+    const regularExecute = mockedUseSimAdvanceExecutor.mock.results[0]?.value.execute as ReturnType<typeof vi.fn>;
+    expect(regularExecute).toHaveBeenCalledWith('sim_to_playoffs');
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
@@ -224,9 +256,9 @@ describe('AppLayout', () => {
       await Promise.resolve();
     });
 
-    expect(worker.simDay).toHaveBeenCalledTimes(1);
-    expect(worker.simWeek).toHaveBeenCalledTimes(1);
-    expect(worker.simMonth).toHaveBeenCalledTimes(1);
+    expect(regularExecute).toHaveBeenNthCalledWith(2, 'sim_day');
+    expect(regularExecute).toHaveBeenNthCalledWith(3, 'sim_week');
+    expect(regularExecute).toHaveBeenNthCalledWith(4, 'sim_month');
 
     let transitionPause!: ReturnType<typeof pauseWorkerMutationsForSaveTransition>;
     await act(async () => {
@@ -241,7 +273,7 @@ describe('AppLayout', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
       await Promise.resolve();
     });
-    expect(worker.simDay).toHaveBeenCalledTimes(1);
+    expect(regularExecute).toHaveBeenCalledTimes(4);
     await act(async () => {
       resumeWorkerMutationsAfterSaveTransition(transitionPause);
       await Promise.resolve();
@@ -262,8 +294,8 @@ describe('AppLayout', () => {
       teamName: 'Tycoons',
       gmName: 'Alex Rivera',
       difficulty: 'standard',
-      activeSaveId: null,
-      activeSaveSlot: null,
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -340,8 +372,8 @@ describe('AppLayout', () => {
       teamName: 'Tycoons',
       gmName: 'Alex Rivera',
       difficulty: 'standard',
-      activeSaveId: null,
-      activeSaveSlot: null,
+      activeSaveId: 'save-slot-3',
+      activeSaveSlot: 3,
       playerCount: 780,
       gamesPlayed: 162,
       isSimulating: false,
@@ -412,6 +444,81 @@ describe('AppLayout', () => {
     expect(worker.proceedToOffseason).toHaveBeenCalledTimes(1);
   });
 
+  it('creates the playoff bracket through the exact legacy phase route after journalled regular completion', async () => {
+    const gameState = {
+      season: 3, day: 1, phase: 'playoffs', isInitialized: true, userTeamId: 'nym',
+      teamName: 'Tycoons', gmName: 'Alex Rivera', difficulty: 'standard',
+      activeSaveId: 'save-slot-3', activeSaveSlot: 3, playerCount: 780, gamesPlayed: 162,
+      isSimulating: false, setSeason: vi.fn(), setDay: vi.fn(), setPhase: vi.fn(),
+      setSimulating: vi.fn(), setInitialized: vi.fn(), setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(), setActiveSaveSlot: vi.fn(), updateFromSim: vi.fn(), initializeGame: vi.fn(),
+    };
+    mockedUseGameStore.mockReturnValue(gameState);
+    const flow = {
+      status: 'regular_season_complete', season: 3, phaseLabel: 'Season 3 — Playoff Field',
+      detailLabel: 'Regular Season Complete', progress: 1, canUseRegularSimControls: false,
+      action: 'watch_playoffs', actionLabel: 'Watch Playoffs', secondaryAction: null,
+      secondaryActionLabel: null, daysUntilTradeDeadline: null, standingsSnapshot: [],
+      playoffPreview: [], seasonSummary: null, championSummary: null, offseasonSummary: null,
+    };
+    const worker = createWorkerMock(flow);
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={['/']}><Routes><Route element={<AppLayout />}><Route index element={<div>Dashboard</div>} /><Route path="playoffs" element={<div>Playoffs</div>} /></Route></Routes></MemoryRouter>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const action = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Watch Playoffs'));
+    await act(async () => { action?.click(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(worker.simLegacyAdvance).toHaveBeenCalledWith('simDay', 'playoffs');
+    expect(worker.simDay).not.toHaveBeenCalled();
+    expect(gameState.updateFromSim).toHaveBeenCalledWith(expect.objectContaining({ phase: 'playoffs' }));
+  });
+
+  it.each(['save_switch', 'coordinator_start'] as const)(
+    'does not mirror or persist a held playoff legacy result after %s',
+    async (retirement) => {
+    const held = deferred<{ season: number; day: number; phase: string; gamesPlayed: number }>();
+    const gameState = {
+      season: 3, day: 1, phase: 'playoffs', isInitialized: true, userTeamId: 'nym',
+      teamName: 'Tycoons', gmName: 'Alex Rivera', difficulty: 'standard',
+      activeSaveId: 'save-slot-3' as string | null, activeSaveSlot: 3 as number | null,
+      playerCount: 780, gamesPlayed: 162, isSimulating: false, setSeason: vi.fn(), setDay: vi.fn(),
+      setPhase: vi.fn(), setSimulating: vi.fn(), setInitialized: vi.fn(), setUserTeamId: vi.fn(),
+      setActiveSave: vi.fn(), setActiveSaveSlot: vi.fn(), updateFromSim: vi.fn(), initializeGame: vi.fn(),
+    };
+    mockedUseGameStore.mockReturnValue(gameState);
+    const flow = {
+      status: 'regular_season_complete', season: 3, phaseLabel: 'Season 3 — Playoff Field',
+      detailLabel: 'Regular Season Complete', progress: 1, canUseRegularSimControls: false,
+      action: 'watch_playoffs', actionLabel: 'Watch Playoffs', secondaryAction: null,
+      secondaryActionLabel: null, daysUntilTradeDeadline: null, standingsSnapshot: [],
+      playoffPreview: [], seasonSummary: null, championSummary: null, offseasonSummary: null,
+    };
+    const worker = createWorkerMock(flow);
+    worker.simLegacyAdvance = vi.fn().mockReturnValue(held.promise);
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={['/']}><Routes><Route element={<AppLayout />}><Route index element={<div>Dashboard</div>} /></Route></Routes></MemoryRouter>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const action = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Watch Playoffs'));
+    await act(async () => { action?.click(); await Promise.resolve(); });
+    if (retirement === 'save_switch') {
+      gameState.activeSaveId = 'save-slot-2';
+      gameState.activeSaveSlot = 2;
+    } else {
+      mockedIsSimAdvanceCoordinatorBusy.mockReturnValue(true);
+    }
+    await act(async () => { held.resolve({ season: 3, day: 1, phase: 'playoffs', gamesPlayed: 0 }); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(gameState.updateFromSim).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    },
+  );
+
   it('subscribes to flow updates instead of polling the worker every second', async () => {
     mockedUseGameStore.mockReturnValue({
       season: 3,
@@ -422,8 +529,8 @@ describe('AppLayout', () => {
       teamName: 'Tycoons',
       gmName: 'Alex Rivera',
       difficulty: 'standard',
-      activeSaveId: null,
-      activeSaveSlot: null,
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
       playerCount: 780,
       gamesPlayed: 87,
       isSimulating: false,
@@ -1139,17 +1246,9 @@ describe('AppLayout', () => {
       await Promise.resolve();
     });
 
-    expect(worker.exportSnapshot).toHaveBeenCalled();
-    expect(mockedSaveGameById).toHaveBeenCalledWith(
-      'save-slot-3',
-      expect.stringContaining('Alex Rivera'),
-      expect.any(Object),
-      expect.objectContaining({
-        slotNumber: 3,
-        parentSaveId: null,
-        isRootSave: true,
-      }),
-    );
+    expect(mockedUseSimAdvanceExecutor.mock.results[0]?.value.execute).toHaveBeenCalledWith('sim_month');
+    expect(worker.exportSnapshot).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
   });
 
   it('auto-saves active-slot day and week advances from the global controls', async () => {
@@ -1232,23 +1331,19 @@ describe('AppLayout', () => {
       await Promise.resolve();
     });
 
-    expect(worker.simDay).toHaveBeenCalledTimes(1);
-    expect(worker.simWeek).toHaveBeenCalledTimes(1);
-    expect(worker.exportSnapshot).toHaveBeenCalledTimes(2);
-    expect(mockedSaveGameById).toHaveBeenNthCalledWith(
-      1,
-      'save-slot-3',
-      expect.stringContaining('Alex Rivera'),
-      expect.any(Object),
-      expect.objectContaining({ slotNumber: 3, parentSaveId: null, isRootSave: true }),
-    );
-    expect(mockedSaveGameById).toHaveBeenNthCalledWith(
+    expect(mockedUseSimAdvanceExecutor.mock.results[0]?.value.execute).toHaveBeenNthCalledWith(1, 'sim_day');
+    expect(mockedUseSimAdvanceExecutor.mock.results[0]?.value.execute).toHaveBeenNthCalledWith(2, 'sim_week');
+    expect(worker.exportSnapshot).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
+    /* legacy assertion intentionally removed: regular advances now use the
+       exact coordinator journal, not generic active-save writes. */
+    /* expect(mockedSaveGameById).toHaveBeenNthCalledWith(
       2,
       'save-slot-3',
       expect.stringContaining('Alex Rivera'),
       expect.any(Object),
       expect.objectContaining({ slotNumber: 3, parentSaveId: null, isRootSave: true }),
-    );
+    ); */
   });
 
   it('preserves the autosave even when a post-sim shell refresh fails', async () => {
@@ -1325,18 +1420,9 @@ describe('AppLayout', () => {
       await Promise.resolve();
     });
 
-    expect(worker.simDay).toHaveBeenCalledTimes(1);
-    expect(worker.exportSnapshot).toHaveBeenCalledTimes(1);
-    expect(mockedSaveGameById).toHaveBeenCalledWith(
-      'save-slot-3',
-      expect.stringContaining('Alex Rivera'),
-      expect.any(Object),
-      expect.objectContaining({
-        slotNumber: 3,
-        parentSaveId: null,
-        isRootSave: true,
-      }),
-    );
+    expect(mockedUseSimAdvanceExecutor.mock.results[0]?.value.execute).toHaveBeenCalledWith('sim_day');
+    expect(worker.exportSnapshot).not.toHaveBeenCalled();
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
   });
 
   it('ignores rapid duplicate global sim input while a worker mutation is in flight', async () => {
@@ -1384,10 +1470,14 @@ describe('AppLayout', () => {
       championSummary: null,
       offseasonSummary: null,
     });
-    let finishSimDay: ((value: { season: number; day: number; phase: string; gamesPlayed: number }) => void) | null = null;
-    worker.simDay = vi.fn().mockImplementation(() => new Promise((resolve) => {
-      finishSimDay = resolve;
+    let finishSimDay: (() => void) | null = null;
+    const executeRegular = vi.fn().mockImplementation(() => new Promise((resolve) => {
+      finishSimDay = () => resolve({ kind: 'durable' });
     }));
+    mockedUseSimAdvanceExecutor.mockReturnValue({
+      execute: executeRegular,
+      status: { kind: 'idle' },
+    } as unknown as ReturnType<typeof useSimAdvanceExecutor>);
     mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
 
     await act(async () => {
@@ -1414,10 +1504,13 @@ describe('AppLayout', () => {
       await Promise.resolve();
     });
 
-    expect(worker.simDay).toHaveBeenCalledTimes(1);
+    // The shell forwards each gesture to the module-scoped executor; it is
+    // the executor, not a React-local ref, that performs cross-surface
+    // duplicate admission.
+    expect(executeRegular).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      finishSimDay?.({ season: 3, day: 88, phase: 'regular', gamesPlayed: 1 });
+      finishSimDay?.();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -1427,6 +1520,6 @@ describe('AppLayout', () => {
       await Promise.resolve();
     });
 
-    expect(worker.simDay).toHaveBeenCalledTimes(2);
+    expect(executeRegular).toHaveBeenCalledTimes(3);
   });
 });

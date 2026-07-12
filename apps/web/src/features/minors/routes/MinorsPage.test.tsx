@@ -35,7 +35,7 @@ describe('MinorsPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    autosaveActiveGame = vi.fn().mockResolvedValue(undefined);
+    autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
     mockedUseActiveSaveAutosave.mockReturnValue(autosaveActiveGame);
 
     mockedUseGameStore.mockReturnValue({
@@ -249,11 +249,86 @@ describe('MinorsPage', () => {
     expect(container.textContent).toContain('Marco Ascension: mlb prep plan applied.');
   });
 
+  it('withholds durable success copy when the applied plan remains unsaved', async () => {
+    autosaveActiveGame.mockResolvedValue({ saved: false });
+    const applyDevelopmentFocusPlan = vi.fn().mockResolvedValue({
+      success: true,
+      developmentProgram: 'mlb_prep',
+    });
+    const getProspectPipeline = vi.fn().mockResolvedValue({
+      health: {
+        score: 78,
+        label: 'surging',
+        readyNow: 1,
+        nextWave: 0,
+        longTerm: 0,
+        organizationalDepth: 0,
+      },
+      developmentFocus: {
+        summary: '1 promotion window needs attention.',
+        priorities: [{
+          playerId: 'prospect-1',
+          playerName: 'Marco Ascension',
+          level: 'AAA',
+          category: 'promotion_window',
+          label: 'Promotion Window',
+          action: 'Evaluate MLB fit.',
+          reason: 'Ready-now AAA performance.',
+          evidence: ['.322 AVG'],
+        }],
+      },
+      prospects: [],
+    });
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      applyDevelopmentFocusPlan,
+      getAffiliateOverview: vi.fn().mockResolvedValue({
+        affiliates: [],
+        recentBoxScores: [],
+        waiverClaims: [],
+        farmReport: {
+          bondedProspects: 0,
+          activeSetbackCount: 0,
+          breakoutCandidates: [],
+          topProspects: [],
+        },
+      }),
+      getAffiliateBoxScore: vi.fn().mockResolvedValue(null),
+      getProspectPipeline,
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(<MinorsPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const applyPlanButton = [...container.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Apply plan');
+    expect(applyPlanButton).toBeDefined();
+
+    await act(async () => {
+      applyPlanButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(applyDevelopmentFocusPlan).toHaveBeenCalledWith('prospect-1', 'promotion_window');
+    expect(autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
+    expect(getProspectPipeline).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain(
+      'The development plan changed in memory. Save status is the authority for durability.',
+    );
+    expect(container.textContent).not.toContain('plan applied.');
+    expect(applyPlanButton?.disabled).toBe(false);
+  });
+
   it('persists an applied plan before the overview refresh, even when the refresh rejects', async () => {
     const applyDevelopmentFocusPlan = vi.fn().mockResolvedValue({ success: true, developmentProgram: 'mlb_prep' });
     const order: string[] = [];
     autosaveActiveGame.mockImplementation(async () => {
       order.push('autosave');
+      return { saved: true };
     });
     const pipeline = {
       health: { score: 78, label: 'surging', readyNow: 1, nextWave: 0, longTerm: 0, organizationalDepth: 0 },

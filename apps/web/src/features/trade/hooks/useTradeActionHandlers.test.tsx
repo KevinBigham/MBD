@@ -114,6 +114,7 @@ describe('useTradeActionHandlers', () => {
         negotiation: negotiation({ id: 'neg-advanced' }),
         tradeExecuted: false,
         review: null,
+        flowStateChanged: true,
       }),
       applyNegotiationToBuilder: vi.fn(),
       applyTradeBuilderSelection: vi.fn(),
@@ -130,17 +131,19 @@ describe('useTradeActionHandlers', () => {
       requestingIFAAmount: '',
       resetBuilder: vi.fn(),
       resolveNegotiation: vi.fn().mockResolvedValue({
-        success: true,
+        success: false,
         decision: 'rejected',
         message: 'Talks ended.',
         negotiation: null,
         tradeExecuted: false,
         review: null,
+        flowStateChanged: true,
       }),
       respondToTradeOffer: vi.fn().mockResolvedValue({
         success: true,
         decision: 'accepted',
         message: 'Accepted.',
+        flowStateChanged: true,
       }),
       selectedTeam: 'bos',
       setActiveCounterOfferId: vi.fn(),
@@ -154,6 +157,7 @@ describe('useTradeActionHandlers', () => {
         negotiation: negotiation({ id: 'neg-started' }),
         tradeExecuted: false,
         review: null,
+        flowStateChanged: true,
       }),
       targetInventory: { draftPicks: [], ifaRemaining: 2 },
       tradeMarketOpen: true,
@@ -197,6 +201,8 @@ describe('useTradeActionHandlers', () => {
     expect(options.loadTradeActivity).toHaveBeenCalledTimes(1);
     expect(options.loadOpenNegotiations).toHaveBeenCalledTimes(1);
     expect(options.persistTradeSnapshot).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.persistTradeSnapshot).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.loadUserRoster).mock.invocationCallOrder[0]!);
   });
 
   it('returns validation feedback before calling the worker when IFA pool space is overspent', async () => {
@@ -227,6 +233,7 @@ describe('useTradeActionHandlers', () => {
         negotiation: null,
         tradeExecuted: false,
         review: null,
+        flowStateChanged: false,
       }),
     });
     await renderHook(options);
@@ -260,9 +267,11 @@ describe('useTradeActionHandlers', () => {
     expect(options.resetBuilder).toHaveBeenCalledTimes(1);
     expect(options.loadOpenNegotiations).toHaveBeenCalledTimes(1);
     expect(options.persistTradeSnapshot).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.persistTradeSnapshot).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.loadTradeActivity).mock.invocationCallOrder[0]!);
   });
 
-  it('skips persistence when resolving active talks returns success false', async () => {
+  it('skips persistence when resolving missing talks reports no state change', async () => {
     const activeNegotiation = negotiation({ id: 'neg-active' });
     const options = baseOptions({
       activeNegotiation,
@@ -273,6 +282,7 @@ describe('useTradeActionHandlers', () => {
         negotiation: null,
         tradeExecuted: false,
         review: null,
+        flowStateChanged: false,
       }),
     });
     await renderHook(options);
@@ -308,7 +318,7 @@ describe('useTradeActionHandlers', () => {
     expect(options.respondToTradeOffer).not.toHaveBeenCalled();
   });
 
-  it('persists accepted incoming offers after refreshing trade state', async () => {
+  it('persists accepted incoming offers before refreshing trade state', async () => {
     const options = baseOptions();
     await renderHook(options);
 
@@ -323,6 +333,8 @@ describe('useTradeActionHandlers', () => {
     expect(options.loadTargetInventory).toHaveBeenCalledTimes(1);
     expect(options.loadTradeActivity).toHaveBeenCalledTimes(1);
     expect(options.persistTradeSnapshot).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.persistTradeSnapshot).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.loadUserRoster).mock.invocationCallOrder[0]!);
   });
 
   it('persists declined incoming offers without rerunning rejected responses', async () => {
@@ -331,6 +343,7 @@ describe('useTradeActionHandlers', () => {
         success: true,
         decision: 'declined',
         message: 'Offer declined.',
+        flowStateChanged: true,
       }),
     });
     await renderHook(options);
@@ -342,14 +355,17 @@ describe('useTradeActionHandlers', () => {
     expect(options.respondToTradeOffer).toHaveBeenCalledWith('offer-1', 'decline');
     expect(options.loadTradeActivity).toHaveBeenCalledTimes(1);
     expect(options.persistTradeSnapshot).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.persistTradeSnapshot).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.loadTradeActivity).mock.invocationCallOrder[0]!);
   });
 
-  it('skips persistence for rejected incoming offer responses', async () => {
+  it('persists a rejected stale incoming offer when the worker removed it', async () => {
     const options = baseOptions({
       respondToTradeOffer: vi.fn().mockResolvedValue({
         success: false,
         decision: 'rejected',
         message: 'That offer is no longer actionable.',
+        flowStateChanged: true,
       }),
     });
     await renderHook(options);
@@ -360,6 +376,74 @@ describe('useTradeActionHandlers', () => {
 
     expect(options.respondToTradeOffer).toHaveBeenCalledWith('offer-1', 'accept');
     expect(options.loadTradeActivity).toHaveBeenCalledTimes(1);
+    expect(options.persistTradeSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not persist a rejected missing offer with no worker state change', async () => {
+    const options = baseOptions({
+      respondToTradeOffer: vi.fn().mockResolvedValue({
+        success: false,
+        decision: 'rejected',
+        message: 'Trade offer no longer exists.',
+        flowStateChanged: false,
+      }),
+    });
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleAcceptOffer('missing-offer');
+    });
+
     expect(options.persistTradeSnapshot).not.toHaveBeenCalled();
+    expect(options.loadTradeActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start workspace reads after trade persistence rejects', async () => {
+    const persistenceError = new Error('trade snapshot not durable');
+    const options = baseOptions({
+      persistTradeSnapshot: vi.fn().mockRejectedValue(persistenceError),
+    });
+    await renderHook(options);
+    let rejection: unknown;
+
+    await act(async () => {
+      try {
+        await latestResult?.submitTrade();
+      } catch (error) {
+        rejection = error;
+      }
+    });
+
+    expect(rejection).toBe(persistenceError);
+    expect(options.loadUserRoster).not.toHaveBeenCalled();
+    expect(options.loadTradeActivity).not.toHaveBeenCalled();
+    expect(latestResult?.proposing).toBe(false);
+  });
+
+  it('does not start trade refresh reads while accepted snapshot persistence is held', async () => {
+    let releasePersistence!: () => void;
+    const options = baseOptions({
+      persistTradeSnapshot: vi.fn(() => new Promise<void>((resolve) => {
+        releasePersistence = resolve;
+      })),
+    });
+    await renderHook(options);
+    let pending!: Promise<void>;
+
+    await act(async () => {
+      pending = latestResult!.submitTrade();
+      await vi.waitFor(() => expect(options.persistTradeSnapshot).toHaveBeenCalledTimes(1));
+    });
+    expect(options.setTradeResult).not.toHaveBeenCalled();
+    expect(options.setActiveNegotiation).not.toHaveBeenCalled();
+    expect(options.loadUserRoster).not.toHaveBeenCalled();
+    expect(options.loadTradeActivity).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releasePersistence();
+      await pending;
+    });
+    expect(options.loadUserRoster).toHaveBeenCalledTimes(1);
+    expect(options.loadTradeActivity).toHaveBeenCalledTimes(1);
   });
 });

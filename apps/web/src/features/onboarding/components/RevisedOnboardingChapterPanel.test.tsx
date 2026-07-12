@@ -99,8 +99,9 @@ describe('RevisedOnboardingChapterPanel', () => {
     props = {
       chapterId: 'owners_office',
       data: createOnboardingData(),
-      isComplete: false,
-      isSubmitting: false,
+    isComplete: false,
+    mutationBlocked: false,
+    isSubmitting: false,
       script: createChapterScript('owners_office', "The Owner's Office"),
       onChoice: vi.fn(),
       onEnterFrontOffice: vi.fn(),

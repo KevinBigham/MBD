@@ -125,6 +125,8 @@ describe('usePlayerProfileActions', () => {
     });
     expect(fetchProfile).toHaveBeenCalledTimes(1);
     expect(autosaveActiveGame).toHaveBeenCalledWith({ season: 4 });
+    expect(autosaveActiveGame.mock.invocationCallOrder[0]!)
+      .toBeLessThan(fetchProfile.mock.invocationCallOrder[0]!);
     expect(result.busyAction).toBeNull();
   });
 
@@ -156,7 +158,54 @@ describe('usePlayerProfileActions', () => {
     });
     expect(fetchProfile).toHaveBeenCalledTimes(1);
     expect(autosaveActiveGame).toHaveBeenCalledWith({ season: 4 });
+    expect(autosaveActiveGame.mock.invocationCallOrder[0]!)
+      .toBeLessThan(fetchProfile.mock.invocationCallOrder[0]!);
     expect(result.busyAction).toBeNull();
+  });
+
+  it('holds profile refresh until a successful roster mutation has entered persistence', async () => {
+    let releasePersistence!: () => void;
+    const autosaveActiveGame = vi.fn(() => new Promise<{ saved: true; saveName: string }>((resolve) => {
+      releasePersistence = () => resolve({ saved: true, saveName: 'Test Save' });
+    }));
+    const bundle = makeOptions({ autosaveActiveGame });
+    let result = await renderHook(bundle.options);
+
+    await act(async () => {
+      result.requestRosterAction('dfa');
+    });
+    result = getLatest();
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = result.confirmPendingRosterAction();
+      await vi.waitFor(() => expect(autosaveActiveGame).toHaveBeenCalledTimes(1));
+    });
+    expect(bundle.fetchProfile).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releasePersistence();
+      await pending;
+    });
+    expect(bundle.fetchProfile).toHaveBeenCalledTimes(1);
+    expect(getLatest().busyAction).toBeNull();
+  });
+
+  it('does not refresh a mutated profile when persistence resolves unsaved', async () => {
+    const bundle = makeOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    let result = await renderHook(bundle.options);
+
+    await act(async () => {
+      result.requestRosterAction('promote');
+    });
+    result = getLatest();
+    await act(async () => {
+      await result.confirmPendingRosterAction();
+    });
+
+    expect(bundle.fetchProfile).not.toHaveBeenCalled();
+    expect(getLatest().busyAction).toBeNull();
   });
 
   it('reports roster-action failures without refreshing or autosaving', async () => {
@@ -182,5 +231,52 @@ describe('usePlayerProfileActions', () => {
     expect(fetchProfile).not.toHaveBeenCalled();
     expect(autosaveActiveGame).not.toHaveBeenCalled();
     expect(result.busyAction).toBeNull();
+  });
+
+  it('persists a failed Rule 5 profile move that opened offer-back state', async () => {
+    const bundle = makeOptions();
+    bundle.worker.demotePlayer.mockResolvedValue({
+      success: false,
+      error: 'Rule 5 offer-back required.',
+      flowStateChanged: true,
+    });
+    let result = await renderHook(bundle.options);
+    await act(async () => {
+      result.requestRosterAction('demote');
+    });
+    result = getLatest();
+
+    await act(async () => {
+      await result.confirmPendingRosterAction();
+    });
+
+    expect(bundle.autosaveActiveGame).toHaveBeenCalledWith({ season: 4 });
+    expect(bundle.fetchProfile).toHaveBeenCalledTimes(1);
+    expect(getLatest().actionState).toMatchObject({ tone: 'error' });
+  });
+
+  it('publishes a durable failed Rule 5 message before a held display-only refresh', async () => {
+    let releaseRefresh!: () => void;
+    const fetchProfile = vi.fn(() => new Promise<void>((resolve) => { releaseRefresh = resolve; }));
+    const bundle = makeOptions({
+      fetchProfile,
+    });
+    bundle.worker.demotePlayer.mockResolvedValue({
+      success: false,
+      error: 'Rule 5 offer-back required.',
+      flowStateChanged: true,
+    });
+    let result = await renderHook(bundle.options);
+    await act(async () => { result.requestRosterAction('demote'); });
+    result = getLatest();
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = result.confirmPendingRosterAction();
+      await vi.waitFor(() => expect(fetchProfile).toHaveBeenCalledTimes(1));
+    });
+    expect(getLatest().actionState).toMatchObject({
+      tone: 'error', message: 'Rule 5 offer-back required.',
+    });
+    await act(async () => { releaseRefresh(); await pending; });
   });
 });

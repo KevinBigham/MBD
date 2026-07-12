@@ -50,7 +50,7 @@ const diagnostics: PerformanceDiagnosticsView = {
 
 const localEstimate: LocalStorageEstimate = {
   status: 'available',
-  allMbdBytes: 9000,
+  allMbdBytes: 9512,
   allMbdBytesKnown: true,
   unattributedBytes: 0,
   trees: [{
@@ -60,7 +60,8 @@ const localEstimate: LocalStorageEstimate = {
     primaryBytes: 3000,
     shadowBytes: 4000,
     leaderboardBytes: 2000,
-    totalBytes: 9000,
+    journalBytes: 512,
+    totalBytes: 9512,
     attribution: 'complete',
   }],
   message: null,
@@ -111,6 +112,8 @@ describe('SettingsDiagnosticsPanel', () => {
     expect(container.textContent).toContain('2 calls, 70.0 ms avg');
     expect(container.textContent).toContain('95.0 ms max');
     expect(container.textContent).toContain('Over 80.0 ms budget');
+    expect(container.textContent).toContain('small operational simulation-journal records');
+    expect(container.textContent).toContain('3.0 KB primary + 4.0 KB shadow + 2.0 KB leaderboard + 512 B operational simulation journal');
 
     const pruneButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Prune Stale Data'),
@@ -151,7 +154,7 @@ describe('SettingsDiagnosticsPanel', () => {
 
     expect(container.textContent).toContain('Worker runtime diagnostics unavailable.');
     expect(container.textContent).toContain('Current worker snapshot estimate unavailable.');
-    expect(container.textContent).toContain('9.0 KB');
+    expect(container.textContent).toContain('9.5 KB');
     expect(container.textContent).toContain('85.00% approximate origin usage');
     const pruneButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Prune Stale Data')) as HTMLButtonElement;

@@ -38,6 +38,20 @@ function isSuccessResult(value: unknown): value is { success: boolean } {
   return typeof value === 'object' && value !== null && 'success' in value;
 }
 
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
+function isErrorResult(value: unknown): value is { error: string } {
+  return typeof value === 'object'
+    && value !== null
+    && 'error' in value
+    && typeof (value as { error?: unknown }).error === 'string';
+}
+
 export function useOffseasonActionHandlers({
   advanceOffseason,
   applyOffseasonData,
@@ -56,7 +70,7 @@ export function useOffseasonActionHandlers({
   const [advancing, setAdvancing] = useState(false);
 
   const autosaveSeason = useCallback(async () => {
-    await autosaveActiveGame({ season });
+    return snapshotSaved(await autosaveActiveGame({ season }));
   }, [autosaveActiveGame, season]);
 
   const handleAdvance = useCallback(async () => {
@@ -64,8 +78,8 @@ export function useOffseasonActionHandlers({
     try {
       const data = await advanceOffseason();
       if (isOffseasonData(data)) {
+        if (!await autosaveSeason()) return;
         applyOffseasonData(data);
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);
@@ -77,8 +91,8 @@ export function useOffseasonActionHandlers({
     try {
       const data = await skipOffseasonPhase();
       if (isOffseasonData(data)) {
+        if (!await autosaveSeason()) return;
         applyOffseasonData(data);
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);
@@ -90,8 +104,8 @@ export function useOffseasonActionHandlers({
     try {
       const result = await issueQualifyingOffer(playerId);
       if (isSuccessResult(result) && result.success) {
+        if (!await autosaveSeason()) return;
         await fetchOffseason();
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);
@@ -101,9 +115,10 @@ export function useOffseasonActionHandlers({
   const handleResolveQualifyingOffers = useCallback(async () => {
     setAdvancing(true);
     try {
-      await resolveQualifyingOffers();
+      const result = await resolveQualifyingOffers();
+      if (isErrorResult(result)) return;
+      if (!await autosaveSeason()) return;
       await fetchOffseason();
-      await autosaveSeason();
     } finally {
       setAdvancing(false);
     }
@@ -114,8 +129,8 @@ export function useOffseasonActionHandlers({
     try {
       const result = await toggleRule5Protection(playerId);
       if (isSuccessResult(result) && result.success) {
+        if (!await autosaveSeason()) return;
         await fetchOffseason();
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);
@@ -127,8 +142,8 @@ export function useOffseasonActionHandlers({
     try {
       const data = await lockRule5Protection();
       if (isOffseasonData(data)) {
+        if (!await autosaveSeason()) return;
         applyOffseasonData(data);
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);
@@ -140,8 +155,8 @@ export function useOffseasonActionHandlers({
     try {
       const result = await makeRule5Pick(playerId);
       if (isSuccessResult(result) && result.success) {
+        if (!await autosaveSeason()) return;
         await fetchOffseason();
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);
@@ -153,8 +168,8 @@ export function useOffseasonActionHandlers({
     try {
       const result = await passRule5Pick();
       if (isSuccessResult(result) && result.success) {
+        if (!await autosaveSeason()) return;
         await fetchOffseason();
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);
@@ -166,8 +181,8 @@ export function useOffseasonActionHandlers({
     try {
       const result = await resolveRule5OfferBack(playerId, acceptReturn);
       if (isSuccessResult(result) && result.success) {
+        if (!await autosaveSeason()) return;
         await fetchOffseason();
-        await autosaveSeason();
       }
     } finally {
       setAdvancing(false);

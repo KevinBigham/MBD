@@ -14,6 +14,14 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
+  useActiveSaveAutosave: () => vi.fn().mockResolvedValue({
+    saved: true,
+    saveName: 'Roster route test',
+    acceptedReceipt: null,
+  }),
+}));
+
 vi.mock('../components/LineupBuilder', () => ({
   default: ({
     players,

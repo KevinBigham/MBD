@@ -21,11 +21,11 @@ export function useTradeSnapshotPersistence({
 }: UseTradeSnapshotPersistenceOptions): () => Promise<void> {
   return useCallback(async () => {
     if (!activeSaveId) {
-      return;
+      throw new Error('Trade persistence requires an active save.');
     }
 
     try {
-      await persistActiveSaveSnapshot({
+      const result = await persistActiveSaveSnapshot({
         activeSaveId,
         activeSaveSlot,
         gmName,
@@ -33,8 +33,12 @@ export function useTradeSnapshotPersistence({
         season,
         exportSnapshot,
       });
+      if (!result.saved) {
+        throw new Error('Trade snapshot persistence did not become durable.');
+      }
     } catch (error) {
       logger.error('Failed to autosave trade negotiation state:', error);
+      throw error;
     }
   }, [activeSaveId, activeSaveSlot, exportSnapshot, gmName, season, teamName]);
 }

@@ -16,6 +16,7 @@ export {
   pruneStaleData,
 } from './performance/index.js';
 export { compareTimelines } from './timeline/index.js';
+export { materializeSimulationImportDefaults } from './snapshotNormalization.js';
 export {
   CALIBRATION_FOLLOW_UP_METRICS,
   CALIBRATION_TARGET_BANDS,

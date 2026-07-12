@@ -4,6 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { AppBootGate } from './AppBootGate';
 import { useWorker } from '@/shared/hooks/useWorker';
 import {
+  consumeSimAdvanceIntentRollback,
+  inspectSimAdvanceIntentForCandidate,
   loadSaveSafely,
   resolveSaveSessionTarget,
   type LoadSaveSafelyResult,
@@ -13,8 +15,10 @@ import {
   activateActiveSavePersistenceMetadata,
   abortActiveSaveSessionTransition,
   completeActiveSaveSessionTransition,
+  finishReservedActiveSaveSessionTransition,
   markActiveSaveSessionTransitionOwnershipCommitted,
   prepareActiveSaveSessionTransition,
+  stageActiveSavePersistenceMetadataForTransition,
   restoreInactiveSaveIntegrityBackup,
 } from '@/shared/lib/activeSavePersistence';
 import {
@@ -22,6 +26,7 @@ import {
   beginSaveSessionOwnership,
   commitSaveSessionOwnership,
   SaveSessionOwnershipError,
+  withSaveSessionCandidateSnapshotExportAuthorization,
   withSaveSessionImportAuthorization,
 } from '@/shared/lib/saveSessionOwnership';
 import {
@@ -29,6 +34,22 @@ import {
   recoverWorkerAfterCandidateImportFailure,
 } from '@/shared/lib/saveSessionTransitionRecovery';
 import { toast } from 'sonner';
+import { useSimAdvanceCoordinatorStatus } from '@/shared/hooks/useSimAdvanceExecutor';
+import {
+  getBootRecoveryAdmissionStatus,
+  resetBootRecoveryAdmissionForTesting,
+} from '@/shared/lib/bootRecoveryAdmission';
+import snapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
+import { parseGameSnapshot } from '@mbd/contracts';
+import { materializeSimulationImportDefaults } from '@mbd/sim-core';
+
+const ordinaryCompatibilitySnapshot = parseGameSnapshot({
+  ...snapshotFixture,
+  season: 4,
+  day: 88,
+});
+const ordinarySnapshotFixture = materializeSimulationImportDefaults(ordinaryCompatibilitySnapshot);
+const journalSnapshotFixture = materializeSimulationImportDefaults(parseGameSnapshot(snapshotFixture));
 
 const recoveryMock = vi.hoisted(() => ({
   close: vi.fn(),
@@ -39,7 +60,13 @@ vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useSimAdvanceExecutor', () => ({
+  useSimAdvanceCoordinatorStatus: vi.fn(),
+}));
+
 vi.mock('@/shared/lib/saveSystem', () => ({
+  consumeSimAdvanceIntentRollback: vi.fn(),
+  inspectSimAdvanceIntentForCandidate: vi.fn(),
   loadSaveSafely: vi.fn(),
   resolveSaveSessionTarget: vi.fn(),
 }));
@@ -48,8 +75,12 @@ vi.mock('@/shared/lib/activeSavePersistence', () => ({
   abortActiveSaveSessionTransition: vi.fn(),
   activateActiveSavePersistenceMetadata: vi.fn(),
   completeActiveSaveSessionTransition: vi.fn(),
+  failCloseActiveSaveSessionTransition: vi.fn(),
+  finishReservedActiveSaveSessionTransition: vi.fn(async (_reservation, commit: () => Promise<void>) => commit()),
   markActiveSaveSessionTransitionOwnershipCommitted: vi.fn(),
   prepareActiveSaveSessionTransition: vi.fn(),
+  reserveActiveSaveSessionTransitionCommit: vi.fn(() => ({ reservationId: Symbol('transition') })),
+  stageActiveSavePersistenceMetadataForTransition: vi.fn(),
   restoreInactiveSaveIntegrityBackup: vi.fn(),
 }));
 
@@ -70,6 +101,9 @@ vi.mock('@/shared/lib/saveSessionOwnership', () => {
     commitSaveSessionOwnership: vi.fn(),
     isSaveSessionOwnershipError: (error: unknown) => error instanceof MockSaveSessionOwnershipError,
     SaveSessionOwnershipError: MockSaveSessionOwnershipError,
+    withSaveSessionCandidateSnapshotExportAuthorization: vi.fn(
+      (_claim, _candidateSaveId, operation: () => Promise<unknown>) => operation(),
+    ),
     withSaveSessionImportAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
   };
 });
@@ -127,12 +161,7 @@ function createStorageMock(): Storage {
 
 const okLoadResult: Extract<LoadSaveSafelyResult, { ok: true }> = {
   ok: true,
-  snapshot: {
-    schemaVersion: 34,
-    season: 4,
-    day: 88,
-    phase: 'regular',
-  } as never,
+  snapshot: ordinaryCompatibilitySnapshot,
   save: {
     id: 'save-slot-1',
     slotNumber: 1,
@@ -142,7 +171,7 @@ const okLoadResult: Extract<LoadSaveSafelyResult, { ok: true }> = {
     phase: 'regular',
     schemaVersion: 34,
     hasSnapshot: true,
-    snapshot: null,
+    snapshot: ordinaryCompatibilitySnapshot,
     legacyState: null,
     createdAt: '2026-04-02T00:00:00.000Z',
     updatedAt: '2026-04-02T12:00:00.000Z',
@@ -187,6 +216,7 @@ describe('AppBootGate', () => {
   };
 
   beforeEach(() => {
+    resetBootRecoveryAdmissionForTesting();
     window.history.replaceState(null, '', '/MBD/dashboard');
     const storage = createStorageMock();
     Object.defineProperty(window, 'localStorage', {
@@ -203,7 +233,7 @@ describe('AppBootGate', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     workerMock = {
-      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34 }),
+      exportSnapshot: vi.fn().mockResolvedValue(ordinarySnapshotFixture),
       isReady: true,
       importSnapshot: vi.fn().mockResolvedValue({
         success: true,
@@ -218,6 +248,9 @@ describe('AppBootGate', () => {
       }),
       restartWorker: vi.fn().mockResolvedValue(undefined),
     };
+    vi.mocked(useSimAdvanceCoordinatorStatus).mockReturnValue({ kind: 'idle' });
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockResolvedValue({ kind: 'none' });
+    vi.mocked(consumeSimAdvanceIntentRollback).mockResolvedValue(undefined);
     vi.mocked(useWorker).mockReturnValue(workerMock as unknown as ReturnType<typeof useWorker>);
     vi.mocked(resolveSaveSessionTarget).mockImplementation(async (saveId) => ({
       saveId,
@@ -252,6 +285,9 @@ describe('AppBootGate', () => {
       root.unmount();
     });
     container.remove();
+    // Journal-failure cases intentionally leave the production latch terminal.
+    // Each test needs a fresh page-runtime boundary.
+    resetBootRecoveryAdmissionForTesting();
     window.history.replaceState(null, '', '/MBD/dashboard');
     vi.clearAllMocks();
   });
@@ -289,6 +325,14 @@ describe('AppBootGate', () => {
       expect.objectContaining({ persistOutgoingSnapshot: expect.any(Function) }),
     );
     expect(withSaveSessionImportAuthorization).toHaveBeenCalled();
+    expect(withSaveSessionCandidateSnapshotExportAuthorization).toHaveBeenCalledWith(
+      expect.objectContaining({ rootSaveId: 'save-slot-1' }),
+      'save-slot-1',
+      expect.any(Function),
+    );
+    expect(workerMock.exportSnapshot).toHaveBeenCalledTimes(1);
+    expect(workerMock.exportSnapshot.mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(commitSaveSessionOwnership).mock.invocationCallOrder[0]!);
     expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledWith(okLoadResult.save);
     expect(completeActiveSaveSessionTransition).toHaveBeenCalled();
     expect(commitSaveSessionOwnership).toHaveBeenCalledWith(
@@ -306,6 +350,290 @@ describe('AppBootGate', () => {
       teamName: 'New York Tycoons',
     });
     expect(container.textContent).toContain('Dashboard Route');
+  });
+
+  it('keeps ordinary ownership and presentation blocked until exact post-import export verifies', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    let releaseExport!: (snapshot: typeof ordinarySnapshotFixture) => void;
+    workerMock.exportSnapshot.mockReturnValueOnce(new Promise((resolve) => {
+      releaseExport = resolve;
+    }));
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Hidden dashboard</div></AppBootGate>);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Reopening the front office');
+    expect(container.textContent).not.toContain('Hidden dashboard');
+    expect(commitSaveSessionOwnership).not.toHaveBeenCalled();
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(useGameStore.getState().isInitialized).toBe(false);
+
+    await act(async () => {
+      releaseExport(ordinarySnapshotFixture);
+      await flushAsync();
+    });
+
+    expect(commitSaveSessionOwnership).toHaveBeenCalledTimes(1);
+    expect(activateActiveSavePersistenceMetadata).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Hidden dashboard');
+  });
+
+  it('discards an ordinary imported candidate that differs from the verified durable snapshot', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    workerMock.exportSnapshot.mockResolvedValueOnce({
+      ...ordinarySnapshotFixture,
+      rng: { ...ordinarySnapshotFixture.rng, callCount: ordinarySnapshotFixture.rng.callCount + 1 },
+    });
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Hidden dashboard</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(recoverWorkerAfterCandidateImportFailure).toHaveBeenCalledTimes(1);
+    expect(commitSaveSessionOwnership).not.toHaveBeenCalled();
+    expect(markActiveSaveSessionTransitionOwnershipCommitted).not.toHaveBeenCalled();
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(completeActiveSaveSessionTransition).not.toHaveBeenCalled();
+    expect(useGameStore.getState()).toMatchObject({ isInitialized: false, activeSaveId: null });
+  });
+
+  it('restores an exact journal baseline before activation and publishes rollback notice only after consume', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    const baseline = {
+      ...okLoadResult.save,
+      season: (snapshotFixture as { season: number }).season,
+      day: (snapshotFixture as { day: number }).day,
+      phase: (snapshotFixture as { phase: string }).phase,
+      snapshot: journalSnapshotFixture,
+    };
+    const intent = { saveId: 'save-slot-1', rootSaveId: 'save-slot-1', token: 'boot-intent' };
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockResolvedValue({
+      kind: 'rollback', intent, baseline,
+    } as never);
+    workerMock.exportSnapshot.mockResolvedValue(journalSnapshotFixture);
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Dashboard Route</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(workerMock.restartWorker).toHaveBeenCalledTimes(1);
+    expect(workerMock.importSnapshot).toHaveBeenCalledWith(journalSnapshotFixture);
+    expect(withSaveSessionCandidateSnapshotExportAuthorization).toHaveBeenCalledWith(
+      expect.objectContaining({ rootSaveId: 'save-slot-1' }),
+      'save-slot-1',
+      expect.any(Function),
+    );
+    expect(workerMock.exportSnapshot).toHaveBeenCalledTimes(1);
+    expect(consumeSimAdvanceIntentRollback).toHaveBeenCalledWith(intent);
+    expect(stageActiveSavePersistenceMetadataForTransition).toHaveBeenCalledWith(
+      expect.anything(), baseline,
+    );
+    expect(finishReservedActiveSaveSessionTransition).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(stageActiveSavePersistenceMetadataForTransition).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(consumeSimAdvanceIntentRollback).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(finishReservedActiveSaveSessionTransition).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(toast.info).mock.invocationCallOrder[0]!);
+    expect(toast.info).toHaveBeenCalledWith(expect.stringContaining('not replayed'));
+  });
+
+  it('keeps boot hidden and the exact journal intact while its reserved delete is held', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    const baseline = { ...okLoadResult.save, snapshot: journalSnapshotFixture };
+    const intent = { saveId: 'save-slot-1', rootSaveId: 'save-slot-1', token: 'held-delete-intent' };
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockResolvedValue({ kind: 'rollback', intent, baseline } as never);
+    workerMock.exportSnapshot.mockResolvedValue(journalSnapshotFixture);
+    let releaseDelete!: () => void;
+    vi.mocked(finishReservedActiveSaveSessionTransition).mockImplementationOnce(
+      async (_reservation, commit) => new Promise<void>((resolve, reject) => {
+        releaseDelete = () => { void commit().then(resolve, reject); };
+      }),
+    );
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Hidden dashboard</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(useGameStore.getState().isInitialized).toBe(true);
+    expect(container.textContent).not.toContain('Hidden dashboard');
+    expect(container.textContent).toContain('Reopening the front office');
+    expect(consumeSimAdvanceIntentRollback).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseDelete();
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+    expect(consumeSimAdvanceIntentRollback).toHaveBeenCalledWith(intent);
+    expect(toast.info).toHaveBeenCalledWith(expect.stringContaining('not replayed'));
+  });
+
+  it('treats route and notice failures after durable rollback as presentation-only', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    const baseline = { ...okLoadResult.save, snapshot: journalSnapshotFixture };
+    const intent = { saveId: 'save-slot-1', rootSaveId: 'save-slot-1', token: 'presentation-failure-intent' };
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockResolvedValue({ kind: 'rollback', intent, baseline } as never);
+    workerMock.exportSnapshot.mockResolvedValue(journalSnapshotFixture);
+    let releaseDelete!: () => void;
+    vi.mocked(finishReservedActiveSaveSessionTransition).mockImplementationOnce(
+      async (_reservation, commit) => new Promise<void>((resolve, reject) => {
+        releaseDelete = () => { void commit().then(resolve, reject); };
+      }),
+    );
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Dashboard Route</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+    window.history.pushState(null, '', '/MBD/other-route');
+    const replaceState = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {
+      throw new Error('route presentation failed');
+    });
+    vi.mocked(toast.info).mockImplementationOnce(() => { throw new Error('notice failed'); });
+
+    await act(async () => {
+      releaseDelete();
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(consumeSimAdvanceIntentRollback).toHaveBeenCalledWith(intent);
+    expect(getBootRecoveryAdmissionStatus()).toEqual({ kind: 'idle' });
+    expect(workerMock.restartWorker).toHaveBeenCalledTimes(1);
+    expect(replaceState).toHaveBeenCalled();
+    replaceState.mockRestore();
+  });
+
+  it('preserves journal evidence and fails closed when baseline import fails', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    const baseline = { ...okLoadResult.save, snapshot: journalSnapshotFixture };
+    const intent = { saveId: 'save-slot-1', rootSaveId: 'save-slot-1', token: 'failed-import-intent' };
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockResolvedValue({ kind: 'rollback', intent, baseline } as never);
+    workerMock.importSnapshot.mockResolvedValueOnce({ success: false, error: 'baseline import failed' });
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Dashboard Route</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(workerMock.restartWorker).toHaveBeenCalledTimes(2);
+    expect(consumeSimAdvanceIntentRollback).not.toHaveBeenCalled();
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(completeActiveSaveSessionTransition).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Reload required');
+    expect(useGameStore.getState().activeSaveId).toBe('save-slot-1');
+  });
+
+  it('fails before the durable delete when candidate persistence staging cannot preflight', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    const baseline = { ...okLoadResult.save, snapshot: journalSnapshotFixture };
+    const intent = { saveId: 'save-slot-1', rootSaveId: 'save-slot-1', token: 'stage-failure-intent' };
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockResolvedValue({ kind: 'rollback', intent, baseline } as never);
+    workerMock.exportSnapshot.mockResolvedValue(journalSnapshotFixture);
+    vi.mocked(stageActiveSavePersistenceMetadataForTransition).mockImplementationOnce(() => {
+      throw new Error('candidate persistence preflight failed');
+    });
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Hidden dashboard</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(consumeSimAdvanceIntentRollback).not.toHaveBeenCalled();
+    expect(finishReservedActiveSaveSessionTransition).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Reload required');
+  });
+
+  it('globally fail-closes malformed journal inspection before candidate worker work', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockRejectedValueOnce(new Error('malformed journal root'));
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Hidden dashboard</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(getBootRecoveryAdmissionStatus()).toMatchObject({ kind: 'fail_closed', saveId: 'save-slot-1' });
+    expect(workerMock.importSnapshot).not.toHaveBeenCalled();
+    expect(workerMock.exportSnapshot).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Reload required');
+  });
+
+  it.each([
+    ['restored RNG differs', () => ({ ...journalSnapshotFixture, rng: { ...journalSnapshotFixture.rng, seed: journalSnapshotFixture.rng.seed + 1 } })],
+    ['rollback consume rejects', () => journalSnapshotFixture],
+  ])('preserves journal evidence and fails closed when %s', async (label, exportedSnapshot) => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    const baseline = { ...okLoadResult.save, snapshot: journalSnapshotFixture };
+    const intent = { saveId: 'save-slot-1', rootSaveId: 'save-slot-1', token: `failed-${label}` };
+    vi.mocked(loadSaveSafely).mockResolvedValue(okLoadResult);
+    vi.mocked(inspectSimAdvanceIntentForCandidate).mockResolvedValue({ kind: 'rollback', intent, baseline } as never);
+    workerMock.exportSnapshot.mockResolvedValue(exportedSnapshot());
+    if (label === 'rollback consume rejects') {
+      vi.mocked(consumeSimAdvanceIntentRollback).mockRejectedValueOnce(new Error('consume failed'));
+    }
+
+    await act(async () => {
+      root.render(<AppBootGate><div>Dashboard Route</div></AppBootGate>);
+      await vi.dynamicImportSettled();
+      await flushAsync();
+    });
+
+    expect(activateActiveSavePersistenceMetadata).not.toHaveBeenCalled();
+    expect(completeActiveSaveSessionTransition).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Reload required');
+    expect(useGameStore.getState().activeSaveId).toBe('save-slot-1');
+    if (label === 'restored RNG differs') {
+      expect(consumeSimAdvanceIntentRollback).not.toHaveBeenCalled();
+    } else {
+      expect(consumeSimAdvanceIntentRollback).toHaveBeenCalledWith(intent);
+    }
+  });
+
+  it('renders reload-only fail-closed presentation without starting resume work', async () => {
+    useGameStore.getState().setActiveSave('save-slot-1', 1);
+    vi.mocked(useSimAdvanceCoordinatorStatus).mockReturnValue({
+      kind: 'fail_closed',
+      error: new Error('durable publication failed'),
+    });
+    await act(async () => {
+      root.render(<AppBootGate><div>Hidden dashboard</div></AppBootGate>);
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('Reload required');
+    expect(container.textContent).not.toContain('Hidden dashboard');
+    const dialog = container.querySelector('[role="alertdialog"]') as HTMLElement;
+    expect(dialog.getAttribute('aria-labelledby')).toBe('simulation-reload-title');
+    expect(dialog.getAttribute('aria-describedby')).toBe('simulation-reload-detail');
+    expect(resolveSaveSessionTarget).not.toHaveBeenCalled();
+    expect(loadSaveSafely).not.toHaveBeenCalled();
+    expect(workerMock.exportSnapshot).not.toHaveBeenCalled();
+    const button = Array.from(container.querySelectorAll('button')).find((candidate) => candidate.textContent === 'Reload dynasty');
+    expect(button).toBeTruthy();
+    expect(button?.className).toContain('min-h-11');
+    button?.focus();
+    expect(document.activeElement).toBe(button);
+    expect(useGameStore.getState().activeSaveId).toBe('save-slot-1');
   });
 
   it('discards an imported candidate before aborting when ownership commit fails', async () => {

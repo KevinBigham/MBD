@@ -92,7 +92,7 @@ describe('useOffseasonPageController', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
-      autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
       isInitialized: true,
       phase: 'offseason',
       playEffect: vi.fn(),

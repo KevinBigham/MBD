@@ -14,6 +14,20 @@ interface UseStaffActionHandlersResult {
   handleHire: (coachId: string) => Promise<void>;
 }
 
+function mutationSucceeded(value: unknown): value is { success: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'success' in value
+    && (value as { success?: unknown }).success === true;
+}
+
+function snapshotSaved(value: unknown): value is { saved: true } {
+  return typeof value === 'object'
+    && value !== null
+    && 'saved' in value
+    && (value as { saved?: unknown }).saved === true;
+}
+
 export function useStaffActionHandlers({
   autosaveActiveGame,
   fetchStaffData,
@@ -29,9 +43,10 @@ export function useStaffActionHandlers({
   ) => {
     setBusyCoachId(coachId);
     try {
-      await action(coachId);
+      const result = await action(coachId);
+      if (!mutationSucceeded(result)) return;
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) return;
       await fetchStaffData();
-      await autosaveActiveGame({ season });
     } finally {
       setBusyCoachId(null);
     }

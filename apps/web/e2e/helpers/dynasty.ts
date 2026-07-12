@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
 const APP_BOOT_COPY = 'Reopening the front office';
 const APP_UPDATED_COPY = 'App updated — refresh for the latest version.';
@@ -22,6 +22,33 @@ export interface IndexedDbSaveIntegrityPair {
   primaryUpdatedAt: string;
 }
 
+export interface IndexedDbSimAdvanceSnapshotIdentity {
+  checksum: string;
+  updatedAt: string;
+  season: number;
+  day: number;
+  phase: string;
+  rng: { seed: number; callCount: number };
+}
+
+export interface IndexedDbSimAdvanceIntentEvidence {
+  saveId: string;
+  rootSaveId: string;
+  token: string;
+  attempt: number;
+  operation: string;
+  baselineChecksum: string;
+  baselineSeason: number;
+  baselineDay: number;
+  baselinePhase: string;
+}
+
+export interface IndexedDbSimAdvanceJournalEvidence {
+  primary: IndexedDbSimAdvanceSnapshotIdentity;
+  shadow: IndexedDbSimAdvanceSnapshotIdentity;
+  intent: IndexedDbSimAdvanceIntentEvidence | null;
+}
+
 /** Read-only raw-row evidence used to corroborate the public storage metrics. */
 export interface IndexedDbStoragePressureEvidence {
   activeSnapshotJsonBytes: number;
@@ -36,7 +63,7 @@ export const saveSummary = (page: Page) => page.getByTestId('save-persistence-su
 export const saveStatus = (page: Page) => page.getByTestId('save-persistence-status');
 export const simFooter = (page: Page) => page.locator('footer[data-tour="sim-controls"]');
 
-export async function installIndexedDbSaveFault(page: Page): Promise<void> {
+export async function installIndexedDbSaveFault(page: Page | BrowserContext): Promise<void> {
   await page.addInitScript(() => {
     const state: IndexedDbSaveFaultState = {
       blockedAttempts: 0,
@@ -65,6 +92,101 @@ export async function installIndexedDbSaveFault(page: Page): Promise<void> {
         : originalPut.call(this, value, key);
     };
   });
+}
+
+/** Read-only exact primary/shadow/journal evidence for the WAL browser proof. */
+export async function readIndexedDbSimAdvanceJournalEvidence(
+  page: Page,
+  saveId: string,
+): Promise<IndexedDbSimAdvanceJournalEvidence> {
+  return page.evaluate(async (exactSaveId) => {
+    type Snapshot = {
+      season?: unknown;
+      day?: unknown;
+      phase?: unknown;
+      rng?: { seed?: unknown; callCount?: unknown };
+    };
+    type Record = {
+      integrity?: { checksum?: unknown };
+      updatedAt?: unknown;
+      snapshot?: Snapshot;
+    };
+    type Intent = {
+      saveId?: unknown; rootSaveId?: unknown; token?: unknown; attempt?: unknown;
+      operation?: unknown; baselineChecksum?: unknown; baselineSeason?: unknown;
+      baselineDay?: unknown; baselinePhase?: unknown;
+    };
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('mbd-saves');
+      request.onerror = () => reject(new Error(`Unable to open MBD IndexedDB: ${request.error?.message ?? 'unknown error'}`));
+      request.onsuccess = () => resolve(request.result);
+    });
+    const stores = ['saves', 'saveIntegrityBackups', 'simAdvanceIntents'];
+    if (stores.some((store) => !database.objectStoreNames.contains(store))) {
+      database.close();
+      throw new Error('MBD IndexedDB is missing sim-advance evidence stores.');
+    }
+    return new Promise<IndexedDbSimAdvanceJournalEvidence>((resolve, reject) => {
+      const transaction = database.transaction(stores, 'readonly');
+      const primaryRequest = transaction.objectStore('saves').get(exactSaveId);
+      const shadowRequest = transaction.objectStore('saveIntegrityBackups').get(exactSaveId);
+      const intentRequest = transaction.objectStore('simAdvanceIntents').get(exactSaveId);
+      let settled = false;
+      const fail = (message: string) => {
+        if (settled) return;
+        settled = true;
+        database.close();
+        reject(new Error(message));
+      };
+      transaction.onerror = () => fail(`Sim-advance evidence transaction failed: ${transaction.error?.message ?? 'unknown error'}`);
+      transaction.onabort = () => fail(`Sim-advance evidence transaction aborted: ${transaction.error?.message ?? 'unknown error'}`);
+      const identity = (record: Record | undefined, label: string): IndexedDbSimAdvanceSnapshotIdentity => {
+        const snapshot = record?.snapshot;
+        const checksum = record?.integrity?.checksum;
+        const updatedAt = record?.updatedAt;
+        if (!snapshot || typeof checksum !== 'string' || typeof updatedAt !== 'string'
+          || typeof snapshot.season !== 'number' || typeof snapshot.day !== 'number'
+          || typeof snapshot.phase !== 'string' || typeof snapshot.rng?.seed !== 'number'
+          || typeof snapshot.rng.callCount !== 'number') {
+          throw new Error(`Exact ${label} save evidence is malformed.`);
+        }
+        return {
+          checksum, updatedAt, season: snapshot.season, day: snapshot.day,
+          phase: snapshot.phase, rng: { seed: snapshot.rng.seed, callCount: snapshot.rng.callCount },
+        };
+      };
+      transaction.oncomplete = () => {
+        try {
+          const rawIntent = intentRequest.result as Intent | undefined;
+          let intent: IndexedDbSimAdvanceIntentEvidence | null = null;
+          if (rawIntent) {
+            if (typeof rawIntent.saveId !== 'string' || typeof rawIntent.rootSaveId !== 'string'
+              || typeof rawIntent.token !== 'string' || typeof rawIntent.attempt !== 'number'
+              || typeof rawIntent.operation !== 'string' || typeof rawIntent.baselineChecksum !== 'string'
+              || typeof rawIntent.baselineSeason !== 'number' || typeof rawIntent.baselineDay !== 'number'
+              || typeof rawIntent.baselinePhase !== 'string') {
+              throw new Error('Exact sim-advance journal evidence is malformed.');
+            }
+            intent = {
+              saveId: rawIntent.saveId, rootSaveId: rawIntent.rootSaveId, token: rawIntent.token,
+              attempt: rawIntent.attempt, operation: rawIntent.operation,
+              baselineChecksum: rawIntent.baselineChecksum, baselineSeason: rawIntent.baselineSeason,
+              baselineDay: rawIntent.baselineDay, baselinePhase: rawIntent.baselinePhase,
+            };
+          }
+          settled = true;
+          database.close();
+          resolve({
+            primary: identity(primaryRequest.result as Record | undefined, 'primary'),
+            shadow: identity(shadowRequest.result as Record | undefined, 'shadow'),
+            intent,
+          });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+      };
+    });
+  }, saveId);
 }
 
 export async function enableIndexedDbSaveFault(page: Page): Promise<void> {
@@ -528,38 +650,104 @@ async function waitForOverlayAdvance(overlay: Locator, previousText: string): Pr
   }).not.toBe('same');
 }
 
+export interface OverlayActionCandidate<Name extends string = string> {
+  readonly name: Name;
+  readonly visible: boolean;
+  readonly enabled: boolean;
+}
+
+export type OverlayActionSelection<Name extends string = string> =
+  | { readonly kind: 'waiting' }
+  | { readonly kind: 'ready'; readonly name: Name };
+
+/** Pure oracle for the hostile helper test and fresh-DOM overlay adapter. */
+export function selectExactlyOneVisibleOverlayAction<Name extends string>(
+  candidates: readonly OverlayActionCandidate<Name>[],
+): OverlayActionSelection<Name> {
+  const visible = candidates.filter((candidate) => candidate.visible);
+  if (visible.length > 1) {
+    throw new Error(`Overlay exposes multiple visible actions: ${visible.map((candidate) => candidate.name).join(', ')}.`);
+  }
+  if (visible.length === 0 || !visible[0]!.enabled) return { kind: 'waiting' };
+  return { kind: 'ready', name: visible[0]!.name };
+}
+
+/** A direct locator click deliberately propagates detached/action failures. */
+export async function clickFreshOverlayAction(
+  action: Pick<Locator, 'click'>,
+): Promise<void> {
+  await action.click({ timeout: 5_000 });
+}
+
+interface FreshOverlayResolution {
+  readonly text: string | null;
+  readonly selection: OverlayActionSelection;
+  readonly action: Locator | null;
+}
+
+async function resolveFreshOverlayAction(
+  overlay: Locator,
+  actionNames: readonly string[],
+): Promise<FreshOverlayResolution> {
+  if (!(await overlay.isVisible().catch(() => false))) {
+    return { text: null, selection: { kind: 'waiting' }, action: null };
+  }
+  const text = await overlay.innerText({ timeout: 1_000 }).catch(() => null);
+  if (text == null) return { text: null, selection: { kind: 'waiting' }, action: null };
+
+  const fresh = await Promise.all(actionNames.map(async (name) => {
+    // Construct a new overlay-scoped locator for this exact DOM pass. A
+    // previous report/decision action may have detached since the last poll.
+    const action = overlay.getByRole('button', { name, exact: true });
+    const count = await action.count();
+    if (count > 1) {
+      throw new Error(`Overlay exposes ${count} exact "${name}" controls; one is required.`);
+    }
+    return {
+      name,
+      visible: count === 1 && await action.isVisible().catch(() => false),
+      enabled: count === 1 && await action.isEnabled().catch(() => false),
+      action,
+    };
+  }));
+  const selection = selectExactlyOneVisibleOverlayAction(fresh);
+  const selected = selection.kind === 'ready'
+    ? fresh.find((candidate) => candidate.name === selection.name)!
+    : null;
+  return { text, selection, action: selected?.action ?? null };
+}
+
 async function dismissTransientOverlay(
   overlay: Locator,
-  action: Locator,
+  actionNames: readonly string[],
 ): Promise<boolean> {
-  const previousText = await overlay.innerText({ timeout: 1_000 }).catch(() => null);
-  if (previousText == null) return false;
+  const initial = await resolveFreshOverlayAction(overlay, actionNames);
+  if (initial.text == null) return false;
+  const previousText = initial.text;
 
-  if (!(await action.isVisible({ timeout: 1_000 }).catch(() => false))) {
-    if (!(await overlay.isVisible().catch(() => false))) return false;
+  for (;;) {
+    let ready: FreshOverlayResolution | null = null;
+    await expect.poll(async () => {
+      const current = await resolveFreshOverlayAction(overlay, actionNames);
+      if (current.text == null || current.text !== previousText) return 'advanced';
+      if (current.selection.kind !== 'ready' || !current.action) return 'waiting';
+      ready = current;
+      return 'ready';
+    }, {
+      message: 'blocking overlay should expose exactly one enabled current action or advance',
+      timeout: 60_000,
+    }).not.toBe('waiting');
+
+    if (!ready) return true;
+    // Repeat the whole DOM read immediately before clicking. Do not click a
+    // locator retained from the poll if a report became a decision meanwhile.
+    const confirmed = await resolveFreshOverlayAction(overlay, actionNames);
+    if (confirmed.text == null || confirmed.text !== previousText) return true;
+    if (confirmed.selection.kind !== 'ready' || !confirmed.action) continue;
+    await clickFreshOverlayAction(confirmed.action);
+    await waitForOverlayAdvance(overlay, previousText);
+    return true;
   }
-
-  await expect.poll(async () => {
-    if (!(await overlay.isVisible().catch(() => false))) return 'advanced';
-    const currentText = await overlay.innerText({ timeout: 1_000 }).catch(() => null);
-    if (currentText == null || currentText !== previousText) return 'advanced';
-    return await action.isEnabled({ timeout: 1_000 }).catch(() => false)
-      ? 'ready'
-      : 'waiting';
-  }, {
-    message: 'blocking overlay should become actionable or advance while its dismissal is busy',
-    timeout: 60_000,
-  }).not.toBe('waiting');
-
-  const currentText = await overlay.innerText({ timeout: 1_000 }).catch(() => null);
-  if (currentText == null || currentText !== previousText) return true;
-
-  const actionHandle = await action.elementHandle();
-  if (actionHandle && !(await actionHandle.isDisabled().catch(() => true))) {
-    await actionHandle.click({ timeout: 5_000 }).catch(() => undefined);
-  }
-  await waitForOverlayAdvance(overlay, previousText);
-  return true;
 }
 
 async function acceptServiceWorkerRefresh(page: Page): Promise<boolean> {
@@ -589,19 +777,13 @@ export async function drainDurableOverlays(page: Page): Promise<boolean> {
 
     const moment = page.locator('[data-overlay="moment-card"]');
     if (await moment.isVisible().catch(() => false)) {
-      const keepGoing = moment.getByRole('button', { name: 'Keep Going', exact: true });
-      persistedMutation = await dismissTransientOverlay(moment, keepGoing) || persistedMutation;
+      persistedMutation = await dismissTransientOverlay(moment, ['Keep Going']) || persistedMutation;
       continue;
     }
 
     const monthly = page.locator('[data-overlay="monthly-pulse"]');
     if (await monthly.isVisible().catch(() => false)) {
-      const continueButton = monthly.getByRole('button', { name: 'Continue', exact: true });
-      const dismissButton = monthly.getByRole('button', { name: 'Dismiss', exact: true });
-      const action = await continueButton.isVisible().catch(() => false)
-        ? continueButton
-        : dismissButton;
-      persistedMutation = await dismissTransientOverlay(monthly, action) || persistedMutation;
+      persistedMutation = await dismissTransientOverlay(monthly, ['Continue', 'Dismiss']) || persistedMutation;
       continue;
     }
 

@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useActiveSavePersistenceStatus } from '@/shared/hooks/useActiveSavePersistenceStatus';
+import { useSimAdvanceCoordinatorStatus } from '@/shared/hooks/useSimAdvanceExecutor';
 import { TeamLogo } from '@/shared/components/TeamLogo';
 import { ContextualHelp } from '@/shared/components/ContextualHelp';
 import { getContextualHelpForPath } from '@/shared/lib/routeGuidanceRegistry';
@@ -30,6 +31,19 @@ function describeSaveFailure(failureKind: ActiveSavePersistenceFailureKind | nul
       return 'Save failed — could not read game';
     default:
       return 'Save failed';
+  }
+}
+
+function describeSimAdvanceStage(kind: ReturnType<typeof useSimAdvanceCoordinatorStatus>['kind']): string | null {
+  switch (kind) {
+    case 'idle': return null;
+    case 'preparing': return 'Preparing verified simulation';
+    case 'running': return 'Simulation in progress';
+    case 'persisting': return 'Saving simulation result';
+    case 'retry_wait': return 'Simulation paused — retry exact save';
+    case 'publishing': return 'Updating saved simulation';
+    case 'rolling_back': return 'Restoring last saved state';
+    case 'fail_closed': return 'Reload required';
   }
 }
 
@@ -61,6 +75,7 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   const location = useLocation();
   const online = useOnlineStatus();
   const saveStatus = useActiveSavePersistenceStatus(activeSaveId);
+  const simAdvanceStatus = useSimAdvanceCoordinatorStatus();
   useActiveSaveRecoveryToast(activeSaveId, saveStatus);
   const [unreadNewsIds, setUnreadNewsIds] = useState<Set<string>>(() => new Set());
   const helpContent = getContextualHelpForPath(location.pathname);
@@ -68,13 +83,18 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   const detailLabel = flow?.detailLabel ?? phase;
   const progress = Math.round((flow?.progress ?? 0) * 100);
   const unreadNewsCount = unreadNewsIds.size;
-  const saveSummaryVisible = activeSaveId != null;
+  // The generic Saved/zero-pending string describes ordinary persistence only;
+  // it must never imply a journalled post is durable while coordinator work is
+  // still active.
+  const saveSummaryVisible = activeSaveId != null && simAdvanceStatus.kind === 'idle';
   const saveSummary = formatSavePersistenceSummary(
     saveStatus.lastSavedAt,
     saveStatus.pendingWrites,
   );
-  const saveStatusVisible = saveStatus.state !== 'idle';
-  const saveStatusLabel = saveStatus.state === 'saving'
+  const saveStatusVisible = saveStatus.state !== 'idle' || simAdvanceStatus.kind !== 'idle';
+  const saveStatusLabel = simAdvanceStatus.kind !== 'idle'
+    ? describeSimAdvanceStage(simAdvanceStatus.kind)!
+    : saveStatus.state === 'saving'
     ? 'Saving...'
     : saveStatus.state === 'failed'
       ? describeSaveFailure(saveStatus.failureKind)
@@ -85,9 +105,9 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
       data-failure-kind={saveStatus.state === 'failed' ? saveStatus.failureKind ?? 'unknown' : undefined}
       title={saveStatus.state === 'failed' ? saveStatus.errorMessage ?? undefined : undefined}
       role="status"
-      aria-live={saveStatus.state === 'failed' ? 'assertive' : 'polite'}
+      aria-live={saveStatus.state === 'failed' || simAdvanceStatus.kind === 'fail_closed' ? 'assertive' : 'polite'}
       className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-data text-[11px] ${positionClass} ${
-        saveStatus.state === 'failed'
+        saveStatus.state === 'failed' || simAdvanceStatus.kind !== 'idle'
           ? 'border-accent-danger/40 bg-accent-danger/10 text-accent-danger'
           : saveStatus.state === 'saving'
             ? 'border-accent-info/35 bg-accent-info/10 text-accent-info'
@@ -95,7 +115,8 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
       }`}
     >
       <span>{saveStatusLabel}</span>
-      {saveStatus.state === 'failed' && saveStatus.canRetry ? (
+      {(simAdvanceStatus.kind === 'idle' || simAdvanceStatus.kind === 'retry_wait')
+        && saveStatus.state === 'failed' && saveStatus.canRetry ? (
         <button
           type="button"
           aria-label="Retry failed save"
@@ -184,7 +205,7 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
         </span>
       )}
 
-      {saveStatusVisible && saveStatus.state === 'failed'
+      {saveStatusVisible && (saveStatus.state === 'failed' || simAdvanceStatus.kind === 'fail_closed')
         ? renderSaveStatus(
           'order-4 mx-4 mb-2 w-[calc(100%-2rem)] justify-between lg:order-3 lg:mx-0 lg:mb-0 lg:w-auto lg:justify-start',
         )
@@ -192,7 +213,7 @@ export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
 
       {/* Right: Help + Command palette trigger + Settings */}
       <div className="order-2 flex h-12 shrink-0 items-center gap-2 pr-4 lg:order-4">
-        {saveStatusVisible && saveStatus.state !== 'failed'
+        {saveStatusVisible && saveStatus.state !== 'failed' && simAdvanceStatus.kind !== 'fail_closed'
           ? renderSaveStatus('')
           : null}
         {!online && (

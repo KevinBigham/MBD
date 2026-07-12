@@ -259,6 +259,9 @@ describe('AppLayout shell autosave', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    // AppLayout's exact-save stale-callback fence reads the imperative Zustand
+    // surface as well as the render hook. This mocked hook models both.
+    Object.assign(mockedUseGameStore, { getState: () => createStoreState() });
     mockedGetAudioEngine.mockReturnValue(audioEngineMock as unknown as ReturnType<typeof getAudioEngine>);
   });
 

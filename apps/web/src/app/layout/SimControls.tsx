@@ -10,6 +10,7 @@ interface SimControlsProps {
   onSimToPlayoffs: () => void;
   onFlowAction: () => void;
   disabled?: boolean;
+  statusLabel?: string;
   flow: SeasonFlowState | null;
 }
 
@@ -48,6 +49,7 @@ export function SimControls({
   onSimToPlayoffs,
   onFlowAction,
   disabled = false,
+  statusLabel,
   flow,
 }: SimControlsProps) {
   const { isSimulating, season } = useGameStore();
@@ -66,7 +68,7 @@ export function SimControls({
         <div className="hidden min-w-[140px] md:block" aria-live="polite">
           <div className="font-data text-xs text-dynasty-muted">{flow?.phaseLabel ?? `Season ${season}`}</div>
           <div className="font-data text-xs uppercase text-accent-info">
-            {disabled ? 'Preparing simulation' : (flow?.detailLabel ?? 'Simulation ready')}
+            {statusLabel ?? (disabled ? 'Preparing simulation' : (flow?.detailLabel ?? 'Simulation ready'))}
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-dynasty-border">
             <div

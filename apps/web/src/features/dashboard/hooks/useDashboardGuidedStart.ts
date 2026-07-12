@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo } from 'react';
 import type { GameSnapshot } from '@mbd/contracts';
 import { useNudges } from '@/features/onboarding/nudges';
 import { exportSnapshotToJson } from '@/shared/lib/saveSystem';
+import { isSimAdvanceCoordinatorBusy } from '@/shared/hooks/useSimAdvanceExecutor';
+import { useGameStore } from '@/shared/hooks/useGameStore';
+import { logger } from '@/shared/lib/logger';
 import {
   buildDashboardNudgeTriggers,
   shouldAutoSkipFirstSeriesPointerNudge,
@@ -97,12 +100,23 @@ export function useDashboardGuidedStart({
   ]);
 
   const handleExportGuidedStartBackup = useCallback(async () => {
-    const snapshot = await exportSnapshot();
+    const capturedSaveId = activeSaveId;
+    if (!capturedSaveId || isSimAdvanceCoordinatorBusy()) return false;
+    let snapshot: GameSnapshot;
+    try {
+      snapshot = await exportSnapshot();
+    } catch (error) {
+      logger.error('Failed to export guided-start backup:', error);
+      return false;
+    }
+    if (isSimAdvanceCoordinatorBusy() || useGameStore.getState().activeSaveId !== capturedSaveId) {
+      return false;
+    }
     const exportName = `${gmName ?? 'General Manager'} • ${teamName ?? 'Franchise'} • Season ${season} Day ${day}`;
     const payload = exportSnapshotToJson(exportName, snapshot);
 
     if (typeof document === 'undefined' || typeof window === 'undefined') {
-      return;
+      return false;
     }
 
     const blob = new Blob([payload], { type: 'application/json' });
@@ -112,7 +126,8 @@ export function useDashboardGuidedStart({
     link.download = `mbd-season-${season}-day-${day}.json`;
     link.click();
     window.URL.revokeObjectURL(url);
-  }, [day, exportSnapshot, gmName, season, teamName]);
+    return true;
+  }, [activeSaveId, day, exportSnapshot, gmName, season, teamName]);
 
   return {
     currentDashboardNudge,

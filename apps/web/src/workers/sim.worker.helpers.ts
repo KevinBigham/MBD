@@ -1258,7 +1258,6 @@ export function getExtensionOfferForPlayer(
     return null;
   }
 
-  s.pendingExtensionNegotiations.delete(playerId);
   return calculateExtensionOfferCore(
     player,
     buildExtensionContextForTeam(s, player.teamId),
@@ -1604,10 +1603,14 @@ export function claimPlayerOffWaivers(
   playerId: string,
   claimingTeamId: string,
 ) {
+  const previousMinorLeagueState = s.minorLeagueState;
   maybeAdvanceWaiverPriorityForClaim(s, playerId, claimingTeamId);
 
   const result = claimOffWaiversCore(s.players, s.minorLeagueState, playerId, claimingTeamId);
   if (!result.success) {
+    // Priority simulation is part of the claim attempt, not an independent
+    // gameplay mutation. A rejected claim must be snapshot-atomic.
+    s.minorLeagueState = previousMinorLeagueState;
     return result;
   }
 
@@ -1818,7 +1821,10 @@ function upsertUserBigBoard(s: FullGameState, board: string[]) {
   };
 }
 
-function ensureInternationalScoutingStateForSeason(s: FullGameState): InternationalScoutingState {
+function ensureInternationalScoutingStateForSeason(
+  s: FullGameState,
+  rng: GameRNG = s.rng,
+): InternationalScoutingState {
   const currentState = s.internationalScoutingState;
   if (
     currentState.season === s.season &&
@@ -1828,7 +1834,7 @@ function ensureInternationalScoutingStateForSeason(s: FullGameState): Internatio
   }
 
   const nextState = createInternationalScoutingStateCore(
-    s.rng.fork(),
+    rng.fork(),
     TEAMS.map((team) => team.id),
     s.season,
   );
@@ -2427,6 +2433,40 @@ function ensureDraftSession(s: FullGameState): DraftSessionState | null {
   return normalized;
 }
 
+function captureDraftMutationCheckpoint(s: FullGameState) {
+  return {
+    draftState: s.draftState,
+    draftClass: s.draftClass,
+    scoutConflicts: s.scoutConflicts,
+  };
+}
+
+function restoreDraftMutationCheckpoint(
+  s: FullGameState,
+  checkpoint: ReturnType<typeof captureDraftMutationCheckpoint>,
+) {
+  s.draftState = checkpoint.draftState;
+  s.draftClass = checkpoint.draftClass;
+  s.scoutConflicts = checkpoint.scoutConflicts;
+}
+
+function captureIFAMutationCheckpoint(s: FullGameState) {
+  return {
+    rng: s.rng.getState(),
+    internationalScoutingState: s.internationalScoutingState,
+    scoutConflicts: s.scoutConflicts,
+  };
+}
+
+function restoreIFAMutationCheckpoint(
+  s: FullGameState,
+  checkpoint: ReturnType<typeof captureIFAMutationCheckpoint>,
+) {
+  s.rng = GameRNG.fromState(checkpoint.rng);
+  s.internationalScoutingState = checkpoint.internationalScoutingState;
+  s.scoutConflicts = checkpoint.scoutConflicts;
+}
+
 function recordDraftPickForState(
   s: FullGameState,
   session: DraftSessionState,
@@ -2575,6 +2615,10 @@ function buildDraftBoard(s: FullGameState, session: DraftSessionState | null) {
 }
 
 export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
+  const previousDraftState = s.draftState;
+  const previousDraftClass = s.draftClass;
+  const previousScoutConflicts = s.scoutConflicts;
+  try {
   const session = ensureDraftSession(s);
   const userReports = new Map(
     getTeamDraftScoutingReports(s, s.userTeamId).map((report) => [report.playerId, report] as const),
@@ -2709,10 +2753,24 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
     } : null,
     userBigBoard,
   };
+  } finally {
+    // A route query may normalize missing legacy/fresh-save scaffolding to
+    // build its deterministic view, but it must never mutate canonical worker
+    // state merely because the player opened Draft.
+    s.draftState = previousDraftState;
+    s.draftClass = previousDraftClass;
+    s.scoutConflicts = previousScoutConflicts;
+  }
 }
 
 export function buildIFAPoolView(s: FullGameState): IFAPoolView {
-  const internationalState = ensureInternationalScoutingStateForSeason(s);
+  const previousInternationalState = s.internationalScoutingState;
+  const previousScoutConflicts = s.scoutConflicts;
+  try {
+  const internationalState = ensureInternationalScoutingStateForSeason(
+    s,
+    GameRNG.fromState(s.rng.getState()),
+  );
   const userBudget = internationalState.budgets.get(s.userTeamId) ?? {
     baseAllocation: 0,
     tradedIn: 0,
@@ -2772,6 +2830,12 @@ export function buildIFAPoolView(s: FullGameState): IFAPoolView {
         };
       }),
   };
+  } finally {
+    // Deterministic pool/conflict previews are derived for presentation. Only
+    // an accepted scouting/signing/pool mutation may install them canonically.
+    s.internationalScoutingState = previousInternationalState;
+    s.scoutConflicts = previousScoutConflicts;
+  }
 }
 
 export function scoutUserIFAPlayer(
@@ -2782,12 +2846,15 @@ export function scoutUserIFAPlayer(
     return { success: false, error: 'International signing is not active.' };
   }
 
+  const checkpoint = captureIFAMutationCheckpoint(s);
   ensureInternationalScoutingStateForSeason(s);
   const prospect = s.internationalScoutingState.ifaPool.find((entry) => entry.id === playerId);
   if (!prospect) {
+    restoreIFAMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'International prospect not found.' };
   }
   if (prospect.status !== 'available') {
+    restoreIFAMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'This prospect has already signed.' };
   }
 
@@ -2843,15 +2910,18 @@ export function signUserIFAPlayer(
     return { success: false, error: 'International signing is not active.' };
   }
 
+  const checkpoint = captureIFAMutationCheckpoint(s);
   ensureInternationalScoutingStateForSeason(s);
   const prospect = s.internationalScoutingState.ifaPool.find((entry) => entry.id === playerId);
   if (!prospect) {
+    restoreIFAMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'International prospect not found.' };
   }
 
   try {
     applyIFASigningToLeague(s, prospect, s.userTeamId, bonusAmount);
   } catch (error) {
+    restoreIFAMutationCheckpoint(s, checkpoint);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unable to complete IFA signing.',
@@ -2875,6 +2945,7 @@ export function tradeUserIFABonusPool(
     return { success: false, error: 'International signing phase is not active.' };
   }
 
+  const checkpoint = captureIFAMutationCheckpoint(s);
   ensureInternationalScoutingStateForSeason(s);
 
   try {
@@ -2885,6 +2956,7 @@ export function tradeUserIFABonusPool(
       amount,
     );
   } catch (error) {
+    restoreIFAMutationCheckpoint(s, checkpoint);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unable to trade IFA pool space.',
@@ -2903,9 +2975,11 @@ export function scoutUserDraftPlayer(
   s: FullGameState,
   playerId: string,
 ): { success: true; report: DraftScoutingReport } | { success: false; error: string } {
+  const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
   const prospect = session?.prospects.find((candidate) => candidate.player.id === playerId);
   if (!session || !prospect) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Draft prospect not available.' };
   }
 
@@ -2922,6 +2996,7 @@ export function scoutUserDraftPlayer(
   ));
   const report = scoutDraftProspect(scoutRng, prospect, accuracy, previousReport);
   upsertTeamDraftScoutingReport(s, s.userTeamId, report);
+  ensureDraftScoutConflicts(s, [prospect]);
   return { success: true, report };
 }
 
@@ -2929,8 +3004,10 @@ export function toggleUserDraftBigBoardPlayer(
   s: FullGameState,
   playerId: string,
 ): { success: true; board: string[] } | { success: false; error: string } {
+  const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
   if (!session || !session.prospects.some((prospect) => prospect.player.id === playerId)) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Draft prospect not available.' };
   }
 
@@ -3016,16 +3093,20 @@ export function signUserDraftPick(
   playerId: string,
   bonusAmount: number,
 ): { success: true; signed: boolean; message: string } | { success: false; error: string } {
+  const checkpoint = captureDraftMutationCheckpoint(s);
   const pick = ensureDraftSession(s)?.completedPicks.find((entry) => entry.playerId === playerId && entry.teamId === s.userTeamId);
   if (!pick) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Drafted player not found.' };
   }
   if (s.draftState.signingDecisions.some((entry) => entry.playerId === playerId)) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Signing decision already recorded.' };
   }
 
   const prospect = buildDraftProspectFromState(s, playerId, pick.scoutingGrade, pick.round, pick.pickNumber);
   if (!prospect) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Draft metadata unavailable.' };
   }
 
@@ -3101,6 +3182,7 @@ function autoResolveAIDraftSignings(s: FullGameState) {
 }
 
 export function startDraftSession(s: FullGameState, draftClass?: DraftClass): DraftActionResult {
+  const checkpoint = captureDraftMutationCheckpoint(s);
   if (draftClass) {
     ensureDraftPickOwnershipForSeason(s);
     ensureDraftMetadataForSession(s, draftClass);
@@ -3109,6 +3191,7 @@ export function startDraftSession(s: FullGameState, draftClass?: DraftClass): Dr
 
   const session = ensureDraftSession(s);
   if (!session) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, draft: null, newPicks: [], error: 'Draft class unavailable' };
   }
 
@@ -3127,18 +3210,25 @@ export function startDraftSession(s: FullGameState, draftClass?: DraftClass): Dr
 }
 
 export function makeUserDraftSelection(s: FullGameState, prospectId: string): DraftActionResult {
+  const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
   const currentSlot = session ? getCurrentDraftSlot(session) : null;
   if (!session || !currentSlot) {
-    return { success: false, draft: buildDraftRoomView(s), newPicks: [], error: 'Draft is not active' };
+    const draft = buildDraftRoomView(s);
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, draft, newPicks: [], error: 'Draft is not active' };
   }
   if (currentSlot.teamId !== s.userTeamId) {
-    return { success: false, draft: buildDraftRoomView(s), newPicks: [], error: 'You are not on the clock' };
+    const draft = buildDraftRoomView(s);
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, draft, newPicks: [], error: 'You are not on the clock' };
   }
 
   const prospect = session.prospects.find((candidate) => candidate.player.id === prospectId);
   if (!prospect) {
-    return { success: false, draft: buildDraftRoomView(s), newPicks: [], error: 'Prospect not available' };
+    const draft = buildDraftRoomView(s);
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, draft, newPicks: [], error: 'Prospect not available' };
   }
 
   const newPicks = [recordDraftPickForState(s, session, currentSlot, prospect), ...advanceDraftToUserTurn(s)];
@@ -3154,8 +3244,10 @@ export function makeUserDraftSelection(s: FullGameState, prospectId: string): Dr
 }
 
 export function simulateRemainingDraftSession(s: FullGameState): DraftActionResult {
+  const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
   if (!session) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, draft: null, newPicks: [], error: 'Draft class unavailable' };
   }
 
@@ -4473,6 +4565,23 @@ function ensureRule5SessionForCurrentPhase(s: FullGameState) {
   syncRule5ObligationsFromSession(s);
 }
 
+function captureRule5MutationCheckpoint(s: FullGameState) {
+  return {
+    rule5Session: s.rule5Session,
+    rule5Obligations: s.rule5Obligations,
+    rosterStates: new Map(s.rosterStates),
+  };
+}
+
+function restoreRule5MutationCheckpoint(
+  s: FullGameState,
+  checkpoint: ReturnType<typeof captureRule5MutationCheckpoint>,
+) {
+  s.rule5Session = checkpoint.rule5Session;
+  s.rule5Obligations = checkpoint.rule5Obligations;
+  s.rosterStates = checkpoint.rosterStates;
+}
+
 function chooseRule5TargetForTeam(
   s: FullGameState,
   teamId: string,
@@ -4561,10 +4670,10 @@ function advanceRule5DraftToUserTurn(s: FullGameState) {
 function requestRule5OfferBack(
   s: FullGameState,
   playerId: string,
-): { success: false; error: string } {
+): { success: false; error: string; flowStateChanged: boolean } {
   const obligation = s.rule5Obligations.find((entry) => entry.playerId === playerId && entry.status === 'active');
   if (!obligation) {
-    return { success: false, error: 'No active Rule 5 obligation.' };
+    return { success: false, error: 'No active Rule 5 obligation.', flowStateChanged: false };
   }
 
   const existing = s.rule5OfferBackStates.find((entry) => entry.playerId === playerId && entry.status === 'pending');
@@ -4577,7 +4686,11 @@ function requestRule5OfferBack(
     });
   }
 
-  return { success: false, error: 'Rule 5 player must clear the offer-back flow before leaving the MLB roster.' };
+  return {
+    success: false,
+    error: 'Rule 5 player must clear the offer-back flow before leaving the MLB roster.',
+    flowStateChanged: !existing,
+  };
 }
 
 export function resolveRule5OfferBackDecision(
@@ -5368,13 +5481,16 @@ export function toggleUserRule5Protection(
   s: FullGameState,
   playerId: string,
 ): { success: boolean; error?: string } {
+  const checkpoint = captureRule5MutationCheckpoint(s);
   ensureRule5SessionForCurrentPhase(s);
   if (!s.offseasonState || s.offseasonState.currentPhase !== 'protection_audit' || !s.rule5Session) {
+    restoreRule5MutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Protection audit is not active.' };
   }
 
   const result = toggleRule5ProtectionCore(s.rule5Session, s.userTeamId, playerId);
   if (!result.success) {
+    restoreRule5MutationCheckpoint(s, checkpoint);
     return { success: false, error: result.error };
   }
 
@@ -5386,8 +5502,10 @@ export function toggleUserRule5Protection(
 export function lockUserRule5Protection(
   s: FullGameState,
 ): { success: boolean; error?: string } {
+  const checkpoint = captureRule5MutationCheckpoint(s);
   ensureRule5SessionForCurrentPhase(s);
   if (!s.offseasonState || !s.rule5Session) {
+    restoreRule5MutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Protection audit is not active.' };
   }
 
@@ -5406,13 +5524,16 @@ export function makeUserRule5Selection(
   s: FullGameState,
   playerId: string,
 ): { success: boolean; error?: string } {
+  const checkpoint = captureRule5MutationCheckpoint(s);
   ensureRule5SessionForCurrentPhase(s);
   if (!s.rule5Session || s.rule5Session.phase !== 'rule5_draft') {
+    restoreRule5MutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Rule 5 draft is not active.' };
   }
 
   const result = makeRule5SelectionCore(s.rule5Session, s.userTeamId, playerId);
   if (!result.success) {
+    restoreRule5MutationCheckpoint(s, checkpoint);
     return { success: false, error: result.error };
   }
 
@@ -5429,13 +5550,16 @@ export function makeUserRule5Selection(
 export function passUserRule5Turn(
   s: FullGameState,
 ): { success: boolean; error?: string } {
+  const checkpoint = captureRule5MutationCheckpoint(s);
   ensureRule5SessionForCurrentPhase(s);
   if (!s.rule5Session || s.rule5Session.phase !== 'rule5_draft') {
+    restoreRule5MutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Rule 5 draft is not active.' };
   }
 
   const result = passRule5DraftTurnCore(s.rule5Session, s.userTeamId);
   if (!result.success) {
+    restoreRule5MutationCheckpoint(s, checkpoint);
     return { success: false, error: result.error };
   }
 
@@ -5458,7 +5582,7 @@ export function ensurePlayersHaveRule5Eligibility(
 export function enforceRule5RosterRestriction(
   s: FullGameState,
   playerId: string,
-): { success: true } | { success: false; error: string } {
+): { success: true } | { success: false; error: string; flowStateChanged: boolean } {
   const obligation = s.rule5Obligations.find((entry) => entry.playerId === playerId && entry.status === 'active');
   if (!obligation) {
     return { success: true };

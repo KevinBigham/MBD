@@ -4,6 +4,7 @@ export type DashboardSimAction = 'day' | 'week' | 'month' | null;
 
 interface DashboardSimControlsPanelProps {
   simAction: DashboardSimAction;
+  disabled?: boolean;
   activeStorylineCount: number;
   challengeName: string | null;
   onSimDay: () => void;
@@ -41,6 +42,7 @@ function QuickActionButton({
 
 export default function DashboardSimControlsPanel({
   simAction,
+  disabled = false,
   activeStorylineCount,
   challengeName,
   onSimDay,
@@ -52,21 +54,21 @@ export default function DashboardSimControlsPanel({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-2">
           <QuickActionButton
-            busy={simAction === 'day'}
+            busy={disabled || simAction === 'day'}
             data-mobile-critical-control="dashboard-sim-day"
             label="Sim Day"
             onClick={onSimDay}
             shortcut="Space"
           />
           <QuickActionButton
-            busy={simAction === 'week'}
+            busy={disabled || simAction === 'week'}
             data-mobile-critical-control="dashboard-sim-week"
             label="Sim Week"
             onClick={onSimWeek}
             shortcut="Shift+Space"
           />
           <QuickActionButton
-            busy={simAction === 'month'}
+            busy={disabled || simAction === 'month'}
             data-mobile-critical-control="dashboard-sim-month"
             label="Sim Month"
             onClick={onSimMonth}

@@ -96,7 +96,7 @@ test('storage pressure remains truthful through ownership, cancel, reload, and m
   await expect(originMetric).toHaveAttribute('data-origin-percentage', '85');
   expect(new Set([snapshotBytes, rawBeforePrune.activeTreeJsonBytes, rawBeforePrune.allMbdJsonBytes, 85]).size).toBe(4);
   await expect(snapshotMetric).toContainText('in-memory JSON estimate');
-  await expect(localMetric).toContainText('Estimated serialized save, shadow, and leaderboard records');
+  await expect(localMetric).toContainText('Estimated serialized save, shadow, leaderboard, and small operational simulation-journal records; browser overhead is not measured.');
   await expect(originMetric).toContainText('Warning: origin storage is 80% to under 90%');
 
   const opener = owner.getByRole('button', { name: 'Prune Stale Data', exact: true });

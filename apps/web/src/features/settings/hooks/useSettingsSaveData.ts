@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import type { ShowSaveRecoveryOptions } from '@/features/save-recovery';
 import type { GameState } from '@/shared/hooks/useGameStore';
+import { useGameStore } from '@/shared/hooks/useGameStore';
 import type { useWorker } from '@/shared/hooks/useWorker';
 import { logger } from '@/shared/lib/logger';
+import { isSimAdvanceCoordinatorBusy } from '@/shared/hooks/useSimAdvanceExecutor';
 import {
   activateActiveSavePersistenceMetadata,
   abortActiveSaveSessionTransition,
@@ -149,7 +151,10 @@ export function useSettingsSaveData({
   }, [activeManagedSaveId, refreshBranches, refreshSaves]);
 
   const handleSave = useCallback(async (slot: number) => {
+    if (isSimAdvanceCoordinatorBusy()) { setStatus('Finish the current simulation save activity before changing save data.'); return; }
     if (!workerReady) return;
+    const capturedSaveId = activeSaveId;
+    if (!capturedSaveId) return;
     const operationOwner = beginSaveDataOperation();
     if (!operationOwner) return;
     setBusySlot(slot);
@@ -173,6 +178,9 @@ export function useSettingsSaveData({
         await withTransientSaveSessionOwnership(targetSaveId, () =>
           replaceInactiveSavePersistenceRecord(targetSaveId, async () => {
             const snapshot = await worker.exportSnapshot();
+            if (isSimAdvanceCoordinatorBusy() || useGameStore.getState().activeSaveId !== capturedSaveId) {
+              throw new Error('Active save changed while the inactive-slot snapshot was exporting.');
+            }
             return saveGame(slot, `Season ${season} Day ${day}`, snapshot, {
               replaceExistingRootBranchMetadata: true,
             });
@@ -193,6 +201,7 @@ export function useSettingsSaveData({
   }, [activeManagedSaveId, activeRootSaveId, activeSaveId, beginSaveDataOperation, day, finishSaveDataOperation, persistActiveSave, refreshSaves, season, worker, workerReady]);
 
   const handleDelete = useCallback(async (slot: number) => {
+    if (isSimAdvanceCoordinatorBusy()) { setStatus('Finish the current simulation save activity before changing save data.'); return false; }
     const operationOwner = beginSaveDataOperation();
     if (!operationOwner) return false;
     const targetSaveId = `save-slot-${slot}`;
@@ -317,6 +326,7 @@ export function useSettingsSaveData({
     slot: number,
     options: { fromRecovery?: boolean } = {},
   ): Promise<boolean> => {
+    if (isSimAdvanceCoordinatorBusy()) { setStatus('Finish the current simulation save activity before changing save data.'); return false; }
     if (!workerReady) return false;
     const operationOwner = beginSaveDataOperation();
     if (!operationOwner) return false;
@@ -399,15 +409,19 @@ export function useSettingsSaveData({
   }, [beginSaveDataOperation, continueFromSafeLoad, finishSaveDataOperation, handleDelete, persistActiveSave, recoveryShowFailure, workerReady]);
 
   const handleExportCurrent = useCallback(async () => {
+    if (isSimAdvanceCoordinatorBusy()) return;
     if (!workerReady) {
       setStatus('Start or load a dynasty before exporting.');
       return;
     }
+    const capturedSaveId = activeSaveId;
+    if (!capturedSaveId) return;
     const operationOwner = beginSaveDataOperation();
     if (!operationOwner) return;
 
     try {
       const snapshot = await worker.exportSnapshot();
+      if (isSimAdvanceCoordinatorBusy() || useGameStore.getState().activeSaveId !== capturedSaveId) return;
       const payload = exportSnapshotToJson(`Season ${season} Day ${day}`, snapshot);
       const blob = new Blob([payload], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
@@ -426,14 +440,19 @@ export function useSettingsSaveData({
   }, [beginSaveDataOperation, day, finishSaveDataOperation, season, worker, workerReady]);
 
   const handleImportFile = useCallback(async (file: File | null) => {
+    if (isSimAdvanceCoordinatorBusy()) { setStatus('Finish the current simulation save activity before changing save data.'); return; }
     if (!file) {
       return;
     }
     const operationOwner = beginSaveDataOperation();
     if (!operationOwner) return;
+    const capturedSaveId = useGameStore.getState().activeSaveId;
+    const importAuthorityCurrent = () => !isSimAdvanceCoordinatorBusy()
+      && useGameStore.getState().activeSaveId === capturedSaveId;
 
     try {
       const text = await file.text();
+      if (!importAuthorityCurrent()) return;
       const imported = importSnapshotFromJson(text);
       const usedSlots = new Set(saves.map((save) => save.slotNumber));
       const slot = SAVE_SLOTS.find((candidate) => !usedSlots.has(candidate));
@@ -442,8 +461,16 @@ export function useSettingsSaveData({
         return;
       }
       const targetSaveId = `save-slot-${slot}`;
+      if (!importAuthorityCurrent()) return;
       await withTransientSaveSessionOwnership(targetSaveId, () =>
-        saveGame(slot, imported.name, imported.snapshot));
+        importAuthorityCurrent()
+          ? saveGame(slot, imported.name, imported.snapshot)
+          : Promise.reject(new SaveSessionOwnershipError(
+            'not_owner',
+            'The active dynasty changed before the import write began.',
+            capturedSaveId ?? targetSaveId,
+          )));
+      if (!importAuthorityCurrent()) return;
       await refreshSaves();
       setStatus(`Imported save into slot ${slot}.`);
     } catch (error) {
@@ -461,6 +488,7 @@ export function useSettingsSaveData({
   }, [beginSaveDataOperation, finishSaveDataOperation, refreshSaves, saves]);
 
   const handleClearAllSaves = useCallback(async () => {
+    if (isSimAdvanceCoordinatorBusy()) { setStatus('Finish the current simulation save activity before changing save data.'); return; }
     const operationOwner = beginSaveDataOperation();
     if (!operationOwner) return;
     if (activeManagedSaveId) {
@@ -496,6 +524,7 @@ export function useSettingsSaveData({
   }, [activeManagedSaveId, beginSaveDataOperation, finishSaveDataOperation, refreshSaves]);
 
   const handleCreateBranch = useCallback(async () => {
+    if (isSimAdvanceCoordinatorBusy()) { setStatus('Finish the current simulation save activity before changing save data.'); return; }
     if (!workerReady || !activeRootSaveId) {
       return;
     }
@@ -506,20 +535,34 @@ export function useSettingsSaveData({
     }
     const operationOwner = beginSaveDataOperation();
     if (!operationOwner) return;
+    const capturedSaveId = activeManagedSaveId;
+    const capturedRootSaveId = activeRootSaveId;
+    const isCurrent = () => capturedSaveId != null
+      && useGameStore.getState().activeSaveId === capturedSaveId
+      && !isSimAdvanceCoordinatorBusy();
 
     setBranchBusy(true);
     setStatus('');
     try {
       const snapshot = await worker.exportSnapshot();
-      await trackActiveSavePersistenceOperation(activeRootSaveId, async () => {
-        const created = await createBranchSave(activeRootSaveId, snapshot, description);
+      if (!isCurrent()) return;
+      await trackActiveSavePersistenceOperation(capturedRootSaveId, async () => {
+        if (!isCurrent()) throw new SaveSessionOwnershipError(
+          'not_owner',
+          'The active dynasty changed before branch creation began.',
+          capturedRootSaveId,
+        );
+        const created = await createBranchSave(capturedRootSaveId, snapshot, description);
         return created.parent;
       });
+      if (!isCurrent()) return;
       await refreshBranches();
+      if (!isCurrent()) return;
       setBranchDescription('');
       setStatus('Created a new what-if branch from the active root save.');
     } catch (error) {
       logger.error('Failed to create branch:', error);
+      if (!isCurrent()) return;
       setStatus(isSaveSessionOwnershipError(error)
         ? saveSessionOwnershipFailureMessage(
             error,
@@ -531,9 +574,10 @@ export function useSettingsSaveData({
       setBranchBusy(false);
       finishSaveDataOperation(operationOwner);
     }
-  }, [activeRootSaveId, beginSaveDataOperation, branchDescription, finishSaveDataOperation, refreshBranches, worker, workerReady]);
+  }, [activeManagedSaveId, activeRootSaveId, beginSaveDataOperation, branchDescription, finishSaveDataOperation, refreshBranches, worker, workerReady]);
 
   const handleDeleteBranch = useCallback(async (branchSaveId: string) => {
+    if (isSimAdvanceCoordinatorBusy()) { setStatus('Finish the current simulation save activity before changing save data.'); return; }
     if (activeManagedSaveId === branchSaveId) {
       setStatus('Cannot delete the active what-if branch.');
       return;

@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useGameStore } from '@/shared/hooks/useGameStore';
+import {
+  isSimAdvanceCoordinatorBusy,
+  useSimAdvanceCoordinatorStatus,
+} from '@/shared/hooks/useSimAdvanceExecutor';
 import { logger } from '@/shared/lib/logger';
 import {
   getActiveSavePersistenceStatus,
@@ -120,11 +125,28 @@ export function useSettingsDiagnosticsData({
   const [telemetryUnavailable, setTelemetryUnavailable] = useState(false);
   const telemetryRequestRef = useRef(0);
   const activeSaveIdRef = useRef(activeManagedSaveId);
-  const mountedRef = useRef(true);
+  activeSaveIdRef.current = activeManagedSaveId;
+  const mountedRef = useRef(false);
+  const activationRef = useRef({ epoch: 0, saveId: activeManagedSaveId });
+  if (activationRef.current.saveId !== activeManagedSaveId) {
+    activationRef.current = { epoch: activationRef.current.epoch + 1, saveId: activeManagedSaveId };
+  }
   const pendingMaintenanceRef = useRef<PendingMaintenanceRecovery | null>(null);
   const recoveryInFlightRef = useRef(false);
   const effectiveFailureKind = persistenceStatus?.failureKind ?? persistenceFailureKind;
   const effectivePersistenceState = persistenceStatus?.state ?? persistenceState;
+  const simAdvanceStatus = useSimAdvanceCoordinatorStatus();
+  const isSaveActivationCurrent = useCallback((saveId: string | null, epoch: number): boolean => (
+    mountedRef.current
+    && activationRef.current.epoch === epoch
+    && activationRef.current.saveId === saveId
+    && activeSaveIdRef.current === saveId
+    && useGameStore.getState().activeSaveId === saveId
+  ), []);
+  const isExactSaveCurrent = useCallback((saveId: string | null, epoch: number): boolean => (
+    isSaveActivationCurrent(saveId, epoch)
+    && !isSimAdvanceCoordinatorBusy()
+  ), [isSaveActivationCurrent]);
   const displayedOriginEstimate = useMemo(() => (
     effectiveFailureKind === 'quota'
       ? classifyOriginStorageEstimate(
@@ -138,9 +160,22 @@ export function useSettingsDiagnosticsData({
 
   useEffect(() => {
     mountedRef.current = true;
+    const unsubscribe = useGameStore.subscribe((state, previous) => {
+      if (state.activeSaveId !== previous.activeSaveId) {
+        activationRef.current = {
+          epoch: activationRef.current.epoch + 1,
+          saveId: state.activeSaveId,
+        };
+      }
+    });
     return () => {
       mountedRef.current = false;
+      activationRef.current = {
+        epoch: activationRef.current.epoch + 1,
+        saveId: activationRef.current.saveId,
+      };
       telemetryRequestRef.current += 1;
+      unsubscribe();
     };
   }, []);
 
@@ -151,6 +186,8 @@ export function useSettingsDiagnosticsData({
       preserveOnFailure?: boolean;
     } = {},
   ): Promise<TelemetryRefreshResult> => {
+    const capturedEpoch = activationRef.current.epoch;
+    if (!isExactSaveCurrent(requestedSaveId, capturedEpoch)) return { available: false, installed: false };
     const request = ++telemetryRequestRef.current;
     const includeWorker = options.includeWorker ?? true;
     const preserveOnFailure = options.preserveOnFailure ?? false;
@@ -166,7 +203,7 @@ export function useSettingsDiagnosticsData({
     ]);
     const current = mountedRef.current
       && request === telemetryRequestRef.current
-      && requestedSaveId === activeSaveIdRef.current;
+      && isExactSaveCurrent(requestedSaveId, capturedEpoch);
     if (!current) return { available: false, installed: false };
 
     if (includeWorker) {
@@ -194,7 +231,7 @@ export function useSettingsDiagnosticsData({
       && originResult.value?.pressure !== 'unavailable';
     setTelemetryUnavailable(!available);
     return { available, installed: true };
-  }, [getPerformanceDiagnostics, readLocalStorageEstimate, readOriginEstimate, workerReady]);
+  }, [getPerformanceDiagnostics, isExactSaveCurrent, readLocalStorageEstimate, readOriginEstimate, workerReady]);
 
   const refreshDiagnostics = useCallback(async (
     requestedSaveId = activeSaveIdRef.current,
@@ -208,7 +245,6 @@ export function useSettingsDiagnosticsData({
   }, [refreshTelemetry]);
 
   useEffect(() => {
-    activeSaveIdRef.current = activeManagedSaveId;
     telemetryRequestRef.current += 1;
     if (pendingMaintenanceRef.current?.receipt.saveId !== activeManagedSaveId) {
       pendingMaintenanceRef.current = null;
@@ -219,6 +255,14 @@ export function useSettingsDiagnosticsData({
     setTelemetryUnavailable(false);
     void refreshDiagnostics(activeManagedSaveId);
   }, [activeManagedSaveId, refreshDiagnostics]);
+
+  const previousSimAdvanceBusyRef = useRef(simAdvanceStatus.kind !== 'idle');
+  useEffect(() => {
+    const busy = simAdvanceStatus.kind !== 'idle';
+    const wasBusy = previousSimAdvanceBusyRef.current;
+    previousSimAdvanceBusyRef.current = busy;
+    if (wasBusy && !busy) void refreshDiagnostics(activeManagedSaveId, true);
+  }, [activeManagedSaveId, refreshDiagnostics, simAdvanceStatus.kind]);
 
   const previousSettingsBusyRef = useRef(settingsOperationBusy);
   useEffect(() => {
@@ -234,17 +278,21 @@ export function useSettingsDiagnosticsData({
   // operation latch, and never replay the worker mutation or snapshot capture.
   useEffect(() => {
     const pending = pendingMaintenanceRef.current;
+    const recoveryEpoch = activationRef.current.epoch;
     if (
       !pending
       || recoveryInFlightRef.current
       || diagnosticsBusy
       || settingsOperationBusy
+      || simAdvanceStatus.kind !== 'idle'
       || effectivePersistenceState !== 'saved'
       || persistenceStatus?.saveId !== pending.receipt.saveId
       || persistenceStatus.desiredGeneration !== pending.receipt.generation
       || persistenceStatus.durableGeneration !== pending.receipt.generation
       || persistenceStatus.pendingWrites !== 0
       || activeManagedSaveId !== pending.receipt.saveId
+      || useGameStore.getState().activeSaveId !== pending.receipt.saveId
+      || !isExactSaveCurrent(pending.receipt.saveId, recoveryEpoch)
       || !isPersistenceReceiptDurable(pending.receipt)
     ) return;
     const operationOwner = beginSettingsOperation();
@@ -261,7 +309,7 @@ export function useSettingsDiagnosticsData({
       if (
         !refreshed.installed
         || !mountedRef.current
-        || activeSaveIdRef.current !== pending.receipt.saveId
+        || !isExactSaveCurrent(pending.receipt.saveId, recoveryEpoch)
         || pendingMaintenanceRef.current !== pending
         || liveStatus.state !== 'saved'
         || liveStatus.saveId !== pending.receipt.saveId
@@ -276,7 +324,7 @@ export function useSettingsDiagnosticsData({
         : `Pruned ${pending.prunedCount} stale entries and saved them durably through persistence-only Retry. Telemetry is temporarily unavailable.`);
     })().finally(() => {
       recoveryInFlightRef.current = false;
-      if (mountedRef.current) setDiagnosticsBusy(false);
+      if (isSaveActivationCurrent(pending.receipt.saveId, recoveryEpoch)) setDiagnosticsBusy(false);
       finishSettingsOperation(operationOwner);
     });
   }, [
@@ -287,21 +335,26 @@ export function useSettingsDiagnosticsData({
     finishSettingsOperation,
     getPersistenceStatus,
     isPersistenceReceiptDurable,
+    isExactSaveCurrent,
+    isSaveActivationCurrent,
     onStatusChange,
     persistenceStatus,
     refreshTelemetry,
     settingsOperationBusy,
+    simAdvanceStatus.kind,
   ]);
 
   const handlePruneStaleData = useCallback(async (
     confirmedSaveId?: string,
     eligibility?: PruneStaleEligibility,
   ) => {
+    const operationEpoch = activationRef.current.epoch;
     if (
       !activeManagedSaveId
       || !pruneStaleData
       || !getPerformanceDiagnostics
       || confirmedSaveId !== activeManagedSaveId
+      || !isExactSaveCurrent(confirmedSaveId ?? null, operationEpoch)
       || !eligibility
       || !Number.isInteger(eligibility.staleTickerEntries)
       || !Number.isInteger(eligibility.staleWatchers)
@@ -314,10 +367,7 @@ export function useSettingsDiagnosticsData({
     onStatusChange('');
     try {
       const current = await getPerformanceDiagnostics() as PerformanceDiagnosticsView | null;
-      if (activeSaveIdRef.current !== confirmedSaveId || activeManagedSaveId !== confirmedSaveId) {
-        onStatusChange('Prune confirmation expired because the active save changed. Reopen it to review current facts.');
-        return;
-      }
+      if (!isExactSaveCurrent(confirmedSaveId, operationEpoch)) return;
       if (
         !current
         || current.queues.staleTickerEntries !== eligibility.staleTickerEntries
@@ -327,6 +377,7 @@ export function useSettingsDiagnosticsData({
         return;
       }
       const result = await pruneStaleData() as PruneStaleDataResult;
+      if (!isExactSaveCurrent(confirmedSaveId, operationEpoch)) return;
       if (result.prunedCount === 0) {
         onStatusChange('No expired ticker entries or resolved/expired consequence watchers needed pruning.');
         return;
@@ -335,6 +386,7 @@ export function useSettingsDiagnosticsData({
         logger.error('Failed to persist pruned save state:', error);
         return { acceptedReceipt: null, saved: false as const, saveName: null };
       });
+      if (!isExactSaveCurrent(confirmedSaveId, operationEpoch)) return;
       if (!persistence.saved) {
         const failure = getPersistenceStatus(confirmedSaveId);
         const acceptedReceipt = persistence.acceptedReceipt ?? null;
@@ -350,7 +402,7 @@ export function useSettingsDiagnosticsData({
           includeWorker: false,
           preserveOnFailure: true,
         });
-        if (!telemetry.installed) return;
+        if (!telemetry.installed || !isExactSaveCurrent(confirmedSaveId, operationEpoch)) return;
         onStatusChange(failure.failureKind === 'export'
           ? `Pruned ${result.prunedCount} stale entries in memory, but snapshot capture failed before a durable write. Reload restores the prior durable save; Retry is unavailable.`
           : `Pruned ${result.prunedCount} stale entries in memory, but the change is not durable. Reload restores the prior durable save; ${pendingMaintenanceRef.current ? 'Use the persistence-only Retry in save status.' : 'Retry cannot preserve this maintenance change.'}`);
@@ -361,17 +413,17 @@ export function useSettingsDiagnosticsData({
         includeWorker: true,
         preserveOnFailure: true,
       });
-      if (!telemetry.installed) return;
+      if (!telemetry.installed || !isExactSaveCurrent(confirmedSaveId, operationEpoch)) return;
       onStatusChange(telemetry.available
         ? `Pruned ${result.prunedCount} expired ticker entries or resolved/expired consequence watchers from the active save.`
         : `Pruned ${result.prunedCount} expired ticker entries or resolved/expired consequence watchers and saved them durably. Telemetry is temporarily unavailable.`);
     } catch (error) {
       logger.error('Failed to prune stale data:', error);
-      if (mountedRef.current && activeSaveIdRef.current === confirmedSaveId) {
+      if (isExactSaveCurrent(confirmedSaveId ?? null, operationEpoch)) {
         onStatusChange('Stale-data maintenance did not complete. No durable storage claim was made.');
       }
     } finally {
-      if (mountedRef.current) setDiagnosticsBusy(false);
+      if (isSaveActivationCurrent(confirmedSaveId ?? null, operationEpoch)) setDiagnosticsBusy(false);
       finishSettingsOperation(operationOwner);
     }
   }, [
@@ -380,6 +432,8 @@ export function useSettingsDiagnosticsData({
     finishSettingsOperation,
     getPerformanceDiagnostics,
     getPersistenceStatus,
+    isExactSaveCurrent,
+    isSaveActivationCurrent,
     onStatusChange,
     persistActiveSave,
     pruneStaleData,

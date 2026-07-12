@@ -41,6 +41,7 @@ export default function RevisedOnboardingPage() {
             title={screen.title}
             body={screen.body}
             actionLabel="Return to Save Hub"
+            actionDisabled={screen.actionDisabled}
             onAction={screen.onReturnToSaveHub}
           />
         </OnboardingPageShell>

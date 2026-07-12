@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useSimAdvanceCoordinatorStatus } from '@/shared/hooks/useSimAdvanceExecutor';
 import type { GameSnapshot } from '@mbd/contracts';
 import type { ShowSaveRecoveryOptions } from '@/features/save-recovery';
 import type { GameState } from '@/shared/hooks/useGameStore';
@@ -130,6 +131,8 @@ export function useSetupPageController({
   teamOptions = SETUP_TEAM_OPTIONS,
   worker,
 }: UseSetupPageControllerOptions): UseSetupPageControllerResult {
+  const simAdvanceStatus = useSimAdvanceCoordinatorStatus();
+  const mutationBlocked = simAdvanceStatus.kind !== 'idle';
   const wizardRef = useRef<HTMLElement | null>(null);
   const setupRouteCallbacksRef = useRef({
     resetPreviewMap: () => {},
@@ -249,7 +252,9 @@ export function useSetupPageController({
   return {
     contentProps: {
       isInitialized,
-      onOpenWizard: openWizard,
+      onOpenWizard: () => {
+        if (!mutationBlocked) openWizard();
+      },
       saveHubPanelProps: {
         saveTree,
         storageEstimate,
@@ -257,24 +262,35 @@ export function useSetupPageController({
         selectedSlot,
         busySlot,
         branchLimit,
+        mutationBlocked,
         onRefresh: () => void refreshSaves(),
         onUseSlot: (slot) => {
+          if (mutationBlocked) return;
           setSelectedSlot(slot);
           openWizard();
         },
-        onContinueSave: (save) => void handleContinueSave(save),
-        onDeleteSlot: (slot) => void handleDelete(slot),
+        onContinueSave: (save) => {
+          if (!mutationBlocked) void handleContinueSave(save);
+        },
+        onDeleteSlot: (slot) => {
+          if (!mutationBlocked) void handleDelete(slot);
+        },
       },
-      status,
+      status: mutationBlocked
+        ? 'Simulation save activity is still settling. Save-tree changes are paused; read-only refresh remains available.'
+        : status,
       wizardOpen,
       wizardPanelProps: {
         busySlot,
+        mutationBlocked,
         dayOneExperience,
         difficulty,
         filters: teamPickerFilters,
         gmName,
         onBack: () => setWizardOpen(false),
-        onBeginDynasty: () => void handleBeginDynasty(),
+        onBeginDynasty: () => {
+          if (!mutationBlocked) void handleBeginDynasty();
+        },
         onChangeDayOneExperience: setDayOneExperience,
         onChangeDifficulty: setDifficulty,
         onChangeFilter: updateTeamPickerFilter,

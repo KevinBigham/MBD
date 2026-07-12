@@ -71,6 +71,7 @@ describe('RevisedOnboardingFlowContent', () => {
           onRosterAdvance={vi.fn()}
           onScoutingHire={vi.fn()}
           onStaffHires={vi.fn()}
+          mutationBlocked={false}
           submitting={false}
         />,
       );

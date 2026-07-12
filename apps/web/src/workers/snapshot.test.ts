@@ -16,11 +16,13 @@ import {
   generateSchedule,
   generateScoutingStaff,
   initializeGMCareer,
+  materializeSimulationImportDefaults,
   simulateDay,
 } from '@mbd/sim-core';
 import {
   CURRENT_GAME_SNAPSHOT_VERSION,
   MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION,
+  parseGameSnapshot,
   type ArchivedGameBoxScore,
   type ArchivedSeason,
   type BriefingItem,
@@ -1849,6 +1851,9 @@ describe('snapshot helpers', () => {
       entry.assertRawShape(raw);
 
       const normalizedWorkerSnapshot = exportGameSnapshot(importGameSnapshot(raw));
+      expect(normalizedWorkerSnapshot, `${entry.name} shared materialization oracle`).toEqual(
+        materializeSimulationImportDefaults(parseGameSnapshot(raw)),
+      );
       assertVersionSpecificNormalization(entry.version, normalizedWorkerSnapshot);
       if (entry.version <= 15) assertHistoricalFactOracle(entry.version, raw, normalizedWorkerSnapshot);
 
@@ -1868,12 +1873,14 @@ describe('snapshot helpers', () => {
   });
 
   it('preserves the Season 10 v33 boundary without fabricating archived games through canonical JSON', () => {
+    const parsedSnapshot = parseGameSnapshot(loadContractSaveFixture(33, 'season10'));
     const normalizedWorkerSnapshot = exportGameSnapshot(
-      importGameSnapshot(loadContractSaveFixture(33, 'season10')),
+      importGameSnapshot(parsedSnapshot),
     );
     const imported = importSnapshotFromJson(exportSnapshotToJson('Season 10 v33', normalizedWorkerSnapshot));
 
     expect(normalizedWorkerSnapshot.season).toBe(10);
+    expect(normalizedWorkerSnapshot).toEqual(materializeSimulationImportDefaults(parsedSnapshot));
     expect(normalizedWorkerSnapshot.narrative.archivedGames).toEqual([]);
     expect(imported.snapshot).toEqual(normalizedWorkerSnapshot);
   });

@@ -22,6 +22,7 @@ export interface ScenarioCatalogEntry {
 
 export interface SetupDynastyWizardPanelProps {
   busySlot: number | null;
+  mutationBlocked?: boolean;
   dayOneExperience: SetupDayOneExperience;
   difficulty: SetupDifficulty;
   filters: SetupTeamPickerFilters;
@@ -51,6 +52,7 @@ export interface SetupDynastyWizardPanelProps {
 
 export default function SetupDynastyWizardPanel({
   busySlot,
+  mutationBlocked = false,
   dayOneExperience,
   difficulty,
   filters,
@@ -281,13 +283,15 @@ export default function SetupDynastyWizardPanel({
           </button>
           <button
             type="button"
-            disabled={busySlot != null || !workerIsReady}
+            disabled={busySlot != null || mutationBlocked || !workerIsReady}
             data-mobile-critical-control="setup-wizard-submit"
             onClick={onBeginDynasty}
             className="mobile-critical-control focus-ring rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white hover:bg-accent-primaryHover disabled:cursor-not-allowed disabled:bg-dynasty-muted disabled:text-dynasty-border"
           >
             {busySlot != null
               ? 'Creating...'
+              : mutationBlocked
+                ? 'Simulation Save Settling...'
               : !workerIsReady
                 ? 'Loading Engine...'
                 : wizardMode === 'scenario' ? 'Launch Scenario' : 'Begin Season 1'}

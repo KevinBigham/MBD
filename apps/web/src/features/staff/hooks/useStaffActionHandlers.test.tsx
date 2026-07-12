@@ -54,7 +54,7 @@ describe('useStaffActionHandlers', () => {
 
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
-      autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
       fetchStaffData: vi.fn().mockResolvedValue(undefined),
       fireCoach: vi.fn().mockResolvedValue({ success: true }),
       hireCoach: vi.fn().mockResolvedValue({ success: true }),
@@ -98,6 +98,60 @@ describe('useStaffActionHandlers', () => {
 
     expect(options.fetchStaffData).toHaveBeenCalledTimes(1);
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 7 });
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.fetchStaffData).mock.invocationCallOrder[0]!);
+    expect(latestResult?.busyCoachId).toBeNull();
+  });
+
+  it('holds the staff refresh until persistence settles', async () => {
+    const persistenceDeferred = createDeferred<unknown>();
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockReturnValue(persistenceDeferred.promise),
+    });
+    await renderHook(options);
+    let pending!: Promise<void>;
+
+    await act(async () => {
+      pending = latestResult!.handleHire('coach-held');
+      await vi.waitFor(() => expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1));
+    });
+    expect(options.fetchStaffData).not.toHaveBeenCalled();
+
+    await act(async () => {
+      persistenceDeferred.resolve({ saved: true });
+      await pending;
+    });
+    expect(options.fetchStaffData).toHaveBeenCalledTimes(1);
+    expect(latestResult?.busyCoachId).toBeNull();
+  });
+
+  it('does not persist or refresh a resolved unsuccessful staff action', async () => {
+    const options = baseOptions({
+      hireCoach: vi.fn().mockResolvedValue({ success: false }),
+    });
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleHire('coach-rejected');
+    });
+
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
+    expect(options.fetchStaffData).not.toHaveBeenCalled();
+    expect(latestResult?.busyCoachId).toBeNull();
+  });
+
+  it('does not refresh a successful staff mutation when persistence resolves unsaved', async () => {
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    await renderHook(options);
+
+    await act(async () => {
+      await latestResult?.handleFire('coach-unsaved');
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.fetchStaffData).not.toHaveBeenCalled();
     expect(latestResult?.busyCoachId).toBeNull();
   });
 

@@ -2,8 +2,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseGameSnapshot } from '@mbd/contracts';
+import { materializeSimulationImportDefaults } from '@mbd/sim-core';
 import snapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
-import { createBranchSave, db, getLocalStorageEstimate, saveGame, type SaveData } from './saveSystem';
+import {
+  assessSimAdvanceBaseline,
+  createBranchSave,
+  db,
+  getLocalStorageEstimate,
+  prepareSimAdvanceIntent,
+  saveGame,
+  type SaveData,
+  type SimAdvanceIntent,
+} from './saveSystem';
 
 describe('getLocalStorageEstimate', () => {
   beforeEach(async () => { db.close(); await db.delete(); await db.open(); });
@@ -102,6 +112,71 @@ describe('getLocalStorageEstimate', () => {
     const rows = await db.leaderboard.where('slotNumber').equals(1).toArray();
     const expectedLeaderboardBytes = rows.reduce((total, row) => total + new TextEncoder().encode(JSON.stringify(row)).byteLength, 0);
     expect(tree.leaderboardBytes).toBe(expectedLeaderboardBytes);
+  });
+
+  it('attributes one valid exact-save journal row to its trusted root tree by exact UTF-8 JSON bytes', async () => {
+    const snapshot = materializeSimulationImportDefaults(parseGameSnapshot(snapshotFixture));
+    await saveGame(1, 'Journal owner', snapshot);
+    const before = await getLocalStorageEstimate();
+    const assessment = await assessSimAdvanceBaseline('save-slot-1', 'save-slot-1', snapshot);
+    expect(assessment.kind).toBe('ready');
+    if (assessment.kind !== 'ready') throw new Error(`Expected a ready baseline, received ${assessment.kind}.`);
+    const intent = await prepareSimAdvanceIntent(assessment.proof, 'sim_day');
+
+    const report = await getLocalStorageEstimate();
+    const treeBefore = before.trees[0]!;
+    const tree = report.trees[0]!;
+    const expectedJournalBytes = new TextEncoder().encode(JSON.stringify(intent)).byteLength;
+    expect(tree.saveIds).toEqual(['save-slot-1']);
+    expect(tree.journalBytes).toBe(expectedJournalBytes);
+    expect(tree.totalBytes).toBe(treeBefore.totalBytes + expectedJournalBytes);
+    expect(report.allMbdBytes).toBe((before.allMbdBytes ?? 0) + expectedJournalBytes);
+    expect(report.unattributedBytes).toBe(0);
+    expect(tree.attribution).toBe('complete');
+    expect(report.status).toBe('available');
+  });
+
+  it('counts malformed and orphan journal rows in all-MBD bytes without trusting them as tree topology', async () => {
+    const snapshot = parseGameSnapshot(snapshotFixture);
+    await saveGame(1, 'Trusted tree', snapshot);
+    const before = await getLocalStorageEstimate();
+    const malformed: SimAdvanceIntent = {
+      saveId: 'save-slot-1',
+      rootSaveId: 'save-slot-1',
+      journalVersion: 1,
+      operation: 'sim_day',
+      baselineChecksum: 'not-a-checksum',
+      baselineSeason: snapshot.season,
+      baselineDay: snapshot.day,
+      baselinePhase: snapshot.phase,
+      attempt: 1,
+      token: 'forged',
+    };
+    const orphanChecksum = 'b'.repeat(64);
+    const orphan: SimAdvanceIntent = {
+      saveId: 'orphan-journal',
+      rootSaveId: 'missing-root',
+      journalVersion: 1,
+      operation: 'sim_week',
+      baselineChecksum: orphanChecksum,
+      baselineSeason: snapshot.season,
+      baselineDay: snapshot.day,
+      baselinePhase: snapshot.phase,
+      attempt: 2,
+      token: `sim-advance-v1:orphan-journal:missing-root:sim_week:${orphanChecksum}:${snapshot.season}:${snapshot.day}:${snapshot.phase}:2`,
+    };
+    await db.simAdvanceIntents.bulkPut([malformed, orphan]);
+
+    const report = await getLocalStorageEstimate();
+    const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    const unsafeJournalBytes = bytes(malformed) + bytes(orphan);
+    expect(report.trees[0]?.saveIds).toEqual(['save-slot-1']);
+    expect(report.trees[0]?.journalBytes).toBe(0);
+    expect(report.trees[0]?.attribution).toBe('complete');
+    expect(report.allMbdBytes).toBe((before.allMbdBytes ?? 0) + unsafeJournalBytes);
+    expect(report.unattributedBytes).toBe(unsafeJournalBytes);
+    expect(report.status).toBe('partial');
+    expect(report.message).toContain('could not be safely attributed');
   });
 
   it('keeps sealed missing-shadow and rogue-root rows in the all-MBD lower bound, not a trusted tree', async () => {
@@ -263,6 +338,7 @@ describe('getLocalStorageEstimate', () => {
     const writes = [
       vi.spyOn(db.saves, 'put'), vi.spyOn(db.saves, 'delete'), vi.spyOn(db.saveIntegrityBackups, 'put'),
       vi.spyOn(db.saveIntegrityBackups, 'delete'), vi.spyOn(db.leaderboard, 'put'), vi.spyOn(db.leaderboard, 'delete'),
+      vi.spyOn(db.simAdvanceIntents, 'put'), vi.spyOn(db.simAdvanceIntents, 'delete'),
     ];
     await getLocalStorageEstimate();
     writes.forEach((write) => expect(write).not.toHaveBeenCalled());

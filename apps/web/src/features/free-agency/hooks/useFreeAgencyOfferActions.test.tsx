@@ -58,7 +58,7 @@ describe('useFreeAgencyOfferActions', () => {
   function makeOptions(overrides: Partial<FreeAgencyOfferActionsOptions> = {}) {
     return {
       options: {
-        autosaveActiveGame: vi.fn().mockResolvedValue(undefined),
+        autosaveActiveGame: vi.fn().mockResolvedValue({ saved: true }),
         fetchFreeAgents: vi.fn().mockResolvedValue(undefined),
         finance: {
           totalPayroll: 120,
@@ -145,6 +145,8 @@ describe('useFreeAgencyOfferActions', () => {
     expect(options.removeAgentById).toHaveBeenCalledWith('fa-1');
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 6 });
     expect(options.fetchFreeAgents).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.fetchFreeAgents).mock.invocationCallOrder[0]!);
     expect(latest?.selectedPlayer).toBeNull();
     expect(latest?.offerResult).toBe('Signed! Power Bat joins your team.');
   });
@@ -172,6 +174,26 @@ describe('useFreeAgencyOfferActions', () => {
     expect(options.fetchFreeAgents).not.toHaveBeenCalled();
     expect(latest?.selectedPlayer).toBe(powerBat);
     expect(latest?.offerResult).toBe('Rejected: Needs more years.');
+  });
+
+  it('does not publish or refresh an accepted offer when persistence resolves unsaved', async () => {
+    const { options } = makeOptions({
+      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+    });
+    const result = await renderHook(options);
+    await act(async () => {
+      result.handleSelectPlayer(powerBat);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await latest?.handleOffer();
+    });
+
+    expect(options.playEffect).not.toHaveBeenCalled();
+    expect(options.removeAgentById).not.toHaveBeenCalled();
+    expect(options.fetchFreeAgents).not.toHaveBeenCalled();
+    expect(latest?.selectedPlayer).toBe(powerBat);
+    expect(latest?.offerResult).toContain('not yet durable');
   });
 
   it('uses the unavailable copy when the worker offer path throws', async () => {

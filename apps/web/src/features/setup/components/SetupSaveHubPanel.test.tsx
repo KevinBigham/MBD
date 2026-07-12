@@ -210,6 +210,30 @@ describe('SetupSaveHubPanel', () => {
     expect(buttonByText(container, 'Use This Slot').disabled).toBe(true);
   });
 
+  it('keeps Refresh readable and enabled while an external simulation fence disables tree changes', async () => {
+    await act(async () => {
+      root.render(
+        <SetupSaveHubPanel
+          saveTree={saveTree}
+          selectedSlot={1}
+          busySlot={null}
+          mutationBlocked
+          branchLimit={3}
+          onRefresh={vi.fn()}
+          onUseSlot={vi.fn()}
+          onContinueSave={vi.fn()}
+          onDeleteSlot={vi.fn()}
+        />,
+      );
+    });
+
+    expect(buttonByText(container, 'Refresh').disabled).toBe(false);
+    expect(buttonByText(container, 'Continue').disabled).toBe(true);
+    expect(buttonByText(container, 'Delete').disabled).toBe(true);
+    expect(buttonByText(container, 'Open Branch').disabled).toBe(true);
+    expect(buttonByText(container, 'Use This Slot').disabled).toBe(true);
+  });
+
   it('labels complete, partial, and unavailable local evidence separately from exact origin thresholds', async () => {
     const renderWithEvidence = async (storageEstimate: NonNullable<ComponentProps<typeof SetupSaveHubPanel>['storageEstimate']>, percentage: number) => {
       await act(async () => {
@@ -230,12 +254,12 @@ describe('SetupSaveHubPanel', () => {
       });
     };
     const complete = {
-      status: 'available' as const, allMbdBytes: 9000, allMbdBytesKnown: true, unattributedBytes: 0, message: null,
-      trees: [{ rootSaveId: 'save-slot-1', slotNumber: 1, saveIds: ['save-slot-1', 'branch-1'], primaryBytes: 2000, shadowBytes: 3000, leaderboardBytes: 4000, totalBytes: 9000, attribution: 'complete' as const }],
+      status: 'available' as const, allMbdBytes: 9512, allMbdBytesKnown: true, unattributedBytes: 0, message: null,
+      trees: [{ rootSaveId: 'save-slot-1', slotNumber: 1, saveIds: ['save-slot-1', 'branch-1'], primaryBytes: 2000, shadowBytes: 3000, leaderboardBytes: 4000, journalBytes: 512, totalBytes: 9512, attribution: 'complete' as const }],
     };
     await renderWithEvidence(complete, 80);
-    expect(container.textContent).toContain('All-MBD raw records: 9.0 KB.');
-    expect(container.textContent).toContain('2.0 KB primary + 3.0 KB shadow + 4.0 KB leaderboard');
+    expect(container.textContent).toContain('All-MBD raw records: 9.5 KB.');
+    expect(container.textContent).toContain('2.0 KB primary + 3.0 KB shadow + 4.0 KB leaderboard + 512 B small operational simulation journal');
     expect(container.textContent).toContain('80.00% (80% to under 90% warning)');
 
     await renderWithEvidence({ ...complete, status: 'partial', allMbdBytes: 5000, allMbdBytesKnown: false, trees: [] }, 90);

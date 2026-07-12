@@ -81,7 +81,7 @@ vi.mock('@/shared/lib/saveSessionOwnership', () => ({
     `${target}: ${outcome}`),
   withSaveSessionImportAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
   withSaveSessionNewGameAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
-  withSaveSessionCandidateSnapshotExportAuthorization: vi.fn((_claim, operation: () => Promise<unknown>) => operation()),
+  withSaveSessionCandidateSnapshotExportAuthorization: vi.fn((_claim, _candidateSaveId, operation: () => Promise<unknown>) => operation()),
   withTransientSaveSessionOwnership: vi.fn((_rootSaveId, operation: () => Promise<unknown>) => operation()),
 }));
 
@@ -576,6 +576,7 @@ describe('useSetupActionHandlers', () => {
     );
     expect(withSaveSessionCandidateSnapshotExportAuthorization).toHaveBeenCalledWith(
       expect.objectContaining({ rootSaveId: 'save-slot-2' }),
+      null,
       options.exportSnapshot,
     );
     expect(saveGame).toHaveBeenCalledWith(

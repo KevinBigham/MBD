@@ -4,6 +4,7 @@ import { registerGuidedStartSave } from '@/features/onboarding/nudges';
 import type { ShowSaveRecoveryOptions } from '@/features/save-recovery';
 import type { GameState } from '@/shared/hooks/useGameStore';
 import { logger } from '@/shared/lib/logger';
+import { isSimAdvanceCoordinatorBusy } from '@/shared/hooks/useSimAdvanceExecutor';
 import {
   activateActiveSavePersistenceMetadata,
   abortActiveSaveSessionTransition,
@@ -230,6 +231,10 @@ export function useSetupActionHandlers({
   }, [continueFromSave]);
 
   const handleDelete = useCallback(async (slot: number) => {
+    if (isSimAdvanceCoordinatorBusy()) {
+      setStatus('Finish the current simulation save activity before changing saves.');
+      return false;
+    }
     if (operationInFlightRef.current) {
       setStatus('Finish the current save operation before deleting a dynasty.');
       return false;
@@ -266,6 +271,10 @@ export function useSetupActionHandlers({
     save: SaveData,
     options: { fromRecovery?: boolean } = {},
   ): Promise<boolean> => {
+    if (isSimAdvanceCoordinatorBusy()) {
+      setStatus('Finish the current simulation save activity before changing saves.');
+      return false;
+    }
     if (!workerIsReady) {
       return false;
     }
@@ -379,6 +388,10 @@ export function useSetupActionHandlers({
   ]);
 
   const handleBeginDynasty = useCallback(async () => {
+    if (isSimAdvanceCoordinatorBusy()) {
+      setStatus('Finish the current simulation save activity before starting a new dynasty.');
+      return;
+    }
     if (!workerIsReady) {
       return;
     }
@@ -444,6 +457,7 @@ export function useSetupActionHandlers({
       }));
       const snapshot = await withSaveSessionCandidateSnapshotExportAuthorization(
         claim,
+        null,
         exportSnapshot,
       );
       const savedRecord = await replaceInactiveSavePersistenceRecord(

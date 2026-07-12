@@ -34,7 +34,7 @@ export interface DashboardPageContentProps {
   onApplyForJob: (teamId: string) => void;
   onDismissDashboardNudge: (id: GuidedStartNudgeId) => void;
   onDismissWelcomeBriefing: () => void;
-  onExportGuidedStartBackup: () => Promise<void> | void;
+  onExportGuidedStartBackup: () => Promise<boolean> | boolean;
   onSelectGame: (gameIndex: number) => void;
   onSimDay: () => void;
   onSimMonth: () => void;
@@ -48,6 +48,7 @@ export interface DashboardPageContentProps {
   selectedGameIndex: number | null;
   showOpeningDayChecklist: boolean;
   simAction: SimAction;
+  simBusy?: boolean;
   summary: DashboardSummary | null;
   userTeamId: string;
 }
@@ -76,6 +77,7 @@ export default function DashboardPageContent({
   selectedGameIndex,
   showOpeningDayChecklist,
   simAction,
+  simBusy = false,
   summary,
   userTeamId,
 }: DashboardPageContentProps) {
@@ -109,6 +111,7 @@ export default function DashboardPageContent({
           onSimMonth={onSimMonth}
           onSimWeek={onSimWeek}
           simAction={simAction}
+          disabled={simBusy}
         />
 
         <ReportsQuickstartHub />
@@ -182,10 +185,11 @@ export default function DashboardPageContent({
           />
         </section>
       </div>
-      <GuidedStartNudgeCard
-        current={currentDashboardNudge}
-        onDismiss={onDismissDashboardNudge}
-        onExportBackup={onExportGuidedStartBackup}
+        <GuidedStartNudgeCard
+          current={currentDashboardNudge}
+          onDismiss={onDismissDashboardNudge}
+          onExportBackup={onExportGuidedStartBackup}
+          exportDisabled={simBusy}
       />
     </>
   );

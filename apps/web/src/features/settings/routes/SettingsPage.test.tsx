@@ -209,7 +209,7 @@ describe('SettingsPage', () => {
       isReady: false,
     } as ReturnType<typeof useWorker>);
 
-    mockedUseGameStore.mockReturnValue({
+    const gameState = {
       season: 3,
       day: 87,
       phase: 'regular',
@@ -217,7 +217,14 @@ describe('SettingsPage', () => {
       activeSaveId: 'save-slot-1',
       activeSaveSlot: 1,
       initializeGame: vi.fn(),
-    } as unknown as ReturnType<typeof useGameStore>);
+    };
+    mockedUseGameStore.mockReturnValue(
+      gameState as unknown as ReturnType<typeof useGameStore>,
+    );
+    Object.assign(mockedUseGameStore, {
+      getState: () => gameState,
+      subscribe: vi.fn(() => () => {}),
+    });
 
     mockedListSaves.mockResolvedValue([]);
     mockedListBranches.mockResolvedValue([]);
