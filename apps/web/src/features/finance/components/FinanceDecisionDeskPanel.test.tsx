@@ -17,6 +17,7 @@ const CONTRACTS: FinanceContractEntry[] = [
     yearsRemaining: 1,
     noTradeClause: false,
     playerOption: false,
+    teamOption: false,
   },
   {
     playerId: 'franchise-face',
@@ -27,6 +28,7 @@ const CONTRACTS: FinanceContractEntry[] = [
     yearsRemaining: 4,
     noTradeClause: true,
     playerOption: true,
+    teamOption: false,
   },
   {
     playerId: 'corner-bat',
@@ -37,6 +39,7 @@ const CONTRACTS: FinanceContractEntry[] = [
     yearsRemaining: 2,
     noTradeClause: false,
     playerOption: false,
+    teamOption: false,
   },
   {
     playerId: 'depth-catcher',
@@ -47,6 +50,7 @@ const CONTRACTS: FinanceContractEntry[] = [
     yearsRemaining: 1,
     noTradeClause: false,
     playerOption: false,
+    teamOption: false,
   },
 ];
 
@@ -104,6 +108,25 @@ describe('FinanceDecisionDeskPanel', () => {
     expect(container.textContent).toContain('No obvious extension-priority contracts right now.');
   });
 
+  it('never presents a one-year team option as definite expiring money', async () => {
+    await act(async () => {
+      root.render(
+        <FinanceDecisionDeskPanel
+          contracts={[{
+            ...CONTRACTS[0]!,
+            playerId: 'club-option',
+            name: 'Club Option',
+            teamOption: true,
+          }]}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('Expiring Money');
+    expect(container.textContent).toContain('No expiring contracts need attention.');
+    expect(container.textContent).not.toContain('clears after this season');
+  });
+
   it('keeps low-cost MLB players with short control windows in extension priority', async () => {
     await act(async () => {
       root.render(
@@ -117,6 +140,7 @@ describe('FinanceDecisionDeskPanel', () => {
             yearsRemaining: 2,
             noTradeClause: false,
             playerOption: false,
+            teamOption: false,
           }]}
         />,
       );

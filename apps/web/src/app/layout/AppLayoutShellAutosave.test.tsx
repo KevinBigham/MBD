@@ -494,6 +494,50 @@ describe('AppLayout shell autosave', () => {
     expect(mockedPersistActiveSaveSnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it('presents a durably published signing ceremony before its dismissible save', async () => {
+    mockedUseGameStore.mockReturnValue(createStoreState());
+    const worker = createWorkerMock();
+    let notifyDurablePresentation: (() => void) | null = null;
+    worker.subscribeToFlowUpdates = vi.fn((callback: () => void) => {
+      notifyDurablePresentation = callback;
+      return () => {};
+    });
+    worker.getCeremonyState = vi.fn()
+      .mockResolvedValueOnce({ activeMoment: null, queueLength: 0 })
+      .mockResolvedValueOnce({
+        activeMoment: {
+          id: 'achievement-first_signing',
+          type: 'achievement',
+          title: 'ACHIEVEMENT UNLOCKED',
+          subtitle: 'Open for Business',
+          detailLines: ['Sign your first free agent.'],
+          soundEffect: 'achievement_unlock',
+          autoDismissMs: 5000,
+        },
+        queueLength: 1,
+      })
+      .mockResolvedValue({ activeMoment: null, queueLength: 0 });
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await renderLayout();
+
+    expect(container.textContent).not.toContain('dismiss ceremony');
+    expect(notifyDurablePresentation).not.toBeNull();
+    await act(async () => {
+      notifyDurablePresentation?.();
+      await flushPromises();
+    });
+    expect(container.textContent).toContain('dismiss ceremony');
+
+    await act(async () => {
+      container.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+    });
+
+    expect(worker.dismissCeremonyMoment).toHaveBeenCalledWith('achievement-first_signing');
+    expect(mockedPersistActiveSaveSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('does not autosave rejected ceremony dismissals', async () => {
     mockedUseGameStore.mockReturnValue(createStoreState({
       day: 162,

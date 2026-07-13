@@ -165,6 +165,26 @@ export interface ContractDetail {
   status: 'active' | 'expiring' | 'expired' | 'bought_out';
 }
 
+/** The factual outcome of advancing one canonical player contract into an offseason. */
+export type ContractOffseasonAdvanceOutcome =
+  | 'unchanged_zero'
+  | 'advanced'
+  | 'expired'
+  | 'team_option_exercised'
+  | 'team_option_declined';
+
+/**
+ * Pure canonical contract-clock result. The runtime player is returned rather
+ * than mutated so the worker can precompute a complete, exception-safe
+ * offseason snapshot before committing it.
+ */
+export interface ContractOffseasonAdvanceResult {
+  player: GeneratedPlayer;
+  previousYears: number;
+  nextYears: number;
+  outcome: ContractOffseasonAdvanceOutcome;
+}
+
 export interface ArbitrationCase {
   playerId: string;
   currentSalary: number;
@@ -531,6 +551,65 @@ export function calculatePlayerValue(
 
   const value = baseValue * ageMultiplier;
   return Math.round(Math.max(LEAGUE_MINIMUM_SALARY, value) * 100) / 100;
+}
+
+/**
+ * Advance one canonical player contract by exactly one completed season.
+ *
+ * The only source-supported option rule is a one-year team option: it is
+ * exercised when the player's deterministic value is at least the persisted
+ * annual salary. Player options, opt-outs, and historical total value are not
+ * interpreted or changed here.
+ */
+export function advanceContractForOffseason(
+  player: GeneratedPlayer,
+  yearsOfService: number,
+): ContractOffseasonAdvanceResult {
+  const previousYears = player.contract.years;
+
+  // Existing zero-year players are intentionally byte-identical. They may be
+  // retained minors or have been made eligible by a prior workflow; the clock
+  // must never rewrite their ownership or contract facts.
+  if (previousYears <= 0) {
+    return {
+      player,
+      previousYears,
+      nextYears: previousYears,
+      outcome: 'unchanged_zero',
+    };
+  }
+
+  if (previousYears === 1 && player.contract.teamOption) {
+    const exercised = calculatePlayerValue(player, yearsOfService) >= player.contract.annualSalary;
+    const nextYears = exercised ? 1 : 0;
+    return {
+      player: {
+        ...player,
+        contract: {
+          ...player.contract,
+          years: nextYears,
+          teamOption: false,
+        },
+      },
+      previousYears,
+      nextYears,
+      outcome: exercised ? 'team_option_exercised' : 'team_option_declined',
+    };
+  }
+
+  const nextYears = Math.max(0, previousYears - 1);
+  return {
+    player: {
+      ...player,
+      contract: {
+        ...player.contract,
+        years: nextYears,
+      },
+    },
+    previousYears,
+    nextYears,
+    outcome: nextYears === 0 ? 'expired' : 'advanced',
+  };
 }
 
 /**

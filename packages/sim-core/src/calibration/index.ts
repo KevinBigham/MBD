@@ -167,6 +167,12 @@ export interface CalibrationWorkerSeasonMetrics {
   readonly freeAgentSignings: number;
   readonly meaningfulFreeAgentSignings: number;
   readonly topFreeAgentAav: number;
+  /** Goal-11: market size at the QO→FA capture boundary. */
+  readonly freeAgencyMarketSize: number;
+  /** Goal-11 report-only natural expiries observed by the worker sample. */
+  readonly naturalContractExpiries: number;
+  /** Goal-11 report-only ownership changes across the offseason. */
+  readonly offseasonAssignmentChurn: number;
   readonly acceptedExtensions: number;
   readonly rejectedExtensions: number;
   readonly averageProspectProgress: number;
@@ -431,6 +437,15 @@ export const CALIBRATION_WORKER_TARGET_BANDS: readonly CalibrationTargetBand[] =
     max: 45,
     unit: '$M',
     source: 'TUNING.md',
+  },
+  {
+    key: 'worker.free_agency_market_size',
+    label: 'FA market at entry',
+    category: 'Worker free agency',
+    min: 1,
+    max: 1089,
+    unit: 'players',
+    source: 'ECON-CLOCK-1 frozen market guard',
   },
   {
     key: 'worker.accepted_extensions',
@@ -951,6 +966,8 @@ function valueForWorkerBand(sample: CalibrationWorkerSample, key: string): numbe
       return round(average(seasons.map((season) => season.meaningfulFreeAgentSignings)), 2);
     case 'worker.top_free_agent_aav':
       return round(average(seasons.map((season) => season.topFreeAgentAav)), 2);
+    case 'worker.free_agency_market_size':
+      return round(average(seasons.map((season) => season.freeAgencyMarketSize)), 2);
     case 'worker.accepted_extensions':
       return round(average(seasons.map((season) => season.acceptedExtensions)), 2);
     case 'worker.average_prospect_progress':
@@ -1155,6 +1172,13 @@ export function renderCalibrationMarkdown(report: CalibrationReport): string {
       const row = `| ${season.season} | ${season.injuredPlayers} | ${season.gamesMissedToInjury} | ${season.activeInjuriesAtPlayoffStart} | ${season.regularSeasonTrades} | ${season.deadlineTrades} | ${season.freeAgentSignings} | ${season.meaningfulFreeAgentSignings} | ${season.topFreeAgentAav.toFixed(2)} | ${season.acceptedExtensions} | ${season.rejectedExtensions} | ${season.averageProspectProgress.toFixed(2)} | ${season.aheadOfCurveReports} | ${season.bustRiskReports} | ${season.activeDevelopmentSetbacks} | ${season.playoffTeams} | ${season.championSeed ?? 'n/a'} | ${season.lowerSeedSeriesWins} |`;
       lines.push(showSeedColumn ? `| ${season.seed ?? report.workerSample.seed} ${row}` : row);
     }
+    lines.push('');
+    lines.push('Goal-11 report-only metrics (relational invariants and exact attribution are enforced by the ECON-CLOCK-1 worker soak):');
+    lines.push('');
+    lines.push('| Metric | Average |');
+    lines.push('| --- | ---: |');
+    lines.push(`| Natural contract expiries | ${formatMetricValue(average(report.workerSample.seasons.map((season) => season.naturalContractExpiries)), 'players')} |`);
+    lines.push(`| Offseason assignment churn | ${formatMetricValue(average(report.workerSample.seasons.map((season) => season.offseasonAssignmentChurn)), 'players')} |`);
     lines.push('');
   }
 

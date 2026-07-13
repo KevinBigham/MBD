@@ -23,6 +23,17 @@ const groups: OffseasonTransactionGroupView[] = [
     ],
   },
   {
+    phase: 'extensions',
+    label: 'Extensions',
+    rows: [
+      {
+        id: 'contract-option-7-player-1',
+        tone: 'user',
+        summary: 'Alex Option had a team option exercised for the coming season.',
+      },
+    ],
+  },
+  {
     phase: 'free_agency',
     label: 'Free Agency',
     rows: [
@@ -74,6 +85,7 @@ describe('OffseasonTransactionLedgerPanel', () => {
     expect(container.textContent).toContain('1 transaction');
     expect(container.textContent).toContain('Free Agency');
     expect(container.textContent).toContain('2 transactions');
+    expect(container.textContent).toContain('Alex Option had a team option exercised for the coming season.');
     expect(container.textContent).toContain('Juan Soto signed for $12.4M/yr');
     expect(container.textContent).toContain('Corbin Burnes signed with Boston Noreasters');
     expect(container.textContent).toContain('A depth catcher signed a minor-league deal.');

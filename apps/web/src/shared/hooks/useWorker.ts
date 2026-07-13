@@ -138,6 +138,13 @@ const mutationMethods = new Set<WorkerMethodName>([
   'completeRevisedOnboarding',
 ]);
 
+// These transitions mutate the worker first and are persisted by their route
+// handler. Their shell presentation must wait for that exact save receipt.
+const deferredPresentationMutationMethods = new Set<WorkerMethodName>([
+  'advanceOffseason',
+  'skipOffseasonPhase',
+]);
+
 function assertWorkerMutationOwnership<K extends WorkerMethodName>(
   methodName: K,
   args: WorkerMethodParameters<K>,
@@ -306,7 +313,12 @@ async function invokeWorkerMethod<K extends WorkerMethodName>(
 
   try {
     const result = await call(getOrCreateWorker());
-    if (mutationMethods.has(methodName) && isFlowAwareResult(result) && result.flowStateChanged) {
+    if (
+      mutationMethods.has(methodName)
+      && !deferredPresentationMutationMethods.has(methodName)
+      && isFlowAwareResult(result)
+      && result.flowStateChanged
+    ) {
       notifyFlowListeners();
     }
     return result as WorkerMethodReturn<K>;
@@ -884,6 +896,17 @@ export function useWorker() {
       runMutation(() => api.makeContractOffer(playerId, years, salary)),
     [api, runMutation],
   );
+  // Some high-emotion mutations deliberately defer presentation until their
+  // exact snapshot is durable. Reuse the existing shell flow subscription for
+  // that post-save refresh without turning the worker result itself into an
+  // early flow publication.
+  const publishDurablePresentation = useCallback(() => {
+    if (useGameStore.getState().activeSaveId !== expectedActiveSaveId) {
+      return false;
+    }
+    notifyFlowListeners();
+    return true;
+  }, [expectedActiveSaveId]);
   const getPromotionCandidates = useCallback(
     async (teamId?: string) => api.getPromotionCandidates(teamId),
     [api],
@@ -1186,7 +1209,7 @@ export function useWorker() {
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, getDraftCommentary, getDraftProspectReaction, getDraftPostDraftGrades, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeDeadlineState, getTradeDialogue, getTradeAssetInventory, getNegotiation, getOpenNegotiations, evaluateMultiTeamFairness, generateConditionalClause, proposeTrade, startNegotiation, advanceNegotiation, resolveNegotiation, proposeMultiTeam, executeMultiTeamTrade, respondToTradeOffer,
-    getNews, markNewsRead, getRosterPlan, updateRosterPlan, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, getFreeAgents, makeContractOffer,
+    getNews, markNewsRead, getRosterPlan, updateRosterPlan, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers, getFreeAgents, makeContractOffer, publishDurablePresentation,
     getPromotionCandidates, getProspectPipeline, applyDevelopmentFocusPlan, getExtensionCandidates, getExtensionOffer, negotiateExtension,
     getQualifyingOfferEligible, getQualifyingOfferSalary, issueQualifyingOffer, resolveQualifyingOffers,
     getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
@@ -1211,5 +1234,5 @@ export function useWorker() {
     simAdvance,
     workerStatus: currentWorkerStatus,
     isReady,
-  }), [api, isReady, currentWorkerStatus, simAdvance]);
+  }), [api, isReady, currentWorkerStatus, publishDurablePresentation, simAdvance]);
 }

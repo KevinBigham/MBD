@@ -130,19 +130,24 @@ export default function FreeAgencyContractOfferPanel({
             Offer Contract
           </button>
 
-          {offerResult && (
-            <div className={`rounded p-3 font-heading text-sm ${
-              offerResult.includes('Signed')
-                ? 'bg-accent-success/20 text-accent-success'
-                : 'bg-accent-danger/20 text-accent-danger'
-            }`}>
-              {offerResult}
-            </div>
-          )}
         </div>
       ) : (
         <div className="py-8 text-center font-heading text-sm text-dynasty-muted">
           Select a free agent to make an offer
+        </div>
+      )}
+      {offerResult && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="free-agency-offer-result"
+          className={`mt-4 rounded p-3 font-heading text-sm ${
+            offerResult.includes('Signed')
+              ? 'bg-accent-success/20 text-accent-success'
+              : 'bg-accent-danger/20 text-accent-danger'
+          }`}
+        >
+          {offerResult}
         </div>
       )}
     </DensePanel>

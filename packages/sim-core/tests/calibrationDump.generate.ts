@@ -224,16 +224,50 @@ function isDeadlineTradeTimestamp(timestamp: string, season: number): boolean {
 
 function advanceEntireOffseason(harness: WorkerHarness) {
   harness.actionApi.proceedToOffseason();
+  const beforeClock = harness.requireState().players.map((player) => ({
+    id: player.id,
+    teamId: player.teamId,
+    years: player.contract.years,
+    teamOption: player.contract.teamOption,
+  }));
+  let naturalContractExpiries = 0;
+  let freeAgencyMarketSize = 0;
   let guard = 0;
 
   while (!harness.requireState().offseasonState?.completed) {
+    const phaseBefore = harness.requireState().offseasonState?.currentPhase;
     const progressed = harness.actionApi.skipOffseasonPhase() ?? harness.actionApi.advanceOffseason();
     expect(progressed, 'worker calibration offseason must keep moving').not.toBeNull();
+    const state = harness.requireState();
+    if (naturalContractExpiries === 0 && state.offseasonState) {
+      const afterClock = new Map(state.players.map((player) => [player.id, player] as const));
+      naturalContractExpiries = beforeClock.filter((player) => (
+        player.years === 1
+        && !player.teamOption
+        && afterClock.get(player.id)?.contract.years === 0
+      )).length;
+    }
+    if (phaseBefore === 'qualifying_offers') {
+      const marketEntryIds = [
+        ...(state.freeAgencyMarket?.freeAgents.map((entry) => entry.player.id) ?? []),
+        ...(state.freeAgencyMarket?.signedPlayers.map((entry) => entry.player.id) ?? []),
+      ];
+      if (new Set(marketEntryIds).size !== marketEntryIds.length) {
+        throw new Error('Worker calibration found duplicate free-agency entry membership.');
+      }
+      freeAgencyMarketSize = marketEntryIds.length;
+    }
     guard += 1;
     if (guard > 20) {
       throw new Error('Worker calibration offseason progression exceeded the expected number of phases.');
     }
   }
+
+  const afterAssignments = new Map(harness.requireState().players.map((player) => [player.id, player.teamId] as const));
+  const offseasonAssignmentChurn = beforeClock.filter((player) =>
+    afterAssignments.has(player.id) && afterAssignments.get(player.id) !== player.teamId,
+  ).length;
+  return { freeAgencyMarketSize, naturalContractExpiries, offseasonAssignmentChurn };
 }
 
 function completedPlayoffSeries(bracket: PlayoffBracket): PlayoffSeriesState[] {
@@ -331,13 +365,14 @@ async function buildWorkerCalibrationSample(seed: number, seasonCount: number): 
         throw new Error('Expected worker calibration playoff bracket to produce a champion.');
       }
 
-      advanceEntireOffseason(harness);
+      const goal11Metrics = advanceEntireOffseason(harness);
       const offseasonMetrics = captureOffseasonMetrics(harness);
       seasons.push({
         seed,
         season,
         ...regularSeasonMetrics,
         ...offseasonMetrics,
+        ...goal11Metrics,
         playoffTeams: bracket.seeds.length,
         championSeed: championSeed(bracket),
         lowerSeedSeriesWins: lowerSeedSeriesWins(bracket),

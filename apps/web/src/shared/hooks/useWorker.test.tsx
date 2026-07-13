@@ -86,6 +86,53 @@ describe('useWorker', () => {
     expect(makeContractOffer).toHaveBeenCalledWith('fa-1', 4, 22);
   });
 
+  it('publishes a durable presentation refresh only when the route explicitly requests it', async () => {
+    type WorkerHookProbe = {
+      advanceOffseason: () => Promise<unknown>;
+      publishDurablePresentation: () => boolean;
+      skipOffseasonPhase: () => Promise<unknown>;
+      subscribeToFlowUpdates: (callback: () => void) => () => void;
+    };
+    const workerApi = {
+      advanceOffseason: vi.fn().mockResolvedValue({ currentPhase: 'arbitration', flowStateChanged: true }),
+      ping: vi.fn().mockResolvedValue({ pong: true }),
+      skipOffseasonPhase: vi.fn().mockResolvedValue({ currentPhase: 'free_agency', flowStateChanged: true }),
+    };
+    vi.doMock('comlink', () => ({ wrap: vi.fn(() => workerApi) }));
+    vi.doMock('sonner', () => ({ toast: { error: vi.fn() } }));
+    class MockWorker {
+      addEventListener = vi.fn();
+      postMessage = vi.fn();
+      start = vi.fn();
+      terminate = vi.fn();
+    }
+    vi.stubGlobal('Worker', MockWorker as unknown as typeof Worker);
+
+    const { useGameStore } = await import('./useGameStore');
+    await act(async () => {
+      useGameStore.getState().setActiveSave('save-slot-a', 1);
+    });
+    const { useWorker } = await import('./useWorker');
+    let latest: WorkerHookProbe | null = null;
+    function Probe() { latest = useWorker() as unknown as WorkerHookProbe; return null; }
+    await act(async () => { root.render(<Probe />); await Promise.resolve(); });
+
+    const worker = latest!;
+    const flow = vi.fn();
+    const unsubscribe = worker.subscribeToFlowUpdates(flow);
+    await expect(worker.advanceOffseason()).resolves.toEqual({ currentPhase: 'arbitration', flowStateChanged: true });
+    await expect(worker.skipOffseasonPhase()).resolves.toEqual({ currentPhase: 'free_agency', flowStateChanged: true });
+    expect(flow).not.toHaveBeenCalled();
+    expect(worker.publishDurablePresentation()).toBe(true);
+    expect(flow).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      useGameStore.getState().setActiveSave('save-slot-b', 2);
+    });
+    expect(worker.publishDurablePresentation()).toBe(false);
+    expect(flow).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
   it('exposes route-used free agency and history query APIs', async () => {
     type WorkerHookProbe = {
       getFreeAgents: (limit?: number) => Promise<unknown>;

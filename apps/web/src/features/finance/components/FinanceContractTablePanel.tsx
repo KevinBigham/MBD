@@ -138,6 +138,12 @@ export function FinanceContractTablePanel({
                       {contract.playerOption && (
                         <Badge variant="info" className="text-[10px]">PO</Badge>
                       )}
+                      {contract.yearsRemaining === 1 && contract.teamOption && (
+                        <Badge variant="info" className="text-[10px]">Team option after this season</Badge>
+                      )}
+                      {contract.yearsRemaining === 1 && !contract.teamOption && (
+                        <Badge variant="warning" className="text-[10px]">Expiring after this season</Badge>
+                      )}
                     </div>
                   </td>
                 </tr>

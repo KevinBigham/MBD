@@ -100,7 +100,7 @@ describe('FreeAgencyPageContent', () => {
 
     expect(container.textContent).toContain('Free Agency');
     expect(container.textContent).toContain('Market Closed');
-    expect(container.textContent).toContain('The free agent market opens during the offseason.');
+    expect(container.textContent).toContain('eligible expiring contracts enter the market.');
     expect(container.textContent).not.toContain('Market Intelligence Slot');
   });
 

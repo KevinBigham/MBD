@@ -95,6 +95,7 @@ Optional inputs:
 - `MBD_ONBOARDING_BALANCE_VARIANT_IDS`: optional comma-separated subset of Day One variants for focused balance checks.
 - `MBD_ONBOARDING_BALANCE_FULL_MATRIX=1`: keeps all five Day One variants in multi-season worker balance runs. Without this flag, multi-season worker runs default to the key attribution matrix: `balanced_reference`, `marcus_win_now`, `elena_rebuild`.
 - `MBD_ONBOARDING_BALANCE_LOG=1`: logs the shared onboarding balance summary for report capture.
+- `MBD_ECON_CLOCK_SOAK=1 pnpm --filter @mbd/web exec vitest run src/workers/econClockSoak.test.ts --reporter=verbose`: explicit current-schema Goal-11 gate (seeds `7111/7112/7113`, six rollovers); it is intentionally not part of ordinary calibration runs.
 
 Measured bands:
 - Average team wins: `76-86`
@@ -115,6 +116,8 @@ Measured bands:
 - Free-agent signings: `1-40`
 - Meaningful free-agent signings: `1-20`
 - Top free-agent AAV: `$20M-$45M`
+- FA market at QO→FA entry: `1-1089` (Goal-11 frozen worker guard)
+- Natural contract expiries and offseason assignment churn: report-only in calibration; their exact attribution invariants run in the Goal-11 economy soak rather than a fabricated absolute band.
 - Accepted extensions: `8-80`
 - Average prospect progress: `2-18`
 - Ahead-of-curve reports: `1-20,000`

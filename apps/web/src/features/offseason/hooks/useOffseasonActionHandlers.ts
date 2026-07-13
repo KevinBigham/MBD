@@ -10,6 +10,7 @@ interface UseOffseasonActionHandlersOptions {
   lockRule5Protection: () => Promise<unknown>;
   makeRule5Pick: (playerId: string) => Promise<unknown>;
   passRule5Pick: () => Promise<unknown>;
+  publishDurablePresentation: () => boolean;
   resolveQualifyingOffers: () => Promise<unknown>;
   resolveRule5OfferBack: (playerId: string, acceptReturn: boolean) => Promise<unknown>;
   season: number;
@@ -61,6 +62,7 @@ export function useOffseasonActionHandlers({
   lockRule5Protection,
   makeRule5Pick,
   passRule5Pick,
+  publishDurablePresentation,
   resolveQualifyingOffers,
   resolveRule5OfferBack,
   season,
@@ -70,7 +72,11 @@ export function useOffseasonActionHandlers({
   const [advancing, setAdvancing] = useState(false);
 
   const autosaveSeason = useCallback(async () => {
-    return snapshotSaved(await autosaveActiveGame({ season }));
+    try {
+      return snapshotSaved(await autosaveActiveGame({ season }));
+    } catch {
+      return false;
+    }
   }, [autosaveActiveGame, season]);
 
   const handleAdvance = useCallback(async () => {
@@ -79,12 +85,13 @@ export function useOffseasonActionHandlers({
       const data = await advanceOffseason();
       if (isOffseasonData(data)) {
         if (!await autosaveSeason()) return;
+        if (!publishDurablePresentation()) return;
         applyOffseasonData(data);
       }
     } finally {
       setAdvancing(false);
     }
-  }, [advanceOffseason, applyOffseasonData, autosaveSeason]);
+  }, [advanceOffseason, applyOffseasonData, autosaveSeason, publishDurablePresentation]);
 
   const handleSkip = useCallback(async () => {
     setAdvancing(true);
@@ -92,12 +99,13 @@ export function useOffseasonActionHandlers({
       const data = await skipOffseasonPhase();
       if (isOffseasonData(data)) {
         if (!await autosaveSeason()) return;
+        if (!publishDurablePresentation()) return;
         applyOffseasonData(data);
       }
     } finally {
       setAdvancing(false);
     }
-  }, [applyOffseasonData, autosaveSeason, skipOffseasonPhase]);
+  }, [applyOffseasonData, autosaveSeason, publishDurablePresentation, skipOffseasonPhase]);
 
   const handleIssueQualifyingOffer = useCallback(async (playerId: string) => {
     setAdvancing(true);

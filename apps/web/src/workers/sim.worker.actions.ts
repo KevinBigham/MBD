@@ -59,6 +59,7 @@ import {
   promotePlayer,
   reconcileDevelopmentPipeline,
   recordRetirements,
+  recordFASigning,
   recordCareerShutout,
   recordStarDefectionRivalry,
   rivalryGameModifier,
@@ -74,7 +75,6 @@ import {
   simulateWeek,
   toDisplayRating,
   generateTradeId,
-  createFreeAgencyMarket,
 } from '@mbd/sim-core';
 import type {
   ContractOffer,
@@ -135,6 +135,8 @@ import {
   advanceOffseasonOnce,
   applyQualifyingOfferCompensationIfNeeded,
   resolvePersistedScoutConflicts,
+  hasCanonicalFreeAgencyMarket,
+  getAvailableMlbSigningSlots,
 } from './sim.worker.helpers.js';
 import type {
   FullGameState,
@@ -2952,7 +2954,13 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { accepted: false, reason: franchiseLockMessage(s) };
     }
-    const market = s.freeAgencyMarket ?? createFreeAgencyMarket(s.season, s.players);
+    const market = s.freeAgencyMarket;
+    if (!market || !hasCanonicalFreeAgencyMarket(s)) {
+      return { accepted: false, reason: 'Free agency has not opened yet.' };
+    }
+    if (getAvailableMlbSigningSlots(s, s.userTeamId) <= 0) {
+      return { accepted: false, reason: 'No active roster slots are available.' };
+    }
 
     const freeAgent = market.freeAgents.find((candidate) => candidate.player.id === playerId);
     const offer: ContractOffer = {
@@ -2987,6 +2995,8 @@ export const actionApi = {
 
     const previousTeamId = player.teamId;
     updatePlayerTeamAssignment(player, s.userTeamId, s.season);
+    player.rosterStatus = 'MLB';
+    player.minorLeagueLevel = null;
     player.contract = {
       years,
       annualSalary: salary,
@@ -3010,15 +3020,26 @@ export const actionApi = {
       signedWith: s.userTeamId,
       contract: offer,
     });
+    if (s.offseasonState) {
+      s.offseasonState = recordFASigning(s.offseasonState, {
+        playerId: player.id,
+        teamId: s.userTeamId,
+        years,
+        annualSalary: salary,
+        totalValue: offer.totalValue,
+      });
+    }
 
-    s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
-    s.rivalries = recordStarDefectionRivalry(s.rivalries, {
-      season: s.season,
-      fromTeamId: previousTeamId,
-      toTeamId: s.userTeamId,
-      playerName: `${player.firstName} ${player.lastName}`,
-      starScore: player.overallRating,
-    });
+    if (previousTeamId) {
+      s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+      s.rivalries = recordStarDefectionRivalry(s.rivalries, {
+        season: s.season,
+        fromTeamId: previousTeamId,
+        toTeamId: s.userTeamId,
+        playerName: `${player.firstName} ${player.lastName}`,
+        starScore: player.overallRating,
+      });
+    }
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
     if (result.reason.toLowerCase().includes('clubhouse fit feels right')) {
       s.news.unshift({
@@ -3098,10 +3119,12 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return null;
     }
+    if (s.phase !== 'offseason') {
+      return null;
+    }
     const progress = advanceOffseasonOnce(s);
     applyAISigningProgress(s, progress.aiSignings);
-    const view = buildOffseasonStateView(s);
-    return view ? { ...view, flowStateChanged: true } : null;
+    return buildOffseasonStateView(s);
   },
 
   skipOffseasonPhase(): OffseasonStateView | null {
@@ -3109,10 +3132,12 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return null;
     }
+    if (s.phase !== 'offseason') {
+      return null;
+    }
     const progress = skipOffseasonPhaseWithAI(s);
     applyAISigningProgress(s, progress.aiSignings);
-    const view = buildOffseasonStateView(s);
-    return view ? { ...view, flowStateChanged: true } : null;
+    return buildOffseasonStateView(s);
   },
 
   scoutIFAPlayer(playerId: string) {

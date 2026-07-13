@@ -1,9 +1,11 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { parseGameSnapshot, type AwardHistoryEntry, type GameSnapshot } from '@mbd/contracts';
 import {
   buildRosterState,
+  createFreeAgencyMarket,
   createOffseasonState,
   evaluatePlayerTradeValue,
   OFFSEASON_PHASES,
@@ -28,7 +30,14 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
 }));
 
 import { api } from './sim.worker';
-import { advanceMinorLeagueDay, processDayInjuriesAndNews, requireState, setState } from './sim.worker.helpers';
+import {
+  advanceMinorLeagueDay,
+  getAvailableMlbSigningSlots,
+  hasCanonicalFreeAgencyMarket,
+  processDayInjuriesAndNews,
+  requireState,
+  setState,
+} from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
 import { refreshTickerFeed } from './sim.worker.ticker';
 import {
@@ -622,6 +631,42 @@ function setHitterProfile(
     speed: Math.max(80, rating - 40),
     defense: Math.max(80, rating - 30),
     durability: Math.max(80, rating - 20),
+  };
+}
+
+function setCanonicalMlbCount(teamId: string, count: number) {
+  const state = requireState();
+  const teamPlayers = state.players.filter((player) => player.teamId === teamId);
+  const active = teamPlayers.filter((player) => player.rosterStatus === 'MLB');
+  for (const player of active.slice(count)) {
+    player.rosterStatus = 'AAA';
+    player.minorLeagueLevel = 'AAA';
+  }
+  const current = teamPlayers.filter((player) => player.rosterStatus === 'MLB');
+  for (const player of teamPlayers.filter((candidate) => candidate.rosterStatus !== 'MLB').slice(0, Math.max(0, count - current.length))) {
+    player.rosterStatus = 'MLB';
+    player.minorLeagueLevel = null;
+  }
+  state.rosterStates.set(teamId, buildRosterState(teamId, state.players));
+}
+
+function configureSingleFreeAgent(player: GeneratedPlayer) {
+  const state = requireState();
+  player.contract = { ...player.contract, years: 0, teamOption: false };
+  // Capture under the source market predicate while this is still an MLB
+  // expiry, then model the released canonical entrant used by Goal 11.
+  state.freeAgencyMarket = createFreeAgencyMarket(state.season, [player]);
+  player.teamId = '';
+  player.rosterStatus = 'INTERNATIONAL';
+  player.minorLeagueLevel = 'INTERNATIONAL';
+  state.freeAgencyMarket.day = 54;
+  state.freeAgencyMarket.freeAgents[0]!.demandLevel = 'low';
+  state.phase = 'offseason';
+  state.offseasonState = {
+    ...createOffseasonState(state.season),
+    currentPhase: 'free_agency',
+    phaseDay: 1,
+    totalDay: 21,
   };
 }
 
@@ -2507,7 +2552,7 @@ describe('sim worker narrative APIs', () => {
     )!;
 
     setHitterProfile(candidate, 'RF', 480, 34, 18);
-    candidate.contract.years = 1;
+    candidate.contract.years = 0;
     candidate.contract.totalValue = 18;
     candidate.developmentTrajectory = 'on_track';
     state.serviceTime.set(candidate.id, 6);
@@ -3052,15 +3097,31 @@ describe('sim worker narrative APIs', () => {
 
   it('adds signing consequences after a successful user offer', () => {
     startGame(654, 'nym');
-    const market = api.getFreeAgents(50);
-    const target = market[0]!;
+    const state = requireState();
+    const expiring = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null)!;
+    setHitterProfile(expiring, 'RF', 100, 31, 0.7);
+    expiring.contract = { ...expiring.contract, years: 0, teamOption: false };
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+    api.skipOffseasonPhase();
+    setCanonicalMlbCount('nym', 25);
+    const target = api.getFreeAgents(200).find((entry) => entry.player.id === expiring.id)!;
+    expect(target).toBeTruthy();
+    expect(requireState().players.find((player) => player.id === target.player.id)?.teamId).toBe('');
+    const releasedTenures = structuredClone(requireState().players.find((player) => player.id === target.player.id)?.teamTenures ?? []);
     const teammate = requireState().players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
     const baselineTeammateMorale = requireState().playerMorale.get(teammate.id)?.score ?? 0;
     const beforeOwner = api.getOwnerState('nym');
 
-    const result = api.makeContractOffer(target.player.id, 4, Math.ceil(target.marketValue));
+    const result = api.makeContractOffer(target.player.id, 4, 100);
 
     expect(result.accepted).toBe(true);
+    expect('flowStateChanged' in result).toBe(false);
 
     const afterState = requireState();
     const signingNews = api.getNews(25).find((item) => item.category === 'signing' && item.relatedPlayerIds.includes(target.player.id));
@@ -3069,14 +3130,30 @@ describe('sim worker narrative APIs', () => {
     const signedPlayer = afterState.players.find((player) => player.id === target.player.id);
 
     expect(signedPlayer?.teamId).toBe('nym');
+    expect(afterState.rosterStates.has('')).toBe(false);
+    expect(signedPlayer?.teamTenures?.slice(0, -1)).toEqual(releasedTenures);
+    expect(signedPlayer?.teamTenures?.at(-1)).toMatchObject({ teamId: 'nym', startSeason: afterState.season, endSeason: null });
+    expect(afterState.freeAgencyMarket?.freeAgents.some((entry) => entry.player.id === target.player.id)).toBe(false);
     expect(signingNews).toBeTruthy();
     expect(signingBriefing).toBeTruthy();
     expect(afterState.playerMorale.get(target.player.id)?.score).toBeGreaterThan(0);
     expect(afterState.playerMorale.get(teammate.id)?.score).toBeGreaterThan(baselineTeammateMorale);
     expect(afterOwner?.summary).not.toBe(beforeOwner?.summary);
+    expect(afterState.achievements.unlocked.some((achievement) => achievement.id === 'first_signing')).toBe(true);
+    expect(api.getCeremonyState()).toMatchObject({
+      activeMoment: {
+        id: 'achievement-first_signing',
+        subtitle: 'Open for Business',
+      },
+    });
+
+    const exported = api.exportSnapshot();
+    expect(api.importSnapshot(exported).success).toBe(true);
+    expect(requireState().rosterStates.has('')).toBe(false);
+    expect(requireState().players.find((player) => player.id === target.player.id)?.teamId).toBe('nym');
   });
 
-  it('keeps free-agent listing pure until an actual offer installs the deterministic market', () => {
+  it('keeps free-agent listing and offers fail-closed before canonical market entry', () => {
     startGame(654, 'nym');
     requireState().freeAgencyMarket = null;
     const before = api.exportSnapshot() as GameSnapshot;
@@ -3086,30 +3163,457 @@ describe('sim worker narrative APIs', () => {
     const afterQueries = api.exportSnapshot() as GameSnapshot;
 
     expect(first).toEqual(second);
-    expect(first.length).toBeGreaterThan(0);
+    expect(first).toEqual([]);
     expect(before.freeAgencyMarket).toBeNull();
     expect(afterQueries.freeAgencyMarket).toBeNull();
 
-    const target = first[0]!;
-    const result = api.makeContractOffer(target.player.id, 4, Math.ceil(target.marketValue));
+    const result = api.makeContractOffer('not-in-a-market', 4, 10);
 
-    expect(result.accepted).toBe(true);
-    expect(requireState().freeAgencyMarket).not.toBeNull();
-    expect(requireState().freeAgencyMarket?.freeAgents.some((entry) => entry.player.id === target.player.id))
-      .toBe(false);
+    expect(result.accepted).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(JSON.stringify(afterQueries));
+    expect(requireState().freeAgencyMarket).toBeNull();
   });
 
   it('keeps a rejected first offer from installing a hidden free-agent market', () => {
     startGame(654, 'nym');
     requireState().freeAgencyMarket = null;
-    const target = api.getFreeAgents(50)[0]!;
     const before = JSON.stringify(api.exportSnapshot());
 
-    const rejected = api.makeContractOffer(target.player.id, 1, 0.01);
+    const rejected = api.makeContractOffer('not-in-a-market', 1, 0.01);
 
     expect(rejected.accepted).toBe(false);
     expect(JSON.stringify(api.exportSnapshot())).toBe(before);
     expect(requireState().freeAgencyMarket).toBeNull();
+  });
+
+  it('fails closed for an assigned pre-release market on query, offer, and free-agency simulation', () => {
+    startGame(655, 'nym');
+    const state = requireState();
+    const assigned = state.players.find((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')!;
+    assigned.contract = { ...assigned.contract, years: 0 };
+    state.freeAgencyMarket = createFreeAgencyMarket(state.season, state.players);
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'free_agency',
+      phaseDay: 1,
+      totalDay: 21,
+    };
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    expect(api.getFreeAgents()).toEqual([]);
+    expect(api.makeContractOffer(assigned.id, 2, 20).accepted).toBe(false);
+    expect(api.advanceOffseason()?.currentPhase).toBe('free_agency');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('rejects every corrupted available/signed market union without query, offer, transition, or RNG mutation', () => {
+    const corruptions = [
+      'duplicate-cross-set',
+      'duplicate-signed',
+      'stale-available-player',
+      'wrong-signed-team',
+      'mismatched-signed-player',
+      'mismatched-signed-contract',
+      'wrong-signed-contract-player',
+      'wrong-signed-contract-team',
+      'wrong-market-season',
+    ] as const;
+
+    for (const corruption of corruptions) {
+      startGame(6557, 'nym');
+      const state = requireState();
+      const player = state.players.find((candidate) => candidate.teamId === 'chi' && candidate.rosterStatus === 'MLB')!;
+      configureSingleFreeAgent(player);
+      const market = state.freeAgencyMarket!;
+      const available = market.freeAgents[0]!;
+
+      if (corruption === 'duplicate-cross-set') {
+        market.signedPlayers.push({ ...available });
+      } else if (corruption === 'stale-available-player') {
+        available.player = { ...available.player, firstName: 'Stale' };
+      } else if (corruption === 'wrong-market-season') {
+        market.season += 1;
+      } else {
+        player.teamId = 'bos';
+        player.rosterStatus = 'MLB';
+        player.minorLeagueLevel = null;
+        const signedContract = {
+          teamId: 'bos',
+          playerId: player.id,
+          years: player.contract.years,
+          annualSalary: player.contract.annualSalary,
+          totalValue: player.contract.totalValue ?? player.contract.years * player.contract.annualSalary,
+          noTradeClause: player.contract.noTradeClause,
+          playerOption: player.contract.playerOption,
+          teamOption: player.contract.teamOption,
+          signingBonus: player.contract.signingBonus ?? 0,
+        };
+        const signed = {
+          ...available,
+          player,
+          signedWith: 'bos',
+          contract: signedContract,
+        };
+        market.freeAgents = [];
+        market.signedPlayers = [signed];
+        if (corruption === 'duplicate-signed') {
+          market.signedPlayers.push({ ...signed });
+        } else if (corruption === 'wrong-signed-team') {
+          signed.signedWith = 'chi';
+        } else if (corruption === 'mismatched-signed-player') {
+          signed.player = { ...player, lastName: 'Mismatch' };
+        } else if (corruption === 'mismatched-signed-contract') {
+          signed.contract = { ...signedContract, annualSalary: signedContract.annualSalary + 1 };
+        } else if (corruption === 'wrong-signed-contract-player') {
+          signed.contract = { ...signedContract, playerId: 'wrong-player' };
+        } else if (corruption === 'wrong-signed-contract-team') {
+          signed.contract = { ...signedContract, teamId: 'chi' };
+        }
+      }
+
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngBefore = state.rng.getState();
+      expect(hasCanonicalFreeAgencyMarket(state), corruption).toBe(false);
+      expect(api.getFreeAgents(), corruption).toEqual([]);
+      expect(api.makeContractOffer(player.id, 2, 20).accepted, corruption).toBe(false);
+      expect(api.advanceOffseason()?.currentPhase, corruption).toBe('free_agency');
+      expect(JSON.stringify(api.exportSnapshot()), corruption).toBe(before);
+      expect(state.rng.getState(), corruption).toEqual(rngBefore);
+    }
+  });
+
+  it('fails closed atomically when an invalid imported market tries to leave free agency for draft', () => {
+    startGame(6551, 'nym');
+    const state = requireState();
+    const assigned = state.players.find((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')!;
+    assigned.contract = { ...assigned.contract, years: 0 };
+    state.freeAgencyMarket = createFreeAgencyMarket(state.season, state.players);
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'free_agency',
+      phaseDay: 60,
+      totalDay: 80,
+    };
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    expect(api.skipOffseasonPhase()?.currentPhase).toBe('free_agency');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('rejects a full user roster offer before any market or persistence-worthy mutation', () => {
+    startGame(6552, 'nym');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'chi' && candidate.rosterStatus === 'MLB')!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 26);
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    const result = api.makeContractOffer(player.id, 3, 100);
+
+    expect(result).toEqual({ accepted: false, reason: 'No active roster slots are available.' });
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+    expect(state.freeAgencyMarket?.freeAgents.map((entry) => entry.player.id)).toContain(player.id);
+    expect(state.offseasonState?.phaseResults.freeAgentSignings).toEqual([]);
+  });
+
+  it('uses the same MLB placement admission for one user and one CPU vacancy', () => {
+    startGame(6553, 'nym');
+    const state = requireState();
+    const userPlayer = state.players.find((candidate) => candidate.teamId === 'chi' && candidate.rosterStatus === 'MLB')!;
+    configureSingleFreeAgent(userPlayer);
+    setCanonicalMlbCount('nym', 25);
+
+    expect(api.makeContractOffer(userPlayer.id, 3, 100).accepted).toBe(true);
+    expect(userPlayer).toMatchObject({ teamId: 'nym', rosterStatus: 'MLB', minorLeagueLevel: null });
+    expect(getAvailableMlbSigningSlots(state, 'nym')).toBe(0);
+    expect(state.offseasonState?.phaseResults.freeAgentSignings.filter((entry) => entry.playerId === userPlayer.id)).toHaveLength(1);
+
+    startGame(6554, 'nym');
+    const cpuState = requireState();
+    const cpuPlayer = cpuState.players.find((candidate) => candidate.teamId === 'chi' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null)!;
+    setHitterProfile(cpuPlayer, 'RF', 500, 27, 0.1);
+    configureSingleFreeAgent(cpuPlayer);
+    for (const team of TEAMS) {
+      if (team.id !== 'nym' && team.id !== 'bos') setCanonicalMlbCount(team.id, 26);
+    }
+    setCanonicalMlbCount('bos', 25);
+
+    api.advanceOffseason();
+
+    expect(cpuPlayer).toMatchObject({ teamId: 'bos', rosterStatus: 'MLB', minorLeagueLevel: null });
+    expect(getAvailableMlbSigningSlots(cpuState, 'bos')).toBe(0);
+    expect(cpuState.offseasonState?.phaseResults.freeAgentSignings.filter((entry) => entry.playerId === cpuPlayer.id)).toHaveLength(1);
+  });
+
+  it('does not admit Goal-11 FA signings over 26 or repair a pre-existing 28-player roster', () => {
+    startGame(6555, 'nym');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'chi' && candidate.rosterStatus === 'MLB')!;
+    configureSingleFreeAgent(player);
+    for (const team of TEAMS) {
+      if (team.id !== 'nym') setCanonicalMlbCount(team.id, 26);
+    }
+
+    api.advanceOffseason();
+
+    expect(TEAMS.filter((team) => team.id !== 'nym').every((team) => getAvailableMlbSigningSlots(state, team.id) === 0)).toBe(true);
+    expect(state.freeAgencyMarket?.freeAgents.map((entry) => entry.player.id)).toContain(player.id);
+    expect(state.offseasonState?.phaseResults.freeAgentSignings).toEqual([]);
+
+    startGame(6556, 'nym');
+    const overageState = requireState();
+    const overagePlayer = overageState.players.find((candidate) => candidate.teamId === 'chi' && candidate.rosterStatus === 'MLB')!;
+    configureSingleFreeAgent(overagePlayer);
+    for (const team of TEAMS) {
+      if (team.id !== 'nym' && team.id !== 'sfb') setCanonicalMlbCount(team.id, 26);
+    }
+    setCanonicalMlbCount('sfb', 28);
+
+    api.advanceOffseason();
+
+    expect(overageState.players.filter((candidate) => candidate.teamId === 'sfb' && candidate.rosterStatus === 'MLB')).toHaveLength(28);
+    expect(getAvailableMlbSigningSlots(overageState, 'sfb')).toBe(0);
+    expect(overageState.offseasonState?.phaseResults.freeAgentSignings.some((entry) => entry.teamId === 'sfb')).toBe(false);
+  });
+
+  it('clocks contracts exactly once at the null-to-live offseason boundary and keeps the activation beat once-only', () => {
+    startGame(656, 'nym');
+    const state = requireState();
+    const active = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    const optionPlayer = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.id !== active.id)!;
+    const zeroYear = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AAA')!;
+    active.contract = { ...active.contract, years: 3, teamOption: false };
+    optionPlayer.contract = { ...optionPlayer.contract, years: 1, annualSalary: 0.01, teamOption: true };
+    zeroYear.contract = { ...zeroYear.contract, years: 0 };
+    const zeroYearBefore = structuredClone(zeroYear);
+    const activeId = active.id;
+    const optionPlayerId = optionPlayer.id;
+    const zeroYearId = zeroYear.id;
+    state.phase = 'offseason';
+    state.offseasonState = null;
+    const rngBefore = state.rng.getState();
+
+    expect(api.getFinanceOverview().contracts.find((contract) => contract.playerId === optionPlayerId)).toMatchObject({
+      yearsRemaining: 1,
+      teamOption: true,
+    });
+
+    const enteredOffseason = api.advanceOffseason();
+    expect('flowStateChanged' in (enteredOffseason ?? {})).toBe(false);
+    expect(state.players.find((player) => player.id === activeId)?.contract.years).toBe(2);
+    expect(state.players.find((player) => player.id === optionPlayerId)?.contract).toMatchObject({ years: 1, teamOption: false });
+    expect(api.getNews(50).some((item) => item.id === `contract-option-${state.season}-${optionPlayerId}`)).toBe(true);
+    const optionLedger = api.getOffseasonState()?.transactionGroups
+      .find((group) => group.phase === 'extensions');
+    expect(optionLedger?.rows.some((row) => row.id === `contract-option-${state.season}-${optionPlayerId}`)).toBe(true);
+    expect(state.players.find((player) => player.id === zeroYearId)).toEqual(zeroYearBefore);
+    expect(state.rng.getState()).toEqual(rngBefore);
+    expect(state.news.filter((item) => item.id === `contract-clock-live-${state.season}`)).toHaveLength(1);
+
+    api.advanceOffseason();
+    expect(state.players.find((player) => player.id === activeId)?.contract.years).toBe(2);
+    expect(state.news.filter((item) => item.id === `contract-clock-live-${state.season}`)).toHaveLength(1);
+  });
+
+  it('keeps a declined option under canonical retention before free-agency capture', () => {
+    startGame(6561, 'nym');
+    const state = requireState();
+    const optionPlayer = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    setHitterProfile(optionPlayer, 'RF', 1, 31, 0.1);
+    optionPlayer.overallRating = 1;
+    optionPlayer.contract = {
+      ...optionPlayer.contract,
+      years: 1,
+      annualSalary: 100,
+      teamOption: true,
+    };
+    state.phase = 'offseason';
+    state.offseasonState = null;
+
+    api.advanceOffseason();
+
+    expect(optionPlayer.teamId).toBe('nym');
+    expect(state.freeAgencyMarket).toBeNull();
+    const optionLedger = api.getOffseasonState()?.transactionGroups
+      .find((group) => group.phase === 'extensions');
+    const summary = optionLedger?.rows.find((row) => row.id === `contract-option-${state.season}-${optionPlayer.id}`)?.summary;
+    expect(summary).toContain('had a team option declined; contract expired pending retention or free-agency entry.');
+    expect(summary).not.toContain('reached free agency');
+  });
+
+  it('captures and releases natural expiry at free-agency entry without an empty-team roster key', () => {
+    startGame(657, 'nym');
+    const state = requireState();
+    const expiring = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    expiring.contract = { ...expiring.contract, years: 0 };
+    setHitterProfile(expiring, 'RF', 420, 28, 1);
+    expiring.overallRating = 400;
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+
+    api.skipOffseasonPhase();
+
+    const marketEntry = requireState().freeAgencyMarket?.freeAgents.find((entry) => entry.player.id === expiring.id);
+    const canonical = requireState().players.find((player) => player.id === expiring.id);
+    expect(marketEntry?.player).toEqual(canonical);
+    expect(marketEntry?.player).toBe(canonical);
+    expect(canonical?.teamId).toBe('');
+    expect(api.getFreeAgents(200).some((entry) => entry.player.id === expiring.id)).toBe(true);
+    expect(requireState().rosterStates.has('')).toBe(false);
+    expect(new Set(requireState().freeAgencyMarket?.freeAgents.map((entry) => entry.player.id)).size)
+      .toBe(requireState().freeAgencyMarket?.freeAgents.length);
+    expect(requireState().news.filter((item) => item.id === `contract-expiry-departure-${state.season}-${expiring.id}`)).toHaveLength(1);
+    expect(requireState().news.find((item) => item.id === `contract-expiry-departure-${state.season}-${expiring.id}`)?.headline)
+      .toBe(`${expiring.firstName} ${expiring.lastName} enters free agency`);
+
+    api.advanceOffseason();
+    expect(requireState().news.filter((item) => item.id === `contract-expiry-departure-${state.season}-${expiring.id}`)).toHaveLength(1);
+  });
+
+  it('keeps contract-clock activation and advance/skip exact no-ops outside the offseason', () => {
+    for (const phase of ['regular', 'preseason', 'playoffs'] as const) {
+      startGame(6571, 'nym');
+      const state = requireState();
+      state.phase = phase;
+      state.offseasonState = null;
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngBefore = state.rng.getState();
+
+      expect(api.advanceOffseason(), phase).toBeNull();
+      expect(api.skipOffseasonPhase(), phase).toBeNull();
+      expect(JSON.stringify(api.exportSnapshot()), phase).toBe(before);
+      expect(state.rng.getState(), phase).toEqual(rngBefore);
+      expect(state.offseasonState, phase).toBeNull();
+      expect(state.news.some((item) => item.id === `contract-clock-live-${state.season}`), phase).toBe(false);
+    }
+  });
+
+  it('does not publish a departure beat below the bounded user-star rating threshold', () => {
+    startGame(65715, 'nym');
+    const state = requireState();
+    const expiring = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    expiring.contract = { ...expiring.contract, years: 0 };
+    setHitterProfile(expiring, 'RF', 420, 28, 1);
+    expiring.overallRating = 399;
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+
+    api.skipOffseasonPhase();
+
+    expect(state.freeAgencyMarket?.freeAgents.some((entry) => entry.player.id === expiring.id)).toBe(true);
+    expect(state.news.some((item) => item.id === `contract-expiry-departure-${state.season}-${expiring.id}`)).toBe(false);
+  });
+
+  it('clocks before draft mutation for an imported offseason null-state fallback', () => {
+    startGame(6572, 'nym');
+    const state = requireState();
+    const incumbent = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    incumbent.contract = { ...incumbent.contract, years: 3, teamOption: false };
+    state.phase = 'offseason';
+    state.offseasonState = null;
+    const result = api.startDraft() as { success: boolean; newPicks: Array<{ playerId: string }> };
+
+    expect(result.success).toBe(true);
+    expect(requireState().players.find((player) => player.id === incumbent.id)?.contract.years).toBe(2);
+    expect(requireState().offseasonState).not.toBeNull();
+    expect(requireState().news.filter((item) => item.id === `contract-clock-live-${state.season}`)).toHaveLength(1);
+    expect(result.newPicks.every((pick) => requireState().players.some((player) => player.id === pick.playerId))).toBe(true);
+  });
+
+  it('fails closed atomically at the QO-to-FA boundary for an invalid imported market', () => {
+    startGame(658, 'nym');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'nym' && candidate.rosterStatus === 'MLB')!;
+    player.contract = { ...player.contract, years: 2 };
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+    state.freeAgencyMarket = createFreeAgencyMarket(state.season, state.players);
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    expect(api.getFreeAgents()).toEqual([]);
+    expect(api.makeContractOffer(player.id, 1, 1).accepted).toBe(false);
+    expect(api.skipOffseasonPhase()?.currentPhase).toBe('qualifying_offers');
+
+    expect(player.contract.years).toBe(2);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('keeps a valid imported unassigned market authoritative at the QO-to-FA boundary', () => {
+    startGame(659, 'nym');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+    player.contract = { ...player.contract, years: 0 };
+    player.teamId = '';
+    player.rosterStatus = 'INTERNATIONAL';
+    player.minorLeagueLevel = 'INTERNATIONAL';
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+    state.freeAgencyMarket = createFreeAgencyMarket(state.season, state.players);
+    const originalMarket = state.freeAgencyMarket;
+
+    api.skipOffseasonPhase();
+
+    expect(requireState().freeAgencyMarket).toBe(originalMarket);
+    expect(requireState().rosterStates.has('')).toBe(false);
+  });
+
+  it('migrates the authentic compact v33 Season 10 fixture through one clocked offseason and save/reload without fabricated history', () => {
+    const fixture = JSON.parse(readFileSync(
+      new URL('../../../../packages/contracts/tests/fixtures/save/v33/season10.json', import.meta.url),
+      'utf8',
+    )) as unknown;
+    expect(api.importSnapshot(fixture).success).toBe(true);
+    const state = requireState();
+    const player = state.players[0]!;
+    const playerId = player.id;
+    const playerName = `${player.firstName} ${player.lastName}`;
+    expect(state.season).toBe(10);
+    expect(player.contract.years).toBe(1);
+
+    state.phase = 'offseason';
+    state.day = 1;
+    state.offseasonState = null;
+    api.advanceOffseason();
+
+    expect(requireState().players.find((candidate) => candidate.id === playerId)?.contract.years).toBe(0);
+    expect(`${requireState().players[0]!.firstName} ${requireState().players[0]!.lastName}`).toBe(playerName);
+    expect(requireState().news.filter((item) => item.id === 'contract-clock-live-10')).toHaveLength(1);
+
+    const saved = api.exportSnapshot();
+    expect(api.importSnapshot(saved).success).toBe(true);
+    api.advanceOffseason();
+    expect(requireState().players.find((candidate) => candidate.id === playerId)?.contract.years).toBe(0);
+    expect(requireState().news.filter((item) => item.id === 'contract-clock-live-10')).toHaveLength(1);
   });
 
   it('keeps Draft and IFA route views pure when fresh-save scaffolding is missing', () => {
@@ -3738,6 +4242,13 @@ describe('sim worker narrative APIs', () => {
       defense: 300,
       durability: 360,
     };
+    // The test begins after free-agency entry, so provide the persisted
+    // canonical market that entry would have created.
+    state.freeAgencyMarket = createFreeAgencyMarket(state.season, state.players);
+    for (const team of TEAMS) {
+      if (team.id !== 'nym' && team.id !== 'bos') setCanonicalMlbCount(team.id, 26);
+    }
+    setCanonicalMlbCount('bos', 25);
 
     const afterSkip = api.skipOffseasonPhase();
     const signing = requireState().offseasonState?.phaseResults.freeAgentSignings.find(

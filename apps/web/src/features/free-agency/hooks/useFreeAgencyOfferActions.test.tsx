@@ -67,6 +67,7 @@ describe('useFreeAgencyOfferActions', () => {
         },
         makeContractOffer: vi.fn().mockResolvedValue({ accepted: true }),
         playEffect: vi.fn(),
+        publishDurablePresentation: vi.fn(),
         removeAgentById: vi.fn(),
         season: 6,
         ...overrides,
@@ -144,10 +145,41 @@ describe('useFreeAgencyOfferActions', () => {
     expect(options.playEffect).toHaveBeenCalledWith('free_agent_signed');
     expect(options.removeAgentById).toHaveBeenCalledWith('fa-1');
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 6 });
+    expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
     expect(options.fetchFreeAgents).toHaveBeenCalledTimes(1);
     expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(options.publishDurablePresentation).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(options.publishDurablePresentation).mock.invocationCallOrder[0]!)
       .toBeLessThan(vi.mocked(options.fetchFreeAgents).mock.invocationCallOrder[0]!);
     expect(latest?.selectedPlayer).toBeNull();
+    expect(latest?.offerResult).toBe('Signed! Power Bat joins your team.');
+  });
+
+  it('does not publish the signing ceremony until the exact offer snapshot is durable', async () => {
+    let resolveSave!: (value: unknown) => void;
+    const pendingSave = new Promise<unknown>((resolve) => { resolveSave = resolve; });
+    const { options } = makeOptions({
+      autosaveActiveGame: vi.fn().mockReturnValue(pendingSave),
+    });
+    const result = await renderHook(options);
+    await act(async () => {
+      result.handleSelectPlayer(powerBat);
+      await Promise.resolve();
+    });
+
+    let offer: Promise<void> | undefined;
+    await act(async () => {
+      offer = latest?.handleOffer();
+      await Promise.resolve();
+    });
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
+    expect(latest?.offerResult).toBeNull();
+
+    await act(async () => {
+      resolveSave({ saved: true });
+      await offer;
+    });
+    expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
     expect(latest?.offerResult).toBe('Signed! Power Bat joins your team.');
   });
 
@@ -171,6 +203,7 @@ describe('useFreeAgencyOfferActions', () => {
     expect(options.playEffect).not.toHaveBeenCalled();
     expect(options.removeAgentById).not.toHaveBeenCalled();
     expect(options.autosaveActiveGame).not.toHaveBeenCalled();
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
     expect(options.fetchFreeAgents).not.toHaveBeenCalled();
     expect(latest?.selectedPlayer).toBe(powerBat);
     expect(latest?.offerResult).toBe('Rejected: Needs more years.');
@@ -190,10 +223,53 @@ describe('useFreeAgencyOfferActions', () => {
     });
 
     expect(options.playEffect).not.toHaveBeenCalled();
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
     expect(options.removeAgentById).not.toHaveBeenCalled();
     expect(options.fetchFreeAgents).not.toHaveBeenCalled();
     expect(latest?.selectedPlayer).toBe(powerBat);
     expect(latest?.offerResult).toContain('not yet durable');
+  });
+
+  it('keeps accepted-but-not-durable truth when persistence throws', async () => {
+    const { options } = makeOptions({
+      autosaveActiveGame: vi.fn().mockRejectedValue(new Error('disk full')),
+    });
+    const result = await renderHook(options);
+    await act(async () => {
+      result.handleSelectPlayer(powerBat);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await latest?.handleOffer();
+    });
+
+    expect(options.playEffect).not.toHaveBeenCalled();
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
+    expect(options.removeAgentById).not.toHaveBeenCalled();
+    expect(options.fetchFreeAgents).not.toHaveBeenCalled();
+    expect(latest?.selectedPlayer).toBe(powerBat);
+    expect(latest?.offerResult).toBe('The signing was accepted, but its save is not yet durable.');
+  });
+
+  it('keeps durable signing success when the follow-up market refresh throws', async () => {
+    const { options } = makeOptions({
+      fetchFreeAgents: vi.fn().mockRejectedValue(new Error('refresh unavailable')),
+    });
+    const result = await renderHook(options);
+    await act(async () => {
+      result.handleSelectPlayer(powerBat);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await latest?.handleOffer();
+    });
+
+    expect(options.playEffect).toHaveBeenCalledWith('free_agent_signed');
+    expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
+    expect(options.removeAgentById).toHaveBeenCalledWith(powerBat.id);
+    expect(options.fetchFreeAgents).toHaveBeenCalledTimes(1);
+    expect(latest?.selectedPlayer).toBeNull();
+    expect(latest?.offerResult).toBe('Signed! Power Bat joins your team.');
   });
 
   it('uses the unavailable copy when the worker offer path throws', async () => {
@@ -213,6 +289,7 @@ describe('useFreeAgencyOfferActions', () => {
     });
 
     expect(options.autosaveActiveGame).not.toHaveBeenCalled();
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
     expect(options.fetchFreeAgents).not.toHaveBeenCalled();
     expect(latest?.offerResult).toBe('Contract offers not available yet.');
   });

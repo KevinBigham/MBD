@@ -22,6 +22,7 @@ const CONTRACTS: FinanceContractEntry[] = [
     yearsRemaining: 4,
     noTradeClause: true,
     playerOption: false,
+    teamOption: false,
   },
   {
     playerId: 'p2',
@@ -32,6 +33,7 @@ const CONTRACTS: FinanceContractEntry[] = [
     yearsRemaining: 2,
     noTradeClause: false,
     playerOption: true,
+    teamOption: false,
   },
   {
     playerId: 'p3',
@@ -42,6 +44,7 @@ const CONTRACTS: FinanceContractEntry[] = [
     yearsRemaining: 1,
     noTradeClause: false,
     playerOption: false,
+    teamOption: false,
   },
 ];
 
@@ -116,7 +119,24 @@ describe('FinanceContractTablePanel', () => {
     expect(container.textContent).toContain('Anthony Rendon');
     expect(container.textContent).toContain('NTC');
     expect(container.textContent).toContain('PO');
+    expect(container.textContent).not.toContain('Expiring after this season');
     expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(1);
+  });
+
+  it('labels one-year contracts as expiring after this season', () => {
+    renderPanel({ visibleContracts: [CONTRACTS[2]!] });
+
+    expect(container.textContent).toContain('Rookie Starter');
+    expect(container.textContent).toContain('Expiring after this season');
+  });
+
+  it('distinguishes a one-year team option from an actual expiry', () => {
+    renderPanel({
+      visibleContracts: [{ ...CONTRACTS[2]!, teamOption: true }],
+    });
+
+    expect(container.textContent).toContain('Team option after this season');
+    expect(container.textContent).not.toContain('Expiring after this season');
   });
 
   it('delegates filter and sort changes to the route-owned handlers', () => {

@@ -722,6 +722,7 @@ export {
   ARB_ESCALATOR_PER_WIN,
   ARB_ESCALATOR_CAP,
   calculatePlayerValue,
+  advanceContractForOffseason,
   qualifiesForSuperTwo,
   generateArbitrationCase,
   evaluateHoldout,
@@ -744,6 +745,8 @@ export {
 } from './finance/index.js';
 export type {
   ContractDetail,
+  ContractOffseasonAdvanceOutcome,
+  ContractOffseasonAdvanceResult,
   ArbitrationCase,
   HoldoutEvaluation,
   TeamPayroll,

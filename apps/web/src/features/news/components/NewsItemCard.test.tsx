@@ -109,4 +109,43 @@ describe('NewsItemCard', () => {
     expect(content).toContain('Saving read state...');
     expect(content).not.toContain('WATCH');
   });
+
+  it('renders the persisted contract-clock activation honestly', async () => {
+    const item: NewsItem = {
+      ...unreadItem,
+      id: 'contract-clock-live-7',
+      headline: 'Contract clock is now live',
+      body: 'Contracts will now advance at each completed season and eligible expirations will enter free agency.',
+      category: 'league_event',
+      tag: 'ANALYSIS',
+    };
+    await act(async () => {
+      root.render(<NewsItemCard expanded item={item} marking={false} onOpen={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Contract clock is now live');
+    expect(container.textContent).toContain('eligible expirations will enter free agency');
+    expect(container.textContent).toContain('League Event');
+  });
+
+  it('renders the persisted user-star expiry departure beat', async () => {
+    const item: NewsItem = {
+      ...unreadItem,
+      id: 'contract-expiry-departure-7-player-star',
+      headline: 'Bobby Expiring enters free agency',
+      body: 'Bobby Expiring\'s contract expired and the club did not retain the player before free agency opened.',
+      category: 'roster_move',
+      tag: 'ANALYSIS',
+    };
+    await act(async () => {
+      root.render(<NewsItemCard expanded item={item} marking={false} onOpen={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-news-id="contract-expiry-departure-7-player-star"]')).toBeTruthy();
+    expect(container.textContent).toContain('Bobby Expiring enters free agency');
+    expect(container.textContent).toContain('contract expired');
+    expect(container.textContent).toContain('Roster Move');
+  });
 });

@@ -7,6 +7,7 @@ export interface FinanceContractEntry {
   yearsRemaining: number;
   noTradeClause: boolean;
   playerOption: boolean;
+  teamOption: boolean;
 }
 
 export function formatDollars(millions: number): string {

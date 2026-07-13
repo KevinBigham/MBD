@@ -74,6 +74,7 @@ describe('useOffseasonActionHandlers', () => {
       lockRule5Protection: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'rule5_draft' })),
       makeRule5Pick: vi.fn().mockResolvedValue({ success: true }),
       passRule5Pick: vi.fn().mockResolvedValue({ success: true }),
+      publishDurablePresentation: vi.fn(() => true),
       resolveQualifyingOffers: vi.fn().mockResolvedValue({ resolved: [] }),
       resolveRule5OfferBack: vi.fn().mockResolvedValue({ success: true }),
       season: 5,
@@ -107,6 +108,7 @@ describe('useOffseasonActionHandlers', () => {
     expect(options.advanceOffseason).toHaveBeenCalledTimes(1);
     expect(options.applyOffseasonData).toHaveBeenCalledWith(nextState);
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
+    expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
     expect(latestResult?.advancing).toBe(false);
   });
 
@@ -199,7 +201,67 @@ describe('useOffseasonActionHandlers', () => {
     });
 
     expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
     expect(options.fetchOffseason).not.toHaveBeenCalled();
     expect(latestResult?.advancing).toBe(false);
+  });
+
+  it.each([
+    ['advance', 'handleAdvance'] as const,
+    ['skip', 'handleSkip'] as const,
+  ])('does not publish %s presentation while its save is held', async (_label, handlerName) => {
+    let resolveSave!: (value: unknown) => void;
+    const options = baseOptions({
+      autosaveActiveGame: vi.fn(() => new Promise<unknown>((resolve) => { resolveSave = resolve; })),
+    });
+    const hook = await renderHook(options);
+    let pending: Promise<void>;
+
+    await act(async () => {
+      pending = hook[handlerName]();
+      await vi.waitFor(() => expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1));
+    });
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
+    expect(options.applyOffseasonData).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveSave({ saved: true });
+      await pending!;
+    });
+    expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
+    expect(options.applyOffseasonData).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['advance', 'handleAdvance', { saved: false }] as const,
+    ['skip', 'handleSkip', new Error('disk unavailable')] as const,
+  ])('does not publish %s presentation when its save is not durable', async (_label, handlerName, outcome) => {
+    const autosaveActiveGame = outcome instanceof Error
+      ? vi.fn().mockRejectedValue(outcome)
+      : vi.fn().mockResolvedValue(outcome);
+    const options = baseOptions({ autosaveActiveGame });
+    const hook = await renderHook(options);
+
+    await act(async () => {
+      await hook[handlerName]();
+    });
+
+    expect(options.publishDurablePresentation).not.toHaveBeenCalled();
+    expect(options.applyOffseasonData).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a stale save A result after the bound durable publisher rejects it', async () => {
+    const options = baseOptions({
+      publishDurablePresentation: vi.fn(() => false),
+    });
+    const hook = await renderHook(options);
+
+    await act(async () => {
+      await hook.handleAdvance();
+    });
+
+    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
+    expect(options.applyOffseasonData).not.toHaveBeenCalled();
   });
 });

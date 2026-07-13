@@ -34,6 +34,22 @@
 
 ### Save And Determinism
 
+- Verified roadmap items 9–10 through Goal 11 `ECON-CLOCK-1`: contracts now
+  advance exactly once at the authoritative offseason seam, deterministic team
+  options use the same zero-RNG rule for user and CPU clubs, and natural
+  expirations enter the canonical free-agent market without duplicate or lost
+  ownership.
+- Exact-save persistence now keeps offseason advance/skip presentation behind a
+  durable `saved:true` receipt and rejects stale callbacks after a save switch.
+  Finance, Offseason, and News distinguish true expirations, pending team
+  options, and pre-market declined options honestly.
+- Compatibility and economy evidence remain separate: the compact v33 fixture
+  proves migration/rollover/save-reload preservation, while the current-schema
+  3-seed × 6-rollover soak and strict replay share digest
+  `5477faee99676a965a51a9ea394a179097f8c41c1ad96c06f83d3fb43ffe0814`.
+  GameSnapshot remains v34; no RNG/schema change or Goal-12 roster-generation
+  repair is included.
+
 - Verified roadmap item 8, Goal 20 `TRUST-SIM-ADVANCE-JOURNAL-1`: Dexie v6
   adds an exact-save/root write-ahead intent journal while GameSnapshot remains
   v34; regular-season simulation commands now commit exact post snapshots or

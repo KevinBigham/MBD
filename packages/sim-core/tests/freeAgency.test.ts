@@ -168,8 +168,9 @@ describe('simulateFullFreeAgency', () => {
       ['cha', new Map([['SS', 10]])],
     ]);
 
-    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nym');
-    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nym');
+    const slots = new Map([['bos', 10], ['cha', 10]]);
+    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, slots, 'nym');
+    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, slots, 'nym');
 
     expect(second).toEqual(first);
     expect(first.day).toBe(60);
@@ -213,6 +214,7 @@ describe('simulateFullFreeAgency', () => {
       budgets,
       payrolls,
       needs,
+      new Map([['nym', 1], ['bos', 10]]),
       'nym',
       [offer],
     );
@@ -259,10 +261,86 @@ describe('simulateFADay', () => {
         ['por', new Map([[player.position, 80]])],
         ['bos', new Map([[player.position, 80]])],
       ]),
+      new Map([['por', 1], ['bos', 1]]),
       (teamId, playerId) => (teamId === 'por' && playerId === player.id ? 78 : 55),
     );
 
     expect(next.signedPlayers[0]?.signedWith).toBe('por');
+  });
+
+  it('does not admit an AI signing for a team with no MLB slots', () => {
+    const player = { ...makeExpiringPlayer(261), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const slots = new Map([['por', 0]]);
+
+    const next = simulateFADay(
+      new GameRNG(261), market,
+      new Map([['por', 200]]), new Map([['por', 90]]),
+      new Map([['por', new Map([[player.position, 100]])]]), slots,
+    );
+
+    expect(next.signedPlayers).toHaveLength(0);
+    expect(next.freeAgents.map((entry) => entry.player.id)).toEqual([player.id]);
+    expect(Array.from(slots.entries())).toEqual([['por', 0]]);
+  });
+
+  it('consumes one slot synchronously and keeps the second otherwise-signable player available', () => {
+    const players = [
+      { ...makeExpiringPlayer(262), teamId: '' },
+      { ...makeExpiringPlayer(263), teamId: '' },
+    ];
+    const market = createFreeAgencyMarket(1, players);
+    market.day = 54;
+    for (const freeAgent of market.freeAgents) freeAgent.demandLevel = 'low';
+    const slots = new Map([['por', 1]]);
+
+    const next = simulateFADay(
+      new GameRNG(262), market,
+      new Map([['por', 200]]), new Map([['por', 90]]),
+      new Map([['por', new Map([[players[0]!.position, 100]])]]), slots,
+    );
+
+    expect(next.signedPlayers).toHaveLength(1);
+    expect(next.signedPlayers[0]?.signedWith).toBe('por');
+    expect(next.freeAgents).toHaveLength(1);
+    expect(Array.from(slots.entries())).toEqual([['por', 1]]);
+  });
+
+  it('keeps forced-branch players available when every destination has zero slots', () => {
+    const player = { ...makeExpiringPlayer(264), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 60;
+
+    const next = simulateFADay(
+      new GameRNG(264), market,
+      new Map([['por', 200]]), new Map([['por', 90]]),
+      new Map([['por', new Map([[player.position, 100]])]]), new Map([['por', 0]]),
+    );
+
+    expect(next.signedPlayers).toHaveLength(0);
+    expect(next.freeAgents.map((entry) => entry.player.id)).toEqual([player.id]);
+  });
+
+  it('is deterministic for equal capacity inputs without mutating either capacity map', () => {
+    const player = { ...makeExpiringPlayer(265), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const firstSlots = new Map([['por', 1]]);
+    const secondSlots = new Map([['por', 1]]);
+    const args = [
+      new Map([['por', 200]]), new Map([['por', 90]]),
+      new Map([['por', new Map([[player.position, 100]])]]),
+    ] as const;
+
+    const first = simulateFADay(new GameRNG(265), market, ...args, firstSlots);
+    const second = simulateFADay(new GameRNG(265), market, ...args, secondSlots);
+
+    expect(second).toEqual(first);
+    expect(Array.from(firstSlots.entries())).toEqual([['por', 1]]);
+    expect(Array.from(secondSlots.entries())).toEqual([['por', 1]]);
   });
 });
 

@@ -25,6 +25,9 @@ const WORKER_SAMPLE = {
       freeAgentSignings: 22,
       meaningfulFreeAgentSignings: 4,
       topFreeAgentAav: 31.5,
+      freeAgencyMarketSize: 112,
+      naturalContractExpiries: 44,
+      offseasonAssignmentChurn: 61,
       acceptedExtensions: 16,
       rejectedExtensions: 9,
       averageProspectProgress: 8.4,
@@ -53,6 +56,9 @@ const MULTI_SEED_WORKER_SAMPLE = {
       freeAgentSignings: 18,
       meaningfulFreeAgentSignings: 8,
       topFreeAgentAav: 28.5,
+      freeAgencyMarketSize: 126,
+      naturalContractExpiries: 51,
+      offseasonAssignmentChurn: 73,
       acceptedExtensions: 20,
       averageProspectProgress: 10.4,
       championSeed: 5,
@@ -313,6 +319,7 @@ describe('calibration report dashboard', () => {
       'worker.free_agent_signings',
       'worker.meaningful_free_agent_signings',
       'worker.top_free_agent_aav',
+      'worker.free_agency_market_size',
       'worker.accepted_extensions',
       'worker.average_prospect_progress',
       'worker.ahead_of_curve_reports',
@@ -325,6 +332,7 @@ describe('calibration report dashboard', () => {
     expect(report.workerBandResults.every((band) => band.status === 'pass')).toBe(true);
     expect(report.workerBandResults.find((band) => band.key === 'worker.regular_season_trades')?.value).toBe(14);
     expect(report.workerBandResults.find((band) => band.key === 'worker.top_free_agent_aav')?.value).toBe(31.5);
+    expect(report.workerBandResults.find((band) => band.key === 'worker.free_agency_market_size')?.value).toBe(112);
     expect(report.workerBandResults.find((band) => band.key === 'worker.ahead_of_curve_reports')?.value).toBe(42);
     expect(report.workerBandResults.find((band) => band.key === 'worker.bust_risk_reports')?.value).toBe(3);
     expect(report.workerBandResults.find((band) => band.key === 'worker.active_development_setbacks')?.value).toBe(11);
@@ -334,8 +342,27 @@ describe('calibration report dashboard', () => {
     expect(markdown).toContain('Ahead-of-curve reports');
     expect(markdown).toContain('Active development setbacks');
     expect(markdown).toContain('Lower-seed series wins');
+    expect(markdown).toContain('Natural contract expiries');
     expect(json.workerBandResults).toEqual(report.workerBandResults);
   }, 15_000);
+
+  it('enforces the frozen Goal-11 free-agency market boundary inclusively', () => {
+    const atBoundary = buildCalibrationReport(REPORT_CONFIG, {
+      workerSample: {
+        ...WORKER_SAMPLE,
+        seasons: [{ ...WORKER_SAMPLE.seasons[0], freeAgencyMarketSize: 1089 }],
+      },
+    }).workerBandResults.find((band) => band.key === 'worker.free_agency_market_size');
+    const overBoundary = buildCalibrationReport(REPORT_CONFIG, {
+      workerSample: {
+        ...WORKER_SAMPLE,
+        seasons: [{ ...WORKER_SAMPLE.seasons[0], freeAgencyMarketSize: 1090 }],
+      },
+    }).workerBandResults.find((band) => band.key === 'worker.free_agency_market_size');
+
+    expect(atBoundary).toMatchObject({ min: 1, max: 1089, value: 1089, status: 'pass' });
+    expect(overBoundary).toMatchObject({ min: 1, max: 1089, value: 1090, status: 'fail' });
+  });
 
   it('renders multi-seed worker samples and averages worker target bands', () => {
     const report = buildCalibrationReport(REPORT_CONFIG, {
@@ -346,6 +373,7 @@ describe('calibration report dashboard', () => {
 
     expect(report.workerBandResults.find((band) => band.key === 'worker.regular_season_trades')?.value).toBe(16);
     expect(report.workerBandResults.find((band) => band.key === 'worker.deadline_trades')?.value).toBe(6);
+    expect(report.workerBandResults.find((band) => band.key === 'worker.free_agency_market_size')?.value).toBe(119);
     expect(markdown).toContain('Seeds 88001, 88002, 2 total seasons (1 per seed).');
     expect(markdown).toContain('| Seed | Season | Injured players |');
     expect(markdown).toContain('| 88002 | 1 | 80 |');

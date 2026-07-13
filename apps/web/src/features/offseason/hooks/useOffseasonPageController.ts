@@ -116,6 +116,7 @@ interface OffseasonPageWorker {
   lockRule5Protection: () => Promise<unknown>;
   makeRule5Pick: (playerId: string) => Promise<unknown>;
   passRule5Pick: () => Promise<unknown>;
+  publishDurablePresentation: () => boolean;
   resolveQualifyingOffers: () => Promise<unknown>;
   resolveRule5OfferBack: (playerId: string, acceptReturn: boolean) => Promise<unknown>;
   skipOffseasonPhase: () => Promise<unknown>;
@@ -198,6 +199,7 @@ export function useOffseasonPageController({
     lockRule5Protection: worker.lockRule5Protection,
     makeRule5Pick: worker.makeRule5Pick,
     passRule5Pick: worker.passRule5Pick,
+    publishDurablePresentation: worker.publishDurablePresentation,
     resolveQualifyingOffers: worker.resolveQualifyingOffers,
     resolveRule5OfferBack: worker.resolveRule5OfferBack,
     season,

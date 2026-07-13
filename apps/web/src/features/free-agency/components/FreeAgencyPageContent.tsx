@@ -52,7 +52,7 @@ export default function FreeAgencyPageContent({
             Free Agency
           </h1>
           <p className="mt-1 font-heading text-sm text-dynasty-muted">
-            The free agent market opens during the offseason.
+            The free agent market opens during the offseason as eligible expiring contracts enter the market.
           </p>
         </div>
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">

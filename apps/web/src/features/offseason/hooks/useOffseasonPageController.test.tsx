@@ -119,6 +119,7 @@ describe('useOffseasonPageController', () => {
         lockRule5Protection: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'rule5_draft' })),
         makeRule5Pick: vi.fn().mockResolvedValue({ success: true }),
         passRule5Pick: vi.fn().mockResolvedValue({ success: true }),
+        publishDurablePresentation: vi.fn(() => true),
         resolveQualifyingOffers: vi.fn().mockResolvedValue({ resolved: [] }),
         resolveRule5OfferBack: vi.fn().mockResolvedValue({ success: true }),
         skipOffseasonPhase: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'arbitration' })),
@@ -183,6 +184,7 @@ describe('useOffseasonPageController', () => {
       expect(latestResult?.contentProps?.currentPhaseConfig.label).toBe('Amateur Draft');
     });
     expect(options.worker.advanceOffseason).toHaveBeenCalledTimes(1);
+    expect(options.worker.publishDurablePresentation).toHaveBeenCalledTimes(1);
     expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
   });
 });

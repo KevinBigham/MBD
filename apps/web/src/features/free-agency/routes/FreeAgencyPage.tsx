@@ -29,6 +29,7 @@ export default function FreeAgencyPage() {
     finance: routeData.finance,
     makeContractOffer: worker.makeContractOffer,
     playEffect: (name) => getAudioEngine().playEffect(name),
+    publishDurablePresentation: worker.publishDurablePresentation,
     removeAgentById: routeData.removeAgentById,
     season,
   });

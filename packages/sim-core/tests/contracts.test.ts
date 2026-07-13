@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   GameRNG,
+  advanceContractForOffseason,
+  calculatePlayerValue,
   calculateExtensionOffer,
   calculateQualifyingOfferSalary,
   evaluateExtensionWillingness,
@@ -97,6 +99,63 @@ describe('evaluateExtensionWillingness', () => {
     expect(olderResult.willingness).toBeGreaterThan(youngerResult.willingness);
     expect(olderResult.demandMultiplier).toBeLessThan(youngerResult.demandMultiplier);
     expect(olderResult.walkAwayThreshold).toBeLessThanOrEqual(olderResult.demandMultiplier);
+  });
+});
+
+describe('advanceContractForOffseason', () => {
+  it('advances active contracts and expires one-year contracts without mutating input', () => {
+    const active = { ...makePlayer(1), contract: { ...makePlayer(1).contract, years: 3 } };
+    const expiring = { ...makePlayer(2), contract: { ...makePlayer(2).contract, years: 1 } };
+    const activeBefore = structuredClone(active);
+    const expiringBefore = structuredClone(expiring);
+
+    expect(advanceContractForOffseason(active, 5)).toMatchObject({ previousYears: 3, nextYears: 2, outcome: 'advanced' });
+    expect(advanceContractForOffseason(expiring, 5)).toMatchObject({ previousYears: 1, nextYears: 0, outcome: 'expired' });
+    expect(active).toEqual(activeBefore);
+    expect(expiring).toEqual(expiringBefore);
+  });
+
+  it('keeps zero-year contracts byte-identical and never creates negative years', () => {
+    const zeroYear = { ...makePlayer(3), contract: { ...makePlayer(3).contract, years: 0 } };
+    const result = advanceContractForOffseason(zeroYear, 6);
+
+    expect(result).toEqual({ player: zeroYear, previousYears: 0, nextYears: 0, outcome: 'unchanged_zero' });
+    expect(result.player).toBe(zeroYear);
+    expect(result.nextYears).toBeGreaterThanOrEqual(0);
+  });
+
+  it('exercises a one-year team option at the equality boundary and consumes only that option', () => {
+    const player = setHitterRatings(makePlayer(4), 300);
+    const annualSalary = calculatePlayerValue(player, 5);
+    const optionPlayer = {
+      ...player,
+      contract: {
+        ...player.contract,
+        years: 1,
+        annualSalary,
+        totalValue: 99,
+        teamOption: true,
+        playerOption: true,
+        optOutYears: [2],
+      },
+    };
+
+    const result = advanceContractForOffseason(optionPlayer, 5);
+    expect(result).toMatchObject({ nextYears: 1, outcome: 'team_option_exercised' });
+    expect(result.player.contract).toMatchObject({ teamOption: false, playerOption: true, totalValue: 99, optOutYears: [2] });
+  });
+
+  it('declines an underwater team option and uses the exact same automated rule for user and CPU players', () => {
+    const player = setHitterRatings(makePlayer(5), 220);
+    const contract = { ...player.contract, years: 1, annualSalary: 25, teamOption: true };
+    const userPlayer = { ...player, teamId: 'nym', contract };
+    const cpuPlayer = { ...player, teamId: 'bos', contract: { ...contract } };
+
+    const userResult = advanceContractForOffseason(userPlayer, 6);
+    const cpuResult = advanceContractForOffseason(cpuPlayer, 6);
+    expect(userResult).toMatchObject({ nextYears: 0, outcome: 'team_option_declined' });
+    expect(cpuResult).toMatchObject({ nextYears: 0, outcome: 'team_option_declined' });
+    expect({ ...userResult.player, teamId: '' }).toEqual({ ...cpuResult.player, teamId: '' });
   });
 });
 
@@ -350,6 +409,9 @@ describe('qualifying offers', () => {
     };
     const tooInexperienced = setHitterRatings(makePlayer(203), 390);
     const notExpiring = setHitterRatings(makePlayer(204), 390);
+    eligible.contract.years = 0;
+    tooCheap.contract.years = 0;
+    tooInexperienced.contract.years = 0;
     notExpiring.contract.years = 3;
 
     const serviceTime = new Map<string, number>([

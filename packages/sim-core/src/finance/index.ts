@@ -28,6 +28,8 @@ export {
   type MarketSize,
   type MarketConfig,
   type ContractDetail,
+  type ContractOffseasonAdvanceOutcome,
+  type ContractOffseasonAdvanceResult,
   type ArbitrationCase,
   type HoldoutEvaluation,
   type TeamPayroll,
@@ -40,6 +42,7 @@ export {
   type TeamExtensionProcessResult,
   // Functions
   calculatePlayerValue,
+  advanceContractForOffseason,
   qualifiesForSuperTwo,
   generateArbitrationCase,
   evaluateHoldout,

@@ -1,18 +1,18 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-11 on the item-7 closeout checkout; Goal 19 and its run artifacts record the verified storage-pressure scope.
+Last reconciled: 2026-07-12 after Goal-11 closeout; ECON-CLOCK-1 is verified complete on its local landing commit under Kevin's explicit oracle amendment and Sol's frozen numeric population bands.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
-Current invariants: GameSnapshot v34; Dexie v5; worker canonical; no bare simulation `Math.random()`; no fabricated old-save history; no hidden CPU advantage; no UI finalization before durable persistence. The three pre-existing user-owned dirty files remain outside campaign scope and must stay unstaged: `.agents/skills/mbd-implement-slice/SKILL.md`, `AGENTS.md`, and `docs/codex/PROGRAM.md`.
+Current invariants: GameSnapshot v34; Dexie v6; worker canonical; no bare simulation `Math.random()`; no fabricated old-save history; no hidden CPU advantage; no UI finalization before durable persistence. The three pre-existing user-owned dirty files remain outside campaign scope and must stay unstaged: `.agents/skills/mbd-implement-slice/SKILL.md`, `AGENTS.md`, and `docs/codex/PROGRAM.md`.
 
 Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `PENDING`, `BLOCKED — ORACLE`, and `BLOCKED — EXTERNAL AUTHORIZATION`.
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–7 and 80.
-- First incomplete item: **8 — write-ahead sim-day intent journal**, now **PENDING**; no item-8 work started in the item-7 closeout.
-- Item 7 is verified complete through Goal 19 and its closeout report; the commit containing this ledger is the item-7 landing commit. No item-8 source was added.
+- Verified complete: items 1–10 and 80.
+- First incomplete items: **11 — service-time arbitration drama**, still **PARTIAL**; Goal 11's bounded contract clock is complete and does not expand arbitration scope.
+- Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
 
@@ -28,8 +28,8 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 6 | 1 | Every-supported-version export/import CI matrix | VERIFIED COMPLETE | Goal 18 / `TRUST-EXPORT-SCHEMA-MATRIX-1` | `runs/TRUST-EXPORT-SCHEMA-MATRIX-1/COMPLETION.md`; 33-version worker/JSON matrix; focused/full gates; zero-retry reload-smoke | See landed item-6 revision in repository history | Terra `019f51f7-5277-7570-add0-fd4a2acb1778` (`gpt-5.6-terra`, high→xhigh); Sol `019f51c7-4ff9-7b13-8b14-d0120e47225c` (`gpt-5.6-sol`, xhigh, MERGE_READY); Luna closeout (`gpt-5.6-luna`, medium) | Item 5 | Preserve v34/Dexie-v5 contract; item 7 is next |
 | 7 | 1 | Storage-pressure size/quota/pruning UX | VERIFIED COMPLETE | Goal 19 / `TRUST-STORAGE-PRESSURE-1` | `runs/TRUST-STORAGE-PRESSURE-1/COMPLETION.md`; focused 49 suites / 372 tests; full gates; fresh 3,022-module / 167-entry PWA; zero-retry storage-pressure, multitab, and reload-smoke Chromium proof | Commit containing this report; verify from landing history | Terra `019f529d-211d-7590-b834-3014f5a3a102` (`gpt-5.6-terra`, high→xhigh, archived); manual relay-pattern fallback writer; replacement Sol `019f534c-8009-7ab1-8849-e9c59b7c49cc` (`gpt-5.6-sol`, xhigh, MERGE_READY, zero P0–P2); Luna `gpt-5.6-luna`, medium, LANDED_ON_MAIN | Item 6 | Preserve truthful storage metrics, exact-save retry, and narrow prune; do not begin item 8 in this closeout |
 | 8 | 1 | Write-ahead sim-day intent journal | VERIFIED COMPLETE | Goal 20 / `TRUST-SIM-ADVANCE-JOURNAL-1` | `runs/TRUST-SIM-ADVANCE-JOURNAL-1/{SOURCE_TRUTH,PLAN,COMPLETION}.md`; Dexie-v6 WAL, exact whole-command rollback, no replay; focused 14 files/460 tests; root gates; Chromium reload 2/2 and four-spec 5/5 | Commit containing this report; final SHA recorded below after landing | Terra `019f537c-cd7a-7d71-92f5-50edf41ac54c` (`gpt-5.6-terra`, high) sole writer; Sol `019f552e-4389-7501-8f16-a1256dcd1824` (`gpt-5.6-sol`, xhigh) `MERGE_READY` 0/0/0; Luna `019f564f-3366-70e1-8e73-ba1ebdb1f2ae` (`gpt-5.6-luna`, medium) closeout; parent manual relay fallback for host browser commands | Items 5–7 | Item 9/10 next only after live Goal 11 confirms one coherent HIGH_RISK seam |
-| 9 | 2 | Living contract clock | PENDING | Goal 11 `ECON-CLOCK-1`; no run | `advanceContracts` exists but has no production caller | — | — | Tier 1 | Execute goal 11 before dependent economy work |
-| 10 | 2 | Symmetric option-year resolution | PENDING | Goal 11 owns semantics; no run | Option fields exist; no resolution lane/symmetry proof | — | — | Item 9 | Complete inside/reconcile after ECON-CLOCK-1 |
+| 9 | 2 | Living contract clock | VERIFIED COMPLETE | Goal 11 / `runs/ECON-CLOCK-1` | Completion matrix; strict current-schema soak/replay; compact-v33 compatibility; ECON Playwright and reload-smoke; root gates; `MERGE_READY` 0/0/0 | `0df078234c96a465a00c15aaa4336619e1baa800` | Sol `019f552e-4389-7501-8f16-a1256dcd1824` xhigh architecture/final review; Terra `019f57d9-5a81-7c41-af54-3ffb3a39878d` high implementation; Luna `019f5963-de05-78c0-9aaa-fc5bc778d7b4` medium closeout | Tier 1 | Preserve clock/market/save-boundary invariants |
+| 10 | 2 | Symmetric option-year resolution | VERIFIED COMPLETE | Goal 11 / `runs/ECON-CLOCK-1`; bundled at one clock seam | Team-option-only deterministic rule, named user/CPU symmetry, zero-RNG proof, Finance/Offseason/News truth, reload proof | Same Goal-11 landing commit | Same relay as item 9 | Item 9 | Preserve deterministic symmetry; player options remain cut |
 | 11 | 2 | Service-time arbitration drama | PARTIAL | No run | Finance/arbitration/holdout source and tests exist | Historical commits | — | Items 9–10 | Prove full offseason→persistence loop |
 | 12 | 2 | Qualifying offers and pick compensation | PARTIAL | No run | QO, draft-pick compensation source/tests exist | Historical source | — | Item 9 | Add bounded offseason/draft reload proof |
 | 13 | 2 | Identity-driven CPU extensions | PARTIAL | No run | Extension AI/tests exist; durable cross-domain identity incomplete | Historical source | — | Items 9, 49 | Reconcile after org identity |
@@ -167,8 +167,8 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | Item | Impact rank | Dependency ready | Work class | Size | Shared seam/bundle | Required proof | Active writer | Next eligible action |
 |---:|---:|---|---|---|---|---|---|---|
 | 8 | 1 | Verified | EXCEPTIONAL | XL | worker authority + Dexie v6 + boot/save tree | focused, negative control, root gates, production Chromium two-page/reload/mobile | Closed; Luna landed | Verify local-main commit; no reopen |
-| 9 | 2 | Conditional on Goal 11 | HIGH_RISK | L | living contract clock/offseason owner | contract/offseason, old-save, deterministic rollover, economy soak, UI/browser, root gates, rollback | Unassigned | Reconcile Goal 11 and define evidence budget |
-| 10 | 3 | Conditional on Goal 11 | HIGH_RISK | L | option-year resolution with item 9 only if one seam | same as item 9; no adjacent arbitration/revenue expansion | Unassigned | Bundle only after seam confirmation |
+| 9 | 2 | Verified | HIGH_RISK | L | living contract clock/offseason owner | completion matrix, separate compact-v33/current-league soak, deterministic rollover, UI/browser, root gates, rollback | Closed; Luna landing owner | Preserve clock/market/save-boundary invariants |
+| 10 | 3 | Verified | HIGH_RISK | L | deterministic team-option resolution | same as item 9; named symmetry and zero-RNG; no adjacent arbitration/revenue expansion | Closed; Luna landing owner | Preserve deterministic symmetry; player options remain cut |
 | 19 | 4 | After economy dependency | VERIFY_ONLY or FINISH_PARTIAL | M | existing onboarding/day-one calibration | focused calibration and bounded browser proof | Unassigned | Reconcile live goal/source |
 | 20 | 5 | After memory dependency | FINISH_PARTIAL | M | narrative/history factual event ownership | deterministic history, old-save honesty, reload/export proof | Unassigned | Reconcile live goal/source |
 | 21 | 6 | After item 20 seam | FINISH_PARTIAL | M | derived franchise/league era read model | factual derivation, old-save, deterministic multi-season and browser proof | Unassigned | Reconcile live goal/source |
@@ -182,3 +182,20 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 Item 6 is not a generic import/export feature request. The live app already has canonical export/import, a v34 JSON round trip, migration tests, worker legacy-import tests, and recovery fallback coverage. The missing finish line is one authoritative CI matrix proving canonical export/import round-trip behavior for **every version the live migration boundary claims to support**, with explicit fixtures/builders, expected normalization, rejection boundaries, deterministic equality, and no fabricated history.
 
 Item 6 now has Goal 18, a reconciled source/plan, a 33-version canonical matrix, and a verified closeout. The next legal slice is item 7 and must create its own goal/run rather than reopening this run or starting item 8.
+
+## Item 9/10 landing receipt
+
+- Goal 11 / `ECON-CLOCK-1` completed with no schema/RNG change and no Goal-12
+  work. Final evidence is in `docs/codex/runs/ECON-CLOCK-1/COMPLETION.md`.
+- Local landing commit: `0df078234c96a465a00c15aaa4336619e1baa800`
+  (`Complete deterministic contract clock and options`); `main` and the source
+  branch point to the same revision with an empty index.
+- Final gates: typecheck 9/9; root tests 8/8 tasks; build/PWA 5/5; determinism
+  3/3; strict soak/replay 2/2 each with digest
+  `5477faee99676a965a51a9ea394a179097f8c41c1ad96c06f83d3fb43ffe0814`; compact
+  v33 compatibility 1/1; ECON Playwright 1/1; reload-smoke desktop/mobile 2/2;
+  all browser runs zero-retry; Sol `MERGE_READY` 0/0/0.
+- Relay: Sol `019f552e-4389-7501-8f16-a1256dcd1824` xhigh; Terra
+  `019f57d9-5a81-7c41-af54-3ffb3a39878d` high; Luna current medium closeout.
+- Release state remains `READY — AWAITING EXPLICIT RELEASE AUTHORIZATION`; no
+  push, deploy, tag, publish, or release is implied by local landing.

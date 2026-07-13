@@ -47,7 +47,7 @@ export function FinanceDecisionDeskPanel({
   contracts,
 }: FinanceDecisionDeskPanelProps) {
   const expiringContracts = [...contracts]
-    .filter((contract) => contract.yearsRemaining <= 1)
+    .filter((contract) => contract.yearsRemaining <= 1 && !contract.teamOption)
     .sort((left, right) => right.annualSalary - left.annualSalary)
     .slice(0, 3);
   const clauseContracts = [...contracts]

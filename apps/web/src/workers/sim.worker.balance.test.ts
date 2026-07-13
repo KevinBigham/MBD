@@ -69,7 +69,12 @@ function isDeadlineTradeTimestamp(timestamp: string, season: number): boolean {
 }
 
 function advanceEntireOffseason(harness: Awaited<ReturnType<typeof loadWorkerHarness>>) {
+  // `proceedToOffseason` only moves a completed playoff bracket into the
+  // authoritative offseason phase. Complete that real lifecycle step first;
+  // advance/skip correctly fail closed while the worker is still in playoffs.
+  harness.actionApi.simRemainingPlayoffs();
   harness.actionApi.proceedToOffseason();
+  expect(harness.requireState().phase).toBe('offseason');
   let guard = 0;
 
   while (!harness.requireState().offseasonState?.completed) {

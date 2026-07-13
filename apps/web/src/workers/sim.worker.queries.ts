@@ -7,7 +7,6 @@ import {
   calculateQualifyingOfferSalary,
   calculateTeamPayroll,
   compareTimelines,
-  createFreeAgencyMarket,
   describeInjury,
   evaluatePlayerTradeValue,
   generateGameHighlights,
@@ -113,6 +112,7 @@ import {
   getPromotionCandidatesForTeam,
   getQualifyingOfferEligibleForTeam,
   getRosterComplianceIssuesForTeam,
+  hasCanonicalFreeAgencyMarket,
   getTeamPlayers,
   createStableWorkerRng,
   requireState,
@@ -3463,9 +3463,10 @@ export const queryApi = {
 
   getFreeAgents(limit: number = 25): FreeAgent[] {
     const s = requireState();
-    // Route reads must not create canonical snapshot divergence. The actual
-    // offer mutation installs the same deterministic market when needed.
-    const market = s.freeAgencyMarket ?? createFreeAgencyMarket(s.season, s.players);
+    const market = s.freeAgencyMarket;
+    if (!market || !hasCanonicalFreeAgencyMarket(s)) {
+      return [];
+    }
     return getTopFreeAgents(market, undefined, limit);
   },
 
@@ -3929,6 +3930,7 @@ export const queryApi = {
         yearsRemaining: p.contract.years,
         noTradeClause: p.contract.noTradeClause,
         playerOption: p.contract.playerOption,
+        teamOption: p.contract.teamOption,
       }));
 
     return {

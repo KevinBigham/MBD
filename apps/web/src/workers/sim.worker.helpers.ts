@@ -9,11 +9,13 @@ import {
   DRAFT_CLASS_SIZE,
   DRAFT_ROUNDS,
   FORTY_MAN_LIMIT,
+  MLB_ROSTER_LIMIT,
   OFFSEASON_PHASES,
   aiSelectPick,
   awardCompensatoryPick,
   buildPlayoffPreview,
   buildDraftPickSlots,
+  advanceContractForOffseason,
   calculateExtensionOffer as calculateExtensionOfferCore,
   calculateMarketValue,
   calculateQualifyingOfferSalary as calculateQualifyingOfferSalaryCore,
@@ -1416,7 +1418,10 @@ export function issueTeamQualifyingOffer(
   }
 
   const player = s.players.find((candidate) => candidate.id === playerId);
-  if (!player) {
+  const eligible = player != null
+    && getQualifyingOfferEligiblePlayers(s.players, player.teamId, s.serviceTime)
+      .some((candidate) => candidate.id === playerId);
+  if (!player || !eligible) {
     return { success: false as const };
   }
 
@@ -1477,7 +1482,31 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
       continue;
     }
 
-    const result = resolveQualifyingOfferCore(s.players[index]!, record, s.rng.fork());
+    const player = s.players[index]!;
+    const remainsEligible = player.teamId === record.teamId
+      && getQualifyingOfferEligiblePlayers(s.players, record.teamId, s.serviceTime)
+        .some((candidate) => candidate.id === player.id);
+    if (!remainsEligible) {
+      const expiredRecord = { ...record, status: 'expired' as const };
+      s.draftState = {
+        ...s.draftState,
+        qualifyingOffers: s.draftState.qualifyingOffers.map((entry) =>
+          entry.playerId === record.playerId && entry.season === record.season ? expiredRecord : entry),
+      };
+      if (s.offseasonState) {
+        s.offseasonState = recordQualifyingOfferResults(s.offseasonState, [{
+          playerId: expiredRecord.playerId,
+          teamId: expiredRecord.teamId,
+          amount: expiredRecord.amount,
+          status: expiredRecord.status,
+          signingTeamId: expiredRecord.signingTeamId,
+          compensationPickId: expiredRecord.compensationPickId,
+        }]);
+      }
+      continue;
+    }
+
+    const result = resolveQualifyingOfferCore(player, record, s.rng.fork());
     s.players[index] = result.player;
     s.draftState = {
       ...s.draftState,
@@ -2472,7 +2501,7 @@ function recordDraftPickForState(
   session: DraftSessionState,
   slot: NonNullable<ReturnType<typeof getCurrentDraftSlot>>,
   prospect: DraftProspect,
-): DraftRoomPick {
+): DraftRoomPick | null {
   const teamId = slot.teamId;
   const team = getTeamById(teamId);
   const pick: DraftRoomPick = {
@@ -2492,6 +2521,11 @@ function recordDraftPickForState(
     tone: transactionToneForTeam(s, teamId),
   };
 
+  // Draft creation is an alternate offseason entry point. Establish the
+  // once-only contract-clock receipt before a drafted player, session, or
+  // roster can change; an out-of-phase null state is an exact no-op.
+  if (!ensureOffseasonState(s)) return null;
+
   updatePlayerTeamAssignment(prospect.player, teamId, s.season);
   if (!s.players.some((player) => player.id === prospect.player.id)) {
     s.players.push(prospect.player);
@@ -2502,10 +2536,9 @@ function recordDraftPickForState(
   session.status = getDraftStatus(session);
   s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
 
-  if (!s.offseasonState) {
-    s.offseasonState = createOffseasonState(s.season);
-  }
-  s.offseasonState = recordDraftPicks(s.offseasonState, [{
+  const offseasonState = s.offseasonState;
+  if (!offseasonState) return null;
+  s.offseasonState = recordDraftPicks(offseasonState, [{
     round: pick.round,
     pickNumber: pick.pickNumber,
     teamId: pick.teamId,
@@ -2530,7 +2563,9 @@ function advanceDraftToUserTurn(s: FullGameState): DraftRoomPick[] {
   while (currentSlot && session.prospects.length > 0 && currentSlot.teamId !== s.userTeamId) {
     const teamRoster = s.players.filter((player) => player.teamId === currentSlot?.teamId);
     const selection = aiSelectPick(s.rng.fork(), currentSlot.teamId, session.prospects, teamRoster);
-    newPicks.push(recordDraftPickForState(s, session, currentSlot, selection));
+    const pick = recordDraftPickForState(s, session, currentSlot, selection);
+    if (!pick) break;
+    newPicks.push(pick);
     currentSlot = getCurrentDraftSlot(session);
   }
 
@@ -3183,6 +3218,9 @@ function autoResolveAIDraftSignings(s: FullGameState) {
 
 export function startDraftSession(s: FullGameState, draftClass?: DraftClass): DraftActionResult {
   const checkpoint = captureDraftMutationCheckpoint(s);
+  if (!ensureOffseasonState(s)) {
+    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the offseason' };
+  }
   if (draftClass) {
     ensureDraftPickOwnershipForSeason(s);
     ensureDraftMetadataForSession(s, draftClass);
@@ -3211,6 +3249,9 @@ export function startDraftSession(s: FullGameState, draftClass?: DraftClass): Dr
 
 export function makeUserDraftSelection(s: FullGameState, prospectId: string): DraftActionResult {
   const checkpoint = captureDraftMutationCheckpoint(s);
+  if (!ensureOffseasonState(s)) {
+    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the offseason' };
+  }
   const session = ensureDraftSession(s);
   const currentSlot = session ? getCurrentDraftSlot(session) : null;
   if (!session || !currentSlot) {
@@ -3231,7 +3272,12 @@ export function makeUserDraftSelection(s: FullGameState, prospectId: string): Dr
     return { success: false, draft, newPicks: [], error: 'Prospect not available' };
   }
 
-  const newPicks = [recordDraftPickForState(s, session, currentSlot, prospect), ...advanceDraftToUserTurn(s)];
+  const selectedPick = recordDraftPickForState(s, session, currentSlot, prospect);
+  if (!selectedPick) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, draft: null, newPicks: [], error: 'Offseason state is unavailable' };
+  }
+  const newPicks = [selectedPick, ...advanceDraftToUserTurn(s)];
   session.status = getDraftStatus(session);
   if (session.status === 'complete') {
     autoResolveAIDraftSignings(s);
@@ -3245,6 +3291,9 @@ export function makeUserDraftSelection(s: FullGameState, prospectId: string): Dr
 
 export function simulateRemainingDraftSession(s: FullGameState): DraftActionResult {
   const checkpoint = captureDraftMutationCheckpoint(s);
+  if (!ensureOffseasonState(s)) {
+    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the offseason' };
+  }
   const session = ensureDraftSession(s);
   if (!session) {
     restoreDraftMutationCheckpoint(s, checkpoint);
@@ -3258,7 +3307,9 @@ export function simulateRemainingDraftSession(s: FullGameState): DraftActionResu
   while (currentSlot && session.prospects.length > 0) {
     const teamRoster = s.players.filter((player) => player.teamId === currentSlot?.teamId);
     const selection = aiSelectPick(s.rng.fork(), currentSlot.teamId, session.prospects, teamRoster);
-    newPicks.push(recordDraftPickForState(s, session, currentSlot, selection));
+    const pick = recordDraftPickForState(s, session, currentSlot, selection);
+    if (!pick) break;
+    newPicks.push(pick);
     currentSlot = getCurrentDraftSlot(session);
   }
 
@@ -3793,6 +3844,26 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
       phase: 'extensions',
       tone: transactionToneForTeam(s, result.teamId),
       summary,
+    });
+  }
+
+  // Option decisions are persisted factual news generated by the once-only
+  // contract clock. Project them into the existing ledger rather than adding
+  // a parallel save field or a decision surface.
+  const optionNewsPrefix = `contract-option-${s.season}-`;
+  for (const item of s.news
+    .filter((news) => news.id.startsWith(optionNewsPrefix))
+    .sort((left, right) => left.id.localeCompare(right.id))) {
+    const playerId = item.relatedPlayerIds[0] ?? item.id.slice(optionNewsPrefix.length);
+    const player = s.players.find((candidate) => candidate.id === playerId);
+    const exercised = item.headline.endsWith('team option exercised');
+    pushRow('extensions', {
+      id: item.id,
+      phase: 'extensions',
+      tone: transactionToneForTeam(s, item.relatedTeamIds[0] ?? player?.teamId ?? ''),
+      summary: exercised
+        ? `${playerLabel(player)} had a team option exercised for the coming season.`
+        : `${playerLabel(player)} had a team option declined; contract expired pending retention or free-agency entry.`,
     });
   }
 
@@ -4465,10 +4536,68 @@ export function processDayInjuriesAndNews(s: FullGameState): void {
   s.news = deduplicateNews(s.news);
 }
 
-function ensureOffseasonState(s: FullGameState) {
-  if (!s.offseasonState) {
-    s.offseasonState = createOffseasonState(s.season);
-  }
+function ensureOffseasonState(s: FullGameState): boolean {
+  if (s.offseasonState) return true;
+  if (s.phase !== 'offseason') return false;
+
+  // Precompute everything before committing a non-null offseason marker. This
+  // makes the marker a once-only clock receipt, not a partial mutation flag.
+  const advances = s.players.map((player) => advanceContractForOffseason(
+    player,
+    s.serviceTime.get(player.id) ?? serviceDaysToYears(player.serviceTimeDays),
+  ));
+  const nextPlayers = advances.map((advance) => advance.player);
+  const nextOffseasonState = createOffseasonState(s.season);
+  const activationFlag = 'contract_clock_live';
+  const existingFlags = s.storyFlags.get(s.userTeamId) ?? [];
+  const shouldPublishActivation = !existingFlags.includes(activationFlag);
+  const nextStoryFlags = shouldPublishActivation
+    ? new Map(s.storyFlags).set(s.userTeamId, [...existingFlags, activationFlag].sort((left, right) => left.localeCompare(right)))
+    : s.storyFlags;
+  const optionNews = advances
+    .filter((advance) => (
+      advance.player.teamId === s.userTeamId
+      && (advance.outcome === 'team_option_exercised' || advance.outcome === 'team_option_declined')
+    ))
+    .map((advance) => ({
+      id: `contract-option-${s.season}-${advance.player.id}`,
+      headline: advance.outcome === 'team_option_exercised'
+        ? `${advance.player.firstName} ${advance.player.lastName}'s team option exercised`
+        : `${advance.player.firstName} ${advance.player.lastName}'s team option declined`,
+      body: advance.outcome === 'team_option_exercised'
+        ? `${advance.player.firstName} ${advance.player.lastName} remains under contract for one more season.`
+        : `${advance.player.firstName} ${advance.player.lastName} has reached the end of the club option.`,
+      priority: 2 as const,
+      category: 'roster_move' as const,
+      tag: 'ANALYSIS' as const,
+      timestamp: `S${s.season}D${s.day}`,
+      relatedPlayerIds: [advance.player.id],
+      relatedTeamIds: [s.userTeamId],
+      read: false,
+    }));
+  const activationNews = shouldPublishActivation
+    ? [{
+      id: `contract-clock-live-${s.season}`,
+      headline: 'Contract clock is now live',
+      body: 'Contracts will now advance at each completed season and eligible expirations will enter free agency.',
+      priority: 3 as const,
+      category: 'league_event' as const,
+      tag: 'ANALYSIS' as const,
+      timestamp: `S${s.season}D${s.day}`,
+      relatedPlayerIds: [],
+      relatedTeamIds: [s.userTeamId],
+      read: false,
+    }]
+    : [];
+  // `deduplicateNews` is part of precompute too: no fallible calculation may
+  // run after canonical player/story mutations begin.
+  const nextNews = deduplicateNews([...optionNews, ...activationNews, ...s.news]);
+
+  s.players = nextPlayers;
+  s.storyFlags = nextStoryFlags;
+  s.news = nextNews;
+  s.offseasonState = nextOffseasonState;
+  return true;
 }
 
 function updateOffseasonClock(s: FullGameState) {
@@ -5155,10 +5284,123 @@ export function applyQualifyingOfferCompensationIfNeeded(
   }
 }
 
-function ensureFreeAgencyMarket(s: FullGameState) {
-  if (!s.freeAgencyMarket) {
-    s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
+export function hasCanonicalFreeAgencyMarket(s: FullGameState): boolean {
+  const market = s.freeAgencyMarket;
+  if (!market
+    || market.season !== s.season
+    || !Array.isArray(market.freeAgents)
+    || !Array.isArray(market.signedPlayers)) return false;
+
+  const canonicalById = new Map(s.players.map((player) => [player.id, player] as const));
+  const marketIds = new Set<string>();
+  const hasExactCanonicalPlayer = (entry: FreeAgencyMarket['freeAgents'][number]) => {
+    const playerId = entry?.player?.id;
+    if (!playerId || marketIds.has(playerId)) return false;
+    marketIds.add(playerId);
+    const canonical = canonicalById.get(playerId);
+    // Imported snapshots legitimately rehydrate separate-but-equal player
+    // objects, so value equality (not object identity) is the canonical
+    // persistence contract for both available and signed rows.
+    return canonical != null && JSON.stringify(canonical) === JSON.stringify(entry.player);
+  };
+  const hasExactSignedContract = (
+    canonical: GeneratedPlayer,
+    contract: NonNullable<FreeAgencyMarket['signedPlayers'][number]['contract']>,
+  ) => (
+    contract.playerId === canonical.id
+    && contract.teamId === canonical.teamId
+    && canonical.contract.years === contract.years
+    && canonical.contract.annualSalary === contract.annualSalary
+    && canonical.contract.totalValue === contract.totalValue
+    && canonical.contract.noTradeClause === contract.noTradeClause
+    && canonical.contract.playerOption === contract.playerOption
+    && canonical.contract.teamOption === contract.teamOption
+    && canonical.contract.signingBonus === contract.signingBonus
+  );
+
+  for (const freeAgent of market.freeAgents) {
+    if (!hasExactCanonicalPlayer(freeAgent)
+      || freeAgent.signedWith !== null
+      || freeAgent.contract !== null
+      || canonicalById.get(freeAgent.player.id)?.teamId !== '') {
+      return false;
+    }
   }
+
+  for (const signedPlayer of market.signedPlayers) {
+    if (!hasExactCanonicalPlayer(signedPlayer)) return false;
+    const canonical = canonicalById.get(signedPlayer.player.id);
+    if (!canonical
+      || !canonical.teamId
+      || signedPlayer.signedWith !== canonical.teamId
+      || !signedPlayer.contract
+      || !hasExactSignedContract(canonical, signedPlayer.contract)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/** Exact Goal-11 FA admission capacity; never repairs an existing overage. */
+export function getAvailableMlbSigningSlots(s: FullGameState, teamId: string): number {
+  const activeCount = s.players.filter((player) => (
+    player.teamId === teamId && player.rosterStatus === 'MLB'
+  )).length;
+  return Math.max(0, MLB_ROSTER_LIMIT - activeCount);
+}
+
+function ensureFreeAgencyMarket(s: FullGameState): boolean {
+  if (s.freeAgencyMarket) {
+    return hasCanonicalFreeAgencyMarket(s);
+  }
+
+  // Capture while assignment-based eligibility still holds, then release only
+  // that exact captured set. Existing unassigned free agents remain unassigned;
+  // no empty-team roster state is ever created.
+  const market = createFreeAgencyMarket(s.season, s.players);
+  const userStarDepartures = market.freeAgents
+    .map((freeAgent) => s.players.find((player) => player.id === freeAgent.player.id))
+    .filter((player): player is GeneratedPlayer => player != null)
+    .filter((player) => (
+      player.teamId === s.userTeamId
+      && player.overallRating >= 400
+      && calculateMarketValue(player) >= 15
+    ))
+    .map((player) => ({
+      id: `contract-expiry-departure-${s.season}-${player.id}`,
+      headline: `${player.firstName} ${player.lastName} enters free agency`,
+      body: `${player.firstName} ${player.lastName}'s contract expired and the club did not retain the player before free agency opened.`,
+      priority: 2 as const,
+      category: 'roster_move' as const,
+      tag: 'ANALYSIS' as const,
+      timestamp: `S${s.season}D${s.day}`,
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: [s.userTeamId],
+      read: false,
+    }));
+  const affectedTeamIds = new Set<string>();
+  for (const freeAgent of market.freeAgents) {
+    const player = s.players.find((candidate) => candidate.id === freeAgent.player.id);
+    if (!player || !player.teamId) continue;
+    affectedTeamIds.add(player.teamId);
+    releasePlayerAssignment(player, s.season);
+    player.rosterStatus = 'INTERNATIONAL';
+    player.minorLeagueLevel = 'INTERNATIONAL';
+  }
+  for (const teamId of affectedTeamIds) {
+    s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+  }
+  const canonicalById = new Map(s.players.map((player) => [player.id, player] as const));
+  market.freeAgents = market.freeAgents.map((freeAgent) => ({
+    ...freeAgent,
+    // `createFreeAgencyMarket` captures eligibility before release. Persist
+    // the released canonical representation, never the pre-release snapshot.
+    player: canonicalById.get(freeAgent.player.id) ?? freeAgent.player,
+  }));
+  s.news = deduplicateNews([...userStarDepartures, ...s.news]);
+  s.freeAgencyMarket = market;
+  return true;
 }
 
 function buildFreeAgencyPayrolls(s: FullGameState) {
@@ -5211,6 +5453,7 @@ function applyNewFreeAgencySignings(
     const previousTeamId = player.teamId;
     updatePlayerTeamAssignment(player, teamId, s.season);
     player.rosterStatus = 'MLB';
+    player.minorLeagueLevel = null;
     player.contract = {
       years: contract.years,
       annualSalary: contract.annualSalary,
@@ -5276,7 +5519,7 @@ function simulateFreeAgencyDays(
   s: FullGameState,
   daysToSimulate: number,
 ): OffseasonProgressResult['aiSignings'] {
-  ensureFreeAgencyMarket(s);
+  if (!hasCanonicalFreeAgencyMarket(s)) return [];
   const aiSignings: OffseasonProgressResult['aiSignings'] = [];
   const teamAttractiveness = (teamId: string, playerId: string) =>
     getLoyaltyAdjustedAppeal(
@@ -5317,6 +5560,11 @@ function simulateFreeAgencyDays(
     );
     const teamPayrolls = buildFreeAgencyPayrolls(s);
     const teamNeeds = buildFreeAgencyNeeds(s);
+    const teamMlbSigningSlots = new Map(
+      TEAMS
+        .filter((team) => team.id !== s.userTeamId)
+        .map((team) => [team.id, getAvailableMlbSigningSlots(s, team.id)] as const),
+    );
     const teamBuildingArchetypes = new Map(
       TEAMS
         .filter((team) => team.id !== s.userTeamId)
@@ -5328,6 +5576,7 @@ function simulateFreeAgencyDays(
       teamBudgets,
       teamPayrolls,
       teamNeeds,
+      teamMlbSigningSlots,
       teamAttractiveness,
       relationshipContexts,
       userTeamNeeds,
@@ -5370,6 +5619,12 @@ function processCurrentOffseasonPhase(
     if (enteredPhase || advancedWithinPhase) {
       if (enteredPhase) {
         resolveOutstandingQualifyingOffers(s);
+        // This is the only production null-market creation seam. Later
+        // simulation, queries, offers, and phase finalization consume the
+        // persisted market or fail closed.
+        if (!ensureFreeAgencyMarket(s)) {
+          return { aiSignings: [] };
+        }
       }
       return {
         aiSignings: simulateFreeAgencyDays(s, 1),
@@ -5410,7 +5665,7 @@ function finalizeFreeAgencyIfNeeded(
     return [];
   }
 
-  ensureFreeAgencyMarket(s);
+  if (!hasCanonicalFreeAgencyMarket(s)) return [];
   const remainingDays = s.freeAgencyMarket ? Math.max(0, 60 - s.freeAgencyMarket.day) : 0;
   return simulateFreeAgencyDays(s, remainingDays);
 }
@@ -5445,6 +5700,21 @@ function applyOffseasonTransition(
   previousState: OffseasonState,
   nextState: OffseasonState,
 ): OffseasonProgressResult {
+  // An imported non-null market is authoritative only when it is canonical.
+  // Validate before QO resolution, FA finalization, RNG forks, phase
+  // advancement, or any player mutation. An invalid imported market freezes
+  // entry, resumed FA days, and FA→Draft alike; otherwise a corrupt market
+  // could be silently bypassed when leaving free agency.
+  const touchesFreeAgency = previousState.currentPhase === 'free_agency'
+    || nextState.currentPhase === 'free_agency';
+  const requiresCanonicalMarket = previousState.currentPhase === 'free_agency'
+    || s.freeAgencyMarket != null;
+  if (touchesFreeAgency
+    && requiresCanonicalMarket
+    && !hasCanonicalFreeAgencyMarket(s)) {
+    return { aiSignings: [] };
+  }
+
   const aiSignings = finalizeFreeAgencyIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
   finalizeDraftIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
   s.offseasonState = {

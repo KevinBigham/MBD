@@ -24,6 +24,7 @@ export interface FreeAgencyOfferActionsOptions {
   finance: FinanceOverview | null;
   makeContractOffer: (playerId: string, years: number, salary: number) => Promise<ContractOfferResult>;
   playEffect: (name: AudioEffectName) => void;
+  publishDurablePresentation: () => void;
   removeAgentById: (playerId: string) => void;
   season: number;
 }
@@ -46,6 +47,7 @@ export function useFreeAgencyOfferActions({
   finance,
   makeContractOffer,
   playEffect,
+  publishDurablePresentation,
   removeAgentById,
   season,
 }: FreeAgencyOfferActionsOptions): FreeAgencyOfferActionsResult {
@@ -67,23 +69,42 @@ export function useFreeAgencyOfferActions({
   const handleOffer = useCallback(async () => {
     if (!selectedPlayer) return;
 
+    let result: ContractOfferResult;
     try {
-      const result = await makeContractOffer(selectedPlayer.id, offerYears, offerSalary);
-      if (result.accepted) {
-        if (!snapshotSaved(await autosaveActiveGame({ season }))) {
-          setOfferResult('The signing was accepted, but its save is not yet durable.');
-          return;
-        }
-        setOfferResult(`Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.`);
-        playEffect('free_agent_signed');
-        removeAgentById(selectedPlayer.id);
-        setSelectedPlayer(null);
-        await fetchFreeAgents();
-      } else {
-        setOfferResult(`Rejected: ${result.reason}`);
-      }
+      result = await makeContractOffer(selectedPlayer.id, offerYears, offerSalary);
     } catch {
       setOfferResult('Contract offers not available yet.');
+      return;
+    }
+
+    if (!result.accepted) {
+      setOfferResult(`Rejected: ${result.reason}`);
+      return;
+    }
+
+    try {
+      if (!snapshotSaved(await autosaveActiveGame({ season }))) {
+        setOfferResult('The signing was accepted, but its save is not yet durable.');
+        return;
+      }
+    } catch {
+      setOfferResult('The signing was accepted, but its save is not yet durable.');
+      return;
+    }
+
+    // The worker queued any achievement ceremony in the accepted snapshot.
+    // Notify the shell only after that exact snapshot is durable, so the
+    // visible moment can be dismissed and persisted before a hard reload.
+    publishDurablePresentation();
+    setOfferResult(`Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.`);
+    playEffect('free_agent_signed');
+    removeAgentById(selectedPlayer.id);
+    setSelectedPlayer(null);
+    try {
+      await fetchFreeAgents();
+    } catch {
+      // The accepted mutation is already durably saved. Keep that truth
+      // visible even when a read-only market refresh is temporarily down.
     }
   }, [
     autosaveActiveGame,
@@ -92,6 +113,7 @@ export function useFreeAgencyOfferActions({
     offerSalary,
     offerYears,
     playEffect,
+    publishDurablePresentation,
     removeAgentById,
     season,
     selectedPlayer,

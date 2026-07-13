@@ -67,6 +67,55 @@ describe('FreeAgencyContractOfferPanel', () => {
     expect(container.querySelector('[data-mobile-critical-control="free-agency-offer-contract"]')).toBeNull();
   });
 
+  it('keeps a durable signing result visible and accessible after refresh clears the selection', async () => {
+    await act(async () => {
+      root.render(
+        <FreeAgencyContractOfferPanel
+          selectedPlayer={null}
+          offerYears={3}
+          offerSalary={10}
+          offerBudget={null}
+          offerResult="Signed! Bobby Expiring joins your team."
+          onOfferYearsChange={vi.fn()}
+          onOfferSalaryChange={vi.fn()}
+          onSubmitOffer={vi.fn()}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const result = container.querySelector('[data-testid="free-agency-offer-result"]');
+    expect(container.textContent).toContain('Select a free agent to make an offer');
+    expect(result?.textContent).toBe('Signed! Bobby Expiring joins your team.');
+    expect(result?.getAttribute('role')).toBe('status');
+    expect(result?.getAttribute('aria-live')).toBe('polite');
+    expect(result?.className).toContain('accent-success');
+  });
+
+  it('keeps unsaved accepted truth accessible without presenting it as durable success', async () => {
+    await act(async () => {
+      root.render(
+        <FreeAgencyContractOfferPanel
+          selectedPlayer={null}
+          offerYears={3}
+          offerSalary={10}
+          offerBudget={null}
+          offerResult="The signing was accepted, but its save is not yet durable."
+          onOfferYearsChange={vi.fn()}
+          onOfferSalaryChange={vi.fn()}
+          onSubmitOffer={vi.fn()}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const result = container.querySelector('[data-testid="free-agency-offer-result"]');
+    expect(result?.textContent).toContain('not yet durable');
+    expect(result?.getAttribute('role')).toBe('status');
+    expect(result?.className).toContain('accent-danger');
+    expect(result?.className).not.toContain('accent-success');
+  });
+
   it('renders offer terms, budget impact, and delegates offer actions', async () => {
     const onOfferYearsChange = vi.fn();
     const onOfferSalaryChange = vi.fn();
