@@ -129,8 +129,16 @@ async function readCurrentProgram(
   playerName: string,
   playerId: string,
 ): Promise<string> {
-  await handlePressConference(page, 'skip');
-  await navigateFromSidebar(page, '/players', 'Players');
+  const pressConference = page.getByRole('dialog', { name: 'Press Conference' });
+  await page.addLocatorHandler(pressConference, async (dialog) => {
+    await dialog.getByRole('button', { name: 'Skip', exact: true }).click();
+  });
+  try {
+    await handlePressConference(page, 'skip');
+    await navigateFromSidebar(page, '/players', 'Players');
+  } finally {
+    await page.removeLocatorHandler(pressConference);
+  }
   await page.getByPlaceholder('Search players or nicknames...').fill(playerName);
   const playerLink = appMain(page).locator(`a[href="/MBD/players/${playerId}"]`).first();
   await expect(playerLink).toBeVisible();
