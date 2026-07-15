@@ -127,7 +127,7 @@ describe('useFreeAgencyOfferActions', () => {
     expect(result.offerResult).toBeNull();
   });
 
-  it('submits accepted offers, removes the signed player, autosaves, and refreshes the market', async () => {
+  it('publishes accepted exact-save offers without a second autosave lane', async () => {
     const { options } = makeOptions();
     const result = await renderHook(options);
 
@@ -144,11 +144,9 @@ describe('useFreeAgencyOfferActions', () => {
     expect(options.makeContractOffer).toHaveBeenCalledWith('fa-1', 3, 10);
     expect(options.playEffect).toHaveBeenCalledWith('free_agent_signed');
     expect(options.removeAgentById).toHaveBeenCalledWith('fa-1');
-    expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 6 });
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
     expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
     expect(options.fetchFreeAgents).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
-      .toBeLessThan(vi.mocked(options.publishDurablePresentation).mock.invocationCallOrder[0]!);
     expect(vi.mocked(options.publishDurablePresentation).mock.invocationCallOrder[0]!)
       .toBeLessThan(vi.mocked(options.fetchFreeAgents).mock.invocationCallOrder[0]!);
     expect(latest?.selectedPlayer).toBeNull();
@@ -156,10 +154,10 @@ describe('useFreeAgencyOfferActions', () => {
   });
 
   it('does not publish the signing ceremony until the exact offer snapshot is durable', async () => {
-    let resolveSave!: (value: unknown) => void;
-    const pendingSave = new Promise<unknown>((resolve) => { resolveSave = resolve; });
+    let resolveExactOffer!: (value: { accepted: true }) => void;
+    const pendingOffer = new Promise<{ accepted: true }>((resolve) => { resolveExactOffer = resolve; });
     const { options } = makeOptions({
-      autosaveActiveGame: vi.fn().mockReturnValue(pendingSave),
+      makeContractOffer: vi.fn().mockReturnValue(pendingOffer),
     });
     const result = await renderHook(options);
     await act(async () => {
@@ -176,11 +174,34 @@ describe('useFreeAgencyOfferActions', () => {
     expect(latest?.offerResult).toBeNull();
 
     await act(async () => {
-      resolveSave({ saved: true });
+      resolveExactOffer({ accepted: true });
       await offer;
     });
     expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
     expect(latest?.offerResult).toBe('Signed! Power Bat joins your team.');
+  });
+
+  it('publishes the durable award-and-forfeiture consequence from the accepted worker receipt', async () => {
+    const { options } = makeOptions({
+      makeContractOffer: vi.fn().mockResolvedValue({
+        accepted: true,
+        qualifyingOfferCompensation: {
+          tier: 'premium',
+          forfeitedRound: 1,
+          forfeitedOriginalTeamId: 'nym',
+        },
+      }),
+    });
+    const result = await renderHook(options);
+    await act(async () => {
+      result.handleSelectPlayer(powerBat);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await latest?.handleOffer();
+    });
+    expect(latest?.offerResult).toContain('premium award issued');
+    expect(latest?.offerResult).toContain('Round 1 (NYM origin) forfeited');
   });
 
   it('surfaces rejected offers without audio, autosave, row removal, or refresh', async () => {
@@ -209,9 +230,9 @@ describe('useFreeAgencyOfferActions', () => {
     expect(latest?.offerResult).toBe('Rejected: Needs more years.');
   });
 
-  it('does not publish or refresh an accepted offer when persistence resolves unsaved', async () => {
+  it('does not publish or refresh when exact persistence returns no accepted result', async () => {
     const { options } = makeOptions({
-      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+      makeContractOffer: vi.fn().mockResolvedValue({ accepted: false, reason: 'The signing could not be saved.' }),
     });
     const result = await renderHook(options);
     await act(async () => {
@@ -227,12 +248,12 @@ describe('useFreeAgencyOfferActions', () => {
     expect(options.removeAgentById).not.toHaveBeenCalled();
     expect(options.fetchFreeAgents).not.toHaveBeenCalled();
     expect(latest?.selectedPlayer).toBe(powerBat);
-    expect(latest?.offerResult).toContain('not yet durable');
+    expect(latest?.offerResult).toBe('Rejected: The signing could not be saved.');
   });
 
-  it('keeps accepted-but-not-durable truth when persistence throws', async () => {
+  it('keeps the market unchanged when the exact offer path throws', async () => {
     const { options } = makeOptions({
-      autosaveActiveGame: vi.fn().mockRejectedValue(new Error('disk full')),
+      makeContractOffer: vi.fn().mockRejectedValue(new Error('disk full')),
     });
     const result = await renderHook(options);
     await act(async () => {
@@ -248,7 +269,7 @@ describe('useFreeAgencyOfferActions', () => {
     expect(options.removeAgentById).not.toHaveBeenCalled();
     expect(options.fetchFreeAgents).not.toHaveBeenCalled();
     expect(latest?.selectedPlayer).toBe(powerBat);
-    expect(latest?.offerResult).toBe('The signing was accepted, but its save is not yet durable.');
+    expect(latest?.offerResult).toBe('Contract offers not available yet.');
   });
 
   it('keeps durable signing success when the follow-up market refresh throws', async () => {

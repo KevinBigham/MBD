@@ -5,8 +5,11 @@ import type { OffseasonData } from './useOffseasonRouteData';
 import { useOffseasonPageController } from './useOffseasonPageController';
 
 vi.mock('@/shared/hooks/useExactOffseasonMutationExecutor', () => ({
+  didExactSaveGameplayResultChange: (result: { flowStateChanged?: boolean }) => result.flowStateChanged !== false,
   useExactOffseasonMutationExecutor: (worker: { execute: (session: object, operation: string) => Promise<unknown> }) =>
     (operation: string) => worker.execute({}, operation),
+  useExactSaveMutationExecutor: (worker: { execute: (session: object, operation: unknown) => Promise<unknown> }) =>
+    (operation: unknown) => worker.execute({}, operation),
 }));
 
 (
@@ -133,6 +136,7 @@ describe('useOffseasonPageController', () => {
           )),
           restoreBaseline: vi.fn(),
           publishFlow: vi.fn(),
+          discardFlow: vi.fn(),
         },
         resolveQualifyingOffers: vi.fn().mockResolvedValue({ resolved: [] }),
         resolveRule5OfferBack: vi.fn().mockResolvedValue({ success: true }),
@@ -198,6 +202,31 @@ describe('useOffseasonPageController', () => {
       expect(latestResult?.contentProps?.currentPhaseConfig.label).toBe('Amateur Draft');
     });
     expect(options.worker.exactSaveMutation.execute).toHaveBeenCalledTimes(1);
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
+  });
+
+  it('passes the selected player through the argument-bearing exact-save QO operation', async () => {
+    const options = baseOptions({
+      worker: {
+        ...baseOptions().worker,
+        getOffseasonState: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'qualifying_offers' })),
+        exactSaveMutation: {
+          ...baseOptions().worker.exactSaveMutation,
+          execute: vi.fn().mockResolvedValue({ success: true, flowStateChanged: true }),
+        },
+      },
+    });
+    await renderHook(options);
+    await waitForAssertion(() => {
+      expect(latestResult?.contentProps?.currentPhaseConfig.label).toBe('Qualifying Offers');
+    });
+    await act(async () => {
+      await latestResult?.contentProps?.onIssueQualifyingOffer('player-qo-1');
+    });
+    expect(options.worker.exactSaveMutation.execute).toHaveBeenCalledWith(
+      {},
+      { kind: 'issueQualifyingOffer', playerId: 'player-qo-1' },
+    );
     expect(options.autosaveActiveGame).not.toHaveBeenCalled();
   });
 });

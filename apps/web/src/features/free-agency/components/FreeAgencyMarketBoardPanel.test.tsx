@@ -167,14 +167,13 @@ describe('FreeAgencyMarketBoardPanel', () => {
     });
     expect(onSortKeyChange).toHaveBeenCalledWith('displayRating');
 
-    const armRow = Array.from(container.querySelectorAll('tr')).find((row) =>
-      row.textContent?.includes('Depth Arm'),
-    );
+    const armControl = container.querySelector('button[aria-label="Select Depth Arm for a contract offer"]');
     await act(async () => {
-      armRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      armControl?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
     expect(onSelectPlayer).toHaveBeenCalledWith(agents[1]);
+    expect(armControl?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('renders an empty market state when no rows match the route filters', async () => {

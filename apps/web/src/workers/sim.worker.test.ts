@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { parseGameSnapshot, type AwardHistoryEntry, type GameSnapshot } from '@mbd/contracts';
 import {
   buildRosterState,
+  createDefaultDraftPickOwnership,
   createFreeAgencyMarket,
   createOffseasonState,
   evaluatePlayerTradeValue,
@@ -32,8 +33,10 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
 import { api } from './sim.worker';
 import {
   advanceMinorLeagueDay,
+  applyNewFreeAgencySignings,
   getAvailableMlbSigningSlots,
   hasCanonicalFreeAgencyMarket,
+  prepareQualifyingOfferCompensation,
   processDayInjuriesAndNews,
   requireState,
   setState,
@@ -667,6 +670,61 @@ function configureSingleFreeAgent(player: GeneratedPlayer) {
     currentPhase: 'free_agency',
     phaseDay: 1,
     totalDay: 21,
+  };
+}
+
+function addRejectedQualifyingOffer(
+  player: GeneratedPlayer,
+  formerTeamId: string,
+  amount: number = 20,
+) {
+  const state = requireState();
+  if (!state.offseasonState) throw new Error('Offseason state is required for a qualifying-offer fixture.');
+  state.offseasonState = {
+    ...state.offseasonState,
+    phaseResults: {
+      ...state.offseasonState.phaseResults,
+      qualifyingOfferSalary: state.offseasonState.phaseResults.qualifyingOfferSalary ?? amount,
+      qualifyingOffers: [
+        ...state.offseasonState.phaseResults.qualifyingOffers,
+        {
+          playerId: player.id,
+          teamId: formerTeamId,
+          amount,
+          status: 'offered',
+          signingTeamId: null,
+          compensationPickId: null,
+          compensationTier: null,
+          forfeitedPick: null,
+        },
+        {
+          playerId: player.id,
+          teamId: formerTeamId,
+          amount,
+          status: 'rejected',
+          signingTeamId: null,
+          compensationPickId: null,
+          compensationTier: null,
+          forfeitedPick: null,
+        },
+      ],
+    },
+  };
+  state.draftState = {
+    ...state.draftState,
+    qualifyingOffers: [
+      ...state.draftState.qualifyingOffers,
+      {
+        playerId: player.id,
+        teamId: formerTeamId,
+        season: state.season,
+        marketValue: 30,
+        amount,
+        status: 'rejected',
+        signingTeamId: null,
+        compensationPickId: null,
+      },
+    ],
   };
 }
 
@@ -2586,6 +2644,967 @@ describe('sim worker narrative APIs', () => {
     expect(qualifyingOfferGroup?.rows.some((row) => row.summary.includes(candidate.firstName))).toBe(true);
   });
 
+  it('freezes one QO salary for the phase and rejects forged CPU-team issuance unchanged', () => {
+    startGame(1281, 'nym');
+    const state = requireState();
+    const userCandidates = state.players.filter(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    ).slice(0, 2);
+    const cpuCandidate = state.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const salaryMover = state.players.find(
+      (player) => player.teamId === 'lax' && player.rosterStatus === 'MLB',
+    )!;
+
+    for (const [index, player] of [...userCandidates, cpuCandidate].entries()) {
+      setHitterProfile(player, 'RF', 480, 28 + index, 18);
+      player.contract.years = 0;
+      player.contract.totalValue = 18;
+      player.serviceTimeDays = 6 * 172;
+      state.serviceTime.set(player.id, 6);
+    }
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    const fixedSalary = workerApi.getQualifyingOfferSalary();
+    expect(workerApi.issueQualifyingOffer(userCandidates[0]!.id).success).toBe(true);
+    salaryMover.contract.annualSalary = 1_000;
+    salaryMover.contract.totalValue = 1_000;
+
+    expect(workerApi.getQualifyingOfferSalary()).toBe(fixedSalary);
+    expect(workerApi.issueQualifyingOffer(userCandidates[1]!.id).success).toBe(true);
+    expect(state.draftState.qualifyingOffers
+      .filter((record) => userCandidates.some((player) => player.id === record.playerId))
+      .map((record) => record.amount)).toEqual([fixedSalary, fixedSalary]);
+
+    const beforeForgedIssue = JSON.stringify(api.exportSnapshot());
+    const rngBeforeForgedIssue = state.rng.getState();
+    const forged = workerApi.issueQualifyingOffer(cpuCandidate.id);
+
+    expect(forged.success).toBe(false);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(beforeForgedIssue);
+    expect(state.rng.getState()).toEqual(rngBeforeForgedIssue);
+  });
+
+  it('resolves QOs in stable order independent of persisted record order and never rerolls terminal records', () => {
+    startGame(12811, 'nym');
+    const state = requireState();
+    const candidates = state.players.filter(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    ).slice(0, 2);
+    for (const [index, player] of candidates.entries()) {
+      setHitterProfile(player, 'RF', 450 + index * 10, 30 + index, 18);
+      player.contract.years = 0;
+      player.serviceTimeDays = 6 * 172;
+      state.serviceTime.set(player.id, 6);
+    }
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    for (const player of candidates) {
+      expect(workerApi.issueQualifyingOffer(player.id).success).toBe(true);
+    }
+    const issued = api.exportSnapshot() as ReturnType<typeof api.exportSnapshot> & {
+      draftState: { qualifyingOffers: unknown[] };
+    };
+
+    expect(api.importSnapshot(structuredClone(issued)).success).toBe(true);
+    const canonicalResult = workerApi.resolveQualifyingOffers();
+    const canonicalState = requireState();
+    const canonicalDigest = {
+      resolved: [...canonicalResult.resolved].sort((left, right) => left.playerId.localeCompare(right.playerId)),
+      records: canonicalState.draftState.qualifyingOffers
+        .map((record) => ({ playerId: record.playerId, status: record.status }))
+        .sort((left, right) => left.playerId.localeCompare(right.playerId)),
+      rng: canonicalState.rng.getState(),
+    };
+    const terminalSnapshot = JSON.stringify(api.exportSnapshot());
+    const terminalRng = canonicalState.rng.getState();
+    expect(workerApi.resolveQualifyingOffers()).toMatchObject({ resolved: [], flowStateChanged: false });
+    expect(JSON.stringify(api.exportSnapshot())).toBe(terminalSnapshot);
+    expect(canonicalState.rng.getState()).toEqual(terminalRng);
+
+    const permuted = structuredClone(issued);
+    permuted.draftState.qualifyingOffers.reverse();
+    expect(api.importSnapshot(permuted).success).toBe(true);
+    const permutedResult = workerApi.resolveQualifyingOffers();
+    const permutedState = requireState();
+    expect({
+      resolved: [...permutedResult.resolved].sort((left, right) => left.playerId.localeCompare(right.playerId)),
+      records: permutedState.draftState.qualifyingOffers
+        .map((record) => ({ playerId: record.playerId, status: record.status }))
+        .sort((left, right) => left.playerId.localeCompare(right.playerId)),
+      rng: permutedState.rng.getState(),
+    }).toEqual(canonicalDigest);
+  });
+
+  it('fails an inconsistent offered QO with a missing player byte-identically', () => {
+    startGame(12812, 'nym');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+    state.draftState = {
+      ...state.draftState,
+      qualifyingOffers: [{
+        playerId: 'missing-qo-player',
+        teamId: 'nym',
+        season: state.season,
+        marketValue: 30,
+        amount: 20,
+        status: 'offered',
+        signingTeamId: null,
+        compensationPickId: null,
+      }],
+    };
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+    const result = (api as unknown as MinorLeagueWorkerApi).resolveQualifyingOffers();
+    expect(result).toMatchObject({ resolved: [], flowStateChanged: false });
+    expect(result.error).toContain('inconsistent');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('rejects early draft start before RNG or snapshot mutation', () => {
+    startGame(1282, 'nym');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'qualifying_offers',
+      phaseDay: 1,
+      totalDay: 18,
+    };
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    const result = api.startDraft() as { success: boolean; error?: string };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('draft phase');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('atomically links one outside QO signing to one award and one eligible pick loss', () => {
+    startGame(1283, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    const formerTeamId = player.teamId;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    addRejectedQualifyingOffer(player, formerTeamId);
+
+    const result = api.makeContractOffer(player.id, 4, 100);
+    const record = state.draftState.qualifyingOffers.find((entry) => entry.playerId === player.id);
+    const award = state.draftState.compensatoryPicks.find(
+      (entry) => entry.compensationForPlayerId === player.id,
+    );
+    const lostPicks = state.draftState.pickOwnership.filter(
+      (entry) => entry.season === state.season && entry.currentTeamId === 'nym' && entry.forfeited,
+    );
+    const receipt = state.offseasonState?.phaseResults.qualifyingOffers.find(
+      (entry) => entry.playerId === player.id && entry.status === 'compensated',
+    );
+
+    expect(result).toMatchObject({
+      accepted: true,
+      qualifyingOfferCompensation: {
+        tier: 'premium',
+        forfeitedRound: lostPicks[0]?.round,
+        forfeitedOriginalTeamId: lostPicks[0]?.originalTeamId,
+      },
+    });
+    expect(record).toMatchObject({
+      status: 'compensated',
+      signingTeamId: 'nym',
+      compensationPickId: award?.id,
+    });
+    expect(award).toMatchObject({
+      awardedToTeamId: formerTeamId,
+      compensationFromTeamId: 'nym',
+    });
+    expect(lostPicks).toHaveLength(1);
+    expect(receipt).toMatchObject({
+      compensationPickId: award?.id,
+      forfeitedPick: {
+        season: state.season,
+        round: lostPicks[0]?.round,
+        originalTeamId: lostPicks[0]?.originalTeamId,
+      },
+    });
+  });
+
+  it('fails closed and byte-identical on malformed imported QO compensation aggregates', () => {
+    startGame(12830, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    addRejectedQualifyingOffer(player, 'bos');
+    expect(api.makeContractOffer(player.id, 4, 100).accepted).toBe(true);
+
+    type CompensationSnapshot = ReturnType<typeof api.exportSnapshot> & {
+      phase: string;
+      players: Array<{ id: string; teamId: string }>;
+      freeAgencyMarket: {
+        signedPlayers: Array<{
+          player: { id: string };
+          signedWith: string | null;
+          contract: { playerId: string; teamId: string } | null;
+        }>;
+      };
+      offseasonState: {
+        currentPhase: string;
+        phaseDay: number;
+        phaseResults: {
+          qualifyingOfferSalary: number | null;
+          qualifyingOffers: Array<{
+            playerId: string;
+            teamId: string;
+            status: string;
+            amount: number;
+            compensationTier: 'premium' | 'standard' | null;
+            forfeitedPick: { season: number; round: number; originalTeamId: string } | null;
+          }>;
+          freeAgentSignings: Array<{
+            playerId: string;
+            teamId: string;
+            years: number;
+            annualSalary: number;
+            totalValue: number;
+          }>;
+        };
+      };
+      draftState: {
+        qualifyingOffers: Array<{
+          playerId: string;
+          teamId: string;
+          season: number;
+          amount: number;
+          status: string;
+          signingTeamId: string | null;
+          compensationPickId: string | null;
+        }>;
+        compensatoryPicks: Array<{
+          id: string;
+          season: number;
+          awardedToTeamId: string;
+          compensationForPlayerId: string;
+          compensationFromTeamId: string;
+          order: number;
+        }>;
+        pickOwnership: Array<{
+          season: number;
+          round: number;
+          originalTeamId: string;
+          currentTeamId: string;
+          forfeited: boolean;
+        }>;
+      };
+    };
+    const valid = structuredClone(api.exportSnapshot()) as CompensationSnapshot;
+    valid.phase = 'offseason';
+    valid.offseasonState.currentPhase = 'draft';
+    const compensated = valid.draftState.qualifyingOffers.find((record) => record.playerId === player.id)!;
+    const award = valid.draftState.compensatoryPicks.find((pick) => pick.id === compensated.compensationPickId)!;
+    const receipt = valid.offseasonState.phaseResults.qualifyingOffers.find((result) => (
+      result.playerId === player.id && result.status === 'compensated'
+    ))!;
+    const loss = valid.draftState.pickOwnership.find((pick) => (
+      pick.season === receipt.forfeitedPick?.season
+      && pick.round === receipt.forfeitedPick.round
+      && pick.originalTeamId === receipt.forfeitedPick.originalTeamId
+    ))!;
+
+    const corruptions: Array<{
+      name: string;
+      mutate: (snapshot: CompensationSnapshot) => void;
+    }> = [
+      {
+        name: 'orphan award',
+        mutate: (snapshot) => snapshot.draftState.compensatoryPicks.push({
+          ...award,
+          id: `${award.id}-orphan`,
+          compensationForPlayerId: 'orphan-player',
+          order: award.order + 1,
+        }),
+      },
+      {
+        name: 'missing award',
+        mutate: (snapshot) => {
+          snapshot.draftState.compensatoryPicks = snapshot.draftState.compensatoryPicks
+            .filter((pick) => pick.id !== award.id);
+        },
+      },
+      {
+        name: 'award without loss',
+        mutate: (snapshot) => {
+          const target = snapshot.draftState.pickOwnership.find((pick) => (
+            pick.season === loss.season
+            && pick.round === loss.round
+            && pick.originalTeamId === loss.originalTeamId
+          ));
+          if (target) target.forfeited = false;
+        },
+      },
+      {
+        name: 'duplicate QO player',
+        mutate: (snapshot) => snapshot.draftState.qualifyingOffers.push({ ...compensated }),
+      },
+      {
+        name: 'duplicate ownership descriptor',
+        mutate: (snapshot) => snapshot.draftState.pickOwnership.push({ ...loss }),
+      },
+      {
+        name: 'wrong compensation receipt amount',
+        mutate: (snapshot) => {
+          const target = snapshot.offseasonState.phaseResults.qualifyingOffers.find((result) => (
+            result.playerId === player.id && result.status === 'compensated'
+          ));
+          if (target) target.amount += 1;
+        },
+      },
+      {
+        name: 'contradictory compensation receipt tier',
+        mutate: (snapshot) => {
+          const target = snapshot.offseasonState.phaseResults.qualifyingOffers.find((result) => (
+            result.playerId === player.id && result.status === 'compensated'
+          ));
+          if (target) target.compensationTier = target.compensationTier === 'premium' ? 'standard' : 'premium';
+        },
+      },
+      {
+        name: 'missing free-agent signing receipt',
+        mutate: (snapshot) => {
+          snapshot.offseasonState.phaseResults.freeAgentSignings = snapshot.offseasonState.phaseResults.freeAgentSignings
+            .filter((signing) => signing.playerId !== player.id);
+        },
+      },
+      {
+        name: 'duplicate free-agent signing receipt',
+        mutate: (snapshot) => {
+          const signing = snapshot.offseasonState.phaseResults.freeAgentSignings.find((entry) => entry.playerId === player.id)!;
+          snapshot.offseasonState.phaseResults.freeAgentSignings.push({ ...signing });
+        },
+      },
+      {
+        name: 'player reassigned away from signing club',
+        mutate: (snapshot) => {
+          snapshot.players.find((entry) => entry.id === player.id)!.teamId = 'chi';
+        },
+      },
+      {
+        name: 'coordinated terminal amount rewrite',
+        mutate: (snapshot) => {
+          snapshot.draftState.qualifyingOffers.find((entry) => entry.playerId === player.id)!.amount += 1;
+          snapshot.offseasonState.phaseResults.qualifyingOffers.find((result) => (
+            result.playerId === player.id && result.status === 'compensated'
+          ))!.amount += 1;
+        },
+      },
+      {
+        name: 'coordinated former-team rewrite',
+        mutate: (snapshot) => {
+          snapshot.draftState.qualifyingOffers.find((entry) => entry.playerId === player.id)!.teamId = 'chi';
+          snapshot.draftState.compensatoryPicks.find((entry) => entry.id === award.id)!.awardedToTeamId = 'chi';
+          snapshot.offseasonState.phaseResults.qualifyingOffers.find((result) => (
+            result.playerId === player.id && result.status === 'compensated'
+          ))!.teamId = 'chi';
+        },
+      },
+      {
+        name: 'missing signed-market fact',
+        mutate: (snapshot) => {
+          snapshot.freeAgencyMarket.signedPlayers = snapshot.freeAgencyMarket.signedPlayers
+            .filter((entry) => entry.player.id !== player.id);
+        },
+      },
+    ];
+
+    for (const corruption of corruptions) {
+      const snapshot = structuredClone(valid);
+      corruption.mutate(snapshot);
+      expect(api.importSnapshot(snapshot).success, corruption.name).toBe(true);
+      const imported = requireState();
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngBefore = imported.rng.getState();
+      const plan = prepareQualifyingOfferCompensation(imported, player.id, 'chi', {
+        years: 3,
+        annualSalary: 30,
+        totalValue: 90,
+      });
+      const draftResult = api.startDraft() as { success: boolean; error?: string };
+
+      expect(plan.kind, corruption.name).toBe('blocked');
+      expect(draftResult.success, corruption.name).toBe(false);
+      expect(draftResult.error, corruption.name).toContain('Qualifying-offer');
+      expect(JSON.stringify(api.exportSnapshot()), corruption.name).toBe(before);
+      expect(imported.rng.getState(), corruption.name).toEqual(rngBefore);
+
+      const skipped = api.skipOffseasonPhase();
+      expect(skipped?.currentPhase, `${corruption.name} skip`).toBe('draft');
+      expect(skipped?.flowStateChanged, `${corruption.name} skip`).toBe(false);
+      expect(JSON.stringify(api.exportSnapshot()), `${corruption.name} skip`).toBe(before);
+      expect(imported.rng.getState(), `${corruption.name} skip`).toEqual(rngBefore);
+
+      const advanceSnapshot = structuredClone(snapshot);
+      advanceSnapshot.offseasonState.phaseDay = 3;
+      expect(api.importSnapshot(advanceSnapshot).success, `${corruption.name} advance import`).toBe(true);
+      const advanceState = requireState();
+      const advanceBefore = JSON.stringify(api.exportSnapshot());
+      const advanceRngBefore = advanceState.rng.getState();
+      const advanced = api.advanceOffseason();
+      expect(advanced?.currentPhase, `${corruption.name} advance`).toBe('draft');
+      expect(advanced?.flowStateChanged, `${corruption.name} advance`).toBe(false);
+      expect(JSON.stringify(api.exportSnapshot()), `${corruption.name} advance`).toBe(advanceBefore);
+      expect(advanceState.rng.getState(), `${corruption.name} advance`).toEqual(advanceRngBefore);
+    }
+  });
+
+  it('blocks issue, resolve, and QO-to-FA transition on a contradictory imported compensation receipt', () => {
+    startGame(128301, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    addRejectedQualifyingOffer(player, 'bos');
+    expect(api.makeContractOffer(player.id, 4, 100).accepted).toBe(true);
+
+    const malformed = structuredClone(api.exportSnapshot()) as ReturnType<typeof api.exportSnapshot> & {
+      offseasonState: {
+        currentPhase: string;
+        phaseDay: number;
+        phaseResults: {
+          qualifyingOffers: Array<{
+            playerId: string;
+            status: string;
+            amount: number;
+          }>;
+        };
+      };
+    };
+    malformed.offseasonState.currentPhase = 'qualifying_offers';
+    malformed.offseasonState.phaseDay = 4;
+    malformed.offseasonState.phaseResults.qualifyingOffers.find((result) => (
+      result.playerId === player.id && result.status === 'compensated'
+    ))!.amount += 1;
+
+    const assertRejectedUnchanged = (
+      action: () => unknown,
+      label: string,
+    ) => {
+      expect(api.importSnapshot(structuredClone(malformed)).success, label).toBe(true);
+      const imported = requireState();
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngBefore = imported.rng.getState();
+      action();
+      expect(JSON.stringify(api.exportSnapshot()), label).toBe(before);
+      expect(imported.rng.getState(), label).toEqual(rngBefore);
+    };
+
+    assertRejectedUnchanged(() => {
+      const result = (api as unknown as MinorLeagueWorkerApi).issueQualifyingOffer(player.id);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Qualifying-offer');
+    }, 'issue');
+    assertRejectedUnchanged(() => {
+      const result = (api as unknown as MinorLeagueWorkerApi).resolveQualifyingOffers();
+      expect(result.resolved).toEqual([]);
+      expect(result.error).toContain('Qualifying-offer');
+    }, 'resolve');
+    assertRejectedUnchanged(() => {
+      expect(api.skipOffseasonPhase()?.currentPhase).toBe('qualifying_offers');
+    }, 'skip transition');
+    assertRejectedUnchanged(() => {
+      expect(api.advanceOffseason()?.currentPhase).toBe('qualifying_offers');
+    }, 'advance transition');
+  });
+
+  it('projects the exact QO pick cost on the free-agent board before an offer', () => {
+    startGame(12831, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    addRejectedQualifyingOffer(player, 'bos');
+
+    const row = (api.getFreeAgents(200) as Array<{
+      player: { id: string };
+      qualifyingOffer: {
+        formerTeamName: string;
+        requiresCompensation: boolean;
+        forfeitedPick: { round: number; originalTeamId: string } | null;
+      } | null;
+    }>).find((entry) => entry.player.id === player.id);
+
+    expect(row?.qualifyingOffer).toMatchObject({
+      formerTeamName: 'Boston Noreasters',
+      requiresCompensation: true,
+      forfeitedPick: { round: 1, originalTeamId: 'nym' },
+    });
+  });
+
+  it('fails closed on an imported draft session whose slots conflict with current compensation', () => {
+    startGame(12832, 'nym');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 50,
+    };
+    const draftStart = api.startDraft();
+    expect(draftStart.success, draftStart.error).toBe(true);
+    const exported = api.exportSnapshot() as ReturnType<typeof api.exportSnapshot> & {
+      draftClass: { pickSlots: Array<{ slotId: string }>; prospects: Array<{ player: { id: string } }> };
+    };
+    exported.draftClass.pickSlots = exported.draftClass.pickSlots.slice(1);
+    expect(api.importSnapshot(exported).success).toBe(true);
+    const imported = requireState();
+    const prospectId = (imported.draftClass as { prospects: Array<{ player: { id: string } }> }).prospects[0]!.player.id;
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = imported.rng.getState();
+
+    const restarted = api.startDraft() as { success: boolean; error?: string };
+    expect(restarted.success).toBe(false);
+    expect(restarted.error).toContain('pick order does not match');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(imported.rng.getState()).toEqual(rngBefore);
+
+    const result = api.makeDraftPick(prospectId) as { success: boolean; error?: string };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('pick order does not match');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(imported.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('rejects malformed imported completed-pick progress before advancing entitlement', () => {
+    startGame(12833, 'nym');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 50,
+    };
+    expect(api.startDraft().success).toBe(true);
+    expect(api.simulateRemainingDraft().success).toBe(true);
+
+    type DraftProgressSnapshot = ReturnType<typeof api.exportSnapshot> & {
+      offseasonState: {
+        phaseDay: number;
+        phaseResults: {
+          draftPicks: Array<{
+            playerId: string;
+          }>;
+        };
+      };
+      draftClass: {
+        completedPicks: Array<{
+          slotId: string;
+          round: number;
+          pickNumber: number;
+          teamId: string;
+          playerId: string;
+          slotKind?: string;
+        }>;
+        pickSlots: Array<{
+          slotId: string;
+          round: number;
+          pickNumber: number;
+          teamId: string;
+          kind: string;
+        }>;
+      };
+    };
+    const valid = structuredClone(api.exportSnapshot()) as DraftProgressSnapshot;
+    expect(valid.draftClass.completedPicks.length).toBeGreaterThan(1);
+
+    const corruptions: Array<{
+      name: string;
+      mutate: (snapshot: DraftProgressSnapshot) => void;
+    }> = [
+      {
+        name: 'wrong prefix team',
+        mutate: (snapshot) => {
+          snapshot.draftClass.completedPicks[0]!.teamId = 'forged-team';
+        },
+      },
+      {
+        name: 'duplicate completed player',
+        mutate: (snapshot) => {
+          snapshot.draftClass.completedPicks[1]!.playerId = snapshot.draftClass.completedPicks[0]!.playerId;
+        },
+      },
+      {
+        name: 'completed picks beyond slots',
+        mutate: (snapshot) => {
+          snapshot.draftClass.completedPicks.push({ ...snapshot.draftClass.completedPicks[0]! });
+        },
+      },
+      {
+        name: 'fabricated completed player',
+        mutate: (snapshot) => {
+          snapshot.draftClass.completedPicks[0]!.playerId = 'fabricated-draft-player';
+        },
+      },
+      {
+        name: 'mismatched draft receipt',
+        mutate: (snapshot) => {
+          snapshot.offseasonState.phaseResults.draftPicks[0]!.playerId = 'receipt-for-different-player';
+        },
+      },
+    ];
+
+    for (const corruption of corruptions) {
+      const snapshot = structuredClone(valid);
+      corruption.mutate(snapshot);
+      expect(api.importSnapshot(snapshot).success, corruption.name).toBe(true);
+      const imported = requireState();
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngBefore = imported.rng.getState();
+      const result = api.startDraft() as { success: boolean; error?: string };
+
+      expect(result.success, corruption.name).toBe(false);
+      expect(result.error, corruption.name).toContain('Draft session');
+      expect(JSON.stringify(api.exportSnapshot()), corruption.name).toBe(before);
+      expect(imported.rng.getState(), corruption.name).toEqual(rngBefore);
+
+      expect(api.skipOffseasonPhase()?.currentPhase, `${corruption.name} skip`).toBe('draft');
+      expect(JSON.stringify(api.exportSnapshot()), `${corruption.name} skip`).toBe(before);
+      expect(imported.rng.getState(), `${corruption.name} skip`).toEqual(rngBefore);
+
+      const advanceSnapshot = structuredClone(snapshot);
+      advanceSnapshot.offseasonState.phaseDay = 3;
+      expect(api.importSnapshot(advanceSnapshot).success, `${corruption.name} advance import`).toBe(true);
+      const advanceState = requireState();
+      const advanceBefore = JSON.stringify(api.exportSnapshot());
+      const advanceRngBefore = advanceState.rng.getState();
+      expect(api.advanceOffseason()?.currentPhase, `${corruption.name} advance`).toBe('draft');
+      expect(JSON.stringify(api.exportSnapshot()), `${corruption.name} advance`).toBe(advanceBefore);
+      expect(advanceState.rng.getState(), `${corruption.name} advance`).toEqual(advanceRngBefore);
+    }
+  });
+
+  it('rejects a compensated outside signing unchanged when no eligible signing-team pick exists', () => {
+    startGame(1284, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    const formerTeamId = player.teamId;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    addRejectedQualifyingOffer(player, formerTeamId);
+    state.draftState = {
+      ...state.draftState,
+      pickOwnership: createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), state.season).map((pick) => (
+        pick.season === state.season && pick.currentTeamId === 'nym'
+          ? { ...pick, currentTeamId: 'bos' }
+          : pick
+      )),
+    };
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    const result = api.makeContractOffer(player.id, 4, 100);
+
+    expect(result).toEqual({
+      accepted: false,
+      reason: 'No eligible draft pick is available for qualifying-offer compensation.',
+    });
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('re-signs a rejected QO player with the former club without an award or pick loss', () => {
+    startGame(12840, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'nym' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    addRejectedQualifyingOffer(player, 'nym');
+
+    const result = api.makeContractOffer(player.id, 4, 100);
+    const record = state.draftState.qualifyingOffers.find((entry) => entry.playerId === player.id);
+
+    expect(result.accepted).toBe(true);
+    expect(record).toMatchObject({ status: 'expired', signingTeamId: 'nym', compensationPickId: null });
+    expect(state.draftState.compensatoryPicks).toEqual([]);
+    expect(state.draftState.pickOwnership.filter((pick) => pick.forfeited)).toEqual([]);
+  });
+
+  it('uses the same atomic award/loss law for a CPU signing', () => {
+    startGame(12841, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    const formerTeamId = player.teamId;
+    configureSingleFreeAgent(player);
+    const signingTeamId = 'chi';
+    const available = state.freeAgencyMarket!.freeAgents.shift()!;
+    const contract = {
+      teamId: signingTeamId,
+      playerId: player.id,
+      years: 4,
+      annualSalary: 30,
+      totalValue: 120,
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+      signingBonus: 0,
+    };
+    state.freeAgencyMarket!.signedPlayers.push({
+      ...available,
+      signedWith: signingTeamId,
+      contract,
+    });
+    addRejectedQualifyingOffer(player, formerTeamId);
+
+    const progress = applyNewFreeAgencySignings(state, new Set());
+    const award = state.draftState.compensatoryPicks.find((entry) => entry.compensationForPlayerId === player.id);
+    const losses = state.draftState.pickOwnership.filter((entry) => (
+      entry.season === state.season && entry.currentTeamId === signingTeamId && entry.forfeited
+    ));
+
+    expect(progress).toHaveLength(1);
+    expect(award).toMatchObject({
+      awardedToTeamId: formerTeamId,
+      compensationFromTeamId: signingTeamId,
+    });
+    expect(losses).toHaveLength(1);
+  });
+
+  it('admits an eligible CPU runner-up before an ineligible no-pick bidder can suppress the signing', () => {
+    startGame(128411, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'chi' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    setHitterProfile(player, 'RF', 440, 29, 20);
+    configureSingleFreeAgent(player);
+    for (const team of TEAMS) {
+      if (team.id !== 'nym') setCanonicalMlbCount(team.id, 26);
+    }
+    setCanonicalMlbCount('por', 25);
+    setCanonicalMlbCount('bos', 25);
+    for (const teamId of ['por', 'bos']) {
+      const owner = state.ownerState.get(teamId)!;
+      owner.annualBudget = 500;
+      owner.payrollCap = 500;
+    }
+    for (const porPlayer of state.players.filter((candidate) => candidate.teamId === 'por' && candidate.rosterStatus === 'MLB')) {
+      porPlayer.position = 'C';
+    }
+    addRejectedQualifyingOffer(player, 'chi');
+    state.draftState = {
+      ...state.draftState,
+      pickOwnership: createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), state.season).map((pick) => (
+        pick.season === state.season && pick.currentTeamId === 'por'
+          ? { ...pick, currentTeamId: 'nym' }
+          : pick
+      )),
+    };
+
+    api.advanceOffseason();
+
+    const signed = state.freeAgencyMarket?.signedPlayers.find((entry) => entry.player.id === player.id);
+    const award = state.draftState.compensatoryPicks.find((entry) => entry.compensationForPlayerId === player.id);
+    const losses = state.draftState.pickOwnership.filter((pick) => (
+      pick.season === state.season && pick.currentTeamId === 'bos' && pick.forfeited
+    ));
+    expect(signed?.signedWith).toBe('bos');
+    expect(signed?.interestedTeams).toEqual(['bos']);
+    expect(award).toMatchObject({ awardedToTeamId: 'chi', compensationFromTeamId: 'bos' });
+    expect(losses).toHaveLength(1);
+  });
+
+  it('forfeits deterministic distinct picks for multiple QO signings', () => {
+    startGame(12842, 'nym');
+    const state = requireState();
+    const players = ['bos', 'chi'].map((teamId) => state.players.find(
+      (candidate) => candidate.teamId === teamId && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!);
+    for (const player of players) {
+      player.contract = { ...player.contract, years: 0, teamOption: false };
+    }
+    state.freeAgencyMarket = createFreeAgencyMarket(state.season, players);
+    for (const player of players) {
+      player.teamId = '';
+      player.rosterStatus = 'INTERNATIONAL';
+      player.minorLeagueLevel = 'INTERNATIONAL';
+    }
+    state.freeAgencyMarket.day = 54;
+    for (const freeAgent of state.freeAgencyMarket.freeAgents) {
+      freeAgent.demandLevel = 'low';
+    }
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'free_agency',
+      phaseDay: 1,
+      totalDay: 21,
+    };
+    addRejectedQualifyingOffer(players[0]!, 'bos');
+    addRejectedQualifyingOffer(players[1]!, 'chi');
+    setCanonicalMlbCount('nym', 24);
+
+    expect(api.makeContractOffer(players[0]!.id, 4, 100).accepted).toBe(true);
+    expect(api.makeContractOffer(players[1]!.id, 4, 100).accepted).toBe(true);
+
+    const awards = state.draftState.compensatoryPicks.filter((entry) => (
+      players.some((player) => player.id === entry.compensationForPlayerId)
+    ));
+    const losses = state.draftState.pickOwnership
+      .filter((entry) => entry.season === state.season && entry.currentTeamId === 'nym' && entry.forfeited)
+      .sort((left, right) => left.round - right.round);
+    expect(awards).toHaveLength(2);
+    expect(new Set(awards.map((entry) => entry.compensationForPlayerId)).size).toBe(2);
+    expect(losses.map((entry) => entry.round)).toEqual([1, 2]);
+    expect(new Set(losses.map((entry) => `${entry.round}:${entry.originalTeamId}`)).size).toBe(2);
+  });
+
+  it('round-trips and consumes the exact supplemental draft slot once', () => {
+    startGame(12843, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    addRejectedQualifyingOffer(player, 'bos');
+    expect(api.makeContractOffer(player.id, 4, 100).accepted).toBe(true);
+    const award = state.draftState.compensatoryPicks.find((entry) => entry.compensationForPlayerId === player.id)!;
+    const nonemptySnapshot = api.exportSnapshot();
+    expect(api.importSnapshot(structuredClone(nonemptySnapshot)).success).toBe(true);
+    expect(api.exportSnapshot()).toEqual(nonemptySnapshot);
+
+    const imported = requireState();
+    imported.phase = 'offseason';
+    imported.offseasonState = {
+      ...imported.offseasonState!,
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 50,
+    };
+    const draftStart = api.startDraft();
+    expect(draftStart.success, draftStart.error).toBe(true);
+    const session = requireState().draftClass as {
+      pickSlots: Array<{ slotId: string; kind: string; round: number }>;
+      completedPicks: Array<{ slotId: string }>;
+    };
+    const supplementalIndex = session.pickSlots.findIndex((slot) => slot.slotId === award.id);
+    const firstRoundStandardCount = session.pickSlots.filter((slot) => slot.round === 1 && slot.kind === 'standard').length;
+    expect(supplementalIndex).toBe(firstRoundStandardCount);
+
+    const completed = api.simulateRemainingDraft();
+    expect(completed.success).toBe(true);
+    expect((requireState().draftClass as typeof session).completedPicks.filter((pick) => pick.slotId === award.id)).toHaveLength(1);
+    const completedSnapshot = api.exportSnapshot();
+    expect(api.importSnapshot(structuredClone(completedSnapshot)).success).toBe(true);
+    const rngBeforeRepeat = requireState().rng.getState();
+    const repeated = api.simulateRemainingDraft();
+    expect(repeated, repeated.error).toMatchObject({ success: true, newPicks: [] });
+    expect((requireState().draftClass as typeof session).completedPicks.filter((pick) => pick.slotId === award.id)).toHaveLength(1);
+    expect(requireState().rng.getState()).toEqual(rngBeforeRepeat);
+  });
+
+  it.each([12851, 12852, 12853])('conserves one award, loss, and unique slot across seed %i', (seed) => {
+    startGame(seed, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    const available = state.freeAgencyMarket!.freeAgents.shift()!;
+    const contract = {
+      teamId: 'chi',
+      playerId: player.id,
+      years: 3,
+      annualSalary: 30,
+      totalValue: 90,
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+      signingBonus: 0,
+    };
+    state.freeAgencyMarket!.signedPlayers.push({ ...available, signedWith: 'chi', contract });
+    addRejectedQualifyingOffer(player, 'bos');
+
+    applyNewFreeAgencySignings(state, new Set());
+    const awards = state.draftState.compensatoryPicks.filter((entry) => entry.compensationForPlayerId === player.id);
+    const losses = state.draftState.pickOwnership.filter((entry) => (
+      entry.season === state.season && entry.currentTeamId === 'chi' && entry.forfeited
+    ));
+    expect(awards).toHaveLength(1);
+    expect(losses).toHaveLength(1);
+    expect(new Set(awards.map((entry) => entry.id)).size).toBe(1);
+    expect(awards[0]).toMatchObject({ compensationFromTeamId: 'chi', awardedToTeamId: 'bos' });
+  });
+
+  it('keeps CPU compensation and terminal RNG invariant when only userTeamId changes', () => {
+    const run = (userTeamId: string) => {
+      startGame(12854, userTeamId);
+      const state = requireState();
+      const player = state.players.find(
+        (candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+      )!;
+      configureSingleFreeAgent(player);
+      const available = state.freeAgencyMarket!.freeAgents.shift()!;
+      const contract = {
+        teamId: 'chi',
+        playerId: player.id,
+        years: 3,
+        annualSalary: 30,
+        totalValue: 90,
+        noTradeClause: false,
+        playerOption: false,
+        teamOption: false,
+        signingBonus: 0,
+      };
+      state.freeAgencyMarket!.signedPlayers.push({ ...available, signedWith: 'chi', contract });
+      addRejectedQualifyingOffer(player, 'bos');
+      applyNewFreeAgencySignings(state, new Set());
+      return {
+        awards: state.draftState.compensatoryPicks,
+        losses: state.draftState.pickOwnership.filter((entry) => entry.forfeited),
+        rng: state.rng.getState(),
+      };
+    };
+    expect(run('nym')).toEqual(run('sea'));
+  });
+
   it('supports hiring and firing coaches through the worker market APIs', () => {
     startGame(129, 'nym');
     const state = requireState();
@@ -3407,7 +4426,7 @@ describe('sim worker narrative APIs', () => {
     });
 
     const enteredOffseason = api.advanceOffseason();
-    expect('flowStateChanged' in (enteredOffseason ?? {})).toBe(false);
+    expect(enteredOffseason?.flowStateChanged).toBe(true);
     expect(state.players.find((player) => player.id === activeId)?.contract.years).toBe(2);
     expect(state.players.find((player) => player.id === optionPlayerId)?.contract).toMatchObject({ years: 1, teamOption: false });
     expect(api.getNews(50).some((item) => item.id === `contract-option-${state.season}-${optionPlayerId}`)).toBe(true);
@@ -3522,20 +4541,23 @@ describe('sim worker narrative APIs', () => {
     expect(state.news.some((item) => item.id === `contract-expiry-departure-${state.season}-${expiring.id}`)).toBe(false);
   });
 
-  it('clocks before draft mutation for an imported offseason null-state fallback', () => {
+  it('rejects an imported null-state draft call before contract, RNG, or snapshot mutation', () => {
     startGame(6572, 'nym');
     const state = requireState();
     const incumbent = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
     incumbent.contract = { ...incumbent.contract, years: 3, teamOption: false };
     state.phase = 'offseason';
     state.offseasonState = null;
-    const result = api.startDraft() as { success: boolean; newPicks: Array<{ playerId: string }> };
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+    const result = api.startDraft() as { success: boolean; error?: string };
 
-    expect(result.success).toBe(true);
-    expect(requireState().players.find((player) => player.id === incumbent.id)?.contract.years).toBe(2);
-    expect(requireState().offseasonState).not.toBeNull();
-    expect(requireState().news.filter((item) => item.id === `contract-clock-live-${state.season}`)).toHaveLength(1);
-    expect(result.newPicks.every((pick) => requireState().players.some((player) => player.id === pick.playerId))).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('draft phase');
+    expect(requireState().players.find((player) => player.id === incumbent.id)?.contract.years).toBe(3);
+    expect(requireState().offseasonState).toBeNull();
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
   });
 
   it('fails closed atomically at the QO-to-FA boundary for an invalid imported market', () => {
@@ -4080,6 +5102,36 @@ describe('sim worker narrative APIs', () => {
     expect(view?.commandCenter.projectedOpeningDay.activeRosterLimit).toBe(26);
     expect(view?.commandCenter.projectedOpeningDay.rosterHoleCount).toBe(2);
     expect(view?.commandCenter.projectedOpeningDay.payrollSpace).toBeLessThan(0);
+  });
+
+  it('uses the frozen phase salary for the command-center QO eligibility projection', () => {
+    startGame(3371, 'nym');
+    const state = requireState();
+    const candidate = state.players.find((player) => (
+      player.teamId === 'nym'
+      && player.rosterStatus === 'MLB'
+      && player.pitcherAttributes == null
+    ))!;
+    candidate.contract.years = 0;
+    candidate.serviceTimeDays = 6 * 172;
+    state.serviceTime.set(candidate.id, candidate.serviceTimeDays);
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'free_agency',
+      phaseDay: 1,
+      totalDay: 20,
+      phaseResults: {
+        ...createOffseasonState(state.season).phaseResults,
+        qualifyingOfferSalary: 1_000,
+      },
+    };
+
+    const view = api.getOffseasonState() as { commandCenter: OffseasonCommandCenterView } | null;
+    const qoChecklist = view?.commandCenter.checklist.find((item) => item.id === 'qualifying_offers');
+
+    expect(api.getQualifyingOfferEligible()).toEqual([]);
+    expect(qoChecklist?.detail).toBe('No qualifying-offer decisions remain.');
   });
 
   it('derives offseason market day summaries from major signings and trades', () => {

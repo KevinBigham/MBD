@@ -9,24 +9,24 @@ type FreeAgentRow = FreeAgencyMarketAgent;
 interface ContractOfferResult {
   accepted: boolean;
   reason?: string;
-}
-
-function snapshotSaved(value: unknown): value is { saved: true } {
-  return typeof value === 'object'
-    && value !== null
-    && 'saved' in value
-    && (value as { saved?: unknown }).saved === true;
+  qualifyingOfferCompensation?: {
+    tier: 'premium' | 'standard';
+    forfeitedRound: number;
+    forfeitedOriginalTeamId: string;
+  } | null;
 }
 
 export interface FreeAgencyOfferActionsOptions {
-  autosaveActiveGame: (context: { season: number }) => Promise<unknown>;
+  /** Legacy test/caller compatibility; exact-save signing no longer invokes it. */
+  autosaveActiveGame?: (context: { season: number }) => Promise<unknown>;
   fetchFreeAgents: () => Promise<void>;
   finance: FinanceOverview | null;
   makeContractOffer: (playerId: string, years: number, salary: number) => Promise<ContractOfferResult>;
   playEffect: (name: AudioEffectName) => void;
   publishDurablePresentation: () => void;
   removeAgentById: (playerId: string) => void;
-  season: number;
+  /** Legacy test/caller compatibility; exact-save signing no longer invokes it. */
+  season?: number;
 }
 
 export interface FreeAgencyOfferActionsResult {
@@ -42,14 +42,12 @@ export interface FreeAgencyOfferActionsResult {
 }
 
 export function useFreeAgencyOfferActions({
-  autosaveActiveGame,
   fetchFreeAgents,
   finance,
   makeContractOffer,
   playEffect,
   publishDurablePresentation,
   removeAgentById,
-  season,
 }: FreeAgencyOfferActionsOptions): FreeAgencyOfferActionsResult {
   const [selectedPlayer, setSelectedPlayer] = useState<FreeAgentRow | null>(null);
   const [offerYears, setOfferYears] = useState(3);
@@ -82,21 +80,13 @@ export function useFreeAgencyOfferActions({
       return;
     }
 
-    try {
-      if (!snapshotSaved(await autosaveActiveGame({ season }))) {
-        setOfferResult('The signing was accepted, but its save is not yet durable.');
-        return;
-      }
-    } catch {
-      setOfferResult('The signing was accepted, but its save is not yet durable.');
-      return;
-    }
-
-    // The worker queued any achievement ceremony in the accepted snapshot.
-    // Notify the shell only after that exact snapshot is durable, so the
-    // visible moment can be dismissed and persisted before a hard reload.
+    // Exact-save execution resolves only after the accepted snapshot is
+    // durable, so presentation can publish without a second autosave lane.
     publishDurablePresentation();
-    setOfferResult(`Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.`);
+    const compensationCopy = result.qualifyingOfferCompensation
+      ? ` Draft compensation: ${result.qualifyingOfferCompensation.tier} award issued; Round ${result.qualifyingOfferCompensation.forfeitedRound} (${result.qualifyingOfferCompensation.forfeitedOriginalTeamId.toUpperCase()} origin) forfeited.`
+      : '';
+    setOfferResult(`Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.${compensationCopy}`);
     playEffect('free_agent_signed');
     removeAgentById(selectedPlayer.id);
     setSelectedPlayer(null);
@@ -107,7 +97,6 @@ export function useFreeAgencyOfferActions({
       // visible even when a read-only market refresh is temporarily down.
     }
   }, [
-    autosaveActiveGame,
     fetchFreeAgents,
     makeContractOffer,
     offerSalary,
@@ -115,7 +104,6 @@ export function useFreeAgencyOfferActions({
     playEffect,
     publishDurablePresentation,
     removeAgentById,
-    season,
     selectedPlayer,
   ]);
 

@@ -18,6 +18,7 @@ interface RawFreeAgentRow {
   letterGrade?: string;
   marketValue?: number;
   demandLevel?: string;
+  qualifyingOffer?: FreeAgentRow['qualifyingOffer'];
   player?: {
     id: string;
     firstName: string;
@@ -74,6 +75,7 @@ function normalizeFreeAgent(row: RawFreeAgentRow): FreeAgentRow {
       letterGrade: row.letterGrade ?? 'B',
       marketValue: row.marketValue ?? 0,
       demandLevel: row.demandLevel ?? 'moderate',
+      qualifyingOffer: row.qualifyingOffer ?? null,
     };
   }
 
@@ -87,6 +89,7 @@ function normalizeFreeAgent(row: RawFreeAgentRow): FreeAgentRow {
     letterGrade: row.letterGrade ?? 'C',
     marketValue: row.marketValue ?? 0,
     demandLevel: row.demandLevel ?? 'moderate',
+    qualifyingOffer: row.qualifyingOffer ?? null,
   };
 }
 

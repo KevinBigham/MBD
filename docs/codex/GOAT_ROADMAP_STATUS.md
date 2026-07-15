@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-14 at roadmap-item-11 closeout; ECON-ARBITRATION-1 is gate-green and reviewed for local landing.
+Last reconciled: 2026-07-15 at roadmap-item-12 verified completion; ECON-QUALIFYING-OFFERS-1 is gate-green and locally landable.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -10,8 +10,9 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–11 and 80.
-- Closed item: **11 — service-time arbitration drama**, now **VERIFIED COMPLETE** under Goal 21 / `ECON-ARBITRATION-1`; Goal 11's bounded contract clock remains complete and item 12 was not started.
+- Verified complete: items 1–12 and 80.
+- Closed item: **11 — service-time arbitration drama**, now **VERIFIED COMPLETE** under Goal 21 / `ECON-ARBITRATION-1`; Goal 11's bounded contract clock remains complete.
+- Closed item: **12 — qualifying offers and draft-pick compensation**, now **VERIFIED COMPLETE** under Goal 22 / `ECON-QUALIFYING-OFFERS-1`; item 13 has not started.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -31,7 +32,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 9 | 2 | Living contract clock | VERIFIED COMPLETE | Goal 11 / `runs/ECON-CLOCK-1` | Completion matrix; strict current-schema soak/replay; compact-v33 compatibility; ECON Playwright and reload-smoke; root gates; `MERGE_READY` 0/0/0 | `0df078234c96a465a00c15aaa4336619e1baa800` | Sol `019f552e-4389-7501-8f16-a1256dcd1824` xhigh architecture/final review; Terra `019f57d9-5a81-7c41-af54-3ffb3a39878d` high implementation; Luna `019f5963-de05-78c0-9aaa-fc5bc778d7b4` medium closeout | Tier 1 | Preserve clock/market/save-boundary invariants |
 | 10 | 2 | Symmetric option-year resolution | VERIFIED COMPLETE | Goal 11 / `runs/ECON-CLOCK-1`; bundled at one clock seam | Team-option-only deterministic rule, named user/CPU symmetry, zero-RNG proof, Finance/Offseason/News truth, reload proof | Same Goal-11 landing commit | Same relay as item 9 | Item 9 | Preserve deterministic symmetry; player options remain cut |
 | 11 | 2 | Service-time arbitration drama | VERIFIED COMPLETE | Goal 21 / `runs/ECON-ARBITRATION-1` | Completion matrix; persisted deterministic docket; exact-save lease/session proof; full gates; production arbitration 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Parent single writer; three read-only source/test/risk reviewers; parent final adversarial review | Items 9–10 | Preserve service-day authority, exact-save fencing, and durable-only presentation |
-| 12 | 2 | Qualifying offers and pick compensation | PARTIAL | No run | QO, draft-pick compensation source/tests exist | Historical source | — | Item 9 | Add bounded offseason/draft reload proof |
+| 12 | 2 | Qualifying offers and pick compensation | VERIFIED COMPLETE | Goal 22 / `runs/ECON-QUALIFYING-OFFERS-1` | Completion matrix; atomic award/loss conservation; exact-save issue/resolve/sign/draft; full gates; production QO 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; final `/root/qoffers_final_review` `MERGE_READY` with zero P0–P2 | Items 9–11 | Preserve fixed salary, aggregate validation, exact draft phase, and no-free-award law; item 13 is next |
 | 13 | 2 | Identity-driven CPU extensions | PARTIAL | No run | Extension AI/tests exist; durable cross-domain identity incomplete | Historical source | — | Items 9, 49 | Reconcile after org identity |
 | 14 | 2 | Owner payroll pressure/tax consequences | PARTIAL | No run | Owner archetype/budget/tax primitives exist | Historical source | — | Items 9, 51 | Add calibration and narrative consequence proof |
 | 15 | 2 | Market-size revenue feeds budgets | PARTIAL | No run | Attendance/playoff/spending factors feed budget state | Historical source | — | Item 9 | Add multi-season calibration |

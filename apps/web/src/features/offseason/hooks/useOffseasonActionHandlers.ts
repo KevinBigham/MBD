@@ -30,7 +30,7 @@ interface UseOffseasonActionHandlersResult {
   handleToggleProtection: (playerId: string) => Promise<void>;
 }
 
-function isOffseasonData(value: unknown): value is OffseasonData {
+function isOffseasonData(value: unknown): value is OffseasonData & { flowStateChanged?: boolean } {
   return typeof value === 'object' && value !== null && 'currentPhase' in value && 'phaseResults' in value;
 }
 
@@ -81,7 +81,7 @@ export function useOffseasonActionHandlers({
     setAdvancing(true);
     try {
       const data = await advanceOffseason();
-      if (isOffseasonData(data)) {
+      if (isOffseasonData(data) && data.flowStateChanged !== false) {
         applyOffseasonData(data);
       }
     } finally {
@@ -93,7 +93,7 @@ export function useOffseasonActionHandlers({
     setAdvancing(true);
     try {
       const data = await skipOffseasonPhase();
-      if (isOffseasonData(data)) {
+      if (isOffseasonData(data) && data.flowStateChanged !== false) {
         applyOffseasonData(data);
       }
     } finally {
@@ -106,25 +106,23 @@ export function useOffseasonActionHandlers({
     try {
       const result = await issueQualifyingOffer(playerId);
       if (isSuccessResult(result) && result.success) {
-        if (!await autosaveSeason()) return;
         await fetchOffseason();
       }
     } finally {
       setAdvancing(false);
     }
-  }, [autosaveSeason, fetchOffseason, issueQualifyingOffer]);
+  }, [fetchOffseason, issueQualifyingOffer]);
 
   const handleResolveQualifyingOffers = useCallback(async () => {
     setAdvancing(true);
     try {
       const result = await resolveQualifyingOffers();
       if (isErrorResult(result)) return;
-      if (!await autosaveSeason()) return;
       await fetchOffseason();
     } finally {
       setAdvancing(false);
     }
-  }, [autosaveSeason, fetchOffseason, resolveQualifyingOffers]);
+  }, [fetchOffseason, resolveQualifyingOffers]);
 
   const handleToggleProtection = useCallback(async (playerId: string) => {
     setAdvancing(true);

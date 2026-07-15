@@ -42,6 +42,7 @@ vi.mock('./saveSessionOwnership', async (importOriginal) => {
 });
 
 import {
+  didFlowAwareExactMutationChange,
   executeExactSaveMutation,
   getExactSaveMutationStatus,
   resetExactSaveMutationCoordinatorForTesting,
@@ -71,6 +72,7 @@ function worker(overrides: Record<string, unknown> = {}) {
       restoredSnapshot: structuredClone(v34SnapshotFixture),
     }),
     publishFlow: vi.fn(),
+    discardFlow: vi.fn(),
     ...overrides,
   };
 }
@@ -155,6 +157,55 @@ describe('exact-save mutation coordinator', () => {
     expect(mocks.finishPersistenceLease).toHaveBeenCalledWith(persistenceLease, receipt);
     expect(getExactSaveMutationStatus()).toEqual({ kind: 'idle' });
     expect(getWorkerMutationPauseSnapshot()).toBe(false);
+  });
+
+  it('releases an exact no-change result without accepting a persistence receipt', async () => {
+    const exactWorker = worker({
+      exportSnapshot: vi.fn()
+        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture))
+        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture)),
+      execute: vi.fn().mockResolvedValue({ success: false, flowStateChanged: false }),
+    });
+    const runOptions = {
+      ...options(exactWorker),
+      didChange: (result: { flowStateChanged: boolean }) => result.flowStateChanged,
+    };
+
+    await expect(executeExactSaveMutation(runOptions)).resolves.toMatchObject({
+      kind: 'unchanged',
+      result: { success: false },
+    });
+    expect(exactWorker.discardFlow).toHaveBeenCalledTimes(1);
+    expect(exactWorker.publishFlow).not.toHaveBeenCalled();
+    expect(mocks.capture).not.toHaveBeenCalled();
+    expect(mocks.abortPersistenceLease).toHaveBeenCalledWith(persistenceLease);
+    expect(getExactSaveMutationStatus()).toEqual({ kind: 'idle' });
+    expect(getWorkerMutationPauseSnapshot()).toBe(false);
+  });
+
+  it('treats a hostile offseason transition result as unchanged without capture or publication', async () => {
+    const blockedView = {
+      currentPhase: 'draft',
+      phaseDay: 3,
+      flowStateChanged: false,
+      error: 'Qualifying-offer compensation state is inconsistent.',
+    };
+    const exactWorker = worker({
+      exportSnapshot: vi.fn()
+        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture))
+        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture)),
+      execute: vi.fn().mockResolvedValue(blockedView),
+    });
+
+    await expect(executeExactSaveMutation({
+      ...options(exactWorker),
+      operation: 'skipOffseasonPhase',
+      didChange: didFlowAwareExactMutationChange,
+    })).resolves.toMatchObject({ kind: 'unchanged', result: blockedView });
+    expect(exactWorker.discardFlow).toHaveBeenCalledTimes(1);
+    expect(exactWorker.publishFlow).not.toHaveBeenCalled();
+    expect(mocks.capture).not.toHaveBeenCalled();
+    expect(mocks.abortPersistenceLease).toHaveBeenCalledWith(persistenceLease);
   });
 
   it('derives branch persistence metadata from the resolved save target, never the UI mirror', async () => {

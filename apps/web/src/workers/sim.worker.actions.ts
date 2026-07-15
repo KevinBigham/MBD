@@ -133,7 +133,9 @@ import {
   timestamp,
   toggleUserRule5Protection,
   advanceOffseasonOnce,
-  applyQualifyingOfferCompensationIfNeeded,
+  commitQualifyingOfferCompensation,
+  prepareQualifyingOfferCompensation,
+  validateQualifyingOfferCompensationState,
   resolvePersistedScoutConflicts,
   hasCanonicalFreeAgencyMarket,
   getAvailableMlbSigningSlots,
@@ -2556,9 +2558,31 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
     }
+    if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+      return {
+        success: false as const,
+        draft: null,
+        newPicks: [],
+        error: 'Draft actions are available only during the draft phase.',
+        flowStateChanged: false as const,
+      };
+    }
+    const compensationError = validateQualifyingOfferCompensationState(s);
+    if (compensationError) {
+      return {
+        success: false as const,
+        draft: null,
+        newPicks: [],
+        error: compensationError,
+        flowStateChanged: false as const,
+      };
+    }
+    const result = s.draftClass
+      ? startDraftSession(s)
+      : startDraftSession(s, generateDraftClass(s.rng.fork(), s.season));
     return {
-      ...startDraftSession(s, generateDraftClass(s.rng.fork(), s.season)),
-      flowStateChanged: true,
+      ...result,
+      flowStateChanged: result.flowStateChanged ?? result.success,
     };
   },
 
@@ -2567,27 +2591,46 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
     }
+    if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+      return { success: false as const, draft: null, newPicks: [], error: 'Draft actions are available only during the draft phase.', flowStateChanged: false as const };
+    }
     const result = makeUserDraftSelection(s, prospectId);
     if (result.success && result.draft?.status === 'complete') {
       publishDraftGradesNarrative(s);
     }
     return {
       ...result,
-      flowStateChanged: true,
+      flowStateChanged: result.success,
     };
   },
 
   scoutDraftPlayer(prospectId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
+    if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+      return { success: false as const, error: 'Draft actions are available only during the draft phase.', flowStateChanged: false as const };
+    }
+    const result = scoutUserDraftPlayer(s, prospectId);
     return {
-      ...scoutUserDraftPlayer(requireState(), prospectId),
-      flowStateChanged: true,
+      ...result,
+      flowStateChanged: result.success,
     };
   },
 
   toggleDraftBigBoard(prospectId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
+    if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+      return { success: false as const, error: 'Draft actions are available only during the draft phase.', flowStateChanged: false as const };
+    }
+    const result = toggleUserDraftBigBoardPlayer(s, prospectId);
     return {
-      ...toggleUserDraftBigBoardPlayer(requireState(), prospectId),
-      flowStateChanged: true,
+      ...result,
+      flowStateChanged: result.success,
     };
   },
 
@@ -2595,6 +2638,9 @@ export const actionApi = {
     const s = requireState();
     if (syncFranchiseTerminationFromOwner(s)) {
       return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
+    if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+      return { success: false as const, error: 'Draft actions are available only during the draft phase.', flowStateChanged: false as const };
     }
     const result = signUserDraftPick(s, playerId, bonusAmount);
     if (result.success && result.signed) {
@@ -2604,7 +2650,7 @@ export const actionApi = {
     }
     return {
       ...result,
-      flowStateChanged: true,
+      flowStateChanged: result.success,
     };
   },
 
@@ -2613,13 +2659,16 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
     }
+    if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+      return { success: false as const, draft: null, newPicks: [], error: 'Draft actions are available only during the draft phase.', flowStateChanged: false as const };
+    }
     const result = simulateRemainingDraftSession(s);
-    if (result.success && result.draft?.status === 'complete') {
+    if (result.success && result.flowStateChanged !== false && result.draft?.status === 'complete') {
       publishDraftGradesNarrative(s);
     }
     return {
       ...result,
-      flowStateChanged: true,
+      flowStateChanged: result.flowStateChanged ?? result.success,
     };
   },
 
@@ -2763,7 +2812,7 @@ export const actionApi = {
   applyDevelopmentFocusPlan(playerId: string, category: DevelopmentFocusCategory) {
     const s = requireState();
     if (syncFranchiseTerminationFromOwner(s)) {
-      return { success: false, error: franchiseLockMessage(s) };
+      return { success: false, error: franchiseLockMessage(s), flowStateChanged: false as const };
     }
 
     const player = s.players.find((candidate) => candidate.id === playerId);
@@ -2954,6 +3003,9 @@ export const actionApi = {
     if (syncFranchiseTerminationFromOwner(s)) {
       return { accepted: false, reason: franchiseLockMessage(s) };
     }
+    if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'free_agency') {
+      return { accepted: false, reason: 'Contract offers are available only during free agency.' };
+    }
     const market = s.freeAgencyMarket;
     if (!market || !hasCanonicalFreeAgencyMarket(s)) {
       return { accepted: false, reason: 'Free agency has not opened yet.' };
@@ -2985,6 +3037,16 @@ export const actionApi = {
     ));
     if (!result.accepted || !freeAgent) {
       return result;
+    }
+
+    const compensationPlan = prepareQualifyingOfferCompensation(
+      s,
+      playerId,
+      s.userTeamId,
+      offer,
+    );
+    if (compensationPlan.kind === 'blocked') {
+      return { accepted: false, reason: compensationPlan.reason };
     }
 
     const player = s.players.find((candidate) => candidate.id === playerId);
@@ -3055,11 +3117,20 @@ export const actionApi = {
         read: false,
       });
     }
-    applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
+    commitQualifyingOfferCompensation(s, playerId, s.userTeamId, compensationPlan);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
     recordFreeAgentSigning(s, playerId, salary);
     syncAchievementState(s);
-    return result;
+    return {
+      ...result,
+      qualifyingOfferCompensation: compensationPlan.kind === 'compensate'
+        ? {
+          tier: compensationPlan.priorityGroup,
+          forfeitedRound: compensationPlan.forfeitedPick.round,
+          forfeitedOriginalTeamId: compensationPlan.forfeitedPick.originalTeamId,
+        }
+        : null,
+    };
   },
 
   negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
@@ -3086,14 +3157,14 @@ export const actionApi = {
   resolveQualifyingOffers() {
     const s = requireState();
     if (syncFranchiseTerminationFromOwner(s)) {
-      return { resolved: [], error: franchiseLockMessage(s) };
+      return { resolved: [], error: franchiseLockMessage(s), flowStateChanged: false as const };
     }
     if (
       s.phase !== 'offseason'
       || s.offseasonState?.currentPhase !== 'qualifying_offers'
       || s.offseasonState.completed === true
     ) {
-      return { resolved: [], error: 'Qualifying offers phase is not active.' };
+      return { resolved: [], error: 'Qualifying offers phase is not active.', flowStateChanged: false as const };
     }
     return resolveOutstandingQualifyingOffers(s);
   },
@@ -3124,7 +3195,12 @@ export const actionApi = {
     }
     const progress = advanceOffseasonOnce(s);
     applyAISigningProgress(s, progress.aiSignings);
-    return buildOffseasonStateView(s);
+    const view = buildOffseasonStateView(s);
+    return view ? {
+      ...view,
+      flowStateChanged: progress.flowStateChanged !== false && progress.error == null,
+      ...(progress.error ? { error: progress.error } : {}),
+    } : null;
   },
 
   skipOffseasonPhase(): OffseasonStateView | null {
@@ -3137,7 +3213,12 @@ export const actionApi = {
     }
     const progress = skipOffseasonPhaseWithAI(s);
     applyAISigningProgress(s, progress.aiSignings);
-    return buildOffseasonStateView(s);
+    const view = buildOffseasonStateView(s);
+    return view ? {
+      ...view,
+      flowStateChanged: progress.flowStateChanged !== false && progress.error == null,
+      ...(progress.error ? { error: progress.error } : {}),
+    } : null;
   },
 
   scoutIFAPlayer(playerId: string) {

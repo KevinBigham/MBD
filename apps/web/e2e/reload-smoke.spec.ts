@@ -805,6 +805,25 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     await expectMutationSaved(page);
     await drainDurableOverlays(page);
 
+    await navigateFromSidebar(page, '/offseason', 'Offseason');
+    const offseasonHeader = page.locator('header').getByText(/^Season 1 — Offseason:/).first();
+    const amateurDraftHeading = appMain(page).getByRole('heading', {
+      name: 'Amateur Draft',
+      exact: true,
+    }).first();
+    for (let transition = 0; transition < 10; transition += 1) {
+      if (await amateurDraftHeading.isVisible().catch(() => false)) break;
+      const previousPhase = await offseasonHeader.innerText();
+      const skipPhase = appMain(page).getByRole('button', { name: 'Skip Phase', exact: true });
+      await expectDurableSaveSummary(page);
+      await expect(skipPhase).toBeEnabled();
+      await skipPhase.click();
+      await expect(offseasonHeader).not.toHaveText(previousPhase, { timeout: 60_000 });
+      await expectMutationSaved(page);
+      await drainDurableOverlays(page);
+    }
+    await expect(amateurDraftHeading).toBeVisible();
+
     await navigateFromSidebar(page, '/draft', 'Draft Room');
     await dismissGuidedStartNudges(page);
     await freshRuntimeReload(page, {

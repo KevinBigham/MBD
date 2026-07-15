@@ -110,7 +110,30 @@ describe('useOffseasonActionHandlers', () => {
     expect(latestResult?.advancing).toBe(false);
   });
 
-  it('fetches fresh offseason data and autosaves after successful qualifying-offer actions', async () => {
+  it('does not publish a fail-closed no-change Advance or Skip result', async () => {
+    const blockedState = {
+      ...buildOffseasonState({ currentPhase: 'draft' }),
+      flowStateChanged: false,
+      error: 'Draft session is inconsistent.',
+    };
+    const options = baseOptions({
+      advanceOffseason: vi.fn().mockResolvedValue(blockedState),
+      skipOffseasonPhase: vi.fn().mockResolvedValue(blockedState),
+    });
+    const hook = await renderHook(options);
+
+    await act(async () => {
+      await hook.handleAdvance();
+      await hook.handleSkip();
+    });
+
+    expect(options.advanceOffseason).toHaveBeenCalledTimes(1);
+    expect(options.skipOffseasonPhase).toHaveBeenCalledTimes(1);
+    expect(options.applyOffseasonData).not.toHaveBeenCalled();
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
+  });
+
+  it('refreshes only after exact-save qualifying-offer actions return durably', async () => {
     const options = baseOptions();
     const hook = await renderHook(options);
 
@@ -122,11 +145,7 @@ describe('useOffseasonActionHandlers', () => {
     expect(options.issueQualifyingOffer).toHaveBeenCalledWith('qo-1');
     expect(options.resolveQualifyingOffers).toHaveBeenCalledTimes(1);
     expect(options.fetchOffseason).toHaveBeenCalledTimes(2);
-    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[0]!)
-      .toBeLessThan(vi.mocked(options.fetchOffseason).mock.invocationCallOrder[0]!);
-    expect(vi.mocked(options.autosaveActiveGame).mock.invocationCallOrder[1]!)
-      .toBeLessThan(vi.mocked(options.fetchOffseason).mock.invocationCallOrder[1]!);
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
   });
 
   it('does not autosave targeted actions when worker results are not successful', async () => {
@@ -165,11 +184,11 @@ describe('useOffseasonActionHandlers', () => {
       .toBeLessThan(vi.mocked(options.fetchOffseason).mock.invocationCallOrder[0]!);
   });
 
-  it('does not start the presentation refresh until an accepted mutation enters persistence', async () => {
-    let releasePersistence!: () => void;
+  it('does not start the presentation refresh until the exact mutation returns durably', async () => {
+    let releaseExactMutation!: () => void;
     const options = baseOptions({
-      autosaveActiveGame: vi.fn(() => new Promise<{ saved: true }>((resolve) => {
-        releasePersistence = () => resolve({ saved: true });
+      issueQualifyingOffer: vi.fn(() => new Promise<{ success: true }>((resolve) => {
+        releaseExactMutation = () => resolve({ success: true });
       })),
     });
     const hook = await renderHook(options);
@@ -177,20 +196,20 @@ describe('useOffseasonActionHandlers', () => {
 
     await act(async () => {
       pending = hook.handleIssueQualifyingOffer('qo-held');
-      await vi.waitFor(() => expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(options.issueQualifyingOffer).toHaveBeenCalledTimes(1));
     });
     expect(options.fetchOffseason).not.toHaveBeenCalled();
 
     await act(async () => {
-      releasePersistence();
+      releaseExactMutation();
       await pending;
     });
     expect(options.fetchOffseason).toHaveBeenCalledTimes(1);
   });
 
-  it('does not refresh offseason presentation when persistence resolves unsaved', async () => {
+  it('does not refresh offseason presentation when the exact executor returns no durable result', async () => {
     const options = baseOptions({
-      autosaveActiveGame: vi.fn().mockResolvedValue({ saved: false }),
+      issueQualifyingOffer: vi.fn().mockResolvedValue(null),
     });
     const hook = await renderHook(options);
 
@@ -198,7 +217,7 @@ describe('useOffseasonActionHandlers', () => {
       await hook.handleIssueQualifyingOffer('qo-unsaved');
     });
 
-    expect(options.autosaveActiveGame).toHaveBeenCalledTimes(1);
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
     expect(options.fetchOffseason).not.toHaveBeenCalled();
     expect(latestResult?.advancing).toBe(false);
   });

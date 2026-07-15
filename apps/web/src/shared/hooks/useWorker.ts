@@ -43,6 +43,7 @@ import {
   getSimAdvanceCoordinatorStatus,
   subscribeToSimAdvanceCoordinator,
 } from '@/shared/lib/simAdvanceCoordinator';
+import type { ExactSaveGameplayOperation } from './useExactOffseasonMutationExecutor';
 
 export type SimAdvanceWorkerOperation = 'simDay' | 'simWeek' | 'simMonth' | 'simToPlayoffs';
 export type LegacySimAdvanceOperation = 'simDay' | 'simWeek' | 'simMonth';
@@ -613,7 +614,7 @@ export function useWorker() {
       },
       execute: async (
         session: ExactSaveMutationWorkerSession,
-        operation: 'advanceOffseason' | 'skipOffseasonPhase',
+        operation: ExactSaveGameplayOperation,
       ) => {
         const current = assertSession(session);
         if (current.phase !== 'baseline_exported') {
@@ -621,11 +622,26 @@ export function useWorker() {
         }
         try {
           const remote = getOrCreateWorker();
-          const result = await withPermit(session, () => (
-            operation === 'advanceOffseason'
-              ? remote.advanceOffseason()
-              : remote.skipOffseasonPhase()
-          ));
+          const result = await withPermit<unknown>(session, () => {
+            if (operation === 'advanceOffseason') return remote.advanceOffseason();
+            if (operation === 'skipOffseasonPhase') return remote.skipOffseasonPhase();
+            switch (operation.kind) {
+              case 'issueQualifyingOffer':
+                return remote.issueQualifyingOffer(operation.playerId);
+              case 'resolveQualifyingOffers':
+                return remote.resolveQualifyingOffers();
+              case 'makeContractOffer':
+                return remote.makeContractOffer(operation.playerId, operation.years, operation.salary);
+              case 'startDraft':
+                return remote.startDraft();
+              case 'makeDraftPick':
+                return remote.makeDraftPick(operation.prospectId);
+              case 'signDraftPick':
+                return remote.signDraftPick(operation.playerId, operation.bonusAmount);
+              case 'simulateRemainingDraft':
+                return remote.simulateRemainingDraft();
+            }
+          });
           current.phase = 'mutated';
           return result;
         } catch (error) {
@@ -656,6 +672,13 @@ export function useWorker() {
         }
         current.phase = 'completed';
         notifyFlowListeners();
+      },
+      discardFlow: (session: ExactSaveMutationWorkerSession) => {
+        const current = assertSession(session);
+        if (current.phase !== 'post_exported') {
+          throw new Error('Exact-save no-change completion requires a retained post snapshot.');
+        }
+        current.phase = 'completed';
       },
     };
   }, [expectedActiveSaveId]);

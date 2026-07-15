@@ -31,6 +31,7 @@ export type {
   DraftPickDescriptor,
   DraftCompensatoryPick,
   DraftCompensatoryPickAward,
+  DraftCompensationPlan,
   DraftPickSlot,
 } from './draftPicks.js';
 export {
@@ -39,5 +40,6 @@ export {
   tradeDraftPickOwnership,
   awardCompensatoryPick,
   forfeitHighestEligiblePick,
+  planDraftPickCompensation,
   buildDraftPickSlots,
 } from './draftPicks.js';

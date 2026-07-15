@@ -68,6 +68,8 @@ export interface PhaseResults {
   tenderedPlayers: string[];          // Player IDs that were tendered
   nonTenderedPlayers: string[];       // Player IDs that were non-tendered (become FAs)
   extensions: ExtensionPhaseResult[];
+  /** Once-only league salary line used by every offer in this QO phase. */
+  qualifyingOfferSalary: number | null;
   qualifyingOffers: QualifyingOfferPhaseResult[];
   coachChanges: CoachChangeResult[];
   freeAgentSignings: FASigningResult[];
@@ -124,6 +126,12 @@ export interface QualifyingOfferPhaseResult {
   status: 'offered' | 'accepted' | 'rejected' | 'compensated' | 'expired';
   signingTeamId: string | null;
   compensationPickId: string | null;
+  compensationTier: 'premium' | 'standard' | null;
+  forfeitedPick: {
+    season: number;
+    round: number;
+    originalTeamId: string;
+  } | null;
 }
 
 export interface CoachChangeResult {
@@ -183,6 +191,7 @@ export function createOffseasonState(season: number): OffseasonState {
       tenderedPlayers: [],
       nonTenderedPlayers: [],
       extensions: [],
+      qualifyingOfferSalary: null,
       qualifyingOffers: [],
       coachChanges: [],
       freeAgentSignings: [],

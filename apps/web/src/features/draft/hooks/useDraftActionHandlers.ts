@@ -6,6 +6,7 @@ import type {
 
 interface UseDraftActionHandlersOptions {
   autosaveActiveGame: (context: { season: number }) => Promise<unknown>;
+  gameplayMutationsAreDurable?: boolean;
   loadDraft: () => Promise<void>;
   makeDraftPick: (prospectId: string) => Promise<unknown>;
   scoutDraftPlayer: (prospectId: string) => Promise<unknown>;
@@ -44,6 +45,7 @@ function snapshotSaved(value: unknown): value is { saved: true } {
 
 export function useDraftActionHandlers({
   autosaveActiveGame,
+  gameplayMutationsAreDurable = false,
   loadDraft,
   makeDraftPick,
   scoutDraftPlayer,
@@ -96,14 +98,15 @@ export function useDraftActionHandlers({
     setError(null);
     try {
       const result = await startDraft();
-      if (!isSuccessfulDraftMutation(result) || !await autosaveDraftMutation()) return;
+      if (!isSuccessfulDraftMutation(result)
+        || (!gameplayMutationsAreDurable && !await autosaveDraftMutation())) return;
       applyDraftResult(result as DraftActionResult);
     } catch {
       setError('Draft system unavailable.');
     } finally {
       setLoading(false);
     }
-  }, [applyDraftResult, autosaveDraftMutation, startDraft]);
+  }, [applyDraftResult, autosaveDraftMutation, gameplayMutationsAreDurable, startDraft]);
 
   const handleMakePick = useCallback(async () => {
     if (!selectedProspect) return;
@@ -111,14 +114,15 @@ export function useDraftActionHandlers({
     setError(null);
     try {
       const result = await makeDraftPick(selectedProspect.id);
-      if (!isSuccessfulDraftMutation(result) || !await autosaveDraftMutation()) return;
+      if (!isSuccessfulDraftMutation(result)
+        || (!gameplayMutationsAreDurable && !await autosaveDraftMutation())) return;
       applyDraftResult(result as DraftActionResult);
     } catch {
       setError('Failed to submit draft pick.');
     } finally {
       setLoading(false);
     }
-  }, [applyDraftResult, autosaveDraftMutation, makeDraftPick, selectedProspect]);
+  }, [applyDraftResult, autosaveDraftMutation, gameplayMutationsAreDurable, makeDraftPick, selectedProspect]);
 
   const handleScoutProspect = useCallback(async () => {
     if (!selectedProspect) return;
@@ -178,28 +182,29 @@ export function useDraftActionHandlers({
       // Persist the accepted signing before refreshing the room so a refresh
       // failure cannot drop the durable post-signing snapshot. The refresh is
       // display-only, so its failure must not surface as a signing error.
-      if (!await autosaveDraftMutation()) return;
+      if (!gameplayMutationsAreDurable && !await autosaveDraftMutation()) return;
       await loadDraft().catch(() => undefined);
     } catch {
       setError('Failed to complete draft signing.');
     } finally {
       setSigningPlayerId(null);
     }
-  }, [autosaveDraftMutation, bonusOffers, loadDraft, signDraftPick]);
+  }, [autosaveDraftMutation, bonusOffers, gameplayMutationsAreDurable, loadDraft, signDraftPick]);
 
   const handleWatchDraft = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const result = await simulateRemainingDraft();
-      if (!isSuccessfulDraftMutation(result) || !await autosaveDraftMutation()) return;
+      if (!isSuccessfulDraftMutation(result)
+        || (!gameplayMutationsAreDurable && !await autosaveDraftMutation())) return;
       applyDraftResult(result as DraftActionResult, { watch: true });
     } catch {
       setError('Failed to simulate the remaining draft.');
     } finally {
       setLoading(false);
     }
-  }, [applyDraftResult, autosaveDraftMutation, simulateRemainingDraft]);
+  }, [applyDraftResult, autosaveDraftMutation, gameplayMutationsAreDurable, simulateRemainingDraft]);
 
   const handleBonusOfferChange = useCallback((playerId: string, value: string) => {
     setBonusOffers((current) => ({ ...current, [playerId]: value }));

@@ -34,12 +34,11 @@ ADR and must not block web release.
 
 - The authoritative campaign ledger is `docs/codex/GOAT_ROADMAP_STATUS.md`;
   branch names and revisions must be verified from live Git before every slice.
-- Roadmap items 1–11 and 80 are verified complete in the ledger.
-- Roadmap item 11, service-time arbitration drama, is complete under Goal 21 /
-  `docs/codex/runs/ECON-ARBITRATION-1/`.
-- No later item has started. The next eligible bounded slice is roadmap item 12,
-  qualifying offers plus draft-pick compensation, after a fresh source/goal
-  reconciliation on its own branch/worktree.
+- Roadmap items 1–12 and 80 are verified complete in the ledger.
+- Roadmap item 12, qualifying offers plus draft-pick compensation, is complete
+  under Goal 22 / `docs/codex/runs/ECON-QUALIFYING-OFFERS-1/`.
+- Roadmap item 13, identity-driven CPU extensions, is the next eligible
+  economy slice. It and all later work remain unstarted in this run.
 
 ## Remaining Release Gates
 

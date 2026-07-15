@@ -12,7 +12,6 @@ import {
   MLB_ROSTER_LIMIT,
   OFFSEASON_PHASES,
   aiSelectPick,
-  awardCompensatoryPick,
   buildPlayoffPreview,
   buildDraftPickSlots,
   advanceContractForOffseason,
@@ -32,7 +31,7 @@ import {
   type InternationalScoutingState,
   determinePlayoffSeeds,
   determineDraftOrder,
-  forfeitHighestEligiblePick,
+  planDraftPickCompensation,
   generateDraftClass,
   generateScoutConflict,
   getDaysUntilTradeDeadline,
@@ -476,6 +475,8 @@ export interface OffseasonProgressResult {
     annualSalary: number;
     marketValue: number;
   }>;
+  error?: string;
+  flowStateChanged?: boolean;
 }
 
 export type OffseasonTransactionTone = 'user' | 'division_rival' | 'neutral';
@@ -550,6 +551,7 @@ export interface OffseasonStateView extends OffseasonState {
   commandCenter: OffseasonCommandCenterView;
   rule5?: Rule5StateView;
   flowStateChanged?: boolean;
+  error?: string;
 }
 
 export type OffseasonArbitrationStage = 'filing' | 'exchange' | 'hearing' | 'resolved';
@@ -1414,9 +1416,9 @@ export function getQualifyingOfferEligibleForTeam(
       .filter((record) => record.season === s.season)
       .map((record) => record.playerId),
   );
-  const salary = calculateQualifyingOfferSalaryCore(s.players);
+  const salary = getQualifyingOfferSalaryForState(s);
 
-  return getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime)
+  return getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime, salary)
     .filter((player) => !offeredPlayerIds.has(player.id))
     .map((player) => ({
       playerId: player.id,
@@ -1424,35 +1426,65 @@ export function getQualifyingOfferEligibleForTeam(
       teamId,
       qualifyingOfferSalary: salary,
       projectedMarketValue: roundMoney(calculateMarketValue(player)),
-      serviceYears: s.serviceTime.get(player.id) ?? serviceDaysToYears(player.serviceTimeDays),
+      serviceYears: serviceDaysToYears(player.serviceTimeDays),
     }));
+}
+
+export function getQualifyingOfferSalaryForState(s: FullGameState): number {
+  return s.offseasonState?.phaseResults.qualifyingOfferSalary
+    ?? calculateQualifyingOfferSalaryCore(s.players);
+}
+
+function ensureQualifyingOfferSalaryForState(s: FullGameState): number {
+  const amount = getQualifyingOfferSalaryForState(s);
+  if (s.offseasonState && s.offseasonState.phaseResults.qualifyingOfferSalary == null) {
+    s.offseasonState = {
+      ...s.offseasonState,
+      phaseResults: {
+        ...s.offseasonState.phaseResults,
+        qualifyingOfferSalary: amount,
+      },
+    };
+  }
+  return amount;
 }
 
 export function issueTeamQualifyingOffer(
   s: FullGameState,
   playerId: string,
+  teamId: string = s.userTeamId,
 ) {
   if (!isOffseasonPhaseActive(s, 'qualifying_offers')) {
-    return { success: false as const, error: 'Qualifying offers phase is not active.' };
+    return { success: false as const, error: 'Qualifying offers phase is not active.', flowStateChanged: false as const };
+  }
+
+  const integrityError = validateQualifyingOfferCompensationState(s);
+  if (integrityError) {
+    return { success: false as const, error: integrityError, flowStateChanged: false as const };
   }
 
   const player = s.players.find((candidate) => candidate.id === playerId);
-  const eligible = player != null
-    && getQualifyingOfferEligiblePlayers(s.players, player.teamId, s.serviceTime)
-      .some((candidate) => candidate.id === playerId);
-  if (!player || !eligible) {
-    return { success: false as const };
+  if (!player || player.teamId !== teamId) {
+    return { success: false as const, error: 'That club does not control this qualifying-offer decision.', flowStateChanged: false as const };
+  }
+
+  const amount = getQualifyingOfferSalaryForState(s);
+  const eligible = getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime, amount)
+    .some((candidate) => candidate.id === playerId);
+  if (!eligible) {
+    return { success: false as const, flowStateChanged: false as const };
   }
 
   const existing = s.draftState.qualifyingOffers.find((record) =>
     record.playerId === playerId && record.season === s.season,
   );
   if (existing) {
-    return { success: true as const, record: existing };
+    return { success: false as const, record: existing, error: 'A qualifying offer is already recorded for this player.', flowStateChanged: false as const };
   }
 
-  const amount = calculateQualifyingOfferSalaryCore(s.players);
-  const record = issueQualifyingOfferCore(player, player.teamId, s.season, amount);
+  ensureQualifyingOfferSalaryForState(s);
+
+  const record = issueQualifyingOfferCore(player, teamId, s.season, amount);
   s.draftState = {
     ...s.draftState,
     qualifyingOffers: [...s.draftState.qualifyingOffers, record],
@@ -1466,6 +1498,8 @@ export function issueTeamQualifyingOffer(
       status: record.status,
       signingTeamId: record.signingTeamId,
       compensationPickId: record.compensationPickId,
+      compensationTier: null,
+      forfeitedPick: null,
     }]);
   }
 
@@ -1483,17 +1517,35 @@ export function issueTeamQualifyingOffer(
     },
   }, s.players, s.season, s.day));
 
-  return { success: true as const, record };
+  return { success: true as const, record, flowStateChanged: true as const };
 }
 
 export function resolveOutstandingQualifyingOffers(s: FullGameState) {
+  const integrityError = validateQualifyingOfferCompensationState(s);
+  if (integrityError) {
+    return { resolved: [], error: integrityError, flowStateChanged: false as const };
+  }
   const offeredRecords = s.draftState.qualifyingOffers
-    .filter((record) => record.season === s.season && record.status === 'offered');
+    .filter((record) => record.season === s.season && record.status === 'offered')
+    .sort((left, right) => left.teamId.localeCompare(right.teamId) || left.playerId.localeCompare(right.playerId));
+  if (offeredRecords.length === 0) {
+    return { resolved: [], flowStateChanged: false as const };
+  }
+  const missingPlayer = offeredRecords.find((record) => !s.players.some((player) => player.id === record.playerId));
+  if (missingPlayer) {
+    return {
+      resolved: [],
+      error: `Qualifying-offer state is inconsistent for player ${missingPlayer.playerId}.`,
+      flowStateChanged: false as const,
+    };
+  }
+  const amount = ensureQualifyingOfferSalaryForState(s);
   const playerIndex = new Map(s.players.map((player, index) => [player.id, index] as const));
   const resolved: Array<{
     playerId: string;
     status: string;
   }> = [];
+  let flowStateChanged = false;
 
   for (const record of offeredRecords) {
     const index = playerIndex.get(record.playerId);
@@ -1503,7 +1555,7 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
 
     const player = s.players[index]!;
     const remainsEligible = player.teamId === record.teamId
-      && getQualifyingOfferEligiblePlayers(s.players, record.teamId, s.serviceTime)
+      && getQualifyingOfferEligiblePlayers(s.players, record.teamId, s.serviceTime, amount)
         .some((candidate) => candidate.id === player.id);
     if (!remainsEligible) {
       const expiredRecord = { ...record, status: 'expired' as const };
@@ -1512,6 +1564,7 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
         qualifyingOffers: s.draftState.qualifyingOffers.map((entry) =>
           entry.playerId === record.playerId && entry.season === record.season ? expiredRecord : entry),
       };
+      flowStateChanged = true;
       if (s.offseasonState) {
         s.offseasonState = recordQualifyingOfferResults(s.offseasonState, [{
           playerId: expiredRecord.playerId,
@@ -1520,12 +1573,15 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
           status: expiredRecord.status,
           signingTeamId: expiredRecord.signingTeamId,
           compensationPickId: expiredRecord.compensationPickId,
+          compensationTier: null,
+          forfeitedPick: null,
         }]);
       }
       continue;
     }
 
     const result = resolveQualifyingOfferCore(player, record, s.rng.fork());
+    flowStateChanged = true;
     s.players[index] = result.player;
     s.draftState = {
       ...s.draftState,
@@ -1542,6 +1598,8 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
         status: result.record.status,
         signingTeamId: result.record.signingTeamId,
         compensationPickId: result.record.compensationPickId,
+        compensationTier: null,
+        forfeitedPick: null,
       }]);
     }
     resolved.push({
@@ -1564,7 +1622,7 @@ export function resolveOutstandingQualifyingOffers(s: FullGameState) {
     }, s.players, s.season, s.day));
   }
 
-  return { resolved };
+  return { resolved, flowStateChanged };
 }
 
 export function hireCoachForUserTeam(s: FullGameState, coachId: string) {
@@ -1764,20 +1822,27 @@ export function placePlayerOnWaivers(
 }
 
 function ensureDraftPickOwnershipForSeason(s: FullGameState) {
+  const pickOwnership = buildDraftPickOwnershipForSeason(s);
+  if (pickOwnership === s.draftState.pickOwnership) {
+    return;
+  }
+  s.draftState = {
+    ...s.draftState,
+    pickOwnership,
+  };
+}
+
+function buildDraftPickOwnershipForSeason(s: FullGameState) {
   const requiredSeasons = new Set([s.season, s.season + 1]);
   const teamIds = TEAMS.map((team) => team.id);
 
   if (s.draftState.pickOwnership.length === 0) {
-    s.draftState = {
-      ...s.draftState,
-      pickOwnership: createDefaultDraftPickOwnership(teamIds, s.season),
-    };
-    return;
+    return createDefaultDraftPickOwnership(teamIds, s.season);
   }
 
   const existingSeasonKeys = new Set(s.draftState.pickOwnership.map((pick) => pick.season));
   if ([...requiredSeasons].every((season) => existingSeasonKeys.has(season))) {
-    return;
+    return s.draftState.pickOwnership;
   }
 
   const supplemental = createDefaultDraftPickOwnership(teamIds, s.season)
@@ -1786,10 +1851,7 @@ function ensureDraftPickOwnershipForSeason(s: FullGameState) {
       && existing.round === pick.round
       && existing.originalTeamId === pick.originalTeamId,
     ));
-  s.draftState = {
-    ...s.draftState,
-    pickOwnership: [...s.draftState.pickOwnership, ...supplemental],
-  };
+  return [...s.draftState.pickOwnership, ...supplemental];
 }
 
 function getTeamDraftScoutingReports(
@@ -2481,8 +2543,335 @@ function ensureDraftSession(s: FullGameState): DraftSessionState | null {
   return normalized;
 }
 
+function draftSlotIdentity(slot: DraftPickSlot): string {
+  return [
+    slot.slotId,
+    slot.season,
+    slot.round,
+    slot.pickNumber,
+    slot.teamId,
+    slot.originalTeamId ?? '',
+    slot.kind,
+    slot.compensationForPlayerId ?? '',
+    slot.compensationFromTeamId ?? '',
+    slot.compensationPriority ?? '',
+  ].join('|');
+}
+
+export function validateQualifyingOfferCompensationState(s: FullGameState): string | null {
+  const seasonRecords = s.draftState.qualifyingOffers.filter((record) => record.season === s.season);
+  const seasonAwards = s.draftState.compensatoryPicks.filter((pick) => pick.season === s.season);
+  const seasonOwnership = s.draftState.pickOwnership.filter((pick) => pick.season === s.season);
+  const seasonResults = s.offseasonState?.season === s.season
+    ? s.offseasonState.phaseResults.qualifyingOffers
+    : [];
+  const compensationResults = seasonResults.filter((result) => result.status === 'compensated');
+  const fixedSalary = s.offseasonState?.season === s.season
+    ? s.offseasonState.phaseResults.qualifyingOfferSalary
+    : null;
+  const playersById = new Map(s.players.map((player) => [player.id, player] as const));
+
+  const recordIds = new Set<string>();
+  for (const record of seasonRecords) {
+    if (recordIds.has(record.playerId)) {
+      return `Qualifying-offer compensation is inconsistent: duplicate record for player ${record.playerId}.`;
+    }
+    recordIds.add(record.playerId);
+    if (!playersById.has(record.playerId)) {
+      return `Qualifying-offer compensation is inconsistent: player ${record.playerId} is missing.`;
+    }
+    if (fixedSalary == null || record.amount !== fixedSalary) {
+      return `Qualifying-offer compensation has an inconsistent frozen salary for player ${record.playerId}.`;
+    }
+
+    const lifecycle = seasonResults.filter((result) => result.playerId === record.playerId);
+    if (lifecycle.some((result) => result.teamId !== record.teamId || result.amount !== record.amount)) {
+      return `Qualifying-offer lifecycle facts are inconsistent for player ${record.playerId}.`;
+    }
+    const count = (status: OffseasonState['phaseResults']['qualifyingOffers'][number]['status']) => (
+      lifecycle.filter((result) => result.status === status).length
+    );
+    if (count('offered') !== 1) {
+      return `Qualifying-offer lifecycle is missing or duplicating issuance for player ${record.playerId}.`;
+    }
+    const lifecycleMatchesStatus = (() => {
+      switch (record.status) {
+        case 'offered':
+          return lifecycle.length === 1;
+        case 'accepted':
+          return count('accepted') === 1 && lifecycle.length === 2;
+        case 'rejected':
+          return count('rejected') === 1 && lifecycle.length === 2;
+        case 'compensated':
+          return count('rejected') === 1 && count('compensated') === 1 && lifecycle.length === 3;
+        case 'expired':
+          return count('expired') === 1
+            && count('accepted') === 0
+            && count('compensated') === 0
+            && count('rejected') <= 1
+            && lifecycle.length === 2 + count('rejected');
+      }
+    })();
+    if (!lifecycleMatchesStatus) {
+      return `Qualifying-offer lifecycle status is inconsistent for player ${record.playerId}.`;
+    }
+  }
+
+  const ownershipIds = new Set<string>();
+  for (const pick of seasonOwnership) {
+    const descriptor = `${pick.season}:${pick.round}:${pick.originalTeamId}`;
+    if (ownershipIds.has(descriptor)) {
+      return `Qualifying-offer compensation is inconsistent: duplicate draft-pick ownership ${descriptor}.`;
+    }
+    ownershipIds.add(descriptor);
+  }
+
+  const awardIds = new Set<string>();
+  for (const award of seasonAwards) {
+    if (awardIds.has(award.id)) {
+      return `Qualifying-offer compensation is inconsistent: duplicate award ${award.id}.`;
+    }
+    awardIds.add(award.id);
+  }
+
+  for (const record of seasonRecords) {
+    if (record.status !== 'compensated') {
+      if (record.compensationPickId !== null) {
+        return `Qualifying-offer compensation is inconsistent for player ${record.playerId}.`;
+      }
+      continue;
+    }
+
+    if (!record.signingTeamId || !record.compensationPickId) {
+      return `Qualifying-offer compensation is incomplete for player ${record.playerId}.`;
+    }
+    const player = playersById.get(record.playerId)!;
+    if (player.teamId !== record.signingTeamId) {
+      return `Qualifying-offer signing assignment is inconsistent for player ${record.playerId}.`;
+    }
+    const signingReceipts = s.offseasonState?.season === s.season
+      ? s.offseasonState.phaseResults.freeAgentSignings.filter((signing) => (
+        signing.playerId === record.playerId
+        && signing.teamId === record.signingTeamId
+        && signing.years === player.contract.years
+        && signing.annualSalary === player.contract.annualSalary
+        && signing.totalValue === player.contract.totalValue
+      ))
+      : [];
+    if (signingReceipts.length !== 1) {
+      return `Qualifying-offer free-agent signing receipt is inconsistent for player ${record.playerId}.`;
+    }
+    if (s.freeAgencyMarket) {
+      const signedRows = s.freeAgencyMarket.signedPlayers.filter((entry) => (
+        entry.player.id === record.playerId
+        && entry.signedWith === record.signingTeamId
+        && entry.contract?.playerId === record.playerId
+        && entry.contract.teamId === record.signingTeamId
+        && entry.contract.years === player.contract.years
+        && entry.contract.annualSalary === player.contract.annualSalary
+        && entry.contract.totalValue === player.contract.totalValue
+      ));
+      if (signedRows.length !== 1) {
+        return `Qualifying-offer signed-market fact is inconsistent for player ${record.playerId}.`;
+      }
+    }
+    const awards = seasonAwards.filter((award) => (
+      award.id === record.compensationPickId
+      && award.compensationForPlayerId === record.playerId
+      && award.awardedToTeamId === record.teamId
+      && award.compensationFromTeamId === record.signingTeamId
+    ));
+    if (awards.length !== 1) {
+      return `Qualifying-offer compensation award is inconsistent for player ${record.playerId}.`;
+    }
+    const award = awards[0]!;
+    const awardTier = award.order < 100 ? 'premium' : 'standard';
+
+    const results = compensationResults.filter((result) => (
+      result.playerId === record.playerId
+      && result.teamId === record.teamId
+      && result.signingTeamId === record.signingTeamId
+      && result.compensationPickId === record.compensationPickId
+      && result.amount === record.amount
+      && result.compensationTier === awardTier
+      && result.forfeitedPick !== null
+      && result.forfeitedPick.season === s.season
+    ));
+    if (results.length !== 1) {
+      return `Qualifying-offer compensation receipt is inconsistent for player ${record.playerId}.`;
+    }
+    const result = results[0]!;
+    const losses = seasonOwnership.filter((pick) => (
+      pick.round === result.forfeitedPick!.round
+      && pick.originalTeamId === result.forfeitedPick!.originalTeamId
+      && pick.currentTeamId === record.signingTeamId
+      && pick.forfeited
+    ));
+    if (losses.length !== 1) {
+      return `Qualifying-offer pick forfeiture is inconsistent for player ${record.playerId}.`;
+    }
+  }
+
+  for (const award of seasonAwards) {
+    const records = seasonRecords.filter((record) => (
+      record.status === 'compensated'
+      && record.playerId === award.compensationForPlayerId
+      && record.teamId === award.awardedToTeamId
+      && record.signingTeamId === award.compensationFromTeamId
+      && record.compensationPickId === award.id
+    ));
+    if (records.length !== 1) {
+      return `Qualifying-offer compensation award ${award.id} is orphaned or duplicated.`;
+    }
+  }
+
+  for (const result of compensationResults) {
+    const records = seasonRecords.filter((record) => (
+      record.status === 'compensated'
+      && record.playerId === result.playerId
+      && record.teamId === result.teamId
+      && record.signingTeamId === result.signingTeamId
+      && record.compensationPickId === result.compensationPickId
+    ));
+    if (records.length !== 1 || !result.signingTeamId || !result.forfeitedPick) {
+      return `Qualifying-offer compensation receipt is orphaned or duplicated for player ${result.playerId}.`;
+    }
+  }
+
+  for (const loss of seasonOwnership.filter((pick) => pick.forfeited)) {
+    const results = compensationResults.filter((result) => (
+      result.signingTeamId === loss.currentTeamId
+      && result.forfeitedPick?.season === loss.season
+      && result.forfeitedPick.round === loss.round
+      && result.forfeitedPick.originalTeamId === loss.originalTeamId
+    ));
+    if (results.length !== 1) {
+      return `Qualifying-offer forfeiture ${loss.season}:${loss.round}:${loss.originalTeamId} is orphaned or duplicated.`;
+    }
+  }
+
+  return null;
+}
+
+function validateDraftSessionTopology(s: FullGameState, session: DraftSessionState): string | null {
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return compensationError;
+  }
+  if (session.season !== s.season) {
+    return 'Draft session belongs to a different season.';
+  }
+
+  const expectedOrder = buildDraftOrderFromStandings(s.seasonState);
+  const expectedSlots = buildDraftPickSlots(
+    expectedOrder,
+    buildDraftPickOwnershipForSeason(s),
+    s.draftState.compensatoryPicks,
+    session.season,
+  );
+  if (
+    session.draftOrder.length !== expectedOrder.length
+    || session.draftOrder.some((teamId, index) => teamId !== expectedOrder[index])
+    || session.pickSlots.length !== expectedSlots.length
+    || session.pickSlots.some((slot, index) => draftSlotIdentity(slot) !== draftSlotIdentity(expectedSlots[index]!))
+  ) {
+    return 'Draft session pick order does not match current pick ownership and compensation.';
+  }
+
+  if (session.completedPicks.length > expectedSlots.length) {
+    return 'Draft session completed picks exceed the canonical draft slots.';
+  }
+  const completedSlotIds = new Set<string>();
+  const completedPlayerIds = new Set<string>();
+  const availableProspectIds = new Set(session.prospects.map((prospect) => prospect.player.id));
+  const draftReceipts = s.offseasonState?.season === s.season
+    ? s.offseasonState.phaseResults.draftPicks
+    : [];
+  for (const [index, pick] of session.completedPicks.entries()) {
+    const expectedSlot = expectedSlots[index]!;
+    if (
+      pick.slotId !== expectedSlot.slotId
+      || pick.round !== expectedSlot.round
+      || pick.pickNumber !== expectedSlot.pickNumber
+      || pick.teamId !== expectedSlot.teamId
+      || (pick.slotKind ?? 'standard') !== expectedSlot.kind
+      || (pick.compensation?.compensationForPlayerId ?? null) !== expectedSlot.compensationForPlayerId
+      || (pick.compensation?.compensationFromTeamId ?? null) !== expectedSlot.compensationFromTeamId
+    ) {
+      return 'Draft session completed picks do not match the canonical slot prefix.';
+    }
+    if (completedSlotIds.has(pick.slotId) || completedPlayerIds.has(pick.playerId)) {
+      return 'Draft session completed picks contain a duplicate slot or player.';
+    }
+    if (!pick.playerId || availableProspectIds.has(pick.playerId)) {
+      return 'Draft session completed picks conflict with the available prospect pool.';
+    }
+    const player = s.players.find((candidate) => candidate.id === pick.playerId);
+    if (!player) {
+      return 'Draft session completed picks conflict with canonical player assignment.';
+    }
+    const signingDecisions = s.draftState.signingDecisions.filter((decision) => (
+      decision.playerId === pick.playerId
+      && decision.season === s.season
+    ));
+    if (signingDecisions.length > 1 || signingDecisions.some((decision) => decision.teamId !== pick.teamId)) {
+      return 'Draft session completed picks conflict with canonical signing decisions.';
+    }
+    const signingDecision = signingDecisions[0] ?? null;
+    const playerOrigin = s.playerOrigins.get(pick.playerId) ?? null;
+    if (!signingDecision && player.teamId !== pick.teamId) {
+      return 'Draft session completed picks conflict with canonical player assignment.';
+    }
+    if (signingDecision?.signed && (
+      player.teamId !== pick.teamId
+      || playerOrigin?.acquisitionType !== 'draft'
+      || playerOrigin.originTeamId !== pick.teamId
+      || playerOrigin.draftSeason !== s.season
+      || playerOrigin.draftRound !== pick.round
+      || playerOrigin.draftPickNumber !== pick.pickNumber
+    )) {
+      return 'Draft session completed picks conflict with canonical acquisition facts.';
+    }
+    if (signingDecision?.signed === false && player.teamId !== '') {
+      return 'Draft session completed picks conflict with canonical unsigned-player assignment.';
+    }
+    const matchingReceipts = draftReceipts.filter((receipt) => (
+      receipt.round === pick.round
+      && receipt.pickNumber === pick.pickNumber
+      && receipt.teamId === pick.teamId
+      && receipt.playerId === pick.playerId
+      && receipt.playerName === pick.playerName
+      && receipt.position === pick.position
+      && receipt.scoutingGrade === pick.scoutingGrade
+      && receipt.origin === pick.origin
+    ));
+    if (matchingReceipts.length !== 1) {
+      return 'Draft session completed picks conflict with canonical draft receipts.';
+    }
+    completedSlotIds.add(pick.slotId);
+    completedPlayerIds.add(pick.playerId);
+  }
+  for (const receipt of draftReceipts) {
+    const matchingPicks = session.completedPicks.filter((pick) => (
+      pick.round === receipt.round
+      && pick.pickNumber === receipt.pickNumber
+      && pick.teamId === receipt.teamId
+      && pick.playerId === receipt.playerId
+      && pick.playerName === receipt.playerName
+      && pick.position === receipt.position
+      && pick.scoutingGrade === receipt.scoutingGrade
+      && pick.origin === receipt.origin
+    ));
+    if (matchingPicks.length !== 1) {
+      return 'Draft session contains an orphaned or duplicate canonical draft receipt.';
+    }
+  }
+  return null;
+}
+
 function captureDraftMutationCheckpoint(s: FullGameState) {
   return {
+    rng: s.rng.getState(),
     draftState: s.draftState,
     draftClass: s.draftClass,
     scoutConflicts: s.scoutConflicts,
@@ -2493,6 +2882,7 @@ function restoreDraftMutationCheckpoint(
   s: FullGameState,
   checkpoint: ReturnType<typeof captureDraftMutationCheckpoint>,
 ) {
+  s.rng = GameRNG.fromState(checkpoint.rng);
   s.draftState = checkpoint.draftState;
   s.draftClass = checkpoint.draftClass;
   s.scoutConflicts = checkpoint.scoutConflicts;
@@ -3029,8 +3419,20 @@ export function scoutUserDraftPlayer(
   s: FullGameState,
   playerId: string,
 ): { success: true; report: DraftScoutingReport } | { success: false; error: string } {
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+    return { success: false, error: 'Draft actions are available only during the draft phase.' };
+  }
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return { success: false, error: compensationError };
+  }
   const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
+  const topologyError = session ? validateDraftSessionTopology(s, session) : null;
+  if (topologyError) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, error: topologyError };
+  }
   const prospect = session?.prospects.find((candidate) => candidate.player.id === playerId);
   if (!session || !prospect) {
     restoreDraftMutationCheckpoint(s, checkpoint);
@@ -3058,8 +3460,20 @@ export function toggleUserDraftBigBoardPlayer(
   s: FullGameState,
   playerId: string,
 ): { success: true; board: string[] } | { success: false; error: string } {
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+    return { success: false, error: 'Draft actions are available only during the draft phase.' };
+  }
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return { success: false, error: compensationError };
+  }
   const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
+  const topologyError = session ? validateDraftSessionTopology(s, session) : null;
+  if (topologyError) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, error: topologyError };
+  }
   if (!session || !session.prospects.some((prospect) => prospect.player.id === playerId)) {
     restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Draft prospect not available.' };
@@ -3147,8 +3561,21 @@ export function signUserDraftPick(
   playerId: string,
   bonusAmount: number,
 ): { success: true; signed: boolean; message: string } | { success: false; error: string } {
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+    return { success: false, error: 'Draft actions are available only during the draft phase.' };
+  }
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return { success: false, error: compensationError };
+  }
   const checkpoint = captureDraftMutationCheckpoint(s);
-  const pick = ensureDraftSession(s)?.completedPicks.find((entry) => entry.playerId === playerId && entry.teamId === s.userTeamId);
+  const session = ensureDraftSession(s);
+  const topologyError = session ? validateDraftSessionTopology(s, session) : null;
+  if (topologyError) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, error: topologyError };
+  }
+  const pick = session?.completedPicks.find((entry) => entry.playerId === playerId && entry.teamId === s.userTeamId);
   if (!pick) {
     restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: 'Drafted player not found.' };
@@ -3236,10 +3663,14 @@ function autoResolveAIDraftSignings(s: FullGameState) {
 }
 
 export function startDraftSession(s: FullGameState, draftClass?: DraftClass): DraftActionResult {
-  const checkpoint = captureDraftMutationCheckpoint(s);
-  if (!ensureOffseasonState(s)) {
-    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the offseason' };
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the draft phase' };
   }
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return { success: false, draft: null, newPicks: [], error: compensationError };
+  }
+  const checkpoint = captureDraftMutationCheckpoint(s);
   if (draftClass) {
     ensureDraftPickOwnershipForSeason(s);
     ensureDraftMetadataForSession(s, draftClass);
@@ -3251,9 +3682,14 @@ export function startDraftSession(s: FullGameState, draftClass?: DraftClass): Dr
     restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, draft: null, newPicks: [], error: 'Draft class unavailable' };
   }
+  const topologyError = validateDraftSessionTopology(s, session);
+  if (topologyError) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, draft: null, newPicks: [], error: topologyError };
+  }
 
   if (session.status === 'complete') {
-    return { success: true, draft: buildDraftRoomView(s), newPicks: [] };
+    return { success: true, draft: buildDraftRoomView(s), newPicks: [], flowStateChanged: false };
   }
 
   session.status = 'in_progress';
@@ -3263,15 +3699,25 @@ export function startDraftSession(s: FullGameState, draftClass?: DraftClass): Dr
     success: true,
     draft: buildDraftRoomView(s),
     newPicks,
+    flowStateChanged: true,
   };
 }
 
 export function makeUserDraftSelection(s: FullGameState, prospectId: string): DraftActionResult {
-  const checkpoint = captureDraftMutationCheckpoint(s);
-  if (!ensureOffseasonState(s)) {
-    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the offseason' };
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the draft phase' };
   }
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return { success: false, draft: null, newPicks: [], error: compensationError };
+  }
+  const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
+  const topologyError = session ? validateDraftSessionTopology(s, session) : null;
+  if (topologyError) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, draft: null, newPicks: [], error: topologyError };
+  }
   const currentSlot = session ? getCurrentDraftSlot(session) : null;
   if (!session || !currentSlot) {
     const draft = buildDraftRoomView(s);
@@ -3309,16 +3755,26 @@ export function makeUserDraftSelection(s: FullGameState, prospectId: string): Dr
 }
 
 export function simulateRemainingDraftSession(s: FullGameState): DraftActionResult {
-  const checkpoint = captureDraftMutationCheckpoint(s);
-  if (!ensureOffseasonState(s)) {
-    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the offseason' };
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
+    return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the draft phase' };
   }
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return { success: false, draft: null, newPicks: [], error: compensationError };
+  }
+  const checkpoint = captureDraftMutationCheckpoint(s);
   const session = ensureDraftSession(s);
   if (!session) {
     restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, draft: null, newPicks: [], error: 'Draft class unavailable' };
   }
+  const topologyError = validateDraftSessionTopology(s, session);
+  if (topologyError) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, draft: null, newPicks: [], error: topologyError };
+  }
 
+  const signingDecisionCountBefore = s.draftState.signingDecisions.length;
   session.status = 'in_progress';
   const newPicks: DraftRoomPick[] = [];
   let currentSlot = getCurrentDraftSlot(session);
@@ -3340,6 +3796,7 @@ export function simulateRemainingDraftSession(s: FullGameState): DraftActionResu
     success: true,
     draft: buildDraftRoomView(s),
     newPicks,
+    flowStateChanged: newPicks.length > 0 || s.draftState.signingDecisions.length !== signingDecisionCountBefore,
   };
 }
 
@@ -3407,6 +3864,12 @@ export function normalizeOffseasonState(
       status?: 'offered' | 'accepted' | 'rejected' | 'compensated' | 'expired';
       signingTeamId?: string | null;
       compensationPickId?: string | null;
+      compensationTier?: 'premium' | 'standard' | null;
+      forfeitedPick?: {
+        season?: number;
+        round?: number;
+        originalTeamId?: string;
+      } | null;
     }>;
     coachChanges?: Array<{
       teamId?: string;
@@ -3426,6 +3889,25 @@ export function normalizeOffseasonState(
     }>;
     retiredPlayers?: Array<RetirementResult | string>;
   };
+  const qualifyingOfferResults = (phaseResults.qualifyingOffers ?? []).map((entry) => ({
+    playerId: entry.playerId ?? '',
+    teamId: entry.teamId ?? '',
+    amount: entry.amount ?? 0,
+    status: entry.status ?? 'offered',
+    signingTeamId: entry.signingTeamId ?? null,
+    compensationPickId: entry.compensationPickId ?? null,
+    compensationTier: entry.compensationTier ?? null,
+    forfeitedPick: entry.forfeitedPick
+      ? {
+        season: entry.forfeitedPick.season ?? offseasonState.season,
+        round: entry.forfeitedPick.round ?? 0,
+        originalTeamId: entry.forfeitedPick.originalTeamId ?? '',
+      }
+      : null,
+  }));
+  const factualQualifyingOfferSalary = qualifyingOfferResults.find((entry) => entry.status === 'offered')?.amount
+    ?? qualifyingOfferResults[0]?.amount
+    ?? null;
 
   return {
     ...offseasonState,
@@ -3444,14 +3926,8 @@ export function normalizeOffseasonState(
         annualSalary: entry.annualSalary ?? 0,
         totalValue: entry.totalValue ?? 0,
       })),
-      qualifyingOffers: (phaseResults.qualifyingOffers ?? []).map((entry) => ({
-        playerId: entry.playerId ?? '',
-        teamId: entry.teamId ?? '',
-        amount: entry.amount ?? 0,
-        status: entry.status ?? 'offered',
-        signingTeamId: entry.signingTeamId ?? null,
-        compensationPickId: entry.compensationPickId ?? null,
-      })),
+      qualifyingOfferSalary: phaseResults.qualifyingOfferSalary ?? factualQualifyingOfferSalary,
+      qualifyingOffers: qualifyingOfferResults,
       coachChanges: (phaseResults.coachChanges ?? []).map((entry) => ({
         teamId: entry.teamId ?? '',
         coachId: entry.coachId ?? '',
@@ -3558,7 +4034,12 @@ function buildOffseasonCommandCenter(s: FullGameState): OffseasonCommandCenterVi
       .map((entry) => entry.playerId) ?? [],
   );
   const arbitrationRemaining = arbitrationEligible.filter((player) => !arbitrationResolvedIds.has(player.id)).length;
-  const qualifyingOfferEligible = getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime);
+  const qualifyingOfferEligible = getQualifyingOfferEligiblePlayers(
+    s.players,
+    teamId,
+    s.serviceTime,
+    getQualifyingOfferSalaryForState(s),
+  );
   const activeQualifyingOffers = s.draftState.qualifyingOffers.filter((record) =>
     record.teamId === teamId
     && record.season === s.season
@@ -4054,6 +4535,16 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
 
   return {
     ...offseasonState,
+    phaseResults: {
+      ...offseasonState.phaseResults,
+      qualifyingOffers: offseasonState.phaseResults.qualifyingOffers.map((entry) => {
+        const player = s.players.find((candidate) => candidate.id === entry.playerId);
+        return {
+          ...entry,
+          playerName: player ? `${player.firstName} ${player.lastName}` : entry.playerId,
+        };
+      }),
+    },
     arbitrationCases,
     transactionGroups,
     marketDaySummaries: buildOffseasonMarketDaySummaries(s, offseasonState),
@@ -5347,6 +5838,7 @@ function processTeamExtensionsOnce(s: FullGameState) {
 }
 
 function processQualifyingOfferIssuanceOnce(s: FullGameState) {
+  const amount = ensureQualifyingOfferSalaryForState(s);
   const existingPlayerIds = new Set(
     s.draftState.qualifyingOffers
       .filter((entry) => entry.season === s.season)
@@ -5358,15 +5850,15 @@ function processQualifyingOfferIssuanceOnce(s: FullGameState) {
       continue;
     }
 
-    for (const player of getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime)) {
+    for (const player of getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime, amount)) {
       if (existingPlayerIds.has(player.id)) {
         continue;
       }
-      if (!shouldIssueQualifyingOffer(player, calculateQualifyingOfferSalaryCore(s.players))) {
+      if (!shouldIssueQualifyingOffer(player, amount)) {
         continue;
       }
 
-      const issued = issueTeamQualifyingOffer(s, player.id);
+      const issued = issueTeamQualifyingOffer(s, player.id, teamId);
       if (issued.success) {
         existingPlayerIds.add(player.id);
       }
@@ -5374,17 +5866,92 @@ function processQualifyingOfferIssuanceOnce(s: FullGameState) {
   }
 }
 
-export function applyQualifyingOfferCompensationIfNeeded(
+export type QualifyingOfferCompensationPlan =
+  | { kind: 'none' }
+  | { kind: 'former_team' }
+  | { kind: 'blocked'; reason: string }
+  | {
+    kind: 'compensate';
+    priorityGroup: 'premium' | 'standard';
+    compensatoryPicks: DraftCompensatoryPick[];
+    pickOwnership: DraftPickOwnership[];
+    awardedPick: DraftCompensatoryPick;
+    forfeitedPick: DraftPickOwnership;
+  };
+
+function getQualifyingOfferCompensationPriority(
+  amount: number,
+  contract: { years: number; annualSalary: number; totalValue?: number | null },
+): 'premium' | 'standard' {
+  const totalValue = contract.totalValue ?? contract.annualSalary * contract.years;
+  return totalValue >= amount * 3 || contract.annualSalary >= amount * 1.25
+    ? 'premium'
+    : 'standard';
+}
+
+export function prepareQualifyingOfferCompensation(
   s: FullGameState,
   playerId: string,
   signingTeamId: string,
-) {
+  contract: { years: number; annualSalary: number; totalValue?: number | null },
+): QualifyingOfferCompensationPlan {
+  const integrityError = validateQualifyingOfferCompensationState(s);
+  if (integrityError) {
+    return { kind: 'blocked', reason: integrityError };
+  }
   const record = s.draftState.qualifyingOffers.find((entry) => entry.playerId === playerId && entry.season === s.season);
   if (!record || record.status !== 'rejected') {
-    return;
+    return { kind: 'none' };
   }
 
   if (record.teamId === signingTeamId) {
+    return { kind: 'former_team' };
+  }
+
+  const priorityGroup = getQualifyingOfferCompensationPriority(record.amount, contract);
+  const plan = planDraftPickCompensation(
+    s.draftState.compensatoryPicks,
+    buildDraftPickOwnershipForSeason(s),
+    buildDraftOrderFromStandings(s.seasonState),
+    {
+      season: s.season,
+      awardedToTeamId: record.teamId,
+      compensationForPlayerId: playerId,
+      compensationFromTeamId: signingTeamId,
+      priorityGroup,
+    },
+  );
+  if (!plan.success) {
+    return {
+      kind: 'blocked',
+      reason: plan.reason === 'no_eligible_pick'
+        ? 'No eligible draft pick is available for qualifying-offer compensation.'
+        : 'Qualifying-offer compensation is already present or inconsistent.',
+    };
+  }
+
+  return {
+    kind: 'compensate',
+    priorityGroup,
+    compensatoryPicks: plan.compensatoryPicks,
+    pickOwnership: plan.pickOwnership,
+    awardedPick: plan.awardedPick,
+    forfeitedPick: plan.forfeitedPick,
+  };
+}
+
+export function commitQualifyingOfferCompensation(
+  s: FullGameState,
+  playerId: string,
+  signingTeamId: string,
+  plan: Exclude<QualifyingOfferCompensationPlan, { kind: 'blocked' }>,
+): boolean {
+  const record = s.draftState.qualifyingOffers.find((entry) => entry.playerId === playerId && entry.season === s.season);
+  if (!record || record.status !== 'rejected' || plan.kind === 'none') {
+    return plan.kind === 'none';
+  }
+
+  if (plan.kind === 'former_team') {
     s.draftState = {
       ...s.draftState,
       qualifyingOffers: s.draftState.qualifyingOffers.map((entry) => (
@@ -5401,48 +5968,24 @@ export function applyQualifyingOfferCompensationIfNeeded(
         status: 'expired',
         signingTeamId,
         compensationPickId: null,
+        compensationTier: null,
+        forfeitedPick: null,
       }]);
     }
-    return;
+    return true;
   }
-
-  ensureDraftPickOwnershipForSeason(s);
-  const signedPlayer = s.players.find((entry) => entry.id === playerId) ?? null;
-  const totalValue = signedPlayer?.contract.totalValue ?? (signedPlayer ? signedPlayer.contract.annualSalary * signedPlayer.contract.years : 0);
-  const annualSalary = signedPlayer?.contract.annualSalary ?? 0;
-  const priorityGroup = totalValue >= record.amount * 3 || annualSalary >= record.amount * 1.25
-    ? 'premium'
-    : 'standard';
-  const compensatoryPicks = awardCompensatoryPick(s.draftState.compensatoryPicks, {
-    season: s.season,
-    awardedToTeamId: record.teamId,
-    compensationForPlayerId: playerId,
-    compensationFromTeamId: signingTeamId,
-    priorityGroup,
-  });
-  const forfeiture = forfeitHighestEligiblePick(
-    s.draftState.pickOwnership,
-    buildDraftOrderFromStandings(s.seasonState),
-    signingTeamId,
-    s.season,
-  );
-  const awardedPick = compensatoryPicks.find((entry) =>
-    entry.season === s.season
-    && entry.compensationForPlayerId === playerId
-    && entry.awardedToTeamId === record.teamId,
-  ) ?? null;
 
   s.draftState = {
     ...s.draftState,
-    compensatoryPicks,
-    pickOwnership: forfeiture.pickOwnership,
+    compensatoryPicks: plan.compensatoryPicks,
+    pickOwnership: plan.pickOwnership,
     qualifyingOffers: s.draftState.qualifyingOffers.map((entry) => (
       entry.playerId === playerId && entry.season === s.season
         ? {
           ...entry,
           status: 'compensated',
           signingTeamId,
-          compensationPickId: awardedPick?.id ?? null,
+          compensationPickId: plan.awardedPick.id,
         }
         : entry
     )),
@@ -5455,9 +5998,47 @@ export function applyQualifyingOfferCompensationIfNeeded(
       amount: record.amount,
       status: 'compensated',
       signingTeamId,
-      compensationPickId: awardedPick?.id ?? null,
+      compensationPickId: plan.awardedPick.id,
+      compensationTier: plan.priorityGroup,
+      forfeitedPick: {
+        season: plan.forfeitedPick.season,
+        round: plan.forfeitedPick.round,
+        originalTeamId: plan.forfeitedPick.originalTeamId,
+      },
     }]);
   }
+
+  const player = s.players.find((entry) => entry.id === playerId) ?? null;
+  const formerTeamName = getTeamById(record.teamId)?.name ?? record.teamId.toUpperCase();
+  const signingTeamName = getTeamById(signingTeamId)?.name ?? signingTeamId.toUpperCase();
+  s.news = [
+    {
+      id: `qualifying-offer-compensation-${s.season}-${playerId}`,
+      headline: `${formerTeamName} awarded a qualifying-offer pick`,
+      body: `${player ? `${player.firstName} ${player.lastName}` : playerId} signed with ${signingTeamName}. ${formerTeamName} received ${plan.priorityGroup} compensation while ${signingTeamName} forfeited its round ${plan.forfeitedPick.round} pick (${plan.forfeitedPick.originalTeamId.toUpperCase()} origin).`,
+      priority: 4,
+      category: 'signing',
+      tag: 'BREAKING',
+      timestamp: `S${s.season}D${s.day}`,
+      relatedPlayerIds: [playerId],
+      relatedTeamIds: [record.teamId, signingTeamId],
+      read: false,
+    },
+    ...s.news.filter((entry) => entry.id !== `qualifying-offer-compensation-${s.season}-${playerId}`),
+  ];
+  return true;
+}
+
+export function applyQualifyingOfferCompensationIfNeeded(
+  s: FullGameState,
+  playerId: string,
+  signingTeamId: string,
+): boolean {
+  const signedPlayer = s.players.find((entry) => entry.id === playerId);
+  if (!signedPlayer) return false;
+  const plan = prepareQualifyingOfferCompensation(s, playerId, signingTeamId, signedPlayer.contract);
+  if (plan.kind === 'blocked') return false;
+  return commitQualifyingOfferCompensation(s, playerId, signingTeamId, plan);
 }
 
 export function hasCanonicalFreeAgencyMarket(s: FullGameState): boolean {
@@ -5607,7 +6188,44 @@ function buildFreeAgencyNeeds(s: FullGameState) {
   );
 }
 
-function applyNewFreeAgencySignings(
+interface FreeAgencyBidCompensationReservations {
+  compensatoryPicks: DraftCompensatoryPick[];
+  pickOwnership: DraftPickOwnership[];
+}
+
+function planReservedFreeAgencyBidCompensation(
+  s: FullGameState,
+  reservations: FreeAgencyBidCompensationReservations,
+  teamId: string,
+  playerId: string,
+  contract: { years: number; annualSalary: number; totalValue?: number | null },
+) {
+  const record = s.draftState.qualifyingOffers.find((entry) => (
+    entry.playerId === playerId
+    && entry.season === s.season
+    && entry.status === 'rejected'
+  ));
+  if (!record || record.teamId === teamId) {
+    return { kind: 'none' as const };
+  }
+  const plan = planDraftPickCompensation(
+    reservations.compensatoryPicks,
+    reservations.pickOwnership,
+    buildDraftOrderFromStandings(s.seasonState),
+    {
+      season: s.season,
+      awardedToTeamId: record.teamId,
+      compensationForPlayerId: playerId,
+      compensationFromTeamId: teamId,
+      priorityGroup: getQualifyingOfferCompensationPriority(record.amount, contract),
+    },
+  );
+  return plan.success
+    ? { kind: 'reserve' as const, plan }
+    : { kind: 'blocked' as const };
+}
+
+export function applyNewFreeAgencySignings(
   s: FullGameState,
   previousSignedIds: Set<string>,
 ): OffseasonProgressResult['aiSignings'] {
@@ -5625,6 +6243,29 @@ function applyNewFreeAgencySignings(
 
     const player = s.players.find((candidate) => candidate.id === signedPlayer.player.id);
     if (!player) continue;
+
+    const compensationPlan = prepareQualifyingOfferCompensation(
+      s,
+      player.id,
+      teamId,
+      contract,
+    );
+    if (compensationPlan.kind === 'blocked') {
+      s.freeAgencyMarket = {
+        ...s.freeAgencyMarket,
+        signedPlayers: s.freeAgencyMarket.signedPlayers.filter((entry) => entry.player.id !== player.id),
+        freeAgents: [
+          ...s.freeAgencyMarket.freeAgents,
+          {
+            ...signedPlayer,
+            player,
+            signedWith: null,
+            contract: null,
+          },
+        ].sort((left, right) => right.marketValue - left.marketValue || left.player.id.localeCompare(right.player.id)),
+      };
+      continue;
+    }
 
     const previousTeamId = player.teamId;
     updatePlayerTeamAssignment(player, teamId, s.season);
@@ -5664,7 +6305,7 @@ function applyNewFreeAgencySignings(
       totalValue: contract.totalValue,
     };
     s.offseasonState = recordFASigning(s.offseasonState, signingResult);
-    applyQualifyingOfferCompensationIfNeeded(s, player.id, teamId);
+    commitQualifyingOfferCompensation(s, player.id, teamId, compensationPlan);
     currentSigningIds.add(player.id);
     s.news.unshift(...generateNews(s.rng.fork(), {
       type: 'signing',
@@ -5728,6 +6369,10 @@ function simulateFreeAgencyDays(
 
   for (let day = 0; day < daysToSimulate; day++) {
     if (!s.freeAgencyMarket) break;
+    const bidReservations: FreeAgencyBidCompensationReservations = {
+      compensatoryPicks: [...s.draftState.compensatoryPicks],
+      pickOwnership: [...buildDraftPickOwnershipForSeason(s)],
+    };
     const previousSignedIds = new Set(s.freeAgencyMarket.signedPlayers.map((entry) => entry.player.id));
     const teamBudgets = new Map(
       TEAMS
@@ -5757,6 +6402,26 @@ function simulateFreeAgencyDays(
       relationshipContexts,
       userTeamNeeds,
       teamBuildingArchetypes,
+      (teamId, playerId) => planReservedFreeAgencyBidCompensation(
+        s,
+        bidReservations,
+        teamId,
+        playerId,
+        { years: 1, annualSalary: 0, totalValue: 0 },
+      ).kind !== 'blocked',
+      (offer) => {
+        const reservation = planReservedFreeAgencyBidCompensation(
+          s,
+          bidReservations,
+          offer.teamId,
+          offer.playerId,
+          offer,
+        );
+        if (reservation.kind === 'reserve') {
+          bidReservations.compensatoryPicks = reservation.plan.compensatoryPicks;
+          bidReservations.pickOwnership = reservation.plan.pickOwnership;
+        }
+      },
     );
     aiSignings.push(...applyNewFreeAgencySignings(s, previousSignedIds));
   }
@@ -5804,7 +6469,10 @@ function processCurrentOffseasonPhase(
     const advancedWithinPhase = previousPhase === currentPhase && previousPhaseDay !== s.offseasonState.phaseDay;
     if (enteredPhase || advancedWithinPhase) {
       if (enteredPhase) {
-        resolveOutstandingQualifyingOffers(s);
+        const resolution = resolveOutstandingQualifyingOffers(s);
+        if (resolution.error) {
+          return { aiSignings: [], error: resolution.error };
+        }
         // This is the only production null-market creation seam. Later
         // simulation, queries, offers, and phase finalization consume the
         // persisted market or fail closed.
@@ -5865,11 +6533,17 @@ function finalizeDraftIfNeeded(
   s: FullGameState,
   previousPhase: OffseasonState['currentPhase'],
   nextPhase: OffseasonState['currentPhase'] | null,
-) {
+): { success: true } | { success: false; error: string } {
   if (previousPhase !== 'draft' || nextPhase === 'draft') {
-    return;
+    return { success: true };
   }
 
+  const integrityError = validateQualifyingOfferCompensationState(s);
+  if (integrityError) {
+    return { success: false, error: integrityError };
+  }
+
+  const checkpoint = captureDraftMutationCheckpoint(s);
   if (!s.draftClass) {
     ensureDraftPickOwnershipForSeason(s);
     const generatedDraftClass = generateDraftClass(s.rng.fork(), s.season);
@@ -5878,12 +6552,47 @@ function finalizeDraftIfNeeded(
   }
 
   const session = ensureDraftSession(s);
-  if (!session || session.status === 'complete') {
-    return;
+  if (!session) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, error: 'Draft class unavailable.' };
+  }
+  const topologyError = validateDraftSessionTopology(s, session);
+  if (topologyError) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, error: topologyError };
+  }
+  if (session.status === 'complete') {
+    return { success: true };
   }
 
-  simulateRemainingDraftSession(s);
+  const result = simulateRemainingDraftSession(s);
+  if (!result.success) {
+    restoreDraftMutationCheckpoint(s, checkpoint);
+    return { success: false, error: result.error ?? 'Draft could not be completed.' };
+  }
   autoResolveAIDraftSignings(s);
+  return { success: true };
+}
+
+function validateDraftExitBeforeMutation(
+  s: FullGameState,
+  previousPhase: OffseasonState['currentPhase'],
+  nextPhase: OffseasonState['currentPhase'] | null,
+): string | null {
+  if (previousPhase !== 'draft' || nextPhase === 'draft' || !s.draftClass) {
+    return null;
+  }
+
+  // Normalization may fill compatibility defaults. Treat this as a pure
+  // preflight by restoring the exact imported draft state on both success and
+  // failure; finalization will normalize again only after the gate passes.
+  const checkpoint = captureDraftMutationCheckpoint(s);
+  const session = ensureDraftSession(s);
+  const error = session
+    ? validateDraftSessionTopology(s, session)
+    : 'Draft class unavailable.';
+  restoreDraftMutationCheckpoint(s, checkpoint);
+  return error;
 }
 
 function applyOffseasonTransition(
@@ -5891,6 +6600,10 @@ function applyOffseasonTransition(
   previousState: OffseasonState,
   nextState: OffseasonState,
 ): OffseasonProgressResult {
+  const compensationError = validateQualifyingOfferCompensationState(s);
+  if (compensationError) {
+    return { aiSignings: [], error: compensationError, flowStateChanged: false };
+  }
   // An imported non-null market is authoritative only when it is canonical.
   // Validate before QO resolution, FA finalization, RNG forks, phase
   // advancement, or any player mutation. An invalid imported market freezes
@@ -5903,13 +6616,25 @@ function applyOffseasonTransition(
   if (touchesFreeAgency
     && requiresCanonicalMarket
     && !hasCanonicalFreeAgencyMarket(s)) {
-    return { aiSignings: [] };
+    return { aiSignings: [], flowStateChanged: false };
+  }
+
+  const draftExitError = validateDraftExitBeforeMutation(
+    s,
+    previousState.currentPhase,
+    nextState.currentPhase,
+  );
+  if (draftExitError) {
+    return { aiSignings: [], error: draftExitError, flowStateChanged: false };
   }
 
   reconcileExistingOffseasonServiceOnce(s);
 
   const aiSignings = finalizeFreeAgencyIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
-  finalizeDraftIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
+  const draftFinalization = finalizeDraftIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
+  if (!draftFinalization.success) {
+    return { aiSignings: [], error: draftFinalization.error, flowStateChanged: false };
+  }
   if (previousState.currentPhase === 'arbitration' && nextState.currentPhase !== 'arbitration') {
     prepareArbitrationDocketOnce(s);
     resolveArbitrationDocketOnce(s);
@@ -5921,15 +6646,19 @@ function applyOffseasonTransition(
   };
   updateOffseasonClock(s);
   const currentProgress = processCurrentOffseasonPhase(s, previousState.currentPhase, previousState.phaseDay);
+  if (currentProgress.error) {
+    return { aiSignings: [], error: currentProgress.error, flowStateChanged: false };
+  }
   return {
     aiSignings: [...aiSignings, ...currentProgress.aiSignings],
+    flowStateChanged: true,
   };
 }
 
 /** Handle one offseason day with AI auto-resolution. */
 export function advanceOffseasonOnce(s: FullGameState): OffseasonProgressResult {
   ensureOffseasonState(s);
-  if (!s.offseasonState || s.offseasonState.completed) return { aiSignings: [] };
+  if (!s.offseasonState || s.offseasonState.completed) return { aiSignings: [], flowStateChanged: false };
 
   const previousState = s.offseasonState;
   const nextState = advanceOffseasonDay(previousState);
@@ -5938,7 +6667,7 @@ export function advanceOffseasonOnce(s: FullGameState): OffseasonProgressResult 
 
 export function skipOffseasonPhaseWithAI(s: FullGameState): OffseasonProgressResult {
   ensureOffseasonState(s);
-  if (!s.offseasonState || s.offseasonState.completed) return { aiSignings: [] };
+  if (!s.offseasonState || s.offseasonState.completed) return { aiSignings: [], flowStateChanged: false };
 
   const previousState = s.offseasonState;
   const nextState = skipCurrentPhase(previousState);

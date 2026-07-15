@@ -5,6 +5,7 @@ import {
   calculatePlayerValue,
   calculateExtensionOffer,
   calculateQualifyingOfferSalary,
+  createFreeAgencyMarket,
   evaluateExtensionWillingness,
   generateArbitrationCase,
   generatePlayer,
@@ -472,9 +473,13 @@ describe('qualifying offers', () => {
     const tooInexperienced = setHitterRatings(makePlayer(203), 390);
     const notExpiring = setHitterRatings(makePlayer(204), 390);
     eligible.contract.years = 0;
+    eligible.serviceTimeDays = 4 * 172;
     tooCheap.contract.years = 0;
+    tooCheap.serviceTimeDays = 6 * 172;
     tooInexperienced.contract.years = 0;
+    tooInexperienced.serviceTimeDays = 2 * 172;
     notExpiring.contract.years = 3;
+    notExpiring.serviceTimeDays = 5 * 172;
 
     const serviceTime = new Map<string, number>([
       [eligible.id, 4],
@@ -490,6 +495,53 @@ describe('qualifying offers', () => {
     );
 
     expect(candidates.map((player) => player.id)).toEqual([eligible.id]);
+  });
+
+  it('uses exact service days instead of a contradictory legacy years map', () => {
+    const exactEligible = {
+      ...setHitterRatings(makePlayer(210), 410),
+      id: 'b-exact-eligible',
+      serviceTimeDays: 3 * 172,
+      contract: { ...makePlayer(210).contract, years: 0, annualSalary: 12, totalValue: 12 },
+    };
+    const mapOnlyEligible = {
+      ...setHitterRatings(makePlayer(211), 410),
+      id: 'a-map-only',
+      serviceTimeDays: (3 * 172) - 1,
+      contract: { ...makePlayer(211).contract, years: 0, annualSalary: 12, totalValue: 12 },
+    };
+    const contradictory = new Map<string, number>([
+      [exactEligible.id, 1],
+      [mapOnlyEligible.id, 6],
+    ]);
+
+    expect(getQualifyingOfferEligiblePlayers(
+      [mapOnlyEligible, exactEligible],
+      'nym',
+      contradictory,
+    ).map((player) => player.id)).toEqual([exactEligible.id]);
+  });
+
+  it('breaks equal-value eligibility ties by stable player id', () => {
+    const base = {
+      ...setHitterRatings(makePlayer(212), 410),
+      serviceTimeDays: 4 * 172,
+      contract: { ...makePlayer(212).contract, years: 0, annualSalary: 12, totalValue: 12 },
+    };
+    const first = {
+      ...structuredClone(base),
+      id: 'a-player',
+    };
+    const second = {
+      ...structuredClone(base),
+      id: 'b-player',
+    };
+
+    const forward = getQualifyingOfferEligiblePlayers([second, first], 'nym', new Map());
+    const reversed = getQualifyingOfferEligiblePlayers([first, second], 'nym', new Map());
+
+    expect(forward.map((player) => player.id)).toEqual(['a-player', 'b-player']);
+    expect(reversed.map((player) => player.id)).toEqual(['a-player', 'b-player']);
   });
 
   it('resolves qualifying-offer decisions deterministically from the same seed', () => {
@@ -515,11 +567,18 @@ describe('qualifying offers', () => {
       age: 27,
       developmentTrajectory: 'ahead_of_curve' as const,
     };
+    veteran.contract.years = 0;
+    star.contract.years = 0;
     const veteranOffer = issueQualifyingOffer(veteran, 'nym', 5, 21);
     const starOffer = issueQualifyingOffer(star, 'nym', 5, 21);
 
-    expect(resolveQualifyingOffer(veteran, veteranOffer, new GameRNG(404)).record.status).toBe('accepted');
-    expect(resolveQualifyingOffer(star, starOffer, new GameRNG(404)).record.status).toBe('rejected');
+    const accepted = resolveQualifyingOffer(veteran, veteranOffer, new GameRNG(404));
+    const rejected = resolveQualifyingOffer(star, starOffer, new GameRNG(404));
+
+    expect(accepted.record.status).toBe('accepted');
+    expect(rejected.record.status).toBe('rejected');
+    expect(createFreeAgencyMarket(5, [accepted.player]).freeAgents).toHaveLength(0);
+    expect(createFreeAgencyMarket(5, [rejected.player]).freeAgents.map((entry) => entry.player.id)).toEqual([star.id]);
   });
 
   it('issues QOs to premium free agents and skips brittle older bets', () => {

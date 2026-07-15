@@ -153,6 +153,10 @@ describe('FreeAgencyContractOfferPanel', () => {
     if (!yearsInput || !salaryInput) {
       throw new Error('Expected contract offer years and salary range controls.');
     }
+    expect(yearsInput.id).toBe('fa-offer-years-fa-1');
+    expect(salaryInput.id).toBe('fa-offer-salary-fa-1');
+    expect(container.querySelector('label[for="fa-offer-years-fa-1"]')).toBeTruthy();
+    expect(container.querySelector('label[for="fa-offer-salary-fa-1"]')).toBeTruthy();
 
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(yearsInput, '5');
@@ -173,5 +177,59 @@ describe('FreeAgencyContractOfferPanel', () => {
     });
 
     expect(onSubmitOffer).toHaveBeenCalledTimes(1);
+  });
+
+  it('discloses the exact QO pick cost and disables an impossible signing', async () => {
+    const blockedPlayer: FreeAgentOfferPlayer = {
+      ...selectedPlayer,
+      qualifyingOffer: {
+        formerTeamName: 'Boston Noreasters',
+        requiresCompensation: false,
+        forfeitedPick: null,
+        blockedReason: 'No eligible draft pick is available for qualifying-offer compensation.',
+      },
+    };
+    await act(async () => {
+      root.render(
+        <FreeAgencyContractOfferPanel
+          selectedPlayer={blockedPlayer}
+          offerYears={4}
+          offerSalary={25}
+          offerBudget={offerBudget}
+          offerResult={null}
+          onOfferYearsChange={vi.fn()}
+          onOfferSalaryChange={vi.fn()}
+          onSubmitOffer={vi.fn()}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('Qualifying offer attached by Boston Noreasters');
+    expect(container.textContent).toContain('No eligible draft pick');
+    expect(container.querySelector('[data-mobile-critical-control="free-agency-offer-contract"]')?.hasAttribute('disabled')).toBe(true);
+
+    await act(async () => {
+      root.render(
+        <FreeAgencyContractOfferPanel
+          selectedPlayer={{
+            ...selectedPlayer,
+            qualifyingOffer: {
+              formerTeamName: 'Boston Noreasters',
+              requiresCompensation: true,
+              forfeitedPick: { season: 4, round: 1, originalTeamId: 'nym' },
+              blockedReason: null,
+            },
+          }}
+          offerYears={4}
+          offerSalary={25}
+          offerBudget={offerBudget}
+          offerResult={null}
+          onOfferYearsChange={vi.fn()}
+          onOfferSalaryChange={vi.fn()}
+          onSubmitOffer={vi.fn()}
+        />,
+      );
+    });
+    expect(container.textContent).toContain('forfeits your Round 1 pick (NYM origin)');
   });
 });

@@ -369,18 +369,20 @@ export function calculateQualifyingOfferSalary(players: GeneratedPlayer[]): numb
 export function getQualifyingOfferEligiblePlayers(
   players: GeneratedPlayer[],
   teamId: string,
-  serviceTime: Map<string, number>,
+  _serviceTime: Map<string, number>,
+  qualifyingOfferSalary: number = calculateQualifyingOfferSalary(players),
 ): GeneratedPlayer[] {
-  const qualifyingOfferSalary = calculateQualifyingOfferSalary(players);
   return players
     .filter((player) =>
       player.teamId === teamId
       && player.rosterStatus === 'MLB'
       && player.contract.years <= 0
-      && (serviceTime.get(player.id) ?? serviceDaysToYears(player.serviceTimeDays)) >= QUALIFYING_OFFER_MIN_SERVICE_YEARS
+      && serviceDaysToYears(player.serviceTimeDays) >= QUALIFYING_OFFER_MIN_SERVICE_YEARS
       && calculateMarketValue(player) >= qualifyingOfferSalary * QUALIFYING_OFFER_MARKET_VALUE_FRACTION,
     )
-    .sort((left, right) => calculateMarketValue(right) - calculateMarketValue(left));
+    .sort((left, right) =>
+      calculateMarketValue(right) - calculateMarketValue(left)
+      || left.id.localeCompare(right.id));
 }
 
 export function issueQualifyingOffer(
@@ -597,6 +599,8 @@ export function simulateFADay(
   relationshipContexts: Map<string, RelationshipBidContext> = new Map(),
   userTeamNeeds: Map<string, number> = new Map(),
   teamBuildingArchetypes: Map<string, TeamBuildingArchetype> = new Map(),
+  canTeamBidForPlayer: (teamId: string, playerId: string) => boolean = () => true,
+  onAcceptedOffer: (offer: ContractOffer) => void = () => undefined,
 ): FreeAgencyMarket {
   const nextDay = market.day + 1;
   const stillAvailable: FreeAgent[] = [];
@@ -626,7 +630,10 @@ export function simulateFADay(
 
     // Past the market entirely -- force minor league deal
     if (nextDay > MARKET_DURATION_DAYS) {
-      const teamIds = [...teamBudgets.keys()].filter((teamId) => (daySigningSlots.get(teamId) ?? 0) > 0);
+      const teamIds = [...teamBudgets.keys()].filter((teamId) => (
+        (daySigningSlots.get(teamId) ?? 0) > 0
+        && canTeamBidForPlayer(teamId, fa.player.id)
+      ));
       if (teamIds.length === 0) {
         stillAvailable.push(fa);
         continue;
@@ -648,6 +655,7 @@ export function simulateFADay(
         signedWith: randomTeam,
         contract: minorDeal,
       });
+      onAcceptedOffer(minorDeal);
       daySigningSlots.set(randomTeam, (daySigningSlots.get(randomTeam) ?? 0) - 1);
       continue;
     }
@@ -657,6 +665,9 @@ export function simulateFADay(
 
     for (const [teamId, budget] of teamBudgets) {
       if ((daySigningSlots.get(teamId) ?? 0) <= 0) {
+        continue;
+      }
+      if (!canTeamBidForPlayer(teamId, fa.player.id)) {
         continue;
       }
       const payroll = dayPayrolls.get(teamId) ?? 0;
@@ -737,6 +748,7 @@ export function simulateFADay(
     const currentTeamPayroll = dayPayrolls.get(bestOffer.teamId) ?? 0;
     dayPayrolls.set(bestOffer.teamId, currentTeamPayroll + bestOffer.annualSalary);
     daySigningSlots.set(bestOffer.teamId, (daySigningSlots.get(bestOffer.teamId) ?? 0) - 1);
+    onAcceptedOffer(bestOffer);
 
     newlySigned.push({
       ...fa,

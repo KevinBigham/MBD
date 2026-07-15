@@ -3,22 +3,37 @@ import { useGameStore } from './useGameStore';
 import { releaseActiveSaveSessionOwnership } from '@/shared/lib/saveSessionOwnership';
 import {
   executeExactSaveMutation,
+  didFlowAwareExactMutationChange,
   getExactSaveMutationStatus,
   type ExactSaveMutationWorker,
 } from '@/shared/lib/exactSaveMutationCoordinator';
 
 type OffseasonOperation = 'advanceOffseason' | 'skipOffseasonPhase';
 
-export interface ExactOffseasonMutationWorker<Result>
-  extends ExactSaveMutationWorker<Result, OffseasonOperation> {}
+export type ExactSaveGameplayOperation = OffseasonOperation
+  | { kind: 'issueQualifyingOffer'; playerId: string }
+  | { kind: 'resolveQualifyingOffers' }
+  | { kind: 'makeContractOffer'; playerId: string; years: number; salary: number }
+  | { kind: 'startDraft' }
+  | { kind: 'makeDraftPick'; prospectId: string }
+  | { kind: 'signDraftPick'; playerId: string; bonusAmount: number }
+  | { kind: 'simulateRemainingDraft' };
 
-export function useExactOffseasonMutationExecutor<Result>(
+export interface ExactOffseasonMutationWorker<Result>
+  extends ExactSaveMutationWorker<Result, ExactSaveGameplayOperation> {}
+
+export function didExactSaveGameplayResultChange(result: unknown): boolean {
+  return didFlowAwareExactMutationChange(result);
+}
+
+export function useExactSaveMutationExecutor<Result>(
   worker: ExactOffseasonMutationWorker<Result>,
   workerReady: boolean,
+  didChange?: (result: Result) => boolean,
 ) {
   const store = useGameStore();
 
-  return useCallback(async (operation: OffseasonOperation): Promise<Result | null> => {
+  return useCallback(async (operation: ExactSaveGameplayOperation): Promise<Result | null> => {
     const live = useGameStore.getState();
     const capturedSaveId = store.activeSaveId;
     if (!capturedSaveId
@@ -39,6 +54,7 @@ export function useExactOffseasonMutationExecutor<Result>(
       season: store.season,
       operation,
       worker,
+      didChange,
       failClosed: async () => {
         if (useGameStore.getState().activeSaveId !== capturedSaveId) return;
         try {
@@ -53,10 +69,18 @@ export function useExactOffseasonMutationExecutor<Result>(
       },
     });
 
-    if (outcome.kind !== 'durable') {
-      console.error('Exact offseason mutation did not reach durability:', outcome.error);
+    if (outcome.kind !== 'durable' && outcome.kind !== 'unchanged') {
+      console.error('Exact offseason mutation did not reach a coherent result:', outcome.error);
       return null;
     }
     return outcome.result;
-  }, [store.activeSaveId, store.gmName, store.isInitialized, store.phase, store.season, store.teamName, worker, workerReady]);
+  }, [didChange, store.activeSaveId, store.gmName, store.isInitialized, store.phase, store.season, store.teamName, worker, workerReady]);
+}
+
+export function useExactOffseasonMutationExecutor<Result>(
+  worker: ExactOffseasonMutationWorker<Result>,
+  workerReady: boolean,
+) {
+  const execute = useExactSaveMutationExecutor(worker, workerReady, didExactSaveGameplayResultChange);
+  return useCallback((operation: OffseasonOperation) => execute(operation), [execute]);
 }

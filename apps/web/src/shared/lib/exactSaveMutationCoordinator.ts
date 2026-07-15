@@ -33,11 +33,12 @@ export type ExactSaveMutationStatus =
 
 export type ExactSaveMutationOutcome<Result> =
   | { kind: 'durable'; result: Result }
+  | { kind: 'unchanged'; result: Result }
   | { kind: 'rolled_back'; error: unknown }
   | { kind: 'blocked'; error: unknown }
   | { kind: 'reload_required'; error: unknown };
 
-export interface ExactSaveMutationWorker<Result, Operation extends string> {
+export interface ExactSaveMutationWorker<Result, Operation> {
   exportSnapshot(session: ExactSaveMutationWorkerSession): Promise<object>;
   execute(session: ExactSaveMutationWorkerSession, operation: Operation): Promise<Result>;
   restoreBaseline(
@@ -45,16 +46,25 @@ export interface ExactSaveMutationWorker<Result, Operation extends string> {
     snapshot: object,
   ): Promise<{ importResult: { success: boolean }; restoredSnapshot: object }>;
   publishFlow(session: ExactSaveMutationWorkerSession): void;
+  discardFlow(session: ExactSaveMutationWorkerSession): void;
 }
 
-export interface ExecuteExactSaveMutationOptions<Result, Operation extends string> {
+export interface ExecuteExactSaveMutationOptions<Result, Operation> {
   saveId: string;
   gmName: string | null;
   teamName: string | null;
   season: number;
   operation: Operation;
   worker: ExactSaveMutationWorker<Result, Operation>;
+  didChange?: (result: Result) => boolean;
   failClosed: (error: unknown) => Promise<void> | void;
+}
+
+export function didFlowAwareExactMutationChange(result: unknown): boolean {
+  return typeof result !== 'object'
+    || result === null
+    || !('flowStateChanged' in result)
+    || (result as { flowStateChanged?: unknown }).flowStateChanged !== false;
 }
 
 let status: ExactSaveMutationStatus = { kind: 'idle' };
@@ -88,7 +98,7 @@ function assertExactAuthority(
   assertExactSaveMutationWorkerSessionCurrent(session, saveId, rootSaveId);
 }
 
-async function failClosed<Result, Operation extends string>(
+async function failClosed<Result, Operation>(
   error: unknown,
   options: ExecuteExactSaveMutationOptions<Result, Operation>,
   session: ExactSaveMutationWorkerSession | null,
@@ -127,7 +137,7 @@ async function failClosed<Result, Operation extends string>(
  * accepted, persistence retries that exact object while the worker lane stays
  * fenced. Roadmap item 8 remains the sole regular-season WAL owner.
  */
-export async function executeExactSaveMutation<Result, Operation extends string>(
+export async function executeExactSaveMutation<Result, Operation>(
   options: ExecuteExactSaveMutationOptions<Result, Operation>,
 ): Promise<ExactSaveMutationOutcome<Result>> {
   if (status.kind !== 'idle') {
@@ -169,6 +179,20 @@ export async function executeExactSaveMutation<Result, Operation extends string>
     assertExactAuthority(target.saveId, target.rootSaveId, session);
     const retainedPost = await options.worker.exportSnapshot(session);
     assertExactAuthority(target.saveId, target.rootSaveId, session);
+
+    if (options.didChange && !options.didChange(result)) {
+      if (!snapshotsEqual(retainedPost, baseline)) {
+        throw new Error('A no-change exact mutation altered the canonical snapshot.');
+      }
+      options.worker.discardFlow(session);
+      finishExactSaveMutationWorkerSession(session, () => {
+        abortExactSaveMutationPersistenceLease(persistenceLease!);
+      });
+      session = null;
+      persistenceLease = null;
+      publishStatus({ kind: 'idle' });
+      return { kind: 'unchanged', result };
+    }
 
     publishStatus({ kind: 'persisting' });
     postAccepted = await captureExactSaveMutationSnapshot(persistenceLease, {

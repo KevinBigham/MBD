@@ -135,11 +135,11 @@ describe('FreeAgencyPageContent', () => {
     });
     expect(handlePositionFilterChange).toHaveBeenCalledWith('hitters');
 
-    const powerRow = Array.from(container.querySelectorAll('tr')).find((row) =>
-      row.textContent?.includes('Power Bat'),
+    const powerControl = container.querySelector(
+      'button[aria-label="Select Power Bat for a contract offer"]',
     );
     await act(async () => {
-      powerRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      powerControl?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(offerActions.handleSelectPlayer).toHaveBeenCalledWith(powerBat);
   });

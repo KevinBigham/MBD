@@ -13,6 +13,7 @@ type DraftPostDraftGradesView = Awaited<ReturnType<WorkerApi['getDraftPostDraftG
 interface UseDraftRouteDataOptions {
   getDraftClass: () => Promise<unknown>;
   getDraftCommentary: (visiblePickCount?: number) => Promise<unknown>;
+  getOffseasonState?: () => Promise<unknown>;
   getDraftPostDraftGrades: () => Promise<unknown>;
   getDraftProspectReaction: (prospectId: string) => Promise<unknown>;
   isInitialized: boolean;
@@ -27,6 +28,7 @@ interface UseDraftRouteDataResult {
   draft: DraftRoomView | null;
   gradesView: DraftPostDraftGradesView | null;
   loadDraft: () => Promise<void>;
+  offseasonPhase: string | null;
   reaction: DraftProspectReactionView | null;
   revealedPickCount: number;
   selectedProspect: DraftRoomView['availableProspects'][number] | null;
@@ -43,6 +45,7 @@ interface UseDraftRouteDataResult {
 export function useDraftRouteData({
   getDraftClass,
   getDraftCommentary,
+  getOffseasonState,
   getDraftPostDraftGrades,
   getDraftProspectReaction,
   isInitialized,
@@ -52,6 +55,7 @@ export function useDraftRouteData({
   workerReady,
 }: UseDraftRouteDataOptions): UseDraftRouteDataResult {
   const [draft, setDraft] = useState<DraftRoomView | null>(null);
+  const [offseasonPhase, setOffseasonPhase] = useState<string | null>(null);
   const [commentary, setCommentary] = useState<DraftCommentaryView | null>(null);
   const [reaction, setReaction] = useState<DraftProspectReactionView | null>(null);
   const [gradesView, setGradesView] = useState<DraftPostDraftGradesView | null>(null);
@@ -64,12 +68,28 @@ export function useDraftRouteData({
   const loadDraft = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
     try {
-      const data = await getDraftClass();
+      const [data, offseasonData] = await Promise.all([
+        getDraftClass(),
+        getOffseasonState ? getOffseasonState() : Promise.resolve(null),
+      ]);
       setDraft(data as DraftRoomView | null);
+      if (getOffseasonState) {
+        setOffseasonPhase(
+          typeof offseasonData === 'object'
+            && offseasonData !== null
+            && 'currentPhase' in offseasonData
+            && typeof (offseasonData as { currentPhase?: unknown }).currentPhase === 'string'
+            ? (offseasonData as { currentPhase: string }).currentPhase
+            : null,
+        );
+      } else {
+        setOffseasonPhase(phase === 'offseason' ? 'draft' : null);
+      }
     } catch {
       setDraft(null);
+      setOffseasonPhase(null);
     }
-  }, [getDraftClass, isInitialized, workerReady]);
+  }, [getDraftClass, getOffseasonState, isInitialized, phase, workerReady]);
 
   useEffect(() => {
     void loadDraft();
@@ -185,6 +205,7 @@ export function useDraftRouteData({
     draft,
     gradesView,
     loadDraft,
+    offseasonPhase,
     reaction,
     revealedPickCount,
     selectedProspect,

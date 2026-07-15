@@ -34,6 +34,25 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 12, Goal 22 `ECON-QUALIFYING-OFFERS-1`: one fixed
+  service-day-authoritative qualifying-offer salary now drives deterministic
+  user/CPU issue and once-only resolution; rejected players enter the canonical
+  market, while an outside signing atomically requires one former-club award
+  and one specific eligible signing-club pick loss.
+- QO issue/resolve, accepted user signings, draft start, and draft selection use
+  the existing exact-save worker session and persistence lease. Rejected or
+  malformed transitions produce no snapshot capture or false durable success,
+  and imported lifecycle, draft-slot, player, signing, and acquisition facts
+  fail closed when they do not form one coherent aggregate.
+- Offseason, Free Agency, and Draft expose the fixed salary, pending/terminal
+  states, exact pick cost, award/loss consequence, and supplemental-slot
+  provenance with keyboard-safe desktop and 375×667 controls. GameSnapshot
+  remains v34, Dexie remains v6, and no dependency or bundle ceiling changed.
+- Final evidence: contracts 24/24, UI 1/1, sim-core 1,665/1,665, web
+  2,387 passed + 3 intentional skips, root typecheck/build, determinism 3/3,
+  3,029-module / 167-entry PWA, production QO journey 1/1, and reload-smoke
+  2/2. Both browser gates used one worker, zero retries, and no flaky result.
+
 - Verified roadmap item 11, Goal 21 `ECON-ARBITRATION-1`: exact MLB service
   days now own ordinary and Super Two eligibility, deterministic arbitration
   dockets persist distinct filing, exchange, hearing, and award beats, and every

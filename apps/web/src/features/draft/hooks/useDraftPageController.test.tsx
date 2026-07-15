@@ -8,6 +8,11 @@ import type {
   DraftRoomView,
 } from '@/workers/sim.worker.helpers';
 
+vi.mock('@/shared/hooks/useExactOffseasonMutationExecutor', () => ({
+  useExactSaveMutationExecutor: (worker: { execute: (session: object, operation: unknown) => Promise<unknown> }) =>
+    (operation: unknown) => worker.execute({}, operation),
+}));
+
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -137,6 +142,18 @@ describe('useDraftPageController', () => {
       playEffect: vi.fn(),
       season: 4,
       worker: {
+        exactSaveMutation: {
+          exportSnapshot: vi.fn(),
+          execute: vi.fn().mockImplementation((_session, operation) => {
+            if ((operation as { kind?: string }).kind === 'simulateRemainingDraft') {
+              return Promise.resolve({ success: true, draft: draftView(), newPicks: [] });
+            }
+            return Promise.resolve({ success: true, draft: draftView(), newPicks: [] });
+          }),
+          restoreBaseline: vi.fn(),
+          publishFlow: vi.fn(),
+          discardFlow: vi.fn(),
+        },
         getDraftClass: vi.fn().mockResolvedValue(draftView()),
         getDraftCommentary: vi.fn().mockResolvedValue({
           heartbeat: 'NYT are live at pick 2.',
@@ -145,6 +162,7 @@ describe('useDraftPageController', () => {
         }),
         getDraftPostDraftGrades: vi.fn().mockResolvedValue(null),
         getDraftProspectReaction: vi.fn().mockResolvedValue(null),
+        getOffseasonState: vi.fn().mockResolvedValue({ currentPhase: 'draft' }),
         isReady: true,
         makeDraftPick: vi.fn().mockResolvedValue({ success: true, draft: draftView(), newPicks: [] }),
         scoutDraftPlayer: vi.fn().mockResolvedValue({ success: true, draft: draftView(), newPicks: [] }),
@@ -203,6 +221,24 @@ describe('useDraftPageController', () => {
       await latestResult?.contentProps.roomContentProps?.roomHeaderPanelProps.onWatchDraft();
     });
 
-    expect(options.worker.simulateRemainingDraft).toHaveBeenCalledTimes(1);
+    expect(options.worker.exactSaveMutation.execute).toHaveBeenCalledWith(
+      {},
+      { kind: 'simulateRemainingDraft' },
+    );
+  });
+
+  it('keeps the draft unavailable until the exact offseason draft subphase', async () => {
+    const options = baseOptions({
+      worker: {
+        ...baseOptions().worker,
+        getOffseasonState: vi.fn().mockResolvedValue({ currentPhase: 'qualifying_offers' }),
+      },
+    });
+    await renderHook(options);
+    await waitForAssertion(() => {
+      expect(latestResult?.contentProps.availabilityPanelProps?.status).toBe('Draft Unavailable');
+      expect(latestResult?.contentProps.availabilityPanelProps?.variant).toBe('unavailable');
+      expect(latestResult?.contentProps.roomContentProps).toBeNull();
+    });
   });
 });

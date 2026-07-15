@@ -23,6 +23,19 @@ vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
   useActiveSaveAutosave: () => vi.fn().mockResolvedValue({ saved: true, saveName: 'Test Save' }),
 }));
 
+vi.mock('@/shared/hooks/useExactOffseasonMutationExecutor', () => ({
+  useExactSaveMutationExecutor: () => async (operation: { kind: string; [key: string]: unknown }) => {
+    const worker = vi.mocked(useWorker)();
+    switch (operation.kind) {
+      case 'startDraft': return worker.startDraft();
+      case 'makeDraftPick': return worker.makeDraftPick(operation.prospectId as string);
+      case 'signDraftPick': return worker.signDraftPick(operation.playerId as string, operation.bonusAmount as number);
+      case 'simulateRemainingDraft': return worker.simulateRemainingDraft();
+      default: return null;
+    }
+  },
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 (

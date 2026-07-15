@@ -459,4 +459,30 @@ describe('draft pick ownership and compensation', () => {
     expect(forfeiture.forfeitedPick?.round).toBe(2);
     expect(forfeiture.forfeitedPick?.originalTeamId).toBe('pit');
   });
+
+  it('forfeits an acquired unprotected first-round pick before the signing club own second-round pick', () => {
+    const standingsOrder = determineDraftOrder([
+      { teamId: 'pit', wins: 50, losses: 112 },
+      ...TEAMS
+        .filter((team) => !['pit', 'wsh'].includes(team.id))
+        .map((team, index) => ({ teamId: team.id, wins: 55 + index, losses: 107 - index })),
+      { teamId: 'wsh', wins: 104, losses: 58 },
+    ]);
+    const ownership = tradeDraftPickOwnership(
+      createDefaultDraftPickOwnership(TEAMS.map((team) => team.id), 12),
+      { season: 12, round: 1, originalTeamId: 'wsh' },
+      'pit',
+    );
+
+    const forfeiture = forfeitHighestEligiblePick(ownership, standingsOrder, 'pit', 12);
+
+    expect(forfeiture.forfeitedPick).toMatchObject({
+      round: 1,
+      originalTeamId: 'wsh',
+      currentTeamId: 'pit',
+    });
+    expect(forfeiture.pickOwnership.find((pick) => (
+      pick.season === 12 && pick.round === 2 && pick.originalTeamId === 'pit'
+    ))?.forfeited).toBe(false);
+  });
 });

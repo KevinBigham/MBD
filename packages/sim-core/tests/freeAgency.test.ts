@@ -342,6 +342,88 @@ describe('simulateFADay', () => {
     expect(Array.from(firstSlots.entries())).toEqual([['por', 1]]);
     expect(Array.from(secondSlots.entries())).toEqual([['por', 1]]);
   });
+
+  it('excludes an ineligible bidder before RNG-backed offer generation and lets an eligible club sign', () => {
+    const player = { ...makeExpiringPlayer(266), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const eligibilityCalls: string[] = [];
+    const budgets = new Map([['por', 200], ['bos', 200]]);
+    const payrolls = new Map([['por', 90], ['bos', 90]]);
+    const needs = new Map([
+      ['por', new Map([[player.position, 100]])],
+      ['bos', new Map([[player.position, 100]])],
+    ]);
+    const slots = new Map([['por', 1], ['bos', 1]]);
+    const attractiveness = (teamId: string) => teamId === 'por' ? 100 : 0;
+    const unfiltered = simulateFADay(
+      new GameRNG(266),
+      market,
+      budgets,
+      payrolls,
+      needs,
+      slots,
+      attractiveness,
+    );
+
+    const next = simulateFADay(
+      new GameRNG(266),
+      market,
+      budgets,
+      payrolls,
+      needs,
+      slots,
+      attractiveness,
+      new Map(),
+      new Map(),
+      new Map(),
+      (teamId, playerId) => {
+        eligibilityCalls.push(`${teamId}:${playerId}`);
+        return teamId !== 'por';
+      },
+    );
+
+    expect(unfiltered.signedPlayers[0]?.signedWith).toBe('por');
+    expect(eligibilityCalls).toEqual([`por:${player.id}`, `bos:${player.id}`]);
+    expect(next.signedPlayers).toHaveLength(1);
+    expect(next.signedPlayers[0]?.signedWith).toBe('bos');
+    expect(next.signedPlayers[0]?.interestedTeams).toEqual(['bos']);
+  });
+
+  it('applies accepted-offer reservations before admitting another same-day bidder', () => {
+    const players = [
+      { ...makeExpiringPlayer(267), teamId: '' },
+      { ...makeExpiringPlayer(268), teamId: '' },
+    ];
+    const market = createFreeAgencyMarket(1, players);
+    market.day = 54;
+    for (const freeAgent of market.freeAgents) freeAgent.demandLevel = 'low';
+    let porReservations = 0;
+
+    const next = simulateFADay(
+      new GameRNG(267),
+      market,
+      new Map([['por', 300], ['bos', 300]]),
+      new Map([['por', 80], ['bos', 80]]),
+      new Map([
+        ['por', new Map(players.map((player) => [player.position, 100]))],
+        ['bos', new Map(players.map((player) => [player.position, 100]))],
+      ]),
+      new Map([['por', 2], ['bos', 2]]),
+      (teamId) => teamId === 'por' ? 100 : 0,
+      new Map(),
+      new Map(),
+      new Map(),
+      (teamId) => teamId !== 'por' || porReservations === 0,
+      (offer) => {
+        if (offer.teamId === 'por') porReservations += 1;
+      },
+    );
+
+    expect(next.signedPlayers.map((entry) => entry.signedWith)).toEqual(['por', 'bos']);
+    expect(porReservations).toBe(1);
+  });
 });
 
 describe('generateAIOffer', () => {

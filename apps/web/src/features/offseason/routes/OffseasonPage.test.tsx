@@ -6,12 +6,21 @@ import OffseasonPage from './OffseasonPage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 
+const executeExactGameplayMutation = vi.hoisted(() => vi.fn());
+
 vi.mock('@/shared/hooks/useWorker', () => ({
   useWorker: vi.fn(),
 }));
 
 vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
+}));
+
+vi.mock('@/shared/hooks/useExactOffseasonMutationExecutor', () => ({
+  didExactSaveGameplayResultChange: (result: { flowStateChanged?: boolean }) =>
+    result.flowStateChanged !== false,
+  useExactOffseasonMutationExecutor: () => vi.fn(),
+  useExactSaveMutationExecutor: () => executeExactGameplayMutation,
 }));
 
 vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
@@ -211,6 +220,11 @@ describe('OffseasonPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    executeExactGameplayMutation.mockImplementation(async (operation: { kind?: string } | string) => (
+      typeof operation === 'object' && operation.kind === 'issueQualifyingOffer'
+        ? { success: true }
+        : { resolved: [] }
+    ));
 
     mockedUseGameStore.mockReturnValue({
       season: 4,
@@ -390,14 +404,25 @@ describe('OffseasonPage', () => {
   });
 
   it('issues and resolves qualifying offers from the offseason control surface', async () => {
-    const issueQualifyingOffer = vi.fn().mockResolvedValue({ success: true });
-    const resolveQualifyingOffers = vi.fn().mockResolvedValue({ resolved: [{ playerId: 'qo-1', status: 'rejected' }] });
-
+    const phaseResults = buildOffseasonState().phaseResults;
     mockedUseWorker.mockReturnValue(
       buildWorkerMock({
         getOffseasonState: vi.fn().mockResolvedValue(
           buildOffseasonState({
             currentPhase: 'qualifying_offers',
+            phaseResults: {
+              ...phaseResults,
+              qualifyingOffers: [{
+                playerId: 'qo-2',
+                teamId: 'nym',
+                amount: 21.4,
+                status: 'offered',
+                signingTeamId: null,
+                compensationPickId: null,
+                compensationTier: null,
+                forfeitedPick: null,
+              }],
+            },
             transactionGroups: [
               {
                 phase: 'qualifying_offers',
@@ -423,8 +448,6 @@ describe('OffseasonPage', () => {
           },
         ]),
         getQualifyingOfferSalary: vi.fn().mockResolvedValue(21.4),
-        issueQualifyingOffer,
-        resolveQualifyingOffers,
       }) as unknown as ReturnType<typeof useWorker>,
     );
 
@@ -442,8 +465,8 @@ describe('OffseasonPage', () => {
       await Promise.resolve();
     });
 
-    expect(issueQualifyingOffer).toHaveBeenCalledWith('qo-1');
-    expect(resolveQualifyingOffers).toHaveBeenCalled();
+    expect(executeExactGameplayMutation).toHaveBeenCalledWith({ kind: 'issueQualifyingOffer', playerId: 'qo-1' });
+    expect(executeExactGameplayMutation).toHaveBeenCalledWith({ kind: 'resolveQualifyingOffers' });
   });
 
   it('renders the protection audit surface and invokes Rule 5 protection actions', async () => {

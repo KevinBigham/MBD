@@ -4,7 +4,6 @@ import {
   calculateDynastyLeaderboardScore,
   calculateCoachingPayroll,
   calculateLuxuryTax,
-  calculateQualifyingOfferSalary,
   calculateTeamPayroll,
   compareTimelines,
   describeInjury,
@@ -111,6 +110,8 @@ import {
   getExtensionOfferForPlayer,
   getPromotionCandidatesForTeam,
   getQualifyingOfferEligibleForTeam,
+  getQualifyingOfferSalaryForState,
+  prepareQualifyingOfferCompensation,
   getRosterComplianceIssuesForTeam,
   hasCanonicalFreeAgencyMarket,
   getTeamPlayers,
@@ -3388,7 +3389,7 @@ export const queryApi = {
   },
 
   getQualifyingOfferSalary() {
-    return calculateQualifyingOfferSalary(requireState().players);
+    return getQualifyingOfferSalaryForState(requireState());
   },
 
   getIFAPool() {
@@ -3461,13 +3462,46 @@ export const queryApi = {
     return requireState().rosterStates.get(teamId) ?? null;
   },
 
-  getFreeAgents(limit: number = 25): FreeAgent[] {
+  getFreeAgents(limit: number = 25) {
     const s = requireState();
     const market = s.freeAgencyMarket;
     if (!market || !hasCanonicalFreeAgencyMarket(s)) {
       return [];
     }
-    return getTopFreeAgents(market, undefined, limit);
+    return getTopFreeAgents(market, undefined, limit).map((freeAgent) => {
+      const record = s.draftState.qualifyingOffers.find((entry) => (
+        entry.playerId === freeAgent.player.id
+        && entry.season === s.season
+        && entry.status === 'rejected'
+      ));
+      if (!record) {
+        return { ...freeAgent, qualifyingOffer: null };
+      }
+
+      const preview = prepareQualifyingOfferCompensation(
+        s,
+        freeAgent.player.id,
+        s.userTeamId,
+        { years: 1, annualSalary: 0 },
+      );
+      const formerTeam = getTeamById(record.teamId);
+      return {
+        ...freeAgent,
+        qualifyingOffer: {
+          formerTeamId: record.teamId,
+          formerTeamName: formerTeam ? `${formerTeam.city} ${formerTeam.name}` : record.teamId.toUpperCase(),
+          requiresCompensation: preview.kind === 'compensate',
+          forfeitedPick: preview.kind === 'compensate'
+            ? {
+              season: preview.forfeitedPick.season,
+              round: preview.forfeitedPick.round,
+              originalTeamId: preview.forfeitedPick.originalTeamId,
+            }
+            : null,
+          blockedReason: preview.kind === 'blocked' ? preview.reason : null,
+        },
+      };
+    });
   },
 
   getOffseasonState() {

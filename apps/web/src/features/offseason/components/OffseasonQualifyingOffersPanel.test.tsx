@@ -47,6 +47,8 @@ describe('OffseasonQualifyingOffersPanel', () => {
         <OffseasonQualifyingOffersPanel
           eligible={candidates}
           qualifyingOfferSalary={21.4}
+          results={[]}
+          active
           advancing={false}
           onIssue={onIssue}
           onResolve={onResolve}
@@ -70,14 +72,14 @@ describe('OffseasonQualifyingOffersPanel', () => {
 
     expect(issueButton?.getAttribute('data-mobile-critical-control')).toBe('offseason-issue-qo');
     expect(resolveButton?.getAttribute('data-mobile-critical-control')).toBe('offseason-resolve-qos');
+    expect(resolveButton?.hasAttribute('disabled')).toBe(true);
 
     await act(async () => {
       issueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      resolveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
     expect(onIssue).toHaveBeenCalledWith('qo-1');
-    expect(onResolve).toHaveBeenCalledTimes(1);
+    expect(onResolve).not.toHaveBeenCalled();
   });
 
   it('renders an empty state and fallback salary line', async () => {
@@ -86,6 +88,8 @@ describe('OffseasonQualifyingOffersPanel', () => {
         <OffseasonQualifyingOffersPanel
           eligible={[]}
           qualifyingOfferSalary={null}
+          results={[]}
+          active
           advancing
           onIssue={vi.fn()}
           onResolve={vi.fn()}
@@ -95,6 +99,78 @@ describe('OffseasonQualifyingOffersPanel', () => {
 
     expect(container.textContent).toContain('Salary line --');
     expect(container.textContent).toContain('No qualifying-offer files are eligible this offseason.');
+    for (const button of container.querySelectorAll('button')) {
+      expect(button.hasAttribute('disabled')).toBe(true);
+    }
+  });
+
+  it('shows recorded outcomes and resolves only while an offer is pending', async () => {
+    const onResolve = vi.fn();
+    await act(async () => {
+      root.render(
+        <OffseasonQualifyingOffersPanel
+          eligible={candidates}
+          qualifyingOfferSalary={21.4}
+          results={[{
+            playerId: 'qo-1',
+            teamId: 'chi',
+            amount: 21.4,
+            status: 'offered',
+            signingTeamId: null,
+            compensationPickId: null,
+            compensationTier: null,
+            forfeitedPick: null,
+          }]}
+          active
+          advancing={false}
+          onIssue={vi.fn()}
+          onResolve={onResolve}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('offered');
+    expect(container.textContent).toContain('QO Recorded');
+    const resolveButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Resolve Offers'),
+    );
+    expect(resolveButton?.hasAttribute('disabled')).toBe(false);
+    await act(async () => {
+      resolveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onResolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows result-only players beside remaining eligible files and keeps history read-only after the phase', async () => {
+    const onIssue = vi.fn();
+    const onResolve = vi.fn();
+    await act(async () => {
+      root.render(
+        <OffseasonQualifyingOffersPanel
+          eligible={candidates}
+          qualifyingOfferSalary={21.4}
+          results={[{
+            playerId: 'qo-2',
+            playerName: 'Rafael Result',
+            teamId: 'chi',
+            amount: 21.4,
+            status: 'accepted',
+            signingTeamId: null,
+            compensationPickId: null,
+            compensationTier: null,
+            forfeitedPick: null,
+          }]}
+          active={false}
+          advancing={false}
+          onIssue={onIssue}
+          onResolve={onResolve}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('Victor Veteran');
+    expect(container.textContent).toContain('Rafael Result');
+    expect(container.textContent).toContain('accepted');
     for (const button of container.querySelectorAll('button')) {
       expect(button.hasAttribute('disabled')).toBe(true);
     }

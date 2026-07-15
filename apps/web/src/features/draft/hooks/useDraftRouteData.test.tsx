@@ -196,6 +196,7 @@ describe('useDraftRouteData', () => {
       getDraftCommentary: vi.fn().mockResolvedValue(commentaryView),
       getDraftPostDraftGrades: vi.fn().mockResolvedValue(gradesView),
       getDraftProspectReaction: vi.fn().mockResolvedValue(reactionView),
+      getOffseasonState: vi.fn().mockResolvedValue({ currentPhase: 'draft' }),
       isInitialized: true,
       phase: 'offseason',
       playEffect: vi.fn(),
@@ -264,6 +265,27 @@ describe('useDraftRouteData', () => {
     expect(options.getDraftCommentary).not.toHaveBeenCalled();
     expect(options.getDraftProspectReaction).not.toHaveBeenCalled();
     expect(options.getDraftPostDraftGrades).not.toHaveBeenCalled();
+  });
+
+  it('keeps draft availability unknown until the authoritative offseason subphase resolves', async () => {
+    let resolveOffseason: ((value: { currentPhase: string }) => void) | null = null;
+    const offseasonState = new Promise<{ currentPhase: string }>((resolve) => {
+      resolveOffseason = resolve;
+    });
+    const options = baseOptions({
+      getOffseasonState: vi.fn().mockReturnValue(offseasonState),
+    });
+    await renderHook(options);
+
+    expect(latestResult?.offseasonPhase).toBeNull();
+
+    await act(async () => {
+      resolveOffseason?.({ currentPhase: 'draft' });
+      await Promise.resolve();
+    });
+    await waitForAssertion(() => {
+      expect(latestResult?.offseasonPhase).toBe('draft');
+    });
   });
 
   it('reveals watched draft picks on the existing timer and plays the announcement effect', async () => {

@@ -322,4 +322,35 @@ describe('OffseasonPageContent', () => {
     expect(container.textContent).not.toContain('extensions:1');
     expect(container.textContent).not.toContain('qualifying-offers');
   });
+
+  it('keeps terminal qualifying-offer history visible after the active phase', async () => {
+    const base = baseProps();
+    await act(async () => {
+      root.render(
+        <OffseasonPageContent
+          {...baseProps({
+            offseason: {
+              ...base.offseason!,
+              currentPhase: 'free_agency',
+              phaseResults: {
+                ...base.offseason!.phaseResults,
+                qualifyingOffers: [{
+                  playerId: 'qo-1',
+                  teamId: 'nym',
+                  amount: 21.4,
+                  status: 'rejected',
+                  signingTeamId: null,
+                  compensationPickId: null,
+                  compensationTier: null,
+                  forfeitedPick: null,
+                }],
+              },
+            },
+          })}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain('qualifying-offers');
+  });
 });

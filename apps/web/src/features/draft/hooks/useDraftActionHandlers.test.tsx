@@ -325,6 +325,36 @@ describe('useDraftActionHandlers', () => {
     expect(autosaveActiveGame).toHaveBeenNthCalledWith(3, { season: 6 });
   });
 
+  it('keeps scouting and big-board autosaves while exact-durable draft mutations skip duplicate saves', async () => {
+    const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
+    const selectedProspect = prospect({ id: 'prospect-42' });
+    const options = baseOptions({
+      autosaveActiveGame,
+      gameplayMutationsAreDurable: true,
+      selectedProspect,
+    });
+    await renderHook(options);
+
+    await act(async () => {
+      latestResult?.handleBonusOfferChange('player-1', '2.75');
+    });
+    await act(async () => {
+      await latestResult?.handleStartDraft();
+      await latestResult?.handleMakePick();
+      await latestResult?.handleScoutProspect();
+      await latestResult?.handleToggleBigBoard();
+      await latestResult?.handleSignDraftPick('player-1');
+      await latestResult?.handleWatchDraft();
+    });
+
+    expect(options.scoutDraftPlayer).toHaveBeenCalledWith('prospect-42');
+    expect(options.toggleDraftBigBoard).toHaveBeenCalledWith('prospect-42');
+    expect(options.signDraftPick).toHaveBeenCalledWith('player-1', 2.75);
+    expect(autosaveActiveGame).toHaveBeenCalledTimes(2);
+    expect(autosaveActiveGame).toHaveBeenNthCalledWith(1, { season: 6 });
+    expect(autosaveActiveGame).toHaveBeenNthCalledWith(2, { season: 6 });
+  });
+
   it('persists an accepted signing before the room refresh, even when the refresh rejects', async () => {
     const autosaveActiveGame = vi.fn().mockResolvedValue({ saved: true });
     const loadDraft = vi.fn().mockRejectedValue(new Error('refresh offline'));

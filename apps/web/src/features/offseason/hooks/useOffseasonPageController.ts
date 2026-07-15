@@ -13,6 +13,8 @@ import {
 import { getAudioEngine, type AudioEffectName } from '@/shared/lib/audio';
 import {
   useExactOffseasonMutationExecutor,
+  didExactSaveGameplayResultChange,
+  useExactSaveMutationExecutor,
   type ExactOffseasonMutationWorker,
 } from '@/shared/hooks/useExactOffseasonMutationExecutor';
 import { useOffseasonActionHandlers } from './useOffseasonActionHandlers';
@@ -187,6 +189,11 @@ export function useOffseasonPageController({
     worker.exactSaveMutation,
     worker.isReady,
   );
+  const executeGameplayMutation = useExactSaveMutationExecutor(
+    worker.exactSaveMutation,
+    worker.isReady,
+    didExactSaveGameplayResultChange,
+  );
 
   const {
     advancing,
@@ -204,11 +211,11 @@ export function useOffseasonPageController({
     applyOffseasonData,
     autosaveActiveGame,
     fetchOffseason,
-    issueQualifyingOffer: worker.issueQualifyingOffer,
+    issueQualifyingOffer: (playerId) => executeGameplayMutation({ kind: 'issueQualifyingOffer', playerId }),
     lockRule5Protection: worker.lockRule5Protection,
     makeRule5Pick: worker.makeRule5Pick,
     passRule5Pick: worker.passRule5Pick,
-    resolveQualifyingOffers: worker.resolveQualifyingOffers,
+    resolveQualifyingOffers: () => executeGameplayMutation({ kind: 'resolveQualifyingOffers' }),
     resolveRule5OfferBack: worker.resolveRule5OfferBack,
     season,
     skipOffseasonPhase: () => executeOffseasonMutation('skipOffseasonPhase'),

@@ -1036,6 +1036,7 @@ export {
   tradeDraftPickOwnership,
   awardCompensatoryPick,
   forfeitHighestEligiblePick,
+  planDraftPickCompensation,
   buildDraftPickSlots,
 } from './draft/index.js';
 export type {
@@ -1050,6 +1051,7 @@ export type {
   DraftPickDescriptor,
   DraftCompensatoryPick,
   DraftCompensatoryPickAward,
+  DraftCompensationPlan,
   DraftPickSlot,
 } from './draft/index.js';
 

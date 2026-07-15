@@ -34,6 +34,19 @@ export interface DraftCompensatoryPickAward {
   priorityGroup?: 'premium' | 'standard';
 }
 
+export type DraftCompensationPlan =
+  | {
+    success: true;
+    compensatoryPicks: DraftCompensatoryPick[];
+    pickOwnership: DraftPickOwnership[];
+    awardedPick: DraftCompensatoryPick;
+    forfeitedPick: DraftPickOwnership;
+  }
+  | {
+    success: false;
+    reason: 'existing_compensation' | 'no_eligible_pick';
+  };
+
 export interface DraftPickSlot {
   slotId: string;
   season: number;
@@ -167,6 +180,50 @@ export function forfeitHighestEligiblePick(
         : pick
     )),
     forfeitedPick: candidate,
+  };
+}
+
+export function planDraftPickCompensation(
+  compPicks: DraftCompensatoryPick[],
+  pickOwnership: DraftPickOwnership[],
+  standingsOrder: string[],
+  award: DraftCompensatoryPickAward,
+): DraftCompensationPlan {
+  const existing = compPicks.find((pick) =>
+    pick.season === award.season
+    && pick.compensationForPlayerId === award.compensationForPlayerId,
+  );
+  if (existing) {
+    return { success: false, reason: 'existing_compensation' };
+  }
+
+  const forfeiture = forfeitHighestEligiblePick(
+    pickOwnership,
+    standingsOrder,
+    award.compensationFromTeamId,
+    award.season,
+  );
+  if (!forfeiture.forfeitedPick) {
+    return { success: false, reason: 'no_eligible_pick' };
+  }
+
+  const compensatoryPicks = awardCompensatoryPick(compPicks, award);
+  const awardedPick = compensatoryPicks.find((pick) =>
+    pick.season === award.season
+    && pick.compensationForPlayerId === award.compensationForPlayerId
+    && pick.awardedToTeamId === award.awardedToTeamId
+    && pick.compensationFromTeamId === award.compensationFromTeamId,
+  );
+  if (!awardedPick) {
+    throw new Error('Qualifying-offer compensation award was not created.');
+  }
+
+  return {
+    success: true,
+    compensatoryPicks,
+    pickOwnership: forfeiture.pickOwnership,
+    awardedPick,
+    forfeitedPick: forfeiture.forfeitedPick,
   };
 }
 

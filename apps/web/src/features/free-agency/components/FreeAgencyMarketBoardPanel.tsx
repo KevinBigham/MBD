@@ -13,6 +13,17 @@ export interface FreeAgencyMarketAgent {
   letterGrade: string;
   marketValue: number;
   demandLevel: string;
+  qualifyingOffer?: {
+    formerTeamId: string;
+    formerTeamName: string;
+    requiresCompensation: boolean;
+    forfeitedPick: {
+      season: number;
+      round: number;
+      originalTeamId: string;
+    } | null;
+    blockedReason: string | null;
+  } | null;
 }
 
 export type PositionFilter = 'all' | 'hitters' | 'pitchers';
@@ -142,19 +153,34 @@ export default function FreeAgencyMarketBoardPanel({
               {agents.map((agent) => (
                 <tr
                   key={agent.id}
-                  onClick={() => onSelectPlayer(agent)}
-                  className={`cursor-pointer border-b border-dynasty-border/50 text-sm transition-colors hover:bg-dynasty-elevated ${
+                  className={`border-b border-dynasty-border/50 text-sm transition-colors hover:bg-dynasty-elevated ${
                     selectedPlayerId === agent.id ? 'bg-accent-primary/10' : ''
                   }`}
                 >
                   <td className="px-4 py-2 font-heading font-medium text-dynasty-text">
-                    <Link
-                      to={`/players/${agent.id}`}
-                      onClick={(event) => event.stopPropagation()}
-                      className="hover:text-accent-primary"
-                    >
-                      {agent.firstName} {agent.lastName}
-                    </Link>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <button
+                        type="button"
+                        aria-pressed={selectedPlayerId === agent.id}
+                        aria-label={`Select ${agent.firstName} ${agent.lastName} for a contract offer`}
+                        onClick={() => onSelectPlayer(agent)}
+                        className="rounded text-left hover:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
+                      >
+                        {agent.firstName} {agent.lastName}
+                      </button>
+                      <Link
+                        to={`/players/${agent.id}`}
+                        aria-label={`View ${agent.firstName} ${agent.lastName} profile`}
+                        className="font-data text-[10px] uppercase tracking-wide text-dynasty-muted hover:text-accent-primary"
+                      >
+                        Profile
+                      </Link>
+                    </div>
+                    {agent.qualifyingOffer ? (
+                      <div className="mt-0.5 font-data text-[10px] font-semibold uppercase tracking-wide text-accent-warning">
+                        QO attached
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-2 py-2 font-data text-dynasty-muted">{agent.position}</td>
                   <td className={`px-2 py-2 text-right font-data font-bold ${gradeTextColor(agent.letterGrade)}`}>

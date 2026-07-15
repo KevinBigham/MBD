@@ -8,7 +8,11 @@ import { OffseasonCurrentPhasePanel } from './OffseasonCurrentPhasePanel';
 import { OffseasonExtensionCandidatesPanel, type ExtensionCandidateView } from './OffseasonExtensionCandidatesPanel';
 import { OffseasonMarketDayBriefingPanel, type OffseasonMarketDaySummaryView } from './OffseasonMarketDayBriefingPanel';
 import { OffseasonPhaseTrackerPanel, type OffseasonPhaseStepView } from './OffseasonPhaseTrackerPanel';
-import { OffseasonQualifyingOffersPanel, type QualifyingOfferEligibleView } from './OffseasonQualifyingOffersPanel';
+import {
+  OffseasonQualifyingOffersPanel,
+  type QualifyingOfferEligibleView,
+  type QualifyingOfferResultView,
+} from './OffseasonQualifyingOffersPanel';
 import { OffseasonResultSummaryGrid } from './OffseasonResultSummaryGrid';
 import { OffseasonRule5Panel } from './OffseasonRule5Panel';
 import { OffseasonSpringTrainingPanel, type SpringTrainingView } from './OffseasonSpringTrainingPanel';
@@ -130,10 +134,15 @@ export default function OffseasonPageContent({
         <OffseasonExtensionCandidatesPanel candidates={extensionCandidates} />
       ) : null}
 
-      {offseason?.currentPhase === 'qualifying_offers' ? (
+      {offseason && (
+        offseason.currentPhase === 'qualifying_offers'
+        || offseason.phaseResults.qualifyingOffers.length > 0
+      ) ? (
         <OffseasonQualifyingOffersPanel
           eligible={qualifyingOfferEligible}
           qualifyingOfferSalary={qualifyingOfferSalary}
+          results={offseason.phaseResults.qualifyingOffers as QualifyingOfferResultView[]}
+          active={offseason.currentPhase === 'qualifying_offers'}
           advancing={advancing}
           onIssue={(playerId) => void onIssueQualifyingOffer(playerId)}
           onResolve={() => void onResolveQualifyingOffers()}

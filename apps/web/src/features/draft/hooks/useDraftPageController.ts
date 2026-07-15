@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { getAudioEngine, type AudioEffectName } from '@/shared/lib/audio';
 import type { DraftPageContentProps } from '../components/DraftPageContent';
 import { useDraftActionHandlers } from './useDraftActionHandlers';
@@ -7,13 +7,17 @@ import type {
   DraftRoomPick,
   DraftRoomView,
 } from '@/workers/sim.worker.helpers';
+import {
+  useExactSaveMutationExecutor,
+  type ExactOffseasonMutationWorker,
+} from '@/shared/hooks/useExactOffseasonMutationExecutor';
 
 function playDraftEffect(name: AudioEffectName) {
   getAudioEngine().playEffect(name);
 }
 
-function statusText(view: DraftRoomView | null, phase: string): string {
-  if (phase !== 'offseason') return 'Draft Unavailable';
+function statusText(view: DraftRoomView | null, phase: string, offseasonPhase: string | null): string {
+  if (phase !== 'offseason' || offseasonPhase !== 'draft') return 'Draft Unavailable';
   if (!view || view.status === 'available') return 'Draft Available';
   if (view.status === 'complete') return 'Draft Complete';
   return 'Draft In Progress';
@@ -39,7 +43,9 @@ interface DraftPageWorker {
   getDraftCommentary: (visiblePickCount?: number) => Promise<unknown>;
   getDraftPostDraftGrades: () => Promise<unknown>;
   getDraftProspectReaction: (prospectId: string) => Promise<unknown>;
+  getOffseasonState?: () => Promise<unknown>;
   isReady: boolean;
+  exactSaveMutation: ExactOffseasonMutationWorker<unknown>;
   makeDraftPick: (prospectId: string) => Promise<unknown>;
   scoutDraftPlayer: (prospectId: string) => Promise<unknown>;
   signDraftPick: (playerId: string, offeredBonus: number) => Promise<unknown>;
@@ -76,6 +82,7 @@ export function useDraftPageController({
     draft,
     gradesView,
     loadDraft,
+    offseasonPhase,
     reaction,
     selectedProspect,
     selectedProspectId,
@@ -90,12 +97,26 @@ export function useDraftPageController({
     getDraftCommentary: worker.getDraftCommentary,
     getDraftPostDraftGrades: worker.getDraftPostDraftGrades,
     getDraftProspectReaction: worker.getDraftProspectReaction,
+    getOffseasonState: worker.getOffseasonState,
     isInitialized,
     phase,
     playEffect,
     season,
     workerReady: worker.isReady,
   });
+  const exactDraftResultChanged = useCallback((result: unknown) => (
+    typeof result === 'object'
+      && result !== null
+      && 'success' in result
+      && (result as { success?: unknown }).success === true
+      && (!('flowStateChanged' in result)
+        || (result as { flowStateChanged?: unknown }).flowStateChanged !== false)
+  ), []);
+  const executeExactDraftMutation = useExactSaveMutationExecutor(
+    worker.exactSaveMutation,
+    worker.isReady,
+    exactDraftResultChanged,
+  );
   const {
     bonusOffers,
     error,
@@ -111,24 +132,25 @@ export function useDraftPageController({
     signingPlayerId,
   } = useDraftActionHandlers({
     autosaveActiveGame,
+    gameplayMutationsAreDurable: true,
     loadDraft,
-    makeDraftPick: worker.makeDraftPick,
+    makeDraftPick: (prospectId) => executeExactDraftMutation({ kind: 'makeDraftPick', prospectId }),
     scoutDraftPlayer: worker.scoutDraftPlayer,
     selectedProspect,
     season,
     setDraft,
     setRevealedPickCount,
     setWatchTargetCount,
-    signDraftPick: worker.signDraftPick,
-    simulateRemainingDraft: worker.simulateRemainingDraft,
-    startDraft: worker.startDraft,
+    signDraftPick: (playerId, bonusAmount) => executeExactDraftMutation({ kind: 'signDraftPick', playerId, bonusAmount }),
+    simulateRemainingDraft: () => executeExactDraftMutation({ kind: 'simulateRemainingDraft' }),
+    startDraft: () => executeExactDraftMutation({ kind: 'startDraft' }),
     toggleDraftBigBoard: worker.toggleDraftBigBoard,
   });
 
-  const status = statusText(draft, phase);
+  const status = statusText(draft, phase, offseasonPhase);
   const progressLabel = formatProgress(draft, visiblePicks);
 
-  if (phase !== 'offseason') {
+  if (phase !== 'offseason' || offseasonPhase !== 'draft') {
     return {
       contentProps: {
         availabilityPanelProps: {

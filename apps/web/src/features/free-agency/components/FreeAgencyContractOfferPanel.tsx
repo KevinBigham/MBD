@@ -9,6 +9,16 @@ export interface FreeAgentOfferPlayer {
   age: number;
   displayRating: number;
   marketValue?: number;
+  qualifyingOffer?: {
+    formerTeamName: string;
+    requiresCompensation: boolean;
+    forfeitedPick: {
+      season: number;
+      round: number;
+      originalTeamId: string;
+    } | null;
+    blockedReason: string | null;
+  } | null;
 }
 
 export interface FreeAgencyOfferBudget {
@@ -71,10 +81,11 @@ export default function FreeAgencyContractOfferPanel({
           </div>
 
           <div>
-            <label className="mb-1 block font-heading text-xs text-dynasty-muted">
+            <label htmlFor={`fa-offer-years-${selectedPlayer.id}`} className="mb-1 block font-heading text-xs text-dynasty-muted">
               Years: {offerYears}
             </label>
             <input
+              id={`fa-offer-years-${selectedPlayer.id}`}
               type="range"
               min={1}
               max={8}
@@ -85,10 +96,11 @@ export default function FreeAgencyContractOfferPanel({
           </div>
 
           <div>
-            <label className="mb-1 block font-heading text-xs text-dynasty-muted">
+            <label htmlFor={`fa-offer-salary-${selectedPlayer.id}`} className="mb-1 block font-heading text-xs text-dynasty-muted">
               Annual Salary: ${offerSalary}M
             </label>
             <input
+              id={`fa-offer-salary-${selectedPlayer.id}`}
               type="range"
               min={1}
               max={45}
@@ -102,6 +114,25 @@ export default function FreeAgencyContractOfferPanel({
           <div className="rounded border border-dynasty-border/50 bg-dynasty-elevated p-2 font-data text-xs text-dynasty-muted">
             Total: {money(offerYears * offerSalary)} / {offerYears}yr
           </div>
+
+          {selectedPlayer.qualifyingOffer ? (
+            <div
+              role="note"
+              className="rounded border border-accent-warning/50 bg-accent-warning/10 p-3 font-heading text-xs text-accent-warning"
+            >
+              <div className="font-semibold">Qualifying offer attached by {selectedPlayer.qualifyingOffer.formerTeamName}</div>
+              {selectedPlayer.qualifyingOffer.blockedReason ? (
+                <div className="mt-1">Signing blocked: {selectedPlayer.qualifyingOffer.blockedReason}</div>
+              ) : selectedPlayer.qualifyingOffer.requiresCompensation && selectedPlayer.qualifyingOffer.forfeitedPick ? (
+                <div className="mt-1">
+                  An accepted signing forfeits your Round {selectedPlayer.qualifyingOffer.forfeitedPick.round} pick
+                  {' '}({selectedPlayer.qualifyingOffer.forfeitedPick.originalTeamId.toUpperCase()} origin).
+                </div>
+              ) : (
+                <div className="mt-1">No pick is forfeited when a player re-signs with his former club.</div>
+              )}
+            </div>
+          ) : null}
 
           {offerBudget && (
             <div className="grid gap-2 rounded border border-dynasty-border/50 bg-dynasty-elevated p-3 font-data text-xs">
@@ -124,6 +155,7 @@ export default function FreeAgencyContractOfferPanel({
             type="button"
             data-mobile-critical-control="free-agency-offer-contract"
             onClick={onSubmitOffer}
+            disabled={Boolean(selectedPlayer.qualifyingOffer?.blockedReason)}
             className="mobile-critical-control w-full rounded bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80"
           >
             <DollarSign className="mr-1 inline h-4 w-4" />
