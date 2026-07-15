@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-15 at roadmap-item-12 verified completion; ECON-QUALIFYING-OFFERS-1 is gate-green and locally landable.
+Last reconciled: 2026-07-15 after roadmap-item-13 verification and local landing; ECON-EXTENSION-AI-1 is complete and item 14 has not started.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -10,9 +10,10 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–12 and 80.
+- Verified complete: items 1–13 and 80.
 - Closed item: **11 — service-time arbitration drama**, now **VERIFIED COMPLETE** under Goal 21 / `ECON-ARBITRATION-1`; Goal 11's bounded contract clock remains complete.
-- Closed item: **12 — qualifying offers and draft-pick compensation**, now **VERIFIED COMPLETE** under Goal 22 / `ECON-QUALIFYING-OFFERS-1`; item 13 has not started.
+- Closed item: **12 — qualifying offers and draft-pick compensation**, now **VERIFIED COMPLETE** under Goal 22 / `ECON-QUALIFYING-OFFERS-1`.
+- Closed item: **13 — identity-driven CPU extensions**, now **VERIFIED COMPLETE** under Goal 23 / `ECON-EXTENSION-AI-1`; item 14 has not started.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -33,7 +34,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 10 | 2 | Symmetric option-year resolution | VERIFIED COMPLETE | Goal 11 / `runs/ECON-CLOCK-1`; bundled at one clock seam | Team-option-only deterministic rule, named user/CPU symmetry, zero-RNG proof, Finance/Offseason/News truth, reload proof | Same Goal-11 landing commit | Same relay as item 9 | Item 9 | Preserve deterministic symmetry; player options remain cut |
 | 11 | 2 | Service-time arbitration drama | VERIFIED COMPLETE | Goal 21 / `runs/ECON-ARBITRATION-1` | Completion matrix; persisted deterministic docket; exact-save lease/session proof; full gates; production arbitration 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Parent single writer; three read-only source/test/risk reviewers; parent final adversarial review | Items 9–10 | Preserve service-day authority, exact-save fencing, and durable-only presentation |
 | 12 | 2 | Qualifying offers and pick compensation | VERIFIED COMPLETE | Goal 22 / `runs/ECON-QUALIFYING-OFFERS-1` | Completion matrix; atomic award/loss conservation; exact-save issue/resolve/sign/draft; full gates; production QO 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; final `/root/qoffers_final_review` `MERGE_READY` with zero P0–P2 | Items 9–11 | Preserve fixed salary, aggregate validation, exact draft phase, and no-free-award law; item 13 is next |
-| 13 | 2 | Identity-driven CPU extensions | PARTIAL | No run | Extension AI/tests exist; durable cross-domain identity incomplete | Historical source | — | Items 9, 49 | Reconcile after org identity |
+| 13 | 2 | Identity-driven CPU extensions | VERIFIED COMPLETE | Goal 23 / `runs/ECON-EXTENSION-AI-1` | Completion matrix; persisted-GM bounded team policy with identity-neutral player RNG; candidate-scoped lanes; exact budget/aggregate/save proof; four-seed study; production extension 1/1 and reload-smoke 2/2, final 3/3 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; `/root/extensions_final_review` final `MERGE_READY` 0/0/0 after `FIX_AND_REVIEW` 0/4/1 and 0/1/0 | Items 9, 49 (bounded consumption only) | Preserve player-side neutrality, candidate isolation, exact budget, and aggregate/save fencing; item 49 remains partial |
 | 14 | 2 | Owner payroll pressure/tax consequences | PARTIAL | No run | Owner archetype/budget/tax primitives exist | Historical source | — | Items 9, 51 | Add calibration and narrative consequence proof |
 | 15 | 2 | Market-size revenue feeds budgets | PARTIAL | No run | Attendance/playoff/spending factors feed budget state | Historical source | — | Item 9 | Add multi-season calibration |
 | 16 | 2 | Explainable free-agent decisions | PARTIAL | No run | FA fit/reason surfaces exist; full requested model incomplete | Historical source | — | Items 9, 49 | Complete reasons and browser proof |
@@ -69,7 +70,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 46 | 5 | Playable international free agency | PARTIAL | No run | IFA engine, worker tests, and board UI exist | Historical source | — | Scouting + economy | Add bounded completion/reload/calibration |
 | 47 | 5 | Mock drafts and uncertain rumor mill | PENDING | No goal/run | No draft mock/rumor engine found | — | — | Items 39–46 | Create scouting-dependent slice |
 | 48 | 5 | +3/+5 retroactive draft grades | PENDING | No goal/run | Immediate grades exist; no delayed evaluation/memory stories | — | — | MEMORY-0 + item 42 | Add factual delayed grading |
-| 49 | 6 | Durable cross-domain CPU org identity | PARTIAL | Goals 06/07/08; no runs | Front-office state/personalities/archetypes exist but are not unified across decisions | Historical source | — | ORG-DRAFT-1 | Execute domain goals sequentially |
+| 49 | 6 | Durable cross-domain CPU org identity | PARTIAL | Goals 06/07/08 and Goal 23 domain consumption; no item-49 run | Persisted current-GM personality now shapes extensions, but franchise identity remains neither permanent nor unified across decisions | Historical source plus `runs/ECON-EXTENSION-AI-1` | Manual item-13 source/test/risk review confirmed the bounded distinction | ORG-DRAFT-1 | Execute remaining domain goals sequentially; do not treat item 13 as item-49 completion |
 | 50 | 6 | Named CPU GMs with careers | PARTIAL | No run | CPU personalities/firing events exist; no durable named tenure/reputation entity | Historical source | — | Item 49 | Add factual GM career ledger |
 | 51 | 6 | CPU owner archetypes | PARTIAL | No run | Team archetypes, patience, budgets, and tests exist | Historical source | — | Item 49 | Prove CPU behavior and calibration |
 | 52 | 6 | Visible rebuild/contend state machine | PARTIAL | No run | Buyer/seller/season strategies are derived, not durable public multi-year state | Historical source | — | Items 49–51 | Add persistent visible state |

@@ -10,6 +10,8 @@ import {
   DRAFT_ROUNDS,
   FORTY_MAN_LIMIT,
   MLB_ROSTER_LIMIT,
+  LEAGUE_MINIMUM_SALARY,
+  MAX_CONTRACT_YEARS,
   OFFSEASON_PHASES,
   aiSelectPick,
   buildPlayoffPreview,
@@ -22,6 +24,7 @@ import {
   deriveTeamBuildingArchetype,
   createInternationalScoutingState as createInternationalScoutingStateCore,
   evaluateExtensionWillingness,
+  extensionNegotiationContractSignature,
   fireCoach as fireCoachCore,
   type Coach,
   type ExtensionContractTerms,
@@ -76,6 +79,7 @@ import {
   evaluateTeamNeeds,
   evaluateHoldout,
   generateArbitrationCase,
+  gmExtensionPriorityAdjustment,
   getArbEligiblePlayers,
   getAvailableIFAProspects,
   getPromotionCandidates as getPromotionCandidatesCore,
@@ -950,9 +954,14 @@ function prospectIdentityScore(player: GeneratedPlayer): number {
   ));
 }
 
-export function deriveWorkerTeamBuildingArchetype(
+function currentAbilityIdentityScore(player: GeneratedPlayer): number {
+  return ratingToIdentityScore(player.overallRating);
+}
+
+function deriveWorkerTeamBuildingArchetypeWithProspectScore(
   s: FullGameState,
   teamId: string,
+  prospectScoreForPlayer: (player: GeneratedPlayer) => number,
 ): TeamBuildingArchetype {
   const teamPlayers = s.players.filter((player) => player.teamId === teamId);
   const record = s.seasonState.standings.getRecord(teamId);
@@ -971,7 +980,7 @@ export function deriveWorkerTeamBuildingArchetype(
   const prospectScore = averageTopIdentityScores(
     teamPlayers
       .filter((player) => player.rosterStatus !== 'MLB' && player.age <= 25)
-      .map(prospectIdentityScore),
+      .map(prospectScoreForPlayer),
     50,
     TEAM_BUILDING_PROSPECT_COUNT,
   );
@@ -983,6 +992,31 @@ export function deriveWorkerTeamBuildingArchetype(
     majorLeagueCoreScore,
     frontOfficeReputation: s.frontOfficeState.get(teamId)?.reputation ?? 50,
   });
+}
+
+export function deriveWorkerTeamBuildingArchetype(
+  s: FullGameState,
+  teamId: string,
+): TeamBuildingArchetype {
+  return deriveWorkerTeamBuildingArchetypeWithProspectScore(
+    s,
+    teamId,
+    prospectIdentityScore,
+  );
+}
+
+function deriveExtensionTeamBuildingArchetype(
+  s: FullGameState,
+  teamId: string,
+): TeamBuildingArchetype {
+  // Extensions may use current organizational ability, but never hidden
+  // potential/ceiling truth. Keep the shared archetype semantics unchanged for
+  // promotion, roster, trade, and free-agent consumers.
+  return deriveWorkerTeamBuildingArchetypeWithProspectScore(
+    s,
+    teamId,
+    currentAbilityIdentityScore,
+  );
 }
 
 function roundMoney(value: number): number {
@@ -1020,7 +1054,7 @@ function buildExtensionContextForTeam(
   const moraleByPlayer = new Map<string, number>();
 
   for (const player of s.players) {
-    const serviceYears = s.serviceTime.get(player.id) ?? serviceDaysToYears(player.serviceTimeDays);
+    const serviceYears = serviceDaysToYears(player.serviceTimeDays);
     const controlYears = Math.max(player.contract.years, Math.max(0, 6 - serviceYears));
     controlYearsByPlayer.set(player.id, controlYears);
     serviceYearsByPlayer.set(player.id, serviceYears);
@@ -1037,7 +1071,8 @@ function buildExtensionContextForTeam(
     controlYearsByPlayer,
     serviceYearsByPlayer,
     moraleByPlayer,
-    teamBuildingArchetype: deriveWorkerTeamBuildingArchetype(s, teamId),
+    teamBuildingArchetype: deriveExtensionTeamBuildingArchetype(s, teamId),
+    gmPersonality: s.gmPersonalities.get(teamId) ?? 'analytical',
   };
 }
 
@@ -1103,6 +1138,51 @@ function applyRejectedExtensionToPlayer(
       },
     ],
   };
+}
+
+function isLegalExtensionOffer(offer: unknown): offer is ExtensionContractTerms {
+  if (offer == null || typeof offer !== 'object' || Array.isArray(offer)) {
+    return false;
+  }
+  const candidate = offer as Record<string, unknown>;
+  const years = candidate.years;
+  const noTradeClauseType = candidate.noTradeClauseType;
+  const optOutYears = candidate.optOutYears;
+  const deferredMoney = candidate.deferredMoney;
+  if (
+    !Number.isInteger(years)
+    || (years as number) < 1
+    || (years as number) > MAX_CONTRACT_YEARS
+    || !Number.isFinite(candidate.annualSalary)
+    || (candidate.annualSalary as number) < LEAGUE_MINIMUM_SALARY
+    || !Number.isFinite(candidate.totalValue)
+    || (candidate.totalValue as number) < 0
+    || typeof candidate.noTradeClause !== 'boolean'
+    || (noTradeClauseType !== 'none' && noTradeClauseType !== 'partial' && noTradeClauseType !== 'full')
+    || (candidate.noTradeClause === false && noTradeClauseType !== 'none')
+    || typeof candidate.playerOption !== 'boolean'
+    || typeof candidate.teamOption !== 'boolean'
+    || !Number.isFinite(candidate.signingBonus)
+    || (candidate.signingBonus as number) < 0
+    || !Number.isFinite(candidate.buyoutAmount)
+    || (candidate.buyoutAmount as number) < 0
+    || !Array.isArray(optOutYears)
+    || !Array.isArray(deferredMoney)
+  ) {
+    return false;
+  }
+  return optOutYears.every((year) =>
+    Number.isInteger(year) && (year as number) >= 1 && (year as number) <= (years as number))
+    && deferredMoney.every((entry) => {
+      if (entry == null || typeof entry !== 'object' || Array.isArray(entry)) {
+        return false;
+      }
+      const installment = entry as Record<string, unknown>;
+      return Number.isInteger(installment.yearOffset)
+        && (installment.yearOffset as number) >= 0
+        && Number.isFinite(installment.amount)
+        && (installment.amount as number) >= 0;
+    });
 }
 
 function buildWaiverPriorityForState(s: FullGameState): string[] {
@@ -1240,15 +1320,20 @@ export function getExtensionCandidatesForTeam(
         createStableWorkerRng(s, `extension-candidate:${teamId}:${player.id}`),
       );
       const controlYears = context.controlYearsByPlayer.get(player.id) ?? Math.max(1, player.contract.years);
-      const teamPriority = (willingness.willingness * 100) + teamBuildingExtensionPriorityAdjustment(
-        context.teamBuildingArchetype ?? 'balanced',
-        {
-          age: player.age,
-          overallRating: player.overallRating,
-          controlYears,
-          annualSalary: player.contract.annualSalary,
-        },
-      );
+      const identityContext = {
+        age: player.age,
+        overallRating: player.overallRating,
+        controlYears,
+        annualSalary: player.contract.annualSalary,
+      };
+      const teamPriority = (willingness.willingness * 100)
+        + teamBuildingExtensionPriorityAdjustment(
+          context.teamBuildingArchetype ?? 'balanced',
+          identityContext,
+        )
+        + (teamId === s.userTeamId
+          ? 0
+          : gmExtensionPriorityAdjustment(context.gmPersonality ?? 'analytical', identityContext));
       return {
         playerId: player.id,
         playerName: `${player.firstName} ${player.lastName}`,
@@ -1277,7 +1362,12 @@ export function getExtensionOfferForPlayer(
   years: number,
 ): ExtensionContractTerms | null {
   const player = s.players.find((candidate) => candidate.id === playerId);
-  if (!player || player.teamId === '' || hasTerminalExtensionOutcome(player, s.season)) {
+  if (
+    !player
+    || player.teamId !== s.userTeamId
+    || player.rosterStatus !== 'MLB'
+    || hasTerminalExtensionOutcome(player, s.season)
+  ) {
     return null;
   }
 
@@ -1342,8 +1432,26 @@ export function negotiatePlayerExtension(
   }
 
   const player = s.players[playerIndex]!;
+  if (
+    player.teamId !== s.userTeamId
+    || player.rosterStatus !== 'MLB'
+    || hasTerminalExtensionOutcome(player, s.season)
+    || !isLegalExtensionOffer(offer)
+  ) {
+    return null;
+  }
   const context = buildExtensionContextForTeam(s, player.teamId);
   const session = s.pendingExtensionNegotiations.get(playerId);
+  if (
+    session
+    && (
+      session.teamId !== player.teamId
+      || session.season !== s.season
+      || session.baselineContractSignature !== extensionNegotiationContractSignature(player)
+    )
+  ) {
+    return null;
+  }
   const result = negotiateExtensionCore(player, context, offer, s.rng.fork(), session);
 
   if (result.status === 'countered') {
@@ -5772,10 +5880,91 @@ function applyTenderDecisionsOnce(s: FullGameState) {
   }
 }
 
-function processTeamExtensionsOnce(s: FullGameState) {
-  if (!s.offseasonState) {
-    return;
+function validateCurrentExtensionAggregate(s: FullGameState): string | null {
+  if (!s.offseasonState) return null;
+
+  const playerIds = new Set<string>();
+  for (const rawEntry of s.offseasonState.phaseResults.extensions) {
+    if (rawEntry == null || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) {
+      return 'Extension phase aggregate is malformed or duplicated.';
+    }
+    const runtimeEntry = rawEntry as unknown as Record<string, unknown>;
+    if (
+      typeof runtimeEntry.playerId !== 'string'
+      || runtimeEntry.playerId.trim().length === 0
+      || typeof runtimeEntry.teamId !== 'string'
+      || runtimeEntry.teamId.trim().length === 0
+      || (runtimeEntry.status !== 'accepted' && runtimeEntry.status !== 'rejected')
+      || playerIds.has(runtimeEntry.playerId)
+      || !Number.isInteger(runtimeEntry.years)
+      || (runtimeEntry.years as number) < 1
+      || (runtimeEntry.years as number) > MAX_CONTRACT_YEARS
+      || !Number.isFinite(runtimeEntry.annualSalary)
+      || (runtimeEntry.annualSalary as number) < LEAGUE_MINIMUM_SALARY
+      || !Number.isFinite(runtimeEntry.totalValue)
+      || (runtimeEntry.totalValue as number) < 0
+    ) {
+      return 'Extension phase aggregate is malformed or duplicated.';
+    }
+    const entry = rawEntry;
+    playerIds.add(entry.playerId);
+
+    const player = s.players.find((candidate) => candidate.id === entry.playerId);
+    if (!player) {
+      return 'Extension phase aggregate references a missing player.';
+    }
+    if (player.teamId !== entry.teamId || player.rosterStatus !== 'MLB') {
+      return 'Extension phase aggregate conflicts with current player ownership.';
+    }
+    const matchingHistory = (player.extensionHistory ?? []).filter((history) =>
+      history.season === s.season
+      && history.teamId === entry.teamId
+      && history.outcome === entry.status);
+    const contradictoryHistory = (player.extensionHistory ?? []).filter((history) =>
+      history.season === s.season
+      && (
+        history.teamId !== entry.teamId
+        || history.outcome !== entry.status
+        || history.years !== entry.years
+        || history.annualSalary !== entry.annualSalary
+        || history.totalValue !== entry.totalValue
+      ));
+    if (matchingHistory.length > 1 || contradictoryHistory.length > 0) {
+      return 'Extension phase aggregate conflicts with player history.';
+    }
+    // Historical CPU rejections did not retain player history. Keep that
+    // absence honest, while requiring every accepted result to bind the exact
+    // canonical contract/history tuple it has always owned.
+    if (entry.status === 'accepted') {
+      if (
+        matchingHistory.length !== 1
+        || player.contract.years !== entry.years
+        || player.contract.annualSalary !== entry.annualSalary
+        || player.contract.totalValue !== entry.totalValue
+      ) {
+        return 'Accepted extension aggregate conflicts with the canonical contract.';
+      }
+    } else if (matchingHistory.length === 1) {
+      const history = matchingHistory[0]!;
+      if (
+        history.years !== entry.years
+        || history.annualSalary !== entry.annualSalary
+        || history.totalValue !== entry.totalValue
+      ) {
+        return 'Rejected extension aggregate conflicts with player history.';
+      }
+    }
   }
+  return null;
+}
+
+function processTeamExtensionsOnce(s: FullGameState): string | null {
+  if (!s.offseasonState) {
+    return null;
+  }
+
+  const existingError = validateCurrentExtensionAggregate(s);
+  if (existingError) return existingError;
 
   const recordedTeamIds = new Set(
     s.offseasonState.phaseResults.extensions.map((entry) => entry.teamId),
@@ -5789,7 +5978,7 @@ function processTeamExtensionsOnce(s: FullGameState) {
     const result = processTeamExtensions(
       buildExtensionContextForTeam(s, teamId),
       s.players,
-      s.rng.fork(),
+      createStableWorkerRng(s, `cpu-extension-plan:v2:${s.season}:${teamId}`),
     );
     s.players = result.players;
 
@@ -5816,7 +6005,10 @@ function processTeamExtensionsOnce(s: FullGameState) {
       for (const extension of finalized) {
         const player = s.players.find((candidate) => candidate.id === extension.playerId);
         if (!player) continue;
-        s.news.unshift(...generateNews(s.rng.fork(), {
+        s.news.unshift(...generateNews(createStableWorkerRng(
+          s,
+          `cpu-extension-news:v1:${s.season}:${teamId}:${extension.playerId}:${extension.status}`,
+        ), {
           type: 'extension',
           season: s.season,
           day: s.day,
@@ -5835,6 +6027,8 @@ function processTeamExtensionsOnce(s: FullGameState) {
       }
     }
   }
+
+  return validateCurrentExtensionAggregate(s);
 }
 
 function processQualifyingOfferIssuanceOnce(s: FullGameState) {
@@ -6456,7 +6650,10 @@ function processCurrentOffseasonPhase(
   }
 
   if (currentPhase === 'extensions' && enteredPhase) {
-    processTeamExtensionsOnce(s);
+    const error = processTeamExtensionsOnce(s);
+    if (error) {
+      return { aiSignings: [], error, flowStateChanged: false };
+    }
     return { aiSignings: [] };
   }
 
@@ -6600,6 +6797,12 @@ function applyOffseasonTransition(
   previousState: OffseasonState,
   nextState: OffseasonState,
 ): OffseasonProgressResult {
+  if (previousState.currentPhase !== 'extensions' && nextState.currentPhase === 'extensions') {
+    const extensionError = validateCurrentExtensionAggregate(s);
+    if (extensionError) {
+      return { aiSignings: [], error: extensionError, flowStateChanged: false };
+    }
+  }
   const compensationError = validateQualifyingOfferCompensationState(s);
   if (compensationError) {
     return { aiSignings: [], error: compensationError, flowStateChanged: false };

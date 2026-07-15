@@ -444,6 +444,219 @@ describe('processTeamExtensions', () => {
     expect(winNow.results[0]?.playerId).toBe(winNowStar.id);
     expect(budgetConstrained.results).toHaveLength(1);
   });
+
+  it('uses persisted current-GM posture to choose different cores from identical facts', () => {
+    const currentStar = {
+      ...setHitterRatings(makePlayer(50), 420),
+      id: 'gm-current-star',
+      age: 31,
+      contract: {
+        ...makePlayer(50).contract,
+        years: 1,
+        annualSalary: 24,
+        totalValue: 24,
+      },
+    };
+    const youngCore = {
+      ...setHitterRatings(makePlayer(51), 360),
+      id: 'gm-young-core',
+      age: 24,
+      contract: {
+        ...makePlayer(51).contract,
+        years: 3,
+        annualSalary: 7,
+        totalValue: 21,
+      },
+    };
+    const context = createTeamContext({ teamBuildingArchetype: 'balanced' });
+    context.controlYearsByPlayer.set(currentStar.id, 1);
+    context.controlYearsByPlayer.set(youngCore.id, 3);
+    context.serviceYearsByPlayer.set(currentStar.id, 6);
+    context.serviceYearsByPlayer.set(youngCore.id, 2);
+    context.moraleByPlayer.set(currentStar.id, 70);
+    context.moraleByPlayer.set(youngCore.id, 70);
+
+    const protectYouth = processTeamExtensions(
+      { ...context, gmPersonality: 'prospect_hugger' },
+      [currentStar, youngCore],
+      new GameRNG(151),
+    );
+    const winNow = processTeamExtensions(
+      { ...context, gmPersonality: 'win_now' },
+      [currentStar, youngCore],
+      new GameRNG(151),
+    );
+
+    expect(protectYouth.results[0]?.playerId).toBe(youngCore.id);
+    expect(winNow.results[0]?.playerId).toBe(currentStar.id);
+  });
+
+  it('keeps player demand and response draws neutral across GM postures', () => {
+    const candidate = {
+      ...setHitterRatings(makePlayer(57), 375),
+      id: 'identity-neutral-player-response',
+      age: 27,
+      contract: {
+        ...makePlayer(57).contract,
+        years: 1,
+        annualSalary: 12,
+        totalValue: 12,
+      },
+    };
+    const context = createTeamContext({
+      teamBudget: 500,
+      currentPayroll: 100,
+      teamBuildingArchetype: 'balanced',
+    });
+    context.controlYearsByPlayer.set(candidate.id, 1);
+    context.serviceYearsByPlayer.set(candidate.id, 6);
+    context.moraleByPlayer.set(candidate.id, 65);
+
+    const analytical = processTeamExtensions(
+      { ...context, gmPersonality: 'analytical' },
+      [candidate],
+      new GameRNG(154),
+    ).results[0]?.result;
+    const conservative = processTeamExtensions(
+      { ...context, gmPersonality: 'conservative' },
+      [candidate],
+      new GameRNG(154),
+    ).results[0]?.result;
+
+    expect(analytical).toBeTruthy();
+    expect(conservative).toBeTruthy();
+    expect(analytical!.session.targetContract).toEqual(conservative!.session.targetContract);
+    expect(analytical!.rounds[0]?.walkAwayRoll).toBe(conservative!.rounds[0]?.walkAwayRoll);
+    expect(analytical!.rounds[0]?.teamOffer.annualSalary)
+      .not.toBe(conservative!.rounds[0]?.teamOffer.annualSalary);
+  });
+
+  it('replaces old AAV under the real budget instead of double-counting it', () => {
+    const candidate = {
+      ...setHitterRatings(makePlayer(52), 340),
+      age: 29,
+      contract: {
+        ...makePlayer(52).contract,
+        years: 1,
+        annualSalary: 25,
+        totalValue: 25,
+      },
+    };
+    const context = createTeamContext({
+      teamBudget: 100,
+      currentPayroll: 98,
+      futureCommitments: [75, 55, 30],
+      teamBuildingArchetype: 'balanced',
+      gmPersonality: 'analytical',
+    });
+    context.controlYearsByPlayer.set(candidate.id, 1);
+    context.serviceYearsByPlayer.set(candidate.id, 6);
+    context.moraleByPlayer.set(candidate.id, 70);
+
+    const result = processTeamExtensions(context, [candidate], new GameRNG(152));
+    const terminal = result.results[0];
+
+    expect(terminal).toBeTruthy();
+    const finalOffer = terminal?.result.finalContract ?? terminal?.result.rounds.at(-1)?.teamOffer;
+    expect(finalOffer).toBeTruthy();
+    expect(context.currentPayroll - candidate.contract.annualSalary + finalOffer!.annualSalary)
+      .toBeLessThanOrEqual(context.teamBudget);
+  });
+
+  it('binds a candidate result to its own stable stream across storage and earlier no-op work', () => {
+    const candidate = {
+      ...setHitterRatings(makePlayer(54), 340),
+      id: 'stable-extension-candidate',
+      age: 29,
+      contract: {
+        ...makePlayer(54).contract,
+        years: 1,
+        annualSalary: 25,
+        totalValue: 25,
+      },
+    };
+    const fringe = {
+      ...setHitterRatings(makePlayer(55), 200),
+      id: 'stable-extension-fringe',
+    };
+    const unaffordablePriority = {
+      ...setHitterRatings(makePlayer(56), 500),
+      id: 'stable-extension-unaffordable',
+      age: 25,
+      contract: {
+        ...makePlayer(56).contract,
+        years: 1,
+        annualSalary: 1,
+        totalValue: 1,
+      },
+    };
+    const context = createTeamContext({
+      teamBudget: 100,
+      currentPayroll: 98,
+      teamBuildingArchetype: 'balanced',
+      gmPersonality: 'analytical',
+    });
+    for (const player of [candidate, fringe, unaffordablePriority]) {
+      context.controlYearsByPlayer.set(player.id, 1);
+      context.serviceYearsByPlayer.set(player.id, 6);
+      context.moraleByPlayer.set(player.id, 70);
+    }
+
+    const baselineRng = new GameRNG(153);
+    const baseline = processTeamExtensions(context, [candidate, fringe], baselineRng);
+    const consumedRng = new GameRNG(153);
+    consumedRng.nextFloat();
+    consumedRng.nextFloat();
+    const permuted = processTeamExtensions(context, [fringe, candidate], consumedRng);
+    const withEarlierNoOp = processTeamExtensions(
+      context,
+      [unaffordablePriority, fringe, candidate],
+      new GameRNG(153),
+    );
+    const candidateResult = (result: typeof baseline) =>
+      result.results.find((entry) => entry.playerId === candidate.id);
+    const candidatePlayer = (result: typeof baseline) =>
+      result.players.find((player) => player.id === candidate.id);
+
+    expect(candidateResult(baseline)).toBeTruthy();
+    expect(candidateResult(permuted)).toEqual(candidateResult(baseline));
+    expect(candidateResult(withEarlierNoOp)).toEqual(candidateResult(baseline));
+    expect(candidatePlayer(permuted)).toEqual(candidatePlayer(baseline));
+    expect(candidatePlayer(withEarlierNoOp)).toEqual(candidatePlayer(baseline));
+    expect(withEarlierNoOp.results.some((entry) =>
+      entry.playerId === unaffordablePriority.id)).toBe(false);
+    expect(baselineRng.getState()).toEqual({ seed: 153, callCount: 0 });
+    expect(consumedRng.getState()).toEqual({ seed: 153, callCount: 2 });
+  });
+
+  it('retains rejected CPU attempts once and does not replay a terminal history', () => {
+    const candidate = {
+      ...setHitterRatings(makePlayer(53), 375),
+      age: 27,
+    };
+    const context = createTeamContext({
+      teamBuildingArchetype: 'balanced',
+      gmPersonality: 'conservative',
+    });
+    context.controlYearsByPlayer.set(candidate.id, 1);
+    context.serviceYearsByPlayer.set(candidate.id, 6);
+    context.moraleByPlayer.set(candidate.id, 15);
+
+    let rejected: ReturnType<typeof processTeamExtensions> | null = null;
+    for (let seed = 1; seed <= 200 && rejected == null; seed += 1) {
+      const result = processTeamExtensions(context, [candidate], new GameRNG(seed));
+      if (result.results[0]?.result.status === 'rejected') rejected = result;
+    }
+
+    expect(rejected).toBeTruthy();
+    const rejectedPlayer = rejected!.players.find((player) => player.id === candidate.id)!;
+    expect(rejectedPlayer.contract).toEqual(candidate.contract);
+    expect(rejectedPlayer.extensionHistory?.filter((entry) =>
+      entry.season === context.season && entry.outcome === 'rejected')).toHaveLength(1);
+    const replay = processTeamExtensions(context, rejected!.players, new GameRNG(1));
+    expect(replay.results).toEqual([]);
+    expect(replay.players).toEqual(rejected!.players);
+  });
 });
 
 describe('qualifying offers', () => {

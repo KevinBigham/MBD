@@ -716,6 +716,7 @@ export type {
 // Finance
 export {
   LEAGUE_MINIMUM_SALARY,
+  MAX_CONTRACT_YEARS,
   LUXURY_TAX_THRESHOLD,
   TEAM_MARKETS,
   SUPER_TWO_COHORT_SHARE,
@@ -737,6 +738,9 @@ export {
   serviceDaysToYears,
   evaluateExtensionWillingness,
   calculateExtensionOffer,
+  extensionNegotiationContractSignature,
+  gmExtensionPriorityAdjustment,
+  getExtensionGmDecisionPolicy,
   negotiateExtension,
   processTeamExtensions,
   findComparableContracts,
@@ -758,6 +762,7 @@ export type {
   ExtensionNegotiationSession,
   ExtensionResult,
   TeamExtensionProcessResult,
+  ExtensionGmDecisionPolicy,
   ComparableContract,
   SigningPrediction,
   MarketReportContext,

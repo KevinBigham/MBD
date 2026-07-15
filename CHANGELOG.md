@@ -34,6 +34,26 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 13, Goal 23 `ECON-EXTENSION-AI-1`:
+  every CPU club now
+  evaluates its own active MLB core once at the canonical offseason extension
+  phase using persisted current-GM posture, permitted live team state, exact
+  service days, and versioned team-scoped RNG. Personality changes only bounded
+  team priority/term/concession posture; player demand and the real budget stay
+  shared and identity-neutral.
+- Extension affordability replaces the old AAV and rechecks the accepted final
+  contract against the exact owner ceiling. Accepted and rejected attempts form
+  coherent contract/history/phase/news facts; malformed imports and stale or
+  forged public callbacks fail closed before RNG or mutation.
+- Correction-freeze evidence: contracts/front-office 33/33, focused web 12
+  files / 269 tests, balance 9/9, four exact-replay league seeds with zero budget/duplicate/history/
+  parent-RNG violations, full root gates, 3,029-module / 167-entry PWA,
+  determinism 3/3, production CPU extension 1/1, and reload-smoke 2/2. The
+  authoritative final browser gate passed 3/3 in 4.8 minutes; browser
+  gates used one worker, zero retries, and no flaky result. GameSnapshot remains
+  v34, Dexie remains v6, item 49 remains partial, and final adversarial review
+  returned `MERGE_READY` with zero P0–P2.
+
 - Verified roadmap item 12, Goal 22 `ECON-QUALIFYING-OFFERS-1`: one fixed
   service-day-authoritative qualifying-offer salary now drives deterministic
   user/CPU issue and once-only resolution; rejected players enter the canonical

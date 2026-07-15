@@ -1,6 +1,8 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { GameSnapshot } from '@mbd/contracts';
+import { createOffseasonState } from '@mbd/sim-core';
 import v34SnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 
 const mocks = vi.hoisted(() => ({
@@ -61,6 +63,10 @@ const persistenceLease = {
   leaseId: Symbol('exact-save-persistence'),
 } as never;
 
+type ExtensionSnapshot = Omit<GameSnapshot, 'offseasonState'> & {
+  offseasonState: ReturnType<typeof createOffseasonState> | null;
+};
+
 function worker(overrides: Record<string, unknown> = {}) {
   return {
     exportSnapshot: vi.fn()
@@ -86,6 +92,72 @@ function options(exactWorker: ReturnType<typeof worker>) {
     operation: 'advanceOffseason' as const,
     worker: exactWorker,
     failClosed: vi.fn(),
+  };
+}
+
+function extensionPhaseWorker() {
+  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  baseline.phase = 'offseason';
+  baseline.offseasonState = {
+    ...createOffseasonState(baseline.season),
+    currentPhase: 'tender_nontender',
+    phaseDay: 5,
+    totalDay: 15,
+  };
+  const post = structuredClone(baseline);
+  const player = post.players[0]!;
+  player.contract = {
+    ...player.contract,
+    years: 5,
+    annualSalary: 18,
+    totalValue: 90,
+  };
+  player.extensionHistory = [{
+    season: post.season,
+    teamId: player.teamId,
+    years: 5,
+    annualSalary: 18,
+    totalValue: 90,
+    outcome: 'accepted',
+  }];
+  post.offseasonState = {
+    ...post.offseasonState!,
+    currentPhase: 'extensions',
+    phaseDay: 1,
+    totalDay: 16,
+    phaseResults: {
+      ...post.offseasonState!.phaseResults,
+      extensions: [{
+        playerId: player.id,
+        teamId: player.teamId,
+        status: 'accepted',
+        years: 5,
+        annualSalary: 18,
+        totalValue: 90,
+      }],
+    },
+  };
+  let current: ExtensionSnapshot = baseline;
+  return {
+    baseline,
+    post,
+    adapter: {
+      exportSnapshot: vi.fn(async () => structuredClone(current)),
+      execute: vi.fn(async () => {
+        current = post;
+        return { currentPhase: 'extensions', flowStateChanged: true };
+      }),
+      restoreBaseline: vi.fn(async (_session, snapshot: object) => {
+        current = structuredClone(snapshot) as ExtensionSnapshot;
+        return {
+          importResult: { success: true },
+          restoredSnapshot: structuredClone(current),
+        };
+      }),
+      publishFlow: vi.fn(),
+      discardFlow: vi.fn(),
+    },
+    readCurrent: () => structuredClone(current),
   };
 }
 
@@ -242,6 +314,45 @@ describe('exact-save mutation coordinator', () => {
     await expect(pending).resolves.toMatchObject({ kind: 'durable' });
     expect(exactWorker.execute).toHaveBeenCalledTimes(1);
     expect(exactWorker.exportSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains one extension-phase post snapshot through persistence retry without rerunning decisions', async () => {
+    let settleReceipt!: (value: { kind: 'durable'; record: object }) => void;
+    let retainedSnapshot: object | null = null;
+    mocks.capture.mockImplementationOnce(async (_lease, capture) => {
+      retainedSnapshot = await capture.exportSnapshot();
+      return receipt;
+    });
+    mocks.wait.mockReturnValue(new Promise((resolve) => { settleReceipt = resolve; }));
+    const extension = extensionPhaseWorker();
+    const pending = executeExactSaveMutation(options(extension.adapter));
+
+    await vi.waitFor(() => expect(mocks.wait).toHaveBeenCalledWith(receipt));
+    expect(extension.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(retainedSnapshot).toEqual(extension.post);
+    expect((retainedSnapshot as unknown as ExtensionSnapshot).offseasonState?.phaseResults.extensions)
+      .toEqual(extension.post.offseasonState?.phaseResults.extensions);
+    expect(getExactSaveMutationStatus()).toEqual({ kind: 'persisting' });
+
+    settleReceipt({ kind: 'durable', record: {} });
+    await expect(pending).resolves.toMatchObject({ kind: 'durable' });
+    expect(extension.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(extension.readCurrent()).toEqual(extension.post);
+  });
+
+  it('restores the extension-phase baseline when persistence fails before receipt acceptance', async () => {
+    mocks.capture.mockRejectedValueOnce(new Error('extension receipt not accepted'));
+    const extension = extensionPhaseWorker();
+
+    const outcome = await executeExactSaveMutation(options(extension.adapter));
+
+    expect(outcome).toMatchObject({ kind: 'rolled_back' });
+    expect(extension.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(extension.adapter.restoreBaseline).toHaveBeenCalledTimes(1);
+    expect(extension.readCurrent()).toEqual(extension.baseline);
+    expect(extension.readCurrent().offseasonState?.phaseResults.extensions)
+      .toEqual([]);
+    expect(extension.adapter.publishFlow).not.toHaveBeenCalled();
   });
 
   it('restores the exact baseline when post export fails before receipt acceptance', async () => {

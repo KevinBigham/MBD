@@ -4,14 +4,16 @@
  * Uses GameRNG for all randomness; the JS global random API is never used.
  */
 
-import type { GameRNG } from '../math/prng.js';
+import { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { PITCHER_POSITIONS } from '../player/generation.js';
 import { hitterOverall, pitcherOverall } from '../player/attributes.js';
 import {
   teamBuildingExtensionPriorityAdjustment,
   type TeamBuildingArchetype,
+  type TeamBuildingExtensionPriorityContext,
 } from '../league/frontOffice.js';
+import type { GMPersonality } from '../trade/tradeAI.js';
 
 // ---------------------------------------------------------------------------
 // Financial Constants
@@ -224,6 +226,7 @@ export interface ExtensionTeamContext {
   serviceYearsByPlayer: Map<string, number>;
   moraleByPlayer: Map<string, number>;
   teamBuildingArchetype?: TeamBuildingArchetype;
+  gmPersonality?: GMPersonality;
 }
 
 export interface ExtensionContractTerms {
@@ -260,6 +263,9 @@ export interface NegotiationRound {
 
 export interface ExtensionNegotiationSession {
   playerId: string;
+  teamId: string;
+  season: number;
+  baselineContractSignature: string;
   targetContract: ExtensionContractTerms;
   counterOffer: ExtensionContractTerms | null;
   rounds: NegotiationRound[];
@@ -279,6 +285,52 @@ export interface TeamExtensionProcessResult {
     playerId: string;
     result: ExtensionResult;
   }>;
+}
+
+export interface ExtensionGmDecisionPolicy {
+  candidateLimit: 1 | 2;
+  firstCounterAggression: number;
+  laterCounterAggression: number;
+  openingOfferRatio: number;
+  termAdjustment: number;
+}
+
+function extensionGmCandidateLimit(personality: GMPersonality): 1 | 2 {
+  return personality === 'conservative' ? 1 : 2;
+}
+
+function hashExtensionDecisionScope(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) | 0;
+  }
+  return hash;
+}
+
+function createExtensionCandidateRng(
+  baseSeed: number,
+  context: ExtensionTeamContext,
+  player: GeneratedPlayer,
+  controlYears: number,
+  workingPayroll: number,
+  lane: 'offer' | 'negotiation',
+): GameRNG {
+  const scope = [
+    'cpu-extension-candidate:v2',
+    context.season,
+    context.teamId,
+    player.id,
+    player.age,
+    getPlayerOverall(player),
+    controlYears,
+    context.serviceYearsByPlayer.get(player.id) ?? 0,
+    context.moraleByPlayer.get(player.id) ?? 50,
+    context.teamWinPct,
+    workingPayroll,
+    extensionNegotiationContractSignature(player),
+    lane,
+  ].join('|');
+  return new GameRNG((baseSeed ^ hashExtensionDecisionScope(scope)) | 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -361,6 +413,26 @@ function recalculateExtensionTotals(offer: ExtensionContractTerms): ExtensionCon
   };
 }
 
+export function extensionNegotiationContractSignature(
+  player: Pick<GeneratedPlayer, 'teamId' | 'contract'>,
+): string {
+  const contract = player.contract;
+  return [
+    player.teamId,
+    contract.years,
+    contract.annualSalary,
+    contract.totalValue,
+    contract.noTradeClause ? 1 : 0,
+    contract.noTradeClauseType ?? 'none',
+    contract.playerOption ? 1 : 0,
+    contract.teamOption ? 1 : 0,
+    (contract.optOutYears ?? []).join(','),
+    contract.signingBonus ?? 0,
+    contract.buyoutAmount ?? 0,
+    JSON.stringify(contract.deferredMoney ?? []),
+  ].join('|');
+}
+
 function buildNegotiationCounter(
   demand: ExtensionContractTerms,
   willingness: ExtensionWillingness,
@@ -417,6 +489,93 @@ function isFranchiseExtensionTarget(
   return rank >= 0 && rank < 3;
 }
 
+/**
+ * Current-GM posture changes only the club's extension preference. It never
+ * changes player demand, acceptance thresholds, ratings, value, or budget.
+ */
+export function gmExtensionPriorityAdjustment(
+  personality: GMPersonality,
+  context: TeamBuildingExtensionPriorityContext,
+): number {
+  const youngCore = context.age <= 27 && context.overallRating >= 340;
+  const currentCore = context.overallRating >= 370;
+  const premiumCore = context.overallRating >= 405;
+  const shortControl = context.controlYears <= 1;
+  const expensive = (context.annualSalary ?? 0) >= 20;
+
+  switch (personality) {
+    case 'aggressive':
+      return (currentCore ? 42 : 0) + (premiumCore ? 18 : 0) + (shortControl ? 32 : 0);
+    case 'conservative':
+      return (youngCore ? 34 : 0)
+        + (context.controlYears >= 2 ? 22 : 0)
+        - (expensive ? 58 : 0)
+        - (context.age >= 31 ? 34 : 0);
+    case 'analytical':
+      return (youngCore ? 30 : 0)
+        + (currentCore && !expensive ? 24 : 0)
+        + (context.age >= 33 ? -24 : 0);
+    case 'prospect_hugger':
+      return (youngCore ? 82 : 0)
+        + (context.controlYears >= 2 && context.controlYears <= 4 ? 34 : 0)
+        - (context.age >= 30 ? 42 : 0);
+    case 'win_now':
+      return (currentCore ? 64 : 0)
+        + (premiumCore ? 32 : 0)
+        + (shortControl ? 44 : 0)
+        - (context.overallRating < 330 ? 34 : 0);
+  }
+}
+
+export function getExtensionGmDecisionPolicy(
+  personality: GMPersonality,
+  player: Pick<GeneratedPlayer, 'age' | 'overallRating'>,
+  controlYears: number,
+): ExtensionGmDecisionPolicy {
+  switch (personality) {
+    case 'aggressive':
+      return {
+        candidateLimit: extensionGmCandidateLimit(personality),
+        firstCounterAggression: 0.66,
+        laterCounterAggression: 0.9,
+        openingOfferRatio: 0.98,
+        termAdjustment: player.age <= 30 ? 1 : 0,
+      };
+    case 'conservative':
+      return {
+        candidateLimit: extensionGmCandidateLimit(personality),
+        firstCounterAggression: 0.15,
+        laterCounterAggression: 0.3,
+        openingOfferRatio: 0.65,
+        termAdjustment: player.age >= 30 ? -1 : 0,
+      };
+    case 'prospect_hugger':
+      return {
+        candidateLimit: extensionGmCandidateLimit(personality),
+        firstCounterAggression: player.age <= 27 ? 0.6 : 0.48,
+        laterCounterAggression: player.age <= 27 ? 0.84 : 0.76,
+        openingOfferRatio: player.age <= 27 ? 0.95 : 0.9,
+        termAdjustment: player.age <= 27 && controlYears >= 2 ? 1 : 0,
+      };
+    case 'win_now':
+      return {
+        candidateLimit: extensionGmCandidateLimit(personality),
+        firstCounterAggression: 0.68,
+        laterCounterAggression: 0.92,
+        openingOfferRatio: 0.99,
+        termAdjustment: controlYears <= 1 && player.age <= 32 ? 1 : 0,
+      };
+    case 'analytical':
+      return {
+        candidateLimit: extensionGmCandidateLimit(personality),
+        firstCounterAggression: 0.55,
+        laterCounterAggression: 0.82,
+        openingOfferRatio: 0.94,
+        termAdjustment: 0,
+      };
+  }
+}
+
 function shouldPursueExtensionCandidate(
   player: GeneratedPlayer,
   context: ExtensionTeamContext,
@@ -469,17 +628,19 @@ function extensionCandidateScore(
   const controlYears = controlYearsForPlayer(player, context);
   const overall = getPlayerOverall(player);
   const franchiseTarget = isFranchiseExtensionTarget(player, teamPlayers);
+  const identityContext = {
+    age: player.age,
+    overallRating: overall,
+    controlYears,
+    annualSalary: player.contract.annualSalary,
+  };
   return overall
     + (franchiseTarget ? 120 : 0)
     + (controlYears <= 1 ? 60 : controlYears <= 3 && franchiseTarget && player.age <= 29 ? 95 : controlYears === 2 ? 25 : 0)
     + (player.age <= 27 ? 25 : player.age <= 29 ? 12 : 0)
     + (player.position === 'SP' ? 18 : 0)
-    + teamBuildingExtensionPriorityAdjustment(context.teamBuildingArchetype ?? 'balanced', {
-      age: player.age,
-      overallRating: overall,
-      controlYears,
-      annualSalary: player.contract.annualSalary,
-    })
+    + teamBuildingExtensionPriorityAdjustment(context.teamBuildingArchetype ?? 'balanced', identityContext)
+    + gmExtensionPriorityAdjustment(context.gmPersonality ?? 'analytical', identityContext)
     - Math.max(0, player.age - 32) * 28
     - (overall < 295 ? 35 : 0);
 }
@@ -1056,13 +1217,20 @@ export function negotiateExtension(
 ): ExtensionResult {
   const normalizedOffer = recalculateExtensionTotals(offer);
   const demandProfile = evaluateExtensionWillingness(player, context, rng.fork());
+  const baselineContractSignature = extensionNegotiationContractSignature(player);
   const nextSession = session?.playerId === player.id
+    && session.teamId === context.teamId
+    && session.season === context.season
+    && session.baselineContractSignature === baselineContractSignature
     ? {
       ...session,
       rounds: [...session.rounds],
     }
     : {
       playerId: player.id,
+      teamId: context.teamId,
+      season: context.season,
+      baselineContractSignature,
       targetContract: calculateExtensionOffer(player, context, normalizedOffer.years, rng.fork()),
       counterOffer: null,
       rounds: [],
@@ -1166,7 +1334,7 @@ export function processTeamExtensions(
   players: GeneratedPlayer[],
   rng: GameRNG,
 ): TeamExtensionProcessResult {
-  if (context.currentPayroll > context.teamBudget * 1.08) {
+  if (context.currentPayroll > context.teamBudget) {
     return {
       players,
       results: [],
@@ -1178,7 +1346,12 @@ export function processTeamExtensions(
   const results: TeamExtensionProcessResult['results'] = [];
   let workingPayroll = context.currentPayroll;
   const teamPlayers = players.filter((player) => player.teamId === context.teamId && player.rosterStatus === 'MLB');
-  const candidateLimit = context.teamBuildingArchetype === 'budget_constrained' ? 1 : 2;
+  const identityCandidateLimit = extensionGmCandidateLimit(
+    context.gmPersonality ?? 'analytical',
+  );
+  const candidateLimit = context.teamBuildingArchetype === 'budget_constrained'
+    ? 1
+    : identityCandidateLimit;
 
   const candidates = players
     .filter((player) =>
@@ -1187,7 +1360,9 @@ export function processTeamExtensions(
       && getPlayerOverall(player) >= 245
       && shouldPursueExtensionCandidate(player, context, teamPlayers)
       && !(player.contract.noTradeClause && player.contract.noTradeClauseType === 'full' && player.contract.years >= 2)
-      && !player.extensionHistory?.some((entry) => entry.season === context.season && entry.outcome === 'accepted'),
+      && !player.extensionHistory?.some((entry) =>
+        entry.season === context.season
+        && (entry.outcome === 'accepted' || entry.outcome === 'rejected')),
     )
     .sort((left, right) => {
       const scoreDelta = extensionCandidateScore(right, context, teamPlayers) - extensionCandidateScore(left, context, teamPlayers);
@@ -1200,29 +1375,72 @@ export function processTeamExtensions(
 
   for (const player of candidates) {
     const controlYears = controlYearsForPlayer(player, context);
-    const desiredYears = controlYears <= 1 ? (player.age <= 30 ? 5 : 3) : (player.age <= 27 ? 6 : 4);
-    const openingOffer = calculateExtensionOffer(player, {
+    const offerRng = createExtensionCandidateRng(
+      rng.getSeed(),
+      context,
+      player,
+      controlYears,
+      workingPayroll,
+      'offer',
+    );
+    const negotiationRng = createExtensionCandidateRng(
+      rng.getSeed(),
+      context,
+      player,
+      controlYears,
+      workingPayroll,
+      'negotiation',
+    );
+    const policy = getExtensionGmDecisionPolicy(
+      context.gmPersonality ?? 'analytical',
+      player,
+      controlYears,
+    );
+    const baseDesiredYears = controlYears <= 1 ? (player.age <= 30 ? 5 : 3) : (player.age <= 27 ? 6 : 4);
+    const desiredYears = clamp(baseDesiredYears + policy.termAdjustment, 1, MAX_CONTRACT_YEARS);
+    const marketOffer = calculateExtensionOffer(player, {
       ...context,
       currentPayroll: workingPayroll,
-    }, desiredYears, rng.fork());
+    }, desiredYears, offerRng);
+    const openingOffer = recalculateExtensionTotals({
+      ...marketOffer,
+      annualSalary: roundCurrency(marketOffer.annualSalary * policy.openingOfferRatio),
+    });
 
-    if (workingPayroll + openingOffer.annualSalary > context.teamBudget * 1.06) {
+    const projectedPayroll = roundCurrency(
+      workingPayroll - player.contract.annualSalary + openingOffer.annualSalary,
+    );
+    if (projectedPayroll > context.teamBudget) {
       continue;
     }
 
     let result = negotiateExtension(player, {
       ...context,
       currentPayroll: workingPayroll,
-    }, openingOffer, rng.fork());
+    }, openingOffer, negotiationRng.fork());
     let latestOffer = openingOffer;
 
     while (result.status === 'countered' && result.counterOffer) {
-      const aggression = result.rounds.length === 1 ? 0.55 : 0.82;
+      const aggression = result.rounds.length === 1
+        ? policy.firstCounterAggression
+        : policy.laterCounterAggression;
       latestOffer = blendOffers(latestOffer, result.counterOffer, aggression);
       result = negotiateExtension(player, {
         ...context,
         currentPayroll: workingPayroll,
-      }, latestOffer, rng.fork(), result.session);
+      }, latestOffer, negotiationRng.fork(), result.session);
+    }
+
+    const acceptedProjectedPayroll = result.status === 'accepted' && result.finalContract
+      ? roundCurrency(
+        workingPayroll - player.contract.annualSalary + result.finalContract.annualSalary,
+      )
+      : null;
+    // The opening offer is only an admission estimate. Later team concessions
+    // may raise AAV, so the terminal accepted contract must independently fit
+    // the same real owner budget before it can become a factual result.
+    if (acceptedProjectedPayroll != null && acceptedProjectedPayroll > context.teamBudget) {
+      continue;
     }
 
     results.push({
@@ -1264,7 +1482,27 @@ export function processTeamExtensions(
           },
         ],
       };
-      workingPayroll += result.finalContract.annualSalary;
+      workingPayroll = acceptedProjectedPayroll ?? projectedPayroll;
+    } else if (result.status === 'rejected') {
+      const index = playerIndex.get(player.id);
+      const rejectedOffer = result.rounds.at(-1)?.teamOffer;
+      if (index == null || !rejectedOffer) {
+        continue;
+      }
+      nextPlayers[index] = {
+        ...player,
+        extensionHistory: [
+          ...(player.extensionHistory ?? []),
+          {
+            season: context.season,
+            teamId: context.teamId,
+            years: rejectedOffer.years,
+            annualSalary: rejectedOffer.annualSalary,
+            totalValue: rejectedOffer.totalValue,
+            outcome: 'rejected',
+          },
+        ],
+      };
     }
   }
 

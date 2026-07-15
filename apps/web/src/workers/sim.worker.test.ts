@@ -9,6 +9,7 @@ import {
   createFreeAgencyMarket,
   createOffseasonState,
   evaluatePlayerTradeValue,
+  MAX_CONTRACT_YEARS,
   OFFSEASON_PHASES,
   type GameBoxScore,
   type GeneratedPlayer,
@@ -2584,9 +2585,11 @@ describe('sim worker narrative APIs', () => {
       }];
     }
 
+    state.gmPersonalities.set('bos', 'prospect_hugger');
     const rebuildingExtensions = workerApi.getExtensionCandidates('bos');
     expect(rebuildingExtensions[0]?.playerId).toBe(youngCornerstone.id);
 
+    state.gmPersonalities.set('bos', 'win_now');
     standing.wins = 96;
     standing.losses = 48;
     for (const player of bosPlayers) {
@@ -2600,6 +2603,326 @@ describe('sim worker narrative APIs', () => {
 
     expect(winNowExtensions[0]?.playerId).toBe(winNowStar.id);
     expect(winNowPromotions[0]?.playerId).toBe(currentReady.id);
+  });
+
+  it('binds CPU extension outcomes to persisted GM identity and stable team-scoped RNG', () => {
+    startGame(1272, 'nym');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'tender_nontender',
+      phaseDay: 5,
+      totalDay: 15,
+    };
+    const owner = state.ownerState.get('bos');
+    if (!owner) throw new Error('Missing BOS owner state.');
+    state.ownerState.set('bos', { ...owner, annualBudget: 1_000 });
+    state.gmPersonalities.set('bos', 'prospect_hugger');
+    const standing = state.seasonState.standings.getRecord('bos');
+    if (!standing) throw new Error('Missing BOS standing.');
+    standing.wins = 35;
+    standing.losses = 75;
+
+    for (const player of state.players) {
+      player.extensionHistory = [{
+        season: state.season,
+        teamId: player.teamId || 'free-agent',
+        years: Math.max(1, player.contract.years),
+        annualSalary: player.contract.annualSalary,
+        totalValue: Math.max(
+          player.contract.totalValue ?? player.contract.annualSalary,
+          player.contract.annualSalary,
+        ),
+        outcome: 'accepted',
+      }];
+    }
+
+    const [currentStar, youngCore] = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null)
+      .slice(0, 2);
+    if (!currentStar || !youngCore) throw new Error('Expected two BOS extension candidates.');
+    setHitterProfile(currentStar, '3B', 420, 31, 24);
+    currentStar.overallRating = 420;
+    currentStar.contract.years = 1;
+    currentStar.contract.totalValue = 24;
+    currentStar.serviceTimeDays = 6 * 172;
+    currentStar.ceiling = 500;
+    currentStar.extensionHistory = [];
+    setHitterProfile(youngCore, 'SS', 360, 24, 7);
+    youngCore.overallRating = 360;
+    youngCore.contract.years = 3;
+    youngCore.contract.totalValue = 21;
+    youngCore.serviceTimeDays = 2 * 172;
+    youngCore.ceiling = 100;
+    youngCore.extensionHistory = [];
+    for (const player of state.players) {
+      if (
+        player.teamId === 'bos'
+        && player.rosterStatus === 'MLB'
+        && player.id !== currentStar.id
+        && player.id !== youngCore.id
+      ) {
+        player.rosterStatus = 'AAA';
+        player.minorLeagueLevel = 'AAA';
+      }
+    }
+    state.serviceTime.set(currentStar.id, 0);
+    state.serviceTime.set(youngCore.id, 99);
+
+    const baseline = api.exportSnapshot() as GameSnapshot;
+    const run = (
+      userTeamId: string,
+      hiddenPotential: number,
+      contradictoryLegacyYears: number,
+    ) => {
+      const snapshot = structuredClone(baseline);
+      snapshot.userTeamId = userTeamId;
+      const candidate = snapshot.players.find((player) => player.id === youngCore.id)!;
+      candidate.ceiling = hiddenPotential;
+      snapshot.serviceTime = snapshot.serviceTime.map(([playerId, years]) =>
+        playerId === youngCore.id ? [playerId, contradictoryLegacyYears] : [playerId, years]);
+      expect(api.importSnapshot(snapshot).success).toBe(true);
+      const rngBefore = api.exportSnapshot().rng;
+
+      const entered = api.advanceOffseason();
+      expect(entered?.currentPhase).toBe('extensions');
+      expect(entered?.flowStateChanged).toBe(true);
+      const after = api.exportSnapshot() as GameSnapshot;
+      const offseason = after.offseasonState as ReturnType<typeof createOffseasonState>;
+      const results = offseason.phaseResults.extensions.filter((entry) => entry.teamId === 'bos');
+      const histories = after.players
+        .filter((player) => player.id === currentStar.id || player.id === youngCore.id)
+        .flatMap((player) => (player.extensionHistory ?? [])
+          .filter((entry) => entry.season === after.season)
+          .map((entry) => ({ playerId: player.id, ...entry })));
+      const news = after.news
+        .filter((entry) => entry.category === 'extension' && entry.relatedTeamIds.includes('bos'))
+        .map((entry) => ({ id: entry.id, headline: entry.headline, body: entry.body }));
+      expect(after.rng).toEqual(rngBefore);
+      expect(results[0]?.playerId).toBe(youngCore.id);
+      return { results, histories, news, rng: after.rng };
+    };
+
+    const canonical = run('nym', 100, 99);
+    expect(run('chi', 100, 99)).toEqual(canonical);
+    expect(run('nym', 500, 99)).toEqual(canonical);
+    expect(run('nym', 100, 0)).toEqual(canonical);
+  });
+
+  it('rejects forged, invalid, stale, and duplicate public extension mutations without RNG or snapshot changes', () => {
+    startGame(1273, 'nym');
+    const state = requireState();
+    const userPlayer = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const cpuPlayer = state.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    setHitterProfile(userPlayer, 'SS', 420, 27, 8);
+    userPlayer.contract.years = 1;
+    userPlayer.contract.totalValue = 8;
+    userPlayer.extensionHistory = [];
+    const offer = (api as typeof api & MinorLeagueWorkerApi).getExtensionOffer(userPlayer.id, 5)!;
+
+    const assertRejectedUnchanged = (playerId: string, attemptedOffer: typeof offer) => {
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngBefore = api.exportSnapshot().rng;
+      const pendingBefore = structuredClone(Array.from(state.pendingExtensionNegotiations.entries()));
+      expect((api as typeof api & MinorLeagueWorkerApi).negotiateExtension(playerId, attemptedOffer)).toBeNull();
+      expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+      expect(api.exportSnapshot().rng).toEqual(rngBefore);
+      expect(Array.from(state.pendingExtensionNegotiations.entries())).toEqual(pendingBefore);
+    };
+
+    assertRejectedUnchanged(cpuPlayer.id, offer);
+    assertRejectedUnchanged(userPlayer.id, { ...offer, annualSalary: Number.POSITIVE_INFINITY });
+    for (const malformed of [
+      { ...offer, noTradeClauseType: 'invalid-clause' },
+      { ...offer, playerOption: 'yes' },
+      { ...offer, optOutYears: null },
+      { ...offer, deferredMoney: [null] },
+    ]) {
+      assertRejectedUnchanged(userPlayer.id, malformed as unknown as typeof offer);
+    }
+    userPlayer.extensionHistory = [{
+      season: state.season,
+      teamId: 'nym',
+      years: 5,
+      annualSalary: offer.annualSalary,
+      totalValue: offer.totalValue,
+      outcome: 'accepted',
+    }];
+    assertRejectedUnchanged(userPlayer.id, offer);
+
+    userPlayer.extensionHistory = [];
+    const opening = {
+      ...offer,
+      annualSalary: 1,
+      totalValue: offer.years,
+    };
+    const response = (api as typeof api & MinorLeagueWorkerApi).negotiateExtension(
+      userPlayer.id,
+      opening,
+    );
+    expect(response?.status).toBe('countered');
+    const staleCounter = response && 'counterOffer' in response
+      ? response.counterOffer
+      : undefined;
+    if (!staleCounter) throw new Error('Expected a live extension counteroffer.');
+    userPlayer.contract.years += 1;
+    assertRejectedUnchanged(userPlayer.id, staleCounter);
+  });
+
+  it('fails malformed imported extension aggregates before phase mutation or RNG', () => {
+    const corruptionCases = [
+      {
+        label: 'missing player',
+        build: () => [{
+          playerId: 'missing-extension-player',
+          teamId: 'bos',
+          status: 'accepted' as const,
+          years: 5,
+          annualSalary: 20,
+          totalValue: 100,
+        }],
+        error: 'missing player',
+      },
+      {
+        label: 'empty identity',
+        build: () => [{
+          playerId: '',
+          teamId: 'bos',
+          status: 'accepted' as const,
+          years: 5,
+          annualSalary: 20,
+          totalValue: 100,
+        }],
+        error: 'malformed or duplicated',
+      },
+      {
+        label: 'illegal term',
+        build: (player: GeneratedPlayer) => [{
+          playerId: player.id,
+          teamId: player.teamId,
+          status: 'accepted' as const,
+          years: 0,
+          annualSalary: player.contract.annualSalary,
+          totalValue: player.contract.totalValue ?? player.contract.annualSalary,
+        }],
+        error: 'malformed or duplicated',
+      },
+      {
+        label: 'nonterminal status',
+        build: (player: GeneratedPlayer) => [{
+          playerId: player.id,
+          teamId: player.teamId,
+          status: 'countered' as never,
+          years: player.contract.years,
+          annualSalary: player.contract.annualSalary,
+          totalValue: player.contract.totalValue ?? player.contract.annualSalary,
+        }],
+        error: 'malformed or duplicated',
+      },
+      {
+        label: 'wrong team',
+        build: (player: GeneratedPlayer) => [{
+          playerId: player.id,
+          teamId: player.teamId === 'bos' ? 'nym' : 'bos',
+          status: 'accepted' as const,
+          years: player.contract.years,
+          annualSalary: player.contract.annualSalary,
+          totalValue: player.contract.totalValue ?? player.contract.annualSalary,
+        }],
+        error: 'current player ownership',
+      },
+      {
+        label: 'duplicate player',
+        build: (player: GeneratedPlayer) => {
+          const entry = {
+            playerId: player.id,
+            teamId: player.teamId,
+            status: 'accepted' as const,
+            years: player.contract.years,
+            annualSalary: player.contract.annualSalary,
+            totalValue: player.contract.totalValue ?? player.contract.annualSalary,
+          };
+          return [entry, { ...entry }];
+        },
+        error: 'malformed or duplicated',
+      },
+      {
+        label: 'accepted contract mismatch',
+        build: (player: GeneratedPlayer) => {
+          const years = Math.min(MAX_CONTRACT_YEARS, Math.max(1, player.contract.years + 1));
+          const totalValue = player.contract.annualSalary * years;
+          player.extensionHistory = [{
+            season: requireState().season,
+            teamId: player.teamId,
+            years,
+            annualSalary: player.contract.annualSalary,
+            totalValue,
+            outcome: 'accepted',
+          }];
+          return [{
+            playerId: player.id,
+            teamId: player.teamId,
+            status: 'accepted' as const,
+            years,
+            annualSalary: player.contract.annualSalary,
+            totalValue,
+          }];
+        },
+        error: 'canonical contract',
+      },
+      {
+        label: 'accepted history mismatch',
+        build: (player: GeneratedPlayer) => [{
+          playerId: player.id,
+          teamId: player.teamId,
+          status: 'accepted' as const,
+          years: player.contract.years,
+          annualSalary: player.contract.annualSalary + 1,
+          totalValue: (player.contract.annualSalary + 1) * player.contract.years,
+        }],
+        error: 'player history',
+      },
+    ];
+
+    corruptionCases.forEach((corruption, index) => {
+      startGame(1274 + index, 'nym');
+      const state = requireState();
+      const player = state.players.find((candidate) =>
+        candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+      player.extensionHistory = [{
+        season: state.season,
+        teamId: player.teamId,
+        years: player.contract.years,
+        annualSalary: player.contract.annualSalary,
+        totalValue: player.contract.totalValue ?? player.contract.annualSalary,
+        outcome: 'accepted',
+      }];
+      state.phase = 'offseason';
+      state.offseasonState = {
+        ...createOffseasonState(state.season),
+        currentPhase: 'tender_nontender',
+        phaseDay: 5,
+        totalDay: 15,
+        phaseResults: {
+          ...createOffseasonState(state.season).phaseResults,
+          extensions: corruption.build(player),
+        },
+      };
+      const before = JSON.stringify(api.exportSnapshot());
+      const rngBefore = api.exportSnapshot().rng;
+
+      const result = api.advanceOffseason();
+
+      expect(result?.flowStateChanged, corruption.label).toBe(false);
+      expect(result?.error, corruption.label).toContain(corruption.error);
+      expect(JSON.stringify(api.exportSnapshot()), corruption.label).toBe(before);
+      expect(api.exportSnapshot().rng, corruption.label).toEqual(rngBefore);
+    });
   });
 
   it('issues and resolves qualifying offers through worker APIs', () => {

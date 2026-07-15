@@ -1625,6 +1625,9 @@ describe('snapshot helpers', () => {
     const original = createState();
     original.pendingExtensionNegotiations.set('player-1', {
       playerId: 'player-1',
+      teamId: 'nym',
+      season: original.season,
+      baselineContractSignature: 'runtime-only-test-session',
       targetContract: {
         years: 5,
         annualSalary: 20,

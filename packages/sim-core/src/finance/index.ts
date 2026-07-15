@@ -41,6 +41,7 @@ export {
   type ExtensionNegotiationSession,
   type ExtensionResult,
   type TeamExtensionProcessResult,
+  type ExtensionGmDecisionPolicy,
   // Functions
   calculatePlayerValue,
   advanceContractForOffseason,
@@ -57,6 +58,9 @@ export {
   serviceDaysToYears,
   evaluateExtensionWillingness,
   calculateExtensionOffer,
+  extensionNegotiationContractSignature,
+  gmExtensionPriorityAdjustment,
+  getExtensionGmDecisionPolicy,
   negotiateExtension,
   processTeamExtensions,
 } from './contracts.js';

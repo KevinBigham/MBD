@@ -130,11 +130,15 @@ async function readCurrentProgram(
   playerId: string,
 ): Promise<string> {
   const pressConference = page.getByRole('dialog', { name: 'Press Conference' });
+  // Clear a dialog that is already visible before installing the navigation
+  // handler. Otherwise the explicit Skip click can trigger the same handler,
+  // which closes the dialog and leaves the intercepted click waiting on a
+  // stale button.
+  await handlePressConference(page, 'skip');
   await page.addLocatorHandler(pressConference, async (dialog) => {
     await dialog.getByRole('button', { name: 'Skip', exact: true }).click();
   });
   try {
-    await handlePressConference(page, 'skip');
     await navigateFromSidebar(page, '/players', 'Players');
   } finally {
     await page.removeLocatorHandler(pressConference);
@@ -805,7 +809,7 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     await expectMutationSaved(page);
     await drainDurableOverlays(page);
 
-    await navigateFromSidebar(page, '/offseason', 'Offseason');
+    await navigateFromSidebar(page, '/offseason', 'Offseason - Season 1');
     const offseasonHeader = page.locator('header').getByText(/^Season 1 — Offseason:/).first();
     const amateurDraftHeading = appMain(page).getByRole('heading', {
       name: 'Amateur Draft',
