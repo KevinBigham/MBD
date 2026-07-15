@@ -263,21 +263,23 @@ describe('advanceContracts', () => {
 });
 
 describe('getArbEligiblePlayers', () => {
-  it('filters correctly by service time', () => {
+  it('filters by exact service days instead of the legacy years mirror', () => {
     const rng = new GameRNG(42);
     const roster = generateTeamRoster(rng, 'NYT');
     const mlbPlayers = roster.filter((p) => p.rosterStatus === 'MLB');
     const serviceTime = new Map<string, number>();
     mlbPlayers.forEach((p, i) => {
       // Give alternating service times: some arb-eligible, some not
-      serviceTime.set(p.id, i % 2 === 0 ? 4 : 1);
+      p.serviceTimeDays = (i % 2 === 0 ? 4 : 1) * 172;
+      serviceTime.set(p.id, i % 2 === 0 ? 1 : 4);
     });
     const eligible = getArbEligiblePlayers(roster, 'NYT', serviceTime);
-    // All eligible should have service time between 3 and 6
+    // All eligible should have exact service between ordinary arb years 3–5,
+    // even though the compatibility map claims the opposite cohort.
     for (const p of eligible) {
-      const years = serviceTime.get(p.id) ?? 0;
+      const years = serviceDaysToYears(p.serviceTimeDays);
       expect(years).toBeGreaterThanOrEqual(3);
-      expect(years).toBeLessThanOrEqual(6);
+      expect(years).toBeLessThanOrEqual(5);
     }
     expect(eligible.length).toBeGreaterThan(0);
   });
@@ -287,16 +289,19 @@ describe('getArbEligiblePlayers', () => {
       ...makePlayer(100),
       id: '00000000-0000-4000-8000-000000000010',
       teamId: 'NYT',
+      serviceTimeDays: 2 * 172,
       superTwoQualified: true,
     };
     const standardArb = {
       ...makePlayer(101),
       teamId: 'NYT',
+      serviceTimeDays: 4 * 172,
       superTwoQualified: false,
     };
     const preArb = {
       ...makePlayer(102),
       teamId: 'NYT',
+      serviceTimeDays: 172,
       superTwoQualified: false,
     };
     const roster = [superTwo, standardArb, preArb];

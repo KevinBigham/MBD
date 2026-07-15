@@ -62,6 +62,7 @@ export type {
   OffseasonState,
   PhaseResults,
   ArbitrationResult,
+  ArbitrationDocketEntry,
   ExtensionPhaseResult,
   QualifyingOfferPhaseResult,
   CoachChangeResult,

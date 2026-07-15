@@ -28,12 +28,15 @@ import {
 } from '@/shared/lib/bootRecoveryAdmission';
 import {
   beginWorkerMutation,
+  beginExactSaveMutationWorkerMutation,
   beginSimAdvanceWorkerMutation,
   consumeSimAdvanceWorkerAuthorization,
   assertSimAdvanceWorkerSessionCurrent,
+  assertExactSaveMutationWorkerSessionCurrent,
   finishWorkerMutation,
   type SimAdvanceWorkerAuthorization,
   type SimAdvanceWorkerSession,
+  type ExactSaveMutationWorkerSession,
   type WorkerMutationPermit,
 } from '@/shared/lib/workerMutationSession';
 import {
@@ -49,6 +52,8 @@ function isSimAdvanceWorkerOperation(value: unknown): value is SimAdvanceWorkerO
 type SimAdvancePhase = 'open' | 'baseline_exported' | 'mutating' | 'mutated' | 'post_exported' | 'completed' | 'poisoned' | 'restoring';
 type SimAdvanceSessionState = { phase: SimAdvancePhase; flowStateChanged: boolean };
 const simAdvanceSessionStates = new WeakMap<SimAdvanceWorkerSession, SimAdvanceSessionState>();
+type ExactSaveMutationPhase = 'open' | 'baseline_exported' | 'mutated' | 'post_exported' | 'restoring' | 'completed' | 'poisoned';
+const exactSaveMutationSessionStates = new WeakMap<ExactSaveMutationWorkerSession, { phase: ExactSaveMutationPhase }>();
 
 type WorkerMethodName = keyof WorkerApi;
 type WorkerMethodParameters<K extends WorkerMethodName> =
@@ -563,6 +568,94 @@ export function useWorker() {
             return { importResult, restoredSnapshot };
           });
         } catch (error) { invalidateWorker('error'); state.phase = 'poisoned'; throw error; }
+      },
+    };
+  }, [expectedActiveSaveId]);
+
+  const exactSaveMutation = useMemo(() => {
+    const assertSession = (session: ExactSaveMutationWorkerSession) => {
+      assertExactSaveMutationWorkerSessionCurrent(
+        session,
+        expectedActiveSaveId,
+        session.expectedRootSaveId,
+      );
+      assertActiveSaveSessionOwned(session.expectedSaveId);
+      const current = exactSaveMutationSessionStates.get(session) ?? { phase: 'open' as const };
+      exactSaveMutationSessionStates.set(session, current);
+      return current;
+    };
+    const withPermit = async <T,>(
+      session: ExactSaveMutationWorkerSession,
+      operation: () => Promise<T>,
+    ): Promise<T> => {
+      const permit = beginExactSaveMutationWorkerMutation(session, expectedActiveSaveId);
+      try { return await operation(); }
+      finally { finishWorkerMutation(permit); }
+    };
+    return {
+      exportSnapshot: async (session: ExactSaveMutationWorkerSession): Promise<object> => {
+        const current = assertSession(session);
+        if (current.phase !== 'open' && current.phase !== 'mutated') {
+          throw new Error('Exact-save snapshot export is not allowed in this session phase.');
+        }
+        try {
+          const snapshot = await withPermit(session, () => measureAsyncOperation(
+            'worker.exportSnapshot',
+            () => getOrCreateWorker().exportSnapshot(),
+            { budgetMs: Math.max(SAVE_IO_BUDGET_MS, 1000) },
+          ));
+          current.phase = current.phase === 'open' ? 'baseline_exported' : 'post_exported';
+          return snapshot as object;
+        } catch (error) {
+          current.phase = 'poisoned';
+          throw error;
+        }
+      },
+      execute: async (
+        session: ExactSaveMutationWorkerSession,
+        operation: 'advanceOffseason' | 'skipOffseasonPhase',
+      ) => {
+        const current = assertSession(session);
+        if (current.phase !== 'baseline_exported') {
+          throw new Error('Exact-save mutation requires one retained baseline export.');
+        }
+        try {
+          const remote = getOrCreateWorker();
+          const result = await withPermit(session, () => (
+            operation === 'advanceOffseason'
+              ? remote.advanceOffseason()
+              : remote.skipOffseasonPhase()
+          ));
+          current.phase = 'mutated';
+          return result;
+        } catch (error) {
+          current.phase = 'poisoned';
+          throw error;
+        }
+      },
+      restoreBaseline: async (session: ExactSaveMutationWorkerSession, snapshot: object) => {
+        const current = assertSession(session);
+        current.phase = 'restoring';
+        try {
+          return await withPermit(session, async () => {
+            const remote = getOrCreateWorker();
+            const importResult = await remote.importSnapshot(snapshot);
+            const restoredSnapshot = await remote.exportSnapshot();
+            current.phase = 'completed';
+            return { importResult, restoredSnapshot };
+          });
+        } catch (error) {
+          current.phase = 'poisoned';
+          throw error;
+        }
+      },
+      publishFlow: (session: ExactSaveMutationWorkerSession) => {
+        const current = assertSession(session);
+        if (current.phase !== 'post_exported') {
+          throw new Error('Exact-save presentation requires a retained post snapshot.');
+        }
+        current.phase = 'completed';
+        notifyFlowListeners();
       },
     };
   }, [expectedActiveSaveId]);
@@ -1232,7 +1325,8 @@ export function useWorker() {
     subscribeToFlowUpdates,
     restartWorker,
     simAdvance,
+    exactSaveMutation,
     workerStatus: currentWorkerStatus,
     isReady,
-  }), [api, isReady, currentWorkerStatus, publishDurablePresentation, simAdvance]);
+  }), [api, exactSaveMutation, isReady, currentWorkerStatus, publishDurablePresentation, simAdvance]);
 }

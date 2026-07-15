@@ -34,6 +34,25 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 11, Goal 21 `ECON-ARBITRATION-1`: exact MLB service
+  days now own ordinary and Super Two eligibility, deterministic arbitration
+  dockets persist distinct filing, exchange, hearing, and award beats, and every
+  award is a consistent one-year contract at or above the prior salary.
+- Offseason Advance/Skip now holds one exact worker session plus an exact-save
+  persistence lease through durable publication. It drains accepted ordinary
+  writes, blocks stale capture/callbacks, retries only the frozen post snapshot,
+  preserves root/branch ownership identity, and fails closed after an accepted
+  persistence failure.
+- User and CPU clubs use identical automatic arbitration mechanics. Holdout copy
+  and service effects are bounded to same-offseason spring closure; the new
+  Offseason docket remains readable and keyboard-reachable on desktop and
+  375×667 mobile.
+- Final evidence: sim-core 141 files / 1,660 tests; web 463 files passed + 1
+  skipped and 2,354 tests passed + 3 skipped; contracts migration 24/24; UI 1/1;
+  3,029-module / 166-entry PWA; zero-retry production arbitration 1/1 and
+  reload-smoke 2/2. GameSnapshot remains v34, Dexie remains v6, and roadmap item
+  12 was not started.
+
 - Verified roadmap items 9–10 through Goal 11 `ECON-CLOCK-1`: contracts now
   advance exactly once at the authoritative offseason seam, deterministic team
   options use the same zero-RNG rule for user and CPU clubs, and natural

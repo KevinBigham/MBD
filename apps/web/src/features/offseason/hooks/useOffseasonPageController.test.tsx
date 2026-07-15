@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OffseasonData } from './useOffseasonRouteData';
 import { useOffseasonPageController } from './useOffseasonPageController';
 
+vi.mock('@/shared/hooks/useExactOffseasonMutationExecutor', () => ({
+  useExactOffseasonMutationExecutor: (worker: { execute: (session: object, operation: string) => Promise<unknown> }) =>
+    (operation: string) => worker.execute({}, operation),
+}));
+
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -119,7 +124,16 @@ describe('useOffseasonPageController', () => {
         lockRule5Protection: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'rule5_draft' })),
         makeRule5Pick: vi.fn().mockResolvedValue({ success: true }),
         passRule5Pick: vi.fn().mockResolvedValue({ success: true }),
-        publishDurablePresentation: vi.fn(() => true),
+        exactSaveMutation: {
+          exportSnapshot: vi.fn(),
+          execute: vi.fn().mockImplementation((_session, operation) => (
+            operation === 'advanceOffseason'
+              ? Promise.resolve(buildOffseasonState({ currentPhase: 'draft' }))
+              : Promise.resolve(buildOffseasonState({ currentPhase: 'arbitration' }))
+          )),
+          restoreBaseline: vi.fn(),
+          publishFlow: vi.fn(),
+        },
         resolveQualifyingOffers: vi.fn().mockResolvedValue({ resolved: [] }),
         resolveRule5OfferBack: vi.fn().mockResolvedValue({ success: true }),
         skipOffseasonPhase: vi.fn().mockResolvedValue(buildOffseasonState({ currentPhase: 'arbitration' })),
@@ -183,8 +197,7 @@ describe('useOffseasonPageController', () => {
     await waitForAssertion(() => {
       expect(latestResult?.contentProps?.currentPhaseConfig.label).toBe('Amateur Draft');
     });
-    expect(options.worker.advanceOffseason).toHaveBeenCalledTimes(1);
-    expect(options.worker.publishDurablePresentation).toHaveBeenCalledTimes(1);
-    expect(options.autosaveActiveGame).toHaveBeenCalledWith({ season: 5 });
+    expect(options.worker.exactSaveMutation.execute).toHaveBeenCalledTimes(1);
+    expect(options.autosaveActiveGame).not.toHaveBeenCalled();
   });
 });

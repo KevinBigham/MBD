@@ -3,13 +3,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   beginWorkerMutation,
+  beginExactSaveMutationWorkerMutation,
+  beginExactSaveMutationWorkerSession,
   beginSimAdvanceWorkerMutation,
   beginSimAdvanceWorkerSession,
   assertSimAdvanceWorkerSessionAdmissionAvailable,
   assertSimAdvanceWorkerSessionCurrent,
+  assertExactSaveMutationWorkerSessionCurrent,
   consumeSimAdvanceWorkerAuthorization,
   createSimAdvanceWorkerAuthorization,
   finishSimAdvanceWorkerSession,
+  finishExactSaveMutationWorkerSession,
   finishWorkerMutation,
   getWorkerMutationPauseSnapshot,
   pauseWorkerMutationsForSaveTransition,
@@ -104,6 +108,48 @@ describe('worker mutation save-session gate', () => {
     finishSimAdvanceWorkerSession(session);
     expect(getWorkerMutationPauseSnapshot()).toBe(false);
     expect(() => beginWorkerMutation('save-slot-1')).not.toThrow();
+  });
+
+  it('holds ordinary, simulation, and transition lanes through one exact-save mutation session', () => {
+    const session = beginExactSaveMutationWorkerSession('save-slot-1', 'save-slot-1');
+    expect(getWorkerMutationPauseSnapshot()).toBe(true);
+    expect(() => beginWorkerMutation('save-slot-1')).toThrowError(
+      expect.objectContaining({ kind: 'not_owner' }),
+    );
+    expect(() => beginSimAdvanceWorkerSession('save-slot-1', 'save-slot-1')).toThrowError(
+      expect.objectContaining({ kind: 'request_failed' }),
+    );
+    expect(() => pauseWorkerMutationsForSaveTransition()).toThrowError(
+      expect.objectContaining({ kind: 'request_failed' }),
+    );
+    expect(() => assertExactSaveMutationWorkerSessionCurrent(session, 'save-slot-2'))
+      .toThrowError(expect.objectContaining({ kind: 'not_owner' }));
+
+    const permit = beginExactSaveMutationWorkerMutation(session, 'save-slot-1');
+    expect(() => beginExactSaveMutationWorkerMutation(session, 'save-slot-1'))
+      .toThrowError(expect.objectContaining({ kind: 'request_failed' }));
+    expect(() => finishExactSaveMutationWorkerSession(session)).toThrow('worker work is still active');
+    finishWorkerMutation(permit);
+    finishExactSaveMutationWorkerSession(session);
+    expect(getWorkerMutationPauseSnapshot()).toBe(false);
+  });
+
+  it('keeps the exact-save worker fenced when its persistence release rejects or reenters', () => {
+    const session = beginExactSaveMutationWorkerSession('save-slot-1', 'save-slot-1');
+
+    expect(() => finishExactSaveMutationWorkerSession(session, () => {
+      expect(getWorkerMutationPauseSnapshot()).toBe(true);
+      expect(() => assertExactSaveMutationWorkerSessionCurrent(session, 'save-slot-1', 'save-slot-1'))
+        .toThrowError(expect.objectContaining({ kind: 'not_owner' }));
+      expect(() => finishExactSaveMutationWorkerSession(session)).toThrow('already finishing');
+      expect(() => resetWorkerMutationSessionForTesting()).toThrow('cannot reset while a session is finishing');
+      throw new Error('persistence release failed');
+    })).toThrow('persistence release failed');
+
+    expect(getWorkerMutationPauseSnapshot()).toBe(true);
+    expect(() => assertExactSaveMutationWorkerSessionCurrent(session, 'save-slot-1', 'save-slot-1')).not.toThrow();
+    finishExactSaveMutationWorkerSession(session);
+    expect(getWorkerMutationPauseSnapshot()).toBe(false);
   });
 
   it('rejects simulation admission synchronously while an ordinary permit is active', () => {

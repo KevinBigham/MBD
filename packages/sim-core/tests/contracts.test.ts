@@ -6,11 +6,14 @@ import {
   calculateExtensionOffer,
   calculateQualifyingOfferSalary,
   evaluateExtensionWillingness,
+  generateArbitrationCase,
   generatePlayer,
+  getArbEligiblePlayers,
   getQualifyingOfferEligiblePlayers,
   issueQualifyingOffer,
   negotiateExtension,
   processTeamExtensions,
+  qualifiesForSuperTwo,
   resolveQualifyingOffer,
   shouldIssueQualifyingOffer,
   type ExtensionTeamContext,
@@ -156,6 +159,65 @@ describe('advanceContractForOffseason', () => {
     expect(userResult).toMatchObject({ nextYears: 0, outcome: 'team_option_declined' });
     expect(cpuResult).toMatchObject({ nextYears: 0, outcome: 'team_option_declined' });
     expect({ ...userResult.player, teamId: '' }).toEqual({ ...cpuResult.player, teamId: '' });
+  });
+});
+
+describe('arbitration service authority', () => {
+  it('uses exact credited MLB days instead of a contradictory legacy years map', () => {
+    const eligible = { ...makePlayer(6), serviceTimeDays: 3 * 172 };
+    const yearSix = { ...makePlayer(7), id: 'year-six', serviceTimeDays: 6 * 172 };
+    const careerMinor = {
+      ...makePlayer(8),
+      id: 'career-minor',
+      rosterStatus: 'AAA' as const,
+      serviceTimeDays: 4 * 172,
+    };
+    const contradictory = new Map<string, number>([
+      [eligible.id, 1],
+      [yearSix.id, 4],
+      [careerMinor.id, 4],
+    ]);
+
+    expect(getArbEligiblePlayers([eligible, yearSix, careerMinor], 'nym', contradictory)
+      .map((player) => player.id)).toEqual([eligible.id]);
+  });
+
+  it('ranks only active assigned MLB players in the deterministic Super Two cohort', () => {
+    const target = { ...makePlayer(9), id: 'b-target', serviceTimeDays: (2 * 172) + 120 };
+    const leader = { ...makePlayer(10), id: 'a-leader', serviceTimeDays: (2 * 172) + 130 };
+    const freeAgent = {
+      ...makePlayer(11),
+      id: 'free-agent',
+      teamId: '',
+      rosterStatus: 'FREE_AGENT' as const,
+      serviceTimeDays: (2 * 172) + 171,
+    };
+    const minor = {
+      ...makePlayer(12),
+      id: 'minor',
+      rosterStatus: 'AAA' as const,
+      serviceTimeDays: (2 * 172) + 170,
+    };
+
+    const cohort = [target, leader, freeAgent, minor];
+    expect(qualifiesForSuperTwo(leader, cohort)).toBe(true);
+    expect(qualifiesForSuperTwo(target, cohort)).toBe(false);
+    expect(qualifiesForSuperTwo(freeAgent, cohort)).toBe(false);
+    expect(qualifiesForSuperTwo(minor, cohort)).toBe(false);
+  });
+
+  it('never files below the prior salary', () => {
+    const player = setHitterRatings(makePlayer(13), 120);
+    const arbitrationCase = generateArbitrationCase(
+      new GameRNG(13),
+      player,
+      3,
+      18.5,
+    );
+
+    expect(arbitrationCase.projectedSalary).toBeGreaterThanOrEqual(18.5);
+    expect(arbitrationCase.teamOffer).toBeGreaterThanOrEqual(18.5);
+    expect(arbitrationCase.playerAsk).toBeGreaterThanOrEqual(arbitrationCase.teamOffer);
   });
 });
 

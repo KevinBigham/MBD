@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-12 after Goal-11 closeout; ECON-CLOCK-1 is verified complete on its local landing commit under Kevin's explicit oracle amendment and Sol's frozen numeric population bands.
+Last reconciled: 2026-07-14 at roadmap-item-11 closeout; ECON-ARBITRATION-1 is gate-green and reviewed for local landing.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -10,8 +10,8 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–10 and 80.
-- First incomplete items: **11 — service-time arbitration drama**, still **PARTIAL**; Goal 11's bounded contract clock is complete and does not expand arbitration scope.
+- Verified complete: items 1–11 and 80.
+- Closed item: **11 — service-time arbitration drama**, now **VERIFIED COMPLETE** under Goal 21 / `ECON-ARBITRATION-1`; Goal 11's bounded contract clock remains complete and item 12 was not started.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -30,7 +30,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 8 | 1 | Write-ahead sim-day intent journal | VERIFIED COMPLETE | Goal 20 / `TRUST-SIM-ADVANCE-JOURNAL-1` | `runs/TRUST-SIM-ADVANCE-JOURNAL-1/{SOURCE_TRUTH,PLAN,COMPLETION}.md`; Dexie-v6 WAL, exact whole-command rollback, no replay; focused 14 files/460 tests; root gates; Chromium reload 2/2 and four-spec 5/5 | Commit containing this report; final SHA recorded below after landing | Terra `019f537c-cd7a-7d71-92f5-50edf41ac54c` (`gpt-5.6-terra`, high) sole writer; Sol `019f552e-4389-7501-8f16-a1256dcd1824` (`gpt-5.6-sol`, xhigh) `MERGE_READY` 0/0/0; Luna `019f564f-3366-70e1-8e73-ba1ebdb1f2ae` (`gpt-5.6-luna`, medium) closeout; parent manual relay fallback for host browser commands | Items 5–7 | Item 9/10 next only after live Goal 11 confirms one coherent HIGH_RISK seam |
 | 9 | 2 | Living contract clock | VERIFIED COMPLETE | Goal 11 / `runs/ECON-CLOCK-1` | Completion matrix; strict current-schema soak/replay; compact-v33 compatibility; ECON Playwright and reload-smoke; root gates; `MERGE_READY` 0/0/0 | `0df078234c96a465a00c15aaa4336619e1baa800` | Sol `019f552e-4389-7501-8f16-a1256dcd1824` xhigh architecture/final review; Terra `019f57d9-5a81-7c41-af54-3ffb3a39878d` high implementation; Luna `019f5963-de05-78c0-9aaa-fc5bc778d7b4` medium closeout | Tier 1 | Preserve clock/market/save-boundary invariants |
 | 10 | 2 | Symmetric option-year resolution | VERIFIED COMPLETE | Goal 11 / `runs/ECON-CLOCK-1`; bundled at one clock seam | Team-option-only deterministic rule, named user/CPU symmetry, zero-RNG proof, Finance/Offseason/News truth, reload proof | Same Goal-11 landing commit | Same relay as item 9 | Item 9 | Preserve deterministic symmetry; player options remain cut |
-| 11 | 2 | Service-time arbitration drama | PARTIAL | No run | Finance/arbitration/holdout source and tests exist | Historical commits | — | Items 9–10 | Prove full offseason→persistence loop |
+| 11 | 2 | Service-time arbitration drama | VERIFIED COMPLETE | Goal 21 / `runs/ECON-ARBITRATION-1` | Completion matrix; persisted deterministic docket; exact-save lease/session proof; full gates; production arbitration 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Parent single writer; three read-only source/test/risk reviewers; parent final adversarial review | Items 9–10 | Preserve service-day authority, exact-save fencing, and durable-only presentation |
 | 12 | 2 | Qualifying offers and pick compensation | PARTIAL | No run | QO, draft-pick compensation source/tests exist | Historical source | — | Item 9 | Add bounded offseason/draft reload proof |
 | 13 | 2 | Identity-driven CPU extensions | PARTIAL | No run | Extension AI/tests exist; durable cross-domain identity incomplete | Historical source | — | Items 9, 49 | Reconcile after org identity |
 | 14 | 2 | Owner payroll pressure/tax consequences | PARTIAL | No run | Owner archetype/budget/tax primitives exist | Historical source | — | Items 9, 51 | Add calibration and narrative consequence proof |

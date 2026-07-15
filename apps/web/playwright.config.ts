@@ -4,7 +4,7 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['reload-smoke.spec.ts', 'multitab-guard.spec.ts', 'storage-pressure.spec.ts', 'sim-advance-journal.spec.ts', 'econ-clock.spec.ts'],
+  testMatch: ['reload-smoke.spec.ts', 'multitab-guard.spec.ts', 'storage-pressure.spec.ts', 'sim-advance-journal.spec.ts', 'econ-clock.spec.ts', 'arbitration-drama.spec.ts'],
   fullyParallel: false,
   forbidOnly: isCi,
   // Storage-pressure causality is never retried: a first-attempt result is the evidence.
@@ -37,7 +37,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm run preview --host 127.0.0.1 --port 4174 --strictPort',
+    command: './node_modules/.bin/vite preview --host 127.0.0.1 --port 4174 --strictPort',
     url: 'http://127.0.0.1:4174/MBD/',
     reuseExistingServer: false,
     timeout: 180_000,

@@ -26,6 +26,13 @@ export interface SimAdvanceWorkerSession {
   readonly expectedRootSaveId: string;
 }
 
+/** Opaque authority for one mutation through exact durable snapshot receipt. */
+export interface ExactSaveMutationWorkerSession {
+  readonly sessionId: symbol;
+  readonly expectedSaveId: string;
+  readonly expectedRootSaveId: string;
+}
+
 declare const simAdvanceWorkerAuthorizationBrand: unique symbol;
 
 /**
@@ -69,7 +76,9 @@ let activePauseReleaseReservation: {
   readonly pause: WorkerMutationPause;
 } | null = null;
 let activeSimAdvanceSession: SimAdvanceWorkerSession | null = null;
+let activeExactSaveMutationSession: ExactSaveMutationWorkerSession | null = null;
 let activeSimAdvanceFinishReservation: symbol | null = null;
+let activeExactSaveMutationFinishReservation: symbol | null = null;
 let simAdvanceWorkerAuthorizations = new WeakMap<
   SimAdvanceWorkerAuthorization,
   InternalSimAdvanceWorkerAuthorization
@@ -93,7 +102,112 @@ export function subscribeToWorkerMutationPause(listener: () => void): () => void
 export function getWorkerMutationPauseSnapshot(): boolean {
   return activePause != null
     || activeSimAdvanceSession != null
+    || activeExactSaveMutationSession != null
     || activePermits.size > 0;
+}
+
+export function assertExactSaveMutationWorkerSessionAdmissionAvailable(): void {
+  assertBootRecoveryOrdinaryAdmission();
+  if (activePause || activeSimAdvanceSession || activeExactSaveMutationSession || activePermits.size > 0) {
+    throw new SaveSessionOwnershipError(
+      'request_failed',
+      'Another dynasty mutation or save transition is already in progress.',
+      null,
+    );
+  }
+}
+
+export function beginExactSaveMutationWorkerSession(
+  expectedSaveId: string,
+  expectedRootSaveId: string,
+): ExactSaveMutationWorkerSession {
+  assertExactSaveMutationWorkerSessionAdmissionAvailable();
+  const session = Object.freeze({
+    sessionId: Symbol(`exact-save-mutation:${expectedSaveId}`),
+    expectedSaveId,
+    expectedRootSaveId,
+  });
+  activeExactSaveMutationSession = session;
+  notifyPauseListeners();
+  return session;
+}
+
+export function assertExactSaveMutationWorkerSessionCurrent(
+  session: ExactSaveMutationWorkerSession,
+  expectedSaveId: string | null,
+  expectedRootSaveId?: string,
+): void {
+  if (activePause
+    || activeExactSaveMutationFinishReservation != null
+    || activeExactSaveMutationSession !== session
+    || expectedSaveId == null
+    || expectedSaveId !== session.expectedSaveId
+    || (expectedRootSaveId != null && expectedRootSaveId !== session.expectedRootSaveId)) {
+    throw new SaveSessionOwnershipError(
+      'not_owner',
+      'This exact-save mutation no longer owns the worker session.',
+      null,
+    );
+  }
+}
+
+export function beginExactSaveMutationWorkerMutation(
+  session: ExactSaveMutationWorkerSession,
+  expectedSaveId: string | null,
+): WorkerMutationPermit {
+  assertExactSaveMutationWorkerSessionCurrent(session, expectedSaveId);
+  if (activePermits.size > 0) {
+    throw new SaveSessionOwnershipError(
+      'request_failed',
+      'Exact-save worker work is already active.',
+      null,
+    );
+  }
+  const permit = Object.freeze({
+    permitId: Symbol(`exact-save-worker-mutation:${expectedSaveId}`),
+    expectedSaveId,
+  });
+  activePermits.set(permit.permitId, permit);
+  notifyPauseListeners();
+  return permit;
+}
+
+export function finishExactSaveMutationWorkerSession(
+  session: ExactSaveMutationWorkerSession,
+  finishPersistence?: () => void,
+): void {
+  if (activeExactSaveMutationSession !== session) {
+    throw new Error('This exact-save mutation session is no longer active.');
+  }
+  if (activePermits.size > 0) {
+    throw new Error('Exact-save mutation worker work is still active.');
+  }
+  if (activeExactSaveMutationFinishReservation != null) {
+    throw new Error('This exact-save mutation session is already finishing.');
+  }
+  const reservation = Symbol('exact-save-mutation-worker-finish');
+  activeExactSaveMutationFinishReservation = reservation;
+  // The persistence lease is released synchronously while the worker fence is
+  // still held. If that release rejects, this session remains active and all
+  // ordinary worker mutation/export lanes stay fail-closed.
+  try {
+    finishPersistence?.();
+  } catch (error) {
+    if (activeExactSaveMutationFinishReservation === reservation) {
+      activeExactSaveMutationFinishReservation = null;
+    }
+    throw error;
+  }
+  if (activeExactSaveMutationSession !== session
+    || activeExactSaveMutationFinishReservation !== reservation) {
+    if (activeExactSaveMutationFinishReservation === reservation) {
+      activeExactSaveMutationFinishReservation = null;
+    }
+    throw new Error('This exact-save mutation session changed while it was finishing.');
+  }
+  activeExactSaveMutationSession = null;
+  activeExactSaveMutationFinishReservation = null;
+  notifyPauseListeners();
 }
 
 /** Synchronous gate used before the coordinator may publish `preparing`. */
@@ -105,6 +219,7 @@ export function assertSimAdvanceWorkerSessionAdmissionAvailable(
   assertBootRecoveryOrdinaryAdmission();
   if (activePause
     || activeSimAdvanceSession
+    || activeExactSaveMutationSession
     || activePermits.size > 0) {
     throw new SaveSessionOwnershipError(
       'request_failed',
@@ -122,11 +237,13 @@ export function beginWorkerMutation(
   expectedSaveId: string | null,
 ): WorkerMutationPermit {
   assertBootRecoveryOrdinaryAdmission();
-  if (activePause || activeSimAdvanceSession) {
+  if (activePause || activeSimAdvanceSession || activeExactSaveMutationSession || activePermits.size > 0) {
     throw new SaveSessionOwnershipError(
       'not_owner',
       activeSimAdvanceSession
         ? 'A regular-season simulation is finishing its durable save. Wait before changing the dynasty.'
+        : activeExactSaveMutationSession
+          ? 'An offseason action is finishing its durable save. Wait before changing the dynasty.'
         : 'A save-session switch is in progress. Finish that switch before changing the dynasty.',
       null,
     );
@@ -314,7 +431,7 @@ export function pauseWorkerMutationsForSaveTransition(): WorkerMutationPause {
   if (activePause) {
     throw new Error('Worker mutations are already paused for a save-session transition.');
   }
-  if (activePermits.size > 0 || activeSimAdvanceSession) {
+  if (activePermits.size > 0 || activeSimAdvanceSession || activeExactSaveMutationSession) {
     throw new SaveSessionOwnershipError(
       'request_failed',
       'A gameplay action is still running. Let it finish saving before switching dynasties.',
@@ -388,14 +505,16 @@ export function cancelReservedWorkerMutationPauseRelease(
 }
 
 export function resetWorkerMutationSessionForTesting(): void {
-  if (activeSimAdvanceFinishReservation != null) {
-    throw new Error('Simulation journal worker state cannot reset while a session is finishing.');
+  if (activeSimAdvanceFinishReservation != null || activeExactSaveMutationFinishReservation != null) {
+    throw new Error('Exact worker state cannot reset while a session is finishing.');
   }
   activePermits.clear();
   activePause = null;
   activePauseReleaseReservation = null;
   activeSimAdvanceSession = null;
+  activeExactSaveMutationSession = null;
   activeSimAdvanceFinishReservation = null;
+  activeExactSaveMutationFinishReservation = null;
   simAdvanceWorkerAuthorizations = new WeakMap<
     SimAdvanceWorkerAuthorization,
     InternalSimAdvanceWorkerAuthorization

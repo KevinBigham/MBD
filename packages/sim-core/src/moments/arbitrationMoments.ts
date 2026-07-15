@@ -73,7 +73,7 @@ export function detectArbitrationMoments(
 
     const name = playerName(player);
 
-    if (!latestEntry.teamWon && latestEntry.awardedSalary >= latestEntry.projectedSalary) {
+    if (!latestEntry.teamWon) {
       detected.push({
         playerId: player.id,
         moment: createMoment(
@@ -86,7 +86,7 @@ export function detectArbitrationMoments(
       });
     }
 
-    if (latestEntry.teamWon && latestEntry.awardedSalary < latestEntry.projectedSalary) {
+    if (latestEntry.teamWon) {
       detected.push({
         playerId: player.id,
         moment: createMoment(
@@ -121,9 +121,9 @@ function formatDays(days: number): string {
 }
 
 /**
- * Detect holdout_resolution moments for players who carry an active holdoutState
- * into a new arbitration cycle. Emit this BEFORE the cycle clears holdoutState
- * so the resolution beat captures last offseason's dispute.
+ * Detect holdout_resolution moments when arbitration-related reporting delays
+ * close at the same offseason's spring-training boundary. Emit this before the
+ * worker clears holdoutState and applies the retained service-day consequence.
  *
  * Output is sorted by playerId for determinism.
  */

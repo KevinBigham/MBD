@@ -436,6 +436,25 @@ describe('AppLayout', () => {
       (button) => button.textContent?.includes('Proceed to Offseason'),
     );
 
+    let transitionPause!: ReturnType<typeof pauseWorkerMutationsForSaveTransition>;
+    await act(async () => {
+      transitionPause = pauseWorkerMutationsForSaveTransition();
+      await Promise.resolve();
+    });
+
+    expect(proceedButton?.disabled).toBe(true);
+    await act(async () => {
+      proceedButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(worker.proceedToOffseason).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resumeWorkerMutationsAfterSaveTransition(transitionPause);
+      await Promise.resolve();
+    });
+    expect(proceedButton?.disabled).toBe(false);
+
     await act(async () => {
       proceedButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();

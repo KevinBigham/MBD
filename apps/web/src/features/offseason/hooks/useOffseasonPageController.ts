@@ -11,6 +11,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { getAudioEngine, type AudioEffectName } from '@/shared/lib/audio';
+import {
+  useExactOffseasonMutationExecutor,
+  type ExactOffseasonMutationWorker,
+} from '@/shared/hooks/useExactOffseasonMutationExecutor';
 import { useOffseasonActionHandlers } from './useOffseasonActionHandlers';
 import { useOffseasonRouteData } from './useOffseasonRouteData';
 import type { OffseasonPageContentProps } from '../components/OffseasonPageContent';
@@ -24,7 +28,7 @@ export const OFFSEASON_PHASE_CONFIG: Record<string, { label: string; icon: Lucid
   arbitration: {
     label: 'Arbitration',
     icon: DollarSign,
-    description: 'Negotiate salaries with arbitration-eligible players.',
+    description: 'Track automatic filings, exchanged figures, and one-year hearing awards.',
   },
   tender_nontender: {
     label: 'Tender / Non-Tender',
@@ -116,7 +120,7 @@ interface OffseasonPageWorker {
   lockRule5Protection: () => Promise<unknown>;
   makeRule5Pick: (playerId: string) => Promise<unknown>;
   passRule5Pick: () => Promise<unknown>;
-  publishDurablePresentation: () => boolean;
+  exactSaveMutation: ExactOffseasonMutationWorker<unknown>;
   resolveQualifyingOffers: () => Promise<unknown>;
   resolveRule5OfferBack: (playerId: string, acceptReturn: boolean) => Promise<unknown>;
   skipOffseasonPhase: () => Promise<unknown>;
@@ -179,6 +183,11 @@ export function useOffseasonPageController({
     workerReady: worker.isReady,
   });
 
+  const executeOffseasonMutation = useExactOffseasonMutationExecutor(
+    worker.exactSaveMutation,
+    worker.isReady,
+  );
+
   const {
     advancing,
     handleAdvance,
@@ -191,7 +200,7 @@ export function useOffseasonPageController({
     handleSkip,
     handleToggleProtection,
   } = useOffseasonActionHandlers({
-    advanceOffseason: worker.advanceOffseason,
+    advanceOffseason: () => executeOffseasonMutation('advanceOffseason'),
     applyOffseasonData,
     autosaveActiveGame,
     fetchOffseason,
@@ -199,11 +208,10 @@ export function useOffseasonPageController({
     lockRule5Protection: worker.lockRule5Protection,
     makeRule5Pick: worker.makeRule5Pick,
     passRule5Pick: worker.passRule5Pick,
-    publishDurablePresentation: worker.publishDurablePresentation,
     resolveQualifyingOffers: worker.resolveQualifyingOffers,
     resolveRule5OfferBack: worker.resolveRule5OfferBack,
     season,
-    skipOffseasonPhase: worker.skipOffseasonPhase,
+    skipOffseasonPhase: () => executeOffseasonMutation('skipOffseasonPhase'),
     toggleRule5Protection: worker.toggleRule5Protection,
   });
 

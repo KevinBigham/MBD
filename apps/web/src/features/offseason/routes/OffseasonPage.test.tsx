@@ -14,6 +14,10 @@ vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
 }));
 
+vi.mock('@/shared/hooks/useActiveSaveAutosave', () => ({
+  useActiveSaveAutosave: () => vi.fn().mockResolvedValue({ saved: true }),
+}));
+
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
 
@@ -179,6 +183,12 @@ function buildWorkerMock(overrides: Record<string, unknown> = {}) {
     }),
     advanceOffseason: vi.fn(),
     skipOffseasonPhase: vi.fn(),
+    exactSaveMutation: {
+      exportSnapshot: vi.fn(),
+      execute: vi.fn(),
+      restoreBaseline: vi.fn(),
+      publishFlow: vi.fn(),
+    },
     toggleRule5Protection: vi.fn().mockResolvedValue({ success: true }),
     lockRule5Protection: vi.fn(),
     makeRule5Pick: vi.fn().mockResolvedValue({ success: true }),
@@ -207,6 +217,9 @@ describe('OffseasonPage', () => {
       day: 1,
       phase: 'offseason',
       isInitialized: true,
+      activeSaveId: 'save-slot-1',
+      activeSaveSlot: 1,
+      gmName: 'Test GM',
       userTeamId: 'nym',
       teamName: 'Tycoons',
       playerCount: 780,
@@ -693,5 +706,35 @@ describe('OffseasonPage', () => {
 
     expect(passRule5Pick).toHaveBeenCalledTimes(1);
     expect(resolveRule5OfferBack).toHaveBeenCalledWith('offer-1', true);
+  });
+
+  it('renders the durable arbitration docket on the existing offseason route', async () => {
+    mockedUseWorker.mockReturnValue(buildWorkerMock({
+      getOffseasonState: vi.fn().mockResolvedValue(buildOffseasonState({
+        currentPhase: 'arbitration',
+        phaseDay: 3,
+        arbitrationCases: [{
+          playerId: 'arb-proof',
+          playerName: 'Docket Proof',
+          teamId: 'nym',
+          serviceClass: 'Year 4',
+          previousSalary: 5.2,
+          teamOffer: 7.8,
+          playerAsk: 9.1,
+          projectedSalary: 8.4,
+          awardedSalary: null,
+          winner: null,
+          stage: 'exchange',
+        }],
+      })),
+    }) as unknown as ReturnType<typeof useWorker>);
+
+    await renderPage();
+
+    expect(container.textContent).toContain('Arbitration docket');
+    expect(container.textContent).toContain('Docket Proof');
+    expect(container.textContent).toContain('Figures exchanged');
+    expect(container.textContent).toContain('Club filing');
+    expect(container.textContent).toContain('Player filing');
   });
 });

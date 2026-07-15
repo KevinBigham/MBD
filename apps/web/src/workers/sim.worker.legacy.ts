@@ -159,12 +159,13 @@ export function accrueCareerStatsForSeason(state: FullGameState) {
       continue;
     }
 
-    state.serviceTime.set(player.id, (state.serviceTime.get(player.id) ?? 0) + 1);
-
     const entry = ensureCareerEntry(state.careerStats, player);
     entry.playerName = `${player.firstName} ${player.lastName}`;
     entry.position = player.position;
-    entry.seasonsPlayed = Math.max(entry.seasonsPlayed, state.serviceTime.get(player.id) ?? 0);
+    entry.seasonsPlayed = Math.max(
+      entry.seasonsPlayed,
+      (state.serviceTime.get(player.id) ?? 0) + 1,
+    );
     entry.peakOverall = Math.max(entry.peakOverall, toDisplayRating(player.overallRating));
     entry.teamIds = uniqueStrings([...entry.teamIds, player.teamId].filter((teamId) => teamId.length > 0));
     if (championId && player.teamId === championId && player.rosterStatus === 'MLB') {

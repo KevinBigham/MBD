@@ -3,6 +3,7 @@ import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
 import type { SeasonRecapView, OffseasonHeadlineView } from '@/workers/sim.worker.seasonNarrative';
 import type { OffseasonData } from '../hooks/useOffseasonRouteData';
 import { OffseasonCommandCenterPanel } from './OffseasonCommandCenterPanel';
+import { OffseasonArbitrationPanel } from './OffseasonArbitrationPanel';
 import { OffseasonCurrentPhasePanel } from './OffseasonCurrentPhasePanel';
 import { OffseasonExtensionCandidatesPanel, type ExtensionCandidateView } from './OffseasonExtensionCandidatesPanel';
 import { OffseasonMarketDayBriefingPanel, type OffseasonMarketDaySummaryView } from './OffseasonMarketDayBriefingPanel';
@@ -111,6 +112,10 @@ export default function OffseasonPageContent({
 
       {commandCenter ? (
         <OffseasonCommandCenterPanel commandCenter={commandCenter} />
+      ) : null}
+
+      {(offseason?.arbitrationCases?.length ?? 0) > 0 ? (
+        <OffseasonArbitrationPanel cases={offseason?.arbitrationCases ?? []} />
       ) : null}
 
       {marketDaySummaries.length > 0 ? (

@@ -3,7 +3,9 @@ import { parseGameSnapshot } from '@mbd/contracts';
 import snapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 import {
   ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS,
+  beginExactSaveMutationPersistenceLease,
   beginSimAdvancePersistenceLease,
+  captureExactSaveMutationSnapshot,
   captureSimAdvanceBaselineSeal,
   captureSimAdvanceSnapshot,
   closeCommittedSimAdvancePersistenceLeaseFailClosed,
@@ -13,6 +15,7 @@ import {
   markActiveSaveSessionTransitionOwnershipCommitted,
   createActiveSavePersistenceBackup,
   finishSimAdvancePersistenceLease,
+  finishExactSaveMutationPersistenceLease,
   getActiveSavePersistenceStatus,
   isActiveSavePersistenceReceiptDurable,
   persistActiveSaveSnapshot,
@@ -30,6 +33,8 @@ import {
   subscribeToActiveSavePersistenceStatus,
   trackActiveSavePersistenceOperation,
   waitForActiveSavePersistenceReceipt,
+  waitForExactSaveMutationPersistenceReceipt,
+  waitForOrdinaryActiveSavePersistenceReceipt,
   SimAdvancePersistenceAdmissionBlockedError,
   type ActiveSavePersistenceReceipt,
 } from './activeSavePersistence';
@@ -133,6 +138,11 @@ function simAdvanceIntent(
 async function beginActivatedSimAdvanceLease(saveId = 'save-slot-2', rootSaveId = saveId) {
   activateActiveSavePersistenceMetadata(savedRecord(saveId));
   return beginSimAdvancePersistenceLease(saveId, rootSaveId);
+}
+
+async function beginActivatedExactSaveMutationLease(saveId = 'save-slot-2', rootSaveId = saveId) {
+  activateActiveSavePersistenceMetadata(savedRecord(saveId));
+  return beginExactSaveMutationPersistenceLease(saveId, rootSaveId);
 }
 
 describe('persistActiveSaveSnapshot', () => {
@@ -374,6 +384,129 @@ describe('persistActiveSaveSnapshot', () => {
     })).resolves.toEqual({ saved: false, saveName: null });
     expect(ordinaryExport).not.toHaveBeenCalled();
     finishSimAdvancePersistenceLease(lease);
+  });
+
+  it('drains an already-accepted ordinary write before admitting an exact-save mutation lease', async () => {
+    let releaseOrdinaryWrite!: () => void;
+    mockedSaveGameById.mockImplementationOnce(async (id) => new Promise<SaveData>((resolve) => {
+      releaseOrdinaryWrite = () => resolve(savedRecord(id));
+    }));
+    activateActiveSavePersistenceMetadata(savedRecord('save-slot-2'));
+    const ordinarySnapshot = { schemaVersion: 34, season: 7, day: 12, phase: 'offseason' };
+    const ordinaryWrite = persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue(ordinarySnapshot),
+    });
+    await vi.waitFor(() => expect(mockedSaveGameById).toHaveBeenCalledTimes(1));
+
+    let leaseSettled = false;
+    const pendingLease = beginExactSaveMutationPersistenceLease('save-slot-2', 'save-slot-2')
+      .then((lease) => {
+        leaseSettled = true;
+        return lease;
+      });
+    await flushPromises();
+    expect(leaseSettled).toBe(false);
+
+    releaseOrdinaryWrite();
+    await expect(ordinaryWrite).resolves.toMatchObject({ saved: true });
+    const lease = await pendingLease;
+    const exactSnapshot = { schemaVersion: 34, season: 7, day: 13, phase: 'offseason' };
+    const receipt = await captureExactSaveMutationSnapshot(lease, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue(exactSnapshot),
+    });
+    await expect(waitForExactSaveMutationPersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+
+    expect(mockedSaveGameById.mock.calls[0]?.[2]).toEqual(ordinarySnapshot);
+    expect(mockedSaveGameById.mock.calls[1]?.[2]).toEqual(exactSnapshot);
+    finishExactSaveMutationPersistenceLease(lease, receipt);
+  });
+
+  it('blocks stale ordinary capture while an exact-save mutation lease owns persistence', async () => {
+    const lease = await beginActivatedExactSaveMutationLease();
+    const staleExport = vi.fn();
+    await expect(persistActiveSaveSnapshot({
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: staleExport,
+    })).resolves.toEqual({ saved: false, saveName: null });
+    expect(staleExport).not.toHaveBeenCalled();
+
+    const receipt = await captureExactSaveMutationSnapshot(lease, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 13, phase: 'offseason' }),
+    });
+    await expect(waitForExactSaveMutationPersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+    finishExactSaveMutationPersistenceLease(lease, receipt);
+  });
+
+  it('preserves branch lineage when an exact-save mutation persists a branch', async () => {
+    const branchRecord = {
+      ...savedRecord('branch-2'),
+      slotNumber: null,
+      parentSaveId: 'save-slot-2',
+      isRootSave: false,
+      branchMeta: {
+        id: 'branch-meta-2',
+        saveId: 'branch-2',
+        createdAt: '2026-04-02T19:42:03.000Z',
+        description: 'Arbitration branch',
+        branchedAtSeason: 7,
+        branchedAtDay: 12,
+      },
+    } as SaveData;
+    mockedLoadGameById.mockResolvedValue(branchRecord);
+    const lease = await beginActivatedExactSaveMutationLease('branch-2', 'save-slot-2');
+    const snapshot = { schemaVersion: 34, season: 7, day: 13, phase: 'offseason' };
+    const receipt = await captureExactSaveMutationSnapshot(lease, {
+      activeSaveId: 'branch-2', activeSaveSlot: null, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot: vi.fn().mockResolvedValue(snapshot),
+    });
+    await expect(waitForExactSaveMutationPersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+    expect(() => waitForActiveSavePersistenceReceipt(receipt))
+      .toThrow('not an exact issued simulation receipt');
+    expect(() => waitForOrdinaryActiveSavePersistenceReceipt(receipt))
+      .toThrow('not an exact issued ordinary receipt');
+
+    expect(mockedSaveGameById).toHaveBeenCalledWith(
+      'branch-2',
+      'Alex • Tycoons • Season 7',
+      expect.objectContaining(snapshot),
+      {
+        slotNumber: null,
+        parentSaveId: 'save-slot-2',
+        isRootSave: false,
+        branchMeta: branchRecord.branchMeta,
+      },
+    );
+    finishExactSaveMutationPersistenceLease(lease, receipt);
+  });
+
+  it('retries only the frozen exact-save mutation snapshot after a storage failure', async () => {
+    vi.useFakeTimers();
+    mockedSaveGameById
+      .mockRejectedValueOnce(new Error('IndexedDB storage failure'))
+      .mockImplementationOnce(async (id) => savedRecord(id));
+    const lease = await beginActivatedExactSaveMutationLease();
+    const sourceSnapshot = { schemaVersion: 34, season: 7, day: 13, phase: 'offseason', nested: { value: 1 } };
+    const exportSnapshot = vi.fn().mockResolvedValue(sourceSnapshot);
+    const receipt = await captureExactSaveMutationSnapshot(lease, {
+      activeSaveId: 'save-slot-2', activeSaveSlot: 2, gmName: 'Alex', teamName: 'Tycoons', season: 7,
+      exportSnapshot,
+    });
+    const settlement = waitForExactSaveMutationPersistenceReceipt(receipt);
+    await flushPromises(10);
+    expect(getActiveSavePersistenceStatus('save-slot-2')).toMatchObject({ state: 'failed', pendingWrites: 1 });
+    await vi.advanceTimersByTimeAsync(ACTIVE_SAVE_AUTO_RETRY_DELAYS_MS[0]);
+    await expect(settlement).resolves.toMatchObject({ kind: 'durable' });
+
+    const retainedSnapshot = mockedSaveGameById.mock.calls[0]?.[2];
+    expect(retainedSnapshot).not.toBe(sourceSnapshot);
+    expect(retainedSnapshot).toEqual(sourceSnapshot);
+    expect(Object.isFrozen(retainedSnapshot!)).toBe(true);
+    expect(mockedSaveGameById.mock.calls[1]?.[2]).toBe(retainedSnapshot);
+    expect(exportSnapshot).toHaveBeenCalledTimes(1);
+    finishExactSaveMutationPersistenceLease(lease, receipt);
   });
 
   it('writes a baseline seal through its exact lease and settles only after durable save', async () => {
@@ -873,6 +1006,8 @@ describe('persistActiveSaveSnapshot', () => {
       onSnapshotAccepted: (receipt) => { ordinaryReceipt = receipt; },
     });
     expect(ordinaryReceipt).toBeDefined();
+    await expect(waitForOrdinaryActiveSavePersistenceReceipt(ordinaryReceipt!))
+      .resolves.toMatchObject({ kind: 'durable' });
     expect(() => waitForActiveSavePersistenceReceipt(ordinaryReceipt!))
       .toThrow('not an exact issued simulation receipt');
 
@@ -882,6 +1017,8 @@ describe('persistActiveSaveSnapshot', () => {
       exportSnapshot: vi.fn().mockResolvedValue({ schemaVersion: 34, season: 7, day: 12, phase: 'regular' }),
     });
     await expect(waitForActiveSavePersistenceReceipt(receipt)).resolves.toMatchObject({ kind: 'durable' });
+    expect(() => waitForOrdinaryActiveSavePersistenceReceipt(receipt))
+      .toThrow('not an exact issued ordinary receipt');
     const spreadReceipt = { ...receipt } as ActiveSavePersistenceReceipt;
     expect(() => waitForActiveSavePersistenceReceipt(spreadReceipt))
       .toThrow('not an exact issued simulation receipt');

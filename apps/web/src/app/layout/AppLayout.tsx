@@ -469,7 +469,7 @@ export function AppLayout() {
   }, [coordinatorBusy, persistShellMutation, worker]);
 
   const handleFlowAction = useCallback(async (actionOverride?: SeasonFlowState['action']) => {
-    if (isSimAdvanceCoordinatorBusy()) return;
+    if (isSimAdvanceCoordinatorBusy() || saveTransitionBusy) return;
     const nextAction = actionOverride ?? seasonFlow?.action;
     if (!nextAction) return;
 
@@ -505,7 +505,7 @@ export function AppLayout() {
     if (nextAction === 'start_next_season') {
       await executeLegacy(() => worker.startNextSeason(), 'offseason');
     }
-  }, [coordinatorBusy, executeLegacy, navigate, seasonFlow?.action, seasonFlow?.status, worker]);
+  }, [coordinatorBusy, executeLegacy, navigate, saveTransitionBusy, seasonFlow?.action, seasonFlow?.status, worker]);
 
   const handleTickerSelect = useCallback((entry: TickerEntry) => {
     if (isSimAdvanceCoordinatorBusy()) return;
@@ -626,7 +626,7 @@ export function AppLayout() {
             {seasonFlow && (
               <SeasonFlowCard
                 flow={seasonFlow}
-                actionBusy={isSimulating || coordinatorBusy}
+                actionBusy={isSimulating || coordinatorBusy || saveTransitionBusy}
                 onAction={() => void handleFlowAction()}
                 onSecondaryAction={() => void handleFlowAction(seasonFlow.secondaryAction)}
               />

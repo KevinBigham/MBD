@@ -1,16 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  getSaveSessionOwnershipSnapshot,
-  releaseActiveSaveSessionOwnership,
-  withActiveSaveSessionImportAuthorization,
-  withActiveSaveSessionSnapshotExportAuthorization,
-} from './saveSessionOwnership';
-import {
   captureOutgoingSaveSessionSnapshot,
   recoverWorkerAfterCandidateImportFailure,
+  type SaveSessionTransitionRecoveryDependencies,
 } from './saveSessionTransitionRecovery';
 
-vi.mock('./saveSessionOwnership', () => ({
+const dependencies = {
   getSaveSessionOwnershipSnapshot: vi.fn(),
   releaseActiveSaveSessionOwnership: vi.fn(),
   withActiveSaveSessionImportAuthorization: vi.fn(
@@ -19,7 +14,7 @@ vi.mock('./saveSessionOwnership', () => ({
   withActiveSaveSessionSnapshotExportAuthorization: vi.fn(
     (_saveId, operation: () => Promise<unknown>) => operation(),
   ),
-}));
+} as unknown as SaveSessionTransitionRecoveryDependencies;
 
 const transition = {
   transitionId: Symbol('switch-to-b'),
@@ -30,13 +25,13 @@ const transition = {
 describe('save-session transition worker recovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getSaveSessionOwnershipSnapshot).mockReturnValue({
+    vi.mocked(dependencies.getSaveSessionOwnershipSnapshot).mockReturnValue({
       activeRootSaveId: 'save-slot-1',
       activeSaveId: 'save-slot-1',
       heldRootSaveIds: ['save-slot-1'],
       ownershipLost: false,
     });
-    vi.mocked(releaseActiveSaveSessionOwnership).mockResolvedValue(undefined);
+    vi.mocked(dependencies.releaseActiveSaveSessionOwnership).mockResolvedValue(undefined);
   });
 
   it('captures the quiescent outgoing snapshot under exact active authorization', async () => {
@@ -46,9 +41,10 @@ describe('save-session transition worker recovery', () => {
     await expect(captureOutgoingSaveSessionSnapshot(
       transition,
       exportSnapshot,
+      dependencies,
     )).resolves.toBe(snapshot);
 
-    expect(withActiveSaveSessionSnapshotExportAuthorization).toHaveBeenCalledWith(
+    expect(dependencies.withActiveSaveSessionSnapshotExportAuthorization).toHaveBeenCalledWith(
       'save-slot-1',
       exportSnapshot,
     );
@@ -66,15 +62,16 @@ describe('save-session transition worker recovery', () => {
       restartWorker,
       setInitialized,
       transition,
+      dependencies,
     })).resolves.toEqual({ kind: 'restored_outgoing' });
 
     expect(restartWorker).toHaveBeenCalledTimes(1);
-    expect(withActiveSaveSessionImportAuthorization).toHaveBeenCalledWith(
+    expect(dependencies.withActiveSaveSessionImportAuthorization).toHaveBeenCalledWith(
       'save-slot-1',
       expect.any(Function),
     );
     expect(importSnapshot).toHaveBeenCalledWith(outgoingSnapshot);
-    expect(releaseActiveSaveSessionOwnership).not.toHaveBeenCalled();
+    expect(dependencies.releaseActiveSaveSessionOwnership).not.toHaveBeenCalled();
     expect(setInitialized).not.toHaveBeenCalled();
   });
 
@@ -89,11 +86,12 @@ describe('save-session transition worker recovery', () => {
       restartWorker,
       setInitialized,
       transition,
+      dependencies,
     });
 
     expect(result).toMatchObject({ kind: 'reload_required' });
     expect(restartWorker).toHaveBeenCalledTimes(2);
-    expect(releaseActiveSaveSessionOwnership).toHaveBeenCalledTimes(1);
+    expect(dependencies.releaseActiveSaveSessionOwnership).toHaveBeenCalledTimes(1);
     expect(setInitialized).toHaveBeenCalledWith(false);
   });
 
@@ -108,17 +106,18 @@ describe('save-session transition worker recovery', () => {
       restartWorker,
       setInitialized,
       transition,
+      dependencies,
     });
 
     expect(result).toMatchObject({ kind: 'reload_required' });
     expect(importSnapshot).not.toHaveBeenCalled();
     expect(restartWorker).toHaveBeenCalledTimes(2);
-    expect(releaseActiveSaveSessionOwnership).toHaveBeenCalledTimes(1);
+    expect(dependencies.releaseActiveSaveSessionOwnership).toHaveBeenCalledTimes(1);
     expect(setInitialized).toHaveBeenCalledWith(false);
   });
 
   it('releases a committed candidate when later activation work throws', async () => {
-    vi.mocked(getSaveSessionOwnershipSnapshot).mockReturnValue({
+    vi.mocked(dependencies.getSaveSessionOwnershipSnapshot).mockReturnValue({
       activeRootSaveId: 'save-slot-2',
       activeSaveId: 'save-slot-2',
       heldRootSaveIds: ['save-slot-2'],
@@ -135,12 +134,13 @@ describe('save-session transition worker recovery', () => {
       restartWorker,
       setInitialized,
       transition,
+      dependencies,
     });
 
     expect(result).toMatchObject({ kind: 'reload_required' });
     expect(importSnapshot).not.toHaveBeenCalled();
     expect(restartWorker).toHaveBeenCalledTimes(1);
-    expect(releaseActiveSaveSessionOwnership).toHaveBeenCalledTimes(1);
+    expect(dependencies.releaseActiveSaveSessionOwnership).toHaveBeenCalledTimes(1);
     expect(setInitialized).toHaveBeenCalledWith(false);
   });
 });

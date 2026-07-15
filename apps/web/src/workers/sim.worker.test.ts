@@ -3815,6 +3815,8 @@ describe('sim worker narrative APIs', () => {
 
     state.serviceTime.set(cutCandidate!.id, 4);
     state.serviceTime.set(keepCandidate!.id, 4);
+    cutCandidate!.serviceTimeDays = 4 * 172;
+    keepCandidate!.serviceTimeDays = 4 * 172;
     cutCandidate!.overallRating = 120;
     cutCandidate!.contract.annualSalary = 20;
     keepCandidate!.overallRating = 320;
@@ -3853,6 +3855,7 @@ describe('sim worker narrative APIs', () => {
     arbCandidate!.lastName = 'Soto';
     arbCandidate!.contract.annualSalary = 9.4;
     state.serviceTime.set(arbCandidate!.id, 4);
+    arbCandidate!.serviceTimeDays = 4 * 172;
 
     state.phase = 'offseason';
     state.offseasonState = {
@@ -3882,6 +3885,152 @@ describe('sim worker narrative APIs', () => {
     expect(updatedCandidate?.arbitrationHistory[0]?.awardedSalary).toBe(arbitrationResult?.newSalary);
     expect(userRow?.summary).toContain('Juan Soto');
     expect(userRow?.tone).toBe('user');
+  });
+
+  it('caps completed-season MLB service at 172 days and synchronizes the years mirror exactly once', () => {
+    startGame(3371, 'nym');
+    const state = requireState();
+    const mlbPlayer = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    const careerMinor = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'AAA')!;
+    mlbPlayer.serviceTimeDays = (2 * 172) + 186;
+    careerMinor.serviceTimeDays = 0;
+    state.serviceTime.set(mlbPlayer.id, 99);
+    state.serviceTime.set(careerMinor.id, 4);
+    state.minorLeagueState.serviceTimeLedger = [[mlbPlayer.id, 186]];
+    state.phase = 'offseason';
+    state.offseasonState = null;
+
+    api.advanceOffseason();
+    const first = requireState().players.find((player) => player.id === mlbPlayer.id)!;
+    expect(first.serviceTimeDays).toBe((2 * 172) + 172);
+    expect(requireState().serviceTime.get(first.id)).toBe(3);
+    expect(requireState().serviceTime.get(careerMinor.id)).toBe(0);
+    expect(requireState().offseasonState?.serviceTimeReconciled).toBe(true);
+
+    api.advanceOffseason();
+    expect(requireState().players.find((player) => player.id === mlbPlayer.id)?.serviceTimeDays)
+      .toBe((2 * 172) + 172);
+  });
+
+  it('persists one filing and exchange docket before applying the retained hearing award', () => {
+    startGame(3372, 'nym');
+    const state = requireState();
+    const candidate = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    candidate.firstName = 'Docket';
+    candidate.lastName = 'Proof';
+    candidate.serviceTimeDays = 4 * 172;
+    state.serviceTime.set(candidate.id, 1);
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'arbitration',
+      phaseDay: 1,
+      totalDay: 4,
+    };
+    const priorSalary = candidate.contract.annualSalary;
+
+    const filing = api.advanceOffseason()!;
+    const filed = filing.phaseResults.arbitrationDocket.find((entry) => entry.playerId === candidate.id)!;
+    expect(filing.phaseDay).toBe(2);
+    expect(filed).toMatchObject({ resolved: false, yearsOfService: 4 });
+    expect(api.getOffseasonState()?.arbitrationCases.find((entry) => entry.playerId === candidate.id)?.stage)
+      .toBe('filing');
+    expect(requireState().players.find((player) => player.id === candidate.id)?.contract.annualSalary).toBe(priorSalary);
+
+    const filingSnapshot = structuredClone(api.exportSnapshot());
+    api.advanceOffseason();
+    expect(api.getOffseasonState()?.arbitrationCases.find((entry) => entry.playerId === candidate.id)?.stage)
+      .toBe('exchange');
+    api.advanceOffseason();
+    api.advanceOffseason();
+    const hearing = api.advanceOffseason()!;
+    expect(hearing.phaseResults.arbitrationResolved).toEqual([]);
+    expect(api.getOffseasonState()?.arbitrationCases.find((entry) => entry.playerId === candidate.id)?.stage)
+      .toBe('hearing');
+
+    const resolved = api.advanceOffseason()!;
+    const result = resolved.phaseResults.arbitrationResolved.find((entry) => entry.playerId === candidate.id)!;
+    const resolvedDocket = resolved.phaseResults.arbitrationDocket.find((entry) => entry.playerId === candidate.id)!;
+    expect(resolvedDocket.resolved).toBe(true);
+    expect(result.newSalary).toBe(resolvedDocket.awardedSalary);
+    expect(result.newSalary).toBeGreaterThanOrEqual(priorSalary);
+    expect(requireState().players.find((player) => player.id === candidate.id)?.contract)
+      .toMatchObject({ years: 1, annualSalary: result.newSalary, totalValue: result.newSalary });
+
+    expect(api.importSnapshot(filingSnapshot).success).toBe(true);
+    api.advanceOffseason();
+    api.advanceOffseason();
+    api.advanceOffseason();
+    api.advanceOffseason();
+    expect(api.advanceOffseason()?.phaseResults.arbitrationDocket.find((entry) => entry.playerId === candidate.id))
+      .toEqual(resolvedDocket);
+  });
+
+  it('keeps arbitration docket and RNG identical when only the user-team designation changes', () => {
+    startGame(3373, 'nym');
+    const state = requireState();
+    for (const teamId of ['nym', 'bos']) {
+      const candidate = state.players.find((player) => player.teamId === teamId && player.rosterStatus === 'MLB')!;
+      candidate.serviceTimeDays = 4 * 172;
+      state.serviceTime.set(candidate.id, 0);
+    }
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'arbitration',
+      phaseDay: 1,
+      totalDay: 4,
+    };
+    const baseline = structuredClone(api.exportSnapshot()) as ReturnType<typeof api.exportSnapshot> & { userTeamId: string };
+
+    api.advanceOffseason();
+    const userDocket = structuredClone(requireState().offseasonState?.phaseResults.arbitrationDocket);
+    const userRng = requireState().rng.getState();
+
+    const cpuDesignation = structuredClone(baseline);
+    cpuDesignation.userTeamId = 'bos';
+    expect(api.importSnapshot(cpuDesignation).success).toBe(true);
+    api.advanceOffseason();
+    expect(requireState().offseasonState?.phaseResults.arbitrationDocket).toEqual(userDocket);
+    expect(requireState().rng.getState()).toEqual(userRng);
+  });
+
+  it('normalizes a legacy mid-arbitration save without fabricating earlier docket beats', () => {
+    startGame(3374, 'nym');
+    const state = requireState();
+    const candidate = state.players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
+    candidate.serviceTimeDays = 4 * 172;
+    state.serviceTime.set(candidate.id, 4);
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'arbitration',
+      phaseDay: 3,
+      totalDay: 6,
+    };
+    const legacy = structuredClone(api.exportSnapshot()) as ReturnType<typeof api.exportSnapshot> & {
+      offseasonState: {
+        serviceTimeReconciled?: boolean;
+        phaseResults: {
+          arbitrationPrepared?: boolean;
+          arbitrationDocket?: unknown[];
+          arbitrationResolved: unknown[];
+        };
+      };
+    };
+    delete legacy.offseasonState.serviceTimeReconciled;
+    delete legacy.offseasonState.phaseResults.arbitrationPrepared;
+    delete legacy.offseasonState.phaseResults.arbitrationDocket;
+
+    expect(api.importSnapshot(legacy).success).toBe(true);
+    expect(requireState().offseasonState?.phaseResults.arbitrationPrepared).toBe(false);
+    expect(requireState().offseasonState?.phaseResults.arbitrationDocket).toEqual([]);
+    expect(requireState().offseasonState?.phaseResults.arbitrationResolved).toEqual([]);
+
+    api.advanceOffseason();
+    expect(requireState().offseasonState?.phaseResults.arbitrationPrepared).toBe(true);
+    expect(requireState().offseasonState?.phaseResults.arbitrationDocket.some((entry) => entry.playerId === candidate.id)).toBe(true);
+    expect(requireState().offseasonState?.phaseResults.arbitrationResolved).toEqual([]);
   });
 
   it('derives an offseason command center checklist with roster and budget warnings', () => {
@@ -4147,7 +4296,7 @@ describe('sim worker narrative APIs', () => {
       const updatedState = requireState();
       const updatedCandidate = updatedState.players.find((player) => player.id === arbCandidate!.id)!;
       const holdoutTicker = updatedState.tickerFeed.find((entry) =>
-        entry.category === 'arbitration' && entry.text.includes('holding out') && entry.text.includes('Rafael Devers'),
+        entry.category === 'arbitration' && entry.text.includes('spring reporting') && entry.text.includes('Rafael Devers'),
       );
 
       if (updatedCandidate.holdoutState) {
@@ -4164,10 +4313,20 @@ describe('sim worker narrative APIs', () => {
     }
 
     expect(observed).toBeTruthy();
-    expect(observed?.serviceTimeDays).toBe(690 - observed!.holdoutDays);
-    expect(observed?.mappedServiceTime).toBe(3);
+    expect(observed?.serviceTimeDays).toBe(690);
+    expect(observed?.mappedServiceTime).toBe(4);
     expect(observed?.moraleScore).toBe(20 - observed!.moraleHit);
-    expect(observed?.holdoutTicker).toContain('Rafael Devers holding out');
+    expect(observed?.holdoutTicker).toContain('Rafael Devers');
+
+    const heldPlayer = requireState().players.find((player) => player.firstName === 'Rafael' && player.lastName === 'Devers')!;
+    requireState().offseasonState = {
+      ...requireState().offseasonState!,
+      currentPhase: 'spring_training',
+      phaseDay: 1,
+    };
+    api.advanceOffseason();
+    expect(heldPlayer.serviceTimeDays).toBe(690 - observed!.holdoutDays);
+    expect(heldPlayer.holdoutState).toBeNull();
   });
 
   it('publishes arbitration broadcast news and signature moments when hearings resolve', () => {
@@ -4196,7 +4355,7 @@ describe('sim worker narrative APIs', () => {
     const updatedState = requireState();
     const moments = updatedState.playerMoments.get(arbCandidate!.id) ?? [];
     const pressConference = updatedState.news.find((item) =>
-      item.id.startsWith(`press-conference-arbitration-${arbCandidate!.id}-`)
+      item.id === `arbitration-result-${updatedState.season}-${arbCandidate!.id}`
       && item.category === 'arbitration',
     );
 

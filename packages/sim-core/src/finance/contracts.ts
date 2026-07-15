@@ -37,7 +37,10 @@ export const PRE_ARB_MAX_YEARS = 2;
 export const ARB_FIRST_YEAR = 3;
 
 /** Last year of arbitration eligibility */
-export const ARB_LAST_YEAR = 6;
+export const ARB_LAST_YEAR = 5;
+
+/** Credited MLB service days in one completed service year. */
+export const SERVICE_TIME_DAYS_PER_YEAR = 172;
 
 /** Max salary the arbitration base formula can produce (millions) */
 export const ARB_MAX_BASE_SALARY = 20;
@@ -482,7 +485,7 @@ function extensionCandidateScore(
 }
 
 export function serviceDaysToYears(serviceTimeDays: number): number {
-  return Math.floor(Math.max(0, serviceTimeDays) / 172);
+  return Math.floor(Math.max(0, serviceTimeDays) / SERVICE_TIME_DAYS_PER_YEAR);
 }
 
 function priorPlayerArbitrationWins(player: GeneratedPlayer): number {
@@ -496,12 +499,21 @@ export function qualifiesForSuperTwo(
   player: GeneratedPlayer,
   leaguePlayersWithServiceTime: GeneratedPlayer[],
 ): boolean {
-  if (serviceDaysToYears(player.serviceTimeDays) !== PRE_ARB_MAX_YEARS) {
+  const isActiveMlbPlayer = (candidate: GeneratedPlayer) => (
+    candidate.teamId.trim().length > 0
+    && candidate.rosterStatus === 'MLB'
+  );
+
+  if (!isActiveMlbPlayer(player)
+    || serviceDaysToYears(player.serviceTimeDays) !== PRE_ARB_MAX_YEARS) {
     return false;
   }
 
   const cohort = leaguePlayersWithServiceTime
-    .filter((candidate) => serviceDaysToYears(candidate.serviceTimeDays) === PRE_ARB_MAX_YEARS)
+    .filter((candidate) => (
+      isActiveMlbPlayer(candidate)
+      && serviceDaysToYears(candidate.serviceTimeDays) === PRE_ARB_MAX_YEARS
+    ))
     .sort((left, right) =>
       right.serviceTimeDays - left.serviceTimeDays
       || left.id.localeCompare(right.id));
@@ -634,11 +646,18 @@ export function generateArbitrationCase(
 
   // Performance variance: +/- 20% determined by RNG
   const varianceFactor = 1 + (rng.nextFloat() * 2 - 1) * ARB_PERFORMANCE_VARIANCE;
-  const projectedSalary = Math.round(Math.max(LEAGUE_MINIMUM_SALARY, scaled * varianceFactor) * 100) / 100;
+  const projectedSalary = Math.round(Math.max(
+    LEAGUE_MINIMUM_SALARY,
+    currentSalary,
+    scaled * varianceFactor,
+  ) * 100) / 100;
 
   // Team offers below projected, player asks above
   const spreadFraction = 0.10 + rng.nextFloat() * 0.10; // 10-20% spread each way
-  const teamOffer = Math.round(projectedSalary * (1 - spreadFraction) * 100) / 100;
+  const teamOffer = Math.round(Math.max(
+    currentSalary,
+    projectedSalary * (1 - spreadFraction),
+  ) * 100) / 100;
   const playerAsk = Math.round(projectedSalary * (1 + spreadFraction) * 100) / 100;
 
   return {
@@ -869,16 +888,19 @@ export function generateContractOffer(
 
 /**
  * Get all arbitration-eligible players for a team.
- * Arb eligibility: 3-6 years of service, on the given team.
+ * Arb eligibility: qualified Super Two players or 3-5 completed service years,
+ * on an active MLB roster. `serviceTimeDays` is canonical; the legacy years
+ * map remains an accepted argument for call-site compatibility but cannot
+ * override exact credited service.
  */
 export function getArbEligiblePlayers(
   players: GeneratedPlayer[],
   teamId: string,
-  serviceTime: Map<string, number>,
+  _serviceTime?: ReadonlyMap<string, number>,
 ): GeneratedPlayer[] {
   return players.filter((p) => {
-    if (p.teamId !== teamId) return false;
-    const years = serviceTime.get(p.id) ?? serviceDaysToYears(p.serviceTimeDays);
+    if (p.teamId !== teamId || p.rosterStatus !== 'MLB') return false;
+    const years = serviceDaysToYears(p.serviceTimeDays);
     if (years === PRE_ARB_MAX_YEARS) {
       return p.superTwoQualified;
     }

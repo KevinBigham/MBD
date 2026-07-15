@@ -56,10 +56,14 @@ export interface OffseasonState {
   readonly phaseDay: number;          // Day within current phase
   readonly totalDay: number;          // Overall offseason day
   readonly completed: boolean;
+  /** Once-only receipt that the completed season's exact MLB service is canonical. */
+  readonly serviceTimeReconciled: boolean;
   readonly phaseResults: PhaseResults;
 }
 
 export interface PhaseResults {
+  arbitrationPrepared: boolean;
+  arbitrationDocket: ArbitrationDocketEntry[];
   arbitrationResolved: ArbitrationResult[];
   tenderedPlayers: string[];          // Player IDs that were tendered
   nonTenderedPlayers: string[];       // Player IDs that were non-tendered (become FAs)
@@ -70,6 +74,22 @@ export interface PhaseResults {
   draftPicks: DraftPickResult[];
   ifaSignings: IFASigningResult[];
   retiredPlayers: RetirementResult[];
+}
+
+export interface ArbitrationDocketEntry {
+  playerId: string;
+  teamId: string;
+  season: number;
+  yearsOfService: number;
+  previousSalary: number;
+  teamOffer: number;
+  playerAsk: number;
+  projectedSalary: number;
+  awardedSalary: number;
+  teamWon: boolean;
+  holdoutDays: number | null;
+  moraleHit: number | null;
+  resolved: boolean;
 }
 
 export interface ArbitrationResult {
@@ -155,7 +175,10 @@ export function createOffseasonState(season: number): OffseasonState {
     phaseDay: 1,
     totalDay: 1,
     completed: false,
+    serviceTimeReconciled: true,
     phaseResults: {
+      arbitrationPrepared: false,
+      arbitrationDocket: [],
       arbitrationResolved: [],
       tenderedPlayers: [],
       nonTenderedPlayers: [],

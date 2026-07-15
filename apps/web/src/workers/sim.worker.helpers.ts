@@ -47,6 +47,8 @@ import {
   shouldIssueQualifyingOffer,
   scoutDraftProspect,
   serviceDaysToYears,
+  SERVICE_TIME_DAYS_PER_YEAR,
+  SUPER_TWO_COHORT_SHARE,
   toDisplayRating,
   toLetterGrade,
   resolveScoutConflicts,
@@ -127,6 +129,7 @@ import {
   type PromotionCandidate,
   type RelationshipBidContext,
   type RetirementResult,
+  type ArbitrationDocketEntry,
   type TeamBuildingArchetype,
   type RosterComplianceIssue,
   type Rule5EligiblePlayer,
@@ -139,7 +142,6 @@ import {
   detectArbitrationMoments,
   detectHoldoutResolutions,
 } from '../../../../packages/sim-core/src/moments/arbitrationMoments.js';
-import { generateArbitrationPressConference } from '../../../../packages/sim-core/src/narrative/arbitrationPressConferences.js';
 import {
   generateHoldoutBriefing,
   generateHoldoutResolutionBriefing,
@@ -542,11 +544,28 @@ export interface OffseasonCommandCenterView {
 }
 
 export interface OffseasonStateView extends OffseasonState {
+  arbitrationCases: OffseasonArbitrationCaseView[];
   transactionGroups: OffseasonTransactionGroup[];
   marketDaySummaries: OffseasonMarketDaySummary[];
   commandCenter: OffseasonCommandCenterView;
   rule5?: Rule5StateView;
   flowStateChanged?: boolean;
+}
+
+export type OffseasonArbitrationStage = 'filing' | 'exchange' | 'hearing' | 'resolved';
+
+export interface OffseasonArbitrationCaseView {
+  playerId: string;
+  playerName: string;
+  teamId: string;
+  serviceClass: string;
+  previousSalary: number;
+  teamOffer: number;
+  playerAsk: number;
+  projectedSalary: number;
+  awardedSalary: number | null;
+  winner: 'club' | 'player' | null;
+  stage: OffseasonArbitrationStage;
 }
 
 export interface Rule5StateView {
@@ -3410,7 +3429,10 @@ export function normalizeOffseasonState(
 
   return {
     ...offseasonState,
+    serviceTimeReconciled: offseasonState.serviceTimeReconciled ?? false,
     phaseResults: {
+      arbitrationPrepared: phaseResults.arbitrationPrepared ?? false,
+      arbitrationDocket: phaseResults.arbitrationDocket ?? [],
       arbitrationResolved: phaseResults.arbitrationResolved ?? [],
       tenderedPlayers: phaseResults.tenderedPlayers ?? [],
       nonTenderedPlayers: phaseResults.nonTenderedPlayers ?? [],
@@ -3802,8 +3824,8 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
   for (const result of offseasonState.phaseResults.arbitrationResolved) {
     const player = s.players.find((candidate) => candidate.id === result.playerId);
     const summary = result.teamWon
-      ? `${playerLabel(player)} signed for ${formatMoneyPerYear(result.newSalary)} ${formatYears(1)}`
-      : `${playerLabel(player)} lost arbitration case`;
+      ? `${teamLabel(result.teamId)} won the hearing; ${playerLabel(player)} was awarded ${formatMoneyPerYear(result.newSalary)}`
+      : `${playerLabel(player)} won the hearing and was awarded ${formatMoneyPerYear(result.newSalary)}`;
     pushRow('arbitration', {
       id: `arb-${result.playerId}`,
       phase: 'arbitration',
@@ -4001,8 +4023,38 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
     }))
     .filter((group) => group.rows.length > 0);
 
+  const arbitrationStage = (entry: ArbitrationDocketEntry): OffseasonArbitrationStage => {
+    if (entry.resolved) return 'resolved';
+    if (offseasonState.currentPhase !== 'arbitration') return 'filing';
+    if (offseasonState.phaseDay <= 2) return 'filing';
+    if (offseasonState.phaseDay <= 5) return 'exchange';
+    return 'hearing';
+  };
+  const arbitrationCases = offseasonState.phaseResults.arbitrationDocket
+    .filter((entry) => entry.teamId === s.userTeamId)
+    .map((entry) => {
+      const player = s.players.find((candidate) => candidate.id === entry.playerId);
+      return {
+        playerId: entry.playerId,
+        playerName: playerLabel(player),
+        teamId: entry.teamId,
+        serviceClass: entry.yearsOfService === 2
+          ? 'Super Two'
+          : `Year ${entry.yearsOfService}`,
+        previousSalary: entry.previousSalary,
+        teamOffer: entry.teamOffer,
+        playerAsk: entry.playerAsk,
+        projectedSalary: entry.projectedSalary,
+        awardedSalary: entry.resolved ? entry.awardedSalary : null,
+        winner: entry.resolved ? (entry.teamWon ? 'club' : 'player') : null,
+        stage: arbitrationStage(entry),
+      } satisfies OffseasonArbitrationCaseView;
+    })
+    .sort((left, right) => left.playerName.localeCompare(right.playerName) || left.playerId.localeCompare(right.playerId));
+
   return {
     ...offseasonState,
+    arbitrationCases,
     transactionGroups,
     marketDaySummaries: buildOffseasonMarketDaySummaries(s, offseasonState),
     commandCenter: buildOffseasonCommandCenter(s),
@@ -4536,18 +4588,62 @@ export function processDayInjuriesAndNews(s: FullGameState): void {
   s.news = deduplicateNews(s.news);
 }
 
+function reconcileCompletedSeasonService(
+  players: GeneratedPlayer[],
+  serviceLedger: MinorLeagueState['serviceTimeLedger'],
+): { players: GeneratedPlayer[]; serviceTime: Map<string, number> } {
+  const creditedThisSeason = new Map(serviceLedger);
+  const playersWithExactService = players.map((player) => {
+    const creditedDays = Math.max(0, creditedThisSeason.get(player.id) ?? 0);
+    const overCredit = Math.max(0, creditedDays - SERVICE_TIME_DAYS_PER_YEAR);
+    if (overCredit === 0) return player;
+    return {
+      ...player,
+      serviceTimeDays: Math.max(0, player.serviceTimeDays - overCredit),
+    };
+  });
+  return {
+    players: playersWithExactService,
+    serviceTime: new Map(playersWithExactService.map((player) => [
+      player.id,
+      serviceDaysToYears(player.serviceTimeDays),
+    ])),
+  };
+}
+
+function reconcileExistingOffseasonServiceOnce(s: FullGameState) {
+  if (!s.offseasonState || s.offseasonState.serviceTimeReconciled) return;
+  const reconciled = reconcileCompletedSeasonService(
+    s.players,
+    s.minorLeagueState.serviceTimeLedger,
+  );
+  s.players = reconciled.players;
+  s.serviceTime = reconciled.serviceTime;
+  s.offseasonState = {
+    ...s.offseasonState,
+    serviceTimeReconciled: true,
+  };
+}
+
 function ensureOffseasonState(s: FullGameState): boolean {
   if (s.offseasonState) return true;
   if (s.phase !== 'offseason') return false;
 
   // Precompute everything before committing a non-null offseason marker. This
   // makes the marker a once-only clock receipt, not a partial mutation flag.
-  const advances = s.players.map((player) => advanceContractForOffseason(
+  const reconciled = reconcileCompletedSeasonService(
+    s.players,
+    s.minorLeagueState.serviceTimeLedger,
+  );
+  const advances = reconciled.players.map((player) => advanceContractForOffseason(
     player,
-    s.serviceTime.get(player.id) ?? serviceDaysToYears(player.serviceTimeDays),
+    serviceDaysToYears(player.serviceTimeDays),
   ));
   const nextPlayers = advances.map((advance) => advance.player);
-  const nextOffseasonState = createOffseasonState(s.season);
+  const nextOffseasonState = {
+    ...createOffseasonState(s.season),
+    serviceTimeReconciled: true,
+  };
   const activationFlag = 'contract_clock_live';
   const existingFlags = s.storyFlags.get(s.userTeamId) ?? [];
   const shouldPublishActivation = !existingFlags.includes(activationFlag);
@@ -4594,6 +4690,10 @@ function ensureOffseasonState(s: FullGameState): boolean {
   const nextNews = deduplicateNews([...optionNews, ...activationNews, ...s.news]);
 
   s.players = nextPlayers;
+  s.serviceTime = new Map(nextPlayers.map((player) => [
+    player.id,
+    serviceDaysToYears(player.serviceTimeDays),
+  ]));
   s.storyFlags = nextStoryFlags;
   s.news = nextNews;
   s.offseasonState = nextOffseasonState;
@@ -4855,66 +4955,43 @@ export function resolveRule5OfferBackDecision(
   return { success: true };
 }
 
-function applyArbitrationResultsOnce(s: FullGameState) {
-  if (!s.offseasonState) return;
+function prepareArbitrationDocketOnce(s: FullGameState) {
+  if (!s.offseasonState || s.offseasonState.phaseResults.arbitrationPrepared) return;
 
-  const resolvedIds = new Set(
-    s.offseasonState.phaseResults.arbitrationResolved.map((entry) => entry.playerId),
-  );
-  const tickerEntries: TickerEntry[] = [];
-  const newsEntries: NewsItem[] = [];
-  const timestamp = `S${s.season}D${s.day}`;
+  const activeTwoYearPlayers = s.players
+    .filter((player) => (
+      player.teamId.length > 0
+      && player.rosterStatus === 'MLB'
+      && serviceDaysToYears(player.serviceTimeDays) === 2
+    ))
+    .sort((left, right) => (
+      right.serviceTimeDays - left.serviceTimeDays
+      || left.id.localeCompare(right.id)
+    ));
+  const qualifiedCount = activeTwoYearPlayers.length === 0
+    ? 0
+    : Math.max(1, Math.ceil(activeTwoYearPlayers.length * SUPER_TWO_COHORT_SHARE));
+  const qualifiedIds = new Set(activeTwoYearPlayers.slice(0, qualifiedCount).map((player) => player.id));
+  const nextPlayers = s.players.map((player) => ({
+    ...player,
+    superTwoQualified: qualifiedIds.has(player.id),
+  }));
+  const alreadyResolved = new Set([
+    ...s.offseasonState.phaseResults.arbitrationResolved.map((entry) => entry.playerId),
+    ...nextPlayers
+      .filter((player) => player.arbitrationHistory.some((entry) => entry.season === s.season))
+      .map((player) => player.id),
+  ]);
+  const nextRng = GameRNG.fromState(s.rng.getState());
+  const docket: ArbitrationDocketEntry[] = [];
 
-  const holdoutResolutions = detectHoldoutResolutions(s.players, {
-    season: s.season,
-    day: s.day,
-  });
-  for (const { playerId, moment } of holdoutResolutions) {
-    appendArbitrationMoments(s, playerId, [moment]);
-
-    const resolvingPlayer = s.players.find((candidate) => candidate.id === playerId);
-    if (!resolvingPlayer || !resolvingPlayer.holdoutState) {
-      continue;
-    }
-
-    const resolutionTeamId = resolvingPlayer.holdoutState.teamId;
-    const resolutionTeamName = getTeamById(resolutionTeamId)?.name ?? resolutionTeamId.toUpperCase();
-    const resolutionBriefing = generateHoldoutResolutionBriefing({
-      player: resolvingPlayer,
-      season: s.season,
-      day: s.day,
-      teamName: resolutionTeamName,
-      moraleScore: s.playerMorale.get(resolvingPlayer.id)?.score ?? 50,
-    });
-    if (resolutionBriefing) {
-      newsEntries.push({
-        id: resolutionBriefing.id,
-        headline: resolutionBriefing.headline,
-        body: resolutionBriefing.body,
-        priority: resolutionBriefing.priority,
-        category: 'holdout',
-        timestamp,
-        relatedPlayerIds: [resolvingPlayer.id],
-        relatedTeamIds: [resolutionTeamId],
-        read: false,
-      });
-    }
-  }
-
-  for (const player of s.players) {
-    player.superTwoQualified = qualifiesForSuperTwo(player, s.players);
-    player.holdoutState = null;
-  }
-
-  for (const teamId of TEAMS.map((team) => team.id)) {
-    const eligiblePlayers = getArbEligiblePlayers(s.players, teamId, s.serviceTime)
-      .filter((player) => player.rosterStatus === 'MLB');
-
+  for (const teamId of TEAMS.map((team) => team.id).sort((left, right) => left.localeCompare(right))) {
+    const eligiblePlayers = getArbEligiblePlayers(nextPlayers, teamId, s.serviceTime)
+      .filter((player) => !alreadyResolved.has(player.id))
+      .sort((left, right) => left.id.localeCompare(right.id));
     for (const player of eligiblePlayers) {
-      if (resolvedIds.has(player.id)) continue;
-
-      const yearsOfService = s.serviceTime.get(player.id) ?? 0;
-      const arbitrationRng = s.rng.fork();
+      const yearsOfService = serviceDaysToYears(player.serviceTimeDays);
+      const arbitrationRng = nextRng.fork();
       const arbitrationCase = generateArbitrationCase(
         arbitrationRng,
         player,
@@ -4923,140 +5000,239 @@ function applyArbitrationResultsOnce(s: FullGameState) {
       );
       const awardedSalary = resolveArbitration(arbitrationRng, arbitrationCase);
       const teamWon = awardedSalary === arbitrationCase.teamOffer;
-      const playerName = `${player.firstName} ${player.lastName}`;
-      const teamName = getTeamById(teamId)?.name ?? teamId.toUpperCase();
-
-      player.contract.annualSalary = awardedSalary;
-      player.contract.years = Math.max(1, player.contract.years);
-      player.arbitrationHistory = [
-        ...player.arbitrationHistory,
-        {
-          season: s.season,
-          teamId,
-          yearsOfService,
-          teamOffer: arbitrationCase.teamOffer,
-          playerAsk: arbitrationCase.playerAsk,
-          projectedSalary: arbitrationCase.projectedSalary,
-          awardedSalary,
-          teamWon,
-        },
-      ];
-      s.offseasonState = recordArbitration(s.offseasonState, {
+      const holdout = teamWon && player.holdoutState == null
+        ? evaluateHoldout(
+            arbitrationCase,
+            s.playerMorale.get(player.id)?.score ?? 50,
+            arbitrationRng,
+          )
+        : null;
+      docket.push({
         playerId: player.id,
         teamId,
-        previousSalary: arbitrationCase.currentSalary,
-        newSalary: awardedSalary,
-        teamWon,
-      });
-
-      tickerEntries.push({
-        id: `ticker-arbitration-${s.season}-${s.day}-${player.id}`,
-        timestamp,
-        category: 'arbitration',
-        text: teamWon
-          ? `${teamName} wins arb hearing — ${playerName} awarded ${formatTickerMoney(awardedSalary)} (asked ${formatTickerMoney(arbitrationCase.playerAsk)})`
-          : `${playerName} wins ${formatTickerMoney(awardedSalary)} arb hearing vs ${teamName}'s ${formatTickerMoney(arbitrationCase.teamOffer)} offer`,
-        priority: 3,
-        relatedTeamIds: [teamId],
-        relatedPlayerIds: [player.id],
-        expiresDay: absoluteDay(s.season, s.day) + 21,
-      });
-
-      appendArbitrationMoments(
-        s,
-        player.id,
-        detectArbitrationMoments([player], {
-          season: s.season,
-          day: s.day,
-        }).map(({ moment }) => moment),
-      );
-
-      const pressConference = generateArbitrationPressConference({
-        player,
         season: s.season,
-        teamId,
-        teamName,
-        gmPersonality: s.gmPersonalities.get(teamId) ?? 'analytical',
-        moraleScore: s.playerMorale.get(player.id)?.score ?? 50,
+        yearsOfService,
+        previousSalary: arbitrationCase.currentSalary,
+        teamOffer: arbitrationCase.teamOffer,
+        playerAsk: arbitrationCase.playerAsk,
+        projectedSalary: arbitrationCase.projectedSalary,
+        awardedSalary,
+        teamWon,
+        holdoutDays: holdout?.holdoutDays ?? null,
+        moraleHit: holdout?.moraleHit ?? null,
+        resolved: false,
       });
-      newsEntries.push({
-        id: pressConference.id,
-        headline: pressConference.headline,
-        body: pressConference.body,
-        priority: pressConference.priority,
-        category: 'arbitration',
-        timestamp,
-        relatedPlayerIds: [player.id],
-        relatedTeamIds: [teamId],
-        read: false,
-      });
-
-      const holdout = evaluateHoldout(
-        arbitrationCase,
-        s.playerMorale.get(player.id)?.score ?? 50,
-        arbitrationRng,
-      );
-      if (holdout) {
-        const salaryGap = roundMoney(arbitrationCase.playerAsk - arbitrationCase.teamOffer);
-        player.holdoutState = {
-          season: s.season,
-          teamId,
-          salaryGap,
-          holdoutDays: holdout.holdoutDays,
-          moraleHit: holdout.moraleHit,
-        };
-        player.serviceTimeDays = Math.max(0, player.serviceTimeDays - holdout.holdoutDays);
-        s.serviceTime.set(player.id, serviceDaysToYears(player.serviceTimeDays));
-
-        const currentMorale = s.playerMorale.get(player.id);
-        s.playerMorale.set(player.id, {
-          playerId: player.id,
-          score: Math.max(0, (currentMorale?.score ?? 50) - holdout.moraleHit),
-          trend: 'falling',
-          summary: `Holding out over an arbitration gap with ${teamName}.`,
-          lastUpdated: timestamp,
-        });
-
-        tickerEntries.push({
-          id: `ticker-arbitration-holdout-${s.season}-${s.day}-${player.id}`,
-          timestamp,
-          category: 'arbitration',
-          text: `${playerName} holding out — gap of ${formatTickerMoney(salaryGap)} with ${teamName}`,
-          priority: 4,
-          relatedTeamIds: [teamId],
-          relatedPlayerIds: [player.id],
-          expiresDay: absoluteDay(s.season, s.day) + 21,
-        });
-
-        const holdoutBriefing = generateHoldoutBriefing({
-          player,
-          season: s.season,
-          day: s.day,
-          teamName,
-          moraleScore: s.playerMorale.get(player.id)?.score ?? 50,
-        });
-        if (holdoutBriefing) {
-          newsEntries.push({
-            id: holdoutBriefing.id,
-            headline: holdoutBriefing.headline,
-            body: holdoutBriefing.body,
-            priority: holdoutBriefing.priority,
-            category: 'holdout',
-            timestamp,
-            relatedPlayerIds: [player.id],
-            relatedTeamIds: [teamId],
-            read: false,
-          });
-        }
-      }
-      resolvedIds.add(player.id);
     }
   }
 
-  appendArbitrationTickerEntries(s, tickerEntries);
-  if (newsEntries.length > 0) {
-    s.news = deduplicateNews([...newsEntries, ...s.news]);
+  s.players = nextPlayers;
+  s.rng = nextRng;
+  s.offseasonState = {
+    ...s.offseasonState,
+    phaseResults: {
+      ...s.offseasonState.phaseResults,
+      arbitrationPrepared: true,
+      arbitrationDocket: docket,
+    },
+  };
+}
+
+function resolveArbitrationDocketOnce(s: FullGameState) {
+  if (!s.offseasonState) return;
+  prepareArbitrationDocketOnce(s);
+  const pending = s.offseasonState.phaseResults.arbitrationDocket.filter((entry) => !entry.resolved);
+  if (pending.length === 0) return;
+
+  const timestamp = `S${s.season}D${s.day}`;
+  const nextPlayers = [...s.players];
+  const nextMorale = new Map(s.playerMorale);
+  const nextResults = [...s.offseasonState.phaseResults.arbitrationResolved];
+  const nextDocket = s.offseasonState.phaseResults.arbitrationDocket.map((entry) => ({ ...entry }));
+  const tickerEntries: TickerEntry[] = [];
+  const newsEntries: NewsItem[] = [];
+  const momentsByPlayer = new Map<string, SignatureMoment[]>();
+
+  for (const entry of pending) {
+    const playerIndex = nextPlayers.findIndex((player) => player.id === entry.playerId);
+    const sourcePlayer = nextPlayers[playerIndex];
+    if (playerIndex < 0 || !sourcePlayer) continue;
+    if (sourcePlayer.arbitrationHistory.some((history) => history.season === s.season)) {
+      const docketEntry = nextDocket.find((candidate) => candidate.playerId === entry.playerId);
+      if (docketEntry) docketEntry.resolved = true;
+      continue;
+    }
+
+    const player = {
+      ...sourcePlayer,
+      contract: {
+        ...sourcePlayer.contract,
+        years: 1,
+        annualSalary: entry.awardedSalary,
+        totalValue: entry.awardedSalary,
+      },
+      arbitrationHistory: [
+        ...sourcePlayer.arbitrationHistory,
+        {
+          season: s.season,
+          teamId: entry.teamId,
+          yearsOfService: entry.yearsOfService,
+          teamOffer: entry.teamOffer,
+          playerAsk: entry.playerAsk,
+          projectedSalary: entry.projectedSalary,
+          awardedSalary: entry.awardedSalary,
+          teamWon: entry.teamWon,
+        },
+      ],
+    };
+    const teamName = teamLabel(entry.teamId);
+    const playerName = playerLabel(player);
+
+    if (entry.holdoutDays != null && entry.moraleHit != null) {
+      const salaryGap = roundMoney(entry.playerAsk - entry.teamOffer);
+      player.holdoutState = {
+        season: s.season,
+        teamId: entry.teamId,
+        salaryGap,
+        holdoutDays: entry.holdoutDays,
+        moraleHit: entry.moraleHit,
+      };
+      const currentMorale = nextMorale.get(player.id);
+      nextMorale.set(player.id, {
+        playerId: player.id,
+        score: Math.max(0, (currentMorale?.score ?? 50) - entry.moraleHit),
+        trend: 'falling',
+        summary: `Reporting to spring camp is delayed after an arbitration dispute with ${teamName}.`,
+        lastUpdated: timestamp,
+      });
+      const holdoutBriefing = generateHoldoutBriefing({
+        player,
+        season: s.season,
+        day: s.day,
+        teamName,
+        moraleScore: nextMorale.get(player.id)?.score ?? 50,
+      });
+      if (holdoutBriefing) {
+        newsEntries.push({
+          id: holdoutBriefing.id,
+          headline: holdoutBriefing.headline,
+          body: holdoutBriefing.body,
+          priority: holdoutBriefing.priority,
+          category: 'holdout',
+          timestamp,
+          relatedPlayerIds: [player.id],
+          relatedTeamIds: [entry.teamId],
+          read: false,
+        });
+      }
+      tickerEntries.push({
+        id: `ticker-arbitration-holdout-${s.season}-${s.day}-${player.id}`,
+        timestamp,
+        category: 'arbitration',
+        text: `${playerName}'s spring reporting is delayed ${entry.holdoutDays} days after the arbitration dispute with ${teamName}`,
+        priority: 4,
+        relatedTeamIds: [entry.teamId],
+        relatedPlayerIds: [player.id],
+        expiresDay: absoluteDay(s.season, s.day) + 21,
+      });
+    }
+
+    nextPlayers[playerIndex] = player;
+    nextResults.push({
+      playerId: player.id,
+      teamId: entry.teamId,
+      previousSalary: entry.previousSalary,
+      newSalary: entry.awardedSalary,
+      teamWon: entry.teamWon,
+    });
+    const docketEntry = nextDocket.find((candidate) => candidate.playerId === entry.playerId);
+    if (docketEntry) docketEntry.resolved = true;
+
+    tickerEntries.push({
+      id: `ticker-arbitration-${s.season}-${s.day}-${player.id}`,
+      timestamp,
+      category: 'arbitration',
+      text: entry.teamWon
+        ? `${teamName} wins arbitration — ${playerName} awarded ${formatTickerMoney(entry.awardedSalary)}`
+        : `${playerName} wins arbitration and receives ${formatTickerMoney(entry.awardedSalary)}`,
+      priority: 3,
+      relatedTeamIds: [entry.teamId],
+      relatedPlayerIds: [player.id],
+      expiresDay: absoluteDay(s.season, s.day) + 21,
+    });
+    momentsByPlayer.set(
+      player.id,
+      detectArbitrationMoments([player], { season: s.season, day: s.day })
+        .map(({ moment }) => moment),
+    );
+    newsEntries.push({
+      id: `arbitration-result-${s.season}-${player.id}`,
+      headline: entry.teamWon
+        ? `${teamName} prevail in ${playerName}'s arbitration hearing`
+        : `${playerName} prevails in arbitration against ${teamName}`,
+      body: `The club filed at ${formatTickerMoney(entry.teamOffer)}, the player filed at ${formatTickerMoney(entry.playerAsk)}, and the panel selected ${formatTickerMoney(entry.awardedSalary)} for one season.`,
+      priority: 3,
+      category: 'arbitration',
+      timestamp,
+      relatedPlayerIds: [player.id],
+      relatedTeamIds: [entry.teamId],
+      read: false,
+    });
   }
+
+  s.players = nextPlayers;
+  s.playerMorale = nextMorale;
+  s.offseasonState = {
+    ...s.offseasonState,
+    phaseResults: {
+      ...s.offseasonState.phaseResults,
+      arbitrationDocket: nextDocket,
+      arbitrationResolved: nextResults,
+    },
+  };
+  for (const [playerId, moments] of momentsByPlayer) {
+    appendArbitrationMoments(s, playerId, moments);
+  }
+  appendArbitrationTickerEntries(s, tickerEntries);
+  if (newsEntries.length > 0) s.news = deduplicateNews([...newsEntries, ...s.news]);
+}
+
+function resolveHoldoutsForSpringTrainingOnce(s: FullGameState) {
+  const resolving = detectHoldoutResolutions(s.players, { season: s.season, day: s.day });
+  if (resolving.length === 0) return;
+  const timestamp = `S${s.season}D${s.day}`;
+  const newsEntries: NewsItem[] = [];
+
+  for (const { playerId, moment } of resolving) {
+    const player = s.players.find((candidate) => candidate.id === playerId);
+    if (!player?.holdoutState) continue;
+    const holdout = player.holdoutState;
+    const teamName = teamLabel(holdout.teamId);
+    const resolutionBriefing = generateHoldoutResolutionBriefing({
+      player,
+      season: s.season,
+      day: s.day,
+      teamName,
+      moraleScore: s.playerMorale.get(player.id)?.score ?? 50,
+    });
+    appendArbitrationMoments(s, player.id, [moment]);
+    player.serviceTimeDays = Math.max(0, player.serviceTimeDays - holdout.holdoutDays);
+    s.serviceTime.set(player.id, serviceDaysToYears(player.serviceTimeDays));
+    player.holdoutState = null;
+    if (resolutionBriefing) {
+      newsEntries.push({
+        id: resolutionBriefing.id,
+        headline: resolutionBriefing.headline,
+        body: resolutionBriefing.body,
+        priority: resolutionBriefing.priority,
+        category: 'holdout',
+        timestamp,
+        relatedPlayerIds: [player.id],
+        relatedTeamIds: [holdout.teamId],
+        read: false,
+      });
+    }
+  }
+  if (newsEntries.length > 0) s.news = deduplicateNews([...newsEntries, ...s.news]);
 }
 
 function applyTenderDecisionsOnce(s: FullGameState) {
@@ -5598,8 +5774,18 @@ function processCurrentOffseasonPhase(
   const currentPhase = s.offseasonState.currentPhase;
   const enteredPhase = previousPhase !== currentPhase;
 
+  if (currentPhase === 'arbitration') {
+    prepareArbitrationDocketOnce(s);
+    // Day 6 is the visible hearing checkpoint. The retained award is applied
+    // on day 7 so a durable save can exist at filing, exchange, hearing, and
+    // resolution rather than collapsing the final two beats into one write.
+    if (s.offseasonState.phaseDay >= 7) {
+      resolveArbitrationDocketOnce(s);
+    }
+    return { aiSignings: [] };
+  }
+
   if (currentPhase === 'tender_nontender' && enteredPhase) {
-    applyArbitrationResultsOnce(s);
     applyTenderDecisionsOnce(s);
     return { aiSignings: [] };
   }
@@ -5650,6 +5836,11 @@ function processCurrentOffseasonPhase(
     if (enteredPhase || advancedWithinPhase) {
       simulateInternationalSigningDay(s);
     }
+    return { aiSignings: [] };
+  }
+
+  if (currentPhase === 'spring_training') {
+    resolveHoldoutsForSpringTrainingOnce(s);
     return { aiSignings: [] };
   }
 
@@ -5715,10 +5906,17 @@ function applyOffseasonTransition(
     return { aiSignings: [] };
   }
 
+  reconcileExistingOffseasonServiceOnce(s);
+
   const aiSignings = finalizeFreeAgencyIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
   finalizeDraftIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
+  if (previousState.currentPhase === 'arbitration' && nextState.currentPhase !== 'arbitration') {
+    prepareArbitrationDocketOnce(s);
+    resolveArbitrationDocketOnce(s);
+  }
   s.offseasonState = {
     ...nextState,
+    serviceTimeReconciled: s.offseasonState?.serviceTimeReconciled ?? nextState.serviceTimeReconciled,
     phaseResults: s.offseasonState?.phaseResults ?? previousState.phaseResults,
   };
   updateOffseasonClock(s);

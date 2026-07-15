@@ -30,17 +30,16 @@ ADR and must not block web release.
 - Any future save change still requires a version bump, migration, fixture
   update, old-save proof, and Season 10 reasoning.
 
-## Verified Branch State
+## Active Campaign State
 
-- Branch: `codex/mbd-ui-ux-ootp-overhaul`.
-- Latest green remote checkpoint: `5d214ab` (`MBD Phase 12: Harden affiliate identity fallback`).
-- GitHub Actions run `27846168866` passed workspace verify, isolated smoke gate,
-  and determinism snapshot on `5d214ab`.
-- The authored roster content pack materializes 5,408 stable players:
-  32 organizations x 169 players across MLB, AAA, AA, A+, A, Rookie, and
-  International, plus 192 affiliate identities.
-- Authored content is kept in the versioned worker content seam rather than the
-  game-engine core chunk.
+- The authoritative campaign ledger is `docs/codex/GOAT_ROADMAP_STATUS.md`;
+  branch names and revisions must be verified from live Git before every slice.
+- Roadmap items 1–11 and 80 are verified complete in the ledger.
+- Roadmap item 11, service-time arbitration drama, is complete under Goal 21 /
+  `docs/codex/runs/ECON-ARBITRATION-1/`.
+- No later item has started. The next eligible bounded slice is roadmap item 12,
+  qualifying offers plus draft-pick compensation, after a fresh source/goal
+  reconciliation on its own branch/worktree.
 
 ## Remaining Release Gates
 
@@ -54,8 +53,8 @@ ADR and must not block web release.
 - Produce a clean v1 tag/build only after CI, deploy, browser/PWA smoke, and
   manual playtest gates are green.
 
-## Local Sandbox Note
+## Git Safety
 
-This checkout is a git repo, but Codex cannot write `.git/index.lock` in the
-current sandbox. Stage/commit locally only from Kevin's terminal, or use a
-single GitHub tree/commit/ref update when a small remote checkpoint is needed.
+Use one bounded `codex/` branch/worktree per slice. Preserve user-owned dirty
+files, stage only verified slice paths, land by local fast-forward, and never
+push, deploy, tag, publish, or release without explicit authorization.

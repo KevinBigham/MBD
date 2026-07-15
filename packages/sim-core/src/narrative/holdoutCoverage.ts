@@ -177,8 +177,8 @@ export function generateHoldoutBriefing(
       id: `briefing-holdout-${context.player.id}-${context.season}-${context.day}`,
       topicId: 'holdout_shock',
       topicCategory: 'HOLDOUT',
-      headline: `${name} opens a holdout after a ${gap} gap with ${context.teamName}`,
-      body: `${name} rejected the club's position immediately. The ${agentTone} agent is framing the dispute as a statement about respect, while the mood around camp feels ${tone}.`,
+      headline: `${name} signals a spring reporting delay after a ${gap} gap with ${context.teamName}`,
+      body: `${name} rejected the club's position immediately. The ${agentTone} agent is framing the dispute as a statement about respect, while the outlook for spring reporting feels ${tone}.`,
       priority: 3,
     };
   }
@@ -188,8 +188,8 @@ export function generateHoldoutBriefing(
       id: `briefing-holdout-${context.player.id}-${context.season}-${context.day}`,
       topicId: 'holdout_posturing',
       topicCategory: 'HOLDOUT',
-      headline: `${name}'s holdout moves into the posturing phase for ${context.teamName}`,
-      body: `The ${agentTone} agent is leaking the ${gap} difference into the public record. Club officials are trying to keep the room ${tone}, but the standoff is no longer quiet.`,
+      headline: `${name}'s spring reporting standoff moves into the posturing phase for ${context.teamName}`,
+      body: `The ${agentTone} agent is leaking the ${gap} difference into the public record. Club officials are trying to keep the outlook ${tone}, but the spring reporting threat is no longer quiet.`,
       priority: 2,
     };
   }
@@ -199,8 +199,8 @@ export function generateHoldoutBriefing(
       id: `briefing-holdout-${context.player.id}-${context.season}-${context.day}`,
       topicId: 'holdout_pressure',
       topicCategory: 'HOLDOUT',
-      headline: `${name}'s holdout starts to press on ${context.teamName}`,
-      body: `With ${holdout.holdoutDays} service days already at stake, the ${agentTone} agent is holding the line and the clubhouse temperature is turning ${tone}. Ownership pressure is starting to bleed into the daily briefing.`,
+      headline: `${name}'s spring reporting delay starts to press on ${context.teamName}`,
+      body: `With ${holdout.holdoutDays} potential spring service days at stake, the ${agentTone} agent is holding the line and the club's outlook is turning ${tone}. Ownership pressure is starting to bleed into the daily briefing.`,
       priority: 2,
     };
   }
@@ -209,8 +209,8 @@ export function generateHoldoutBriefing(
     id: `briefing-holdout-${context.player.id}-${context.season}-${context.day}`,
     topicId: 'holdout_crisis',
     topicCategory: 'HOLDOUT',
-    headline: `${name} holdout pressure is climbing in ${context.teamName}`,
-    body: `The dispute has hardened into a crisis beat. The ${agentTone} agent still points to the ${gap} gulf, and the clubhouse tone is now openly ${tone}.`,
+    headline: `${name} spring reporting pressure is climbing in ${context.teamName}`,
+    body: `The dispute has hardened into a crisis beat. The ${agentTone} agent still points to the ${gap} gulf, and the club's spring outlook is now openly ${tone}.`,
     priority: 1,
   };
 }

@@ -11,6 +11,22 @@ interface SnapshotImportResult {
   error?: unknown;
 }
 
+export interface SaveSessionTransitionRecoveryDependencies {
+  getSaveSessionOwnershipSnapshot: typeof getSaveSessionOwnershipSnapshot;
+  releaseActiveSaveSessionOwnership: typeof releaseActiveSaveSessionOwnership;
+  withActiveSaveSessionImportAuthorization: typeof withActiveSaveSessionImportAuthorization;
+  withActiveSaveSessionSnapshotExportAuthorization: typeof withActiveSaveSessionSnapshotExportAuthorization;
+}
+
+function getDefaultDependencies(): SaveSessionTransitionRecoveryDependencies {
+  return {
+    getSaveSessionOwnershipSnapshot,
+    releaseActiveSaveSessionOwnership,
+    withActiveSaveSessionImportAuthorization,
+    withActiveSaveSessionSnapshotExportAuthorization,
+  };
+}
+
 export type SaveSessionWorkerRecoveryResult =
   | { kind: 'discarded_candidate' }
   | { kind: 'restored_outgoing' }
@@ -19,11 +35,12 @@ export type SaveSessionWorkerRecoveryResult =
 export async function captureOutgoingSaveSessionSnapshot(
   transition: ActiveSaveSessionTransition,
   exportSnapshot: () => Promise<object>,
+  dependencies?: SaveSessionTransitionRecoveryDependencies,
 ): Promise<object | null> {
   if (!transition.outgoingSaveId) {
     return null;
   }
-  return withActiveSaveSessionSnapshotExportAuthorization(
+  return (dependencies ?? getDefaultDependencies()).withActiveSaveSessionSnapshotExportAuthorization(
     transition.outgoingSaveId,
     exportSnapshot,
   );
@@ -45,6 +62,7 @@ export async function recoverWorkerAfterCandidateImportFailure({
   restartWorker,
   setInitialized,
   transition,
+  dependencies,
 }: {
   importSnapshot: (snapshot: object) => Promise<SnapshotImportResult>;
   candidateCommitted?: boolean;
@@ -52,16 +70,18 @@ export async function recoverWorkerAfterCandidateImportFailure({
   restartWorker: () => Promise<void>;
   setInitialized?: (initialized: boolean) => void;
   transition: ActiveSaveSessionTransition;
+  dependencies?: SaveSessionTransitionRecoveryDependencies;
 }): Promise<SaveSessionWorkerRecoveryResult> {
+  const recoveryDependencies = dependencies ?? getDefaultDependencies();
   try {
     await restartWorker();
-    const ownership = getSaveSessionOwnershipSnapshot();
+    const ownership = recoveryDependencies.getSaveSessionOwnershipSnapshot();
     const candidateIsAuthoritative = candidateCommitted
       || ownership.activeSaveId === transition.targetSaveId;
     if (candidateIsAuthoritative) {
       let releaseError: unknown = null;
       try {
-        await releaseActiveSaveSessionOwnership();
+        await recoveryDependencies.releaseActiveSaveSessionOwnership();
       } catch (error) {
         releaseError = error;
       } finally {
@@ -86,7 +106,7 @@ export async function recoverWorkerAfterCandidateImportFailure({
       throw new Error('The outgoing dynasty snapshot was unavailable for rollback.');
     }
 
-    const restored = await withActiveSaveSessionImportAuthorization(
+    const restored = await recoveryDependencies.withActiveSaveSessionImportAuthorization(
       transition.outgoingSaveId,
       () => importSnapshot(outgoingSnapshot),
     );
@@ -108,7 +128,7 @@ export async function recoverWorkerAfterCandidateImportFailure({
     let recoveryError = error;
     if (transition.outgoingSaveId) {
       try {
-        await releaseActiveSaveSessionOwnership();
+        await recoveryDependencies.releaseActiveSaveSessionOwnership();
       } catch (releaseError) {
         recoveryError = new AggregateError(
           [error, releaseError],

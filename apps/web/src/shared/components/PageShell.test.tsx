@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { PageShell } from './PageShell';
+import { usePreferencesStore } from '@/shared/hooks/usePreferencesStore';
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -28,6 +29,7 @@ describe('PageShell', () => {
   let root: Root;
 
   beforeEach(() => {
+    usePreferencesStore.getState().setReducedMotion(false);
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);

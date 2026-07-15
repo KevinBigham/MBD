@@ -25,12 +25,14 @@ import type {
 import type {
   Rule5View,
 } from '../components/OffseasonRule5Panel';
+import type { OffseasonArbitrationCaseView } from '../components/OffseasonArbitrationPanel';
 
 export interface OffseasonData {
   currentPhase: string;
   phaseDay: number;
   totalDay: number;
   completed: boolean;
+  arbitrationCases?: OffseasonArbitrationCaseView[];
   phaseResults: OffseasonPhaseResultsView;
   transactionGroups?: OffseasonTransactionGroupView[];
   marketDaySummaries?: OffseasonMarketDaySummaryView[];

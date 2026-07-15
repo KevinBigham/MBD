@@ -98,6 +98,7 @@ export interface ActiveSaveSnapshotCaptureOptions {
 
 declare const activeSavePersistenceReceiptBrand: unique symbol;
 declare const simAdvancePersistenceLeaseBrand: unique symbol;
+declare const exactSaveMutationPersistenceLeaseBrand: unique symbol;
 
 /**
  * Opaque runtime identity for one accepted snapshot capture. Object identity is
@@ -116,12 +117,20 @@ export interface SimAdvancePersistenceLease {
   readonly [simAdvancePersistenceLeaseBrand]: true;
 }
 
+export interface ExactSaveMutationPersistenceLease {
+  readonly leaseId: symbol;
+  readonly saveId: string;
+  readonly rootSaveId: string;
+  readonly [exactSaveMutationPersistenceLeaseBrand]: true;
+}
+
 export type ActiveSavePersistenceReceiptOutcome =
   | { kind: 'durable'; record: SaveData }
   | { kind: 'retired'; reason: 'ownership_lost' | 'activation' | 'delete' | 'replace' | 'fail_closed' | 'reset' };
 
 type PersistedSnapshotCommit =
   | { readonly kind: 'ordinary' }
+  | { readonly kind: 'exact_save_mutation'; readonly leaseId: symbol }
   | {
       readonly kind: 'baseline_seal';
       readonly leaseId: symbol;
@@ -162,12 +171,12 @@ interface SaveCoordinatorState {
   desiredGeneration: number;
   durableGeneration: number;
   durableReceipt: ActiveSavePersistenceReceipt | null;
-  simAdvanceCurrentReceipt: ActiveSavePersistenceReceipt | null;
+  exclusiveCurrentReceipt: ActiveSavePersistenceReceipt | null;
   latestJob: PersistedSnapshotJob | null;
   failedJob: PersistedSnapshotJob | null;
   runningJob: PersistedSnapshotJob | null;
   /** A fail-closed request made while this exact journal transaction still runs. */
-  simAdvanceRunningRetirement: ActiveSavePersistenceReceipt | null;
+  exclusiveRunningRetirement: ActiveSavePersistenceReceipt | null;
   running: boolean;
   deferreds: DeferredPersist[];
   captureEpoch: number;
@@ -180,7 +189,7 @@ interface SaveCoordinatorState {
   recoveryEpisode: RecoveryEpisode | null;
   recoveryTimer: ReturnType<typeof setTimeout> | null;
   recoveryEpoch: number;
-  simAdvanceFailClosed: boolean;
+  exclusiveFailClosed: boolean;
 }
 
 /** A clean admission refusal: existing ordinary persistence remains authoritative. */
@@ -200,10 +209,12 @@ let activeRecoverySaveId: string | null = null;
 let activeRecoveryOwnerActivated = false;
 let activeSessionTransition: InternalActiveSaveSessionTransition | null = null;
 const simAdvanceLeases = new Map<string, SimAdvancePersistenceLease>();
+const exactSaveMutationLeases = new Map<string, ExactSaveMutationPersistenceLease>();
 const receiptWaiters = new Map<ActiveSavePersistenceReceipt, Array<(outcome: ActiveSavePersistenceReceiptOutcome) => void>>();
 const receiptOutcomes = new Map<ActiveSavePersistenceReceipt, ActiveSavePersistenceReceiptOutcome>();
 type ReceiptProvenance =
   | { readonly kind: 'ordinary' }
+  | { readonly kind: 'exact_save_mutation'; readonly leaseId: symbol }
   | { readonly kind: 'sim_advance'; readonly leaseId: symbol };
 let receiptProvenance = new WeakMap<ActiveSavePersistenceReceipt, ReceiptProvenance>();
 
@@ -228,6 +239,23 @@ function requireIssuedSimAdvanceReceipt(
   const provenance = receiptProvenance.get(receipt);
   if (!provenance || provenance.kind !== 'sim_advance') {
     throw new Error('This persistence receipt is not an exact issued simulation receipt.');
+  }
+  return provenance;
+}
+
+function requireIssuedOrdinaryReceipt(receipt: ActiveSavePersistenceReceipt): void {
+  const provenance = receiptProvenance.get(receipt);
+  if (!provenance || provenance.kind !== 'ordinary') {
+    throw new Error('This persistence receipt is not an exact issued ordinary receipt.');
+  }
+}
+
+function requireIssuedExactSaveMutationReceipt(
+  receipt: ActiveSavePersistenceReceipt,
+): Extract<ReceiptProvenance, { kind: 'exact_save_mutation' }> {
+  const provenance = receiptProvenance.get(receipt);
+  if (!provenance || provenance.kind !== 'exact_save_mutation') {
+    throw new Error('This persistence receipt is not an exact issued save-mutation receipt.');
   }
   return provenance;
 }
@@ -374,11 +402,11 @@ function ensureState(saveId: string): SaveCoordinatorState {
     desiredGeneration: 0,
     durableGeneration: 0,
     durableReceipt: null,
-    simAdvanceCurrentReceipt: null,
+    exclusiveCurrentReceipt: null,
     latestJob: null,
     failedJob: null,
     runningJob: null,
-    simAdvanceRunningRetirement: null,
+    exclusiveRunningRetirement: null,
     running: false,
     deferreds: [],
     captureEpoch: 0,
@@ -391,7 +419,7 @@ function ensureState(saveId: string): SaveCoordinatorState {
     recoveryEpisode: null,
     recoveryTimer: null,
     recoveryEpoch: 0,
-    simAdvanceFailClosed: false,
+    exclusiveFailClosed: false,
   };
   states.set(saveId, state);
   return state;
@@ -464,7 +492,7 @@ function commitMatchesLease(
   commit: PersistedSnapshotCommit,
   lease: SimAdvancePersistenceLease,
 ): boolean {
-  if (commit.kind === 'ordinary') return false;
+  if (commit.kind === 'ordinary' || commit.kind === 'exact_save_mutation') return false;
   if (commit.leaseId !== lease.leaseId) return false;
   if (commit.kind === 'baseline_seal') {
     return commit.proof.saveId === lease.saveId
@@ -474,16 +502,29 @@ function commitMatchesLease(
     && commit.intent.rootSaveId === lease.rootSaveId;
 }
 
+function exactCommitMatchesLease(
+  commit: PersistedSnapshotCommit,
+  lease: ExactSaveMutationPersistenceLease,
+): boolean {
+  return commit.kind === 'exact_save_mutation' && commit.leaseId === lease.leaseId;
+}
+
 function isCurrentLeaseRetry(job: PersistedSnapshotJob | null, saveId: string): boolean {
   if (!job || job.commit.kind === 'ordinary') return false;
+  if (job.commit.kind === 'exact_save_mutation') {
+    const lease = exactSaveMutationLeases.get(saveId);
+    return lease != null && exactCommitMatchesLease(job.commit, lease);
+  }
   const lease = simAdvanceLeases.get(saveId);
   return lease != null && commitMatchesLease(job.commit, lease);
 }
 
-function assertNoSimAdvancePersistenceLease(saveId: string): void {
-  const lease = simAdvanceLeases.get(saveId);
-  if (lease) {
+function assertNoExclusivePersistenceLease(saveId: string): void {
+  if (simAdvanceLeases.has(saveId)) {
     throw new Error(`Save ${saveId} has an active simulation persistence lease and cannot change persistence state.`);
+  }
+  if (exactSaveMutationLeases.has(saveId)) {
+    throw new Error(`Save ${saveId} has an active exact-save mutation persistence lease and cannot change persistence state.`);
   }
 }
 
@@ -633,15 +674,16 @@ function cancelPersistenceForLostSessionOwnership(
 ): void {
   retireLeaseReceipt(state, 'ownership_lost');
   simAdvanceLeases.delete(saveId);
+  exactSaveMutationLeases.delete(saveId);
   cancelRecoveryTimer(state);
   resolveAll(state, { saved: false, saveName: null });
   state.desiredGeneration = state.durableGeneration;
   state.latestJob = null;
   state.failedJob = null;
   state.durableReceipt = null;
-  state.simAdvanceCurrentReceipt = null;
+  state.exclusiveCurrentReceipt = null;
   clearRecoveryEpisode(state);
-  state.simAdvanceFailClosed = true;
+  state.exclusiveFailClosed = true;
   state.captureBlocked = true;
   state.captureEpoch += 1;
   resumePausedCaptures(state);
@@ -694,7 +736,7 @@ interface SavePersistenceBarrier {
 }
 
 function beginSavePersistenceBarrier(saveId: string): SavePersistenceBarrier {
-  assertNoSimAdvancePersistenceLease(saveId);
+  assertNoExclusivePersistenceLease(saveId);
   const state = ensureState(saveId);
   const barrier = { saveId, state, wasBlocked: state.captureBlocked };
   cancelRecoveryTimer(state);
@@ -737,14 +779,15 @@ function tombstoneSavePersistenceBarrier(barrier: SavePersistenceBarrier) {
   const { saveId, state } = barrier;
   retireLeaseReceipt(state, 'delete');
   simAdvanceLeases.delete(saveId);
+  exactSaveMutationLeases.delete(saveId);
   resolveAll(state, { saved: false, saveName: null });
   state.desiredGeneration = 0;
   state.durableGeneration = 0;
   state.latestJob = null;
   state.failedJob = null;
   state.durableReceipt = null;
-  state.simAdvanceCurrentReceipt = null;
-  state.simAdvanceFailClosed = false;
+  state.exclusiveCurrentReceipt = null;
+  state.exclusiveFailClosed = false;
   clearRecoveryEpisode(state);
   state.status = {
     ...IDLE_STATUS,
@@ -769,6 +812,12 @@ async function writeSnapshotJob(job: PersistedSnapshotJob): Promise<SaveData> {
       return commitSimAdvanceBaselineSeal(job.commit.proof, job.snapshot);
     }
     return commitSimAdvanceSnapshot(job.commit.intent, job.saveName, job.snapshot);
+  }
+  if (job.commit.kind === 'exact_save_mutation') {
+    const lease = exactSaveMutationLeases.get(job.saveId);
+    if (!lease || !exactCommitMatchesLease(job.commit, lease)) {
+      throw new Error('Exact-save mutation persistence lease is no longer current.');
+    }
   }
   if (job.activeSaveSlot != null) {
     return saveGameById(job.saveId, job.saveName, job.snapshot, {
@@ -842,9 +891,7 @@ function flushSave(saveId: string) {
         if (durableLatest) {
           resolveAll(state, { saved: true, saveName: job.saveName });
         }
-        if (job.commit.kind !== 'ordinary') {
-          settleReceipt(job.receipt, { kind: 'durable', record: savedRecord });
-        }
+        settleReceipt(job.receipt, { kind: 'durable', record: savedRecord });
       } catch (error) {
         const staleFailure = state.latestJob != null || job.generation < state.desiredGeneration;
         if (staleFailure) {
@@ -855,12 +902,12 @@ function flushSave(saveId: string) {
         // journal transaction. Do not pre-settle it: a later commit is still
         // durable truth, while a later rejection must retire exactly once and
         // must never resurrect Retry.
-        if (state.simAdvanceRunningRetirement === job.receipt) {
+        if (state.exclusiveRunningRetirement === job.receipt) {
           settleReceipt(job.receipt, { kind: 'retired', reason: 'fail_closed' });
           clearRecoveryEpisode(state);
           state.failedJob = null;
-          state.simAdvanceCurrentReceipt = null;
-          state.simAdvanceFailClosed = true;
+          state.exclusiveCurrentReceipt = null;
+          state.exclusiveFailClosed = true;
           state.captureBlocked = true;
           updateStatus(saveId, state, {
             state: 'failed',
@@ -880,10 +927,11 @@ function flushSave(saveId: string) {
         if (terminalJournalFailure) {
           settleReceipt(job.receipt, { kind: 'retired', reason: ownershipLost ? 'ownership_lost' : 'fail_closed' });
           simAdvanceLeases.delete(saveId);
+          exactSaveMutationLeases.delete(saveId);
           clearRecoveryEpisode(state);
           state.failedJob = null;
-          state.simAdvanceCurrentReceipt = null;
-          state.simAdvanceFailClosed = true;
+          state.exclusiveCurrentReceipt = null;
+          state.exclusiveFailClosed = true;
           state.captureBlocked = true;
           updateStatus(saveId, state, {
             state: 'failed', canRetry: false, errorMessage: errorMessage(error),
@@ -892,12 +940,14 @@ function flushSave(saveId: string) {
         } else {
           recordRetainedStorageFailure(saveId, state, job, error);
         }
-        if (job.commit.kind === 'ordinary') rejectAll(state, error);
+        if (job.commit.kind === 'ordinary' || job.writeReason === 'manual') {
+          rejectAll(state, error);
+        }
       } finally {
         state.running = false;
         state.runningJob = null;
-        if (state.simAdvanceRunningRetirement === job.receipt) {
-          state.simAdvanceRunningRetirement = null;
+        if (state.exclusiveRunningRetirement === job.receipt) {
+          state.exclusiveRunningRetirement = null;
         }
         resolveQuiescenceWaiters(state);
       }
@@ -949,9 +999,14 @@ export async function beginSimAdvancePersistenceLease(
   if (!activeRecoveryOwnerActivated || activeRecoverySaveId !== saveId) {
     throw new Error('Simulation persistence requires the exact activated active save owner.');
   }
-  if (simAdvanceLeases.has(saveId)) throw new Error('A simulation persistence lease is already active for this save.');
+  if (simAdvanceLeases.has(saveId)) {
+    throw new Error('A simulation persistence lease is already active for this save.');
+  }
+  if (exactSaveMutationLeases.has(saveId)) {
+    throw new Error('An exact-save mutation persistence lease is active for this save.');
+  }
   const state = ensureState(saveId);
-  if (state.simAdvanceFailClosed) {
+  if (state.exclusiveFailClosed) {
     throw new Error('Simulation persistence is fail-closed until this save is coherently activated again.');
   }
   if (state.failedJob || state.captureBlocked || state.capturePaused) {
@@ -993,7 +1048,7 @@ export async function beginSimAdvancePersistenceLease(
   // A new lease must never inherit a durable receipt from an earlier ordinary
   // write or a completed simulation attempt. Only captures accepted by this
   // exact lease can later require its committed-close path.
-  state.simAdvanceCurrentReceipt = null;
+  state.exclusiveCurrentReceipt = null;
   const lease = Object.freeze({ leaseId: Symbol(`sim-advance-persistence:${saveId}`), saveId, rootSaveId }) as SimAdvancePersistenceLease;
   simAdvanceLeases.set(saveId, lease);
   notifyListeners();
@@ -1039,7 +1094,7 @@ async function captureLeasedSnapshot(
     snapshot, receipt, writeReason: 'capture', commit,
   };
   registerReceipt(receipt, { kind: 'sim_advance', leaseId: lease.leaseId });
-  state.simAdvanceCurrentReceipt = receipt;
+  state.exclusiveCurrentReceipt = receipt;
   state.desiredGeneration = generation;
   state.latestJob = job;
   latestSaveId = lease.saveId;
@@ -1079,6 +1134,266 @@ export async function captureSimAdvanceSnapshot(
   );
 }
 
+/**
+ * Fences ordinary captures and drains already-accepted persistence before one
+ * exact-save mutation is allowed to export its baseline. Unlike the regular-
+ * season simulation lease, this lane writes one ordinary save row and carries
+ * no write-ahead gameplay intent.
+ */
+export async function beginExactSaveMutationPersistenceLease(
+  saveId: string,
+  rootSaveId: string,
+): Promise<ExactSaveMutationPersistenceLease> {
+  const bootAdmission = captureBootRecoveryOrdinaryAdmission();
+  assertActiveSaveSessionOwned(saveId);
+  if (!activeRecoveryOwnerActivated || activeRecoverySaveId !== saveId) {
+    throw new Error('Exact-save mutation persistence requires the exact activated active save owner.');
+  }
+  if (exactSaveMutationLeases.has(saveId)) {
+    throw new Error('An exact-save mutation persistence lease is already active for this save.');
+  }
+  if (simAdvanceLeases.has(saveId)) {
+    throw new Error('A simulation persistence lease is active for this save.');
+  }
+  const state = ensureState(saveId);
+  if (state.exclusiveFailClosed) {
+    throw new Error('Exact-save mutation persistence is fail-closed until this save is coherently activated again.');
+  }
+  if (state.failedJob || state.captureBlocked || state.capturePaused) {
+    throw new SimAdvancePersistenceAdmissionBlockedError(
+      'Existing persistence recovery or a save transition must settle before the exact-save mutation can begin.',
+    );
+  }
+  state.captureBlocked = true;
+  state.captureEpoch += 1;
+  try {
+    await waitForCaptureQuiescence(state);
+    await waitForWriteQuiescence(saveId, state);
+    assertCapturedBootRecoveryOrdinaryAdmission(bootAdmission);
+    assertActiveSaveSessionOwned(saveId);
+    if (!activeRecoveryOwnerActivated || activeRecoverySaveId !== saveId) {
+      throw new SimAdvancePersistenceAdmissionBlockedError(
+        'The active persistence owner changed while exact-save mutation persistence was quiescing.',
+      );
+    }
+    if (state.failedJob || state.latestJob || state.running || state.runningJob) {
+      throw new SimAdvancePersistenceAdmissionBlockedError(
+        'Existing persistence recovery must complete before the exact-save mutation can begin.',
+      );
+    }
+  } catch (error) {
+    state.captureBlocked = false;
+    state.captureEpoch += 1;
+    resumePausedCaptures(state);
+    resumeAutomaticRecovery(saveId, state);
+    notifyListeners();
+    throw error;
+  }
+  state.exclusiveCurrentReceipt = null;
+  const lease = Object.freeze({
+    leaseId: Symbol(`exact-save-mutation-persistence:${saveId}`),
+    saveId,
+    rootSaveId,
+  }) as ExactSaveMutationPersistenceLease;
+  exactSaveMutationLeases.set(saveId, lease);
+  notifyListeners();
+  return lease;
+}
+
+function assertCurrentExactSaveMutationLease(
+  lease: ExactSaveMutationPersistenceLease,
+): SaveCoordinatorState {
+  if (exactSaveMutationLeases.get(lease.saveId) !== lease) {
+    throw new Error('Exact-save mutation persistence lease is no longer current.');
+  }
+  assertActiveSaveSessionOwned(lease.saveId);
+  return ensureState(lease.saveId);
+}
+
+export async function captureExactSaveMutationSnapshot(
+  lease: ExactSaveMutationPersistenceLease,
+  options: ActiveSaveSnapshotCaptureOptions,
+): Promise<ActiveSavePersistenceReceipt> {
+  if (options.activeSaveId !== lease.saveId) {
+    throw new Error('Exact-save mutation snapshot capture targets a different save.');
+  }
+  const state = assertCurrentExactSaveMutationLease(lease);
+  if (state.latestJob || state.failedJob || state.running) {
+    throw new Error('Exact-save mutation persistence lease is not quiescent.');
+  }
+  state.activeCaptures += 1;
+  let exportedSnapshot: object;
+  try {
+    exportedSnapshot = await options.exportSnapshot();
+  } finally {
+    state.activeCaptures -= 1;
+    resolveCaptureQuiescenceWaiters(state);
+  }
+  assertCurrentExactSaveMutationLease(lease);
+  const snapshot = cloneAndFreezeLeasedSnapshot(exportedSnapshot);
+  const generation = state.desiredGeneration + 1;
+  const receipt = Object.freeze({ generation, saveId: lease.saveId }) as ActiveSavePersistenceReceipt;
+  const saveName = options.saveName?.trim()
+    || saveNameForSnapshot(snapshot, options.season, options.gmName, options.teamName);
+  const commit = { kind: 'exact_save_mutation', leaseId: lease.leaseId } as const;
+  const job: PersistedSnapshotJob = {
+    generation,
+    saveId: lease.saveId,
+    activeSaveSlot: options.activeSaveSlot,
+    saveName,
+    snapshot,
+    receipt,
+    writeReason: 'capture',
+    commit,
+  };
+  registerReceipt(receipt, { kind: 'exact_save_mutation', leaseId: lease.leaseId });
+  state.exclusiveCurrentReceipt = receipt;
+  state.desiredGeneration = generation;
+  state.latestJob = job;
+  latestSaveId = lease.saveId;
+  updateStatus(lease.saveId, state, {
+    state: 'saving',
+    saveName,
+    canRetry: false,
+    errorMessage: null,
+    failureKind: null,
+    recovery: null,
+  });
+  flushSave(lease.saveId);
+  return receipt;
+}
+
+export function waitForExactSaveMutationPersistenceReceipt(
+  receipt: ActiveSavePersistenceReceipt,
+): Promise<ActiveSavePersistenceReceiptOutcome> {
+  requireIssuedExactSaveMutationReceipt(receipt);
+  const settled = receiptOutcomes.get(receipt);
+  if (settled) return Promise.resolve(settled);
+  const state = states.get(receipt.saveId);
+  if (state?.durableReceipt === receipt) throw new Error('Durable receipt outcome was not recorded.');
+  return new Promise((resolve) => {
+    const waiters = receiptWaiters.get(receipt) ?? [];
+    waiters.push(resolve);
+    receiptWaiters.set(receipt, waiters);
+  });
+}
+
+function requireExactSaveMutationLeaseReceipt(
+  lease: ExactSaveMutationPersistenceLease,
+  receipt: ActiveSavePersistenceReceipt,
+): SaveCoordinatorState {
+  const provenance = requireIssuedExactSaveMutationReceipt(receipt);
+  if (exactSaveMutationLeases.get(lease.saveId) !== lease
+    || provenance.leaseId !== lease.leaseId
+    || receipt.saveId !== lease.saveId) {
+    throw new Error('Exact-save mutation receipt does not belong to the current persistence lease.');
+  }
+  return ensureState(lease.saveId);
+}
+
+export function finishExactSaveMutationPersistenceLease(
+  lease: ExactSaveMutationPersistenceLease,
+  receipt: ActiveSavePersistenceReceipt,
+): void {
+  const state = requireExactSaveMutationLeaseReceipt(lease, receipt);
+  if (state.exclusiveCurrentReceipt !== receipt
+    || state.durableReceipt !== receipt
+    || receiptOutcomes.get(receipt)?.kind !== 'durable'
+    || state.latestJob
+    || state.failedJob
+    || state.running
+    || state.desiredGeneration !== state.durableGeneration) {
+    throw new Error('Exact-save mutation persistence lease cannot finish before its exact receipt is durable.');
+  }
+  assertActiveSaveSessionOwned(lease.saveId);
+  exactSaveMutationLeases.delete(lease.saveId);
+  state.exclusiveCurrentReceipt = null;
+  state.captureBlocked = false;
+  state.captureEpoch += 1;
+  notifyListeners();
+}
+
+export function abortExactSaveMutationPersistenceLease(
+  lease: ExactSaveMutationPersistenceLease,
+): void {
+  const state = assertCurrentExactSaveMutationLease(lease);
+  if (state.exclusiveCurrentReceipt || state.latestJob || state.failedJob || state.running || state.activeCaptures) {
+    throw new Error('An accepted exact-save mutation receipt cannot be aborted.');
+  }
+  exactSaveMutationLeases.delete(lease.saveId);
+  state.captureBlocked = false;
+  state.captureEpoch += 1;
+  resumePausedCaptures(state);
+  resumeAutomaticRecovery(lease.saveId, state);
+  notifyListeners();
+}
+
+export function closeCommittedExactSaveMutationPersistenceLeaseFailClosed(
+  lease: ExactSaveMutationPersistenceLease,
+  receipt: ActiveSavePersistenceReceipt,
+): void {
+  const state = requireExactSaveMutationLeaseReceipt(lease, receipt);
+  if (state.exclusiveCurrentReceipt !== receipt
+    || state.durableReceipt !== receipt
+    || receiptOutcomes.get(receipt)?.kind !== 'durable'
+    || state.running
+    || state.latestJob
+    || state.failedJob
+    || state.desiredGeneration !== state.durableGeneration) {
+    throw new Error('Exact-save mutation committed close requires the exact quiescent durable receipt.');
+  }
+  exactSaveMutationLeases.delete(lease.saveId);
+  state.exclusiveCurrentReceipt = null;
+  state.exclusiveFailClosed = true;
+  state.captureBlocked = true;
+  state.captureEpoch += 1;
+  notifyListeners();
+}
+
+export function poisonExactSaveMutationPersistenceLease(
+  lease: ExactSaveMutationPersistenceLease,
+): void {
+  const state = ensureState(lease.saveId);
+  if (exactSaveMutationLeases.get(lease.saveId) !== lease) return;
+  const currentReceipt = state.exclusiveCurrentReceipt;
+  const provenance = currentReceipt ? receiptProvenance.get(currentReceipt) : null;
+  if (currentReceipt
+    && provenance?.kind === 'exact_save_mutation'
+    && provenance.leaseId === lease.leaseId
+    && state.durableReceipt === currentReceipt
+    && receiptOutcomes.get(currentReceipt)?.kind === 'durable'
+    && state.desiredGeneration === state.durableGeneration
+    && !state.running
+    && !state.latestJob
+    && !state.failedJob) {
+    throw new Error('A durable exact-save mutation receipt must use committed fail-closed lease close.');
+  }
+  const runningJob = state.runningJob;
+  const runningReceipt = runningJob?.commit.kind === 'exact_save_mutation'
+    ? runningJob.receipt
+    : null;
+  if (runningReceipt) {
+    state.exclusiveRunningRetirement = runningReceipt;
+  } else {
+    retireLeaseReceipt(state, 'fail_closed');
+  }
+  exactSaveMutationLeases.delete(lease.saveId);
+  clearRecoveryEpisode(state);
+  state.latestJob = null;
+  state.failedJob = null;
+  state.exclusiveCurrentReceipt = null;
+  state.exclusiveFailClosed = true;
+  state.captureBlocked = true;
+  state.captureEpoch += 1;
+  updateStatus(lease.saveId, state, {
+    state: 'failed',
+    canRetry: false,
+    errorMessage: 'Exact-save mutation persistence requires a verified reload.',
+    failureKind: 'unknown',
+    recovery: null,
+  });
+}
+
 export function waitForActiveSavePersistenceReceipt(receipt: ActiveSavePersistenceReceipt): Promise<ActiveSavePersistenceReceiptOutcome> {
   // Do not touch receipt fields or register a waiter until the exact object
   // has been proven to be a live issued simulation receipt. A spread/forged
@@ -1096,13 +1411,33 @@ export function waitForActiveSavePersistenceReceipt(receipt: ActiveSavePersisten
   });
 }
 
+/**
+ * Waits only on the exact object issued for an accepted ordinary snapshot.
+ * Simulation journal receipts use the separate journal-only waiter above so
+ * neither lane can attach to or impersonate the other's settlement.
+ */
+export function waitForOrdinaryActiveSavePersistenceReceipt(
+  receipt: ActiveSavePersistenceReceipt,
+): Promise<ActiveSavePersistenceReceiptOutcome> {
+  requireIssuedOrdinaryReceipt(receipt);
+  const settled = receiptOutcomes.get(receipt);
+  if (settled) return Promise.resolve(settled);
+  const state = states.get(receipt.saveId);
+  if (state?.durableReceipt === receipt) throw new Error('Durable receipt outcome was not recorded.');
+  return new Promise((resolve) => {
+    const waiters = receiptWaiters.get(receipt) ?? [];
+    waiters.push(resolve);
+    receiptWaiters.set(receipt, waiters);
+  });
+}
+
 export function finishSimAdvancePersistenceLease(lease: SimAdvancePersistenceLease): void {
   const state = assertCurrentSimAdvanceLease(lease);
   if (state.latestJob || state.failedJob || state.running || state.durableGeneration < state.desiredGeneration) {
     throw new Error('Simulation persistence lease cannot finish before its receipt is durable.');
   }
   simAdvanceLeases.delete(lease.saveId);
-  state.simAdvanceCurrentReceipt = null;
+  state.exclusiveCurrentReceipt = null;
   state.captureBlocked = false;
   state.captureEpoch += 1;
   notifyListeners();
@@ -1126,7 +1461,7 @@ export function closeCommittedSimAdvancePersistenceLeaseFailClosed(
   if (
     provenance.leaseId !== lease.leaseId
     || receipt.saveId !== lease.saveId
-    || state.simAdvanceCurrentReceipt !== receipt
+    || state.exclusiveCurrentReceipt !== receipt
     || state.durableReceipt !== receipt
     || outcome?.kind !== 'durable'
     || state.running
@@ -1137,8 +1472,8 @@ export function closeCommittedSimAdvancePersistenceLeaseFailClosed(
     throw new Error('Simulation persistence committed close requires the exact quiescent durable receipt.');
   }
   simAdvanceLeases.delete(lease.saveId);
-  state.simAdvanceCurrentReceipt = null;
-  state.simAdvanceFailClosed = true;
+  state.exclusiveCurrentReceipt = null;
+  state.exclusiveFailClosed = true;
   state.captureBlocked = true;
   state.captureEpoch += 1;
   notifyListeners();
@@ -1147,7 +1482,7 @@ export function closeCommittedSimAdvancePersistenceLeaseFailClosed(
 export function poisonSimAdvancePersistenceLease(lease: SimAdvancePersistenceLease): void {
   const state = ensureState(lease.saveId);
   if (simAdvanceLeases.get(lease.saveId) !== lease) return;
-  const currentReceipt = state.simAdvanceCurrentReceipt;
+  const currentReceipt = state.exclusiveCurrentReceipt;
   const currentProvenance = currentReceipt
     ? receiptProvenance.get(currentReceipt)
     : null;
@@ -1171,7 +1506,7 @@ export function poisonSimAdvancePersistenceLease(lease: SimAdvancePersistenceLea
   if (runningJournalReceipt) {
     // The transaction may already commit after this call. Its own completion
     // decides durable versus retired; do not fabricate a receipt outcome now.
-    state.simAdvanceRunningRetirement = runningJournalReceipt;
+    state.exclusiveRunningRetirement = runningJournalReceipt;
   } else {
     retireLeaseReceipt(state, 'fail_closed');
   }
@@ -1179,8 +1514,8 @@ export function poisonSimAdvancePersistenceLease(lease: SimAdvancePersistenceLea
   clearRecoveryEpisode(state);
   state.latestJob = null;
   state.failedJob = null;
-  state.simAdvanceCurrentReceipt = null;
-  state.simAdvanceFailClosed = true;
+  state.exclusiveCurrentReceipt = null;
+  state.exclusiveFailClosed = true;
   state.captureBlocked = true;
   state.captureEpoch += 1;
   updateStatus(lease.saveId, state, {
@@ -1199,7 +1534,7 @@ export function subscribeToActiveSavePersistenceStatus(listener: () => void): ()
 export function reconcileActiveSavePersistenceMetadata(
   save: Pick<SaveData, 'id' | 'name' | 'updatedAt'>,
 ): void {
-  assertNoSimAdvancePersistenceLease(save.id);
+  assertNoExclusivePersistenceLease(save.id);
   const state = ensureState(save.id);
   latestSaveId = save.id;
   claimActiveRecoverySave(save.id);
@@ -1215,7 +1550,7 @@ export function reconcileActiveSavePersistenceMetadata(
  * are allowed to settle before the caller reads and imports the durable row.
  */
 export async function prepareActiveSavePersistenceForLoad(saveId: string): Promise<void> {
-  assertNoSimAdvancePersistenceLease(saveId);
+  assertNoExclusivePersistenceLease(saveId);
   const state = ensureState(saveId);
   cancelRecoveryTimer(state);
   state.captureBlocked = true;
@@ -1228,10 +1563,10 @@ export async function prepareActiveSavePersistenceForLoad(saveId: string): Promi
 }
 
 export function releaseActiveSavePersistenceLoad(saveId: string): void {
-  assertNoSimAdvancePersistenceLease(saveId);
+  assertNoExclusivePersistenceLease(saveId);
   const state = states.get(saveId);
   if (!state) return;
-  if (state.simAdvanceFailClosed) {
+  if (state.exclusiveFailClosed) {
     notifyListeners();
     return;
   }
@@ -1441,7 +1776,7 @@ export function failCloseActiveSaveSessionTransition(transition: ActiveSaveSessi
     cancelRecoveryTimer(barrier.state);
     barrier.state.captureBlocked = true;
     barrier.state.captureEpoch += 1;
-    barrier.state.simAdvanceFailClosed = true;
+    barrier.state.exclusiveFailClosed = true;
   }
   activeRecoverySaveId = null;
   activeRecoveryOwnerActivated = false;
@@ -1490,7 +1825,7 @@ function applyActiveSavePersistenceMetadata(
   save: Pick<SaveData, 'id' | 'name' | 'updatedAt'>,
   keepCaptureBlocked: boolean,
 ): void {
-  assertNoSimAdvancePersistenceLease(save.id);
+  assertNoExclusivePersistenceLease(save.id);
   const state = ensureState(save.id);
   if (state.running || state.latestJob) {
     throw new Error(`Save ${save.id} must be quiescent before activation.`);
@@ -1502,8 +1837,8 @@ function applyActiveSavePersistenceMetadata(
   state.latestJob = null;
   state.failedJob = null;
   state.durableReceipt = null;
-  state.simAdvanceCurrentReceipt = null;
-  state.simAdvanceFailClosed = false;
+  state.exclusiveCurrentReceipt = null;
+  state.exclusiveFailClosed = false;
   clearRecoveryEpisode(state);
   state.captureBlocked = keepCaptureBlocked;
   state.captureEpoch += 1;
@@ -1623,7 +1958,7 @@ export async function trackActiveSavePersistenceOperation(
 ): Promise<SaveData | null> {
   const bootAdmission = captureBootRecoveryOrdinaryAdmission();
   assertActiveSaveSessionOwned(saveId);
-  assertNoSimAdvancePersistenceLease(saveId);
+  assertNoExclusivePersistenceLease(saveId);
   if (!claimActiveRecoverySave(saveId)) {
     throw new Error(`Save ${saveId} is not the active persistence owner.`);
   }
@@ -1783,7 +2118,7 @@ export async function retireActiveSavePersistenceForDelete(
     await deleteSaveById(saveId);
   },
 ): Promise<unknown> {
-  assertNoSimAdvancePersistenceLease(saveId);
+  assertNoExclusivePersistenceLease(saveId);
   const state = ensureState(saveId);
   const wasBlocked = state.captureBlocked;
   cancelRecoveryTimer(state);
@@ -1802,7 +2137,7 @@ export async function retireActiveSavePersistenceForDelete(
     state.latestJob = null;
     state.failedJob = null;
     state.durableReceipt = null;
-    state.simAdvanceCurrentReceipt = null;
+    state.exclusiveCurrentReceipt = null;
     clearRecoveryEpisode(state);
     state.status = {
       ...IDLE_STATUS,
@@ -2016,6 +2351,7 @@ export function resetActiveSavePersistenceForTesting(): void {
   activeRecoveryOwnerActivated = false;
   activeSessionTransition = null;
   simAdvanceLeases.clear();
+  exactSaveMutationLeases.clear();
   receiptWaiters.forEach((waiters) => waiters.forEach((resolve) => resolve({ kind: 'retired', reason: 'reset' })));
   receiptWaiters.clear();
   receiptOutcomes.clear();
