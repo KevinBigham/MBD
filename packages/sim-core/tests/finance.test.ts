@@ -11,14 +11,18 @@ import {
   evaluateHoldout,
   resolveArbitration,
   calculateTeamPayroll,
+  derivePlayerTradeSalaryResponsibility,
   calculateLuxuryTax,
   getTeamBudget,
   advanceContracts,
   getArbEligiblePlayers,
   serviceDaysToYears,
   LUXURY_TAX_THRESHOLD,
+  activeRetainedContractCountForTeam,
+  hasActiveTradeFinancialObligationForPlayer,
 } from '../src/index.js';
 import type { ContractDetail, GeneratedPlayer } from '../src/index.js';
+import type { TradeHistoryEntry } from '@mbd/contracts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -186,6 +190,215 @@ describe('calculateTeamPayroll', () => {
     expect(preArbShare).toBeGreaterThanOrEqual(0.15);
     expect(arbShare).toBeGreaterThanOrEqual(0.2);
     expect(veteranShare).toBeGreaterThanOrEqual(0.2);
+  });
+
+  function financialTradeHistory(): TradeHistoryEntry[] {
+    return [{
+      id: 'trade-retained-1',
+      fromTeamId: 'NYT',
+      toTeamId: 'BOS',
+      offeringAssets: [{
+        type: 'player',
+        playerId: 'retained-player',
+        contractReference: { annualSalary: 20, contractEndSeasonExclusive: 13 },
+        retainedSalary: { annualAmount: 5, startSeason: 10, endSeasonExclusive: 13 },
+        cashConsideration: { amount: 2, season: 10 },
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'Financial trade',
+      timestamp: 'S10D80',
+    }];
+  }
+
+  function retainedPlayer(teamId: string): GeneratedPlayer {
+    const player = makePlayer(8_101);
+    return {
+      ...player,
+      id: 'retained-player',
+      teamId,
+      rosterStatus: 'MLB',
+      contract: {
+        ...player.contract,
+        years: 3,
+        annualSalary: 20,
+        totalValue: 60,
+        playerOption: false,
+        teamOption: false,
+      },
+    };
+  }
+
+  it('conserves gross salary across retained salary and one-season cash consideration', () => {
+    const player = retainedPlayer('BOS');
+    const history = financialTradeHistory();
+    const context = { season: 10, tradeHistory: history, allPlayers: [player] };
+    const payer = calculateTeamPayroll('NYT', [player], context);
+    const controller = calculateTeamPayroll('BOS', [player], context);
+
+    expect(payer).toMatchObject({
+      totalPayroll: 7,
+      deadMoney: 7,
+      retainedSalaryCharges: 5,
+      cashConsiderationCharges: 2,
+      acquiredSalaryCredits: 0,
+    });
+    expect(controller).toMatchObject({
+      totalPayroll: 13,
+      mlbPayroll: 13,
+      deadMoney: 0,
+      acquiredSalaryCredits: 7,
+    });
+    expect(payer.totalPayroll + controller.totalPayroll).toBe(20);
+    expect(payer.futureCommitments[0]! + controller.futureCommitments[0]!).toBe(20);
+    expect(payer.futureCommitments[0]).toBe(5);
+    expect(controller.futureCommitments[0]).toBe(15);
+  });
+
+  it('keeps the original payer charge while the exact credit follows a retrade and nets on return', () => {
+    const reference = { annualSalary: 20, contractEndSeasonExclusive: 13 };
+    const history: TradeHistoryEntry[] = [
+      {
+        id: 'trade-return',
+        fromTeamId: 'LAD',
+        toTeamId: 'NYT',
+        offeringAssets: [{ type: 'player', playerId: 'retained-player', contractReference: reference }],
+        requestingAssets: [],
+        fairnessScore: 0,
+        summary: 'Return trade',
+        timestamp: 'S10D82',
+      },
+      {
+        id: 'trade-retrade',
+        fromTeamId: 'BOS',
+        toTeamId: 'LAD',
+        offeringAssets: [{ type: 'player', playerId: 'retained-player', contractReference: reference }],
+        requestingAssets: [],
+        fairnessScore: 0,
+        summary: 'Retrade',
+        timestamp: 'S10D81',
+      },
+      ...financialTradeHistory(),
+    ];
+    const returned = retainedPlayer('NYT');
+    const returnContext = { season: 10, tradeHistory: history, allPlayers: [returned] };
+    expect(calculateTeamPayroll('NYT', [returned], returnContext)).toMatchObject({
+      totalPayroll: 20,
+      acquiredSalaryCredits: 0,
+    });
+    expect(calculateTeamPayroll('LAD', [returned], returnContext).totalPayroll).toBe(0);
+
+    const retraded = retainedPlayer('LAD');
+    const retradeContext = { season: 10, tradeHistory: history.slice(1), allPlayers: [retraded] };
+    expect(calculateTeamPayroll('NYT', [retraded], retradeContext).totalPayroll).toBe(7);
+    expect(calculateTeamPayroll('LAD', [retraded], retradeContext).totalPayroll).toBe(13);
+    expect(calculateTeamPayroll('BOS', [retraded], retradeContext).totalPayroll).toBe(0);
+  });
+
+  it('reports only external acquired support while retaining internal credits for conservation', () => {
+    const reference = { annualSalary: 20, contractEndSeasonExclusive: 13 };
+    const secondRetention: TradeHistoryEntry = {
+      id: 'trade-retained-external',
+      fromTeamId: 'BOS',
+      toTeamId: 'NYT',
+      offeringAssets: [{
+        type: 'player',
+        playerId: 'retained-player',
+        contractReference: reference,
+        retainedSalary: { annualAmount: 3, startSeason: 10, endSeasonExclusive: 13 },
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'External retainer after return',
+      timestamp: 'S10D83',
+    };
+    const returned = retainedPlayer('NYT');
+    const payroll = calculateTeamPayroll('NYT', [returned], {
+      season: 10,
+      tradeHistory: [secondRetention, ...financialTradeHistory()],
+      allPlayers: [returned],
+    });
+
+    expect(payroll).toMatchObject({
+      totalPayroll: 17,
+      retainedSalaryCharges: 5,
+      cashConsiderationCharges: 2,
+      acquiredSalaryCredits: 3,
+    });
+  });
+
+  it('projects direct, retrade, return-to-payer, and multiple-retainer responsibility by team', () => {
+    const reference = { annualSalary: 20, contractEndSeasonExclusive: 13 };
+    const secondRetention: TradeHistoryEntry = {
+      id: 'trade-retained-2',
+      fromTeamId: 'BOS',
+      toTeamId: 'LAD',
+      offeringAssets: [{
+        type: 'player',
+        playerId: 'retained-player',
+        contractReference: reference,
+        retainedSalary: { annualAmount: 3, startSeason: 10, endSeasonExclusive: 13 },
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'Second retention',
+      timestamp: 'S10D81',
+    };
+    const player = retainedPlayer('LAD');
+    const firstHistory = financialTradeHistory();
+
+    expect(derivePlayerTradeSalaryResponsibility(
+      [player], firstHistory, player.id, 'BOS', 10,
+    )).toMatchObject({
+      externalSupport: 7,
+      teamResponsibility: 13,
+    });
+    expect(derivePlayerTradeSalaryResponsibility(
+      [player], firstHistory, player.id, 'NYT', 10,
+    )).toMatchObject({
+      externalSupport: 0,
+      teamResponsibility: 20,
+    });
+    expect(derivePlayerTradeSalaryResponsibility(
+      [player], [secondRetention, ...firstHistory], player.id, 'LAD', 10,
+    )).toMatchObject({
+      externalSupport: 10,
+      teamResponsibility: 10,
+    });
+    expect(derivePlayerTradeSalaryResponsibility(
+      [player], [secondRetention, ...firstHistory], player.id, 'NYT', 10,
+    )).toMatchObject({
+      externalSupport: 3,
+      teamResponsibility: 17,
+    });
+  });
+
+  it('keeps released controller liability as dead payroll and does not attach to a replacement contract', () => {
+    const released = retainedPlayer('');
+    const history = financialTradeHistory();
+    const context = { season: 10, tradeHistory: history, allPlayers: [released] };
+    expect(calculateTeamPayroll('NYT', [released], context).totalPayroll).toBe(7);
+    expect(calculateTeamPayroll('BOS', [released], context)).toMatchObject({
+      totalPayroll: 13,
+      releasedContractCharges: 13,
+    });
+
+    const replacement = {
+      ...retainedPlayer('BOS'),
+      contract: {
+        ...retainedPlayer('BOS').contract,
+        years: 4,
+        annualSalary: 25,
+        totalValue: 100,
+      },
+    };
+    const replacementContext = { season: 10, tradeHistory: history, allPlayers: [replacement] };
+    expect(calculateTeamPayroll('NYT', [replacement], replacementContext).totalPayroll).toBe(0);
+    expect(calculateTeamPayroll('BOS', [replacement], replacementContext).totalPayroll).toBe(25);
+    expect(activeRetainedContractCountForTeam(history, 'NYT', 10, [released], 10)).toBe(1);
+    expect(hasActiveTradeFinancialObligationForPlayer([released], history, released.id, 10)).toBe(true);
+    expect(activeRetainedContractCountForTeam(history, 'NYT', 10, [replacement], 10)).toBe(0);
+    expect(hasActiveTradeFinancialObligationForPlayer([replacement], history, replacement.id, 10)).toBe(false);
   });
 });
 

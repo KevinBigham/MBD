@@ -14,6 +14,8 @@ import {
   type TeamBuildingExtensionPriorityContext,
 } from '../league/frontOffice.js';
 import type { GMPersonality } from '../trade/tradeAI.js';
+import type { TradeHistoryEntry } from '@mbd/contracts';
+import { deriveTradePayrollAdjustment, roundTradeMoney } from './tradeFinance.js';
 
 // ---------------------------------------------------------------------------
 // Financial Constants
@@ -216,8 +218,19 @@ export interface TeamPayroll {
   mlbPayroll: number;
   minorsPayroll: number;
   deadMoney: number;
+  retainedSalaryCharges: number;
+  cashConsiderationCharges: number;
+  releasedContractCharges: number;
+  acquiredSalaryCredits: number;
   futureCommitments: number[];
   capSpace: number;
+}
+
+export interface TeamPayrollContext {
+  deadMoney?: number;
+  season: number;
+  tradeHistory: readonly TradeHistoryEntry[];
+  allPlayers?: readonly GeneratedPlayer[];
 }
 
 export interface ExtensionTeamContext {
@@ -876,14 +889,26 @@ export function evaluateHoldout(
 export function calculateTeamPayroll(
   teamId: string,
   players: GeneratedPlayer[],
-  deadMoney = 0,
+  context: number | TeamPayrollContext = 0,
 ): TeamPayroll {
+  const ordinaryDeadMoney = typeof context === 'number' ? context : (context.deadMoney ?? 0);
+  const tradeAdjustment = typeof context === 'number'
+    ? deriveTradePayrollAdjustment(teamId, players, [], 1)
+    : deriveTradePayrollAdjustment(
+      teamId,
+      context.allPlayers ?? players,
+      context.tradeHistory,
+      context.season,
+    );
   let mlbPayroll = 0;
   let minorsPayroll = 0;
 
   for (const player of players) {
     if (player.teamId !== teamId) continue;
-    const salary = player.contract.annualSalary;
+    const salary = roundTradeMoney(Math.max(
+      0,
+      player.contract.annualSalary - (tradeAdjustment.salaryCreditsByPlayerId.get(player.id) ?? 0),
+    ));
     if (player.rosterStatus === 'MLB') {
       mlbPayroll += salary;
     } else {
@@ -894,19 +919,33 @@ export function calculateTeamPayroll(
   mlbPayroll = Math.round(mlbPayroll * 100) / 100;
   minorsPayroll = Math.round(minorsPayroll * 100) / 100;
 
-  const totalPayroll = Math.round((mlbPayroll + minorsPayroll + deadMoney) * 100) / 100;
-  const luxuryTaxPayroll = Math.round((mlbPayroll + deadMoney) * 100) / 100;
+  const deadMoney = roundTradeMoney(ordinaryDeadMoney + tradeAdjustment.deadMoneyCharges);
+  const totalPayroll = roundTradeMoney(mlbPayroll + minorsPayroll + deadMoney);
+  const luxuryTaxPayroll = roundTradeMoney(mlbPayroll + deadMoney);
 
   // Future commitments: project based on current contracts
   const futureCommitments: number[] = [];
   for (let y = 1; y <= FUTURE_COMMITMENT_YEARS; y++) {
+    const futureAdjustment = typeof context === 'number'
+      ? null
+      : deriveTradePayrollAdjustment(
+        teamId,
+        context.allPlayers ?? players,
+        context.tradeHistory,
+        context.season,
+        context.season + y,
+      );
     let committed = 0;
     for (const player of players) {
       if (player.teamId !== teamId) continue;
       if (player.contract.years > y) {
-        committed += player.contract.annualSalary;
+        committed += Math.max(
+          0,
+          player.contract.annualSalary - (futureAdjustment?.salaryCreditsByPlayerId.get(player.id) ?? 0),
+        );
       }
     }
+    committed += futureAdjustment?.deadMoneyCharges ?? 0;
     futureCommitments.push(Math.round(committed * 100) / 100);
   }
 
@@ -919,6 +958,10 @@ export function calculateTeamPayroll(
     mlbPayroll,
     minorsPayroll,
     deadMoney,
+    retainedSalaryCharges: tradeAdjustment.retainedSalaryCharges,
+    cashConsiderationCharges: tradeAdjustment.cashConsiderationCharges,
+    releasedContractCharges: tradeAdjustment.releasedContractCharges,
+    acquiredSalaryCredits: tradeAdjustment.totalExternalSalaryCredits,
     futureCommitments,
     capSpace,
   };

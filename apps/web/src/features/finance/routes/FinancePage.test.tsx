@@ -25,6 +25,11 @@ const MOCK_FINANCE_DATA = {
   totalPayroll: 185.5,
   mlbPayroll: 162.3,
   minorsPayroll: 23.2,
+  deadMoney: 7,
+  retainedSalaryCharges: 5,
+  cashConsiderationCharges: 2,
+  releasedContractCharges: 0,
+  acquiredSalaryCredits: 7,
   luxuryTaxPayroll: 162.3,
   luxuryTax: 0,
   budget: 210.0,
@@ -55,9 +60,12 @@ const MOCK_FINANCE_DATA = {
       position: 'CF',
       rosterStatus: 'MLB',
       annualSalary: 35.5,
+      salaryCredit: 7,
+      effectiveAnnualSalary: 28.5,
       yearsRemaining: 4,
       noTradeClause: true,
       playerOption: false,
+      teamOption: false,
     },
     {
       playerId: 'p2',
@@ -65,9 +73,12 @@ const MOCK_FINANCE_DATA = {
       position: '3B',
       rosterStatus: 'MLB',
       annualSalary: 28.0,
+      salaryCredit: 0,
+      effectiveAnnualSalary: 28,
       yearsRemaining: 2,
       noTradeClause: false,
       playerOption: true,
+      teamOption: false,
     },
   ],
 };
@@ -133,6 +144,8 @@ describe('FinancePage', () => {
     expect(container.textContent).toContain('$210.00M');
     expect(container.textContent).toContain('Coaching Staff');
     expect(container.textContent).toContain('$11.50M');
+    expect(container.textContent).toContain('Trade Salary Support');
+    expect(container.textContent).toContain('$28.5M net · $7.0M credit');
 
     // Contract table
     expect(container.textContent).toContain('Mike Trout');

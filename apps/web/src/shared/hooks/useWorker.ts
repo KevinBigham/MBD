@@ -640,6 +640,22 @@ export function useWorker() {
                 return remote.signDraftPick(operation.playerId, operation.bonusAmount);
               case 'simulateRemainingDraft':
                 return remote.simulateRemainingDraft();
+              case 'startTradeNegotiation':
+                return remote.startNegotiation(
+                  operation.offeringAssets,
+                  operation.requestingAssets,
+                  operation.toTeamId,
+                );
+              case 'advanceTradeNegotiation':
+                return remote.advanceNegotiation(operation.negotiationId, operation.tradePackage);
+              case 'resolveTradeNegotiation':
+                return remote.resolveNegotiation(operation.negotiationId, operation.action);
+              case 'respondToTradeOffer':
+                return remote.respondToTradeOffer(
+                  operation.offerId,
+                  operation.response,
+                  operation.counterPackage,
+                );
             }
           });
           current.phase = 'mutated';

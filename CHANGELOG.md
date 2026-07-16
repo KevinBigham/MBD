@@ -34,6 +34,26 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 17, Goal 27 `ECON-TRADE-RETENTION-1`: legal two-team
+  trades may now carry flat annual retained salary and one current-season,
+  player-linked payroll reimbursement. Gross player salary never changes; one
+  canonical finance authority conserves payer charges, controller credit/net,
+  taxable payroll, future commitments, owner-pressure evidence, and effective-
+  salary valuation through direct trades, re-trades, return-to-payer, rollover,
+  expiry, and option boundaries.
+- Accepted terms are immutable GameSnapshot-v35 trade-history facts. v34 and
+  deep saves migrate with empty capability and no fabricated history; Dexie
+  remains v6. Exact-save execution retries only the retained post-trade
+  snapshot, never the gameplay mutation, and Finance/Trade/Press preserve the
+  same terms after export/import and hard reload.
+- Final evidence: canonical worker 198/198; root typecheck 9/9; full tests 8/8
+  tasks with 2,468 web assertions and nine intentional skips; determinism 3/3;
+  3,035-module / 168-entry production PWA; bundle budget 1/1; item-17
+  Playwright 1/1 and reload-smoke 2/2 with one worker and zero retries. Final
+  Sol review: `MERGE_READY`, zero actionable P0–P2. No treasury, revenue/budget
+  redesign, broad CPU term generation, multi-team term authoring, dependency,
+  route, bundle-ceiling, or item-18 work was added.
+
 - Verified roadmap item 16, Goal 26 `ECON-FA-DECISIONS-1`: one pure,
   deterministic player-side evaluator now owns competitive user and CPU
   free-agent choices. Literal contract value remains dominant while a bounded

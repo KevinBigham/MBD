@@ -1,6 +1,5 @@
 import {
   TEAMS,
-  calculateTeamPayroll,
   createOwnerState,
   deriveOwnerPayrollPolicy,
   getOffseasonLength,
@@ -12,6 +11,7 @@ import {
 import type { FullGameState } from './sim.worker.helpers.js';
 import type { OwnerState } from '@mbd/contracts';
 import { getSettledMarketRevenueStatement } from './sim.worker.marketRevenue.js';
+import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 
 type NormalizedOwnerState = OwnerState & Required<Pick<OwnerState,
   | 'spendingWillingness'
@@ -59,7 +59,7 @@ export function buildOwnerPayrollPolicy(
 ): OwnerPayrollPolicy {
   const owner = state.ownerState.get(teamId)
     ?? createOwnerState(teamId, getTeamBudget(teamId));
-  const payroll = calculateTeamPayroll(teamId, state.players);
+  const payroll = calculateStateTeamPayroll(state, teamId);
   const softCeiling = resolveOwnerSoftCeiling({
     payrollCap: owner.payrollCap,
     payrollTarget: owner.expectations.payrollTarget,

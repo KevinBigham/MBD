@@ -1,9 +1,10 @@
-import type {
-  BriefingItem,
-  PersistentNegotiationState,
-  PersistentTradeOffer,
-  TradeAsset,
-  TradeHistoryEntry,
+import {
+  TradeAssetSchema,
+  type BriefingItem,
+  type PersistentNegotiationState,
+  type PersistentTradeOffer,
+  type TradeAsset,
+  type TradeHistoryEntry,
 } from '@mbd/contracts';
 import {
   GameRNG,
@@ -11,12 +12,12 @@ import {
   applyMoraleEvent,
   adjustDraftPickTradeValue,
   buildRosterState,
-  calculateTeamPayroll,
   calculateTeamChemistry,
   comparePackages,
   createDefaultDraftPickOwnership,
   createInitialPlayerMorale,
   deduplicateNews,
+  derivePlayerTradeSalaryResponsibility,
   deriveTradeDeadlineMode,
   evaluateTradeProposal,
   evaluateMultiTeamFairness as evaluateMultiTeamFairnessCore,
@@ -43,6 +44,7 @@ import {
   proposeMultiTeamTrade,
   resolveNegotiation as resolveTradeNegotiation,
   recordBlockbusterTradeRivalry,
+  roundTradeMoney,
   rivalryTradePenalty,
   tradeDraftPickOwnership as tradeDraftPickOwnershipCore,
   tradeIFABonusPool as tradeIFABonusPoolCore,
@@ -81,6 +83,13 @@ import { applyTradeConsequences } from './sim.worker.consequences.js';
 import { rebuildBriefing } from './sim.worker.narrative.js';
 import { getDifficultyAdjustedTradeFairness } from './sim.worker.setup.js';
 import { advanceTradeSagaClimax } from './sim.worker.storyArcs.js';
+import {
+  calculateStateTeamPayroll,
+  effectiveAcquiringSalary,
+  materializeTradeAssetContractReferences,
+  stateTradeFinanceSeason,
+  validateTradeFinancialTerms,
+} from './sim.worker.tradeFinance.js';
 
 export const TRADE_DEADLINE_DAY = getTradeDeadlineDay();
 const DEADLINE_ACTIVITY_CHECKPOINTS = [92, 97, 102, 107, 112, 117, 120, 122] as const;
@@ -209,6 +218,32 @@ export interface TradeAssetInventoryView {
     asset: Extract<TradeAsset, { type: 'draft_pick' }>;
   }>;
   ifaRemaining: number;
+  playerFinancials?: Record<string, TradePlayerFinancialProjectionView>;
+}
+
+export interface TradePlayerFinancialProjectionView {
+  playerId: string;
+  grossAnnualSalary: number;
+  guaranteedEndSeasonExclusive: number;
+  contractEndSeasonExclusive: number;
+  optionSeason: number | null;
+  existingRetainedSalary: number;
+  existingCashConsideration: number;
+  remainingRetentionHeadroom: number;
+  remainingCurrentSupportHeadroom: number;
+  currentPayerOffsets: Array<{
+    teamId: string;
+    retainedSalary: number;
+    cashConsideration: number;
+    total: number;
+  }>;
+  guaranteedFutureSeason: number | null;
+  guaranteedFuturePayerOffsets: Array<{
+    teamId: string;
+    retainedSalary: number;
+    cashConsideration: number;
+    total: number;
+  }>;
 }
 
 export interface TradeCounterPackage {
@@ -466,14 +501,10 @@ function buildTradeRelationshipNarrative(
   );
 }
 
-function buildNegotiationPackage(playerIds: string[], counterpartIds: string[]): TradeCounterPackage {
-  return {
-    offeringAssets: playerAssets(playerIds),
-    requestingAssets: playerAssets(counterpartIds),
-  };
-}
-
-function toPersistentNegotiationState(state: NegotiationState): PersistentNegotiationState {
+function toPersistentNegotiationState(
+  state: NegotiationState,
+  tradePackage: TradeCounterPackage,
+): PersistentNegotiationState {
   return {
     id: state.id,
     phase: state.phase,
@@ -483,6 +514,8 @@ function toPersistentNegotiationState(state: NegotiationState): PersistentNegoti
       offering: [...state.proposal.offering],
       requesting: [...state.proposal.requesting],
       valuationGap: state.proposal.valuationGap,
+      offeringAssets: structuredClone(tradePackage.offeringAssets),
+      requestingAssets: structuredClone(tradePackage.requestingAssets),
     },
     context: {
       currentDay: state.context.currentDay,
@@ -501,6 +534,15 @@ function toPersistentNegotiationState(state: NegotiationState): PersistentNegoti
     expiresAtDay: state.expiresAtDay,
     dialogue: state.dialogue.map((entry) => ({ ...entry })),
     relationshipChange: state.relationshipChange,
+  };
+}
+
+function persistentNegotiationPackage(
+  persistent: PersistentNegotiationState,
+): TradeCounterPackage {
+  return {
+    offeringAssets: structuredClone(persistent.proposal.offeringAssets),
+    requestingAssets: structuredClone(persistent.proposal.requestingAssets),
   };
 }
 
@@ -545,8 +587,12 @@ function hydrateNegotiationState(
   };
 }
 
-function upsertNegotiation(state: FullGameState, negotiation: NegotiationState) {
-  const persistent = toPersistentNegotiationState(negotiation);
+function upsertNegotiation(
+  state: FullGameState,
+  negotiation: NegotiationState,
+  tradePackage: TradeCounterPackage,
+) {
+  const persistent = toPersistentNegotiationState(negotiation, tradePackage);
   const next = state.tradeState.negotiations.filter((entry) => entry.id !== persistent.id);
   state.tradeState = {
     ...state.tradeState,
@@ -657,13 +703,14 @@ function buildNegotiationCounterSummary(
 function buildNegotiationView(
   state: FullGameState,
   negotiation: NegotiationState,
+  tradePackage: TradeCounterPackage,
 ): TradeNegotiationView {
   const counterpartTeamId = negotiation.proposal.toTeamId;
   const gmPersonality = state.gmPersonalities.get(counterpartTeamId) ?? 'analytical';
   const relationship = getRelationship(state.gmRelationships, counterpartTeamId);
   const relationshipTier = getRelationshipTier(relationship.score);
   const counterOffer = negotiation.phase.startsWith('counter')
-    ? buildNegotiationPackage(negotiation.proposal.offering, negotiation.proposal.requesting)
+    ? structuredClone(tradePackage)
     : null;
 
   return {
@@ -679,7 +726,7 @@ function buildNegotiationView(
     roundsCompleted: negotiation.roundsCompleted,
     expiresAtDay: negotiation.expiresAtDay,
     dialogue: negotiation.dialogue.map((entry) => ({ ...entry })),
-    proposal: buildNegotiationPackage(negotiation.proposal.offering, negotiation.proposal.requesting),
+    proposal: structuredClone(tradePackage),
     counterOffer,
     isComplete: isNegotiationComplete(negotiation),
     canAccept: !isNegotiationComplete(negotiation),
@@ -823,9 +870,16 @@ function buildMultiTeamValuations(
   proposal: MultiTeamTradeProposalInput,
 ): Map<string, number> {
   const valuations = new Map<string, number>();
+  const destinationByPlayerId = new Map(buildMultiTeamAssignments(proposal)
+    .filter((assignment): assignment is typeof assignment & { toTeamId: string } => Boolean(assignment.toTeamId))
+    .map((assignment) => [assignment.playerId, assignment.toTeamId] as const));
 
   for (const playerId of sortStringList(proposal.teams.flatMap((team) => team.sendingPlayerIds))) {
-    valuations.set(playerId, assetValue(state, { type: 'player', playerId }));
+    valuations.set(playerId, assetValue(
+      state,
+      { type: 'player', playerId },
+      destinationByPlayerId.get(playerId) ?? '',
+    ));
   }
 
   return valuations;
@@ -1033,9 +1087,9 @@ function appendMultiTeamConditions(
 function finalizeNegotiatedTrade(
   state: FullGameState,
   negotiation: NegotiationState,
+  tradePackage: TradeCounterPackage,
 ): string | null {
-  const offeringAssets = playerAssets(negotiation.proposal.offering);
-  const requestingAssets = playerAssets(negotiation.proposal.requesting);
+  const { offeringAssets, requestingAssets } = tradePackage;
   const fairnessScore = compareAssetPackages(
     state,
     offeringAssets,
@@ -1054,12 +1108,12 @@ function finalizeNegotiatedTrade(
   }, fairnessScore);
   advanceTradeSagaClimax(
     state,
-    [...negotiation.proposal.offering, ...negotiation.proposal.requesting],
+    [...assetPlayerIds(offeringAssets), ...assetPlayerIds(requestingAssets)],
   );
   applyTradeConsequences(
     state,
-    negotiation.proposal.offering,
-    negotiation.proposal.requesting,
+    assetPlayerIds(offeringAssets),
+    assetPlayerIds(requestingAssets),
     negotiation.proposal.toTeamId,
     preTradeUserPlayers,
     preTradePartnerPlayers,
@@ -1072,7 +1126,13 @@ function finalizeNegotiatedTrade(
     playersRequested: [...negotiation.proposal.requesting],
     status: 'accepted',
     reason: 'negotiation accepted',
-  }, execution.relationshipNarrative);
+  }, execution.relationshipNarrative, buildTradeFinancialNarrative(
+    state,
+    negotiation.proposal.fromTeamId,
+    negotiation.proposal.toTeamId,
+    offeringAssets,
+    requestingAssets,
+  ));
   return execution.relationshipNarrative;
 }
 
@@ -1085,7 +1145,18 @@ function tradeSignature(
   const serializeAsset = (asset: TradeAsset): string => {
     switch (asset.type) {
       case 'player':
-        return `player:${asset.playerId}`;
+        return [
+          `player:${asset.playerId}`,
+          asset.contractReference
+            ? `contract:${asset.contractReference.annualSalary.toFixed(2)}:${asset.contractReference.contractEndSeasonExclusive}`
+            : 'contract:none',
+          asset.retainedSalary
+            ? `retain:${asset.retainedSalary.annualAmount.toFixed(2)}:${asset.retainedSalary.startSeason}:${asset.retainedSalary.endSeasonExclusive}`
+            : 'retain:none',
+          asset.cashConsideration
+            ? `cash:${asset.cashConsideration.amount.toFixed(2)}:${asset.cashConsideration.season}`
+            : 'cash:none',
+        ].join(':');
       case 'draft_pick':
         return `draft:${asset.season}:${asset.round}:${asset.originalTeamId}`;
       case 'ifa_pool_space':
@@ -1095,6 +1166,37 @@ function tradeSignature(
   const offered = [...offeringAssets].map(serializeAsset).sort().join(',');
   const requested = [...requestingAssets].map(serializeAsset).sort().join(',');
   return `${fromTeamId}->${toTeamId}:${offered}|${requested}`;
+}
+
+function hashTradeSignature(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function nextUserTradeId(
+  state: FullGameState,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+  toTeamId: string,
+): string {
+  const dayStamp = timestamp();
+  const fingerprint = hashTradeSignature(tradeSignature(
+    state.userTeamId,
+    toTeamId,
+    offeringAssets,
+    requestingAssets,
+  ));
+  let ordinal = state.tradeState.tradeHistory.filter((entry) => entry.timestamp === dayStamp).length + 1;
+  let candidate = `user-${dayStamp}-${ordinal}-${fingerprint}`;
+  const existingIds = new Set(state.tradeState.tradeHistory.map((entry) => entry.id));
+  while (existingIds.has(candidate)) {
+    ordinal += 1;
+    candidate = `user-${dayStamp}-${ordinal}-${fingerprint}`;
+  }
+  return candidate;
 }
 
 function ensureDraftPickOwnership(state: FullGameState, season: number) {
@@ -1124,15 +1226,151 @@ function playerAssets(playerIds: string[]): TradeAsset[] {
   }));
 }
 
-function assetViewFor(state: FullGameState, asset: TradeAsset): TradeAssetView {
+function reconcileNegotiationAssets(
+  playerIds: string[],
+  submittedAssets: TradeAsset[],
+): TradeAsset[] {
+  const submittedPlayers = new Map(
+    submittedAssets
+      .filter((asset): asset is Extract<TradeAsset, { type: 'player' }> => asset.type === 'player')
+      .map((asset) => [asset.playerId, asset] as const),
+  );
+  return [
+    ...playerIds.map((playerId) => structuredClone(
+      submittedPlayers.get(playerId) ?? { type: 'player' as const, playerId },
+    )),
+    ...structuredClone(submittedAssets.filter((asset) => asset.type !== 'player')),
+  ];
+}
+
+function reconcileNegotiationPackage(
+  negotiation: NegotiationState,
+  submitted: TradeCounterPackage,
+): TradeCounterPackage {
+  return {
+    offeringAssets: reconcileNegotiationAssets(
+      negotiation.proposal.offering,
+      submitted.offeringAssets,
+    ),
+    requestingAssets: reconcileNegotiationAssets(
+      negotiation.proposal.requesting,
+      submitted.requestingAssets,
+    ),
+  };
+}
+
+function buildTradePlayerFinancialProjection(
+  state: FullGameState,
+  playerId: string,
+): TradePlayerFinancialProjectionView | null {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player || player.contract.years <= 0 || player.contract.annualSalary <= 0) return null;
+  const financeSeason = stateTradeFinanceSeason(state);
+  const contractEndSeasonExclusive = financeSeason + player.contract.years;
+  const optionSeason = player.contract.playerOption || player.contract.teamOption
+    ? contractEndSeasonExclusive - 1
+    : null;
+  const guaranteedEndSeasonExclusive = optionSeason ?? contractEndSeasonExclusive;
+  const current = derivePlayerTradeSalaryResponsibility(
+    state.players,
+    state.tradeState.tradeHistory,
+    player.id,
+    '',
+    financeSeason,
+  );
+  const guaranteedFutureSeason = financeSeason + 1 < guaranteedEndSeasonExclusive
+    ? financeSeason + 1
+    : null;
+  const guaranteedFuture = guaranteedFutureSeason === null
+    ? null
+    : derivePlayerTradeSalaryResponsibility(
+      state.players,
+      state.tradeState.tradeHistory,
+      player.id,
+      '',
+      financeSeason,
+      guaranteedFutureSeason,
+    );
+  const grossAnnualSalary = roundTradeMoney(player.contract.annualSalary);
+  const halfSalaryCap = roundTradeMoney(grossAnnualSalary * 0.5);
+  return {
+    playerId,
+    grossAnnualSalary,
+    guaranteedEndSeasonExclusive,
+    contractEndSeasonExclusive,
+    optionSeason,
+    existingRetainedSalary: current?.retainedSalarySupport ?? 0,
+    existingCashConsideration: current?.cashConsiderationSupport ?? 0,
+    remainingRetentionHeadroom: roundTradeMoney(Math.max(
+      0,
+      halfSalaryCap - (current?.retainedSalarySupport ?? 0),
+    )),
+    remainingCurrentSupportHeadroom: roundTradeMoney(Math.max(
+      0,
+      halfSalaryCap
+        - (current?.retainedSalarySupport ?? 0)
+        - (current?.cashConsiderationSupport ?? 0),
+    )),
+    currentPayerOffsets: current?.payerOffsets ?? [],
+    guaranteedFutureSeason,
+    guaranteedFuturePayerOffsets: guaranteedFuture?.payerOffsets ?? [],
+  };
+}
+
+function assetViewFor(
+  state: FullGameState,
+  asset: TradeAsset,
+  acquiringTeamId?: string,
+): TradeAssetView {
   switch (asset.type) {
     case 'player': {
       const player = state.players.find((candidate) => candidate.id === asset.playerId);
+      const projection = buildTradePlayerFinancialProjection(state, asset.playerId);
+      const currentResponsibility = acquiringTeamId
+        ? effectiveAcquiringSalary(state, asset, acquiringTeamId)
+        : null;
+      const guaranteedFuture = projection?.guaranteedFutureSeason !== null
+        && projection?.guaranteedFutureSeason !== undefined
+        && acquiringTeamId
+        ? derivePlayerTradeSalaryResponsibility(
+          state.players,
+          state.tradeState.tradeHistory,
+          asset.playerId,
+          acquiringTeamId,
+          stateTradeFinanceSeason(state),
+          projection.guaranteedFutureSeason,
+        )
+        : null;
+      const proposedFutureRetention = projection?.guaranteedFutureSeason !== null
+        && projection?.guaranteedFutureSeason !== undefined
+        && asset.retainedSalary
+        && projection.guaranteedFutureSeason >= asset.retainedSalary.startSeason
+        && projection.guaranteedFutureSeason < asset.retainedSalary.endSeasonExclusive
+        ? asset.retainedSalary.annualAmount
+        : 0;
+      const futureResponsibility = guaranteedFuture
+        ? roundTradeMoney(Math.max(0, guaranteedFuture.teamResponsibility - proposedFutureRetention))
+        : null;
+      const financialDetails = [
+        projection ? `$${projection.grossAnnualSalary.toFixed(2)}M gross` : null,
+        projection && projection.existingRetainedSalary + projection.existingCashConsideration > 0
+          ? `$${roundTradeMoney(projection.existingRetainedSalary + projection.existingCashConsideration).toFixed(2)}M prior support`
+          : null,
+        asset.retainedSalary ? `$${asset.retainedSalary.annualAmount.toFixed(2)}M/yr retained` : null,
+        asset.cashConsideration ? `$${asset.cashConsideration.amount.toFixed(2)}M cash` : null,
+        currentResponsibility !== null ? `$${currentResponsibility.toFixed(2)}M buyer now` : null,
+        futureResponsibility !== null
+          ? `$${futureResponsibility.toFixed(2)}M buyer S${projection!.guaranteedFutureSeason}`
+          : null,
+        projection?.optionSeason !== null && projection?.optionSeason !== undefined
+          ? `$${projection.grossAnnualSalary.toFixed(2)}M option S${projection.optionSeason} uncovered`
+          : null,
+      ].filter(Boolean);
       return {
         key: `player:${asset.playerId}`,
         type: asset.type,
         label: player ? `${player.firstName} ${player.lastName}` : asset.playerId,
-        detail: player?.position ?? 'UNK',
+        detail: [player?.position ?? 'UNK', ...financialDetails].join(' · '),
         asset,
         playerId: asset.playerId,
       };
@@ -1159,14 +1397,24 @@ function assetViewFor(state: FullGameState, asset: TradeAsset): TradeAssetView {
 function assetValue(
   state: FullGameState,
   asset: TradeAsset,
+  acquiringTeamId: string,
   relationshipContext: UserRelationshipTradeContext | null = null,
 ): number {
   switch (asset.type) {
     case 'player': {
       const player = state.players.find((candidate) => candidate.id === asset.playerId);
       if (!player) return 0;
-      const offered = state.players.filter((candidate) => candidate.id === asset.playerId);
-      return comparePackages(offered, []).offerValue;
+      const effectiveSalary = effectiveAcquiringSalary(state, asset, acquiringTeamId);
+      const valuedPlayer = effectiveSalary === null
+        ? player
+        : {
+          ...player,
+          contract: {
+            ...player.contract,
+            annualSalary: effectiveSalary,
+          },
+        };
+      return comparePackages([valuedPlayer], []).offerValue;
     }
     case 'draft_pick': {
       const roundWeight = Math.max(1, 22 - asset.round);
@@ -1196,8 +1444,14 @@ function compareAssetPackages(
   toTeamId: string = '',
 ) {
   const relationshipContext = getUserRelationshipTradeContext(state, fromTeamId, toTeamId);
-  const offerValue = offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset, relationshipContext), 0);
-  const requestValue = requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset, relationshipContext), 0);
+  const offerValue = offeringAssets.reduce(
+    (sum, asset) => sum + assetValue(state, asset, toTeamId, relationshipContext),
+    0,
+  );
+  const requestValue = requestingAssets.reduce(
+    (sum, asset) => sum + assetValue(state, asset, fromTeamId, relationshipContext),
+    0,
+  );
   const maxValue = Math.max(offerValue, requestValue, 1);
   const rivalryPenalty = rivalryTradePenalty(
     state.rivalries,
@@ -1392,7 +1646,7 @@ function applyUserFrontOfficeTradeOverride(
   result: ReturnType<typeof evaluateTradeProposal>,
   fairnessScore: number,
 ) {
-  if (result.decision !== 'accepted' && fairnessScore >= -6) {
+  if (result.decision !== 'accepted' && Math.abs(fairnessScore) <= 6) {
     return {
       decision: 'accepted' as const,
       reason: 'The value is close enough for a front office we respect.',
@@ -1405,7 +1659,12 @@ function applyUserFrontOfficeTradeOverride(
 
 function buildAssetSummary(state: FullGameState, assets: TradeAsset[]): string {
   return assets
-    .map((asset) => assetViewFor(state, asset).label)
+    .map((asset) => {
+      const view = assetViewFor(state, asset);
+      return asset.type === 'player' && (asset.retainedSalary || asset.cashConsideration)
+        ? `${view.label} (${view.detail})`
+        : view.label;
+    })
     .slice(0, 2)
     .join(', ');
 }
@@ -1418,15 +1677,17 @@ function buildTradeHistoryEntry(
   },
   fairnessScore: number,
 ): TradeHistoryEntry {
-  const offeringNames = buildAssetSummary(state, proposal.offeringAssets);
-  const requestingNames = buildAssetSummary(state, proposal.requestingAssets);
+  const offeringAssets = materializeTradeAssetContractReferences(state, proposal.offeringAssets);
+  const requestingAssets = materializeTradeAssetContractReferences(state, proposal.requestingAssets);
+  const offeringNames = buildAssetSummary(state, offeringAssets);
+  const requestingNames = buildAssetSummary(state, requestingAssets);
 
   return {
     id: proposal.id,
     fromTeamId: proposal.fromTeamId,
     toTeamId: proposal.toTeamId,
-    offeringAssets: proposal.offeringAssets,
-    requestingAssets: proposal.requestingAssets,
+    offeringAssets,
+    requestingAssets,
     fairnessScore,
     summary: `${teamName(proposal.fromTeamId)} sent ${offeringNames || 'assets'} to ${teamName(proposal.toTeamId)} for ${requestingNames || 'assets'}.`,
     timestamp: timestamp(),
@@ -1519,8 +1780,8 @@ function buildTradeViews<T extends PersistentTradeOffer | TradeHistoryEntry>(
     fromTeamAbbreviation: teamAbbreviation(trade.fromTeamId),
     toTeamName: teamName(trade.toTeamId),
     toTeamAbbreviation: teamAbbreviation(trade.toTeamId),
-    offeringAssets: trade.offeringAssets.map((asset) => assetViewFor(state, asset)),
-    requestingAssets: trade.requestingAssets.map((asset) => assetViewFor(state, asset)),
+    offeringAssets: trade.offeringAssets.map((asset) => assetViewFor(state, asset, trade.toTeamId)),
+    requestingAssets: trade.requestingAssets.map((asset) => assetViewFor(state, asset, trade.fromTeamId)),
   }));
 }
 
@@ -1767,12 +2028,20 @@ export function getNegotiationView(state: FullGameState, negotiationId: string):
   if (!persistent) {
     return null;
   }
-  return buildNegotiationView(state, hydrateNegotiationState(state, persistent));
+  return buildNegotiationView(
+    state,
+    hydrateNegotiationState(state, persistent),
+    persistentNegotiationPackage(persistent),
+  );
 }
 
 export function getOpenNegotiationViews(state: FullGameState): TradeNegotiationView[] {
   return state.tradeState.negotiations
-    .map((entry) => buildNegotiationView(state, hydrateNegotiationState(state, entry)))
+    .map((entry) => buildNegotiationView(
+      state,
+      hydrateNegotiationState(state, entry),
+      persistentNegotiationPackage(entry),
+    ))
     .sort((left, right) =>
       left.expiresAtDay - right.expiresAtDay
       || left.teamName.localeCompare(right.teamName)
@@ -2018,8 +2287,14 @@ export function executeMultiTeamTradeFramework(
 
 function buildHotTradeOfferView(state: FullGameState, offer: PersistentTradeOffer): HotTradeOfferView {
   const bidderCount = offerBidderCount(state, offer);
-  const offerValue = offer.offeringAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
-  const requestValue = offer.requestingAssets.reduce((sum, asset) => sum + assetValue(state, asset), 0);
+  const offerValue = offer.offeringAssets.reduce(
+    (sum, asset) => sum + assetValue(state, asset, offer.toTeamId),
+    0,
+  );
+  const requestValue = offer.requestingAssets.reduce(
+    (sum, asset) => sum + assetValue(state, asset, offer.fromTeamId),
+    0,
+  );
   return {
     ...(buildTradeViews(state, [offer])[0] as TradeOfferView),
     urgencyTag: tradeUrgencyTag(state, offer),
@@ -2218,7 +2493,7 @@ function deriveNeedsAndSurplus(teamPlayers: FullGameState['players']): { needs: 
 }
 
 function deriveBudgetPressure(state: FullGameState, teamId: string, teamPlayers: FullGameState['players']): TradeMarketBudgetPressure {
-  const payroll = calculateTeamPayroll(teamId, teamPlayers).totalPayroll;
+  const payroll = calculateStateTeamPayroll(state, teamId).totalPayroll;
   const owner = state.ownerState.get(teamId);
   const budgetLine = owner?.payrollCap ?? owner?.annualBudget ?? getTeamBudget(teamId);
   const budgetRatio = budgetLine > 0 ? payroll / budgetLine : 0;
@@ -2518,9 +2793,16 @@ export function buildTradeAssetInventoryView(state: FullGameState, teamId: strin
     });
 
   const budget = state.internationalScoutingState.budgets.get(teamId);
+  const playerFinancials = Object.fromEntries(state.players
+    .filter((player) => player.teamId === teamId)
+    .flatMap((player) => {
+      const projection = buildTradePlayerFinancialProjection(state, player.id);
+      return projection ? [[player.id, projection] as const] : [];
+    }));
   return {
     draftPicks,
     ifaRemaining: budget ? getRemainingIFABudget(budget) : 0,
+    playerFinancials,
   };
   } finally {
     // Inventory is a deterministic projection. Opening Trade must not install
@@ -2545,6 +2827,7 @@ function recordLeagueTradeNews(
   state: FullGameState,
   proposal: TradeProposal,
   relationshipNarrative: string | null = null,
+  financialNarrative: string | null = null,
 ) {
   const players = state.players.filter((player) =>
     proposal.playersOffered.includes(player.id) || proposal.playersRequested.includes(player.id),
@@ -2571,10 +2854,28 @@ function recordLeagueTradeNews(
 
   if (items.length === 0) return;
 
-  const itemsWithNarrative = relationshipNarrative
+  const appendedNarrative = [relationshipNarrative, financialNarrative].filter(Boolean).join(' ');
+  const proposalPlayerKey = [...proposal.playersOffered, ...proposal.playersRequested]
+    .sort((left, right) => left.localeCompare(right))
+    .join(',');
+  const existingNews = appendedNarrative
+    ? state.news.map((item) => {
+      const itemPlayerKey = [...item.relatedPlayerIds]
+        .sort((left, right) => left.localeCompare(right))
+        .join(',');
+      if (item.category !== 'trade'
+        || item.timestamp !== timestamp()
+        || itemPlayerKey !== proposalPlayerKey
+        || item.body.includes(appendedNarrative)) {
+        return item;
+      }
+      return { ...item, body: `${item.body} ${appendedNarrative}` };
+    })
+    : state.news;
+  const itemsWithNarrative = appendedNarrative
     ? items.map((item) => ({
       ...item,
-      body: `${item.body} ${relationshipNarrative}`,
+      body: `${item.body} ${appendedNarrative}`,
     }))
     : items;
 
@@ -2585,7 +2886,11 @@ function recordLeagueTradeNews(
     }))
     : itemsWithNarrative;
 
-  state.news = deduplicateNews([...taggedItems, ...state.news]);
+  // executeAcceptedTrade may already have emitted a higher-priority broadcast
+  // story for the same transaction. Enrich that duplicate before priority
+  // dedupe so exact financial facts cannot disappear based on which headline
+  // wins the narrative ranking.
+  state.news = deduplicateNews([...taggedItems, ...existingNews]);
   const userDivision = getTeamById(state.userTeamId)?.division;
   const involvesRelevantTeam = [proposal.fromTeamId, proposal.toTeamId].some((teamId) =>
     teamId === state.userTeamId || getTeamById(teamId)?.division === userDivision,
@@ -2597,6 +2902,34 @@ function recordLeagueTradeNews(
   }
 }
 
+function buildTradeFinancialNarrative(
+  state: FullGameState,
+  fromTeamId: string,
+  toTeamId: string,
+  offeringAssets: TradeAsset[],
+  requestingAssets: TradeAsset[],
+): string | null {
+  const describe = (asset: TradeAsset, payerTeamId: string) => {
+    if (asset.type !== 'player' || (!asset.retainedSalary && !asset.cashConsideration)) return null;
+    const player = state.players.find((candidate) => candidate.id === asset.playerId);
+    const playerName = player ? `${player.firstName} ${player.lastName}` : asset.playerId;
+    const terms = [
+      asset.retainedSalary
+        ? `${teamName(payerTeamId)} retains $${asset.retainedSalary.annualAmount.toFixed(2)}M per year through season ${asset.retainedSalary.endSeasonExclusive - 1}`
+        : null,
+      asset.cashConsideration
+        ? `${teamName(payerTeamId)} provides $${asset.cashConsideration.amount.toFixed(2)}M of current-season payroll reimbursement`
+        : null,
+    ].filter(Boolean).join(' and ');
+    return `${terms} for ${playerName}.`;
+  };
+  const descriptions = [
+    ...offeringAssets.map((asset) => describe(asset, fromTeamId)),
+    ...requestingAssets.map((asset) => describe(asset, toTeamId)),
+  ].filter((description): description is string => description != null);
+  return descriptions.length > 0 ? `Financial terms: ${descriptions.join(' ')}` : null;
+}
+
 function executeAcceptedTrade(
   state: FullGameState,
   proposal: Pick<TradeProposal, 'id' | 'fromTeamId' | 'toTeamId'> & {
@@ -2605,28 +2938,45 @@ function executeAcceptedTrade(
   },
   fairnessScore: number,
 ) {
+  const validationIssue = validateTradeAssetsForTeam(state, proposal.fromTeamId, proposal.offeringAssets)
+    ?? validateTradeAssetsForTeam(state, proposal.toTeamId, proposal.requestingAssets)
+    ?? validateTradeFinancialTerms(
+      state,
+      proposal.fromTeamId,
+      proposal.toTeamId,
+      proposal.offeringAssets,
+      proposal.requestingAssets,
+    );
+  if (validationIssue) {
+    throw new Error(`Accepted trade failed aggregate prevalidation: ${validationIssue}`);
+  }
+  const acceptedProposal = {
+    ...proposal,
+    offeringAssets: materializeTradeAssetContractReferences(state, proposal.offeringAssets),
+    requestingAssets: materializeTradeAssetContractReferences(state, proposal.requestingAssets),
+  };
   const tradePackageValue = compareAssetPackages(
     state,
-    proposal.offeringAssets,
-    proposal.requestingAssets,
-    proposal.fromTeamId,
-    proposal.toTeamId,
+    acceptedProposal.offeringAssets,
+    acceptedProposal.requestingAssets,
+    acceptedProposal.fromTeamId,
+    acceptedProposal.toTeamId,
   );
   const tradeImpactScore = Math.max(tradePackageValue.offerValue, tradePackageValue.requestValue);
-  applyTradeAssets(state, proposal.id, proposal.fromTeamId, proposal.toTeamId, proposal.offeringAssets, proposal.requestingAssets);
-  state.rosterStates.set(proposal.fromTeamId, buildRosterState(proposal.fromTeamId, state.players));
-  state.rosterStates.set(proposal.toTeamId, buildRosterState(proposal.toTeamId, state.players));
-  addTradeHistoryEntry(state, buildTradeHistoryEntry(state, proposal, fairnessScore));
+  applyTradeAssets(state, acceptedProposal.id, acceptedProposal.fromTeamId, acceptedProposal.toTeamId, acceptedProposal.offeringAssets, acceptedProposal.requestingAssets);
+  state.rosterStates.set(acceptedProposal.fromTeamId, buildRosterState(acceptedProposal.fromTeamId, state.players));
+  state.rosterStates.set(acceptedProposal.toTeamId, buildRosterState(acceptedProposal.toTeamId, state.players));
+  addTradeHistoryEntry(state, buildTradeHistoryEntry(state, acceptedProposal, fairnessScore));
   state.rivalries = recordBlockbusterTradeRivalry(state.rivalries, {
     season: state.season,
-    fromTeamId: proposal.fromTeamId,
-    toTeamId: proposal.toTeamId,
+    fromTeamId: acceptedProposal.fromTeamId,
+    toTeamId: acceptedProposal.toTeamId,
     impactScore: tradeImpactScore,
     summary: 'Blockbuster trade changed the tone of the matchup',
   });
-  applyAcceptedTradeRelationshipUpdate(state, proposal, fairnessScore);
+  applyAcceptedTradeRelationshipUpdate(state, acceptedProposal, fairnessScore);
   return {
-    relationshipNarrative: buildTradeRelationshipNarrative(state, proposal),
+    relationshipNarrative: buildTradeRelationshipNarrative(state, acceptedProposal),
   };
 }
 
@@ -2978,12 +3328,20 @@ function validateTradeAssetsForTeam(
   teamId: string,
   assets: TradeAsset[],
 ): string | null {
+  for (const asset of assets) {
+    const parsed = TradeAssetSchema.safeParse(asset);
+    if (!parsed.success) {
+      return parsed.error.issues[0]?.message ?? 'Trade package includes a malformed asset.';
+    }
+  }
   const pickOwnership = state.draftState.pickOwnership.length > 0
     ? state.draftState.pickOwnership
     : createDefaultDraftPickOwnership(
       Array.from(new Set(state.players.map((player) => player.teamId).filter(Boolean))),
       state.season,
     );
+  const seenPickKeys = new Set<string>();
+  let totalIFAPoolSpace = 0;
 
   for (const asset of assets) {
     if (asset.type === 'player') {
@@ -2995,6 +3353,11 @@ function validateTradeAssetsForTeam(
     }
 
     if (asset.type === 'draft_pick') {
+      const pickKey = `${asset.season}:${asset.round}:${asset.originalTeamId}`;
+      if (seenPickKeys.has(pickKey)) {
+        return 'A draft pick may appear only once in a trade package.';
+      }
+      seenPickKeys.add(pickKey);
       const pick = pickOwnership.find((entry) =>
         entry.season === asset.season
         && entry.round === asset.round
@@ -3006,8 +3369,12 @@ function validateTradeAssetsForTeam(
       continue;
     }
 
+    totalIFAPoolSpace = roundTradeMoney(totalIFAPoolSpace + asset.amount);
+  }
+
+  if (totalIFAPoolSpace > 0) {
     const budget = state.internationalScoutingState.budgets.get(teamId);
-    if (!budget || getRemainingIFABudget(budget) < asset.amount) {
+    if (!budget || getRemainingIFABudget(budget) < totalIFAPoolSpace) {
       return 'Trade package includes IFA pool space that exceeds the available balance.';
     }
   }
@@ -3019,6 +3386,11 @@ function hasNonPlayerAssets(assets: TradeAsset[]): boolean {
   return assets.some((asset) => asset.type !== 'player');
 }
 
+function hasPlayerFinancialTerms(assets: TradeAsset[]): boolean {
+  return assets.some((asset) => asset.type === 'player'
+    && Boolean(asset.retainedSalary || asset.cashConsideration));
+}
+
 function collectTradePackageReviewEvidence(
   state: FullGameState,
   offeringAssets: TradeAsset[],
@@ -3028,6 +3400,7 @@ function collectTradePackageReviewEvidence(
   const rosterIssues = [
     validateTradeAssetsForTeam(state, state.userTeamId, offeringAssets),
     validateTradeAssetsForTeam(state, toTeamId, requestingAssets),
+    validateTradeFinancialTerms(state, state.userTeamId, toTeamId, offeringAssets, requestingAssets),
   ].filter(Boolean) as string[];
   const rosterValid = rosterIssues.length === 0;
 
@@ -3087,11 +3460,12 @@ function buildNegotiationReviewFromState(
   negotiation: NegotiationState,
   decision: TradeNegotiationActionResult['decision'],
   narrative: string,
+  tradePackage: TradeCounterPackage,
 ): TradeNegotiationReviewView {
   return buildTradePackageReview(
     state,
-    playerAssets(negotiation.proposal.offering),
-    playerAssets(negotiation.proposal.requesting),
+    tradePackage.offeringAssets,
+    tradePackage.requestingAssets,
     negotiation.proposal.toTeamId,
     decision,
     narrative,
@@ -3123,10 +3497,21 @@ export function proposeTradePackage(
     return { decision: 'rejected', reason: requestedValidation };
   }
 
+  const financialValidation = validateTradeFinancialTerms(
+    state,
+    state.userTeamId,
+    toTeamId,
+    offeringAssets,
+    requestingAssets,
+  );
+  if (financialValidation) {
+    return { decision: 'rejected', reason: financialValidation };
+  }
+
   const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
   const preTradePartnerPlayers = getTeamPlayers(toTeamId);
   const playerOnlyProposal: TradeProposal = {
-    id: `user-${timestamp()}`,
+    id: nextUserTradeId(state, offeringAssets, requestingAssets, toTeamId),
     fromTeamId: state.userTeamId,
     toTeamId,
     playersOffered: assetPlayerIds(offeringAssets),
@@ -3136,8 +3521,11 @@ export function proposeTradePackage(
   };
 
   const fairnessScore = compareAssetPackages(state, offeringAssets, requestingAssets, state.userTeamId, toTeamId).fairness;
-  const usesNonPlayerAssets = hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets);
-  const evaluation = usesNonPlayerAssets
+  const usesGenericAssets = hasNonPlayerAssets(offeringAssets)
+    || hasNonPlayerAssets(requestingAssets)
+    || hasPlayerFinancialTerms(offeringAssets)
+    || hasPlayerFinancialTerms(requestingAssets);
+  const evaluation = usesGenericAssets
     ? {
       decision: (-fairnessScore >= -10 ? 'accepted' : 'rejected') as 'accepted' | 'rejected',
       reason: -fairnessScore >= -10 ? 'The value framework works for us.' : 'The value gap is too wide for us.',
@@ -3177,7 +3565,13 @@ export function proposeTradePackage(
       ...playerOnlyProposal,
       status: 'accepted',
       reason: result.reason,
-    }, execution.relationshipNarrative);
+    }, execution.relationshipNarrative, buildTradeFinancialNarrative(
+      state,
+      state.userTeamId,
+      toTeamId,
+      offeringAssets,
+      requestingAssets,
+    ));
   }
 
   return {
@@ -3252,7 +3646,30 @@ export function startNegotiation(
     };
   }
 
-  if (hasNonPlayerAssets(offeringAssets) || hasNonPlayerAssets(requestingAssets)) {
+
+  const financialValidation = validateTradeFinancialTerms(
+    state,
+    state.userTeamId,
+    toTeamId,
+    offeringAssets,
+    requestingAssets,
+  );
+  if (financialValidation) {
+    return {
+      success: false,
+      decision: 'rejected',
+      message: financialValidation,
+      negotiation: null,
+      tradeExecuted: false,
+      review: buildTradePackageReview(state, offeringAssets, requestingAssets, toTeamId, 'rejected', financialValidation),
+      flowStateChanged: false,
+    };
+  }
+
+  if (hasNonPlayerAssets(offeringAssets)
+    || hasNonPlayerAssets(requestingAssets)
+    || hasPlayerFinancialTerms(offeringAssets)
+    || hasPlayerFinancialTerms(requestingAssets)) {
     const reviewEvidence = collectTradePackageReviewEvidence(state, offeringAssets, requestingAssets, toTeamId);
     const directResult = proposeTradePackage(state, offeringAssets, requestingAssets, toTeamId);
     const decision = directResult.decision === 'countered'
@@ -3272,6 +3689,10 @@ export function startNegotiation(
   }
 
   const rngCheckpoint = state.rng.getState();
+  const submittedPackage = {
+    offeringAssets: structuredClone(offeringAssets),
+    requestingAssets: structuredClone(requestingAssets),
+  };
   const liveState = initiateNegotiation(
     state.rng.fork(),
     {
@@ -3291,7 +3712,7 @@ export function startNegotiation(
   );
 
   if (!isNegotiationComplete(liveState) || liveState.phase === 'accepted') {
-    upsertNegotiation(state, liveState);
+    upsertNegotiation(state, liveState, submittedPackage);
   } else {
     // A rejected proposal is a no-op. Its transient negotiation ID/dialogue
     // generation must not advance canonical simulation truth when the result
@@ -3313,9 +3734,9 @@ export function startNegotiation(
     success: liveState.phase !== 'rejected',
     decision,
     message,
-    negotiation: buildNegotiationView(state, liveState),
+    negotiation: buildNegotiationView(state, liveState, submittedPackage),
     tradeExecuted: false,
-    review: buildNegotiationReviewFromState(state, liveState, decision, message),
+    review: buildNegotiationReviewFromState(state, liveState, decision, message, submittedPackage),
     flowStateChanged: !isNegotiationComplete(liveState) || liveState.phase === 'accepted',
   };
 }
@@ -3335,6 +3756,111 @@ export function advanceNegotiationSession(
       tradeExecuted: false,
       review: null,
       flowStateChanged: false,
+    };
+  }
+
+  const toTeamId = persistent.proposal.toTeamId;
+  const validationIssue = validateTradeAssetsForTeam(
+    state,
+    state.userTeamId,
+    counterPackage.offeringAssets,
+  ) ?? validateTradeAssetsForTeam(
+    state,
+    toTeamId,
+    counterPackage.requestingAssets,
+  ) ?? validateTradeFinancialTerms(
+    state,
+    state.userTeamId,
+    toTeamId,
+    counterPackage.offeringAssets,
+    counterPackage.requestingAssets,
+  );
+  if (validationIssue) {
+    const liveState = hydrateNegotiationState(state, persistent);
+    return {
+      success: false,
+      decision: 'rejected',
+      message: validationIssue,
+      negotiation: buildNegotiationView(
+        state,
+        liveState,
+        persistentNegotiationPackage(persistent),
+      ),
+      tradeExecuted: false,
+      review: buildTradePackageReview(
+        state,
+        counterPackage.offeringAssets,
+        counterPackage.requestingAssets,
+        toTeamId,
+        'rejected',
+        validationIssue,
+      ),
+      flowStateChanged: false,
+    };
+  }
+
+  if (hasNonPlayerAssets(counterPackage.offeringAssets)
+    || hasNonPlayerAssets(counterPackage.requestingAssets)
+    || hasPlayerFinancialTerms(counterPackage.offeringAssets)
+    || hasPlayerFinancialTerms(counterPackage.requestingAssets)) {
+    const liveState = hydrateNegotiationState(state, persistent);
+    const packageValues = compareAssetPackages(
+      state,
+      counterPackage.offeringAssets,
+      counterPackage.requestingAssets,
+      state.userTeamId,
+      toTeamId,
+    );
+    const submittedState: NegotiationState = {
+      ...liveState,
+      proposal: {
+        ...liveState.proposal,
+        offering: assetPlayerIds(counterPackage.offeringAssets),
+        requesting: assetPlayerIds(counterPackage.requestingAssets),
+        valuationGap: roundTradeMoney(
+          packageValues.offerValue / Math.max(1, packageValues.requestValue),
+        ),
+      },
+      context: {
+        ...liveState.context,
+        currentDay: state.day,
+      },
+    };
+    const reviewEvidence = collectTradePackageReviewEvidence(
+      state,
+      counterPackage.offeringAssets,
+      counterPackage.requestingAssets,
+      toTeamId,
+    );
+    const directResult = proposeTradePackage(
+      state,
+      counterPackage.offeringAssets,
+      counterPackage.requestingAssets,
+      toTeamId,
+    );
+    const accepted = directResult.decision === 'accepted';
+    if (accepted) {
+      removeNegotiation(state, negotiationId);
+    } else {
+      // A legal value-rejected package remains the exact resumable framework;
+      // invalid packages were already rejected snapshot-exact above.
+      upsertNegotiation(state, submittedState, counterPackage);
+    }
+    return {
+      success: accepted,
+      decision: accepted ? 'accepted' : 'rejected',
+      message: directResult.reason,
+      negotiation: accepted
+        ? null
+        : buildNegotiationView(state, submittedState, counterPackage),
+      tradeExecuted: accepted,
+      review: buildTradePackageReviewFromEvidence(
+        reviewEvidence,
+        toTeamId,
+        accepted ? 'accepted' : 'rejected',
+        directResult.reason,
+      ),
+      flowStateChanged: true,
     };
   }
 
@@ -3363,11 +3889,12 @@ export function advanceNegotiationSession(
     getRelationship(state.gmRelationships, persistent.proposal.toTeamId),
     gm,
   );
+  const nextPackage = reconcileNegotiationPackage(nextState, counterPackage);
 
   if (isNegotiationComplete(nextState) && nextState.phase !== 'accepted') {
     removeNegotiation(state, negotiationId);
   } else {
-    upsertNegotiation(state, nextState);
+    upsertNegotiation(state, nextState, nextPackage);
   }
 
   const decision =
@@ -3388,9 +3915,9 @@ export function advanceNegotiationSession(
     message,
     negotiation: isNegotiationComplete(nextState) && nextState.phase !== 'accepted'
       ? null
-      : buildNegotiationView(state, nextState),
+      : buildNegotiationView(state, nextState, nextPackage),
     tradeExecuted: false,
-    review: buildNegotiationReviewFromState(state, nextState, decision, message),
+    review: buildNegotiationReviewFromState(state, nextState, decision, message, nextPackage),
     flowStateChanged: true,
   };
 }
@@ -3413,6 +3940,44 @@ export function resolveNegotiationSession(
     };
   }
 
+  const tradePackage = persistentNegotiationPackage(persistent);
+  if (action === 'accept') {
+    const validationIssue = validateTradeAssetsForTeam(
+      state,
+      persistent.proposal.fromTeamId,
+      tradePackage.offeringAssets,
+    ) ?? validateTradeAssetsForTeam(
+      state,
+      persistent.proposal.toTeamId,
+      tradePackage.requestingAssets,
+    ) ?? validateTradeFinancialTerms(
+      state,
+      persistent.proposal.fromTeamId,
+      persistent.proposal.toTeamId,
+      tradePackage.offeringAssets,
+      tradePackage.requestingAssets,
+    );
+    if (validationIssue) {
+      const liveState = hydrateNegotiationState(state, persistent);
+      return {
+        success: false,
+        decision: 'rejected',
+        message: validationIssue,
+        negotiation: buildNegotiationView(state, liveState, tradePackage),
+        tradeExecuted: false,
+        review: buildTradePackageReview(
+          state,
+          tradePackage.offeringAssets,
+          tradePackage.requestingAssets,
+          persistent.proposal.toTeamId,
+          'rejected',
+          validationIssue,
+        ),
+        flowStateChanged: false,
+      };
+    }
+  }
+
   const gm = state.gmPersonalities.get(persistent.proposal.toTeamId) ?? 'analytical';
   let liveState = hydrateNegotiationState(state, persistent);
   if (!isNegotiationComplete(liveState)) {
@@ -3430,11 +3995,17 @@ export function resolveNegotiationSession(
 
   const outcome = resolveTradeNegotiation(liveState);
   const decision = outcome.accepted ? 'accepted' : liveState.phase === 'dead' ? 'dead' : 'rejected';
-  const review = buildNegotiationReviewFromState(state, liveState, decision, outcome.narrative);
+  const review = buildNegotiationReviewFromState(
+    state,
+    liveState,
+    decision,
+    outcome.narrative,
+    tradePackage,
+  );
   removeNegotiation(state, negotiationId);
 
   if (outcome.accepted) {
-    finalizeNegotiatedTrade(state, liveState);
+    finalizeNegotiatedTrade(state, liveState, tradePackage);
   }
 
   return {
@@ -3499,6 +4070,23 @@ export function respondToTradeOffer(
         flowStateChanged: true,
       };
     }
+    const validationIssue = validateTradeAssetsForTeam(state, offer.fromTeamId, offer.offeringAssets)
+      ?? validateTradeAssetsForTeam(state, offer.toTeamId, offer.requestingAssets)
+      ?? validateTradeFinancialTerms(
+        state,
+        offer.fromTeamId,
+        offer.toTeamId,
+        offer.offeringAssets,
+        offer.requestingAssets,
+      );
+    if (validationIssue) {
+      return {
+        success: false,
+        decision: 'rejected',
+        message: validationIssue,
+        flowStateChanged: false,
+      };
+    }
 
     const preTradeUserPlayers = getTeamPlayers(state.userTeamId);
     const preTradePartnerPlayers = getTeamPlayers(offer.fromTeamId);
@@ -3526,7 +4114,13 @@ export function respondToTradeOffer(
       ...proposal,
       status: 'accepted',
       reason: 'offer accepted',
-    }, execution.relationshipNarrative);
+    }, execution.relationshipNarrative, buildTradeFinancialNarrative(
+      state,
+      offer.fromTeamId,
+      offer.toTeamId,
+      offer.offeringAssets,
+      offer.requestingAssets,
+    ));
     return {
       success: true,
       decision: 'accepted',
@@ -3559,7 +4153,34 @@ export function respondToTradeOffer(
     return { success: false, decision: 'rejected', message: 'Unable to reach the other front office.', flowStateChanged: false };
   }
 
-  const usesNonPlayerAssets = hasNonPlayerAssets(counterPackage.offeringAssets) || hasNonPlayerAssets(counterPackage.requestingAssets);
+  const counterValidation = validateTradeAssetsForTeam(
+    state,
+    state.userTeamId,
+    counterPackage.offeringAssets,
+  ) ?? validateTradeAssetsForTeam(
+    state,
+    offer.fromTeamId,
+    counterPackage.requestingAssets,
+  ) ?? validateTradeFinancialTerms(
+    state,
+    state.userTeamId,
+    offer.fromTeamId,
+    counterPackage.offeringAssets,
+    counterPackage.requestingAssets,
+  );
+  if (counterValidation) {
+    return {
+      success: false,
+      decision: 'rejected',
+      message: counterValidation,
+      flowStateChanged: false,
+    };
+  }
+
+  const usesGenericAssets = hasNonPlayerAssets(counterPackage.offeringAssets)
+    || hasNonPlayerAssets(counterPackage.requestingAssets)
+    || hasPlayerFinancialTerms(counterPackage.offeringAssets)
+    || hasPlayerFinancialTerms(counterPackage.requestingAssets);
   const counterFairness = compareAssetPackages(
     state,
     counterPackage.offeringAssets,
@@ -3567,7 +4188,7 @@ export function respondToTradeOffer(
     state.userTeamId,
     offer.fromTeamId,
   ).fairness;
-  const evaluation = usesNonPlayerAssets
+  const evaluation = usesGenericAssets
     ? {
       decision: (-counterFairness >= -10
         ? 'accepted'
@@ -3620,7 +4241,13 @@ export function respondToTradeOffer(
       ...counterProposal,
       status: 'accepted',
       reason: 'counter accepted',
-    }, execution.relationshipNarrative);
+    }, execution.relationshipNarrative, buildTradeFinancialNarrative(
+      state,
+      counterProposal.fromTeamId,
+      counterProposal.toTeamId,
+      counterPackage.offeringAssets,
+      counterPackage.requestingAssets,
+    ));
     return {
       success: true,
       decision: 'accepted',

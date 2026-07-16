@@ -1,7 +1,10 @@
 import { Badge } from '@mbd/ui';
 import { humanizeLabel } from '@/shared/lib/labels';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
-import type { TradeNegotiationView } from '@/workers/sim.worker.trade';
+import type {
+  TradeNegotiationView,
+  TradePlayerFinancialProjectionView,
+} from '@/workers/sim.worker.trade';
 import {
   buildTradeAssetLabel,
   modeBadgeClass,
@@ -10,22 +13,26 @@ import {
 
 interface TradeNegotiationPanelProps {
   dialogueMode: TradeDialogueView['mode'];
+  financialProjectionByPlayerId?: (playerId: string) => TradePlayerFinancialProjectionView | undefined;
   negotiation: TradeNegotiationView;
   onAccept: () => void;
   onCounter: () => void;
   onReject: () => void;
   playerById: (playerId: string) => PlayerDTO | undefined;
   proposing: boolean;
+  userTeamId?: string;
 }
 
 export default function TradeNegotiationPanel({
   dialogueMode,
+  financialProjectionByPlayerId = () => undefined,
   negotiation,
   onAccept,
   onCounter,
   onReject,
   playerById,
   proposing,
+  userTeamId = '',
 }: TradeNegotiationPanelProps) {
   return (
     <div className="mb-4 rounded-lg border border-accent-info/30 bg-accent-info/5 px-4 py-3">
@@ -79,7 +86,7 @@ export default function TradeNegotiationPanel({
           <div className="mt-2 space-y-1">
             {negotiation.proposal.offeringAssets.map((asset) => (
               <div key={`offer-${buildTradeAssetLabel(asset, playerById)}`} className="font-heading text-xs text-dynasty-text">
-                {buildTradeAssetLabel(asset, playerById)}
+                {buildTradeAssetLabel(asset, playerById, financialProjectionByPlayerId, negotiation.teamId)}
               </div>
             ))}
           </div>
@@ -89,7 +96,7 @@ export default function TradeNegotiationPanel({
           <div className="mt-2 space-y-1">
             {negotiation.proposal.requestingAssets.map((asset) => (
               <div key={`request-${buildTradeAssetLabel(asset, playerById)}`} className="font-heading text-xs text-dynasty-text">
-                {buildTradeAssetLabel(asset, playerById)}
+                {buildTradeAssetLabel(asset, playerById, financialProjectionByPlayerId, userTeamId)}
               </div>
             ))}
           </div>

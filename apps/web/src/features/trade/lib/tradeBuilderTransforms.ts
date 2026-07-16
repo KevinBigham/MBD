@@ -1,4 +1,4 @@
-import type { TradeAsset, TradeCondition } from '@mbd/contracts';
+import { TradeAssetSchema, type TradeAsset, type TradeCondition } from '@mbd/contracts';
 import { TEAMS } from '@mbd/sim-core';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 import type {
@@ -49,7 +49,16 @@ export interface TradeBuilderSelection {
   requestingDraftPicks: DraftPickAsset[];
   offeringIFAAmount: string;
   requestingIFAAmount: string;
+  offeringFinancialTerms?: TradeFinancialTermsByPlayerId;
+  requestingFinancialTerms?: TradeFinancialTermsByPlayerId;
 }
+
+export interface TradeFinancialTermsInput {
+  retainedSalary: string;
+  cashConsideration: string;
+}
+
+export type TradeFinancialTermsByPlayerId = Record<string, TradeFinancialTermsInput>;
 
 export interface TradeSubmissionValidationInput {
   selectedTeam: string;
@@ -60,6 +69,8 @@ export interface TradeSubmissionValidationInput {
   requestingIFAAmount: string;
   userIFARemaining: number;
   targetIFARemaining: number;
+  offeringAssets?: readonly TradeAsset[];
+  requestingAssets?: readonly TradeAsset[];
 }
 
 export type TradeSubmissionValidationResult =
@@ -441,11 +452,11 @@ export function draftPickKey(asset: DraftPickAsset): string {
 }
 
 export function parsePoolAmount(value: string): number {
-  const amount = Number.parseFloat(value);
+  const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) {
     return 0;
   }
-  return Number(amount.toFixed(2));
+  return amount;
 }
 
 export function validateTradeSubmission(
@@ -462,6 +473,19 @@ export function validateTradeSubmission(
 
   const offeredPoolAmount = parsePoolAmount(input.offeringIFAAmount);
   const requestedPoolAmount = parsePoolAmount(input.requestingIFAAmount);
+
+  for (const asset of [...(input.offeringAssets ?? []), ...(input.requestingAssets ?? [])]) {
+    const parsed = TradeAssetSchema.safeParse(asset);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        result: {
+          status: 'rejected',
+          message: parsed.error.issues[0]?.message ?? 'Trade terms are malformed.',
+        },
+      };
+    }
+  }
 
   if (offeredPoolAmount > input.userIFARemaining + 0.001) {
     return {
@@ -489,7 +513,7 @@ export function validateTradeSubmission(
 export function poolAsset(amount: number): Extract<TradeAsset, { type: 'ifa_pool_space' }> {
   return {
     type: 'ifa_pool_space',
-    amount: Number(amount.toFixed(2)),
+    amount,
   };
 }
 
@@ -505,13 +529,67 @@ export function tradeAssetsFromSelection(
   playerIds: readonly string[],
   draftPicks: readonly DraftPickAsset[],
   ifaAmount: string,
+  financialTerms: TradeFinancialTermsByPlayerId = {},
+  roster: readonly PlayerDTO[] = [],
+  season = 1,
 ): TradeAsset[] {
-  const assets: TradeAsset[] = [...playerIds.map(playerAsset), ...draftPicks];
+  const playerById = new Map(roster.map((player) => [player.id, player] as const));
+  const assets: TradeAsset[] = [
+    ...playerIds.map((playerId): TradeAsset => {
+      const player = playerById.get(playerId);
+      const terms = financialTerms[playerId];
+      const retainedAmount = parsePoolAmount(terms?.retainedSalary ?? '');
+      const cashAmount = parsePoolAmount(terms?.cashConsideration ?? '');
+      if (!player || (retainedAmount <= 0 && cashAmount <= 0)) return playerAsset(playerId);
+
+      const contractEndSeasonExclusive = season + player.contract.years;
+      const guaranteedEndSeasonExclusive = contractEndSeasonExclusive
+        - (player.contract.playerOption || player.contract.teamOption ? 1 : 0);
+      const asset: Extract<TradeAsset, { type: 'player' }> = {
+        type: 'player',
+        playerId,
+        contractReference: {
+          annualSalary: Number(player.contract.annualSalary.toFixed(2)),
+          contractEndSeasonExclusive,
+        },
+      };
+      if (retainedAmount > 0 && guaranteedEndSeasonExclusive > season) {
+        asset.retainedSalary = {
+          annualAmount: retainedAmount,
+          startSeason: season,
+          endSeasonExclusive: guaranteedEndSeasonExclusive,
+        };
+      }
+      if (cashAmount > 0) {
+        asset.cashConsideration = { amount: cashAmount, season };
+      }
+      return asset;
+    }),
+    ...draftPicks,
+  ];
   const poolAmount = parsePoolAmount(ifaAmount);
   if (poolAmount > 0) {
     assets.push(poolAsset(poolAmount));
   }
   return assets;
+}
+
+function financialTermsFromAssets(
+  assets: readonly TradeAsset[],
+): TradeFinancialTermsByPlayerId {
+  return Object.fromEntries(assets.flatMap((asset) => {
+    if (asset.type !== 'player' || (!asset.retainedSalary && !asset.cashConsideration)) return [];
+    return [[asset.playerId, {
+      retainedSalary: asset.retainedSalary?.annualAmount.toString() ?? '',
+      cashConsideration: asset.cashConsideration?.amount.toString() ?? '',
+    }]];
+  }));
+}
+
+function financialTermsFromAssetViews(
+  assets: readonly TradeAssetView[],
+): TradeFinancialTermsByPlayerId {
+  return financialTermsFromAssets(assets.map((view) => view.asset));
 }
 
 export function tradeAssetSummaryItems(
@@ -586,6 +664,8 @@ export function tradeBuilderSelectionFromAssets(
   offeringAssets: readonly TradeAsset[],
   requestingAssets: readonly TradeAsset[],
 ): TradeBuilderSelection {
+  const offeringFinancialTerms = financialTermsFromAssets(offeringAssets);
+  const requestingFinancialTerms = financialTermsFromAssets(requestingAssets);
   return {
     offeringPlayerIds: playerIdsFromAssets(offeringAssets),
     requestingPlayerIds: playerIdsFromAssets(requestingAssets),
@@ -593,6 +673,8 @@ export function tradeBuilderSelectionFromAssets(
     requestingDraftPicks: draftPickAssetsFromAssets(requestingAssets),
     offeringIFAAmount: ifaAmountFromAssets(offeringAssets),
     requestingIFAAmount: ifaAmountFromAssets(requestingAssets),
+    ...(Object.keys(offeringFinancialTerms).length > 0 ? { offeringFinancialTerms } : {}),
+    ...(Object.keys(requestingFinancialTerms).length > 0 ? { requestingFinancialTerms } : {}),
   };
 }
 
@@ -600,6 +682,8 @@ export function tradeBuilderSelectionFromAssetViews(
   offeringAssets: readonly TradeAssetView[],
   requestingAssets: readonly TradeAssetView[],
 ): TradeBuilderSelection {
+  const offeringFinancialTerms = financialTermsFromAssetViews(offeringAssets);
+  const requestingFinancialTerms = financialTermsFromAssetViews(requestingAssets);
   return {
     offeringPlayerIds: playerIdsFromAssetViews(offeringAssets),
     requestingPlayerIds: playerIdsFromAssetViews(requestingAssets),
@@ -607,5 +691,7 @@ export function tradeBuilderSelectionFromAssetViews(
     requestingDraftPicks: draftPickAssetsFromViews(requestingAssets),
     offeringIFAAmount: ifaAmountFromViews(offeringAssets),
     requestingIFAAmount: ifaAmountFromViews(requestingAssets),
+    ...(Object.keys(offeringFinancialTerms).length > 0 ? { offeringFinancialTerms } : {}),
+    ...(Object.keys(requestingFinancialTerms).length > 0 ? { requestingFinancialTerms } : {}),
   };
 }

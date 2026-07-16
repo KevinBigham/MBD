@@ -1,6 +1,9 @@
 import type { TradeAsset } from '@mbd/contracts';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
-import type { TradeOfferView } from '@/workers/sim.worker.trade';
+import type {
+  TradeOfferView,
+  TradePlayerFinancialProjectionView,
+} from '@/workers/sim.worker.trade';
 
 export interface TradeDialogueView {
   mode: 'buyer' | 'seller' | 'standing_pat';
@@ -57,6 +60,8 @@ export function dialogueUrgencyClass(urgency: TradeDialogueView['urgency']): str
 export function buildTradeAssetLabel(
   asset: TradeAsset,
   resolvePlayer: (playerId: string) => PlayerDTO | undefined,
+  resolveFinancialProjection: (playerId: string) => TradePlayerFinancialProjectionView | undefined = () => undefined,
+  acquiringTeamId = '',
 ): string {
   switch (asset.type) {
     case 'player': {
@@ -64,7 +69,43 @@ export function buildTradeAssetLabel(
       if (!player) {
         return asset.playerId;
       }
-      return `${player.firstName[0]}. ${player.lastName} · ${player.position}`;
+      const base = `${player.firstName[0]}. ${player.lastName} · ${player.position}`;
+      const projection = resolveFinancialProjection(asset.playerId);
+      const existingRetained = projection?.existingRetainedSalary ?? 0;
+      const existingCash = projection?.existingCashConsideration ?? 0;
+      if (!asset.retainedSalary && !asset.cashConsideration && existingRetained + existingCash <= 0) return base;
+      const gross = player.contract.annualSalary;
+      const retained = asset.retainedSalary?.annualAmount ?? 0;
+      const cash = asset.cashConsideration?.amount ?? 0;
+      const externalSupport = (offsets: TradePlayerFinancialProjectionView['currentPayerOffsets']) => offsets
+        .filter((offset) => offset.teamId !== acquiringTeamId)
+        .reduce((sum, offset) => sum + offset.total, 0);
+      const currentResponsibility = Math.max(
+        0,
+        gross - externalSupport(projection?.currentPayerOffsets ?? []) - retained - cash,
+      );
+      const futureResponsibility = projection?.guaranteedFutureSeason == null
+        ? null
+        : Math.max(
+          0,
+          gross - externalSupport(projection.guaranteedFuturePayerOffsets) - retained,
+        );
+      const terms = [
+        `$${gross.toFixed(2)}M gross`,
+        existingRetained + existingCash > 0
+          ? `$${(existingRetained + existingCash).toFixed(2)}M prior support`
+          : null,
+        asset.retainedSalary ? `$${retained.toFixed(2)}M/yr retained` : null,
+        asset.cashConsideration ? `$${cash.toFixed(2)}M cash now` : null,
+        `$${currentResponsibility.toFixed(2)}M buyer now`,
+        futureResponsibility !== null
+          ? `$${futureResponsibility.toFixed(2)}M buyer S${projection!.guaranteedFutureSeason}`
+          : null,
+        projection?.optionSeason !== null && projection?.optionSeason !== undefined
+          ? `$${gross.toFixed(2)}M option S${projection.optionSeason} uncovered`
+          : null,
+      ].filter(Boolean);
+      return `${base} · ${terms.join(' · ')}`;
     }
     case 'draft_pick':
       return `R${asset.round} ${asset.season} · ${asset.originalTeamId.toUpperCase()} original`;

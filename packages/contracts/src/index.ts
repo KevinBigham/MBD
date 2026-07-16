@@ -135,7 +135,12 @@ export type {
 
 export {
   TradeStatusEnum,
+  TradeContractReferenceSchema,
+  SalaryRetentionTermSchema,
+  CashConsiderationTermSchema,
+  PlayerTradeAssetV34Schema,
   TradeAssetSchema,
+  TradeAssetV34Schema,
   TradePackageSchema,
   TradeProposalSchema,
   PersistentTradeOfferSchema,
@@ -153,9 +158,14 @@ export {
   MultiTeamProposalSchema,
   PendingTradeSchema,
   TradeStateSchema,
+  TradeStateV34Schema,
 } from "./schemas/trade.js";
 export type {
   TradeStatus,
+  TradeContractReference,
+  SalaryRetentionTerm,
+  CashConsiderationTerm,
+  TradeAssetV34,
   TradeAsset,
   TradePackage,
   TradeProposal,
@@ -174,6 +184,7 @@ export type {
   MultiTeamProposal,
   PendingTrade,
   TradeState,
+  TradeStateV34,
 } from "./schemas/trade.js";
 
 export { ContractDetailSchema } from "./schemas/finance.js";

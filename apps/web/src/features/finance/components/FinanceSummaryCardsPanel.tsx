@@ -13,6 +13,10 @@ export interface FinanceSummaryCardsPanelProps {
   budget: number;
   budgetRoom: number;
   coachingPayroll: number;
+  retainedSalaryCharges: number;
+  cashConsiderationCharges: number;
+  releasedContractCharges: number;
+  acquiredSalaryCredits: number;
   ownerPayrollPolicy: OwnerPayrollPolicy;
 }
 
@@ -31,6 +35,10 @@ export function FinanceSummaryCardsPanel({
   budget,
   budgetRoom,
   coachingPayroll,
+  retainedSalaryCharges,
+  cashConsiderationCharges,
+  releasedContractCharges,
+  acquiredSalaryCredits,
   ownerPayrollPolicy,
 }: FinanceSummaryCardsPanelProps) {
   const ownerBandLabel = ownerPayrollPolicy.ownerBand === 'below_floor'
@@ -40,7 +48,7 @@ export function FinanceSummaryCardsPanel({
       : 'Inside owner plan';
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
       <DensePanel
         title="Total Payroll"
         icon={<DollarSign className="h-4 w-4 text-accent-primary" />}
@@ -54,6 +62,24 @@ export function FinanceSummaryCardsPanel({
               { label: 'Minors', value: formatMoney(minorsPayroll) },
             ]}
           />
+      </DensePanel>
+
+      <DensePanel
+        title="Trade Salary Support"
+        icon={<DollarSign className="h-4 w-4 text-accent-info" />}
+        titleClassName="text-dynasty-muted"
+      >
+        <div className="font-data text-sm font-bold text-dynasty-text">
+          {acquiredSalaryCredits > 0 ? `${formatMoney(acquiredSalaryCredits)} received` : 'No acquired credit'}
+        </div>
+        <StatLine
+          className="mt-2"
+          stats={[
+            { label: 'Retained out', value: formatMoney(retainedSalaryCharges) },
+            { label: 'Cash out', value: formatMoney(cashConsiderationCharges) },
+            { label: 'Released', value: formatMoney(releasedContractCharges) },
+          ]}
+        />
       </DensePanel>
 
       <DensePanel

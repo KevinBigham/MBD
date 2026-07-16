@@ -353,7 +353,7 @@ describe('worker market revenue reconciliation', () => {
     expect(archive.financials.find((entry) => entry.teamId === 'nym')).not.toHaveProperty('revenue');
   });
 
-  it('round-trips one settled v34 snapshot without a schema or fabricated revenue ledger', () => {
+  it('round-trips one settled current snapshot without a fabricated revenue ledger', () => {
     const state = makeState(15_012);
     setCompletedSeason(state);
     const beforeRng = state.rng.getState();
@@ -365,7 +365,7 @@ describe('worker market revenue reconciliation', () => {
     const receipt = marketRevenueReceiptId(state.season);
 
     expect(roundTrip).toEqual(snapshot);
-    expect(roundTrip.schemaVersion).toBe(34);
+    expect(roundTrip.schemaVersion).toBe(35);
     expect(restored.rng.getState()).toEqual(beforeRng);
     expect(TEAMS.every((team) => restored.storyFlags.get(team.id)?.includes(receipt))).toBe(true);
     expect(snapshot).not.toHaveProperty('marketRevenue');

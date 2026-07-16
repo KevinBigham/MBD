@@ -7,7 +7,6 @@ import {
   applyMoraleEvent,
   applyOwnerDecisionDelta,
   calculateTeamChemistry,
-  calculateTeamPayroll,
   createFrontOfficeState,
   createInitialPlayerMorale,
   createOwnerState,
@@ -17,6 +16,7 @@ import {
   type GeneratedPlayer,
 } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
+import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 
 export type ScoutingAccuracyDomain = 'draft' | 'international' | 'pro';
 
@@ -398,7 +398,7 @@ export function scoreMandateAlignment(state: FullGameState): AlignmentScore {
 export function scoreSpendingAlignment(state: FullGameState): AlignmentScore {
   const philosophy = philosophyFromState(state);
   const owner = state.ownerState.get(state.userTeamId);
-  const payroll = calculateTeamPayroll(state.userTeamId, state.players.filter((player) => player.teamId === state.userTeamId)).totalPayroll;
+  const payroll = calculateStateTeamPayroll(state, state.userTeamId).totalPayroll;
   const cap = normalizeMoney(owner?.payrollCap ?? owner?.expectations.payrollTarget ?? getTeamBudget(state.userTeamId));
   const ratio = cap > 0 ? payroll / cap : 0.85;
   let score = 58;

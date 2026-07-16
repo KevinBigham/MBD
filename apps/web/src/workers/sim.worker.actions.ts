@@ -1936,7 +1936,13 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.rule5OfferBackStates = [];
   s.draftClass = null;
   s.freeAgencyMarket = null;
-  s.tradeState = createEmptyTradeState();
+  s.tradeState = {
+    ...createEmptyTradeState(),
+    // Accepted trade history is durable simulation truth. In v35 it is also
+    // the immutable source for multi-season retained-salary obligations, so a
+    // season reset may clear offers/negotiations but must never erase history.
+    tradeHistory: s.tradeState.tradeHistory,
+  };
   s.internationalScoutingState = createEmptyInternationalScoutingState(s.season);
   s.draftState = createEmptyDraftState();
   s.minorLeagueState = createEmptyMinorLeagueState(s.season);

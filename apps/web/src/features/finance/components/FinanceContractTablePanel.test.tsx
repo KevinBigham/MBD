@@ -19,6 +19,8 @@ const CONTRACTS: FinanceContractEntry[] = [
     position: 'CF',
     rosterStatus: 'MLB',
     annualSalary: 35.5,
+    salaryCredit: 5.5,
+    effectiveAnnualSalary: 30,
     yearsRemaining: 4,
     noTradeClause: true,
     playerOption: false,
@@ -30,6 +32,8 @@ const CONTRACTS: FinanceContractEntry[] = [
     position: '3B',
     rosterStatus: 'MLB',
     annualSalary: 28,
+    salaryCredit: 0,
+    effectiveAnnualSalary: 28,
     yearsRemaining: 2,
     noTradeClause: false,
     playerOption: true,
@@ -41,6 +45,8 @@ const CONTRACTS: FinanceContractEntry[] = [
     position: 'SP',
     rosterStatus: 'AAA',
     annualSalary: 0.8,
+    salaryCredit: 0,
+    effectiveAnnualSalary: 0.8,
     yearsRemaining: 1,
     noTradeClause: false,
     playerOption: false,
@@ -113,9 +119,10 @@ describe('FinanceContractTablePanel', () => {
     expect(container.textContent).toContain('MLB · 2');
     expect(container.textContent).toContain('Minors · 1');
     expect(container.textContent).toContain('Full List · 3');
-    expect(container.textContent).toContain('Salary ▼');
+    expect(container.textContent).toContain('Gross / Net ▼');
     expect(container.textContent).toContain('Mike Trout');
     expect(container.textContent).toContain('$35.5M');
+    expect(container.textContent).toContain('$30.0M net · $5.5M credit');
     expect(container.textContent).toContain('Anthony Rendon');
     expect(container.textContent).toContain('NTC');
     expect(container.textContent).toContain('PO');
@@ -154,7 +161,7 @@ describe('FinanceContractTablePanel', () => {
     expect(onContractFilterChange).toHaveBeenCalledWith('all');
 
     const salaryHeader = Array.from(container.querySelectorAll('th')).find((heading) =>
-      heading.textContent?.includes('Salary'),
+      heading.textContent?.includes('Gross / Net'),
     );
     expect(salaryHeader).toBeTruthy();
 

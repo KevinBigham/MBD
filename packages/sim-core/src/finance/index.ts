@@ -34,6 +34,7 @@ export {
   type ArbitrationCase,
   type HoldoutEvaluation,
   type TeamPayroll,
+  type TeamPayrollContext,
   type ExtensionTeamContext,
   type ExtensionContractTerms,
   type ExtensionWillingness,
@@ -65,6 +66,23 @@ export {
   negotiateExtension,
   processTeamExtensions,
 } from './contracts.js';
+
+export {
+  roundTradeMoney,
+  contractReferenceForPlayer,
+  guaranteedContractEndSeasonExclusive,
+  tradeContractReferencesEqual,
+  collectPlayerTradeFinancialAgreements,
+  derivePlayerTradeSalaryResponsibility,
+  deriveTradePayrollAdjustment,
+  retainedSalaryForContract,
+  retainingTeamsForContract,
+  activeRetainedContractCountForTeam,
+  hasActiveTradeFinancialObligationForPlayer,
+  type TradePayrollAdjustment,
+  type PlayerTradeFinancialAgreement,
+  type PlayerTradeSalaryResponsibility,
+} from './tradeFinance.js';
 
 export {
   MARKET_REVENUE_ALLOCATION_FACTORS,

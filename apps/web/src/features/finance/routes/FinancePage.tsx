@@ -65,6 +65,10 @@ export default function FinancePage() {
         budget={data.budget}
         budgetRoom={data.budgetRoom}
         coachingPayroll={data.coachingPayroll}
+        retainedSalaryCharges={data.retainedSalaryCharges}
+        cashConsiderationCharges={data.cashConsiderationCharges}
+        releasedContractCharges={data.releasedContractCharges}
+        acquiredSalaryCredits={data.acquiredSalaryCredits}
         luxuryTax={data.luxuryTax}
         luxuryTaxPayroll={data.luxuryTaxPayroll}
         minorsPayroll={data.minorsPayroll}

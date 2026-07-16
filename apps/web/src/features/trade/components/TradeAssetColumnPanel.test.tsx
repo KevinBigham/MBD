@@ -176,4 +176,84 @@ describe('TradeAssetColumnPanel', () => {
     expect(onTogglePlayer).not.toHaveBeenCalled();
     expect(onTogglePick).not.toHaveBeenCalled();
   });
+
+  it('renders keyboard-labelled salary support controls with gross, cap, and option boundary', async () => {
+    const selected = player({
+      id: 'nym-retained',
+      firstName: 'Trade',
+      lastName: 'Target',
+      position: 'SP',
+      contract: {
+        years: 3,
+        annualSalary: 24,
+        totalValue: 72,
+        noTradeClause: false,
+        noTradeClauseType: 'none',
+        playerOption: false,
+        teamOption: true,
+        optOutYears: [],
+        signingBonus: 0,
+        buyoutAmount: 0,
+        deferredMoney: [],
+      },
+    });
+    const onChangeFinancialTerm = vi.fn();
+
+    await renderPanel({
+      filteredRoster: [selected],
+      selectedPlayerIds: [selected.id],
+      selectedPlayers: [selected],
+      financialTermsByPlayerId: {
+        [selected.id]: { retainedSalary: '3', cashConsideration: '2' },
+      },
+      playerFinancials: {
+        [selected.id]: {
+          playerId: selected.id,
+          grossAnnualSalary: 24,
+          guaranteedEndSeasonExclusive: 6,
+          contractEndSeasonExclusive: 7,
+          optionSeason: 6,
+          existingRetainedSalary: 4,
+          existingCashConsideration: 1,
+          remainingRetentionHeadroom: 8,
+          remainingCurrentSupportHeadroom: 7,
+          currentPayerOffsets: [{
+            teamId: 'bos',
+            retainedSalary: 4,
+            cashConsideration: 1,
+            total: 5,
+          }],
+          guaranteedFutureSeason: 5,
+          guaranteedFuturePayerOffsets: [{
+            teamId: 'bos',
+            retainedSalary: 4,
+            cashConsideration: 0,
+            total: 4,
+          }],
+        },
+      },
+      onChangeFinancialTerm,
+    });
+
+    expect(container.textContent).toContain('Salary Support');
+    expect(container.textContent).toContain('$24.00M gross · 3 years · $8.00M retention headroom · $7.00M current combined headroom');
+    expect(container.textContent).toContain('Prior support: $4.00M retained + $1.00M current cash.');
+    expect(container.textContent).toContain('option season 6; that option year remains uncovered');
+    expect(container.textContent).toContain('Retain per year (2 guaranteed)');
+    const retained = container.querySelector('input[aria-label="Retained salary for Trade Target"]') as HTMLInputElement;
+    const cash = container.querySelector('input[aria-label="Cash consideration for Trade Target"]') as HTMLInputElement;
+    expect(retained.value).toBe('3');
+    expect(cash.value).toBe('2');
+    expect(retained.max).toBe('5.00');
+
+    await act(async () => {
+      retained.value = '4';
+      retained.dispatchEvent(new Event('input', { bubbles: true }));
+      cash.value = '2.5';
+      cash.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    expect(onChangeFinancialTerm).toHaveBeenCalledWith(selected.id, 'retainedSalary', '4');
+    expect(onChangeFinancialTerm).toHaveBeenCalledWith(selected.id, 'cashConsideration', '2.5');
+  });
 });

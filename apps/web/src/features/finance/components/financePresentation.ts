@@ -4,6 +4,8 @@ export interface FinanceContractEntry {
   position: string;
   rosterStatus: string;
   annualSalary: number;
+  salaryCredit: number;
+  effectiveAnnualSalary: number;
   yearsRemaining: number;
   noTradeClause: boolean;
   playerOption: boolean;

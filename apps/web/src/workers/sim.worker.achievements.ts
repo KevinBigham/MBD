@@ -2,7 +2,6 @@ import type { AchievementProgress, AchievementUnlock, CeremonyMoment } from '@mb
 import {
   ACHIEVEMENT_DEFINITIONS,
   TEAMS,
-  calculateTeamPayroll,
   checkAchievements,
   getTeamById,
   isTradeDeadlineModeDay,
@@ -14,6 +13,7 @@ import { buildAdvancedStatsIndex } from './sim.worker.stats.js';
 import { queueCeremonyMoment } from './sim.worker.ceremony.js';
 import type { FullGameState } from './sim.worker.helpers.js';
 import { getDifficultyAdjustedBudget } from './sim.worker.budget.js';
+import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 
 export interface AchievementView extends AchievementDefinition {
   unlocked: boolean;
@@ -288,10 +288,7 @@ export function captureSeasonAchievementFacts(state: FullGameState) {
 
   const payrolls = TEAMS.map((team) => ({
     teamId: team.id,
-    payroll: calculateTeamPayroll(
-      team.id,
-      state.players.filter((player) => player.teamId === team.id),
-    ).totalPayroll,
+    payroll: calculateStateTeamPayroll(state, team.id).totalPayroll,
   })).sort((left, right) => right.payroll - left.payroll);
   const payrollRank = Math.max(1, payrolls.findIndex((entry) => entry.teamId === state.userTeamId) + 1);
   writeCounter(state, counterKey('payrollRank', state.season), payrollRank);

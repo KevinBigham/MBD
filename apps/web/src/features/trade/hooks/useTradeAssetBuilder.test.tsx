@@ -31,6 +31,19 @@ function player(id: string, teamId: string, position = 'SS', age = 25, rating = 
     letterGrade: 'B',
     rosterStatus: 'MLB',
     teamId,
+    contract: {
+      years: 3,
+      annualSalary: 20,
+      totalValue: 60,
+      noTradeClause: false,
+      noTradeClauseType: 'none',
+      playerOption: false,
+      teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
+    },
     stats: null,
   } as unknown as PlayerDTO;
 }
@@ -69,6 +82,7 @@ describe('useTradeAssetBuilder', () => {
   function baseOptions(overrides: Partial<HookOptions> = {}): HookOptions {
     return {
       onTradeResultChange: vi.fn(),
+      season: 4,
       targetRoster: [
         player('t-1', 'bos', 'SP', 27, 73),
         player('t-2', 'bos', 'CF', 22, 68),
@@ -158,5 +172,47 @@ describe('useTradeAssetBuilder', () => {
       { type: 'player', playerId: 't-2' },
       { type: 'ifa_pool_space', amount: 0.25 },
     ]);
+  });
+
+  it('authors and resumes exact player-linked retention and cash terms', async () => {
+    const options = baseOptions();
+    await renderHook(options);
+
+    await act(async () => {
+      latestResult?.toggleOffer('u-1');
+      latestResult?.setOfferingFinancialTerm('u-1', 'retainedSalary', '5');
+      latestResult?.setOfferingFinancialTerm('u-1', 'cashConsideration', '2');
+    });
+
+    expect(latestResult?.offeringAssets).toEqual([{
+      type: 'player',
+      playerId: 'u-1',
+      contractReference: { annualSalary: 20, contractEndSeasonExclusive: 7 },
+      retainedSalary: { annualAmount: 5, startSeason: 4, endSeasonExclusive: 7 },
+      cashConsideration: { amount: 2, season: 4 },
+    }]);
+
+    await act(async () => {
+      latestResult?.applyTradeBuilderSelection({
+        offeringPlayerIds: ['u-2'],
+        requestingPlayerIds: [],
+        offeringDraftPicks: [],
+        requestingDraftPicks: [],
+        offeringIFAAmount: '',
+        requestingIFAAmount: '',
+        offeringFinancialTerms: {
+          'u-2': { retainedSalary: '4.5', cashConsideration: '1.25' },
+        },
+      });
+    });
+
+    expect(latestResult?.offeringFinancialTerms).toEqual({
+      'u-2': { retainedSalary: '4.5', cashConsideration: '1.25' },
+    });
+    expect(latestResult?.offeringAssets[0]).toMatchObject({
+      playerId: 'u-2',
+      retainedSalary: { annualAmount: 4.5 },
+      cashConsideration: { amount: 1.25 },
+    });
   });
 });

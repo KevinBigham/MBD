@@ -739,7 +739,7 @@ describe('PBT: Finance Invariants', () => {
     fc.assert(
       fc.property(arbSeed, arbTeamId, (seed, teamId) => {
         const roster = makeRoster(seed, teamId);
-        const payroll = calculateTeamPayroll(roster, teamId);
+        const payroll = calculateTeamPayroll(teamId, roster);
         const tax = calculateLuxuryTax(payroll.mlbPayroll);
 
         if (payroll.mlbPayroll <= LUXURY_TAX_THRESHOLD) {

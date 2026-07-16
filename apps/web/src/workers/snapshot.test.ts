@@ -1843,7 +1843,7 @@ describe('snapshot helpers', () => {
       }));
     const matrix = [...HISTORICAL_MATRIX_CASES, ...fixtureCases];
 
-    expect(matrix).toHaveLength(33);
+    expect(matrix).toHaveLength(34);
     expect(matrix.map(({ version }) => version)).toEqual(supportedVersions);
 
     for (const entry of matrix) {

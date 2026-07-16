@@ -1,28 +1,35 @@
 import { Badge } from '@mbd/ui';
 import { humanizeLabel } from '@/shared/lib/labels';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
-import type { TradeNegotiationView } from '@/workers/sim.worker.trade';
+import type {
+  TradeNegotiationView,
+  TradePlayerFinancialProjectionView,
+} from '@/workers/sim.worker.trade';
 import { buildTradeAssetLabel } from './tradePresentation';
 
 interface TradeNegotiationSummaryCardProps {
   active: boolean;
+  financialProjectionByPlayerId?: (playerId: string) => TradePlayerFinancialProjectionView | undefined;
   negotiation: TradeNegotiationView;
   onResume: () => void;
   playerById: (id: string) => PlayerDTO | undefined;
+  userTeamId?: string;
 }
 
 export default function TradeNegotiationSummaryCard({
   active,
+  financialProjectionByPlayerId = () => undefined,
   negotiation,
   onResume,
   playerById,
+  userTeamId = '',
 }: TradeNegotiationSummaryCardProps) {
   const lastLine = negotiation.dialogue.at(-1)?.text ?? 'The front office is waiting on your next move.';
   const offeringLabels = negotiation.proposal.offeringAssets
-    .map((asset) => buildTradeAssetLabel(asset, playerById))
+    .map((asset) => buildTradeAssetLabel(asset, playerById, financialProjectionByPlayerId, negotiation.teamId))
     .slice(0, 3);
   const requestingLabels = negotiation.proposal.requestingAssets
-    .map((asset) => buildTradeAssetLabel(asset, playerById))
+    .map((asset) => buildTradeAssetLabel(asset, playerById, financialProjectionByPlayerId, userTeamId))
     .slice(0, 3);
 
   return (

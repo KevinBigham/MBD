@@ -2,13 +2,20 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseGameSnapshot, type AwardHistoryEntry, type GameSnapshot } from '@mbd/contracts';
+import {
+  parseGameSnapshot,
+  type AwardHistoryEntry,
+  type GameSnapshot,
+  type PersistentTradeOffer,
+} from '@mbd/contracts';
 import {
   buildRosterState,
   createDefaultDraftPickOwnership,
   createFreeAgencyMarket,
   createOffseasonState,
+  derivePlayerTradeSalaryResponsibility,
   evaluatePlayerTradeValue,
+  getRemainingIFABudget,
   MAX_CONTRACT_YEARS,
   OFFSEASON_PHASES,
   type GameBoxScore,
@@ -43,6 +50,7 @@ import {
   setState,
 } from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
+import { calculateStateTeamPayroll, stateTradeFinanceSeason } from './sim.worker.tradeFinance';
 import { refreshTickerFeed } from './sim.worker.ticker';
 import {
   applyOffseasonNarrativeHooks,
@@ -1200,6 +1208,144 @@ describe('sim worker narrative APIs', () => {
     expect(resolveReview!.narrative).toContain('accepted');
     expect(requireState().tradeState.negotiations).toHaveLength(0);
     expect(requireState().tradeState.tradeHistory.length).toBeGreaterThan(0);
+  });
+
+  it('fences complete negotiation counter packages and preserves legal financial terms through reload', () => {
+    startGame(18061, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 75;
+    state.gmPersonalities.set('bos', 'aggressive');
+    const userPlayers = state.players
+      .filter((player) => player.teamId === state.userTeamId && player.rosterStatus === 'MLB')
+      .sort((left, right) =>
+        evaluatePlayerTradeValue(left).overall - evaluatePlayerTradeValue(right).overall
+        || left.id.localeCompare(right.id),
+      );
+    const counterpartPlayers = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')
+      .sort((left, right) =>
+        evaluatePlayerTradeValue(left).overall - evaluatePlayerTradeValue(right).overall
+        || left.id.localeCompare(right.id),
+      );
+    const resumableOffered = userPlayers[0]!;
+    const acceptedOffered = userPlayers.at(-1)!;
+    const acceptedRequested = counterpartPlayers[0]!;
+    const resumableRequested = counterpartPlayers.slice(-3);
+    for (const player of [resumableOffered, acceptedOffered]) {
+      player.contract = {
+        ...player.contract,
+        annualSalary: 20,
+        totalValue: 60,
+        years: 3,
+        playerOption: false,
+        teamOption: false,
+      };
+    }
+    state.tradeState.negotiations = [{
+      id: 'negotiation-financial-counter',
+      phase: 'pending',
+      proposal: {
+        fromTeamId: state.userTeamId,
+        toTeamId: 'bos',
+        offering: [resumableOffered.id],
+        requesting: resumableRequested.map((player) => player.id),
+        offeringAssets: [{ type: 'player', playerId: resumableOffered.id }],
+        requestingAssets: resumableRequested.map((player) => ({
+          type: 'player' as const,
+          playerId: player.id,
+        })),
+        valuationGap: 0,
+      },
+      context: {
+        currentDay: state.day,
+        fromTeamId: state.userTeamId,
+        toTeamId: 'bos',
+        protectedPlayerIds: [],
+        unavailablePlayerIds: [],
+      },
+      counterOffers: [],
+      roundsCompleted: 0,
+      expiresAtDay: state.day + 2,
+      dialogue: [{ speaker: 'rival_gm', text: 'The framework is still open.', tone: 'measured' }],
+      relationshipChange: 0,
+    }];
+    const financialAsset = {
+      type: 'player' as const,
+      playerId: resumableOffered.id,
+      contractReference: {
+        annualSalary: 20,
+        contractEndSeasonExclusive: state.season + 3,
+      },
+      retainedSalary: {
+        annualAmount: 1,
+        startSeason: state.season,
+        endSeasonExclusive: state.season + 3,
+      },
+    };
+    const beforeMalformed = JSON.stringify(api.exportSnapshot());
+    const rngBeforeMalformed = structuredClone(state.rng.getState());
+
+    const malformed = api.advanceNegotiation('negotiation-financial-counter', {
+      offeringAssets: [{
+        ...financialAsset,
+        cashConsideration: { amount: 1.005, season: state.season },
+      }],
+      requestingAssets: resumableRequested.map((player) => ({
+        type: 'player' as const,
+        playerId: player.id,
+      })),
+    });
+
+    expect(malformed).toMatchObject({
+      success: false,
+      decision: 'rejected',
+      flowStateChanged: false,
+    });
+    expect(malformed.message).toContain('at most two decimal places');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(beforeMalformed);
+    expect(requireState().rng.getState()).toEqual(rngBeforeMalformed);
+
+    const advanced = api.advanceNegotiation('negotiation-financial-counter', {
+      offeringAssets: [financialAsset],
+      requestingAssets: resumableRequested.map((player) => ({
+        type: 'player' as const,
+        playerId: player.id,
+      })),
+    });
+    expect(advanced).toMatchObject({
+      success: false,
+      decision: 'rejected',
+      flowStateChanged: true,
+    });
+    expect(advanced.negotiation?.proposal.offeringAssets).toContainEqual(financialAsset);
+
+    const durable = structuredClone(api.exportSnapshot());
+    expect(api.importSnapshot(durable).success).toBe(true);
+    expect(api.getNegotiation('negotiation-financial-counter')?.proposal.offeringAssets)
+      .toContainEqual(financialAsset);
+
+    const acceptedFinancialAsset = {
+      ...financialAsset,
+      playerId: acceptedOffered.id,
+      retainedSalary: { ...financialAsset.retainedSalary, annualAmount: 5 },
+      cashConsideration: { amount: 2, season: state.season },
+    };
+    const accepted = api.advanceNegotiation('negotiation-financial-counter', {
+      offeringAssets: [acceptedFinancialAsset],
+      requestingAssets: [{ type: 'player', playerId: acceptedRequested.id }],
+    });
+    expect(accepted).toMatchObject({
+      success: true,
+      decision: 'accepted',
+      tradeExecuted: true,
+      negotiation: null,
+    });
+    const history = requireState().tradeState.tradeHistory.find((entry) =>
+      entry.offeringAssets.some((asset) =>
+        asset.type === 'player' && asset.playerId === acceptedOffered.id));
+    expect(history?.offeringAssets).toContainEqual(acceptedFinancialAsset);
+    expect(requireState().players.find((player) => player.id === acceptedOffered.id)?.teamId).toBe('bos');
   });
 
   it('returns negotiation review evidence for rejected invalid roster packages', () => {
@@ -4245,7 +4391,7 @@ describe('sim worker narrative APIs', () => {
     expect(result.success).toBe(true);
     expect(api.getRosterPlan().lineupPlayerIds.slice(0, lineupPlayerIds.length)).toEqual(lineupPlayerIds);
     expect(api.getRosterPlan().rotationPlayerIds.slice(0, rotationPlayerIds.length)).toEqual(rotationPlayerIds);
-    expect(snapshot.schemaVersion).toBe(34);
+    expect(snapshot.schemaVersion).toBe(35);
     expect(snapshot.franchise.dayOne.openingDayPlan?.lineupPlayerIds.slice(0, lineupPlayerIds.length)).toEqual(lineupPlayerIds);
     expect(snapshot.franchise.dayOne.openingDayPlan?.rotationPlayerIds.slice(0, rotationPlayerIds.length)).toEqual(rotationPlayerIds);
   });
@@ -5439,6 +5585,127 @@ describe('sim worker narrative APIs', () => {
     api.advanceOffseason();
     expect(requireState().offseasonState?.phaseResults.nonTenderedPlayers).toEqual(nonTendered);
     expect(requireState().offseasonState?.phaseResults.tenderedPlayers).toEqual(tendered);
+  });
+
+  it('keeps multi-year retention authoritative through the real clock, non-tender, rollover, and expiry', () => {
+    startGame(3331, 'nym');
+    const state = requireState();
+    const cutCandidate = state.players.find((player) =>
+      player.teamId === 'bos' && player.rosterStatus === 'MLB');
+    expect(cutCandidate).toBeTruthy();
+
+    const agreementStartSeason = state.season;
+    state.serviceTime.set(cutCandidate!.id, 4);
+    cutCandidate!.serviceTimeDays = 4 * 172;
+    cutCandidate!.age = 24;
+    cutCandidate!.overallRating = 120;
+    cutCandidate!.contract = {
+      ...cutCandidate!.contract,
+      annualSalary: 20,
+      totalValue: 60,
+      years: 3,
+      playerOption: false,
+      teamOption: false,
+    };
+    state.tradeState.tradeHistory = [{
+      id: 'protected-retained-contract',
+      fromTeamId: 'nym',
+      toTeamId: 'bos',
+      offeringAssets: [{
+        type: 'player',
+        playerId: cutCandidate!.id,
+        contractReference: {
+          annualSalary: 20,
+          contractEndSeasonExclusive: agreementStartSeason + 3,
+        },
+        retainedSalary: {
+          annualAmount: 5,
+          startSeason: agreementStartSeason,
+          endSeasonExclusive: agreementStartSeason + 3,
+        },
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'Active retained obligation',
+      timestamp: `S${agreementStartSeason}D1`,
+    }];
+
+    state.phase = 'playoffs';
+    state.playoffBracket = {
+      champion: state.userTeamId,
+    } as NonNullable<typeof state.playoffBracket>;
+    expect(api.proceedToOffseason().phase).toBe('offseason');
+    state.playoffBracket = null;
+    expect(api.advanceOffseason()).not.toBeNull();
+    expect(state.players.find((player) => player.id === cutCandidate!.id)?.contract.years).toBe(2);
+    expect(calculateStateTeamPayroll(state, 'nym')).toMatchObject({
+      retainedSalaryCharges: 5,
+      cashConsiderationCharges: 0,
+      acquiredSalaryCredits: 0,
+    });
+    expect(calculateStateTeamPayroll(state, 'bos').acquiredSalaryCredits).toBe(5);
+    expect(derivePlayerTradeSalaryResponsibility(
+      state.players,
+      state.tradeState.tradeHistory,
+      cutCandidate!.id,
+      'bos',
+      stateTradeFinanceSeason(state),
+    )?.teamResponsibility).toBe(15);
+
+    state.offseasonState = {
+      ...state.offseasonState!,
+      currentPhase: 'arbitration',
+      phaseDay: 7,
+      totalDay: 10,
+    };
+    const afterEntry = api.advanceOffseason();
+    expect(afterEntry?.currentPhase).toBe('tender_nontender');
+    expect(requireState().offseasonState?.phaseResults.nonTenderedPlayers).not.toContain(cutCandidate!.id);
+    expect(requireState().offseasonState?.phaseResults.tenderedPlayers).toContain(cutCandidate!.id);
+    expect(requireState().players.find((player) => player.id === cutCandidate!.id)).toMatchObject({
+      teamId: 'bos',
+      contract: { years: 2, annualSalary: 20 },
+    });
+    expect(requireState().tradeState.tradeHistory).toHaveLength(1);
+
+    state.offseasonState = { ...state.offseasonState!, completed: true };
+    expect(api.startNextSeason()).toMatchObject({
+      season: agreementStartSeason + 1,
+      phase: 'preseason',
+    });
+    expect(requireState().tradeState.tradeHistory).toHaveLength(1);
+    expect(calculateStateTeamPayroll(requireState(), 'nym').retainedSalaryCharges).toBe(5);
+    expect(calculateStateTeamPayroll(requireState(), 'bos').acquiredSalaryCredits).toBe(5);
+
+    for (const expectedYears of [1, 0]) {
+      const next = requireState();
+      next.phase = 'playoffs';
+      next.playoffBracket = {
+        champion: next.userTeamId,
+      } as NonNullable<typeof next.playoffBracket>;
+      expect(api.proceedToOffseason().phase).toBe('offseason');
+      next.playoffBracket = null;
+      expect(api.advanceOffseason()).not.toBeNull();
+      expect(next.players.find((player) => player.id === cutCandidate!.id)?.contract.years).toBe(expectedYears);
+      expect(next.tradeState.tradeHistory).toHaveLength(1);
+      expect(calculateStateTeamPayroll(next, 'nym').retainedSalaryCharges).toBe(expectedYears > 0 ? 5 : 0);
+      if (expectedYears > 0) {
+        expect(calculateStateTeamPayroll(next, 'bos').acquiredSalaryCredits).toBe(5);
+        expect(derivePlayerTradeSalaryResponsibility(
+          next.players,
+          next.tradeState.tradeHistory,
+          cutCandidate!.id,
+          'bos',
+          stateTradeFinanceSeason(next),
+        )?.teamResponsibility).toBe(15);
+      }
+      next.offseasonState = { ...next.offseasonState!, completed: true };
+      api.startNextSeason();
+      expect(requireState().tradeState.tradeHistory).toHaveLength(1);
+    }
+
+    expect(requireState().season).toBe(agreementStartSeason + 3);
+    expect(calculateStateTeamPayroll(requireState(), 'nym').retainedSalaryCharges).toBe(0);
   });
 
   it('records arbitration results and exposes formatted transaction groups for the offseason ledger', () => {
@@ -7344,6 +7611,455 @@ describe('sim worker narrative APIs', () => {
     expect(api.getBriefing(25).some((item) => item.category === 'news' && item.relatedPlayerIds.includes(offered.id))).toBe(true);
     expect(requireState().playerMorale.get(offered.id)?.score).toBeGreaterThan(baselineIncomingMorale);
     expect(requireState().playerMorale.get(requested.id)?.score).toBeLessThan(baselineOutgoingMorale);
+  });
+
+  it('executes retained salary and player-linked cash once, conserves payroll, and reloads exact terms', () => {
+    startGame(34201, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+
+    const { offer, requested, offered } = buildIncomingOffer('accept-financial-offer');
+    offered.contract = {
+      ...offered.contract,
+      annualSalary: 20,
+      totalValue: 60,
+      years: 3,
+      playerOption: false,
+      teamOption: false,
+    };
+    const financialAsset = {
+      type: 'player' as const,
+      playerId: offered.id,
+      contractReference: {
+        annualSalary: 20,
+        contractEndSeasonExclusive: state.season + 3,
+      },
+      retainedSalary: {
+        annualAmount: 5,
+        startSeason: state.season,
+        endSeasonExclusive: state.season + 3,
+      },
+      cashConsideration: {
+        amount: 2,
+        season: state.season,
+      },
+    };
+    const financialOffer: PersistentTradeOffer = {
+      ...offer,
+      offeringAssets: [financialAsset],
+    };
+    state.tradeState.pendingOffers = [financialOffer];
+
+    expect(api.getTradeOffers()[0]?.offeringAssets[0]?.detail).toContain(
+      '$20.00M gross · $5.00M/yr retained · $2.00M cash',
+    );
+
+    const result = api.respondToTradeOffer(financialOffer.id, 'accept');
+
+    expect(result).toMatchObject({ success: true, decision: 'accepted', flowStateChanged: true });
+    expect(requireState().players.find((player) => player.id === offered.id)?.teamId).toBe('nym');
+    expect(requireState().players.find((player) => player.id === requested.id)?.teamId).toBe('bos');
+    expect(requireState().tradeState.tradeHistory[0]?.offeringAssets[0]).toEqual(financialAsset);
+    expect(api.getTradeHistory()[0]?.summary).toContain('$5.00M/yr retained');
+    expect(api.getTradeHistory()[0]?.summary).toContain('$2.00M cash');
+
+    const controllerFinance = api.getFinanceOverview();
+    const controllerContract = controllerFinance.contracts.find((contract) => contract.playerId === offered.id);
+    const payerPayroll = calculateStateTeamPayroll(requireState(), 'bos');
+    expect(controllerFinance.acquiredSalaryCredits).toBe(7);
+    expect(controllerContract).toMatchObject({
+      annualSalary: 20,
+      salaryCredit: 7,
+      effectiveAnnualSalary: 13,
+    });
+    expect(payerPayroll).toMatchObject({
+      retainedSalaryCharges: 5,
+      cashConsiderationCharges: 2,
+      deadMoney: 7,
+    });
+    expect(controllerContract!.effectiveAnnualSalary + payerPayroll.deadMoney).toBe(20);
+    const exactTransactionNews = api.getNews(50).filter((item) =>
+      item.category === 'trade'
+      && item.relatedPlayerIds.includes(offered.id)
+      && item.relatedPlayerIds.includes(requested.id));
+    expect(exactTransactionNews.length).toBeGreaterThan(0);
+    expect(exactTransactionNews.every((item) =>
+      item.body.includes('Financial terms:')
+      && item.body.includes('$5.00M per year')
+      && item.body.includes('$2.00M of current-season payroll reimbursement'),
+    )).toBe(true);
+
+    const durable = structuredClone(api.exportSnapshot());
+    expect(durable.schemaVersion).toBe(35);
+    expect(api.importSnapshot(durable).success).toBe(true);
+    expect(api.getFinanceOverview().contracts.find((contract) => contract.playerId === offered.id)).toMatchObject({
+      annualSalary: 20,
+      salaryCredit: 7,
+      effectiveAnnualSalary: 13,
+    });
+    expect(requireState().tradeState.tradeHistory[0]?.offeringAssets[0]).toEqual(financialAsset);
+  });
+
+  it('preserves two same-day direct financial trades through reload and rollover', () => {
+    startGame(342011, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+
+    const outgoingPlayers = state.players
+      .filter((player) => player.teamId === state.userTeamId && player.rosterStatus === 'MLB')
+      .sort((left, right) => right.overallRating - left.overallRating || left.id.localeCompare(right.id))
+      .slice(0, 2);
+    const partnerTeams = ['bos', 'chi'] as const;
+    const incomingPlayers = partnerTeams.map((teamId) => state.players
+      .filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB')
+      .sort((left, right) => left.overallRating - right.overallRating || left.id.localeCompare(right.id))[0]!);
+    expect(outgoingPlayers).toHaveLength(2);
+    expect(incomingPlayers.every(Boolean)).toBe(true);
+
+    const retainedAmounts = [3, 4] as const;
+    for (const [index, player] of outgoingPlayers.entries()) {
+      player.age = 24;
+      player.overallRating = 400 - index;
+      player.potentialRating = 400 - index;
+      player.contract = {
+        ...player.contract,
+        annualSalary: 20,
+        totalValue: 60,
+        years: 3,
+        playerOption: false,
+        teamOption: false,
+      };
+      incomingPlayers[index]!.overallRating = 100 + index;
+      incomingPlayers[index]!.potentialRating = 100 + index;
+      incomingPlayers[index]!.contract = {
+        ...incomingPlayers[index]!.contract,
+        annualSalary: 50,
+        totalValue: 150,
+        years: 3,
+        playerOption: false,
+        teamOption: false,
+      };
+    }
+
+    for (const [index, player] of outgoingPlayers.entries()) {
+      const result = api.startNegotiation(
+        [{
+          type: 'player',
+          playerId: player.id,
+          contractReference: {
+            annualSalary: 20,
+            contractEndSeasonExclusive: state.season + 3,
+          },
+          retainedSalary: {
+            annualAmount: retainedAmounts[index]!,
+            startSeason: state.season,
+            endSeasonExclusive: state.season + 3,
+          },
+          cashConsideration: {
+            amount: 1,
+            season: state.season,
+          },
+        }],
+        [{ type: 'player', playerId: incomingPlayers[index]!.id }],
+        partnerTeams[index]!,
+      );
+      if (!result.success) {
+        throw new Error(`Same-day financial trade ${index + 1} was rejected: ${result.message}`);
+      }
+      expect(result).toMatchObject({ success: true, decision: 'accepted', tradeExecuted: true });
+    }
+
+    const historyBeforeReload = structuredClone(requireState().tradeState.tradeHistory);
+    expect(historyBeforeReload).toHaveLength(2);
+    expect(new Set(historyBeforeReload.map((entry) => entry.id)).size).toBe(2);
+    expect(historyBeforeReload.every((entry) => entry.timestamp === `S${state.season}D60`)).toBe(true);
+    for (const player of outgoingPlayers) {
+      expect(historyBeforeReload.some((entry) => entry.offeringAssets.some((asset) =>
+        asset.type === 'player' && asset.playerId === player.id))).toBe(true);
+    }
+    expect(calculateStateTeamPayroll(requireState(), state.userTeamId)).toMatchObject({
+      retainedSalaryCharges: 7,
+      cashConsiderationCharges: 2,
+    });
+
+    const durable = structuredClone(api.exportSnapshot());
+    expect(api.importSnapshot(durable).success).toBe(true);
+    expect(requireState().tradeState.tradeHistory).toEqual(historyBeforeReload);
+    expect(calculateStateTeamPayroll(requireState(), state.userTeamId)).toMatchObject({
+      retainedSalaryCharges: 7,
+      cashConsiderationCharges: 2,
+    });
+
+    const reloaded = requireState();
+    reloaded.phase = 'playoffs';
+    reloaded.playoffBracket = {
+      champion: reloaded.userTeamId,
+    } as NonNullable<typeof reloaded.playoffBracket>;
+    expect(api.proceedToOffseason().phase).toBe('offseason');
+    reloaded.playoffBracket = null;
+    expect(api.advanceOffseason()).not.toBeNull();
+    reloaded.offseasonState = { ...reloaded.offseasonState!, completed: true };
+    expect(api.startNextSeason()).toMatchObject({
+      season: state.season + 1,
+      phase: 'preseason',
+    });
+    expect(requireState().tradeState.tradeHistory).toEqual(historyBeforeReload);
+    expect(calculateStateTeamPayroll(requireState(), state.userTeamId)).toMatchObject({
+      retainedSalaryCharges: 7,
+      cashConsiderationCharges: 0,
+    });
+    expect(calculateStateTeamPayroll(requireState(), 'bos').acquiredSalaryCredits).toBe(3);
+    expect(calculateStateTeamPayroll(requireState(), 'chi').acquiredSalaryCredits).toBe(4);
+  });
+
+  it('rejects an over-cap financial offer without changing snapshot or rng', () => {
+    startGame(34202, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+
+    const { offer, offered } = buildIncomingOffer('invalid-financial-offer');
+    offered.contract = {
+      ...offered.contract,
+      annualSalary: 20,
+      totalValue: 60,
+      years: 3,
+      playerOption: false,
+      teamOption: false,
+    };
+    const invalidOffer: PersistentTradeOffer = {
+      ...offer,
+      offeringAssets: [{
+        type: 'player',
+        playerId: offered.id,
+        contractReference: {
+          annualSalary: 20,
+          contractEndSeasonExclusive: state.season + 3,
+        },
+        retainedSalary: {
+          annualAmount: 9,
+          startSeason: state.season,
+          endSeasonExclusive: state.season + 3,
+        },
+        cashConsideration: {
+          amount: 2,
+          season: state.season,
+        },
+      }],
+    };
+    state.tradeState.pendingOffers = [invalidOffer];
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = structuredClone(requireState().rng.getState());
+
+    const result = api.respondToTradeOffer(invalidOffer.id, 'accept');
+
+    expect(result).toMatchObject({
+      success: false,
+      decision: 'rejected',
+      flowStateChanged: false,
+    });
+    expect(result.message).toContain('cannot exceed 50%');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(requireState().rng.getState()).toEqual(rngBefore);
+  });
+
+  it('shows return-to-payer Finance responsibility at gross while preserving the payer charge', () => {
+    startGame(34204, 'nym');
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === state.userTeamId
+      && candidate.rosterStatus === 'MLB')!;
+    player.contract = {
+      ...player.contract,
+      annualSalary: 20,
+      totalValue: 60,
+      years: 3,
+      playerOption: false,
+      teamOption: false,
+    };
+    state.tradeState.tradeHistory = [{
+      id: 'returned-to-payer',
+      fromTeamId: state.userTeamId,
+      toTeamId: 'bos',
+      offeringAssets: [{
+        type: 'player',
+        playerId: player.id,
+        contractReference: {
+          annualSalary: 20,
+          contractEndSeasonExclusive: state.season + 3,
+        },
+        retainedSalary: {
+          annualAmount: 5,
+          startSeason: state.season,
+          endSeasonExclusive: state.season + 3,
+        },
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'Player later returned to the retaining payer',
+      timestamp: `S${state.season}D${state.day}`,
+    }];
+
+    const finance = api.getFinanceOverview();
+    expect(finance.contracts.find((contract) => contract.playerId === player.id)).toMatchObject({
+      annualSalary: 20,
+      salaryCredit: 0,
+      effectiveAnnualSalary: 20,
+    });
+    expect(finance.acquiredSalaryCredits).toBe(0);
+    expect(finance.retainedSalaryCharges).toBe(5);
+    expect(finance.totalPayroll).toBe(calculateStateTeamPayroll(state, state.userTeamId).totalPayroll);
+  });
+
+  it.each([
+    'duplicate draft pick',
+    'split IFA over balance',
+    'aggregate retained-contract limit',
+  ] as const)('rejects %s before any accepted-trade mutation or RNG use', (scenario) => {
+    startGame(34203, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+    const { offer, requested, offered } = buildIncomingOffer(`invalid-${scenario}`);
+    let offeringAssets: PersistentTradeOffer['offeringAssets'];
+
+    if (scenario === 'duplicate draft pick') {
+      state.draftState.pickOwnership = createDefaultDraftPickOwnership(
+        Array.from(new Set(state.players.map((player) => player.teamId).filter(Boolean))),
+        state.season,
+      );
+      const owned = state.draftState.pickOwnership.find((pick) =>
+        pick.currentTeamId === offer.fromTeamId && !pick.forfeited,
+      );
+      expect(owned).toBeDefined();
+      const pick = {
+        type: 'draft_pick' as const,
+        season: owned!.season,
+        round: owned!.round,
+        originalTeamId: owned!.originalTeamId,
+      };
+      offeringAssets = [pick, { ...pick }];
+    } else if (scenario === 'split IFA over balance') {
+      state.internationalScoutingState.budgets.set(offer.fromTeamId, {
+        baseAllocation: 5,
+        tradedIn: 0,
+        tradedOut: 0,
+        committed: 0,
+      });
+      const budget = state.internationalScoutingState.budgets.get(offer.fromTeamId)!;
+      const remaining = getRemainingIFABudget(budget);
+      const splitAmount = Math.floor(remaining * 60) / 100;
+      expect(splitAmount).toBeGreaterThan(0);
+      expect(splitAmount).toBeLessThanOrEqual(remaining);
+      expect(splitAmount * 2).toBeGreaterThan(remaining);
+      offeringAssets = [
+        { type: 'ifa_pool_space', amount: splitAmount },
+        { type: 'ifa_pool_space', amount: splitAmount },
+      ];
+    } else {
+      offered.contract = {
+        ...offered.contract,
+        annualSalary: 20,
+        totalValue: 60,
+        years: 3,
+        playerOption: false,
+        teamOption: false,
+      };
+      const makeFinancialAsset = (player: GeneratedPlayer, amount = 3) => ({
+        type: 'player' as const,
+        playerId: player.id,
+        contractReference: {
+          annualSalary: player.contract.annualSalary,
+          contractEndSeasonExclusive: state.season + player.contract.years,
+        },
+        retainedSalary: {
+          annualAmount: amount,
+          startSeason: state.season,
+          endSeasonExclusive: state.season + player.contract.years,
+        },
+      });
+      const controlled = state.players.filter((player) => player.teamId === offer.fromTeamId
+        && player.rosterStatus === 'MLB'
+        && player.contract.years >= 2
+        && player.contract.annualSalary > 0
+        && player.id !== offered.id).slice(0, 3);
+      expect(controlled).toHaveLength(3);
+      const proposed = controlled[0]!;
+      proposed.contract = {
+        ...proposed.contract,
+        annualSalary: 20,
+        totalValue: 20 * proposed.contract.years,
+        playerOption: false,
+        teamOption: false,
+      };
+      state.tradeState.tradeHistory = controlled.slice(1).map((player, index) => ({
+        id: `existing-retention-${index}`,
+        fromTeamId: offer.fromTeamId,
+        toTeamId: state.userTeamId,
+        offeringAssets: [makeFinancialAsset(player)],
+        requestingAssets: [],
+        fairnessScore: 0,
+        summary: 'Existing retained obligation',
+        timestamp: `S${state.season}D${state.day}`,
+      }));
+      offeringAssets = [makeFinancialAsset(offered), makeFinancialAsset(proposed)];
+    }
+
+    state.tradeState.pendingOffers = [{
+      ...offer,
+      offeringAssets,
+      requestingAssets: [{ type: 'player', playerId: requested.id }],
+    }];
+    const snapshotBefore = JSON.stringify(api.exportSnapshot());
+    const rngBefore = structuredClone(state.rng.getState());
+
+    const result = api.respondToTradeOffer(offer.id, 'accept');
+
+    expect(result).toMatchObject({ success: false, decision: 'rejected', flowStateChanged: false });
+    if (scenario === 'aggregate retained-contract limit') {
+      expect(result.message).toContain('maximum number of retained contracts');
+    }
+    expect(JSON.stringify(api.exportSnapshot())).toBe(snapshotBefore);
+    expect(requireState().rng.getState()).toEqual(rngBefore);
+  });
+
+  it('rejects sub-cent public worker money with an exact valid snapshot and RNG no-op', () => {
+    startGame(34205, 'nym');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+    const { offer, requested, offered } = buildIncomingOffer('sub-cent-direct-call');
+    offered.contract = {
+      ...offered.contract,
+      annualSalary: 20,
+      totalValue: 60,
+      years: 3,
+      playerOption: false,
+      teamOption: false,
+    };
+    const malformedAsset = {
+      type: 'player' as const,
+      playerId: offered.id,
+      contractReference: {
+        annualSalary: 20,
+        contractEndSeasonExclusive: state.season + 3,
+      },
+      cashConsideration: { amount: 1.005, season: state.season },
+    };
+    const snapshotBefore = JSON.stringify(api.exportSnapshot());
+    const rngBefore = structuredClone(state.rng.getState());
+
+    const result = api.startNegotiation(
+      [malformedAsset],
+      [{ type: 'player', playerId: requested.id }],
+      offer.fromTeamId,
+    );
+
+    expect(result).toMatchObject({ success: false, decision: 'rejected', flowStateChanged: false });
+    expect(result.message).toContain('at most two decimal places');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(snapshotBefore);
+    expect(requireState().rng.getState()).toEqual(rngBefore);
   });
 
   it('carries accepted trade dialogue into consequence stories and the press room', () => {

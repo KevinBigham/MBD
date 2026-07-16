@@ -17,7 +17,35 @@ export type ExactSaveGameplayOperation = OffseasonOperation
   | { kind: 'startDraft' }
   | { kind: 'makeDraftPick'; prospectId: string }
   | { kind: 'signDraftPick'; playerId: string; bonusAmount: number }
-  | { kind: 'simulateRemainingDraft' };
+  | { kind: 'simulateRemainingDraft' }
+  | {
+    kind: 'startTradeNegotiation';
+    offeringAssets: import('@mbd/contracts').TradeAsset[];
+    requestingAssets: import('@mbd/contracts').TradeAsset[];
+    toTeamId: string;
+  }
+  | {
+    kind: 'advanceTradeNegotiation';
+    negotiationId: string;
+    tradePackage: {
+      offeringAssets: import('@mbd/contracts').TradeAsset[];
+      requestingAssets: import('@mbd/contracts').TradeAsset[];
+    };
+  }
+  | {
+    kind: 'resolveTradeNegotiation';
+    negotiationId: string;
+    action: 'accept' | 'reject';
+  }
+  | {
+    kind: 'respondToTradeOffer';
+    offerId: string;
+    response: 'accept' | 'decline' | 'counter';
+    counterPackage?: {
+      offeringAssets: import('@mbd/contracts').TradeAsset[];
+      requestingAssets: import('@mbd/contracts').TradeAsset[];
+    };
+  };
 
 export interface ExactOffseasonMutationWorker<Result>
   extends ExactSaveMutationWorker<Result, ExactSaveGameplayOperation> {}

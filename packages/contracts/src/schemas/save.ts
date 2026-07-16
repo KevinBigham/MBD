@@ -63,8 +63,9 @@ import {
 import { MonthlyPulseStateSchema } from "./monthlyPulse.js";
 import {
   PendingTradeSchema,
-  PersistentNegotiationStateSchema,
+  PersistentNegotiationStateV34Schema,
   TradeStateSchema,
+  TradeStateV34Schema,
 } from "./trade.js";
 import {
   AchievementStateSchema,
@@ -516,7 +517,7 @@ export const PerformanceDiagnosticsSchema = z.object({
 });
 export type PerformanceDiagnostics = z.infer<typeof PerformanceDiagnosticsSchema>;
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 34;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 35;
 export const MINIMUM_SUPPORTED_GAME_SNAPSHOT_VERSION = 2;
 
 const Rule5SessionSchema = z.unknown().nullable();
@@ -563,11 +564,15 @@ export const GameSnapshotSchema = z.object({
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
 
-const TradeStateV16Schema = TradeStateSchema.omit({
+const GameSnapshotV34BaseSchema = GameSnapshotSchema.extend({
+  tradeState: TradeStateV34Schema,
+});
+
+const TradeStateV16Schema = TradeStateV34Schema.omit({
   negotiations: true,
   multiTeamPendingTrades: true,
 }).extend({
-  negotiations: z.array(PersistentNegotiationStateSchema).default([]),
+  negotiations: z.array(PersistentNegotiationStateV34Schema).default([]),
   multiTeamPendingTrades: z.array(PendingTradeSchema).default([]),
 });
 
@@ -578,7 +583,7 @@ export const GameSnapshotV16Schema = GameSnapshotSchema.extend({
 });
 export type GameSnapshotV16 = z.infer<typeof GameSnapshotV16Schema>;
 
-export const GameSnapshotV17Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV17Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(17),
   players: z.array(SnapshotPlayerV17Schema),
   franchise: FranchiseStateV17Schema,
@@ -590,99 +595,104 @@ export type GameSnapshotV17 = z.infer<typeof GameSnapshotV17Schema>;
 // landed in v19, arbitration broadcast enum additions landed in v20, the trade
 // deadline broadcast enum additions landed in v21, and the team-identity moment
 // store landed in v22.
-export const GameSnapshotV18Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV18Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(18),
   players: z.array(SnapshotPlayerV17Schema),
 });
 export type GameSnapshotV18 = z.infer<typeof GameSnapshotV18Schema>;
 
-export const GameSnapshotV19Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV19Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(19),
 });
 export type GameSnapshotV19 = z.infer<typeof GameSnapshotV19Schema>;
 
-export const GameSnapshotV20Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV20Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(20),
 });
 export type GameSnapshotV20 = z.infer<typeof GameSnapshotV20Schema>;
 
-export const GameSnapshotV21Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV21Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(21),
   narrative: NarrativeSnapshotV21Schema,
 });
 export type GameSnapshotV21 = z.infer<typeof GameSnapshotV21Schema>;
 
-export const GameSnapshotV22Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV22Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(22),
 });
 export type GameSnapshotV22 = z.infer<typeof GameSnapshotV22Schema>;
 
-export const GameSnapshotV23Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV23Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(23),
 });
 export type GameSnapshotV23 = z.infer<typeof GameSnapshotV23Schema>;
 
-export const GameSnapshotV24Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV24Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(24),
 });
 export type GameSnapshotV24 = z.infer<typeof GameSnapshotV24Schema>;
 
-export const GameSnapshotV25Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV25Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(25),
 });
 export type GameSnapshotV25 = z.infer<typeof GameSnapshotV25Schema>;
 
-export const GameSnapshotV26Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV26Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(26),
 });
 export type GameSnapshotV26 = z.infer<typeof GameSnapshotV26Schema>;
 
-export const GameSnapshotV27Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV27Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(27),
 });
 export type GameSnapshotV27 = z.infer<typeof GameSnapshotV27Schema>;
 
-export const GameSnapshotV28Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV28Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(28),
 });
 export type GameSnapshotV28 = z.infer<typeof GameSnapshotV28Schema>;
 
-export const GameSnapshotV29Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV29Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(29),
 });
 export type GameSnapshotV29 = z.infer<typeof GameSnapshotV29Schema>;
 
-export const GameSnapshotV30Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV30Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(30),
 });
 export type GameSnapshotV30 = z.infer<typeof GameSnapshotV30Schema>;
 
-export const GameSnapshotV31Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV31Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(31),
 });
 export type GameSnapshotV31 = z.infer<typeof GameSnapshotV31Schema>;
 
-export const GameSnapshotV32Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV32Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(32),
 });
 export type GameSnapshotV32 = z.infer<typeof GameSnapshotV32Schema>;
 
-export const GameSnapshotV33Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV33Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(33),
 });
 export type GameSnapshotV33 = z.infer<typeof GameSnapshotV33Schema>;
 
-export const GameSnapshotV12Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV34Schema = GameSnapshotV34BaseSchema.extend({
+  schemaVersion: z.literal(34),
+});
+export type GameSnapshotV34 = z.infer<typeof GameSnapshotV34Schema>;
+
+export const GameSnapshotV12Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(12),
 });
 export type GameSnapshotV12 = z.infer<typeof GameSnapshotV12Schema>;
 
-export const GameSnapshotV13Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV13Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(13),
 });
 export type GameSnapshotV13 = z.infer<typeof GameSnapshotV13Schema>;
 
-export const GameSnapshotV14Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV14Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(14),
 });
 export type GameSnapshotV14 = z.infer<typeof GameSnapshotV14Schema>;
@@ -695,7 +705,7 @@ export const GameSnapshotV15Schema = GameSnapshotSchema.extend({
 });
 export type GameSnapshotV15 = z.infer<typeof GameSnapshotV15Schema>;
 
-export const GameSnapshotV11Schema = GameSnapshotSchema.extend({
+export const GameSnapshotV11Schema = GameSnapshotV34BaseSchema.extend({
   schemaVersion: z.literal(11),
 });
 export type GameSnapshotV11 = z.infer<typeof GameSnapshotV11Schema>;
@@ -724,7 +734,7 @@ export const GameSnapshotV10Schema = z.object({
   coachFreeAgentPool: z.array(CoachSchema),
   narrative: NarrativeSnapshotSchema,
   monthlyPulse: MonthlyPulseStateSchema,
-  tradeState: TradeStateSchema,
+  tradeState: TradeStateV34Schema,
   internationalScoutingState: InternationalScoutingStateSchema,
   draftState: DraftStateSchema,
   minorLeagueState: MinorLeagueStateSchema,
@@ -757,7 +767,7 @@ export const GameSnapshotV9Schema = z.object({
   coachingStaffs: z.array(CoachingStaffEntrySchema),
   coachFreeAgentPool: z.array(CoachSchema),
   narrative: NarrativeSnapshotSchema,
-  tradeState: TradeStateSchema,
+  tradeState: TradeStateV34Schema,
   internationalScoutingState: InternationalScoutingStateSchema,
   draftState: DraftStateSchema,
   minorLeagueState: MinorLeagueStateSchema,
@@ -790,7 +800,7 @@ export const GameSnapshotV8Schema = z.object({
   coachingStaffs: z.array(CoachingStaffEntrySchema),
   coachFreeAgentPool: z.array(CoachSchema),
   narrative: NarrativeSnapshotSchema,
-  tradeState: TradeStateSchema,
+  tradeState: TradeStateV34Schema,
   internationalScoutingState: InternationalScoutingStateSchema,
   draftState: DraftStateSchema,
   minorLeagueState: MinorLeagueStateSchema,
@@ -821,7 +831,7 @@ export const GameSnapshotV7Schema = z.object({
   news: z.array(NewsItemSchema),
   rosterStates: z.array(RosterStateEntrySchema),
   narrative: NarrativeSnapshotSchema,
-  tradeState: TradeStateSchema,
+  tradeState: TradeStateV34Schema,
   internationalScoutingState: InternationalScoutingStateSchema,
   draftState: DraftStateV7Schema,
   minorLeagueState: MinorLeagueStateV7Schema,
@@ -852,7 +862,7 @@ export const GameSnapshotV6Schema = z.object({
   news: z.array(NewsItemSchema),
   rosterStates: z.array(RosterStateEntrySchema),
   narrative: NarrativeSnapshotSchema,
-  tradeState: TradeStateSchema,
+  tradeState: TradeStateV34Schema,
   rule5Session: Rule5SessionSchema,
   rule5Obligations: z.array(Rule5StateEntrySchema),
   rule5OfferBackStates: z.array(Rule5StateEntrySchema),
@@ -880,7 +890,7 @@ export const GameSnapshotV5Schema = z.object({
   news: z.array(NewsItemSchema),
   rosterStates: z.array(RosterStateEntrySchema),
   narrative: NarrativeSnapshotSchema,
-  tradeState: TradeStateSchema,
+  tradeState: TradeStateV34Schema,
 });
 export type GameSnapshotV5 = z.infer<typeof GameSnapshotV5Schema>;
 
@@ -905,7 +915,7 @@ export const GameSnapshotV4Schema = z.object({
   news: z.array(NewsItemSchema),
   rosterStates: z.array(RosterStateEntrySchema),
   narrative: NarrativeSnapshotV4Schema,
-  tradeState: TradeStateSchema,
+  tradeState: TradeStateV34Schema,
 });
 export type GameSnapshotV4 = z.infer<typeof GameSnapshotV4Schema>;
 
@@ -2837,7 +2847,35 @@ function migrateGameSnapshotV33(snapshot: GameSnapshotV33): GameSnapshot {
   });
 }
 
+// v34 -> v35: permit exact player-linked retained-salary and one-season cash
+// reimbursement terms in trade assets. Existing saves have no such facts, so
+// their trade history and offers are preserved byte-for-byte apart from the
+// schema-version projection; no financial history is fabricated.
+function migrateGameSnapshotV34(snapshot: GameSnapshotV34): GameSnapshot {
+  const migrated = GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+  });
+
+  return GameSnapshotSchema.parse({
+    ...migrated,
+    performanceDiagnostics: {
+      totalSeasons: migrated.performanceDiagnostics.totalSeasons,
+      snapshotSizeBytes: estimateSnapshotSizeBytes(migrated),
+    },
+  });
+}
+
 export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 34
+  ) {
+    return migrateGameSnapshotV34(GameSnapshotV34Schema.parse(snapshotLike));
+  }
+
   if (
     typeof snapshotLike === "object" &&
     snapshotLike !== null &&

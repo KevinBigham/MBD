@@ -14,7 +14,6 @@ import {
   applyMoraleEvent,
   buildFrontOfficeBriefing,
   calculateTeamChemistry,
-  calculateTeamPayroll,
   countMatchingTraits,
   createFrontOfficeState,
   createInitialPlayerMorale,
@@ -46,6 +45,7 @@ import {
 import type { FullGameState } from './sim.worker.helpers';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers';
 import { getOwnerAlignmentDecisionScore } from './sim.worker.frontOfficeIdentity.js';
+import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 
 export interface PersonalityProfileDTO {
   playerId: string;
@@ -895,7 +895,7 @@ function archiveFinancials(state: FullGameState): SeasonArchiveEntry['financials
   return TEAMS
     .map((team) => ({
       teamId: team.id,
-      payroll: calculateTeamPayroll(team.id, getTeamPlayers(team.id)).totalPayroll,
+      payroll: calculateStateTeamPayroll(state, team.id).totalPayroll,
       // Historical finance records the raw league economic authority used for
       // that completed season, never the user-only difficulty overlay.
       budget: state.ownerState.get(team.id)?.annualBudget ?? getTeamBudget(team.id),
@@ -1102,7 +1102,7 @@ export function refreshNarrativeState(
 
     const record = state.seasonState.standings.getRecord(team.id);
     const currentOwner = state.ownerState.get(team.id) ?? createOwnerState(team.id, getTeamBudget(team.id));
-    const payroll = calculateTeamPayroll(team.id, getTeamPlayers(team.id)).totalPayroll;
+    const payroll = calculateStateTeamPayroll(state, team.id).totalPayroll;
     const chemistryScore = state.teamChemistry.get(team.id)?.score ?? 50;
 
     state.ownerState.set(

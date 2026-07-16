@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 import type { DraftPickAsset, TradeAssetFilter } from '../components/TradeAssetSelectionGrid';
 import type { TradeResultView } from '../components/TradeResultBanner';
@@ -7,12 +7,15 @@ import {
   toggleDraftPickAsset,
   tradeAssetsFromSelection,
   type TradeBuilderSelection,
+  type TradeFinancialTermsByPlayerId,
+  type TradeFinancialTermsInput,
 } from '../lib/tradeBuilderTransforms';
 
 export interface UseTradeAssetBuilderOptions {
   yourRoster: PlayerDTO[];
   targetRoster: PlayerDTO[];
   onTradeResultChange: (result: TradeResultView | null) => void;
+  season?: number;
 }
 
 export interface UseTradeAssetBuilderResult {
@@ -22,6 +25,8 @@ export interface UseTradeAssetBuilderResult {
   requestingPicks: DraftPickAsset[];
   offeringIFAAmount: string;
   requestingIFAAmount: string;
+  offeringFinancialTerms: TradeFinancialTermsByPlayerId;
+  requestingFinancialTerms: TradeFinancialTermsByPlayerId;
   yourAssetFilter: TradeAssetFilter;
   targetAssetFilter: TradeAssetFilter;
   filteredYourRoster: PlayerDTO[];
@@ -32,7 +37,9 @@ export interface UseTradeAssetBuilderResult {
   applyTradeBuilderSelection: (selection: TradeBuilderSelection) => void;
   resetTradeAssets: () => void;
   setOfferingIFAAmount: (amount: string) => void;
+  setOfferingFinancialTerm: (playerId: string, field: keyof TradeFinancialTermsInput, value: string) => void;
   setRequestingIFAAmount: (amount: string) => void;
+  setRequestingFinancialTerm: (playerId: string, field: keyof TradeFinancialTermsInput, value: string) => void;
   setTargetAssetFilter: (filter: TradeAssetFilter) => void;
   setYourAssetFilter: (filter: TradeAssetFilter) => void;
   toggleOffer: (playerId: string) => void;
@@ -45,6 +52,7 @@ export function useTradeAssetBuilder({
   yourRoster,
   targetRoster,
   onTradeResultChange,
+  season = 1,
 }: UseTradeAssetBuilderOptions): UseTradeAssetBuilderResult {
   const [offering, setOffering] = useState<string[]>([]);
   const [requesting, setRequesting] = useState<string[]>([]);
@@ -52,6 +60,8 @@ export function useTradeAssetBuilder({
   const [requestingPicks, setRequestingPicks] = useState<DraftPickAsset[]>([]);
   const [offeringIFAAmount, setOfferingIFAAmountState] = useState('');
   const [requestingIFAAmount, setRequestingIFAAmountState] = useState('');
+  const [offeringFinancialTerms, setOfferingFinancialTerms] = useState<TradeFinancialTermsByPlayerId>({});
+  const [requestingFinancialTerms, setRequestingFinancialTerms] = useState<TradeFinancialTermsByPlayerId>({});
   const [yourAssetFilter, setYourAssetFilter] = useState<TradeAssetFilter>('all');
   const [targetAssetFilter, setTargetAssetFilter] = useState<TradeAssetFilter>('all');
 
@@ -67,20 +77,26 @@ export function useTradeAssetBuilder({
 
   const toggleOffer = useCallback((playerId: string) => {
     clearTradeResult();
-    setOffering((current) => (
-      current.includes(playerId)
-        ? current.filter((item) => item !== playerId)
-        : [...current, playerId]
-    ));
+    setOffering((current) => {
+      if (!current.includes(playerId)) return [...current, playerId];
+      setOfferingFinancialTerms((terms) => {
+        const { [playerId]: _, ...remaining } = terms;
+        return remaining;
+      });
+      return current.filter((item) => item !== playerId);
+    });
   }, [clearTradeResult]);
 
   const toggleRequest = useCallback((playerId: string) => {
     clearTradeResult();
-    setRequesting((current) => (
-      current.includes(playerId)
-        ? current.filter((item) => item !== playerId)
-        : [...current, playerId]
-    ));
+    setRequesting((current) => {
+      if (!current.includes(playerId)) return [...current, playerId];
+      setRequestingFinancialTerms((terms) => {
+        const { [playerId]: _, ...remaining } = terms;
+        return remaining;
+      });
+      return current.filter((item) => item !== playerId);
+    });
   }, [clearTradeResult]);
 
   const toggleOfferingPick = useCallback((asset: DraftPickAsset) => {
@@ -103,6 +119,39 @@ export function useTradeAssetBuilder({
     setRequestingIFAAmountState(amount);
   }, [clearTradeResult]);
 
+  const updateFinancialTerm = useCallback((
+    setter: Dispatch<SetStateAction<TradeFinancialTermsByPlayerId>>,
+    playerId: string,
+    field: keyof TradeFinancialTermsInput,
+    value: string,
+  ) => {
+    clearTradeResult();
+    setter((current) => ({
+      ...current,
+      [playerId]: {
+        retainedSalary: current[playerId]?.retainedSalary ?? '',
+        cashConsideration: current[playerId]?.cashConsideration ?? '',
+        [field]: value,
+      },
+    }));
+  }, [clearTradeResult]);
+
+  const setOfferingFinancialTerm = useCallback((
+    playerId: string,
+    field: keyof TradeFinancialTermsInput,
+    value: string,
+  ) => {
+    updateFinancialTerm(setOfferingFinancialTerms, playerId, field, value);
+  }, [updateFinancialTerm]);
+
+  const setRequestingFinancialTerm = useCallback((
+    playerId: string,
+    field: keyof TradeFinancialTermsInput,
+    value: string,
+  ) => {
+    updateFinancialTerm(setRequestingFinancialTerms, playerId, field, value);
+  }, [updateFinancialTerm]);
+
   const resetTradeAssets = useCallback(() => {
     setOffering([]);
     setRequesting([]);
@@ -110,6 +159,8 @@ export function useTradeAssetBuilder({
     setRequestingPicks([]);
     setOfferingIFAAmountState('');
     setRequestingIFAAmountState('');
+    setOfferingFinancialTerms({});
+    setRequestingFinancialTerms({});
   }, []);
 
   const applyTradeBuilderSelection = useCallback((selection: TradeBuilderSelection) => {
@@ -119,6 +170,8 @@ export function useTradeAssetBuilder({
     setRequestingPicks(selection.requestingDraftPicks);
     setOfferingIFAAmountState(selection.offeringIFAAmount);
     setRequestingIFAAmountState(selection.requestingIFAAmount);
+    setOfferingFinancialTerms(selection.offeringFinancialTerms ?? {});
+    setRequestingFinancialTerms(selection.requestingFinancialTerms ?? {});
   }, []);
 
   const filteredYourRoster = useMemo(
@@ -130,12 +183,26 @@ export function useTradeAssetBuilder({
     [requesting, targetAssetFilter, targetRoster],
   );
   const offeringAssets = useMemo(
-    () => tradeAssetsFromSelection(offering, offeringPicks, offeringIFAAmount),
-    [offering, offeringIFAAmount, offeringPicks],
+    () => tradeAssetsFromSelection(
+      offering,
+      offeringPicks,
+      offeringIFAAmount,
+      offeringFinancialTerms,
+      yourRoster,
+      season,
+    ),
+    [offering, offeringFinancialTerms, offeringIFAAmount, offeringPicks, season, yourRoster],
   );
   const requestingAssets = useMemo(
-    () => tradeAssetsFromSelection(requesting, requestingPicks, requestingIFAAmount),
-    [requesting, requestingIFAAmount, requestingPicks],
+    () => tradeAssetsFromSelection(
+      requesting,
+      requestingPicks,
+      requestingIFAAmount,
+      requestingFinancialTerms,
+      targetRoster,
+      season,
+    ),
+    [requesting, requestingFinancialTerms, requestingIFAAmount, requestingPicks, season, targetRoster],
   );
 
   return {
@@ -145,6 +212,8 @@ export function useTradeAssetBuilder({
     requestingPicks,
     offeringIFAAmount,
     requestingIFAAmount,
+    offeringFinancialTerms,
+    requestingFinancialTerms,
     yourAssetFilter,
     targetAssetFilter,
     filteredYourRoster,
@@ -155,7 +224,9 @@ export function useTradeAssetBuilder({
     applyTradeBuilderSelection,
     resetTradeAssets,
     setOfferingIFAAmount,
+    setOfferingFinancialTerm,
     setRequestingIFAAmount,
+    setRequestingFinancialTerm,
     setTargetAssetFilter,
     setYourAssetFilter,
     toggleOffer,

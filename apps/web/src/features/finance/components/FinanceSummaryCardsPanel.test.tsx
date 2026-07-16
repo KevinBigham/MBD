@@ -48,6 +48,10 @@ describe('FinanceSummaryCardsPanel', () => {
           budget={210}
           budgetRoom={24.5}
           coachingPayroll={11.5}
+          retainedSalaryCharges={5}
+          cashConsiderationCharges={2}
+          releasedContractCharges={0}
+          acquiredSalaryCredits={7}
           luxuryTax={0}
           luxuryTaxPayroll={217.5}
           minorsPayroll={23.2}
@@ -76,7 +80,10 @@ describe('FinanceSummaryCardsPanel', () => {
     expect(container.textContent).toContain('--');
     expect(container.textContent).toContain('Coaching Staff');
     expect(container.textContent).toContain('$11.50M');
-    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(5);
+    expect(container.textContent).toContain('Trade Salary Support');
+    expect(container.textContent).toContain('$7.00M received');
+    expect(container.textContent).toContain('Retained out');
+    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(6);
   });
 
   it('labels a hard-difficulty overlay as effective gameplay budget and shows pressure', async () => {
@@ -86,6 +93,10 @@ describe('FinanceSummaryCardsPanel', () => {
           budget={180}
           budgetRoom={-70}
           coachingPayroll={14}
+          retainedSalaryCharges={0}
+          cashConsiderationCharges={0}
+          releasedContractCharges={0}
+          acquiredSalaryCredits={0}
           luxuryTax={3.15}
           luxuryTaxPayroll={245.75}
           minorsPayroll={20}

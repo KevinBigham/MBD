@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import TradePage from './TradePage';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useExactTradeMutationExecutor } from '@/shared/hooks/useExactTradeMutationExecutor';
 import { loadGameById, saveGameById } from '@/shared/lib/saveSystem';
 
 vi.mock('@/shared/hooks/useWorker', () => ({
@@ -13,6 +14,10 @@ vi.mock('@/shared/hooks/useWorker', () => ({
 
 vi.mock('@/shared/hooks/useGameStore', () => ({
   useGameStore: vi.fn(),
+}));
+
+vi.mock('@/shared/hooks/useExactTradeMutationExecutor', () => ({
+  useExactTradeMutationExecutor: vi.fn(),
 }));
 
 vi.mock('@/shared/lib/saveSystem', () => ({
@@ -26,6 +31,7 @@ vi.mock('@/shared/lib/saveSystem', () => ({
 
 const mockedUseWorker = vi.mocked(useWorker);
 const mockedUseGameStore = vi.mocked(useGameStore);
+const mockedUseExactTradeMutationExecutor = vi.mocked(useExactTradeMutationExecutor);
 const mockedLoadGameById = vi.mocked(loadGameById);
 const mockedSaveGameById = vi.mocked(saveGameById);
 (
@@ -90,6 +96,14 @@ function createWorkerMock({
     letterGrade: 'B',
     rosterStatus: 'MLB',
     teamId: 'nym',
+    contract: {
+      years: 3,
+      annualSalary: 12,
+      totalValue: 36,
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+    },
     stats: null,
   };
   const partnerPlayer = {
@@ -103,6 +117,14 @@ function createWorkerMock({
     letterGrade: 'A',
     rosterStatus: 'MLB',
     teamId: 'bos',
+    contract: {
+      years: 3,
+      annualSalary: 10,
+      totalValue: 30,
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+    },
     stats: null,
   };
   const thirdTeamPlayer = {
@@ -116,10 +138,18 @@ function createWorkerMock({
     letterGrade: 'B',
     rosterStatus: 'MLB',
     teamId: 'sea',
+    contract: {
+      years: 3,
+      annualSalary: 8,
+      totalValue: 24,
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+    },
     stats: null,
   };
 
-  return {
+  const worker = {
     isReady: true,
     getTeamRoster: vi.fn().mockImplementation(async (teamId: string) => {
       if (teamId === 'nym') {
@@ -511,6 +541,13 @@ function createWorkerMock({
     proposeTrade: vi.fn().mockResolvedValue({ decision: 'accepted', reason: 'Deal works.' }),
     respondToTradeOffer: vi.fn().mockResolvedValue({ decision: 'accepted', message: 'Accepted.' }),
   };
+  mockedUseExactTradeMutationExecutor.mockReturnValue({
+    startNegotiation: worker.startNegotiation,
+    advanceNegotiation: worker.advanceNegotiation,
+    resolveNegotiation: worker.resolveNegotiation,
+    respondToTradeOffer: worker.respondToTradeOffer,
+  });
+  return worker;
 }
 
 describe('TradePage', () => {
@@ -835,22 +872,7 @@ describe('TradePage', () => {
     expect(container.textContent).toContain('Boston Noreasters returned a counter after the fairness review.');
     expect(worker.startNegotiation).toHaveBeenCalled();
     expect(worker.getOpenNegotiations).toHaveBeenCalledTimes(2);
-    expect(worker.exportSnapshot).toHaveBeenCalled();
-    expect(mockedSaveGameById).toHaveBeenCalledWith(
-      'save-slot-1',
-      'Taylor Bennett • Tycoons • Season 4',
-      {
-        schemaVersion: 34,
-        season: 4,
-        day: 95,
-        phase: 'regular',
-      },
-      expect.objectContaining({
-        slotNumber: 1,
-        parentSaveId: null,
-        isRootSave: true,
-      }),
-    );
+    expect(mockedSaveGameById).not.toHaveBeenCalled();
     expect(mockedLoadGameById).not.toHaveBeenCalled();
   });
 

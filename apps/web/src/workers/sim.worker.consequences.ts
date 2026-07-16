@@ -8,7 +8,6 @@ import {
   buildTradeAftermathChain,
   buildTradeConsequenceBundle,
   calculateTeamChemistry,
-  calculateTeamPayroll,
   comparePackages,
   createFrontOfficeState,
   createInitialPlayerMorale,
@@ -28,6 +27,7 @@ import {
 import type { FullGameState } from './sim.worker.helpers';
 import { createStableWorkerRng, getTeamPlayers } from './sim.worker.helpers';
 import { rebuildBriefing } from './sim.worker.narrative';
+import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 
 function updateFrontOffice(
   state: FullGameState,
@@ -363,7 +363,7 @@ export function applyTradeConsequences(
       (player) => player.rosterStatus === 'MLB' && !requestedIds.includes(player.id),
     ),
     userFairness: comparison.fairness,
-    payrollAfterTrade: calculateTeamPayroll(state.userTeamId, getTeamPlayers(state.userTeamId)).totalPayroll,
+    payrollAfterTrade: calculateStateTeamPayroll(state, state.userTeamId).totalPayroll,
     payrollTarget: ownerState.expectations.payrollTarget,
   });
   injectTradeDialogueStory(
@@ -422,7 +422,7 @@ export function applySigningConsequences(
     annualSalary,
     years,
     marketValue,
-    payrollAfterSigning: calculateTeamPayroll(state.userTeamId, getTeamPlayers(state.userTeamId)).totalPayroll,
+    payrollAfterSigning: calculateStateTeamPayroll(state, state.userTeamId).totalPayroll,
     payrollTarget: ownerState.expectations.payrollTarget,
     remainingUserPlayers: getTeamPlayers(state.userTeamId).filter(
       (candidate) => candidate.rosterStatus === 'MLB' && candidate.id !== playerId,
@@ -475,7 +475,7 @@ export function applyAISigningConsequences(
     annualSalary,
     years,
     marketValue,
-    payrollAfterSigning: calculateTeamPayroll(teamId, getTeamPlayers(teamId)).totalPayroll,
+    payrollAfterSigning: calculateStateTeamPayroll(state, teamId).totalPayroll,
     payrollTarget: state.ownerState.get(teamId)?.payrollCap
       ?? state.ownerState.get(teamId)?.annualBudget
       ?? getTeamBudget(teamId),

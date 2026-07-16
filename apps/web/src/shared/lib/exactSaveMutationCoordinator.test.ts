@@ -9,7 +9,7 @@ import {
   deriveMarketRevenueStatement,
   getTeamBudget,
 } from '@mbd/sim-core';
-import v34SnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
+import currentSnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v35/core.json';
 
 const mocks = vi.hoisted(() => ({
   beginPersistenceLease: vi.fn(),
@@ -76,12 +76,12 @@ type ExtensionSnapshot = Omit<GameSnapshot, 'offseasonState'> & {
 function worker(overrides: Record<string, unknown> = {}) {
   return {
     exportSnapshot: vi.fn()
-      .mockResolvedValueOnce(structuredClone(v34SnapshotFixture))
-      .mockResolvedValueOnce({ ...structuredClone(v34SnapshotFixture), day: 2 }),
+      .mockResolvedValueOnce(structuredClone(currentSnapshotFixture))
+      .mockResolvedValueOnce({ ...structuredClone(currentSnapshotFixture), day: 2 }),
     execute: vi.fn().mockResolvedValue({ currentPhase: 'arbitration', phaseDay: 2 }),
     restoreBaseline: vi.fn().mockResolvedValue({
       importResult: { success: true },
-      restoredSnapshot: structuredClone(v34SnapshotFixture),
+      restoredSnapshot: structuredClone(currentSnapshotFixture),
     }),
     publishFlow: vi.fn(),
     discardFlow: vi.fn(),
@@ -102,7 +102,7 @@ function options(exactWorker: ReturnType<typeof worker>) {
 }
 
 function extensionPhaseWorker() {
-  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  const baseline = structuredClone(currentSnapshotFixture) as unknown as ExtensionSnapshot;
   baseline.phase = 'offseason';
   baseline.offseasonState = {
     ...createOffseasonState(baseline.season),
@@ -168,7 +168,7 @@ function extensionPhaseWorker() {
 }
 
 function ownerPayrollReconciliationWorker() {
-  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  const baseline = structuredClone(currentSnapshotFixture) as unknown as ExtensionSnapshot;
   baseline.phase = 'offseason';
   baseline.offseasonState = {
     ...createOffseasonState(baseline.season),
@@ -232,7 +232,7 @@ function ownerPayrollReconciliationWorker() {
 }
 
 function marketRevenueReconciliationWorker() {
-  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  const baseline = structuredClone(currentSnapshotFixture) as unknown as ExtensionSnapshot;
   baseline.phase = 'offseason';
   baseline.offseasonState = createOffseasonState(baseline.season);
   const post = structuredClone(baseline);
@@ -312,7 +312,7 @@ function marketRevenueReconciliationWorker() {
 }
 
 function freeAgencySigningWorker() {
-  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  const baseline = structuredClone(currentSnapshotFixture) as unknown as ExtensionSnapshot;
   baseline.phase = 'offseason';
   baseline.offseasonState = {
     ...createOffseasonState(baseline.season),
@@ -500,8 +500,8 @@ describe('exact-save mutation coordinator', () => {
   it('releases an exact no-change result without accepting a persistence receipt', async () => {
     const exactWorker = worker({
       exportSnapshot: vi.fn()
-        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture))
-        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture)),
+        .mockResolvedValueOnce(structuredClone(currentSnapshotFixture))
+        .mockResolvedValueOnce(structuredClone(currentSnapshotFixture)),
       execute: vi.fn().mockResolvedValue({ success: false, flowStateChanged: false }),
     });
     const runOptions = {
@@ -530,8 +530,8 @@ describe('exact-save mutation coordinator', () => {
     };
     const exactWorker = worker({
       exportSnapshot: vi.fn()
-        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture))
-        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture)),
+        .mockResolvedValueOnce(structuredClone(currentSnapshotFixture))
+        .mockResolvedValueOnce(structuredClone(currentSnapshotFixture)),
       execute: vi.fn().mockResolvedValue(blockedView),
     });
 
@@ -754,7 +754,7 @@ describe('exact-save mutation coordinator', () => {
   it('restores the exact baseline when post export fails before receipt acceptance', async () => {
     const exactWorker = worker({
       exportSnapshot: vi.fn()
-        .mockResolvedValueOnce(structuredClone(v34SnapshotFixture))
+        .mockResolvedValueOnce(structuredClone(currentSnapshotFixture))
         .mockRejectedValueOnce(new Error('post export failed')),
     });
 
@@ -763,7 +763,7 @@ describe('exact-save mutation coordinator', () => {
     expect(outcome).toMatchObject({ kind: 'rolled_back' });
     expect(exactWorker.restoreBaseline).toHaveBeenCalledWith(
       expect.any(Object) as ExactSaveMutationWorkerSession,
-      v34SnapshotFixture,
+      currentSnapshotFixture,
     );
     expect(exactWorker.publishFlow).not.toHaveBeenCalled();
     expect(mocks.capture).not.toHaveBeenCalled();

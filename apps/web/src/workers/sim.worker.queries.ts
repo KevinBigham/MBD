@@ -3,8 +3,8 @@ import {
   calculateAwardRaces,
   calculateDynastyLeaderboardScore,
   calculateCoachingPayroll,
-  calculateTeamPayroll,
   compareTimelines,
+  derivePlayerTradeSalaryResponsibility,
   describeInjury,
   evaluatePlayerTradeValue,
   evaluateTeamNeeds,
@@ -70,6 +70,11 @@ import {
   generateMomentumNarrative,
 } from '@mbd/sim-core';
 import type { MilestoneAlert } from '@mbd/sim-core';
+import {
+  calculateStateTeamPayroll,
+  stateTradeFinanceSeason,
+  stateTradePayrollAdjustment,
+} from './sim.worker.tradeFinance.js';
 import {
   getMinorLeagueAffiliateIdentityView,
   getMinorLeagueAffiliateOpponentLabel,
@@ -3986,7 +3991,9 @@ export const queryApi = {
   getFinanceOverview() {
     const s = requireState();
     const teamPlayers = s.players.filter((p) => p.teamId === s.userTeamId);
-    const payroll = calculateTeamPayroll(s.userTeamId, s.players);
+    const payroll = calculateStateTeamPayroll(s, s.userTeamId);
+    const tradePayroll = stateTradePayrollAdjustment(s, s.userTeamId);
+    const financeSeason = stateTradeFinanceSeason(s);
     const ownerPayrollPolicy = buildOwnerPayrollPolicy(s, s.userTeamId);
     const budget = getDifficultyAdjustedBudget(s, s.userTeamId);
     const coachingStaff = s.coachingStaffs.get(s.userTeamId) ?? [];
@@ -3995,22 +4002,40 @@ export const queryApi = {
     const contracts = teamPlayers
       .filter((p) => p.contract.annualSalary > 0)
       .sort((a, b) => b.contract.annualSalary - a.contract.annualSalary)
-      .map((p) => ({
+      .map((p) => {
+        const responsibility = derivePlayerTradeSalaryResponsibility(
+          s.players,
+          s.tradeState.tradeHistory,
+          p.id,
+          s.userTeamId,
+          financeSeason,
+        );
+        const salaryCredit = responsibility?.externalSupport ?? 0;
+        return {
         playerId: p.id,
         name: `${p.firstName} ${p.lastName}`,
         position: p.position,
         rosterStatus: p.rosterStatus,
         annualSalary: p.contract.annualSalary,
+        salaryCredit,
+        effectiveAnnualSalary: responsibility?.teamResponsibility
+          ?? Math.round(Math.max(0, p.contract.annualSalary - salaryCredit) * 100) / 100,
         yearsRemaining: p.contract.years,
         noTradeClause: p.contract.noTradeClause,
         playerOption: p.contract.playerOption,
         teamOption: p.contract.teamOption,
-      }));
+        };
+      });
 
     return {
       totalPayroll: payroll.totalPayroll,
       mlbPayroll: payroll.mlbPayroll,
       minorsPayroll: payroll.minorsPayroll,
+      deadMoney: payroll.deadMoney,
+      retainedSalaryCharges: payroll.retainedSalaryCharges,
+      cashConsiderationCharges: payroll.cashConsiderationCharges,
+      releasedContractCharges: payroll.releasedContractCharges,
+      acquiredSalaryCredits: payroll.acquiredSalaryCredits,
       luxuryTaxPayroll: payroll.luxuryTaxPayroll,
       luxuryTax: ownerPayrollPolicy.projectedTax,
       budget,
@@ -5141,7 +5166,7 @@ export const queryApi = {
     // Build team budget info
     const teams = s.seasonState.standings.getLeagueStandings().map(e => {
       const budget = getDifficultyAdjustedBudget(s, e.teamId);
-      const payroll = calculateTeamPayroll(e.teamId, s.players).totalPayroll;
+      const payroll = calculateStateTeamPayroll(s, e.teamId).totalPayroll;
       return {
         teamId: e.teamId,
         budgetRemaining: Math.max(0, budget - payroll),

@@ -9,6 +9,7 @@ import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 import type {
   TradeHistoryView,
   TradeNegotiationView,
+  TradePlayerFinancialProjectionView,
   TradeTickerItem,
 } from '@/workers/sim.worker.trade';
 import type { HotTradeOfferView } from './tradePresentation';
@@ -20,6 +21,7 @@ export type { HotTradeOfferView, TradeDialogueView } from './tradePresentation';
 
 interface TradeActivityColumnProps {
   activeNegotiationId: string | null;
+  financialProjectionByPlayerId?: (playerId: string) => TradePlayerFinancialProjectionView | undefined;
   incomingOffers: HotTradeOfferView[];
   onAcceptOffer: (offerId: string) => void;
   onCounterOffer: (offer: HotTradeOfferView) => void;
@@ -31,10 +33,12 @@ interface TradeActivityColumnProps {
   season: number;
   ticker: TradeTickerItem[];
   tradeHistory: TradeHistoryView[];
+  userTeamId?: string;
 }
 
 export default function TradeActivityColumn({
   activeNegotiationId,
+  financialProjectionByPlayerId,
   incomingOffers,
   onAcceptOffer,
   onCounterOffer,
@@ -46,6 +50,7 @@ export default function TradeActivityColumn({
   season,
   ticker,
   tradeHistory,
+  userTeamId,
 }: TradeActivityColumnProps) {
   const activeTalksSubtitle = openNegotiationsLoading
     ? 'Refreshing room'
@@ -95,9 +100,11 @@ export default function TradeActivityColumn({
             <TradeNegotiationSummaryCard
               key={negotiation.id}
               active={activeNegotiationId === negotiation.id}
+              financialProjectionByPlayerId={financialProjectionByPlayerId}
               negotiation={negotiation}
               onResume={() => onResumeNegotiation(negotiation)}
               playerById={playerById}
+              userTeamId={userTeamId}
             />
           ))
         )}

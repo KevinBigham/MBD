@@ -14,8 +14,8 @@ function pick<T extends Record<string, unknown>>(source: T, keys: readonly strin
 }
 
 describe('save schema migration', () => {
-  it('tracks the current additive save schema as v34', () => {
-    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(34);
+  it('tracks the current additive save schema as v35', () => {
+    expect(CURRENT_GAME_SNAPSHOT_VERSION).toBe(35);
   });
 
   it('parses an authentic v3 eight-lane narrative and preserves it through v34 migration', () => {
@@ -56,7 +56,7 @@ describe('save schema migration', () => {
   });
 
   it('keeps v8-and-current draft schemas strict while v7 owns the compatibility default', () => {
-    const current = loadFixture('./fixtures/save/v34/core.json');
+    const current = loadFixture('./fixtures/save/v35/core.json');
     const missingQualifyingOffers = {
       ...current,
       draftState: { ...current.draftState },
@@ -408,22 +408,35 @@ describe('save schema migration', () => {
     expect(migrated.narrative.archivedGames).toEqual([]);
   });
 
-  it('parses a current-schema v34 fixture without applying a migration', () => {
+  it('migrates v34 without fabricating player-linked financial terms', () => {
     const fixture = loadFixture('./fixtures/save/v34/core.json');
 
     const parsed = parseGameSnapshot(fixture);
 
     expect(parsed.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
-    expect(fixture.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(fixture.schemaVersion).toBe(34);
+    expect(parsed.tradeState).toEqual(fixture.tradeState);
   });
 
-  it('round-trips a current-schema snapshot through JSON without drift', () => {
-    const fixture = loadFixture('./fixtures/save/v34/core.json');
+  it('round-trips a current-schema v35 financial trade through JSON without drift', () => {
+    const fixture = loadFixture('./fixtures/save/v35/core.json');
 
     const first = parseGameSnapshot(fixture);
     const second = parseGameSnapshot(JSON.parse(JSON.stringify(first)));
 
+    expect(first.tradeState.tradeHistory[0]?.offeringAssets[0]).toMatchObject({
+      type: 'player',
+      retainedSalary: { annualAmount: 6 },
+      cashConsideration: { amount: 2 },
+    });
     expect(second).toEqual(first);
+  });
+
+  it('rejects v35-only financial facts relabelled as v34', () => {
+    const fixture = loadFixture('./fixtures/save/v35/core.json');
+    fixture.schemaVersion = 34;
+
+    expect(() => parseGameSnapshot(fixture)).toThrow();
   });
 
   it('rejects malformed legacy fixtures during migration', () => {

@@ -14,12 +14,13 @@ import { useTradePackageSummary } from './useTradePackageSummary';
 import { useTradeResultAudio } from './useTradeResultAudio';
 import { useTradeRouteData } from './useTradeRouteData';
 import { useTradeSnapshotPersistence } from './useTradeSnapshotPersistence';
+import { useExactTradeMutationExecutor } from '@/shared/hooks/useExactTradeMutationExecutor';
 
 export type TradePageControllerWorker = Pick<
   ReturnType<typeof useWorker>,
-  | 'advanceNegotiation'
   | 'evaluateMultiTeamFairness'
   | 'executeMultiTeamTrade'
+  | 'exactSaveMutation'
   | 'exportSnapshot'
   | 'generateConditionalClause'
   | 'getOpenNegotiations'
@@ -32,9 +33,6 @@ export type TradePageControllerWorker = Pick<
   | 'getTradeHistory'
   | 'isReady'
   | 'proposeMultiTeam'
-  | 'resolveNegotiation'
-  | 'respondToTradeOffer'
-  | 'startNegotiation'
 >;
 
 export type TradePageControllerGameState = Pick<
@@ -76,12 +74,9 @@ export function useTradePageController({
     getOpenNegotiations,
     evaluateMultiTeamFairness,
     generateConditionalClause,
-    startNegotiation,
-    advanceNegotiation,
-    resolveNegotiation,
     proposeMultiTeam,
     executeMultiTeamTrade,
-    respondToTradeOffer,
+    exactSaveMutation,
     exportSnapshot,
     getSeasonFlowState,
   } = worker;
@@ -119,6 +114,7 @@ export function useTradePageController({
     setSelectedTeam,
   });
   const workerReady = worker.isReady;
+  const exactTradeMutation = useExactTradeMutationExecutor<unknown>(exactSaveMutation, workerReady);
   const tradeRouteData = useTradeRouteData({
     day,
     getOpenNegotiations,
@@ -156,6 +152,7 @@ export function useTradePageController({
   } = tradeRouteData;
   const tradeAssetBuilder = useTradeAssetBuilder({
     onTradeResultChange: setTradeResult,
+    season,
     targetRoster,
     yourRoster,
   });
@@ -245,7 +242,11 @@ export function useTradePageController({
     offeringAssets,
     requestingAssets,
     season,
+    targetFinancials: targetInventory.playerFinancials,
     targetRoster,
+    targetTeamId: selectedTeam,
+    userTeamId,
+    yourFinancials: yourInventory.playerFinancials,
     yourRoster,
   });
   const { offerTotal, requestTotal } = tradePackageSummary;
@@ -263,7 +264,7 @@ export function useTradePageController({
   const tradeActionHandlers = useTradeActionHandlers({
     activeCounterOfferId,
     activeNegotiation,
-    advanceNegotiation,
+    advanceNegotiation: exactTradeMutation.advanceNegotiation,
     applyNegotiationToBuilder,
     applyTradeBuilderSelection,
     loadOpenNegotiations,
@@ -274,18 +275,17 @@ export function useTradePageController({
     loadUserRoster,
     offeringAssets,
     offeringIFAAmount,
-    persistTradeSnapshot,
     requestingAssets,
     requestingIFAAmount,
     resetBuilder,
-    resolveNegotiation,
-    respondToTradeOffer,
+    resolveNegotiation: exactTradeMutation.resolveNegotiation,
+    respondToTradeOffer: exactTradeMutation.respondToTradeOffer,
     selectedTeam,
     setActiveCounterOfferId,
     setActiveNegotiation,
     setSelectedTeam,
     setTradeResult,
-    startNegotiation,
+    startNegotiation: exactTradeMutation.startNegotiation,
     targetInventory,
     tradeMarketOpen,
     updateNegotiationDeepLink,
@@ -326,6 +326,7 @@ export function useTradePageController({
       routeData: tradeRouteData,
       season,
       selectedTeam,
+      userTeamId,
       tradeMode,
       preselectedPlayerId,
     }),

@@ -102,7 +102,7 @@ export function FinanceContractTablePanel({
                   className="cursor-pointer px-3 py-2 text-right font-heading text-xs uppercase tracking-wider text-dynasty-muted hover:text-dynasty-text"
                   onClick={() => onSort('annualSalary')}
                 >
-                  Salary{sortIndicator('annualSalary')}
+                  Gross / Net{sortIndicator('annualSalary')}
                 </th>
                 <th
                   className="cursor-pointer px-3 py-2 text-center font-heading text-xs uppercase tracking-wider text-dynasty-muted hover:text-dynasty-text"
@@ -123,7 +123,13 @@ export function FinanceContractTablePanel({
                 <tr key={contract.playerId} className="border-b border-dynasty-border/50 hover:bg-dynasty-elevated/30">
                   <td className="px-3 py-2 font-heading text-sm text-dynasty-text">{contract.name}</td>
                   <td className="px-3 py-2 text-center font-data text-xs uppercase text-dynasty-muted">{contract.position}</td>
-                  <td className="px-3 py-2 text-right font-data text-sm text-dynasty-text">{formatDollars(contract.annualSalary)}</td>
+                  <td className="px-3 py-2 text-right font-data text-sm text-dynasty-text">
+                    <div>{formatDollars(contract.annualSalary)} gross</div>
+                    <div className={contract.salaryCredit > 0 ? 'text-accent-success' : 'text-dynasty-muted'}>
+                      {formatDollars(contract.effectiveAnnualSalary)} net
+                      {contract.salaryCredit > 0 ? ` · ${formatDollars(contract.salaryCredit)} credit` : ''}
+                    </div>
+                  </td>
                   <td className="px-3 py-2 text-center font-data text-sm text-dynasty-text">{contract.yearsRemaining}</td>
                   <td className="px-3 py-2 text-center">
                     <Badge variant={contract.rosterStatus === 'MLB' ? 'default' : 'outline'} className="text-[10px]">

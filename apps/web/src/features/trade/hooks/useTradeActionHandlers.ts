@@ -21,14 +21,6 @@ type TradePackage = {
   requestingAssets: TradeAsset[];
 };
 
-function shouldPersistIncomingOfferResponse(response: TradeOfferResponseResult): boolean {
-  return response.flowStateChanged;
-}
-
-function shouldPersistNegotiationAction(result: TradeNegotiationActionResult): boolean {
-  return result.flowStateChanged;
-}
-
 export interface UseTradeActionHandlersOptions {
   activeCounterOfferId: string | null;
   activeNegotiation: TradeNegotiationView | null;
@@ -43,7 +35,6 @@ export interface UseTradeActionHandlersOptions {
   loadUserRoster: () => Promise<void>;
   offeringAssets: TradeAsset[];
   offeringIFAAmount: string;
-  persistTradeSnapshot: () => Promise<void>;
   requestingAssets: TradeAsset[];
   requestingIFAAmount: string;
   resetBuilder: () => void;
@@ -92,7 +83,6 @@ export function useTradeActionHandlers({
   loadUserRoster,
   offeringAssets,
   offeringIFAAmount,
-  persistTradeSnapshot,
   requestingAssets,
   requestingIFAAmount,
   resetBuilder,
@@ -111,11 +101,7 @@ export function useTradeActionHandlers({
 }: UseTradeActionHandlersOptions): UseTradeActionHandlersResult {
   const [proposing, setProposing] = useState(false);
 
-  const refreshTradeWorkspace = useCallback(async (persistSnapshot: boolean) => {
-    if (persistSnapshot) {
-      await persistTradeSnapshot();
-    }
-
+  const refreshTradeWorkspace = useCallback(async () => {
     await Promise.all([
       loadUserRoster(),
       loadTargetRoster(),
@@ -131,7 +117,6 @@ export function useTradeActionHandlers({
     loadTradeActivity,
     loadUserInventory,
     loadUserRoster,
-    persistTradeSnapshot,
   ]);
 
   const submitTrade = useCallback(async () => {
@@ -144,6 +129,8 @@ export function useTradeActionHandlers({
       requestingIFAAmount,
       userIFARemaining: yourInventory.ifaRemaining,
       targetIFARemaining: targetInventory.ifaRemaining,
+      offeringAssets,
+      requestingAssets,
     });
     if (!validation.ok) {
       if (validation.result) {
@@ -153,16 +140,17 @@ export function useTradeActionHandlers({
     }
 
     setProposing(true);
-    let shouldPersistSnapshot = false;
     try {
       if (activeCounterOfferId) {
         const result = await respondToTradeOffer(activeCounterOfferId, 'counter', {
           offeringAssets,
           requestingAssets,
         });
+        if (result == null) {
+          setTradeResult({ status: 'rejected', message: 'The trade action could not acquire exact save authority. Try again.' });
+          return;
+        }
         const response = result as TradeOfferResponseResult;
-        shouldPersistSnapshot = shouldPersistIncomingOfferResponse(response);
-        if (shouldPersistSnapshot) await persistTradeSnapshot();
         setActiveNegotiation(null);
         setTradeResult(tradeResultFromOfferResponse(response));
         resetBuilder();
@@ -170,14 +158,17 @@ export function useTradeActionHandlers({
         const result = await advanceNegotiation(activeNegotiation.id, {
           offeringAssets,
           requestingAssets,
-        }) as TradeNegotiationActionResult;
-        shouldPersistSnapshot = shouldPersistNegotiationAction(result);
-        if (shouldPersistSnapshot) await persistTradeSnapshot();
-        setTradeResult(tradeResultFromNegotiationAction(result));
-        setActiveNegotiation(result.negotiation);
-        applyNegotiationToBuilder(result.negotiation);
-        updateNegotiationDeepLink(result.negotiation?.id ?? null);
-        if (result.tradeExecuted) {
+        });
+        if (result == null) {
+          setTradeResult({ status: 'rejected', message: 'The trade action could not acquire exact save authority. Try again.' });
+          return;
+        }
+        const response = result as TradeNegotiationActionResult;
+        setTradeResult(tradeResultFromNegotiationAction(response));
+        setActiveNegotiation(response.negotiation);
+        applyNegotiationToBuilder(response.negotiation);
+        updateNegotiationDeepLink(response.negotiation?.id ?? null);
+        if (response.tradeExecuted) {
           resetBuilder();
         }
       } else {
@@ -185,19 +176,22 @@ export function useTradeActionHandlers({
           offeringAssets,
           requestingAssets,
           selectedTeam,
-        ) as TradeNegotiationActionResult;
-        shouldPersistSnapshot = shouldPersistNegotiationAction(result);
-        if (shouldPersistSnapshot) await persistTradeSnapshot();
-        setTradeResult(tradeResultFromNegotiationAction(result));
-        setActiveNegotiation(result.negotiation);
-        applyNegotiationToBuilder(result.negotiation);
-        updateNegotiationDeepLink(result.negotiation?.id ?? null);
-        if (result.tradeExecuted) {
+        );
+        if (result == null) {
+          setTradeResult({ status: 'rejected', message: 'The trade action could not acquire exact save authority. Try again.' });
+          return;
+        }
+        const response = result as TradeNegotiationActionResult;
+        setTradeResult(tradeResultFromNegotiationAction(response));
+        setActiveNegotiation(response.negotiation);
+        applyNegotiationToBuilder(response.negotiation);
+        updateNegotiationDeepLink(response.negotiation?.id ?? null);
+        if (response.tradeExecuted) {
           resetBuilder();
         }
       }
 
-      await refreshTradeWorkspace(false);
+      await refreshTradeWorkspace();
     } finally {
       setProposing(false);
     }
@@ -230,20 +224,22 @@ export function useTradeActionHandlers({
     setProposing(true);
     try {
       const result = await resolveNegotiation(activeNegotiation.id, action) as TradeNegotiationActionResult;
-      if (shouldPersistNegotiationAction(result)) await persistTradeSnapshot();
+      if (result == null) {
+        setTradeResult({ status: 'rejected', message: 'The trade action could not acquire exact save authority. Try again.' });
+        return;
+      }
       setTradeResult(tradeResultFromNegotiationAction(result));
       setActiveNegotiation(result.negotiation);
       updateNegotiationDeepLink(result.negotiation?.id ?? null);
       if (result.tradeExecuted || action === 'reject') {
         resetBuilder();
       }
-      await refreshTradeWorkspace(false);
+      await refreshTradeWorkspace();
     } finally {
       setProposing(false);
     }
   }, [
     activeNegotiation,
-    persistTradeSnapshot,
     refreshTradeWorkspace,
     resetBuilder,
     resolveNegotiation,
@@ -256,10 +252,11 @@ export function useTradeActionHandlers({
     setProposing(true);
     try {
       const result = await respondToTradeOffer(offerId, 'accept');
-      const response = result as TradeOfferResponseResult;
-      if (shouldPersistIncomingOfferResponse(response)) {
-        await persistTradeSnapshot();
+      if (result == null) {
+        setTradeResult({ status: 'rejected', message: 'The trade action could not acquire exact save authority. Try again.' });
+        return;
       }
+      const response = result as TradeOfferResponseResult;
       setTradeResult(tradeResultFromOfferResponse(response));
       await Promise.all([
         loadUserRoster(),
@@ -277,7 +274,6 @@ export function useTradeActionHandlers({
     loadTradeActivity,
     loadUserInventory,
     loadUserRoster,
-    persistTradeSnapshot,
     respondToTradeOffer,
     setTradeResult,
   ]);
@@ -286,16 +282,17 @@ export function useTradeActionHandlers({
     setProposing(true);
     try {
       const result = await respondToTradeOffer(offerId, 'decline');
-      const response = result as TradeOfferResponseResult;
-      if (shouldPersistIncomingOfferResponse(response)) {
-        await persistTradeSnapshot();
+      if (result == null) {
+        setTradeResult({ status: 'rejected', message: 'The trade action could not acquire exact save authority. Try again.' });
+        return;
       }
+      const response = result as TradeOfferResponseResult;
       setTradeResult(tradeResultFromOfferResponse(response));
       await loadTradeActivity();
     } finally {
       setProposing(false);
     }
-  }, [loadTradeActivity, persistTradeSnapshot, respondToTradeOffer, setTradeResult]);
+  }, [loadTradeActivity, respondToTradeOffer, setTradeResult]);
 
   const handleCounterOffer = useCallback((offer: TradeOfferView) => {
     setSelectedTeam(offer.fromTeamId);

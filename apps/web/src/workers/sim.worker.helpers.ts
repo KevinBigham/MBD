@@ -71,7 +71,6 @@ import {
   buildRookieOfTheYearVotingEntries,
   buildRosterState,
   buildWaiverPriority,
-  calculateTeamPayroll,
   claimOffWaivers as claimOffWaiversCore,
   consumeOptionYear,
   createFreeAgencyMarket,
@@ -81,6 +80,7 @@ import {
   generateArbitrationCase,
   gmExtensionPriorityAdjustment,
   getArbEligiblePlayers,
+  hasActiveTradeFinancialObligationForPlayer,
   getAvailableIFAProspects,
   getPromotionCandidates as getPromotionCandidatesCore,
   getRosterComplianceIssues as getRosterComplianceIssuesCore,
@@ -145,6 +145,7 @@ import {
   type FreeAgencyOfferAcceptanceReceipt,
   type FreeAgencyOfferDecision,
 } from '@mbd/sim-core';
+import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 import {
   detectArbitrationMoments,
   detectHoldoutResolutions,
@@ -989,7 +990,7 @@ function deriveWorkerTeamBuildingArchetypeWithProspectScore(
   const record = s.seasonState.standings.getRecord(teamId);
   const totalGames = (record?.wins ?? 0) + (record?.losses ?? 0);
   const winPercentage = totalGames > 0 ? (record?.wins ?? 0) / totalGames : 0.5;
-  const payroll = calculateTeamPayroll(teamId, teamPlayers).totalPayroll;
+  const payroll = calculateStateTeamPayroll(s, teamId).totalPayroll;
   const payrollCap = getTeamPayrollCap(s, teamId);
   const payrollRatio = payrollCap > 0 ? payroll / payrollCap : 0;
   const majorLeagueCoreScore = averageTopIdentityScores(
@@ -1068,7 +1069,7 @@ function buildExtensionContextForTeam(
   s: FullGameState,
   teamId: string,
 ): ExtensionTeamContext {
-  const payroll = calculateTeamPayroll(teamId, getTeamPlayers(teamId));
+  const payroll = calculateStateTeamPayroll(s, teamId);
   const record = s.seasonState.standings.getRecord(teamId);
   const teamWinPct = record ? record.wins / Math.max(1, record.wins + record.losses) : 0.5;
   const controlYearsByPlayer = new Map<string, number>();
@@ -4152,7 +4153,7 @@ function buildOffseasonCommandCenter(s: FullGameState): OffseasonCommandCenterVi
   const rosterIssues = rosterState
     ? getRosterComplianceIssuesCore(teamPlayers, rosterState, 1)
     : [];
-  const payroll = calculateTeamPayroll(teamId, teamPlayers).totalPayroll;
+  const payroll = calculateStateTeamPayroll(s, teamId).totalPayroll;
   const ownerPayrollPolicy = buildOwnerPayrollPolicy(s, teamId);
   const budget = getDifficultyAdjustedBudget(s, teamId);
   const payrollCap = getTeamPayrollCap(s, teamId);
@@ -5640,6 +5641,12 @@ function prepareArbitrationDocketOnce(s: FullGameState) {
   for (const teamId of TEAMS.map((team) => team.id).sort((left, right) => left.localeCompare(right))) {
     const eligiblePlayers = getArbEligiblePlayers(nextPlayers, teamId, s.serviceTime)
       .filter((player) => !alreadyResolved.has(player.id))
+      .filter((player) => !hasActiveTradeFinancialObligationForPlayer(
+        nextPlayers,
+        s.tradeState.tradeHistory,
+        player.id,
+        s.season + (s.offseasonState ? 1 : 0),
+      ))
       .sort((left, right) => left.id.localeCompare(right.id));
     for (const player of eligiblePlayers) {
       const yearsOfService = serviceDaysToYears(player.serviceTimeDays);
@@ -5903,9 +5910,17 @@ function applyTenderDecisionsOnce(s: FullGameState) {
 
     const eligibleIds = new Set(arbEligiblePlayers.map((player) => player.id));
     const decisions = autoResolveTenderNonTender(s.rng.fork(), teamId, s.players, s.serviceTime);
-    const tendered = decisions.tendered
+    const protectedFromNonTender = decisions.nonTendered.filter((playerId) =>
+      hasActiveTradeFinancialObligationForPlayer(
+        s.players,
+        s.tradeState.tradeHistory,
+        playerId,
+        s.season + (s.offseasonState ? 1 : 0),
+      ));
+    const tendered = [...decisions.tendered, ...protectedFromNonTender]
       .filter((playerId) => eligibleIds.has(playerId) && !existingTendered.has(playerId) && !existingNonTendered.has(playerId));
     const nonTendered = decisions.nonTendered
+      .filter((playerId) => !protectedFromNonTender.includes(playerId))
       .filter((playerId) => eligibleIds.has(playerId) && !existingTendered.has(playerId) && !existingNonTendered.has(playerId));
 
     if (tendered.length === 0 && nonTendered.length === 0) continue;
@@ -6416,7 +6431,7 @@ function buildFreeAgencyPayrolls(s: FullGameState) {
         const teamPlayers = s.players.filter(
           (player) => player.teamId === team.id && !freeAgentIds.has(player.id),
         );
-        return [team.id, calculateTeamPayroll(team.id, teamPlayers).totalPayroll] as const;
+        return [team.id, calculateStateTeamPayroll(s, team.id).totalPayroll] as const;
       }),
   );
 }

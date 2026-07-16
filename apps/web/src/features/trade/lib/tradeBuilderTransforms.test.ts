@@ -53,6 +53,19 @@ function player(overrides: Partial<PlayerDTO> & { id: string }): PlayerDTO {
     letterGrade: overrides.letterGrade ?? 'B',
     rosterStatus: overrides.rosterStatus ?? 'MLB',
     teamId: overrides.teamId ?? 'nym',
+    contract: overrides.contract ?? {
+      years: 1,
+      annualSalary: 1,
+      totalValue: 1,
+      noTradeClause: false,
+      noTradeClauseType: 'none',
+      playerOption: false,
+      teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
+    },
     stats: null,
   } as unknown as PlayerDTO;
 }
@@ -345,15 +358,57 @@ describe('tradeBuilderTransforms', () => {
       userIFARemaining: 1,
       targetIFARemaining: 1,
     })).toEqual({ ok: true });
+
+    const malformedAssets = tradeAssetsFromSelection(
+      ['player-1'],
+      [],
+      '',
+      { 'player-1': { retainedSalary: '1.005', cashConsideration: '' } },
+      [player({
+        id: 'player-1',
+        contract: {
+          years: 3,
+          annualSalary: 20,
+          totalValue: 60,
+          noTradeClause: false,
+          noTradeClauseType: 'none',
+          playerOption: false,
+          teamOption: false,
+          optOutYears: [],
+          signingBonus: 0,
+          buyoutAmount: 0,
+          deferredMoney: [],
+        },
+      })],
+      4,
+    );
+    expect(validateTradeSubmission({
+      selectedTeam: 'bos',
+      offeringAssetCount: malformedAssets.length,
+      requestingAssetCount: 1,
+      tradeMarketOpen: true,
+      offeringIFAAmount: '',
+      requestingIFAAmount: '',
+      userIFARemaining: 0,
+      targetIFARemaining: 0,
+      offeringAssets: malformedAssets,
+      requestingAssets: [{ type: 'player', playerId: 'target-1' }],
+    })).toEqual({
+      ok: false,
+      result: {
+        status: 'rejected',
+        message: 'Trade money must be finite and use at most two decimal places.',
+      },
+    });
   });
 
-  it('normalizes player, draft-pick, and IFA trade assets', () => {
+  it('preserves entered trade money so strict validation can reject excess precision', () => {
     const pick = { type: 'draft_pick', season: 4, round: 1, originalTeamId: 'nym' } as const;
     const pool = poolAsset(parsePoolAmount('2.345'));
 
     expect(playerAsset('p1')).toEqual({ type: 'player', playerId: 'p1' });
     expect(draftPickKey(pick)).toBe('draft:4:1:nym');
-    expect(pool).toEqual({ type: 'ifa_pool_space', amount: 2.35 });
+    expect(pool).toEqual({ type: 'ifa_pool_space', amount: 2.345 });
     expect(parsePoolAmount('-1')).toBe(0);
     expect(parsePoolAmount('bad')).toBe(0);
     expect(toggleDraftPickAsset([], pick)).toEqual([pick]);
@@ -368,7 +423,7 @@ describe('tradeBuilderTransforms', () => {
       { type: 'player', playerId: 'p2' },
       { type: 'player', playerId: 'p1' },
       pick,
-      { type: 'ifa_pool_space', amount: 1.26 },
+      { type: 'ifa_pool_space', amount: 1.256 },
     ]);
     expect(tradeAssetsFromSelection([], [], 'not-a-number')).toEqual([]);
     expect(tradeAssetSummaryItems(assets, (asset) => (
@@ -379,6 +434,46 @@ describe('tradeBuilderTransforms', () => {
       { key: 'draft:5:3:bos', label: 'draft_pick' },
       { key: 'ifa:1.26', label: 'ifa_pool_space' },
     ]);
+  });
+
+  it('materializes exact contract-linked terms and excludes the final option year', () => {
+    const contracted = player({
+      id: 'p-finance',
+      contract: {
+        years: 4,
+        annualSalary: 24,
+        totalValue: 96,
+        noTradeClause: false,
+        noTradeClauseType: 'none',
+        playerOption: true,
+        teamOption: false,
+        optOutYears: [],
+        signingBonus: 0,
+        buyoutAmount: 0,
+        deferredMoney: [],
+      },
+    });
+    const assets = tradeAssetsFromSelection(
+      [contracted.id],
+      [],
+      '',
+      { [contracted.id]: { retainedSalary: '6', cashConsideration: '2' } },
+      [contracted],
+      5,
+    );
+
+    expect(assets).toEqual([{
+      type: 'player',
+      playerId: contracted.id,
+      contractReference: { annualSalary: 24, contractEndSeasonExclusive: 9 },
+      retainedSalary: { annualAmount: 6, startSeason: 5, endSeasonExclusive: 8 },
+      cashConsideration: { amount: 2, season: 5 },
+    }]);
+    expect(tradeBuilderSelectionFromAssetViews(assets.map(assetView), [])).toMatchObject({
+      offeringFinancialTerms: {
+        [contracted.id]: { retainedSalary: '6', cashConsideration: '2' },
+      },
+    });
   });
 
   it('extracts asset selections from worker views and proposals', () => {

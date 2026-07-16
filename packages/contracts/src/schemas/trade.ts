@@ -1,9 +1,68 @@
 import { z } from "zod";
 
-const PlayerTradeAssetSchema = z.object({
+const TradeMoneySchema = z.number().positive().refine(
+  (value) => Number.isFinite(value) && Math.abs((value * 100) - Math.round(value * 100)) < 1e-8,
+  "Trade money must be finite and use at most two decimal places.",
+);
+
+export const TradeContractReferenceSchema = z.object({
+  annualSalary: TradeMoneySchema,
+  contractEndSeasonExclusive: z.number().int().min(2),
+});
+export type TradeContractReference = z.infer<typeof TradeContractReferenceSchema>;
+
+export const SalaryRetentionTermSchema = z.object({
+  annualAmount: TradeMoneySchema,
+  startSeason: z.number().int().min(1),
+  endSeasonExclusive: z.number().int().min(2),
+});
+export type SalaryRetentionTerm = z.infer<typeof SalaryRetentionTermSchema>;
+
+export const CashConsiderationTermSchema = z.object({
+  amount: TradeMoneySchema,
+  season: z.number().int().min(1),
+});
+export type CashConsiderationTerm = z.infer<typeof CashConsiderationTermSchema>;
+
+export const PlayerTradeAssetV34Schema = z.object({
   type: z.literal("player"),
   playerId: z.string(),
+}).strict();
+
+const PlayerTradeAssetSchema = PlayerTradeAssetV34Schema.extend({
+  contractReference: TradeContractReferenceSchema.optional(),
+  retainedSalary: SalaryRetentionTermSchema.optional(),
+  cashConsideration: CashConsiderationTermSchema.optional(),
 });
+
+function validatePlayerFinancialTerms(
+  asset: z.infer<typeof PlayerTradeAssetSchema>,
+  context: z.RefinementCtx,
+) {
+  if ((asset.retainedSalary || asset.cashConsideration) && !asset.contractReference) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Player-linked financial terms require an exact contract reference.",
+      path: ["contractReference"],
+    });
+  }
+  if (asset.retainedSalary
+    && asset.retainedSalary.endSeasonExclusive > (asset.contractReference?.contractEndSeasonExclusive ?? 0)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Retained salary cannot extend beyond the referenced contract.",
+      path: ["retainedSalary", "endSeasonExclusive"],
+    });
+  }
+  if (asset.retainedSalary
+    && asset.retainedSalary.startSeason >= asset.retainedSalary.endSeasonExclusive) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Retained salary must cover at least one season.",
+      path: ["retainedSalary", "endSeasonExclusive"],
+    });
+  }
+}
 
 const DraftPickTradeAssetSchema = z.object({
   type: z.literal("draft_pick"),
@@ -12,17 +71,31 @@ const DraftPickTradeAssetSchema = z.object({
   originalTeamId: z.string(),
 });
 
-const IFAPoolSpaceTradeAssetSchema = z.object({
+const IFAPoolSpaceTradeAssetV34Schema = z.object({
   type: z.literal("ifa_pool_space"),
   amount: z.number().positive(),
+});
+
+const IFAPoolSpaceTradeAssetSchema = z.object({
+  type: z.literal("ifa_pool_space"),
+  amount: TradeMoneySchema,
 });
 
 export const TradeAssetSchema = z.discriminatedUnion("type", [
   PlayerTradeAssetSchema,
   DraftPickTradeAssetSchema,
   IFAPoolSpaceTradeAssetSchema,
-]);
+]).superRefine((asset, context) => {
+  if (asset.type === "player") validatePlayerFinancialTerms(asset, context);
+});
 export type TradeAsset = z.infer<typeof TradeAssetSchema>;
+
+export const TradeAssetV34Schema = z.discriminatedUnion("type", [
+  PlayerTradeAssetV34Schema,
+  DraftPickTradeAssetSchema,
+  IFAPoolSpaceTradeAssetV34Schema,
+]);
+export type TradeAssetV34 = z.infer<typeof TradeAssetV34Schema>;
 
 export const TradeStatusEnum = z.enum([
   "PROPOSED",
@@ -60,6 +133,11 @@ const NormalizedTradeEntrySchema = z.object({
   createdAt: z.string().optional(),
   summary: z.string().optional(),
   timestamp: z.string().optional(),
+});
+
+const NormalizedTradeEntryV34Schema = NormalizedTradeEntrySchema.extend({
+  offeringAssets: z.array(TradeAssetV34Schema),
+  requestingAssets: z.array(TradeAssetV34Schema),
 });
 
 function normalizeLegacyTradeEntry(value: unknown) {
@@ -107,6 +185,22 @@ export const TradeHistoryEntrySchema = z.preprocess(
 );
 export type TradeHistoryEntry = z.infer<typeof TradeHistoryEntrySchema>;
 
+const PersistentTradeOfferV34Schema = z.preprocess(
+  normalizeLegacyTradeEntry,
+  NormalizedTradeEntryV34Schema.extend({
+    message: z.string(),
+    createdAt: z.string(),
+  }),
+);
+
+const TradeHistoryEntryV34Schema = z.preprocess(
+  normalizeLegacyTradeEntry,
+  NormalizedTradeEntryV34Schema.extend({
+    summary: z.string(),
+    timestamp: z.string(),
+  }),
+);
+
 export const NegotiationPhaseEnum = z.enum([
   "proposed",
   "pending",
@@ -134,13 +228,48 @@ export const CounterOfferSchema = z.object({
 });
 export type CounterOffer = z.infer<typeof CounterOfferSchema>;
 
-export const NegotiationProposalSchema = z.object({
+const NegotiationProposalV34Schema = z.object({
   fromTeamId: z.string(),
   toTeamId: z.string(),
   offering: z.array(z.string()).default([]),
   requesting: z.array(z.string()).default([]),
   valuationGap: z.number(),
-});
+}).strict();
+
+function normalizeNegotiationProposal(value: unknown) {
+  if (typeof value !== "object" || value === null) return value;
+  const proposal = value as {
+    offering?: unknown;
+    requesting?: unknown;
+    offeringAssets?: unknown;
+    requestingAssets?: unknown;
+  };
+  const offering = Array.isArray(proposal.offering)
+    ? proposal.offering.filter((playerId): playerId is string => typeof playerId === "string")
+    : [];
+  const requesting = Array.isArray(proposal.requesting)
+    ? proposal.requesting.filter((playerId): playerId is string => typeof playerId === "string")
+    : [];
+  return {
+    ...value,
+    offeringAssets: proposal.offeringAssets ?? offering.map((playerId) => ({
+      type: "player" as const,
+      playerId,
+    })),
+    requestingAssets: proposal.requestingAssets ?? requesting.map((playerId) => ({
+      type: "player" as const,
+      playerId,
+    })),
+  };
+}
+
+export const NegotiationProposalSchema = z.preprocess(
+  normalizeNegotiationProposal,
+  NegotiationProposalV34Schema.extend({
+    offeringAssets: z.array(TradeAssetSchema),
+    requestingAssets: z.array(TradeAssetSchema),
+  }),
+);
 export type NegotiationProposal = z.infer<typeof NegotiationProposalSchema>;
 
 export const PersistentNegotiationContextSchema = z.object({
@@ -152,18 +281,27 @@ export const PersistentNegotiationContextSchema = z.object({
 });
 export type PersistentNegotiationContext = z.infer<typeof PersistentNegotiationContextSchema>;
 
-export const PersistentNegotiationStateSchema = z.object({
+const PersistentNegotiationStateShape = {
   id: z.string(),
   phase: NegotiationPhaseEnum,
-  proposal: NegotiationProposalSchema,
   context: PersistentNegotiationContextSchema,
   counterOffers: z.array(CounterOfferSchema).default([]),
   roundsCompleted: z.number().int().min(0),
   expiresAtDay: z.number().int().min(1),
   dialogue: z.array(NegotiationDialogueSchema).default([]),
   relationshipChange: z.number(),
+};
+
+export const PersistentNegotiationStateSchema = z.object({
+  ...PersistentNegotiationStateShape,
+  proposal: NegotiationProposalSchema,
 });
 export type PersistentNegotiationState = z.infer<typeof PersistentNegotiationStateSchema>;
+
+export const PersistentNegotiationStateV34Schema = z.object({
+  ...PersistentNegotiationStateShape,
+  proposal: NegotiationProposalV34Schema,
+});
 
 export const TradeParticipantRoleEnum = z.enum([
   "initiator",
@@ -217,3 +355,11 @@ export const TradeStateSchema = z.object({
   multiTeamPendingTrades: z.array(PendingTradeSchema).default([]),
 });
 export type TradeState = z.infer<typeof TradeStateSchema>;
+
+export const TradeStateV34Schema = z.object({
+  pendingOffers: z.array(PersistentTradeOfferV34Schema),
+  tradeHistory: z.array(TradeHistoryEntryV34Schema),
+  negotiations: z.array(PersistentNegotiationStateV34Schema).default([]),
+  multiTeamPendingTrades: z.array(PendingTradeSchema).default([]),
+});
+export type TradeStateV34 = z.infer<typeof TradeStateV34Schema>;

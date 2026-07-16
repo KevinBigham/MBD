@@ -34,6 +34,7 @@ export interface BuildTradeRouteContentPropsInput {
   routeData: ReturnType<typeof useTradeRouteData>;
   season: number;
   selectedTeam: string;
+  userTeamId: string;
   tradeMode: 'quick' | 'builder' | 'offers' | 'market' | 'history';
   preselectedPlayerId: string | null;
 }
@@ -51,6 +52,7 @@ export function buildTradeRouteContentProps({
   routeData,
   season,
   selectedTeam,
+  userTeamId,
   tradeMode,
   preselectedPlayerId,
 }: BuildTradeRouteContentPropsInput): TradePageContentProps {
@@ -90,6 +92,7 @@ export function buildTradeRouteContentProps({
     offeringAssetCount: assetBuilder.offeringAssets.length,
     offeringIFAAmount: assetBuilder.offeringIFAAmount,
     offeringPicks: assetBuilder.offeringPicks,
+    offeringFinancialTerms: assetBuilder.offeringFinancialTerms,
     offeringSummary: packageSummary.offeringSummary,
     onAddMultiTeamLane: multiTeamBuilder.addMultiTeamLane,
     onChangeConditionPlayer: multiTeamBuilder.setMultiTeamConditionPlayerId,
@@ -97,8 +100,10 @@ export function buildTradeRouteContentProps({
     onChangeLaneTeam: multiTeamBuilder.setMultiTeamLaneTeam,
     onChangeOfferingFilter: assetBuilder.setYourAssetFilter,
     onChangeOfferingIFAAmount: assetBuilder.setOfferingIFAAmount,
+    onChangeOfferingFinancialTerm: assetBuilder.setOfferingFinancialTerm,
     onChangeRequestingFilter: assetBuilder.setTargetAssetFilter,
     onChangeRequestingIFAAmount: assetBuilder.setRequestingIFAAmount,
+    onChangeRequestingFinancialTerm: assetBuilder.setRequestingFinancialTerm,
     onClearTrade: routeActions.clearTrade,
     onCloseMultiTeamBuilder: multiTeamBuilder.resetMultiTeamBuilder,
     onCounterNegotiation: () => negotiation.setTradeResult({
@@ -118,6 +123,7 @@ export function buildTradeRouteContentProps({
     openNegotiationsLoading: routeData.openNegotiationsLoading,
     otherTeams: marketContext.otherTeams,
     playerById: packageSummary.playerById,
+    financialProjectionByPlayerId: packageSummary.financialProjectionByPlayerId,
     proposing: actionHandlers.proposing,
     quickStartProps: {
       disabledReason: marketContext.marketCopy.disabledReason,
@@ -147,19 +153,23 @@ export function buildTradeRouteContentProps({
     requestingAssetCount: assetBuilder.requestingAssets.length,
     requestingIFAAmount: assetBuilder.requestingIFAAmount,
     requestingPicks: assetBuilder.requestingPicks,
+    requestingFinancialTerms: assetBuilder.requestingFinancialTerms,
     requestingSummary: packageSummary.requestingSummary,
     resumeNegotiation: negotiation.resumeNegotiation,
     season,
     selectedRelationship: marketContext.selectedRelationship,
     selectedTeam,
+    userTeamId,
     targetAssetFilter: assetBuilder.targetAssetFilter,
     targetInventory: routeData.targetInventory,
     targetRosterCount: routeData.targetRoster.length,
+    targetRoster: routeData.targetRoster,
     tradeHistory: routeData.tradeHistory,
     tradeMarketOpen: marketContext.tradeMarketOpen,
     tradeResult: negotiation.tradeResult,
     yourAssetFilter: assetBuilder.yourAssetFilter,
     yourInventory: routeData.yourInventory,
     yourRosterCount: routeData.yourRoster.length,
+    yourRoster: routeData.yourRoster,
   });
 }

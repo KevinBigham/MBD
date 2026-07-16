@@ -13,6 +13,11 @@ export interface FinanceData {
   totalPayroll: number;
   mlbPayroll: number;
   minorsPayroll: number;
+  deadMoney: number;
+  retainedSalaryCharges: number;
+  cashConsiderationCharges: number;
+  releasedContractCharges: number;
+  acquiredSalaryCredits: number;
   luxuryTaxPayroll: number;
   luxuryTax: number;
   budget: number;

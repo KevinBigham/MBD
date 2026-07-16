@@ -140,21 +140,21 @@ async function readCurrentProgram(
   });
   try {
     await navigateFromSidebar(page, '/players', 'Players');
+    await page.getByPlaceholder('Search players or nicknames...').fill(playerName);
+    const playerLink = appMain(page).locator(`a[href="/MBD/players/${playerId}"]`).first();
+    await expect(playerLink).toBeVisible();
+    await playerLink.click();
+    await expect(
+      appMain(page).getByRole('heading', { name: playerName, exact: true }),
+    ).toBeVisible();
+    await appMain(page).getByRole('tab', { name: 'Development', exact: true }).click();
+    const currentProgramLabel = appMain(page).getByText('Current Program', { exact: true });
+    const value = currentProgramLabel.locator('xpath=following-sibling::div[1]');
+    await expect(value).toBeVisible();
+    return (await value.innerText()).trim();
   } finally {
     await page.removeLocatorHandler(pressConference);
   }
-  await page.getByPlaceholder('Search players or nicknames...').fill(playerName);
-  const playerLink = appMain(page).locator(`a[href="/MBD/players/${playerId}"]`).first();
-  await expect(playerLink).toBeVisible();
-  await playerLink.click();
-  await expect(
-    appMain(page).getByRole('heading', { name: playerName, exact: true }),
-  ).toBeVisible();
-  await appMain(page).getByRole('tab', { name: 'Development', exact: true }).click();
-  const currentProgramLabel = appMain(page).getByText('Current Program', { exact: true });
-  const value = currentProgramLabel.locator('xpath=following-sibling::div[1]');
-  await expect(value).toBeVisible();
-  return (await value.innerText()).trim();
 }
 
 async function chooseRealDevelopmentMutation(page: Page): Promise<{
@@ -272,6 +272,10 @@ test('four high-emotion mutations remain durable after real browser reloads', as
     developmentPlayerId = selection.candidate.playerId;
 
     await freshRuntimeReload(page, {
+      // This Day-31 checkpoint owns a pending press conference. Preserve it
+      // through reload so the test can wait for the late worker-backed dialog
+      // deterministically before arming the one-shot persistence fault.
+      press: 'preserve',
       ready: async () => {
         await expect(
           appMain(page).getByRole('heading', { name: 'Minor League Hub', exact: true }),
@@ -286,6 +290,8 @@ test('four high-emotion mutations remain durable after real browser reloads', as
       name: `Apply development plan for ${developmentPlayer}`,
       exact: true,
     });
+    const pressConference = page.getByRole('dialog', { name: 'Press Conference' });
+    await pressConference.waitFor({ state: 'visible', timeout: 15_000 });
     await handlePressConference(page, 'skip');
     await expectFreshMutationRuntime(page);
     const durableSummaryBeforeDevelopment = await expectDurableSaveSummary(page);
@@ -460,7 +466,7 @@ test('four high-emotion mutations remain durable after real browser reloads', as
       await readFile(backupPath, 'utf8'),
     ) as DownloadedSaveExport;
     expect(downloadedPayload.kind).toBe('mbd-save-export');
-    expect(downloadedPayload.snapshot?.schemaVersion).toBe(34);
+    expect(downloadedPayload.snapshot?.schemaVersion).toBe(35);
     const downloadedPlayer = downloadedPayload.snapshot?.players?.find(
       (player) => player.id === selection.candidate.playerId,
     );

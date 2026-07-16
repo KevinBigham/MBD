@@ -10,6 +10,7 @@ import type {
   TradeHistoryView,
   TradeNegotiationView,
   TradeOfferView,
+  TradePlayerFinancialProjectionView,
 } from '@/workers/sim.worker.trade';
 import type { HotTradeOfferView, TradeDialogueView } from '../components/TradeActivityColumn';
 import type { RelationshipView } from '../components/TradeBuilderContextPanel';
@@ -26,6 +27,8 @@ import {
   fairnessRatio,
   teamDisplayName,
   type MultiTeamMovedPlayerView,
+  type TradeFinancialTermsByPlayerId,
+  type TradeFinancialTermsInput,
 } from './tradeBuilderTransforms';
 
 interface TradeMarketCopy {
@@ -52,6 +55,7 @@ export interface BuildTradePageContentPropsInput {
   fairness: MultiTeamFairnessView | null;
   filteredTargetRoster: PlayerDTO[];
   filteredYourRoster: PlayerDTO[];
+  financialProjectionByPlayerId?: (playerId: string) => TradePlayerFinancialProjectionView | undefined;
   gmDialogue: TradeDialogueView | null;
   handleAcceptOffer: (offerId: string) => void | Promise<void>;
   handleAddConditionalClause: () => void | Promise<void>;
@@ -76,6 +80,7 @@ export interface BuildTradePageContentPropsInput {
   offeringAssetCount: number;
   offeringIFAAmount: string;
   offeringPicks: DraftPickAsset[];
+  offeringFinancialTerms: TradeFinancialTermsByPlayerId;
   offeringSummary: TradePackageSummaryItem[];
   onAddMultiTeamLane: () => void;
   onChangeConditionPlayer: (playerId: string) => void;
@@ -83,8 +88,10 @@ export interface BuildTradePageContentPropsInput {
   onChangeLaneTeam: (laneId: string, teamId: string) => void;
   onChangeOfferingFilter: (filter: TradeAssetFilter) => void;
   onChangeOfferingIFAAmount: (amount: string) => void;
+  onChangeOfferingFinancialTerm: (playerId: string, field: keyof TradeFinancialTermsInput, value: string) => void;
   onChangeRequestingFilter: (filter: TradeAssetFilter) => void;
   onChangeRequestingIFAAmount: (amount: string) => void;
+  onChangeRequestingFinancialTerm: (playerId: string, field: keyof TradeFinancialTermsInput, value: string) => void;
   onClearTrade: () => void;
   onCloseMultiTeamBuilder: () => void;
   onCounterNegotiation: () => void;
@@ -109,6 +116,7 @@ export interface BuildTradePageContentPropsInput {
   requestingAssetCount: number;
   requestingIFAAmount: string;
   requestingPicks: DraftPickAsset[];
+  requestingFinancialTerms: TradeFinancialTermsByPlayerId;
   requestingSummary: TradePackageSummaryItem[];
   resumeNegotiation: (negotiation: TradeNegotiationView) => void;
   season: number;
@@ -117,12 +125,15 @@ export interface BuildTradePageContentPropsInput {
   targetAssetFilter: TradeAssetFilter;
   targetInventory: TradeAssetInventoryView;
   targetRosterCount: number;
+  targetRoster: PlayerDTO[];
   tradeHistory: TradeHistoryView[];
   tradeMarketOpen: boolean;
   tradeResult: TradeResultView | null;
+  userTeamId?: string;
   yourAssetFilter: TradeAssetFilter;
   yourInventory: TradeAssetInventoryView;
   yourRosterCount: number;
+  yourRoster: PlayerDTO[];
 }
 
 export function buildTradePageContentProps(input: BuildTradePageContentPropsInput): TradePageContentProps {
@@ -139,6 +150,7 @@ export function buildTradePageContentProps(input: BuildTradePageContentPropsInpu
     quickStartProps: input.quickStartProps,
     activityColumnProps: {
       activeNegotiationId: input.activeNegotiation?.id ?? null,
+      financialProjectionByPlayerId: input.financialProjectionByPlayerId,
       incomingOffers: input.incomingOffers,
       onAcceptOffer: (offerId) => void input.handleAcceptOffer(offerId),
       onCounterOffer: input.handleCounterOffer,
@@ -150,6 +162,7 @@ export function buildTradePageContentProps(input: BuildTradePageContentPropsInpu
       season: input.season,
       ticker: input.deadlineState?.ticker ?? [],
       tradeHistory: input.tradeHistory,
+      userTeamId: input.userTeamId,
     },
     builderStackProps: {
       builderProps: {
@@ -168,11 +181,13 @@ export function buildTradePageContentProps(input: BuildTradePageContentPropsInpu
         },
         negotiationProps: {
           dialogueMode: input.gmDialogue?.mode ?? 'buyer',
+          financialProjectionByPlayerId: input.financialProjectionByPlayerId,
           onAccept: () => void input.handleResolveNegotiation('accept'),
           onCounter: input.onCounterNegotiation,
           onReject: () => void input.handleResolveNegotiation('reject'),
           playerById: input.playerById,
           proposing: input.proposing,
+          userTeamId: input.userTeamId,
         },
         assetGridProps: {
           disabledReason: input.marketCopy.disabledReason,
@@ -181,10 +196,13 @@ export function buildTradePageContentProps(input: BuildTradePageContentPropsInpu
           offering: input.offering,
           offeringIFAAmount: input.offeringIFAAmount,
           offeringPicks: input.offeringPicks,
+          offeringFinancialTerms: input.offeringFinancialTerms,
           onChangeOfferingFilter: input.onChangeOfferingFilter,
           onChangeOfferingIFAAmount: input.onChangeOfferingIFAAmount,
+          onChangeOfferingFinancialTerm: input.onChangeOfferingFinancialTerm,
           onChangeRequestingFilter: input.onChangeRequestingFilter,
           onChangeRequestingIFAAmount: input.onChangeRequestingIFAAmount,
+          onChangeRequestingFinancialTerm: input.onChangeRequestingFinancialTerm,
           onToggleOfferingPick: input.onToggleOfferingPick,
           onToggleOfferingPlayer: input.onToggleOfferingPlayer,
           onToggleRequestingPick: input.onToggleRequestingPick,
@@ -192,14 +210,17 @@ export function buildTradePageContentProps(input: BuildTradePageContentPropsInpu
           requesting: input.requesting,
           requestingIFAAmount: input.requestingIFAAmount,
           requestingPicks: input.requestingPicks,
+          requestingFinancialTerms: input.requestingFinancialTerms,
           selectedTeam: input.selectedTeam,
           targetAssetFilter: input.targetAssetFilter,
           targetInventory: input.targetInventory,
           targetRosterCount: input.targetRosterCount,
+          targetRoster: input.targetRoster,
           tradeMarketOpen: input.tradeMarketOpen,
           yourAssetFilter: input.yourAssetFilter,
           yourInventory: input.yourInventory,
           yourRosterCount: input.yourRosterCount,
+          yourRoster: input.yourRoster,
         },
         packageEvaluationProps: {
           activeCounterOfferId: input.activeCounterOfferId,

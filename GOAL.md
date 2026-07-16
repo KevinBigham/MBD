@@ -22,11 +22,11 @@ ADR and must not block web release.
 
 ## Current Save State
 
-- Current save schema is v34 in `packages/contracts/src/schemas/save.ts`.
-- v33 -> v34 adds compact archived major-game box scores with
-  `narrative.archivedGames: []` for existing saves.
-- The explicit Season 10 v33 fixture must migrate to v34 without fabricating
-  historic archived games.
+- Current save schema is v35 in `packages/contracts/src/schemas/save.ts`.
+- v34 -> v35 adds durable trade financial terms with empty capability for old
+  saves; it fabricates no retention, reimbursement, or trade history.
+- The explicit Season 10 v33 fixture must migrate through v34 to v35 without
+  fabricating historic archived games or financial trade facts.
 - Any future save change still requires a version bump, migration, fixture
   update, old-save proof, and Season 10 reasoning.
 
@@ -34,12 +34,12 @@ ADR and must not block web release.
 
 - The authoritative campaign ledger is `docs/codex/GOAT_ROADMAP_STATUS.md`;
   branch names and revisions must be verified from live Git before every slice.
-- Roadmap items 1–16 and 80 are verified complete in the ledger.
-- Roadmap item 16, deterministic and explainable user/CPU free-agent decisions,
-  is complete under Goal 26 /
-  `docs/codex/runs/ECON-FA-DECISIONS-1/`.
-- Roadmap item 17, salary retention and cash in trades, is the next eligible
-  economy slice. It and all later work remain unstarted in this run.
+- Roadmap items 1–17 and 80 are verified complete in the ledger.
+- Roadmap item 17, contract-safe salary retention and player-linked cash
+  reimbursement in two-team trades, is complete under Goal 27 /
+  `docs/codex/runs/ECON-TRADE-RETENTION-1/`.
+- Roadmap item 18, the 30-season multi-seed economy soak, is the next eligible
+  economy slice. It was not started in the item-17 run.
 
 ## Remaining Release Gates
 

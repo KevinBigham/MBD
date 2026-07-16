@@ -7,7 +7,6 @@ import {
   LUXURY_TAX_THRESHOLD,
   TEAM_MARKETS,
   TEAMS,
-  calculateTeamPayroll,
   getTeamById,
 } from '@mbd/sim-core';
 import type {
@@ -65,6 +64,7 @@ import {
 } from './sim.worker.helpers.js';
 import { getDifficultyAdjustedBudget, getTeamStaffBudget } from './sim.worker.setup.js';
 import { applyOnboardingIdentityBaseline } from './sim.worker.frontOfficeIdentity.js';
+import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -173,7 +173,7 @@ function buildAllChapterData(rng: GameRNG): AllChapterData {
   const divisionRivalIds = TEAMS
     .filter((t) => t.division === team?.division && t.id !== teamId)
     .map((t) => t.id);
-  const teamPayroll = calculateTeamPayroll(teamId, s.players);
+  const teamPayroll = calculateStateTeamPayroll(s, teamId);
 
   // Build all-team roster map for scouting briefing
   const allTeamRosters = new Map<string, typeof s.players>();

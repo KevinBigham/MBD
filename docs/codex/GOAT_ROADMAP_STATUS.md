@@ -1,22 +1,23 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-16 after roadmap-item-16 verification; ECON-FA-DECISIONS-1 is complete and item 17 has not started.
+Last reconciled: 2026-07-16 after roadmap-item-17 verification; ECON-TRADE-RETENTION-1 is complete and item 18 was not started.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
-Current invariants: GameSnapshot v34; Dexie v6; worker canonical; no bare simulation `Math.random()`; no fabricated old-save history; no hidden CPU advantage; no UI finalization before durable persistence. The three pre-existing user-owned dirty files remain outside campaign scope and must stay unstaged: `.agents/skills/mbd-implement-slice/SKILL.md`, `AGENTS.md`, and `docs/codex/PROGRAM.md`.
+Current invariants: GameSnapshot v35; Dexie v6; worker canonical; no bare simulation `Math.random()`; no fabricated old-save history; no hidden CPU advantage; no UI finalization before durable persistence. The three pre-existing user-owned dirty files remain outside campaign scope and must stay unstaged: `.agents/skills/mbd-implement-slice/SKILL.md`, `AGENTS.md`, and `docs/codex/PROGRAM.md`.
 
 Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `PENDING`, `BLOCKED — ORACLE`, and `BLOCKED — EXTERNAL AUTHORIZATION`.
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–16 and 80.
+- Verified complete: items 1–17 and 80.
 - Closed item: **11 — service-time arbitration drama**, now **VERIFIED COMPLETE** under Goal 21 / `ECON-ARBITRATION-1`; Goal 11's bounded contract clock remains complete.
 - Closed item: **12 — qualifying offers and draft-pick compensation**, now **VERIFIED COMPLETE** under Goal 22 / `ECON-QUALIFYING-OFFERS-1`.
 - Closed item: **13 — identity-driven CPU extensions**, now **VERIFIED COMPLETE** under Goal 23 / `ECON-EXTENSION-AI-1`.
 - Closed item: **14 — owner payroll pressure/tax consequences**, now **VERIFIED COMPLETE** under Goal 24 / `ECON-OWNER-PAYROLL-PRESSURE-1`.
 - Closed item: **15 — market-size revenue feeds budgets**, now **VERIFIED COMPLETE** under Goal 25 / `ECON-MARKET-REVENUE-1`.
-- Closed item: **16 — explainable free-agent decisions**, now **VERIFIED COMPLETE** under Goal 26 / `ECON-FA-DECISIONS-1`; item 17 has not started.
+- Closed item: **16 — explainable free-agent decisions**, now **VERIFIED COMPLETE** under Goal 26 / `ECON-FA-DECISIONS-1`.
+- Closed item: **17 — salary retention and player-linked cash in trades**, now **VERIFIED COMPLETE** under Goal 27 / `ECON-TRADE-RETENTION-1`; item 18 was not started.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -40,8 +41,8 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 13 | 2 | Identity-driven CPU extensions | VERIFIED COMPLETE | Goal 23 / `runs/ECON-EXTENSION-AI-1` | Completion matrix; persisted-GM bounded team policy with identity-neutral player RNG; candidate-scoped lanes; exact budget/aggregate/save proof; four-seed study; production extension 1/1 and reload-smoke 2/2, final 3/3 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; `/root/extensions_final_review` final `MERGE_READY` 0/0/0 after `FIX_AND_REVIEW` 0/4/1 and 0/1/0 | Items 9, 49 (bounded consumption only) | Preserve player-side neutrality, candidate isolation, exact budget, and aggregate/save fencing; item 49 remains partial |
 | 14 | 2 | Owner payroll pressure/tax consequences | VERIFIED COMPLETE | Goal 24 / `runs/ECON-OWNER-PAYROLL-PRESSURE-1` | Pure owner policy; canonical tax basis; exact annual receipts; old-save, 4×4 study, production/reload, and root-gate proof | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; `/root/ownerpayroll_risk_review` final `MERGE_READY` 0/0/0 after two bounded correction loops | Items 9, 51 (bounded owner-state consumption only) | Preserve advisory semantics, tax basis, once-only receipts, and item-15 boundary |
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
-| 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 next |
-| 17 | 2 | Salary retention and cash in trades | PENDING | No goal/run | Trade assets have no retained-salary/cash type | — | — | Items 9, 54 | Design contract-safe trade assets |
+| 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
+| 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
 | 18 | 2 | 30-season multi-seed economy soak | PARTIAL | No goal/run | Calibration records some economy measures; current sample is far below 30 seasons | — | — | Items 9–17 | Add enforced long-horizon bands |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
@@ -184,11 +185,12 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## First incomplete item source contract
 
-Item 17 remains `PENDING`. Live trade assets do not yet model retained salary or
-cash. The next legal slice must create its own bounded goal/run, reconcile the
-contract-safe trade asset and persistence seams from live source, and preserve
-items 9–16 contract, budget, owner-policy, free-agency, exact-save, determinism,
-and old-save invariants. Item 17 was not started in the item-16 run.
+Item 18 remains `PARTIAL`. Item 17 now supplies deterministic, conserved,
+save-compatible salary retention and player-linked reimbursement facts, but no
+30-season multi-seed economy soak was started. The next legal slice must create
+its own bounded goal/run, freeze source-grounded long-horizon bands, and
+preserve items 9–17 contract, budget, owner-policy, free-agency, trade-finance,
+exact-save, determinism, and old-save invariants.
 
 ## Item 9/10 landing receipt
 
