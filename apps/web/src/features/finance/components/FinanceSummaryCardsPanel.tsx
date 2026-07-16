@@ -1,4 +1,5 @@
 import { StatLine } from '@mbd/ui';
+import type { OwnerPayrollPolicy } from '@mbd/sim-core';
 import { Briefcase, DollarSign, TrendingDown, TrendingUp } from 'lucide-react';
 import { DensePanel } from '@/shared/components/DensePanel';
 import { formatMoney } from './financePresentation';
@@ -10,13 +11,14 @@ export interface FinanceSummaryCardsPanelProps {
   luxuryTaxPayroll: number;
   luxuryTax: number;
   budget: number;
-  capSpace: number;
+  budgetRoom: number;
   coachingPayroll: number;
+  ownerPayrollPolicy: OwnerPayrollPolicy;
 }
 
-function budgetStatusColor(capSpace: number): string {
-  if (capSpace > 10) return 'text-accent-success';
-  if (capSpace > 0) return 'text-accent-warning';
+function budgetStatusColor(budgetRoom: number): string {
+  if (budgetRoom > 10) return 'text-accent-success';
+  if (budgetRoom > 0) return 'text-accent-warning';
   return 'text-accent-danger';
 }
 
@@ -27,14 +29,18 @@ export function FinanceSummaryCardsPanel({
   luxuryTaxPayroll,
   luxuryTax,
   budget,
-  capSpace,
+  budgetRoom,
   coachingPayroll,
+  ownerPayrollPolicy,
 }: FinanceSummaryCardsPanelProps) {
-  const budgetRoom = budget - totalPayroll;
-  const taxOverage = luxuryTaxPayroll > 230 ? luxuryTaxPayroll - 230 : 0;
+  const ownerBandLabel = ownerPayrollPolicy.ownerBand === 'below_floor'
+    ? 'Below owner floor'
+    : ownerPayrollPolicy.ownerBand === 'above_soft_ceiling'
+      ? 'Above soft ceiling'
+      : 'Inside owner plan';
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       <DensePanel
         title="Total Payroll"
         icon={<DollarSign className="h-4 w-4 text-accent-primary" />}
@@ -51,8 +57,23 @@ export function FinanceSummaryCardsPanel({
       </DensePanel>
 
       <DensePanel
+        title="Owner Plan"
+        icon={<TrendingUp className="h-4 w-4 text-accent-primary" />}
+        titleClassName="text-dynasty-muted"
+      >
+          <div className="font-data text-sm font-bold text-dynasty-text">{ownerBandLabel}</div>
+          <StatLine
+            className="mt-2"
+            stats={[
+              { label: 'Floor', value: formatMoney(ownerPayrollPolicy.floor) },
+              { label: 'Soft ceiling', value: formatMoney(ownerPayrollPolicy.softCeiling) },
+            ]}
+          />
+      </DensePanel>
+
+      <DensePanel
         title="Budget"
-        icon={capSpace >= 0
+        icon={budgetRoom >= 0
           ? <TrendingUp className="h-4 w-4 text-accent-success" />
           : <TrendingDown className="h-4 w-4 text-accent-danger" />}
         titleClassName="text-dynasty-muted"
@@ -66,18 +87,19 @@ export function FinanceSummaryCardsPanel({
       </DensePanel>
 
       <DensePanel
-        title="Luxury Tax"
+        title="Projected Tax"
         icon={<DollarSign className="h-4 w-4 text-accent-warning" />}
         titleClassName="text-dynasty-muted"
       >
           <div className="font-data text-2xl font-bold text-dynasty-text">
-            {luxuryTax > 0 ? formatMoney(luxuryTax) : 'None'}
+            {luxuryTax > 0 ? formatMoney(luxuryTax) : 'Clear'}
           </div>
           <StatLine
             className="mt-2"
             stats={[
-              { label: 'Threshold', value: '$230.0M' },
-              { label: 'Overage', value: taxOverage > 0 ? formatMoney(taxOverage) : '--' },
+              { label: 'Tax payroll', value: formatMoney(luxuryTaxPayroll) },
+              { label: 'Line', value: formatMoney(ownerPayrollPolicy.taxThreshold) },
+              { label: 'Overage', value: ownerPayrollPolicy.taxOverage > 0 ? formatMoney(ownerPayrollPolicy.taxOverage) : '--' },
             ]}
           />
       </DensePanel>

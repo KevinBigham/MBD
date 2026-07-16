@@ -60,6 +60,22 @@ function makeCommandCenter(overrides: Partial<OffseasonCommandCenterView> = {}):
       payroll: 186,
       budget: 180,
       payrollSpace: -6,
+      ownerPayrollPolicy: {
+        archetype: 'patient_builder',
+        floor: 72,
+        softCeiling: 180,
+        totalPayroll: 186,
+        ownerBand: 'above_soft_ceiling',
+        floorShortfall: 0,
+        softCeilingRoom: 0,
+        softCeilingOverage: 6,
+        taxThreshold: 230,
+        luxuryTaxPayroll: 170,
+        taxBand: 'clear',
+        taxRoom: 60,
+        taxOverage: 0,
+        projectedTax: 0,
+      },
       rosterHoleCount: 2,
     },
     ...overrides,
@@ -94,6 +110,11 @@ describe('OffseasonCommandCenterPanel', () => {
     expect(container.textContent).toContain('39/40');
     expect(container.textContent).toContain('$186.0M');
     expect(container.textContent).toContain('-$6.0M');
+    expect(container.textContent).toContain('Above soft ceiling');
+    expect(container.textContent).toContain('Floor');
+    expect(container.textContent).toContain('$72.0M');
+    expect(container.textContent).toContain('Tax line');
+    expect(container.textContent).toContain('$230.0M');
     expect(container.textContent).toContain('Complete');
     expect(container.textContent).toContain('Needs attention');
     expect(container.textContent).toContain('Blocked');

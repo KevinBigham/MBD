@@ -57,10 +57,16 @@ export function useFreeAgencyOfferActions({
   const offerBudget = useMemo<FreeAgencyOfferBudget | null>(() => {
     if (!finance) return null;
     const projectedPayroll = finance.totalPayroll + offerSalary;
+    const policy = finance.ownerPayrollPolicy;
     return {
       projectedPayroll,
       budgetRoom: finance.budget - projectedPayroll,
-      taxRoom: finance.capSpace - offerSalary,
+      ownerFloor: policy?.floor,
+      ownerSoftCeilingRoom: policy ? policy.softCeiling - projectedPayroll : undefined,
+      taxLine: policy?.taxThreshold,
+      taxRoom: policy
+        ? policy.taxThreshold - (policy.luxuryTaxPayroll + offerSalary)
+        : finance.capSpace - offerSalary,
     };
   }, [finance, offerSalary]);
 

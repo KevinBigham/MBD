@@ -1,4 +1,5 @@
 import { Badge, GradeBar } from '@mbd/ui';
+import type { OwnerPayrollPolicy } from '@mbd/sim-core';
 import { Building2, Clock, Coins, TrendingUp } from 'lucide-react';
 import { DensePanel } from '@/shared/components/DensePanel';
 
@@ -10,7 +11,7 @@ export interface FrontOfficeOwnerView {
   summary: string;
   expectations: { winsTarget: number; playoffTarget: boolean; payrollTarget: number };
   satisfaction: number;
-  spendingWillingness: number;
+  spendingWillingness: 'cheap' | 'moderate' | 'lavish';
   winNowPressure: number;
   meddlingLevel: number;
   annualBudget: number;
@@ -34,6 +35,7 @@ function archetypeLabel(archetype: string): string {
 }
 
 function formatMoney(n: number): string {
+  if (n <= 1_000) return `$${n.toFixed(1)}M`;
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
   return `$${n}`;
@@ -90,7 +92,13 @@ export function FrontOfficeOwnerProfileCard({ owner }: { owner: FrontOfficeOwner
   );
 }
 
-export function FrontOfficeBudgetCard({ owner }: { owner: FrontOfficeOwnerView }) {
+export function FrontOfficeBudgetCard({
+  owner,
+  ownerPayrollPolicy,
+}: {
+  owner: FrontOfficeOwnerView;
+  ownerPayrollPolicy?: OwnerPayrollPolicy | null;
+}) {
   return (
     <DensePanel
       title="Budget Overview"
@@ -111,6 +119,21 @@ export function FrontOfficeBudgetCard({ owner }: { owner: FrontOfficeOwnerView }
             </div>
           ))}
         </div>
+
+        {ownerPayrollPolicy ? (
+          <div className="mt-3 rounded-md border border-accent-primary/30 bg-accent-primary/5 p-3">
+            <div className="font-heading text-xs uppercase tracking-[0.14em] text-accent-primary">Owner payroll plan</div>
+            <div className="mt-2 grid grid-cols-2 gap-2 font-data text-xs text-dynasty-text sm:grid-cols-4">
+              <div>Current <span className="text-dynasty-textBright">{formatMoney(ownerPayrollPolicy.totalPayroll)}</span></div>
+              <div>Floor <span className="text-dynasty-textBright">{formatMoney(ownerPayrollPolicy.floor)}</span></div>
+              <div>Soft ceiling <span className="text-dynasty-textBright">{formatMoney(ownerPayrollPolicy.softCeiling)}</span></div>
+              <div>Tax line <span className="text-dynasty-textBright">{formatMoney(ownerPayrollPolicy.taxThreshold)}</span></div>
+            </div>
+            <p className="mt-2 font-data text-xs text-dynasty-muted">
+              Advisory lines only. Final owner payroll pressure is reconciled once when the offseason completes.
+            </p>
+          </div>
+        ) : null}
 
         <div className="mt-3 space-y-2">
           <div>

@@ -3,7 +3,6 @@ import {
   calculateAwardRaces,
   calculateDynastyLeaderboardScore,
   calculateCoachingPayroll,
-  calculateLuxuryTax,
   calculateTeamPayroll,
   compareTimelines,
   describeInjury,
@@ -74,6 +73,10 @@ import {
   getMinorLeagueAffiliateIdentityView,
   getMinorLeagueAffiliateOpponentLabel,
 } from './content/minorLeagueContent.js';
+import {
+  buildOwnerPayrollPolicy,
+  buildOwnerPayrollPresentation,
+} from './sim.worker.ownerPayrollPressure.js';
 import type {
   CareerStatsLedger,
   GMRelationship,
@@ -999,8 +1002,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
     .filter((entry) => entry.player?.teamId === s.userTeamId)
     .sort((left, right) => left.daysRemaining - right.daysRemaining);
 
+  const ownerPayrollPolicy = buildOwnerPayrollPolicy(s, s.userTeamId);
   const finances = {
-    payroll: calculateTeamPayroll(s.userTeamId, getTeamPlayers(s.userTeamId)).totalPayroll,
+    payroll: ownerPayrollPolicy.totalPayroll,
     budget: getDifficultyAdjustedBudget(s, s.userTeamId),
   };
   const fatigueWarnings = buildFatigueWarnings(s, mlbPlayers);
@@ -1117,7 +1121,9 @@ function buildDashboardSummary(s: NonNullable<typeof state>) {
       fatigueWarnings,
       payroll: finances.payroll,
       budget: finances.budget,
-      luxuryTax: calculateLuxuryTax(finances.payroll),
+      budgetRoom: Math.round((finances.budget - finances.payroll) * 100) / 100,
+      luxuryTax: ownerPayrollPolicy.projectedTax,
+      ownerPayrollPolicy,
     },
     intel: {
       tradeInboxCount: s.tradeState.pendingOffers.length,
@@ -3618,6 +3624,16 @@ export const queryApi = {
     return s.ownerState.get(teamId ?? s.userTeamId) ?? null;
   },
 
+  getOwnerPayrollPolicy(teamId?: string) {
+    const s = requireState();
+    return buildOwnerPayrollPolicy(s, teamId ?? s.userTeamId);
+  },
+
+  getOwnerPayrollPresentation(teamId?: string) {
+    const s = requireState();
+    return buildOwnerPayrollPresentation(s, teamId ?? s.userTeamId);
+  },
+
   getFrontOfficeState(teamId?: string) {
     const s = requireState();
     return s.frontOfficeState.get(teamId ?? s.userTeamId) ?? null;
@@ -3772,14 +3788,15 @@ export const queryApi = {
   },
 
   getTeamFinances(teamId: string) {
-    const payroll = calculateTeamPayroll(teamId, getTeamPlayers(teamId)).totalPayroll;
+    const ownerPayrollPolicy = buildOwnerPayrollPolicy(requireState(), teamId);
+    const payroll = ownerPayrollPolicy.totalPayroll;
     const budget = getDifficultyAdjustedBudget(requireState(), teamId);
-    const luxuryTax = calculateLuxuryTax(payroll);
     return {
       payroll,
       budget,
-      luxuryTax,
-      capSpace: Math.max(0, budget - payroll),
+      luxuryTax: ownerPayrollPolicy.projectedTax,
+      budgetRoom: Math.round((budget - payroll) * 100) / 100,
+      ownerPayrollPolicy,
     };
   },
 
@@ -3947,7 +3964,7 @@ export const queryApi = {
     const s = requireState();
     const teamPlayers = s.players.filter((p) => p.teamId === s.userTeamId);
     const payroll = calculateTeamPayroll(s.userTeamId, s.players);
-    const luxuryTax = calculateLuxuryTax(payroll.luxuryTaxPayroll);
+    const ownerPayrollPolicy = buildOwnerPayrollPolicy(s, s.userTeamId);
     const budget = getDifficultyAdjustedBudget(s, s.userTeamId);
     const coachingStaff = s.coachingStaffs.get(s.userTeamId) ?? [];
     const coachingPayroll = calculateCoachingPayroll(coachingStaff);
@@ -3972,9 +3989,11 @@ export const queryApi = {
       mlbPayroll: payroll.mlbPayroll,
       minorsPayroll: payroll.minorsPayroll,
       luxuryTaxPayroll: payroll.luxuryTaxPayroll,
-      luxuryTax,
+      luxuryTax: ownerPayrollPolicy.projectedTax,
       budget,
       capSpace: payroll.capSpace,
+      budgetRoom: Math.round((budget - payroll.totalPayroll) * 100) / 100,
+      ownerPayrollPolicy,
       futureCommitments: payroll.futureCommitments,
       coachingPayroll,
       contracts,

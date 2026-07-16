@@ -145,6 +145,15 @@ describe('calculateFinancialFlexibility', () => {
     expect(roomy.canAddRole).toBe(true);
     expect(tight.canAddStar).toBe(false);
   });
+
+  it('uses MLB plus dead money—not minor-league payroll—for tax flexibility', () => {
+    const flexibility = calculateFinancialFlexibility(245, 260, 230, 220);
+
+    expect(flexibility.availableSpace).toBe(15);
+    expect(flexibility.luxuryTaxRoom).toBe(10);
+    expect(flexibility.narrativeSummary).toContain('10.00 million before the tax threshold');
+    expect(flexibility.narrativeSummary).not.toContain('penalty');
+  });
 });
 
 describe('generateFinancialPlaybook', () => {
@@ -159,5 +168,19 @@ describe('generateFinancialPlaybook', () => {
       'penny_pincher',
       'balanced',
     ]);
+  });
+
+  it('keeps minor-league salary out of the onboarding luxury-tax line', () => {
+    const playbook = generateFinancialPlaybook(createContext({
+      players: [
+        makePlayer({ id: 'mlb', contract: { annualSalary: 220 }, rosterStatus: 'MLB' }),
+        makePlayer({ id: 'aaa', contract: { annualSalary: 25 }, rosterStatus: 'AAA', minorLeagueLevel: 'AAA' }),
+      ],
+      budget: 260,
+    }));
+
+    expect(playbook.flexibility.availableSpace).toBe(15);
+    expect(playbook.flexibility.luxuryTaxRoom).toBe(10);
+    expect(playbook.flexibility.narrativeSummary).not.toContain('penalty');
   });
 });

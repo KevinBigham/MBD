@@ -137,9 +137,10 @@ export function calculateFinancialFlexibility(
   payroll: number,
   budget: number,
   luxuryThreshold: number,
+  luxuryTaxPayroll: number = payroll,
 ): FinancialFlexibility {
   const availableSpace = roundMoney(budget - payroll);
-  const luxuryTaxRoom = roundMoney(luxuryThreshold - payroll);
+  const luxuryTaxRoom = roundMoney(luxuryThreshold - luxuryTaxPayroll);
   const ratioRemaining = budget > 0 ? availableSpace / budget : 0;
   const grade: FinancialFlexibility['grade'] =
     availableSpace < 0 ? 'F'
@@ -147,7 +148,7 @@ export function calculateFinancialFlexibility(
         : ratioRemaining >= 0.2 ? 'B'
           : ratioRemaining >= 0.1 ? 'C'
             : 'D';
-  const taxOwed = payroll > luxuryThreshold ? calculateLuxuryTax(payroll) : 0;
+  const taxOwed = luxuryTaxPayroll > luxuryThreshold ? calculateLuxuryTax(luxuryTaxPayroll) : 0;
 
   return {
     grade,
@@ -170,6 +171,7 @@ export function generateFinancialPlaybook(context: FinancialContext): FinancialP
     payrollState?.totalPayroll ?? payroll.totalPayroll,
     context.budget,
     context.luxuryTaxThreshold,
+    payrollState?.luxuryTaxPayroll ?? payroll.totalPayroll,
   );
 
   return {

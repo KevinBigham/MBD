@@ -34,10 +34,11 @@ ADR and must not block web release.
 
 - The authoritative campaign ledger is `docs/codex/GOAT_ROADMAP_STATUS.md`;
   branch names and revisions must be verified from live Git before every slice.
-- Roadmap items 1–12 and 80 are verified complete in the ledger.
-- Roadmap item 12, qualifying offers plus draft-pick compensation, is complete
-  under Goal 22 / `docs/codex/runs/ECON-QUALIFYING-OFFERS-1/`.
-- Roadmap item 13, identity-driven CPU extensions, is the next eligible
+- Roadmap items 1–14 and 80 are verified complete in the ledger.
+- Roadmap item 14, owner-archetype payroll floors, advisory soft ceilings, and
+  projected tax consequences, is complete under Goal 24 /
+  `docs/codex/runs/ECON-OWNER-PAYROLL-PRESSURE-1/`.
+- Roadmap item 15, market-size revenue feeding budgets, is the next eligible
   economy slice. It and all later work remain unstarted in this run.
 
 ## Remaining Release Gates

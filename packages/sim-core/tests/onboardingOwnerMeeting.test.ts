@@ -16,6 +16,7 @@ function createContext(overrides: Partial<OwnerMeetingContext> = {}): OwnerMeeti
     ownerConfidence: 46,
     marketSize: 'large',
     payroll: 188,
+    luxuryTaxPayroll: 172,
     budget: 240,
     luxuryTaxThreshold: 230,
     lastSeasonWins: 91,
@@ -71,6 +72,26 @@ describe('generateBudgetOverview', () => {
     expect(overview.luxuryTaxDistance).toBe(-25);
     expect(overview.spendingGrade).toBe('D');
   });
+
+  it('uses total payroll for budget room and taxable payroll for the tax line', () => {
+    const overview = generateBudgetOverview(245, 260, 230, 'standard', 220);
+
+    expect(overview.currentPayroll).toBe(245);
+    expect(overview.availableSpace).toBe(15);
+    expect(overview.luxuryTaxDistance).toBe(10);
+    expect(overview.narrativeSummary).toContain('15.00 million available before ownership cap');
+    expect(overview.narrativeSummary).toContain('10.00 million before the tax line');
+    expect(overview.narrativeSummary).not.toMatch(/tax bill|projected exposure/);
+  });
+
+  it('describes taxpayer amounts as projected exposure rather than a carried bill', () => {
+    const overview = generateBudgetOverview(245, 260, 230, 'standard', 250);
+
+    expect(overview.availableSpace).toBe(15);
+    expect(overview.luxuryTaxDistance).toBe(-20);
+    expect(overview.narrativeSummary).toContain('4.00 million in projected exposure');
+    expect(overview.narrativeSummary).not.toMatch(/carrying|tax bill/i);
+  });
 });
 
 describe('generateOwnerMeeting', () => {
@@ -88,6 +109,7 @@ describe('generateOwnerMeeting', () => {
       marketSize: 'small',
       divisionRivals: ['sea', 'sfb'],
       payroll: 121,
+      luxuryTaxPayroll: 110,
       budget: 170,
     }));
 

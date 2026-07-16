@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { OwnerPayrollPolicy } from '@mbd/sim-core';
 import type {
   DemandFilter,
   FreeAgencyMarketAgent,
@@ -33,6 +34,7 @@ export interface FinanceOverview {
   totalPayroll: number;
   budget: number;
   capSpace: number;
+  ownerPayrollPolicy?: OwnerPayrollPolicy;
 }
 
 export interface FreeAgencyRouteDataOptions {

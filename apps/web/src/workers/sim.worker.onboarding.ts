@@ -7,6 +7,7 @@ import {
   LUXURY_TAX_THRESHOLD,
   TEAM_MARKETS,
   TEAMS,
+  calculateTeamPayroll,
   getTeamById,
 } from '@mbd/sim-core';
 import type {
@@ -172,6 +173,7 @@ function buildAllChapterData(rng: GameRNG): AllChapterData {
   const divisionRivalIds = TEAMS
     .filter((t) => t.division === team?.division && t.id !== teamId)
     .map((t) => t.id);
+  const teamPayroll = calculateTeamPayroll(teamId, s.players);
 
   // Build all-team roster map for scouting briefing
   const allTeamRosters = new Map<string, typeof s.players>();
@@ -195,9 +197,8 @@ function buildAllChapterData(rng: GameRNG): AllChapterData {
     ownerPatience: ownerS?.patience ?? 50,
     ownerConfidence: ownerS?.confidence ?? 50,
     marketSize: TEAM_MARKETS[teamId]?.size ?? 'medium',
-    payroll: s.players
-      .filter((p) => p.teamId === teamId && p.rosterStatus === 'MLB')
-      .reduce((sum, p) => sum + (p.contract?.annualSalary ?? 0), 0),
+    payroll: teamPayroll.totalPayroll,
+    luxuryTaxPayroll: teamPayroll.luxuryTaxPayroll,
     budget,
     luxuryTaxThreshold: LUXURY_TAX_THRESHOLD,
     lastSeasonWins: null,

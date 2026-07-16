@@ -29,6 +29,23 @@ const MOCK_FINANCE_DATA = {
   luxuryTax: 0,
   budget: 210.0,
   capSpace: 67.7,
+  budgetRoom: 24.5,
+  ownerPayrollPolicy: {
+    archetype: 'patient_builder',
+    floor: 72.92,
+    softCeiling: 182.3,
+    totalPayroll: 185.5,
+    ownerBand: 'above_soft_ceiling',
+    floorShortfall: 0,
+    softCeilingRoom: 0,
+    softCeilingOverage: 3.2,
+    taxThreshold: 230,
+    luxuryTaxPayroll: 162.3,
+    taxBand: 'clear',
+    taxRoom: 67.7,
+    taxOverage: 0,
+    projectedTax: 0,
+  },
   futureCommitments: [140.0, 110.0, 80.0, 50.0, 20.0],
   coachingPayroll: 11.5,
   contracts: [
@@ -146,5 +163,32 @@ describe('FinancePage', () => {
     });
 
     expect(container.textContent).toContain('Loading finance data');
+  });
+
+  it('describes exact tax-line equality without claiming room below the line', async () => {
+    mockedUseWorker.mockReturnValue({
+      isReady: true,
+      getFinanceOverview: vi.fn().mockResolvedValue({
+        ...MOCK_FINANCE_DATA,
+        ownerPayrollPolicy: {
+          ...MOCK_FINANCE_DATA.ownerPayrollPolicy,
+          luxuryTaxPayroll: 230,
+          taxRoom: 0,
+        },
+      }),
+    } as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <FinancePage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('At tax line · $0.00M projected exposure');
+    expect(container.textContent).not.toContain('$0.00M below tax line');
   });
 });

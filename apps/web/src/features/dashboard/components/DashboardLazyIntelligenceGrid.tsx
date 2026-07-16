@@ -70,8 +70,10 @@ export default function DashboardLazyIntelligenceGrid({
           <FinancialCard
             payroll={summary?.roster.payroll ?? 0}
             budget={summary?.roster.budget ?? 0}
+            budgetRoom={summary?.roster.budgetRoom}
             luxuryTax={summary?.roster.luxuryTax ?? 0}
             annualBudget={summary?.franchise.owner?.annualBudget}
+            ownerPayrollPolicy={summary?.roster.ownerPayrollPolicy}
             payrollCap={summary?.franchise.owner?.payrollCap}
           />
         </Suspense>

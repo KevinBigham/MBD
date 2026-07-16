@@ -201,7 +201,7 @@ describe('FrontOfficePage', () => {
   it('renders owner profile, reputation, chemistry, and budget', async () => {
     mockedUseWorker.mockReturnValue({
       isReady: true,
-      getOwnerState: vi.fn().mockResolvedValue(MOCK_OWNER),
+      getOwnerPayrollPresentation: vi.fn().mockResolvedValue({ owner: MOCK_OWNER, ownerPayrollPolicy: null }),
       getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
       getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),
@@ -258,7 +258,7 @@ describe('FrontOfficePage', () => {
     const getMentorships = vi.fn().mockResolvedValue(MOCK_MENTORSHIP);
     mockedUseWorker.mockReturnValue({
       isReady: true,
-      getOwnerState: vi.fn().mockResolvedValue(MOCK_OWNER),
+      getOwnerPayrollPresentation: vi.fn().mockResolvedValue({ owner: MOCK_OWNER, ownerPayrollPolicy: null }),
       getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
       getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),
@@ -293,7 +293,7 @@ describe('FrontOfficePage', () => {
 
     mockedUseWorker.mockReturnValue({
       isReady: true,
-      getOwnerState: vi.fn().mockResolvedValue(calmOwner),
+      getOwnerPayrollPresentation: vi.fn().mockResolvedValue({ owner: calmOwner, ownerPayrollPolicy: null }),
       getFrontOfficeState: vi.fn().mockResolvedValue(MOCK_FO),
       getTeamChemistry: vi.fn().mockResolvedValue(MOCK_CHEMISTRY),
       getFrontOfficeIdentity: vi.fn().mockResolvedValue(MOCK_IDENTITY),

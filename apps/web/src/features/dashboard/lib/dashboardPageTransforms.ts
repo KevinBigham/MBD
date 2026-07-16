@@ -1,6 +1,7 @@
 import { humanizeLabel } from '@/shared/lib/labels';
 import type { PressRoomEntry } from '@/shared/types/pressRoom';
 import type { GuidedStartNudgeId } from '@/features/onboarding/nudges';
+import type { OwnerPayrollPolicy } from '@mbd/sim-core';
 import type { AttentionDeskItem } from '../components/AttentionDesk';
 import type { DashboardSimAction } from '../components/DashboardSimControlsPanel';
 import { normalizeProspectReadinessGrade } from './prospectReadiness';
@@ -72,7 +73,9 @@ export interface DashboardSummary {
     }>;
     payroll: number;
     budget: number;
+    budgetRoom?: number;
     luxuryTax: number;
+    ownerPayrollPolicy?: OwnerPayrollPolicy;
   };
   intel: {
     tradeInboxCount: number;

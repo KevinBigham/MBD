@@ -205,6 +205,40 @@ function focusedScoutingDomain(focus: GMPhilosophy['scoutingFocus']): 'draft' | 
   return focus === 'pro_scouting' ? 'pro' : focus;
 }
 
+describe('revised onboarding payroll truth', () => {
+  it('keeps Owner Meeting and Financial Playbook aligned with minor-league salary present', async () => {
+    const harness = await loadWorkerHarness();
+    harness.setState(null);
+    harness.api.newGame({
+      seed: 12_702,
+      userTeamId: 'nym',
+      gmName: 'Payroll Truth',
+      difficulty: 'standard',
+      saveSlot: 1,
+      dayOneExperience: 'full',
+    });
+    const state = harness.requireState();
+    const minor = state.players.find((player) =>
+      player.teamId === state.userTeamId && player.rosterStatus !== 'MLB',
+    )!;
+    minor.contract = {
+      ...minor.contract,
+      annualSalary: 25,
+      totalValue: 25 * Math.max(1, minor.contract.years),
+    };
+
+    const data = await harness.api.getRevisedOnboardingData('walt_kowalski');
+    const ownerBudget = data.chapterData.owner.budgetOverview;
+    const financialFlexibility = data.chapterData.financial.flexibility;
+
+    expect(ownerBudget.currentPayroll).toBe(data.chapterData.financial.payroll.totalPayroll);
+    expect(ownerBudget.availableSpace).toBe(financialFlexibility.availableSpace);
+    expect(ownerBudget.luxuryTaxDistance).toBe(financialFlexibility.luxuryTaxRoom);
+    expect(ownerBudget.narrativeSummary).not.toMatch(/carrying|tax bill/i);
+    harness.setState(null);
+  });
+});
+
 function advanceEntireOffseason(harness: Awaited<ReturnType<typeof loadWorkerHarness>>) {
   harness.api.proceedToOffseason();
   let guard = 0;

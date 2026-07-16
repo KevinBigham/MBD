@@ -8,10 +8,8 @@ import { FinanceSummaryCardsPanel } from '../components/FinanceSummaryCardsPanel
 import { formatMoney } from '../components/financePresentation';
 import { useFinanceRouteData } from '../hooks/useFinanceRouteData';
 
-function budgetStatusVariant(capSpace: number): 'success' | 'warning' | 'danger' {
-  if (capSpace > 10) return 'success';
-  if (capSpace > 0) return 'warning';
-  return 'danger';
+function taxStatusVariant(taxpayer: boolean): 'success' | 'warning' {
+  return taxpayer ? 'warning' : 'success';
 }
 
 export default function FinancePage() {
@@ -53,19 +51,24 @@ export default function FinancePage() {
             Payroll breakdown, luxury tax exposure, and contract obligations.
           </p>
         </div>
-        <Badge variant={budgetStatusVariant(data.capSpace)} className="uppercase">
-          {data.capSpace >= 0 ? `${formatMoney(data.capSpace)} under tax` : `${formatMoney(Math.abs(data.capSpace))} over tax`}
+        <Badge variant={taxStatusVariant(data.ownerPayrollPolicy.taxBand === 'taxpayer')} className="uppercase">
+          {data.ownerPayrollPolicy.taxBand === 'taxpayer'
+            ? `${formatMoney(data.ownerPayrollPolicy.taxOverage)} over tax line`
+            : data.ownerPayrollPolicy.taxRoom > 0
+              ? `${formatMoney(data.ownerPayrollPolicy.taxRoom)} below tax line`
+              : 'At tax line · $0.00M projected exposure'}
         </Badge>
       </div>
 
       <FinanceSummaryCardsPanel
         budget={data.budget}
-        capSpace={data.capSpace}
+        budgetRoom={data.budgetRoom}
         coachingPayroll={data.coachingPayroll}
         luxuryTax={data.luxuryTax}
         luxuryTaxPayroll={data.luxuryTaxPayroll}
         minorsPayroll={data.minorsPayroll}
         mlbPayroll={data.mlbPayroll}
+        ownerPayrollPolicy={data.ownerPayrollPolicy}
         totalPayroll={data.totalPayroll}
       />
 

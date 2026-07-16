@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { OwnerPayrollPolicy } from '@mbd/sim-core';
 import {
   isExtensionPriorityContract,
   type FinanceContractEntry,
@@ -16,6 +17,8 @@ export interface FinanceData {
   luxuryTax: number;
   budget: number;
   capSpace: number;
+  budgetRoom: number;
+  ownerPayrollPolicy: OwnerPayrollPolicy;
   futureCommitments: number[];
   coachingPayroll: number;
   contracts: FinanceContractEntry[];

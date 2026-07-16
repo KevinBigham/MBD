@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GameSnapshot } from '@mbd/contracts';
-import { createOffseasonState } from '@mbd/sim-core';
+import { TEAMS, createOffseasonState } from '@mbd/sim-core';
 import v34SnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 
 const mocks = vi.hoisted(() => ({
@@ -158,6 +158,70 @@ function extensionPhaseWorker() {
       discardFlow: vi.fn(),
     },
     readCurrent: () => structuredClone(current),
+  };
+}
+
+function ownerPayrollReconciliationWorker() {
+  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  baseline.phase = 'offseason';
+  baseline.offseasonState = {
+    ...createOffseasonState(baseline.season),
+    currentPhase: 'spring_training',
+    phaseDay: 12,
+    totalDay: 92,
+  };
+  const post = structuredClone(baseline);
+  post.offseasonState = {
+    ...post.offseasonState!,
+    completed: true,
+  };
+  const flag = `owner_payroll_pressure_reconciled_s${post.season}`;
+  post.narrative.storyFlags = TEAMS.map((team) => [team.id, [flag]]);
+  post.news = [{
+    id: `owner-payroll-pressure-${post.season}-${post.userTeamId}`,
+    headline: 'Payroll finishes inside the owner plan',
+    body: 'Projected exposure is $0.00M.',
+    priority: 3,
+    category: 'performance',
+    tag: 'ANALYSIS',
+    timestamp: `S${post.season}D92`,
+    relatedPlayerIds: [],
+    relatedTeamIds: [post.userTeamId],
+    read: false,
+  }];
+  post.narrative.briefingQueue = [{
+    id: `brief-owner-payroll-pressure-${post.season}-${post.userTeamId}`,
+    priority: 3,
+    category: 'owner',
+    tag: 'ANALYSIS',
+    headline: 'Payroll finishes inside the owner plan',
+    body: 'Projected exposure is $0.00M.',
+    relatedTeamIds: [post.userTeamId],
+    relatedPlayerIds: [],
+    timestamp: `S${post.season}D92`,
+    acknowledged: false,
+  }];
+
+  let current: ExtensionSnapshot = baseline;
+  return {
+    baseline,
+    post,
+    adapter: {
+      exportSnapshot: vi.fn(async () => structuredClone(current)),
+      execute: vi.fn(async () => {
+        current = post;
+        return { currentPhase: 'spring_training', completed: true, flowStateChanged: true };
+      }),
+      restoreBaseline: vi.fn(async (_session, snapshot: object) => {
+        current = structuredClone(snapshot) as ExtensionSnapshot;
+        return {
+          importResult: { success: true },
+          restoredSnapshot: structuredClone(current),
+        };
+      }),
+      publishFlow: vi.fn(),
+      discardFlow: vi.fn(),
+    },
   };
 }
 
@@ -338,6 +402,37 @@ describe('exact-save mutation coordinator', () => {
     await expect(pending).resolves.toMatchObject({ kind: 'durable' });
     expect(extension.adapter.execute).toHaveBeenCalledTimes(1);
     expect(extension.readCurrent()).toEqual(extension.post);
+  });
+
+  it('retains the completed-offseason payroll reconciliation through persistence retry without replay', async () => {
+    let settleReceipt!: (value: { kind: 'durable'; record: object }) => void;
+    let retainedSnapshot: ExtensionSnapshot | null = null;
+    mocks.capture.mockImplementationOnce(async (_lease, capture) => {
+      retainedSnapshot = await capture.exportSnapshot() as ExtensionSnapshot;
+      return receipt;
+    });
+    mocks.wait.mockReturnValue(new Promise((resolve) => { settleReceipt = resolve; }));
+    const payroll = ownerPayrollReconciliationWorker();
+    const pending = executeExactSaveMutation({
+      ...options(payroll.adapter),
+      operation: 'skipOffseasonPhase',
+    });
+
+    await vi.waitFor(() => expect(mocks.wait).toHaveBeenCalledWith(receipt));
+    expect(payroll.adapter.execute).toHaveBeenCalledTimes(1);
+    const retained = retainedSnapshot as ExtensionSnapshot | null;
+    expect(retained?.offseasonState?.completed).toBe(true);
+    expect(retained?.narrative.storyFlags).toHaveLength(32);
+    expect(retained?.news).toContainEqual(expect.objectContaining({
+      id: `owner-payroll-pressure-${payroll.post.season}-${payroll.post.userTeamId}`,
+    }));
+    expect(retained?.narrative.briefingQueue).toContainEqual(expect.objectContaining({
+      id: `brief-owner-payroll-pressure-${payroll.post.season}-${payroll.post.userTeamId}`,
+    }));
+
+    settleReceipt({ kind: 'durable', record: {} });
+    await expect(pending).resolves.toMatchObject({ kind: 'durable' });
+    expect(payroll.adapter.execute).toHaveBeenCalledTimes(1);
   });
 
   it('restores the extension-phase baseline when persistence fails before receipt acceptance', async () => {

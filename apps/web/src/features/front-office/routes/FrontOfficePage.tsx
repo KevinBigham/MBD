@@ -24,13 +24,14 @@ export default function FrontOfficePage() {
     loading,
     mentorship,
     owner,
+    ownerPayrollPolicy,
     relationships,
   } = useFrontOfficeRouteData({
     day,
     getFrontOfficeIdentity: worker.getFrontOfficeIdentity,
     getFrontOfficeState: worker.getFrontOfficeState,
     getMentorships: worker.getMentorships,
-    getOwnerState: worker.getOwnerState,
+    getOwnerPayrollPresentation: worker.getOwnerPayrollPresentation,
     getRelationships: worker.getRelationships,
     getTeamChemistry: worker.getTeamChemistry,
     isInitialized,
@@ -60,7 +61,7 @@ export default function FrontOfficePage() {
           </div>
           <div className="space-y-4">
             {frontOffice && <FrontOfficeReputationCard reputation={frontOffice} />}
-            {owner && <FrontOfficeBudgetCard owner={owner} />}
+            {owner && <FrontOfficeBudgetCard owner={owner} ownerPayrollPolicy={ownerPayrollPolicy} />}
           </div>
         </div>
 

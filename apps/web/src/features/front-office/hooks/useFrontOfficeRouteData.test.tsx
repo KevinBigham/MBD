@@ -24,7 +24,7 @@ const owner: FrontOfficeOwnerView = {
   summary: 'The owner demands results immediately.',
   expectations: { winsTarget: 95, playoffTarget: true, payrollTarget: 180_000_000 },
   satisfaction: 45,
-  spendingWillingness: 80,
+  spendingWillingness: 'lavish',
   winNowPressure: 90,
   meddlingLevel: 60,
   annualBudget: 200_000_000,
@@ -166,7 +166,10 @@ describe('useFrontOfficeRouteData', () => {
   });
 
   function makeOptions(overrides: Partial<HookOptions> = {}) {
-    const getOwnerState = vi.fn().mockResolvedValue(owner);
+    const getOwnerPayrollPresentation = vi.fn().mockResolvedValue({
+      owner,
+      ownerPayrollPolicy: null,
+    });
     const getFrontOfficeState = vi.fn().mockResolvedValue(frontOffice);
     const getTeamChemistry = vi.fn().mockResolvedValue(chemistry);
     const getFrontOfficeIdentity = vi.fn().mockResolvedValue(identity);
@@ -177,7 +180,7 @@ describe('useFrontOfficeRouteData', () => {
       getFrontOfficeIdentity,
       getFrontOfficeState,
       getMentorships,
-      getOwnerState,
+      getOwnerPayrollPresentation,
       getRelationships,
       getTeamChemistry,
       options: {
@@ -185,7 +188,7 @@ describe('useFrontOfficeRouteData', () => {
         getFrontOfficeIdentity,
         getFrontOfficeState,
         getMentorships,
-        getOwnerState,
+        getOwnerPayrollPresentation,
         getRelationships,
         getTeamChemistry,
         isInitialized: true,
@@ -214,7 +217,7 @@ describe('useFrontOfficeRouteData', () => {
       getFrontOfficeIdentity,
       getFrontOfficeState,
       getMentorships,
-      getOwnerState,
+      getOwnerPayrollPresentation,
       getRelationships,
       getTeamChemistry,
       options,
@@ -222,7 +225,7 @@ describe('useFrontOfficeRouteData', () => {
 
     const result = await renderHook(options);
 
-    expect(getOwnerState).not.toHaveBeenCalled();
+    expect(getOwnerPayrollPresentation).not.toHaveBeenCalled();
     expect(getFrontOfficeState).not.toHaveBeenCalled();
     expect(getTeamChemistry).not.toHaveBeenCalled();
     expect(getFrontOfficeIdentity).not.toHaveBeenCalled();
@@ -242,7 +245,7 @@ describe('useFrontOfficeRouteData', () => {
       getFrontOfficeIdentity,
       getFrontOfficeState,
       getMentorships,
-      getOwnerState,
+      getOwnerPayrollPresentation,
       getRelationships,
       getTeamChemistry,
       options,
@@ -250,7 +253,7 @@ describe('useFrontOfficeRouteData', () => {
 
     const result = await renderHook(options);
 
-    expect(getOwnerState).toHaveBeenCalledTimes(1);
+    expect(getOwnerPayrollPresentation).toHaveBeenCalledTimes(1);
     expect(getFrontOfficeState).toHaveBeenCalledTimes(1);
     expect(getTeamChemistry).toHaveBeenCalledTimes(1);
     expect(getFrontOfficeIdentity).toHaveBeenCalledTimes(1);
@@ -287,7 +290,7 @@ describe('useFrontOfficeRouteData', () => {
       getFrontOfficeIdentity,
       getFrontOfficeState,
       getMentorships,
-      getOwnerState,
+      getOwnerPayrollPresentation,
       getRelationships,
       getTeamChemistry,
       options,
@@ -297,7 +300,7 @@ describe('useFrontOfficeRouteData', () => {
     await renderHook({ ...options, day: 2 });
     await renderHook({ ...options, day: 1, phase: 'offseason', season: 6 });
 
-    expect(getOwnerState).toHaveBeenCalledTimes(3);
+    expect(getOwnerPayrollPresentation).toHaveBeenCalledTimes(3);
     expect(getFrontOfficeState).toHaveBeenCalledTimes(3);
     expect(getTeamChemistry).toHaveBeenCalledTimes(3);
     expect(getFrontOfficeIdentity).toHaveBeenCalledTimes(3);

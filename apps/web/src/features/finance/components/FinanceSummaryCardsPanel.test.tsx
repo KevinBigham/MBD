@@ -3,6 +3,23 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { FinanceSummaryCardsPanel } from './FinanceSummaryCardsPanel';
 
+const CLEAR_POLICY = {
+  archetype: 'patient_builder' as const,
+  floor: 72,
+  softCeiling: 180,
+  totalPayroll: 185.5,
+  ownerBand: 'above_soft_ceiling' as const,
+  floorShortfall: 0,
+  softCeilingRoom: 0,
+  softCeilingOverage: 5.5,
+  taxThreshold: 230,
+  luxuryTaxPayroll: 217.5,
+  taxBand: 'clear' as const,
+  taxRoom: 12.5,
+  taxOverage: 0,
+  projectedTax: 0,
+};
+
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -29,12 +46,13 @@ describe('FinanceSummaryCardsPanel', () => {
       root.render(
         <FinanceSummaryCardsPanel
           budget={210}
-          capSpace={12.5}
+          budgetRoom={24.5}
           coachingPayroll={11.5}
           luxuryTax={0}
           luxuryTaxPayroll={217.5}
           minorsPayroll={23.2}
           mlbPayroll={162.3}
+          ownerPayrollPolicy={CLEAR_POLICY}
           totalPayroll={185.5}
         />,
       );
@@ -49,13 +67,16 @@ describe('FinanceSummaryCardsPanel', () => {
     expect(container.textContent).toContain('Budget');
     expect(container.textContent).toContain('$210.00M');
     expect(container.textContent).toContain('$24.50M remaining');
-    expect(container.textContent).toContain('Luxury Tax');
-    expect(container.textContent).toContain('None');
+    expect(container.textContent).toContain('Owner Plan');
+    expect(container.textContent).toContain('$72.00M');
+    expect(container.textContent).toContain('$180.00M');
+    expect(container.textContent).toContain('Projected Tax');
+    expect(container.textContent).toContain('Clear');
     expect(container.textContent).toContain('Overage');
     expect(container.textContent).toContain('--');
     expect(container.textContent).toContain('Coaching Staff');
     expect(container.textContent).toContain('$11.50M');
-    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(4);
+    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(5);
   });
 
   it('shows over-budget and over-tax pressure without route state', async () => {
@@ -63,19 +84,30 @@ describe('FinanceSummaryCardsPanel', () => {
       root.render(
         <FinanceSummaryCardsPanel
           budget={180}
-          capSpace={-18.25}
+          budgetRoom={-70}
           coachingPayroll={14}
-          luxuryTax={7.25}
+          luxuryTax={3.15}
           luxuryTaxPayroll={245.75}
           minorsPayroll={20}
           mlbPayroll={230}
+          ownerPayrollPolicy={{
+            ...CLEAR_POLICY,
+            softCeiling: 200,
+            totalPayroll: 250,
+            softCeilingOverage: 50,
+            luxuryTaxPayroll: 245.75,
+            taxBand: 'taxpayer',
+            taxRoom: 0,
+            taxOverage: 15.75,
+            projectedTax: 3.15,
+          }}
           totalPayroll={250}
         />,
       );
     });
 
     expect(container.textContent).toContain('$70.00M over budget');
-    expect(container.textContent).toContain('$7.25M');
+    expect(container.textContent).toContain('$3.15M');
     expect(container.textContent).toContain('$15.75M');
   });
 });

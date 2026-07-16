@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-15 after roadmap-item-13 verification and local landing; ECON-EXTENSION-AI-1 is complete and item 14 has not started.
+Last reconciled: 2026-07-15 after roadmap-item-14 verification and local landing; ECON-OWNER-PAYROLL-PRESSURE-1 is complete and item 15 has not started.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -10,10 +10,11 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–13 and 80.
+- Verified complete: items 1–14 and 80.
 - Closed item: **11 — service-time arbitration drama**, now **VERIFIED COMPLETE** under Goal 21 / `ECON-ARBITRATION-1`; Goal 11's bounded contract clock remains complete.
 - Closed item: **12 — qualifying offers and draft-pick compensation**, now **VERIFIED COMPLETE** under Goal 22 / `ECON-QUALIFYING-OFFERS-1`.
-- Closed item: **13 — identity-driven CPU extensions**, now **VERIFIED COMPLETE** under Goal 23 / `ECON-EXTENSION-AI-1`; item 14 has not started.
+- Closed item: **13 — identity-driven CPU extensions**, now **VERIFIED COMPLETE** under Goal 23 / `ECON-EXTENSION-AI-1`.
+- Closed item: **14 — owner payroll pressure/tax consequences**, now **VERIFIED COMPLETE** under Goal 24 / `ECON-OWNER-PAYROLL-PRESSURE-1`; item 15 has not started.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -35,7 +36,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 11 | 2 | Service-time arbitration drama | VERIFIED COMPLETE | Goal 21 / `runs/ECON-ARBITRATION-1` | Completion matrix; persisted deterministic docket; exact-save lease/session proof; full gates; production arbitration 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Parent single writer; three read-only source/test/risk reviewers; parent final adversarial review | Items 9–10 | Preserve service-day authority, exact-save fencing, and durable-only presentation |
 | 12 | 2 | Qualifying offers and pick compensation | VERIFIED COMPLETE | Goal 22 / `runs/ECON-QUALIFYING-OFFERS-1` | Completion matrix; atomic award/loss conservation; exact-save issue/resolve/sign/draft; full gates; production QO 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; final `/root/qoffers_final_review` `MERGE_READY` with zero P0–P2 | Items 9–11 | Preserve fixed salary, aggregate validation, exact draft phase, and no-free-award law; item 13 is next |
 | 13 | 2 | Identity-driven CPU extensions | VERIFIED COMPLETE | Goal 23 / `runs/ECON-EXTENSION-AI-1` | Completion matrix; persisted-GM bounded team policy with identity-neutral player RNG; candidate-scoped lanes; exact budget/aggregate/save proof; four-seed study; production extension 1/1 and reload-smoke 2/2, final 3/3 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; `/root/extensions_final_review` final `MERGE_READY` 0/0/0 after `FIX_AND_REVIEW` 0/4/1 and 0/1/0 | Items 9, 49 (bounded consumption only) | Preserve player-side neutrality, candidate isolation, exact budget, and aggregate/save fencing; item 49 remains partial |
-| 14 | 2 | Owner payroll pressure/tax consequences | PARTIAL | No run | Owner archetype/budget/tax primitives exist | Historical source | — | Items 9, 51 | Add calibration and narrative consequence proof |
+| 14 | 2 | Owner payroll pressure/tax consequences | VERIFIED COMPLETE | Goal 24 / `runs/ECON-OWNER-PAYROLL-PRESSURE-1` | Pure owner policy; canonical tax basis; exact annual receipts; old-save, 4×4 study, production/reload, and root-gate proof | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; `/root/ownerpayroll_risk_review` final `MERGE_READY` 0/0/0 after two bounded correction loops | Items 9, 51 (bounded owner-state consumption only) | Preserve advisory semantics, tax basis, once-only receipts, and item-15 boundary |
 | 15 | 2 | Market-size revenue feeds budgets | PARTIAL | No run | Attendance/playoff/spending factors feed budget state | Historical source | — | Item 9 | Add multi-season calibration |
 | 16 | 2 | Explainable free-agent decisions | PARTIAL | No run | FA fit/reason surfaces exist; full requested model incomplete | Historical source | — | Items 9, 49 | Complete reasons and browser proof |
 | 17 | 2 | Salary retention and cash in trades | PENDING | No goal/run | Trade assets have no retained-salary/cash type | — | — | Items 9, 54 | Design contract-safe trade assets |
@@ -181,9 +182,13 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## First incomplete item source contract
 
-Item 6 is not a generic import/export feature request. The live app already has canonical export/import, a v34 JSON round trip, migration tests, worker legacy-import tests, and recovery fallback coverage. The missing finish line is one authoritative CI matrix proving canonical export/import round-trip behavior for **every version the live migration boundary claims to support**, with explicit fixtures/builders, expected normalization, rejection boundaries, deterministic equality, and no fabricated history.
-
-Item 6 now has Goal 18, a reconciled source/plan, a 33-version canonical matrix, and a verified closeout. The next legal slice is item 7 and must create its own goal/run rather than reopening this run or starting item 8.
+Item 15 is not authorized as an extension of item 14. Live source already has
+attendance, playoff, market-size, owner-budget, and spending-factor fragments,
+but it lacks a reconciled item-15 goal/run proving that revenue causally and
+fairly feeds budgets across deterministic seasons. The next legal slice must
+create its own bounded goal and run, reconcile those fragments from live source,
+freeze revenue/budget/save/calibration authority, and preserve item 14's
+advisory payroll/tax contract. No item-15 source work began in this run.
 
 ## Item 9/10 landing receipt
 
@@ -201,3 +206,20 @@ Item 6 now has Goal 18, a reconciled source/plan, a 33-version canonical matrix,
   `019f57d9-5a81-7c41-af54-3ffb3a39878d` high; Luna current medium closeout.
 - Release state remains `READY — AWAITING EXPLICIT RELEASE AUTHORIZATION`; no
   push, deploy, tag, publish, or release is implied by local landing.
+
+## Item 14 landing receipt
+
+- Goal 24 / `ECON-OWNER-PAYROLL-PRESSURE-1` is verified complete in the
+  item-only commit containing this report. The exact revision is verified from
+  local Git history after commit and reported in the closeout response.
+- Final gates: focused owner surface 19/91; loop-2 sim-core 30/30 and web 20
+  passed plus one intentional skip; hard 4×4 study 1/1 in 516.06 seconds; root
+  typecheck 9/9; full contracts 24, UI 1, sim-core 1,681, web 2,407 with four
+  intentional skips; determinism 3/3; 3,030-module / 167-entry PWA; production
+  owner journey 1/1; reload-smoke 2/2; all browser runs one worker, zero retry,
+  and no flaky result.
+- Manual relay-pattern fallback: parent sole writer and closeout; read-only
+  source/test/risk maps; final `/root/ownerpayroll_risk_review` verdict
+  `MERGE_READY`, P0/P1/P2 `0/0/0`, after two bounded correction loops.
+- GameSnapshot remains v34 and Dexie v6. No push, deploy, tag, publication,
+  release, item-15 work, or unrelated-file staging occurred.

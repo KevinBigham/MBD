@@ -34,6 +34,29 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 14, Goal 24 `ECON-OWNER-PAYROLL-PRESSURE-1`: every
+  organization now derives one source-owned advisory payroll floor and soft
+  ceiling from its persisted owner state, while canonical MLB payroll plus dead
+  money owns the fixed `$230M` progressive tax line. Legal transactions remain
+  legal; the feature does not debit cash, change budgets, or alter owner state.
+- Exact offseason completion records one stable team/season pressure receipt
+  for all 32 organizations and one factual user news/briefing presentation.
+  Partial and duplicate imported artifacts repair idempotently; failed
+  transitions, retries, reloads, and read-only queries cannot double-apply the
+  consequence or drift owner, franchise, contract, or RNG state.
+- Finance, Dashboard, Owner Intel, Offseason, Free Agency, Owner Meeting, and
+  Financial Playbook now distinguish total, budget, taxable, owner-line, and tax
+  values. Legacy v33/Season-10 and missing/partial owner saves remain read-only
+  compatible; GameSnapshot stays v34 and Dexie stays v6.
+- Final evidence: focused owner surface 19 files / 91 tests; loop-2 sim-core
+  30/30 and web 20 passed plus one intentional skip; 4-seed × 4-offseason study
+  1/1 in 516.06 seconds with 512 receipts, 74 inspectable taxpayer facts, and
+  zero six-surface or side-effect contradictions; root typecheck 9/9; contracts
+  24/24; UI 1/1; sim-core 1,681; web 2,407 with four intentional skips;
+  determinism 3/3; 3,030-module / 167-entry PWA; production owner journey 1/1
+  and reload-smoke 2/2 with one worker, zero retries, and no flaky result. Final
+  adversarial verdict: `MERGE_READY`, zero P0–P2. Item 15 was not started.
+
 - Verified roadmap item 13, Goal 23 `ECON-EXTENSION-AI-1`:
   every CPU club now
   evaluates its own active MLB core once at the canonical offseason extension

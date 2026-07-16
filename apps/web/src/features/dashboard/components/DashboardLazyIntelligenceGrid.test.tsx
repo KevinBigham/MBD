@@ -53,16 +53,18 @@ vi.mock('./FinancialCard', () => ({
     payroll,
     budget,
     luxuryTax,
+    budgetRoom,
     annualBudget,
     payrollCap,
   }: {
     payroll: number;
     budget: number;
     luxuryTax: number;
+    budgetRoom?: number;
     annualBudget?: number;
     payrollCap?: number;
   }) => (
-    <article data-card="financials">{`financials:${payroll}:${budget}:${luxuryTax}:${annualBudget ?? 'none'}:${payrollCap ?? 'none'}`}</article>
+    <article data-card="financials">{`financials:${payroll}:${budget}:${budgetRoom ?? 'none'}:${luxuryTax}:${annualBudget ?? 'none'}:${payrollCap ?? 'none'}`}</article>
   ),
 }));
 
@@ -144,6 +146,7 @@ const dashboardSummary = {
   },
   roster: {
     budget: 235,
+    budgetRoom: 22.6,
     fatigueWarnings: ['rotation'],
     injuredCount: 2,
     luxuryTax: 16.2,
@@ -212,7 +215,7 @@ describe('DashboardLazyIntelligenceGrid', () => {
     expect(container.textContent).toContain('roster:2:4:1');
     expect(container.textContent).toContain('trade:34:regular:3');
     expect(container.textContent).toContain('farm:1:2');
-    expect(container.textContent).toContain('financials:212.4:235:16.2:240:260');
+    expect(container.textContent).toContain('financials:212.4:235:22.6:16.2:240:260');
     expect(container.textContent).toContain('press:2:5');
 
     await renderGrid(null);
@@ -221,7 +224,7 @@ describe('DashboardLazyIntelligenceGrid', () => {
     expect(container.textContent).toContain('roster:0:none:0');
     expect(container.textContent).toContain('trade:none:regular:0');
     expect(container.textContent).toContain('farm:0:0');
-    expect(container.textContent).toContain('financials:0:0:0:none:none');
+    expect(container.textContent).toContain('financials:0:0:none:0:none:none');
     expect(container.textContent).toContain('press:0:0');
   });
 });

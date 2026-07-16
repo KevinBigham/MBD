@@ -19,7 +19,7 @@ const OWNER: FrontOfficeOwnerView = {
   summary: 'The owner demands results immediately.',
   expectations: { winsTarget: 95, playoffTarget: true, payrollTarget: 180_000_000 },
   satisfaction: 45,
-  spendingWillingness: 80,
+  spendingWillingness: 'lavish',
   winNowPressure: 90,
   meddlingLevel: 60,
   annualBudget: 200_000_000,
@@ -51,7 +51,25 @@ describe('FrontOfficeOwnerCards', () => {
       root.render(
         <>
           <FrontOfficeOwnerProfileCard owner={OWNER} />
-          <FrontOfficeBudgetCard owner={OWNER} />
+          <FrontOfficeBudgetCard
+            owner={OWNER}
+            ownerPayrollPolicy={{
+              archetype: 'win_now',
+              floor: 90,
+              softCeiling: 180,
+              totalPayroll: 170,
+              ownerBand: 'on_plan',
+              floorShortfall: 0,
+              softCeilingRoom: 10,
+              softCeilingOverage: 0,
+              taxThreshold: 230,
+              luxuryTaxPayroll: 160,
+              taxBand: 'clear',
+              taxRoom: 70,
+              taxOverage: 0,
+              projectedTax: 0,
+            }}
+          />
         </>,
       );
     });
@@ -69,6 +87,10 @@ describe('FrontOfficeOwnerCards', () => {
     expect(container.textContent).toContain('$5.0M');
     expect(container.textContent).toContain('$12.0M');
     expect(container.textContent).toContain('Spending Will');
+    expect(container.textContent).toContain('Owner payroll plan');
+    expect(container.textContent).toContain('Floor $90.0M');
+    expect(container.textContent).toContain('Soft ceiling $180.0M');
+    expect(container.textContent).toContain('Advisory lines only');
   });
 
   it('renders calm owner state and small budget values without hot-seat treatment', async () => {

@@ -64,6 +64,22 @@ describe('useFreeAgencyOfferActions', () => {
           totalPayroll: 120,
           budget: 160,
           capSpace: 30,
+          ownerPayrollPolicy: {
+            archetype: 'win_now',
+            floor: 75,
+            softCeiling: 150,
+            totalPayroll: 120,
+            ownerBand: 'on_plan',
+            floorShortfall: 0,
+            softCeilingRoom: 30,
+            softCeilingOverage: 0,
+            taxThreshold: 230,
+            luxuryTaxPayroll: 100,
+            taxBand: 'clear',
+            taxRoom: 130,
+            taxOverage: 0,
+            projectedTax: 0,
+          },
         },
         makeContractOffer: vi.fn().mockResolvedValue({ accepted: true }),
         playEffect: vi.fn(),
@@ -93,7 +109,10 @@ describe('useFreeAgencyOfferActions', () => {
     expect(result.offerBudget).toEqual({
       projectedPayroll: 130,
       budgetRoom: 30,
-      taxRoom: 20,
+      ownerFloor: 75,
+      ownerSoftCeilingRoom: 20,
+      taxLine: 230,
+      taxRoom: 120,
     });
 
     await act(async () => {
@@ -104,7 +123,10 @@ describe('useFreeAgencyOfferActions', () => {
     expect(result.offerBudget).toEqual({
       projectedPayroll: 144,
       budgetRoom: 16,
-      taxRoom: 6,
+      ownerFloor: 75,
+      ownerSoftCeilingRoom: 6,
+      taxLine: 230,
+      taxRoom: 106,
     });
 
     await act(async () => {

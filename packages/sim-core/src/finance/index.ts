@@ -76,3 +76,13 @@ export {
   type MarketReport,
   type MarketSummary,
 } from './marketIntelligence.js';
+
+export {
+  OWNER_PAYROLL_FLOOR_RATIOS,
+  deriveOwnerPayrollPolicy,
+  resolveOwnerSoftCeiling,
+  type OwnerPayrollBand,
+  type OwnerPayrollTaxBand,
+  type OwnerPayrollPolicyInput,
+  type OwnerPayrollPolicy,
+} from './ownerPayrollPressure.js';

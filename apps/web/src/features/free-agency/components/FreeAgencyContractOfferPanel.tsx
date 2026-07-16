@@ -25,6 +25,9 @@ export interface FreeAgencyOfferBudget {
   projectedPayroll: number;
   budgetRoom: number;
   taxRoom: number;
+  ownerFloor?: number;
+  ownerSoftCeilingRoom?: number;
+  taxLine?: number;
 }
 
 interface FreeAgencyContractOfferPanelProps {
@@ -144,10 +147,19 @@ export default function FreeAgencyContractOfferPanel({
                 <span>Budget room</span>
                 <span>{offerBudget.budgetRoom >= 0 ? money(offerBudget.budgetRoom) : `${money(Math.abs(offerBudget.budgetRoom))} over`}</span>
               </div>
+              {offerBudget.ownerSoftCeilingRoom != null ? (
+                <div className={`flex justify-between gap-3 ${offerBudget.ownerSoftCeilingRoom >= 0 ? 'text-accent-info' : 'text-accent-warning'}`}>
+                  <span>Owner soft ceiling room</span>
+                  <span>{offerBudget.ownerSoftCeilingRoom >= 0 ? money(offerBudget.ownerSoftCeilingRoom) : `${money(Math.abs(offerBudget.ownerSoftCeilingRoom))} over`}</span>
+                </div>
+              ) : null}
               <div className={`flex justify-between gap-3 ${offerBudget.taxRoom >= 0 ? 'text-accent-info' : 'text-accent-warning'}`}>
-                <span>Tax room after offer</span>
+                <span>{offerBudget.taxLine != null ? `Tax line room ($${offerBudget.taxLine.toFixed(1)}M)` : 'Tax room after offer'}</span>
                 <span>{offerBudget.taxRoom >= 0 ? money(offerBudget.taxRoom) : `${money(Math.abs(offerBudget.taxRoom))} over`}</span>
               </div>
+              {offerBudget.ownerFloor != null ? (
+                <div className="text-dynasty-muted">Advisory owner floor: {money(offerBudget.ownerFloor)}</div>
+              ) : null}
             </div>
           )}
 

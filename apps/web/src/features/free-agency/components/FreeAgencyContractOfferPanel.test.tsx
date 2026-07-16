@@ -24,6 +24,9 @@ const offerBudget: FreeAgencyOfferBudget = {
   projectedPayroll: 162,
   budgetRoom: -2,
   taxRoom: 8,
+  ownerFloor: 75,
+  ownerSoftCeilingRoom: -12,
+  taxLine: 230,
 };
 
 describe('FreeAgencyContractOfferPanel', () => {
@@ -144,6 +147,10 @@ describe('FreeAgencyContractOfferPanel', () => {
     expect(container.textContent).toContain('Projected payroll');
     expect(container.textContent).toContain('$162.0M');
     expect(container.textContent).toContain('$2.0M over');
+    expect(container.textContent).toContain('Owner soft ceiling room');
+    expect(container.textContent).toContain('$12.0M over');
+    expect(container.textContent).toContain('Tax line room ($230.0M)');
+    expect(container.textContent).toContain('Advisory owner floor: $75.0M');
     expect(container.textContent).toContain('$8.0M');
     expect(container.textContent).toContain('Rejected: Needs more years.');
 

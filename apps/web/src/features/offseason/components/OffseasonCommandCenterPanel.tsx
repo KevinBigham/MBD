@@ -1,4 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
+import type { OwnerPayrollPolicy } from '@mbd/sim-core';
 
 type OffseasonCommandStatus = 'complete' | 'attention' | 'blocked' | 'upcoming';
 
@@ -26,6 +27,7 @@ export interface OffseasonCommandCenterView {
     payrollCap?: number;
     payrollSpace: number;
     capSpace?: number;
+    ownerPayrollPolicy?: OwnerPayrollPolicy;
     rosterHoleCount: number;
   };
 }
@@ -65,6 +67,12 @@ function commandStatusClasses(status: OffseasonCommandStatus): string {
     default:
       return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
   }
+}
+
+function ownerBandLabel(policy: OwnerPayrollPolicy): string {
+  if (policy.ownerBand === 'below_floor') return 'Below owner floor';
+  if (policy.ownerBand === 'above_soft_ceiling') return 'Above soft ceiling';
+  return 'Inside owner plan';
 }
 
 export function OffseasonCommandCenterPanel({ commandCenter }: { commandCenter: OffseasonCommandCenterView }) {
@@ -118,6 +126,16 @@ export function OffseasonCommandCenterPanel({ commandCenter }: { commandCenter: 
           </div>
         </div>
       </div>
+
+      {commandCenter.projectedOpeningDay.ownerPayrollPolicy ? (
+        <div className="grid gap-2 border-b border-dynasty-border bg-dynasty-elevated/50 px-4 py-3 font-data text-xs text-dynasty-text sm:grid-cols-2 lg:grid-cols-5">
+          <div><span className="text-dynasty-muted">Owner status</span><br />{ownerBandLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy)}</div>
+          <div><span className="text-dynasty-muted">Floor</span><br />{moneyLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy.floor)}</div>
+          <div><span className="text-dynasty-muted">Soft ceiling</span><br />{moneyLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy.softCeiling)}</div>
+          <div><span className="text-dynasty-muted">Tax line</span><br />{moneyLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy.taxThreshold)}</div>
+          <div><span className="text-dynasty-muted">Projected exposure</span><br />{moneyLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy.projectedTax)}</div>
+        </div>
+      ) : null}
 
       <div className="grid gap-0 lg:grid-cols-[1fr_0.8fr]">
         <div className="border-b border-dynasty-border lg:border-b-0 lg:border-r">

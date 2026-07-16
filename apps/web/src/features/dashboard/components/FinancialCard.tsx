@@ -6,8 +6,10 @@ type FinancialCardProps = FinancialCardBodyProps;
 export default function FinancialCard({
   payroll,
   budget,
+  budgetRoom,
   luxuryTax,
   annualBudget,
+  ownerPayrollPolicy,
   payrollCap,
 }: FinancialCardProps) {
   return (
@@ -20,8 +22,10 @@ export default function FinancialCard({
       <FinancialCardBody
         payroll={payroll}
         budget={budget}
+        budgetRoom={budgetRoom}
         luxuryTax={luxuryTax}
         annualBudget={annualBudget}
+        ownerPayrollPolicy={ownerPayrollPolicy}
         payrollCap={payrollCap}
       />
     </section>

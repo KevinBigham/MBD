@@ -140,6 +140,7 @@ import {
   type Rule5OfferBackState,
   type Rule5Selection,
   type Rule5SessionState,
+  type OwnerPayrollPolicy,
 } from '@mbd/sim-core';
 import {
   detectArbitrationMoments,
@@ -235,6 +236,10 @@ import {
   adjustPromotionCandidateForIdentity,
   getEffectiveScoutingAccuracy,
 } from './sim.worker.frontOfficeIdentity.js';
+import {
+  buildOwnerPayrollPolicy,
+  reconcileCompletedOffseasonOwnerPayrollPressure,
+} from './sim.worker.ownerPayrollPressure.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -539,6 +544,7 @@ export interface OffseasonOpeningDayProjection {
   payrollCap: number;
   payrollSpace: number;
   capSpace: number;
+  ownerPayrollPolicy?: OwnerPayrollPolicy;
   rosterHoleCount: number;
 }
 
@@ -4131,6 +4137,7 @@ function buildOffseasonCommandCenter(s: FullGameState): OffseasonCommandCenterVi
     ? getRosterComplianceIssuesCore(teamPlayers, rosterState, 1)
     : [];
   const payroll = calculateTeamPayroll(teamId, teamPlayers).totalPayroll;
+  const ownerPayrollPolicy = buildOwnerPayrollPolicy(s, teamId);
   const budget = getDifficultyAdjustedBudget(s, teamId);
   const payrollCap = getTeamPayrollCap(s, teamId);
   const payrollSpace = roundMoney(budget - payroll);
@@ -4172,6 +4179,7 @@ function buildOffseasonCommandCenter(s: FullGameState): OffseasonCommandCenterVi
     payrollCap,
     payrollSpace,
     capSpace,
+    ownerPayrollPolicy,
     rosterHoleCount,
   };
 
@@ -4198,6 +4206,34 @@ function buildOffseasonCommandCenter(s: FullGameState): OffseasonCommandCenterVi
       severity: 'warning',
       title: 'Limited payroll space',
       detail: `Only ${formatTickerMoney(Math.max(0, payrollSpace))} remains before the owner budget line.`,
+      teamId,
+    });
+  }
+
+  if (ownerPayrollPolicy.ownerBand === 'below_floor') {
+    warnings.push({
+      id: 'owner-payroll-floor',
+      severity: 'warning',
+      title: 'Advisory owner payroll floor',
+      detail: `Current payroll is $${ownerPayrollPolicy.floorShortfall.toFixed(1)}M below the $${ownerPayrollPolicy.floor.toFixed(1)}M owner floor. Final pressure is reconciled only when the offseason completes.`,
+      teamId,
+    });
+  } else if (ownerPayrollPolicy.ownerBand === 'above_soft_ceiling') {
+    warnings.push({
+      id: 'owner-payroll-soft-ceiling',
+      severity: 'warning',
+      title: 'Above the owner soft ceiling',
+      detail: `Current payroll is $${ownerPayrollPolicy.softCeilingOverage.toFixed(1)}M above the advisory $${ownerPayrollPolicy.softCeiling.toFixed(1)}M owner line. Legal roster moves remain available.`,
+      teamId,
+    });
+  }
+
+  if (ownerPayrollPolicy.taxBand === 'taxpayer') {
+    warnings.push({
+      id: 'owner-payroll-tax-exposure',
+      severity: 'warning',
+      title: 'Projected tax exposure',
+      detail: `Tax payroll is $${ownerPayrollPolicy.taxOverage.toFixed(1)}M above the $${ownerPayrollPolicy.taxThreshold.toFixed(1)}M league line, projecting $${ownerPayrollPolicy.projectedTax.toFixed(1)}M in exposure.`,
       teamId,
     });
   }
@@ -6851,6 +6887,9 @@ function applyOffseasonTransition(
   const currentProgress = processCurrentOffseasonPhase(s, previousState.currentPhase, previousState.phaseDay);
   if (currentProgress.error) {
     return { aiSignings: [], error: currentProgress.error, flowStateChanged: false };
+  }
+  if (nextState.completed && !previousState.completed) {
+    reconcileCompletedOffseasonOwnerPayrollPressure(s);
   }
   return {
     aiSignings: [...aiSignings, ...currentProgress.aiSignings],

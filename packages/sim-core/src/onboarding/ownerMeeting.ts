@@ -11,6 +11,7 @@ export interface OwnerMeetingContext {
   ownerConfidence: number;
   marketSize: 'small' | 'medium' | 'large';
   payroll: number;
+  luxuryTaxPayroll: number;
   budget: number;
   luxuryTaxThreshold: number;
   lastSeasonWins: number | null;
@@ -110,12 +111,19 @@ export function generateBudgetOverview(
   budget: number,
   luxuryTaxThreshold: number,
   difficulty: string,
+  luxuryTaxPayroll: number = payroll,
 ): BudgetOverview {
   const availableSpace = roundMoney(budget - payroll);
-  const luxuryTaxDistance = roundMoney(luxuryTaxThreshold - payroll);
+  const luxuryTaxDistance = roundMoney(luxuryTaxThreshold - luxuryTaxPayroll);
   const grade = spendingGrade(payroll, budget);
-  const taxOwed = payroll > luxuryTaxThreshold ? calculateLuxuryTax(payroll) : 0;
+  const taxOwed = luxuryTaxPayroll > luxuryTaxThreshold ? calculateLuxuryTax(luxuryTaxPayroll) : 0;
   const tone = difficulty === 'hard' ? 'tight' : 'manageable';
+  const budgetSummary = `The budget picture is ${tone}, with ${availableSpace.toFixed(2)} million available before ownership cap.`;
+  const taxSummary = taxOwed > 0
+    ? `Tax payroll is through the league line, for ${taxOwed.toFixed(2)} million in projected exposure.`
+    : luxuryTaxPayroll === luxuryTaxThreshold
+      ? 'Tax payroll is at the league line, with 0.00 million in projected exposure.'
+      : `Tax payroll has ${luxuryTaxDistance.toFixed(2)} million before the tax line.`;
 
   return {
     totalBudget: roundMoney(budget),
@@ -123,10 +131,7 @@ export function generateBudgetOverview(
     availableSpace,
     luxuryTaxDistance,
     spendingGrade: grade,
-    narrativeSummary:
-      taxOwed > 0
-        ? `The payroll is already through the tax line, and ownership is carrying an estimated ${taxOwed.toFixed(2)} million tax bill.`
-        : `The budget picture is ${tone}, with ${availableSpace.toFixed(2)} million available before ownership cap and ${luxuryTaxDistance.toFixed(2)} million before the tax line.`,
+    narrativeSummary: `${budgetSummary} ${taxSummary}`,
   };
 }
 
@@ -214,6 +219,7 @@ export function generateOwnerMeeting(
     context.budget,
     context.luxuryTaxThreshold,
     context.difficulty,
+    context.luxuryTaxPayroll,
   );
 
   return {
