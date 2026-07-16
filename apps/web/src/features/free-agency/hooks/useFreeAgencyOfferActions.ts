@@ -92,7 +92,8 @@ export function useFreeAgencyOfferActions({
     const compensationCopy = result.qualifyingOfferCompensation
       ? ` Draft compensation: ${result.qualifyingOfferCompensation.tier} award issued; Round ${result.qualifyingOfferCompensation.forfeitedRound} (${result.qualifyingOfferCompensation.forfeitedOriginalTeamId.toUpperCase()} origin) forfeited.`
       : '';
-    setOfferResult(`Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.${compensationCopy}`);
+    const decisionCopy = result.reason ? ` Decision: ${result.reason}` : '';
+    setOfferResult(`Signed! ${selectedPlayer.firstName} ${selectedPlayer.lastName} joins your team.${decisionCopy}${compensationCopy}`);
     playEffect('free_agent_signed');
     removeAgentById(selectedPlayer.id);
     setSelectedPlayer(null);

@@ -18,6 +18,16 @@ const selectedPlayer: FreeAgentOfferPlayer = {
   age: 31,
   displayRating: 66,
   marketValue: 22,
+  decisionPreview: {
+    careerStage: 'prime',
+    priorityOrder: ['contender_status', 'loyalty', 'term_security', 'projected_opportunity', 'clubhouse'],
+    projectedOpportunity: 'featured',
+    contenderStatus: 'playoff',
+    loyaltySource: 'homegrown_and_tenure',
+    tenureSeasons: 5,
+    homegrownBond: 0.7,
+    clubhouseScore: 74,
+  },
 };
 
 const offerBudget: FreeAgencyOfferBudget = {
@@ -143,6 +153,14 @@ describe('FreeAgencyContractOfferPanel', () => {
     expect(container.textContent).toContain('Power Bat');
     expect(container.textContent).toContain('1B | Age 31 | OVR 66');
     expect(container.textContent).toContain('$22.0M/yr');
+    expect(container.textContent).toContain('How he weighs offers');
+    expect(container.textContent).toContain('Age curve: prime');
+    expect(container.textContent).toContain('contender status and loyalty');
+    expect(container.textContent).toContain('featured MLB');
+    expect(container.textContent).toContain('recent playoff club');
+    expect(container.textContent).toContain('homegrown connection + 5 prior seasons');
+    expect(container.textContent).toContain('future playing time is not guaranteed');
+    expect(container.querySelector('[data-testid="free-agency-decision-preview"]')?.getAttribute('role')).toBe('note');
     expect(container.textContent).toContain('Total: $88.0M / 4yr');
     expect(container.textContent).toContain('Projected payroll');
     expect(container.textContent).toContain('$162.0M');

@@ -114,9 +114,35 @@ export type {
   ContractOffer,
   FreeAgencyMarket,
   FreeAgencyAttractiveness,
+  FreeAgencyDecisionContextResolver,
+  FreeAgencyOfferAcceptanceReceipt,
+  FreeAgencyOfferResult,
   RelationshipBidContext,
   QualifyingOfferResolution,
 } from './freeAgency.js';
+export {
+  compareFreeAgencyOfferEvaluations,
+  createMarketExhaustedDecision,
+  deriveFreeAgencyProjectedOpportunity,
+  evaluateFreeAgencyOffer,
+  getFreeAgencyCareerStage,
+  getFreeAgencyCareerStageWeights,
+  normalizeFreeAgencyDecisionContext,
+} from './freeAgencyDecision.js';
+export type {
+  FreeAgencyCareerStage,
+  FreeAgencyContenderStatus,
+  FreeAgencyDecisionContext,
+  FreeAgencyDecisionFactor,
+  FreeAgencyDecisionFactorResult,
+  FreeAgencyDecisionOffer,
+  FreeAgencyDecisionReason,
+  FreeAgencyLoyaltySource,
+  FreeAgencyOfferDecision,
+  FreeAgencyOfferEvaluation,
+  FreeAgencyProjectedOpportunity,
+  NormalizedFreeAgencyDecisionContext,
+} from './freeAgencyDecision.js';
 
 // Minor leagues
 export {

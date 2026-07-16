@@ -20,6 +20,14 @@ import {
   type TeamBuildingArchetype,
 } from '../league/index.js';
 import type { GMPersonality } from '../trade/tradeAI.js';
+import {
+  compareFreeAgencyOfferEvaluations,
+  createMarketExhaustedDecision,
+  evaluateFreeAgencyOffer,
+  type FreeAgencyDecisionContext,
+  type FreeAgencyOfferDecision,
+  type FreeAgencyOfferEvaluation,
+} from './freeAgencyDecision.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -155,6 +163,24 @@ export type FreeAgencyAttractiveness =
   | Map<string, number>
   | ((teamId: string, playerId: string) => number);
 
+export type FreeAgencyDecisionContextResolver = (
+  teamId: string,
+  playerId: string,
+  teamNeed: number,
+) => FreeAgencyDecisionContext;
+
+export interface FreeAgencyOfferResult {
+  accepted: boolean;
+  reason: string;
+  decision?: FreeAgencyOfferDecision;
+}
+
+/** Transient affordability proof captured at the exact AI acceptance seam. */
+export interface FreeAgencyOfferAcceptanceReceipt {
+  payrollBeforeSigning: number;
+  spendingLimit: number;
+}
+
 export interface QualifyingOfferResolution {
   player: GeneratedPlayer;
   record: QualifyingOfferRecord;
@@ -220,6 +246,20 @@ function capAnnualSalary(value: number): number {
   return roundCurrency(clamp(value, MINOR_LEAGUE_DEAL_AAV, MAX_AAV_MILLIONS));
 }
 
+function repriceAIOffer(offer: ContractOffer, annualSalary: number): ContractOffer {
+  const normalizedAav = capAnnualSalary(annualSalary);
+  return {
+    ...offer,
+    annualSalary: normalizedAav,
+    totalValue: roundCurrency(normalizedAav * offer.years),
+    signingBonus: roundCurrency(normalizedAav * SIGNING_BONUS_FRACTION),
+  };
+}
+
+function floorCurrency(value: number): number {
+  return Math.floor((value + Number.EPSILON) * 100) / 100;
+}
+
 function playerDurability(player: GeneratedPlayer): number {
   return player.pitcherAttributes?.stamina ?? player.hitterAttributes.durability;
 }
@@ -232,6 +272,10 @@ function spendingComfortFactor(teamBudget: number): number {
     return 0.9;
   }
   return 0.96;
+}
+
+function getFreeAgencySpendingLimit(teamBudget: number): number {
+  return teamBudget * spendingComfortFactor(teamBudget);
 }
 
 function marketAggressionFactor(teamBudget: number): number {
@@ -248,12 +292,6 @@ function requiresStrongRosterFit(player: GeneratedPlayer, marketValue: number): 
   return player.position !== 'SP' && marketValue < ELITE_FA_MARKET_VALUE;
 }
 
-function offerAppealScore(offer: ContractOffer, attractiveness: number): number {
-  const chemistryBoost = 1 + ((clamp(attractiveness, 0, 100) - 50) / 100) * 0.08;
-  const yearsBonus = Math.min(0.35, offer.years * 0.04);
-  return offer.annualSalary * chemistryBoost + yearsBonus;
-}
-
 function resolveAttractiveness(
   source: FreeAgencyAttractiveness,
   teamId: string,
@@ -263,6 +301,55 @@ function resolveAttractiveness(
     return source.get(teamId) ?? 50;
   }
   return source(teamId, playerId);
+}
+
+function resolveDecisionContext(
+  resolver: FreeAgencyDecisionContextResolver | undefined,
+  attractiveness: FreeAgencyAttractiveness,
+  teamId: string,
+  playerId: string,
+  teamNeed: number,
+): FreeAgencyDecisionContext {
+  return resolver?.(teamId, playerId, teamNeed) ?? {
+    teamNeed,
+    contenderStatus: 'unknown',
+    tenureSeasons: 0,
+    homegrownBond: 0,
+    clubhouseScore: resolveAttractiveness(attractiveness, teamId, playerId),
+  };
+}
+
+function evaluateAIOfferAtCompetitiveFloor(
+  offer: ContractOffer,
+  playerAge: number,
+  marketValue: number,
+  context: FreeAgencyDecisionContext,
+): FreeAgencyOfferEvaluation {
+  let candidate = offer;
+  let decision = evaluateFreeAgencyOffer({
+    playerAge,
+    marketValue,
+    offer: candidate,
+    context,
+  });
+
+  if (!decision.accepted) {
+    const shortfall = decision.minimumEquivalentAav - decision.equivalentAav;
+    const minimumCompetitiveAav = Math.ceil(
+      (candidate.annualSalary + shortfall - Number.EPSILON) * 100,
+    ) / 100;
+    if (minimumCompetitiveAav > candidate.annualSalary) {
+      candidate = repriceAIOffer(candidate, minimumCompetitiveAav);
+      decision = evaluateFreeAgencyOffer({
+        playerAge,
+        marketValue,
+        offer: candidate,
+        context,
+      });
+    }
+  }
+
+  return { offer: candidate, decision };
 }
 
 // ---------------------------------------------------------------------------
@@ -519,7 +606,7 @@ export function generateAIOffer(
   teamBuildingArchetype: TeamBuildingArchetype = 'balanced',
 ): ContractOffer | null {
   const baseValue = calculateMarketValue(player);
-  const availableBudget = teamBudget * spendingComfortFactor(teamBudget) - currentPayroll;
+  const availableBudget = getFreeAgencySpendingLimit(teamBudget) - currentPayroll;
 
   if (availableBudget < baseValue * 0.45) return null;
 
@@ -600,7 +687,12 @@ export function simulateFADay(
   userTeamNeeds: Map<string, number> = new Map(),
   teamBuildingArchetypes: Map<string, TeamBuildingArchetype> = new Map(),
   canTeamBidForPlayer: (teamId: string, playerId: string) => boolean = () => true,
-  onAcceptedOffer: (offer: ContractOffer) => void = () => undefined,
+  onAcceptedOffer: (
+    offer: ContractOffer,
+    decision: FreeAgencyOfferDecision,
+    receipt: FreeAgencyOfferAcceptanceReceipt,
+  ) => void = () => undefined,
+  decisionContextResolver?: FreeAgencyDecisionContextResolver,
 ): FreeAgencyMarket {
   const nextDay = market.day + 1;
   const stillAvailable: FreeAgent[] = [];
@@ -630,10 +722,14 @@ export function simulateFADay(
 
     // Past the market entirely -- force minor league deal
     if (nextDay > MARKET_DURATION_DAYS) {
-      const teamIds = [...teamBudgets.keys()].filter((teamId) => (
-        (daySigningSlots.get(teamId) ?? 0) > 0
-        && canTeamBidForPlayer(teamId, fa.player.id)
-      ));
+      const teamIds = [...teamBudgets.keys()]
+        .filter((teamId) => (
+          (daySigningSlots.get(teamId) ?? 0) > 0
+          && (dayPayrolls.get(teamId) ?? 0) + MINOR_LEAGUE_DEAL_AAV
+            <= getFreeAgencySpendingLimit(teamBudgets.get(teamId) ?? 0)
+          && canTeamBidForPlayer(teamId, fa.player.id)
+        ))
+        .sort((left, right) => left.localeCompare(right));
       if (teamIds.length === 0) {
         stillAvailable.push(fa);
         continue;
@@ -655,7 +751,22 @@ export function simulateFADay(
         signedWith: randomTeam,
         contract: minorDeal,
       });
-      onAcceptedOffer(minorDeal);
+      const need = teamNeeds.get(randomTeam)?.get(fa.player.position) ?? 50;
+      const payrollBeforeSigning = dayPayrolls.get(randomTeam) ?? 0;
+      const spendingLimit = getFreeAgencySpendingLimit(teamBudgets.get(randomTeam) ?? 0);
+      onAcceptedOffer(minorDeal, createMarketExhaustedDecision({
+        playerAge: fa.player.age,
+        marketValue: fa.marketValue,
+        offer: minorDeal,
+        context: resolveDecisionContext(
+          decisionContextResolver,
+          teamAttractiveness,
+          randomTeam,
+          fa.player.id,
+          need,
+        ),
+      }), { payrollBeforeSigning, spendingLimit });
+      dayPayrolls.set(randomTeam, payrollBeforeSigning + minorDeal.annualSalary);
       daySigningSlots.set(randomTeam, (daySigningSlots.get(randomTeam) ?? 0) - 1);
       continue;
     }
@@ -663,7 +774,8 @@ export function simulateFADay(
     // In the signing window -- collect AI offers
     const offers: ContractOffer[] = [];
 
-    for (const [teamId, budget] of teamBudgets) {
+    for (const [teamId, budget] of [...teamBudgets.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))) {
       if ((daySigningSlots.get(teamId) ?? 0) <= 0) {
         continue;
       }
@@ -707,10 +819,49 @@ export function simulateFADay(
       const inflationPct =
         COMPETITION_INFLATION_MIN +
         rng.nextFloat() * (COMPETITION_INFLATION_MAX - COMPETITION_INFLATION_MIN);
-      for (const offer of offers) {
-        offer.annualSalary = capAnnualSalary(offer.annualSalary * (1 + inflationPct));
-        offer.totalValue = Math.round(offer.annualSalary * offer.years * 100) / 100;
+      for (let offerIndex = 0; offerIndex < offers.length; offerIndex += 1) {
+        const offer = offers[offerIndex]!;
+        const spendingLimit = getFreeAgencySpendingLimit(teamBudgets.get(offer.teamId) ?? 0);
+        const payroll = dayPayrolls.get(offer.teamId) ?? 0;
+        const affordableAav = floorCurrency(Math.max(0, spendingLimit - payroll));
+        offers[offerIndex] = repriceAIOffer(offer, Math.min(
+          offer.annualSalary * (1 + inflationPct),
+          affordableAav,
+        ));
       }
+    }
+
+    const evaluations: FreeAgencyOfferEvaluation[] = offers
+      .map((offer) => {
+        const need = teamNeeds.get(offer.teamId)?.get(fa.player.position) ?? 50;
+        return evaluateAIOfferAtCompetitiveFloor(
+          offer,
+          fa.player.age,
+          fa.marketValue,
+          resolveDecisionContext(
+            decisionContextResolver,
+            teamAttractiveness,
+            offer.teamId,
+            fa.player.id,
+            need,
+          ),
+        );
+      })
+      .filter((evaluation) => {
+        const teamBudget = teamBudgets.get(evaluation.offer.teamId);
+        if (teamBudget == null) return false;
+        const payroll = dayPayrolls.get(evaluation.offer.teamId) ?? 0;
+        return payroll + evaluation.offer.annualSalary <= getFreeAgencySpendingLimit(teamBudget);
+      })
+      .filter((evaluation) => evaluation.decision.accepted)
+      .sort(compareFreeAgencyOfferEvaluations);
+
+    if (evaluations.length === 0) {
+      stillAvailable.push({
+        ...fa,
+        interestedTeams: offers.map((offer) => offer.teamId),
+      });
+      continue;
     }
 
     // Signing probability ramps up through the window
@@ -727,28 +878,18 @@ export function simulateFADay(
       continue;
     }
 
-    // Players will take a slight discount for a better clubhouse situation.
-    offers.sort((left, right) => {
-      const rightAppeal = offerAppealScore(
-        right,
-        resolveAttractiveness(teamAttractiveness, right.teamId, fa.player.id),
-      );
-      const leftAppeal = offerAppealScore(
-        left,
-        resolveAttractiveness(teamAttractiveness, left.teamId, fa.player.id),
-      );
-      if (rightAppeal !== leftAppeal) {
-        return rightAppeal - leftAppeal;
-      }
-      return right.annualSalary - left.annualSalary;
-    });
-    const bestOffer = offers[0]!;
+    const bestEvaluation = evaluations[0]!;
+    const bestOffer = bestEvaluation.offer as ContractOffer;
 
     // Update day payrolls so the next signing accounts for this spend
     const currentTeamPayroll = dayPayrolls.get(bestOffer.teamId) ?? 0;
+    const spendingLimit = getFreeAgencySpendingLimit(teamBudgets.get(bestOffer.teamId) ?? 0);
     dayPayrolls.set(bestOffer.teamId, currentTeamPayroll + bestOffer.annualSalary);
     daySigningSlots.set(bestOffer.teamId, (daySigningSlots.get(bestOffer.teamId) ?? 0) - 1);
-    onAcceptedOffer(bestOffer);
+    onAcceptedOffer(bestOffer, bestEvaluation.decision, {
+      payrollBeforeSigning: currentTeamPayroll,
+      spendingLimit,
+    });
 
     newlySigned.push({
       ...fa,
@@ -781,6 +922,12 @@ export function simulateFullFreeAgency(
   userOffers?: ContractOffer[],
   teamAttractiveness: FreeAgencyAttractiveness = new Map(),
   teamBuildingArchetypes: Map<string, TeamBuildingArchetype> = new Map(),
+  onAcceptedOffer: (
+    offer: ContractOffer,
+    decision: FreeAgencyOfferDecision,
+    receipt: FreeAgencyOfferAcceptanceReceipt,
+  ) => void = () => undefined,
+  decisionContextResolver?: FreeAgencyDecisionContextResolver,
 ): FreeAgencyMarket {
   let current = { ...market, day: 0, freeAgents: [...market.freeAgents], signedPlayers: [...market.signedPlayers] };
   const workingPayrolls = new Map(teamPayrolls);
@@ -809,6 +956,12 @@ export function simulateFullFreeAgency(
           const userPayroll = workingPayrolls.get(userTeamId) ?? 0;
           workingPayrolls.set(userTeamId, userPayroll + offer.annualSalary);
           workingSigningSlots.set(userTeamId, (workingSigningSlots.get(userTeamId) ?? 0) - 1);
+          if (result.decision) {
+            onAcceptedOffer(offer, result.decision, {
+              payrollBeforeSigning: userPayroll,
+              spendingLimit: getFreeAgencySpendingLimit(teamBudgets.get(userTeamId) ?? 0),
+            });
+          }
         }
       }
     }
@@ -844,6 +997,9 @@ export function simulateFullFreeAgency(
       new Map(),
       new Map(),
       aiTeamBuildingArchetypes,
+      () => true,
+      onAcceptedOffer,
+      decisionContextResolver,
     );
     for (const signed of current.signedPlayers) {
       if (!previouslySignedIds.has(signed.player.id) && signed.signedWith) {
@@ -852,37 +1008,27 @@ export function simulateFullFreeAgency(
     }
   }
 
-  // Force-sign anyone still unsigned with minor league deals
-  const finalUnsigned = current.freeAgents.filter((fa) => fa.signedWith === null);
-  const stillUnsigned: FreeAgent[] = [];
-  for (const fa of finalUnsigned) {
-    const teamIds = [...teamBudgets.keys()].filter((teamId) => (aiSigningSlots.get(teamId) ?? 0) > 0);
-    if (teamIds.length === 0) {
-      stillUnsigned.push(fa);
-      continue;
-    }
-    const randomTeam = teamIds[rng.nextInt(0, teamIds.length - 1)]!;
-    current.signedPlayers.push({
-      ...fa,
-      signedWith: randomTeam,
-      contract: {
-        teamId: randomTeam,
-        playerId: fa.player.id,
-        years: MINOR_LEAGUE_DEAL_YEARS,
-        annualSalary: MINOR_LEAGUE_DEAL_AAV,
-        totalValue: MINOR_LEAGUE_DEAL_AAV,
-        noTradeClause: false,
-        playerOption: false,
-        teamOption: true,
-        signingBonus: 0,
-      },
-    });
-    aiSigningSlots.set(randomTeam, (aiSigningSlots.get(randomTeam) ?? 0) - 1);
-  }
+  // One final day routes every forced fallback through the same affordability,
+  // capacity, explanation, and callback authority as ordinary AI acceptances.
+  current = simulateFADay(
+    rng,
+    current,
+    aiBudgets,
+    workingPayrolls,
+    aiNeeds,
+    aiSigningSlots,
+    aiAttractiveness,
+    new Map(),
+    new Map(),
+    aiTeamBuildingArchetypes,
+    () => true,
+    onAcceptedOffer,
+    decisionContextResolver,
+  );
 
   return {
     season: current.season,
-    freeAgents: stillUnsigned,
+    freeAgents: current.freeAgents,
     signedPlayers: current.signedPlayers,
     day: MARKET_DURATION_DAYS,
   };
@@ -895,8 +1041,8 @@ export function simulateFullFreeAgency(
 export function makeUserOffer(
   market: FreeAgencyMarket,
   offer: ContractOffer,
-  teamAttractiveness: number = 50,
-): { accepted: boolean; reason: string } {
+  decisionContext: number | FreeAgencyDecisionContext = 50,
+): FreeAgencyOfferResult {
   const fa = market.freeAgents.find((f) => f.player.id === offer.playerId);
   if (!fa) {
     return { accepted: false, reason: 'Player is not available in the free agent market.' };
@@ -906,43 +1052,25 @@ export function makeUserOffer(
     return { accepted: false, reason: 'Player has already signed with another team.' };
   }
 
-  // Player evaluates offer vs their market value
-  const expectedAAV = fa.marketValue;
-
-  // Must meet at least 80% of expected value
-  const MINIMUM_OFFER_RATIO = teamAttractiveness >= 80
-    ? 0.76
-    : teamAttractiveness >= 65
-      ? 0.78
-      : 0.8;
-  if (offer.annualSalary < expectedAAV * MINIMUM_OFFER_RATIO) {
-    return {
-      accepted: false,
-      reason: `Offer of $${offer.annualSalary.toFixed(2)}M is below the player's minimum ($${(expectedAAV * MINIMUM_OFFER_RATIO).toFixed(2)}M).`,
-    };
-  }
-
-  // Years must be at least 1
-  if (offer.years < 1) {
-    return { accepted: false, reason: 'Contract must be at least 1 year.' };
-  }
-
-  // If the offer meets or exceeds market value, auto-accept
-  if (offer.annualSalary >= expectedAAV) {
-    return { accepted: true, reason: 'Player accepted the offer.' };
-  }
-
-  // Between 80-100% of market value: accept but note it was a discount
-  if (teamAttractiveness >= 70) {
-    return {
-      accepted: true,
-      reason: 'Player accepted a below-market offer because the clubhouse fit feels right.',
-    };
-  }
-
+  const context: FreeAgencyDecisionContext = typeof decisionContext === 'number'
+    ? {
+      teamNeed: 50,
+      contenderStatus: 'unknown',
+      tenureSeasons: 0,
+      homegrownBond: 0,
+      clubhouseScore: decisionContext,
+    }
+    : decisionContext;
+  const decision = evaluateFreeAgencyOffer({
+    playerAge: fa.player.age,
+    marketValue: fa.marketValue,
+    offer,
+    context,
+  });
   return {
-    accepted: true,
-    reason: 'Player accepted a below-market offer, hoping to prove their worth.',
+    accepted: decision.accepted,
+    reason: decision.summary,
+    decision,
   };
 }
 

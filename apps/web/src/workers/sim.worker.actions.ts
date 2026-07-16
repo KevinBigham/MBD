@@ -34,6 +34,7 @@ import {
   detectMoment,
   detectRookieSensation,
   detectSeptemberHeroics,
+  evaluateTeamNeeds,
   generateDraftClass,
   generateCoachFreeAgents,
   generateChampionshipCard,
@@ -78,6 +79,7 @@ import {
 } from '@mbd/sim-core';
 import type {
   ContractOffer,
+  FreeAgencyOfferDecision,
   PlayerGameStats,
   PlayoffBracket,
   PlayoffGameResult,
@@ -219,10 +221,9 @@ import {
 import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
 import {
   buildNewGameState,
-  getDifficultyAdjustedCompetitiveAav,
-  getTeamFreeAgencyAppealScore,
   type NewGameOptions,
 } from './sim.worker.setup.js';
+import { buildFreeAgencyDecisionContext } from './sim.worker.freeAgencyDecision.js';
 import { syncRecordTracking } from './sim.worker.records.js';
 import { refreshTickerFeed } from './sim.worker.ticker.js';
 import {
@@ -232,7 +233,6 @@ import {
 import {
   applyDevelopmentSetbackCheckpoint,
   applySeasonEndProspectBondUpdates,
-  getLoyaltyAdjustedAppeal,
   recordProspectBondDebuts,
   syncMinorLeagueStatHistory,
 } from './sim.worker.farm.js';
@@ -267,7 +267,7 @@ import {
   pruneStaleWorkerData,
 } from './sim.worker.diagnostics.js';
 
-function applyAISigningProgress(
+export function applyAISigningProgress(
   s: FullGameState,
   aiSignings: Array<{
     playerId: string;
@@ -275,6 +275,7 @@ function applyAISigningProgress(
     years: number;
     annualSalary: number;
     marketValue: number;
+    decision?: FreeAgencyOfferDecision;
   }>,
 ) {
   for (const signing of aiSignings) {
@@ -285,6 +286,7 @@ function applyAISigningProgress(
       signing.annualSalary,
       signing.years,
       signing.marketValue,
+      signing.decision,
     );
   }
 }
@@ -3028,15 +3030,23 @@ export const actionApi = {
       teamOption: false,
       signingBonus: 0,
     };
-    const result = makeUserOffer(market, {
-      ...offer,
-      annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
-    }, getLoyaltyAdjustedAppeal(
-      s,
-      s.userTeamId,
-      playerId,
-      getTeamFreeAgencyAppealScore(s, s.userTeamId),
-    ));
+    const userNeeds = evaluateTeamNeeds(s.players.filter((candidate) => (
+      candidate.teamId === s.userTeamId
+      && candidate.rosterStatus === 'MLB'
+      && candidate.id !== playerId
+    )));
+    const result = makeUserOffer(
+      market,
+      offer,
+      freeAgent
+        ? buildFreeAgencyDecisionContext(
+          s,
+          s.userTeamId,
+          freeAgent.player,
+          userNeeds.get(freeAgent.player.position) ?? 50,
+        )
+        : 0,
+    );
     if (!result.accepted || !freeAgent) {
       return result;
     }
@@ -3105,22 +3115,15 @@ export const actionApi = {
       });
     }
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
-    if (result.reason.toLowerCase().includes('clubhouse fit feels right')) {
-      s.news.unshift({
-        id: `clubhouse-signing-${s.season}-${playerId}`,
-        headline: 'FA cites great clubhouse as reason for signing discount',
-        body: `${player.firstName} ${player.lastName} accepted less than full market value because the room felt like the right fit.`,
-        priority: 3,
-        category: 'signing',
-        tag: 'ANALYSIS',
-        timestamp: `S${s.season}D${s.day}`,
-        relatedPlayerIds: [player.id],
-        relatedTeamIds: [s.userTeamId],
-        read: false,
-      });
-    }
     commitQualifyingOfferCompensation(s, playerId, s.userTeamId, compensationPlan);
-    applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
+    applySigningConsequences(
+      s,
+      playerId,
+      salary,
+      years,
+      freeAgent.marketValue,
+      result.decision,
+    );
     recordFreeAgentSigning(s, playerId, salary);
     syncAchievementState(s);
     return {

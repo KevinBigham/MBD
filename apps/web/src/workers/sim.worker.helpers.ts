@@ -142,6 +142,8 @@ import {
   type Rule5SessionState,
   type OwnerPayrollPolicy,
   type MarketRevenueStatement,
+  type FreeAgencyOfferAcceptanceReceipt,
+  type FreeAgencyOfferDecision,
 } from '@mbd/sim-core';
 import {
   detectArbitrationMoments,
@@ -226,9 +228,8 @@ import { buildCareerMilestoneEvents } from './sim.worker.milestones.js';
 // which re-exports them) so loading helpers.ts does not statically pull in
 // setup.ts. setup.ts imports `createEmpty*` factories back from helpers.ts; the
 // previous `helpers → setup` edge closed a runtime cycle.
-import { getDifficultyAdjustedBudget, getTeamFreeAgencyAppealScore, getTeamIFABonusPool, getTeamPayrollCap } from './sim.worker.budget.js';
+import { getDifficultyAdjustedBudget, getTeamIFABonusPool, getTeamPayrollCap } from './sim.worker.budget.js';
 import {
-  getLoyaltyAdjustedAppeal,
   registerDraftedProspectAcquisition,
   registerInternationalProspectAcquisition,
   syncMinorLeagueStatHistory,
@@ -245,6 +246,10 @@ import {
   getSettledMarketRevenueStatement,
   reconcileCompletedSeasonMarketRevenue,
 } from './sim.worker.marketRevenue.js';
+import {
+  applyVirtualFreeAgencySigning,
+  buildFreeAgencyDecisionContext,
+} from './sim.worker.freeAgencyDecision.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -488,6 +493,11 @@ export interface OffseasonProgressResult {
     years: number;
     annualSalary: number;
     marketValue: number;
+    decision?: FreeAgencyOfferDecision;
+    payrollBeforeSigning?: number;
+    independentlyDerivedPayrollBeforeSigning?: number;
+    spendingLimit?: number;
+    mlbRosterPlayerIdsBeforeSigning?: string[];
   }>;
   error?: string;
   flowStateChanged?: boolean;
@@ -6465,6 +6475,13 @@ function planReservedFreeAgencyBidCompensation(
 export function applyNewFreeAgencySignings(
   s: FullGameState,
   previousSignedIds: Set<string>,
+  acceptedDecisions: ReadonlyMap<string, {
+    decision: FreeAgencyOfferDecision;
+    receipt: FreeAgencyOfferAcceptanceReceipt & {
+      independentlyDerivedPayrollBeforeSigning?: number;
+      mlbRosterPlayerIdsBeforeSigning?: string[];
+    };
+  }> = new Map(),
 ): OffseasonProgressResult['aiSignings'] {
   if (!s.freeAgencyMarket || !s.offseasonState) return [];
 
@@ -6474,6 +6491,8 @@ export function applyNewFreeAgencySignings(
   for (const signedPlayer of s.freeAgencyMarket.signedPlayers) {
     const contract = signedPlayer.contract;
     const teamId = signedPlayer.signedWith;
+    const acceptedDecision = acceptedDecisions.get(signedPlayer.player.id);
+    const decision = acceptedDecision?.decision;
     if (!contract || !teamId || previousSignedIds.has(signedPlayer.player.id) || currentSigningIds.has(signedPlayer.player.id)) {
       continue;
     }
@@ -6521,6 +6540,10 @@ export function applyNewFreeAgencySignings(
       buyoutAmount: 0,
       deferredMoney: [],
     };
+    // Imported markets rehydrate a value-equal detached player object. Once
+    // the canonical player mutates, rebind the persisted market row so the
+    // next query/day and save reload still see one coherent market identity.
+    signedPlayer.player = player;
 
     if (previousTeamId) {
       s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
@@ -6555,6 +6578,7 @@ export function applyNewFreeAgencySignings(
         years: contract.years,
         annualSalary: contract.annualSalary,
         totalValue: contract.totalValue,
+        ...(decision ? { decisionExplanation: decision.summary } : {}),
       },
     }, s.players, s.season, s.day));
     progress.push({
@@ -6563,6 +6587,8 @@ export function applyNewFreeAgencySignings(
       years: contract.years,
       annualSalary: contract.annualSalary,
       marketValue: signedPlayer.marketValue,
+      ...(decision ? { decision } : {}),
+      ...(acceptedDecision ? acceptedDecision.receipt : {}),
     });
   }
 
@@ -6575,13 +6601,6 @@ function simulateFreeAgencyDays(
 ): OffseasonProgressResult['aiSignings'] {
   if (!hasCanonicalFreeAgencyMarket(s)) return [];
   const aiSignings: OffseasonProgressResult['aiSignings'] = [];
-  const teamAttractiveness = (teamId: string, playerId: string) =>
-    getLoyaltyAdjustedAppeal(
-      s,
-      teamId,
-      playerId,
-      getTeamFreeAgencyAppealScore(s, teamId),
-    );
   const userTeamNeeds = evaluateTeamNeeds(
     s.players.filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB'),
   );
@@ -6611,13 +6630,33 @@ function simulateFreeAgencyDays(
       pickOwnership: [...buildDraftPickOwnershipForSeason(s)],
     };
     const previousSignedIds = new Set(s.freeAgencyMarket.signedPlayers.map((entry) => entry.player.id));
+    const acceptedDecisions = new Map<string, {
+      decision: FreeAgencyOfferDecision;
+      receipt: FreeAgencyOfferAcceptanceReceipt & {
+        independentlyDerivedPayrollBeforeSigning?: number;
+        mlbRosterPlayerIdsBeforeSigning?: string[];
+      };
+    }>();
     const teamBudgets = new Map(
       TEAMS
         .filter((team) => team.id !== s.userTeamId)
         .map((team) => [team.id, getTeamPayrollCap(s, team.id)] as const),
     );
     const teamPayrolls = buildFreeAgencyPayrolls(s);
+    const independentlyDerivedDayPayrolls = new Map(teamPayrolls);
     const teamNeeds = buildFreeAgencyNeeds(s);
+    const freeAgentIds = new Set(
+      s.freeAgencyMarket.freeAgents.map((freeAgent) => freeAgent.player.id),
+    );
+    const virtualMlbRosters = new Map(
+      TEAMS
+        .filter((team) => team.id !== s.userTeamId)
+        .map((team) => [team.id, s.players.filter((player) => (
+          player.teamId === team.id
+          && player.rosterStatus === 'MLB'
+          && !freeAgentIds.has(player.id)
+        ))] as const),
+    );
     const teamMlbSigningSlots = new Map(
       TEAMS
         .filter((team) => team.id !== s.userTeamId)
@@ -6635,7 +6674,7 @@ function simulateFreeAgencyDays(
       teamPayrolls,
       teamNeeds,
       teamMlbSigningSlots,
-      teamAttractiveness,
+      new Map(),
       relationshipContexts,
       userTeamNeeds,
       teamBuildingArchetypes,
@@ -6646,7 +6685,7 @@ function simulateFreeAgencyDays(
         playerId,
         { years: 1, annualSalary: 0, totalValue: 0 },
       ).kind !== 'blocked',
-      (offer) => {
+      (offer, decision, receipt) => {
         const reservation = planReservedFreeAgencyBidCompensation(
           s,
           bidReservations,
@@ -6658,9 +6697,45 @@ function simulateFreeAgencyDays(
           bidReservations.compensatoryPicks = reservation.plan.compensatoryPicks;
           bidReservations.pickOwnership = reservation.plan.pickOwnership;
         }
+        acceptedDecisions.set(offer.playerId, {
+          decision,
+          receipt: {
+            ...receipt,
+            independentlyDerivedPayrollBeforeSigning:
+              independentlyDerivedDayPayrolls.get(offer.teamId) ?? 0,
+            mlbRosterPlayerIdsBeforeSigning: (virtualMlbRosters.get(offer.teamId) ?? [])
+              .map((player) => player.id),
+          },
+        });
+        independentlyDerivedDayPayrolls.set(
+          offer.teamId,
+          (independentlyDerivedDayPayrolls.get(offer.teamId) ?? 0) + offer.annualSalary,
+        );
+        const acceptedPlayer = s.players.find((candidate) => candidate.id === offer.playerId);
+        if (acceptedPlayer) {
+          applyVirtualFreeAgencySigning(
+            virtualMlbRosters,
+            teamNeeds,
+            offer.teamId,
+            acceptedPlayer,
+          );
+        }
+      },
+      (teamId, playerId, teamNeed) => {
+        const player = s.players.find((candidate) => candidate.id === playerId);
+        if (!player) {
+          return {
+            teamNeed,
+            contenderStatus: 'unknown',
+            tenureSeasons: 0,
+            homegrownBond: 0,
+            clubhouseScore: 0,
+          };
+        }
+        return buildFreeAgencyDecisionContext(s, teamId, player, teamNeed);
       },
     );
-    aiSignings.push(...applyNewFreeAgencySignings(s, previousSignedIds));
+    aiSignings.push(...applyNewFreeAgencySignings(s, previousSignedIds, acceptedDecisions));
   }
 
   return aiSignings;

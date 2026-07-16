@@ -13,6 +13,22 @@ export interface FreeAgencyMarketAgent {
   letterGrade: string;
   marketValue: number;
   demandLevel: string;
+  decisionPreview?: {
+    careerStage: 'rising' | 'prime' | 'veteran';
+    priorityOrder: Array<
+      | 'term_security'
+      | 'projected_opportunity'
+      | 'contender_status'
+      | 'loyalty'
+      | 'clubhouse'
+    >;
+    projectedOpportunity: 'featured' | 'regular' | 'depth';
+    contenderStatus: 'champion' | 'playoff' | 'contender' | 'competitive' | 'developing' | 'unknown';
+    loyaltySource: 'homegrown_and_tenure' | 'homegrown' | 'tenure' | 'none';
+    tenureSeasons: number;
+    homegrownBond: number;
+    clubhouseScore: number;
+  };
   qualifyingOffer?: {
     formerTeamId: string;
     formerTeamName: string;

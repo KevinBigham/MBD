@@ -311,6 +311,122 @@ function marketRevenueReconciliationWorker() {
   };
 }
 
+function freeAgencySigningWorker() {
+  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  baseline.phase = 'offseason';
+  baseline.offseasonState = {
+    ...createOffseasonState(baseline.season),
+    currentPhase: 'free_agency',
+    phaseDay: 1,
+    totalDay: 21,
+  };
+  const post = structuredClone(baseline);
+  const player = post.players[0]!;
+  const explanation = 'At age 31, the $18.00M AAV and a featured projected MLB opportunity carried the offer above the $17.00M equivalent-AAV minimum.';
+  player.teamId = post.userTeamId;
+  player.rosterStatus = 'MLB';
+  player.contract = {
+    ...player.contract,
+    years: 4,
+    annualSalary: 18,
+    totalValue: 72,
+  };
+  post.freeAgencyMarket = {
+    season: post.season,
+    day: 1,
+    freeAgents: [],
+    signedPlayers: [{
+      player,
+      marketValue: 18.89,
+      demandLevel: 'high',
+      interestedTeams: [post.userTeamId],
+      signedWith: post.userTeamId,
+      contract: {
+        teamId: post.userTeamId,
+        playerId: player.id,
+        years: 4,
+        annualSalary: 18,
+        totalValue: 72,
+        noTradeClause: false,
+        playerOption: false,
+        teamOption: false,
+        signingBonus: 0,
+      },
+    }],
+  };
+  post.offseasonState = {
+    ...post.offseasonState!,
+    phaseResults: {
+      ...post.offseasonState!.phaseResults,
+      freeAgentSignings: [{
+        playerId: player.id,
+        teamId: post.userTeamId,
+        years: 4,
+        annualSalary: 18,
+        totalValue: 72,
+      }],
+    },
+  };
+  post.news = [{
+    id: `fa-decision-${post.season}-${player.id}`,
+    headline: `${player.firstName} ${player.lastName} signs with the club`,
+    body: `${player.firstName} ${player.lastName} signed a four-year deal. Decision: ${explanation}`,
+    priority: 2,
+    category: 'signing',
+    tag: 'ANALYSIS',
+    timestamp: `S${post.season}D1`,
+    relatedPlayerIds: [player.id],
+    relatedTeamIds: [post.userTeamId],
+    read: false,
+  }];
+  post.narrative.briefingQueue = [{
+    id: `brief-fa-decision-${post.season}-${player.id}`,
+    priority: 2,
+    category: 'news',
+    tag: 'ANALYSIS',
+    headline: `${player.firstName} ${player.lastName} signs with the club`,
+    body: `Decision: ${explanation}`,
+    relatedTeamIds: [post.userTeamId],
+    relatedPlayerIds: [player.id],
+    timestamp: `S${post.season}D1`,
+    acknowledged: false,
+  }];
+
+  const result = {
+    accepted: true,
+    reason: explanation,
+    decision: {
+      accepted: true,
+      actualAav: 18,
+      summary: explanation,
+    },
+  };
+  let current: ExtensionSnapshot = baseline;
+  return {
+    baseline,
+    post,
+    result,
+    playerId: player.id,
+    adapter: {
+      exportSnapshot: vi.fn(async () => structuredClone(current)),
+      execute: vi.fn(async () => {
+        current = post;
+        return result;
+      }),
+      restoreBaseline: vi.fn(async (_session, snapshot: object) => {
+        current = structuredClone(snapshot) as ExtensionSnapshot;
+        return {
+          importResult: { success: true },
+          restoredSnapshot: structuredClone(current),
+        };
+      }),
+      publishFlow: vi.fn(),
+      discardFlow: vi.fn(),
+    },
+    readCurrent: () => structuredClone(current),
+  };
+}
+
 beforeEach(() => {
   mocks.assertActive.mockImplementation(() => undefined);
   mocks.assertTree.mockImplementation(() => undefined);
@@ -488,6 +604,54 @@ describe('exact-save mutation coordinator', () => {
     await expect(pending).resolves.toMatchObject({ kind: 'durable' });
     expect(extension.adapter.execute).toHaveBeenCalledTimes(1);
     expect(extension.readCurrent()).toEqual(extension.post);
+  });
+
+  it('retains one reason-bearing free-agent signing through retry without rerunning the decision', async () => {
+    let settleReceipt!: (value: { kind: 'durable'; record: object }) => void;
+    let retainedSnapshot: ExtensionSnapshot | null = null;
+    mocks.capture.mockImplementationOnce(async (_lease, capture) => {
+      retainedSnapshot = await capture.exportSnapshot() as ExtensionSnapshot;
+      return receipt;
+    });
+    mocks.wait.mockReturnValue(new Promise((resolve) => { settleReceipt = resolve; }));
+    const signing = freeAgencySigningWorker();
+    const pending = executeExactSaveMutation({
+      ...options(signing.adapter),
+      operation: {
+        kind: 'makeContractOffer',
+        playerId: signing.playerId,
+        years: 4,
+        salary: 18,
+      },
+      didChange: (result: typeof signing.result) => result.accepted,
+    });
+
+    await vi.waitFor(() => expect(mocks.wait).toHaveBeenCalledWith(receipt));
+    const retained = retainedSnapshot as ExtensionSnapshot | null;
+    expect(signing.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(retained?.players.find((player) => player.id === signing.playerId)?.contract)
+      .toMatchObject({ years: 4, annualSalary: 18, totalValue: 72 });
+    expect(retained?.offseasonState?.phaseResults.freeAgentSignings)
+      .toContainEqual(expect.objectContaining({ playerId: signing.playerId, annualSalary: 18 }));
+    expect(retained?.news).toContainEqual(expect.objectContaining({
+      relatedPlayerIds: [signing.playerId],
+      body: expect.stringContaining(`Decision: ${signing.result.reason}`),
+    }));
+    expect(retained?.narrative.briefingQueue).toContainEqual(expect.objectContaining({
+      relatedPlayerIds: [signing.playerId],
+      body: expect.stringContaining(`Decision: ${signing.result.reason}`),
+    }));
+    expect(signing.adapter.publishFlow).not.toHaveBeenCalled();
+    expect(getExactSaveMutationStatus()).toEqual({ kind: 'persisting' });
+
+    settleReceipt({ kind: 'durable', record: {} });
+    await expect(pending).resolves.toMatchObject({
+      kind: 'durable',
+      result: signing.result,
+    });
+    expect(signing.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(signing.adapter.publishFlow).toHaveBeenCalledTimes(1);
+    expect(signing.readCurrent()).toEqual(signing.post);
   });
 
   it('retains the completed-offseason payroll reconciliation through persistence retry without replay', async () => {

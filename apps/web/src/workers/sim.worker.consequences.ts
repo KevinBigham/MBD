@@ -22,6 +22,7 @@ import {
   getTeamById,
   getTradeDeadlineDay,
   type ConsequenceBundle,
+  type FreeAgencyOfferDecision,
   type UserPostseasonOutcome,
 } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers';
@@ -405,6 +406,7 @@ export function applySigningConsequences(
   annualSalary: number,
   years: number,
   marketValue: number,
+  decision?: FreeAgencyOfferDecision,
 ) {
   const player = state.players.find((candidate) => candidate.id === playerId);
   if (!player) return;
@@ -425,6 +427,7 @@ export function applySigningConsequences(
     remainingUserPlayers: getTeamPlayers(state.userTeamId).filter(
       (candidate) => candidate.rosterStatus === 'MLB' && candidate.id !== playerId,
     ),
+    decisionExplanation: decision?.summary,
   });
 
   applyConsequenceBundle(state, bundle);
@@ -452,6 +455,7 @@ export function applyAISigningConsequences(
   annualSalary: number,
   years: number,
   marketValue: number,
+  decision?: FreeAgencyOfferDecision,
 ) {
   if (teamId === state.userTeamId) return;
 
@@ -478,14 +482,22 @@ export function applyAISigningConsequences(
     remainingUserPlayers: getTeamPlayers(teamId).filter(
       (candidate) => candidate.rosterStatus === 'MLB' && candidate.id !== playerId,
     ),
+    decisionExplanation: decision?.summary,
   });
 
-  if (bundle.newsItems.length > 0) {
-    state.news = deduplicateNews([...bundle.newsItems, ...state.news]);
+  // `applyNewFreeAgencySignings` publishes the authoritative reason-bearing
+  // signing article before returning this progress receipt. AI consequence
+  // handling must not emit a second news or briefing account with a different
+  // day/headline for that decision; Press Room consumes both collections.
+  const newsItems = decision ? [] : bundle.newsItems;
+  const briefingItems = decision ? [] : bundle.briefingItems;
+
+  if (newsItems.length > 0) {
+    state.news = deduplicateNews([...newsItems, ...state.news]);
   }
 
-  if (bundle.briefingItems.length > 0) {
-    state.briefingQueue = [...bundle.briefingItems, ...state.briefingQueue];
+  if (briefingItems.length > 0) {
+    state.briefingQueue = [...briefingItems, ...state.briefingQueue];
   }
 
   rebuildBriefing(state);

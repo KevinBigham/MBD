@@ -330,8 +330,53 @@ export function isSaveCompatible(snapshotLike: unknown): { compatible: boolean; 
   return { compatible: true };
 }
 
+function hasEqualPersistedValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (left == null || right == null || typeof left !== 'object' || typeof right !== 'object') {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => hasEqualPersistedValue(value, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) => (
+      Object.prototype.hasOwnProperty.call(rightRecord, key)
+      && hasEqualPersistedValue(leftRecord[key], rightRecord[key])
+    ));
+}
+
+function rebindImportedFreeAgencyMarketPlayers(
+  market: FreeAgencyMarket | null,
+  persistedPlayers: GeneratedPlayer[],
+  canonicalPlayers: GeneratedPlayer[],
+): FreeAgencyMarket | null {
+  if (!market) return null;
+  const persistedById = new Map(persistedPlayers.map((player) => [player.id, player] as const));
+  const canonicalById = new Map(canonicalPlayers.map((player) => [player.id, player] as const));
+  const rebind = (entry: FreeAgencyMarket['freeAgents'][number]) => {
+    const persisted = persistedById.get(entry.player.id);
+    const canonical = canonicalById.get(entry.player.id);
+    return persisted && canonical && hasEqualPersistedValue(persisted, entry.player)
+      ? { ...entry, player: canonical }
+      : entry;
+  };
+  return {
+    ...market,
+    freeAgents: market.freeAgents.map(rebind),
+    signedPlayers: market.signedPlayers.map(rebind),
+  };
+}
+
 export function importGameSnapshot(snapshotLike: unknown): FullGameState {
-  const snapshot = materializeSimulationImportDefaults(validateSnapshot(snapshotLike));
+  const persistedSnapshot = validateSnapshot(snapshotLike);
+  const snapshot = materializeSimulationImportDefaults(persistedSnapshot);
   const players = snapshot.players as GeneratedPlayer[];
   ensurePlayersHaveRule5Eligibility(players, snapshot.season);
   const serviceTime = fromEntries(snapshot.serviceTime);
@@ -369,7 +414,11 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
       snapshot.draftState ?? createEmptyDraftState(),
       snapshot.userTeamId,
     ),
-    freeAgencyMarket: snapshot.freeAgencyMarket as FreeAgencyMarket | null,
+    freeAgencyMarket: rebindImportedFreeAgencyMarketPlayers(
+      snapshot.freeAgencyMarket as FreeAgencyMarket | null,
+      persistedSnapshot.players as GeneratedPlayer[],
+      players,
+    ),
     news: snapshot.news as NewsItem[],
     rosterStates: fromEntries(snapshot.rosterStates as [string, RosterState][]),
     coachingStaffs: fromEntries(snapshot.coachingStaffs as [string, FullGameState['coachFreeAgentPool']][]),

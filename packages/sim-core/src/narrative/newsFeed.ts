@@ -569,6 +569,9 @@ function generateSigningNews(
   const teamId = (data['teamId'] as string) ?? '';
   const teamName = (data['teamName'] as string) ?? teamId;
   const years = (data['years'] as number) ?? 1;
+  const decisionExplanation = typeof data['decisionExplanation'] === 'string'
+    ? data['decisionExplanation']
+    : null;
 
   const vars: Record<string, string | number> = {
     player: player ? playerName(player) : 'Unknown',
@@ -577,7 +580,9 @@ function generateSigningNews(
   };
 
   const headline = fillTemplate(pickTemplate(rng, SIGNING_TEMPLATES), vars);
-  const body = `${player ? playerName(player) : 'A free agent'} has signed a ${years}-year contract with ${teamName}.`;
+  const body = `${player ? playerName(player) : 'A free agent'} has signed a ${years}-year contract with ${teamName}.${
+    decisionExplanation ? ` Decision: ${decisionExplanation}` : ''
+  }`;
 
   return [
     buildNewsItem(rng, {

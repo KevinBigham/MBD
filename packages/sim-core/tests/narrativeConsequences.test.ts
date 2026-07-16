@@ -63,9 +63,9 @@ describe('narrative consequences', () => {
     const buildTradeConsequenceBundle = (
       simCore as unknown as {
         buildTradeConsequenceBundle?: (context: unknown) => {
-          newsItems: Array<{ category: string }>;
-          briefingItems: Array<{ category: string }>;
-          playerMoraleEvents: Array<{ playerId: string; event: { impact: number } }>;
+          newsItems: Array<{ category: string; body: string }>;
+          briefingItems: Array<{ category: string; body: string }>;
+          playerMoraleEvents: Array<{ playerId: string; event: { impact: number; summary: string } }>;
           ownerDecisionDelta: { delta: number; summary: string } | null;
           storyFlags: string[];
           seasonHistoryMoments: string[];
@@ -155,11 +155,16 @@ describe('narrative consequences', () => {
       payrollAfterSigning: 205,
       payrollTarget: 210,
       remainingUserPlayers: [teammate],
+      decisionExplanation: 'At age 33, the $18.00M AAV and recent playoff standing led the decision.',
     });
 
     expect(bundle.newsItems).toHaveLength(1);
     expect(bundle.newsItems[0]?.category).toBe('signing');
     expect(bundle.briefingItems).toHaveLength(1);
+    expect(bundle.newsItems[0]?.body).toContain('Decision: At age 33');
+    expect(bundle.briefingItems[0]?.body).toContain('Decision: At age 33');
+    expect(bundle.playerMoraleEvents[0]?.event.summary).toContain('joined the major-league roster');
+    expect(bundle.playerMoraleEvents[0]?.event.summary).not.toContain('clear role');
     expect(bundle.playerMoraleEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ playerId: signedPlayer.id, event: expect.objectContaining({ impact: 10 }) }),

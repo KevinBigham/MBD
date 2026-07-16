@@ -60,6 +60,7 @@ export interface SigningConsequenceContext {
   payrollAfterSigning: number;
   payrollTarget: number;
   remainingUserPlayers: GeneratedPlayer[];
+  decisionExplanation?: string;
 }
 
 export type UserPostseasonOutcome =
@@ -471,6 +472,9 @@ export function buildSigningConsequenceBundle(
         teamId: context.userTeamId,
         teamName: teamLabel(context.userTeamId),
         years: context.years,
+        ...(context.decisionExplanation
+          ? { decisionExplanation: context.decisionExplanation }
+          : {}),
       },
     },
     [context.player],
@@ -494,7 +498,7 @@ export function buildSigningConsequenceBundle(
         context.player.id,
         'promotion',
         10,
-        `${context.player.firstName} ${context.player.lastName} secured the deal and a clear role.`,
+        `${context.player.firstName} ${context.player.lastName} secured the deal and joined the major-league roster.`,
         timestamp,
       ),
       ...context.remainingUserPlayers.map((player) =>

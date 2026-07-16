@@ -13,7 +13,7 @@ import {
   getTopFreeAgents,
   simulateFullFreeAgency,
 } from '../src/index.js';
-import type { GeneratedPlayer } from '../src/index.js';
+import type { FreeAgencyOfferAcceptanceReceipt, GeneratedPlayer } from '../src/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -224,7 +224,7 @@ describe('simulateFullFreeAgency', () => {
 });
 
 describe('makeUserOffer', () => {
-  it('lets a high-chemistry club land a slightly deeper discount', () => {
+  it('uses the shared bounded evaluator for a factual clubhouse discount', () => {
     const player = { ...makeExpiringPlayer(210), teamId: '' };
     const market = createFreeAgencyMarket(1, [player]);
     const freeAgent = market.freeAgents[0]!;
@@ -233,25 +233,202 @@ describe('makeUserOffer', () => {
       teamId: 'nym',
       playerId: freeAgent.player.id,
       years: 4,
-      annualSalary: Number((freeAgent.marketValue * 0.77).toFixed(2)),
-      totalValue: Number((freeAgent.marketValue * 0.77 * 4).toFixed(2)),
+      annualSalary: Number((freeAgent.marketValue * 0.88).toFixed(2)),
+      totalValue: Number((freeAgent.marketValue * 0.88).toFixed(2)),
       noTradeClause: false,
       playerOption: false,
       teamOption: false,
       signingBonus: 0,
-    }, 82);
+    }, {
+      teamNeed: 0,
+      contenderStatus: 'unknown',
+      tenureSeasons: 0,
+      homegrownBond: 0,
+      clubhouseScore: 100,
+    });
 
     expect(result.accepted).toBe(true);
-    expect(result.reason).toMatch(/clubhouse fit/i);
+    expect(result.decision?.primaryPreference).toBe('clubhouse');
+    expect(result.reason).toMatch(/chemistry and front-office reputation/i);
   });
 });
 
 describe('simulateFADay', () => {
+  it('returns byte-equal player decisions for CPU and user offers with identical facts', () => {
+    const player = { ...makeExpiringPlayer(259), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const context = {
+      teamNeed: 82,
+      contenderStatus: 'playoff' as const,
+      tenureSeasons: 2,
+      homegrownBond: 0.4,
+      clubhouseScore: 73,
+    };
+    let acceptedOffer: Parameters<typeof makeUserOffer>[1] | null = null;
+    let cpuDecision: ReturnType<typeof makeUserOffer>['decision'] = undefined;
+
+    simulateFADay(
+      new GameRNG(259),
+      market,
+      new Map([['por', 300]]),
+      new Map([['por', 60]]),
+      new Map([['por', new Map([[player.position, context.teamNeed]])]]),
+      new Map([['por', 1]]),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      () => true,
+      (offer, decision) => {
+        acceptedOffer = offer;
+        cpuDecision = decision;
+      },
+      () => context,
+    );
+
+    expect(acceptedOffer).not.toBeNull();
+    const userDecision = makeUserOffer(market, acceptedOffer!, context).decision;
+    expect(userDecision).toEqual(cpuDecision);
+  });
+
+  it('raises an affordable CPU bid to the shared player acceptance floor', () => {
+    const player = {
+      ...makeExpiringPlayer(2590),
+      teamId: '',
+      age: 30,
+      hitterAttributes: {
+        contact: 250,
+        power: 250,
+        eye: 250,
+        speed: 250,
+        defense: 250,
+        durability: 250,
+      },
+    };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const context = {
+      teamNeed: 0,
+      contenderStatus: 'unknown' as const,
+      tenureSeasons: 0,
+      homegrownBond: 0,
+      clubhouseScore: 0,
+    };
+    const initialOffer = generateAIOffer(
+      new GameRNG(2590),
+      'por',
+      player,
+      140,
+      0,
+      80,
+      undefined,
+      'budget_constrained',
+    );
+    expect(initialOffer).not.toBeNull();
+    expect(makeUserOffer(market, initialOffer!, context).accepted).toBe(false);
+
+    let acceptedOffer: Parameters<typeof makeUserOffer>[1] | null = null;
+    let acceptanceReceipt: FreeAgencyOfferAcceptanceReceipt | null = null;
+    const next = simulateFADay(
+      new GameRNG(2590),
+      market,
+      new Map([['por', 140]]),
+      new Map([['por', 0]]),
+      new Map([['por', new Map([[player.position, 80]])]]),
+      new Map([['por', 1]]),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map([['por', 'budget_constrained']]),
+      () => true,
+      (offer, _decision, receipt) => {
+        acceptedOffer = offer;
+        acceptanceReceipt = receipt;
+      },
+      () => context,
+    );
+
+    expect(next.signedPlayers).toHaveLength(1);
+    expect(acceptedOffer).not.toBeNull();
+    expect(acceptedOffer!.annualSalary).toBeGreaterThan(initialOffer!.annualSalary);
+    expect(makeUserOffer(market, acceptedOffer!, context).accepted).toBe(true);
+    expect(acceptedOffer!.signingBonus)
+      .toBe(Math.round(acceptedOffer!.annualSalary * 0.1 * 100) / 100);
+    expect(acceptanceReceipt!.payrollBeforeSigning + acceptedOffer!.annualSalary)
+      .toBeLessThanOrEqual(acceptanceReceipt!.spendingLimit);
+  });
+
+  it('keeps a competition-inflated AI signing bonus at ten percent of repriced AAV', () => {
+    const player = { ...makeExpiringPlayer(25901), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const teamIds = ['bos', 'por', 'sea'];
+
+    const next = simulateFADay(
+      new GameRNG(25901),
+      market,
+      new Map(teamIds.map((teamId) => [teamId, 300])),
+      new Map(teamIds.map((teamId) => [teamId, 20])),
+      new Map(teamIds.map((teamId) => [teamId, new Map([[player.position, 100]])])),
+      new Map(teamIds.map((teamId) => [teamId, 1])),
+    );
+
+    expect(next.signedPlayers).toHaveLength(1);
+    expect(next.signedPlayers[0]?.interestedTeams).toHaveLength(3);
+    const contract = next.signedPlayers[0]!.contract!;
+    expect(contract.signingBonus)
+      .toBe(Math.round(contract.annualSalary * 0.1 * 100) / 100);
+  });
+
+  it('uses a synchronously refreshed need for the next same-day free agent', () => {
+    const players = [
+      { ...makeExpiringPlayer(2591), teamId: '', position: 'C' as const },
+      { ...makeExpiringPlayer(2592), teamId: '', position: 'C' as const },
+    ];
+    const market = createFreeAgencyMarket(1, players);
+    market.day = 60;
+    const teamNeeds = new Map([['por', new Map([['C', 90]])]]);
+    const acceptedNeeds: number[] = [];
+
+    const next = simulateFADay(
+      new GameRNG(2591),
+      market,
+      new Map([['por', 400]]),
+      new Map([['por', 20]]),
+      teamNeeds,
+      new Map([['por', 2]]),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      () => true,
+      (_offer, decision) => {
+        acceptedNeeds.push(decision.context.teamNeed);
+        teamNeeds.set('por', new Map([['C', 50]]));
+      },
+      (_teamId, _playerId, teamNeed) => ({
+        teamNeed,
+        contenderStatus: 'unknown',
+        tenureSeasons: 0,
+        homegrownBond: 0,
+        clubhouseScore: 50,
+      }),
+    );
+
+    expect(next.signedPlayers).toHaveLength(2);
+    expect(acceptedNeeds).toEqual([90, 50]);
+  });
+
   it('lets a favored club win a comparable market through per-player attractiveness', () => {
     const player = { ...makeExpiringPlayer(260), teamId: '' };
     const market = createFreeAgencyMarket(1, [player]);
     market.day = 54;
     market.freeAgents[0]!.demandLevel = 'low';
+    let acceptanceReceipt: FreeAgencyOfferAcceptanceReceipt | null = null;
     const next = simulateFADay(
       new GameRNG(260),
       market,
@@ -263,9 +440,28 @@ describe('simulateFADay', () => {
       ]),
       new Map([['por', 1], ['bos', 1]]),
       (teamId, playerId) => (teamId === 'por' && playerId === player.id ? 78 : 55),
+      new Map(),
+      new Map(),
+      new Map(),
+      () => true,
+      (_offer, _decision, receipt) => {
+        acceptanceReceipt = receipt;
+      },
+      (teamId, playerId, teamNeed) => ({
+        teamNeed,
+        contenderStatus: teamId === 'por' && playerId === player.id ? 'champion' : 'unknown',
+        tenureSeasons: teamId === 'por' ? 5 : 0,
+        homegrownBond: teamId === 'por' ? 1 : 0,
+        clubhouseScore: teamId === 'por' ? 100 : 0,
+      }),
     );
 
     expect(next.signedPlayers[0]?.signedWith).toBe('por');
+    expect(acceptanceReceipt).not.toBeNull();
+    expect(acceptanceReceipt!.payrollBeforeSigning
+      + next.signedPlayers[0]!.contract!.annualSalary).toBeLessThanOrEqual(
+      acceptanceReceipt!.spendingLimit,
+    );
   });
 
   it('does not admit an AI signing for a team with no MLB slots', () => {
@@ -317,6 +513,21 @@ describe('simulateFADay', () => {
       new GameRNG(264), market,
       new Map([['por', 200]]), new Map([['por', 90]]),
       new Map([['por', new Map([[player.position, 100]])]]), new Map([['por', 0]]),
+    );
+
+    expect(next.signedPlayers).toHaveLength(0);
+    expect(next.freeAgents.map((entry) => entry.player.id)).toEqual([player.id]);
+  });
+
+  it('keeps a forced fallback available when the only destination cannot afford the minimum deal', () => {
+    const player = { ...makeExpiringPlayer(2641), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 60;
+
+    const next = simulateFADay(
+      new GameRNG(2641), market,
+      new Map([['por', 100]]), new Map([['por', 83.5]]),
+      new Map([['por', new Map([[player.position, 100]])]]), new Map([['por', 1]]),
     );
 
     expect(next.signedPlayers).toHaveLength(0);
@@ -385,7 +596,7 @@ describe('simulateFADay', () => {
     );
 
     expect(unfiltered.signedPlayers[0]?.signedWith).toBe('por');
-    expect(eligibilityCalls).toEqual([`por:${player.id}`, `bos:${player.id}`]);
+    expect(eligibilityCalls).toEqual([`bos:${player.id}`, `por:${player.id}`]);
     expect(next.signedPlayers).toHaveLength(1);
     expect(next.signedPlayers[0]?.signedWith).toBe('bos');
     expect(next.signedPlayers[0]?.interestedTeams).toEqual(['bos']);
@@ -399,7 +610,7 @@ describe('simulateFADay', () => {
     const market = createFreeAgencyMarket(1, players);
     market.day = 54;
     for (const freeAgent of market.freeAgents) freeAgent.demandLevel = 'low';
-    let porReservations = 0;
+    let reservedTeamId: string | null = null;
 
     const next = simulateFADay(
       new GameRNG(267),
@@ -415,14 +626,44 @@ describe('simulateFADay', () => {
       new Map(),
       new Map(),
       new Map(),
-      (teamId) => teamId !== 'por' || porReservations === 0,
+      (teamId) => teamId !== reservedTeamId,
       (offer) => {
-        if (offer.teamId === 'por') porReservations += 1;
+        reservedTeamId ??= offer.teamId;
       },
     );
 
-    expect(next.signedPlayers.map((entry) => entry.signedWith)).toEqual(['por', 'bos']);
-    expect(porReservations).toBe(1);
+    expect(next.signedPlayers.map((entry) => entry.signedWith)).toEqual(['bos', 'por']);
+    expect(reservedTeamId).toBe('bos');
+  });
+
+  it('is invariant to team map insertion order for equal seeded inputs', () => {
+    const player = { ...makeExpiringPlayer(269), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const needs = new Map([
+      ['por', new Map([[player.position, 80]])],
+      ['bos', new Map([[player.position, 80]])],
+    ]);
+
+    const first = simulateFADay(
+      new GameRNG(269),
+      market,
+      new Map([['por', 200], ['bos', 200]]),
+      new Map([['por', 90], ['bos', 90]]),
+      needs,
+      new Map([['por', 1], ['bos', 1]]),
+    );
+    const second = simulateFADay(
+      new GameRNG(269),
+      market,
+      new Map([['bos', 200], ['por', 200]]),
+      new Map([['bos', 90], ['por', 90]]),
+      new Map([...needs.entries()].reverse()),
+      new Map([['bos', 1], ['por', 1]]),
+    );
+
+    expect(second).toEqual(first);
   });
 });
 

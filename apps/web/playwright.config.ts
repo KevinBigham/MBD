@@ -4,7 +4,7 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['reload-smoke.spec.ts', 'multitab-guard.spec.ts', 'storage-pressure.spec.ts', 'sim-advance-journal.spec.ts', 'econ-clock.spec.ts', 'arbitration-drama.spec.ts', 'qualifying-offers.spec.ts', 'cpu-extensions.spec.ts', 'owner-payroll-pressure.spec.ts', 'market-revenue.spec.ts'],
+  testMatch: ['reload-smoke.spec.ts', 'multitab-guard.spec.ts', 'storage-pressure.spec.ts', 'sim-advance-journal.spec.ts', 'econ-clock.spec.ts', 'arbitration-drama.spec.ts', 'qualifying-offers.spec.ts', 'cpu-extensions.spec.ts', 'owner-payroll-pressure.spec.ts', 'market-revenue.spec.ts', 'free-agency-decisions.spec.ts'],
   fullyParallel: false,
   forbidOnly: isCi,
   // Storage-pressure causality is never retried: a first-attempt result is the evidence.

@@ -176,8 +176,8 @@ describe('useFreeAgencyOfferActions', () => {
   });
 
   it('does not publish the signing ceremony until the exact offer snapshot is durable', async () => {
-    let resolveExactOffer!: (value: { accepted: true }) => void;
-    const pendingOffer = new Promise<{ accepted: true }>((resolve) => { resolveExactOffer = resolve; });
+    let resolveExactOffer!: (value: { accepted: true; reason?: string }) => void;
+    const pendingOffer = new Promise<{ accepted: true; reason?: string }>((resolve) => { resolveExactOffer = resolve; });
     const { options } = makeOptions({
       makeContractOffer: vi.fn().mockReturnValue(pendingOffer),
     });
@@ -196,11 +196,16 @@ describe('useFreeAgencyOfferActions', () => {
     expect(latest?.offerResult).toBeNull();
 
     await act(async () => {
-      resolveExactOffer({ accepted: true });
+      resolveExactOffer({
+        accepted: true,
+        reason: 'At age 31, the $10.00M AAV and recent playoff standing led the decision.',
+      });
       await offer;
     });
     expect(options.publishDurablePresentation).toHaveBeenCalledTimes(1);
-    expect(latest?.offerResult).toBe('Signed! Power Bat joins your team.');
+    expect(latest?.offerResult).toBe(
+      'Signed! Power Bat joins your team. Decision: At age 31, the $10.00M AAV and recent playoff standing led the decision.',
+    );
   });
 
   it('publishes the durable award-and-forfeiture consequence from the accepted worker receipt', async () => {

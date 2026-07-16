@@ -9,6 +9,22 @@ export interface FreeAgentOfferPlayer {
   age: number;
   displayRating: number;
   marketValue?: number;
+  decisionPreview?: {
+    careerStage: 'rising' | 'prime' | 'veteran';
+    priorityOrder: Array<
+      | 'term_security'
+      | 'projected_opportunity'
+      | 'contender_status'
+      | 'loyalty'
+      | 'clubhouse'
+    >;
+    projectedOpportunity: 'featured' | 'regular' | 'depth';
+    contenderStatus: 'champion' | 'playoff' | 'contender' | 'competitive' | 'developing' | 'unknown';
+    loyaltySource: 'homegrown_and_tenure' | 'homegrown' | 'tenure' | 'none';
+    tenureSeasons: number;
+    homegrownBond: number;
+    clubhouseScore: number;
+  };
   qualifyingOffer?: {
     formerTeamName: string;
     requiresCompensation: boolean;
@@ -43,6 +59,36 @@ interface FreeAgencyContractOfferPanelProps {
 
 function money(value: number): string {
   return `$${value.toFixed(1)}M`;
+}
+
+function priorityLabel(value: NonNullable<FreeAgentOfferPlayer['decisionPreview']>['priorityOrder'][number]): string {
+  switch (value) {
+    case 'term_security': return 'contract security';
+    case 'projected_opportunity': return 'projected opportunity';
+    case 'contender_status': return 'contender status';
+    case 'loyalty': return 'loyalty';
+    case 'clubhouse': return 'clubhouse reputation';
+  }
+}
+
+function contenderLabel(value: NonNullable<FreeAgentOfferPlayer['decisionPreview']>['contenderStatus']): string {
+  switch (value) {
+    case 'champion': return 'defending champion';
+    case 'playoff': return 'recent playoff club';
+    case 'contender': return '90-win contender';
+    case 'competitive': return 'winning club';
+    case 'developing': return 'developing club';
+    case 'unknown': return 'no complete prior-season facts';
+  }
+}
+
+function loyaltyLabel(preview: NonNullable<FreeAgentOfferPlayer['decisionPreview']>): string {
+  if (preview.loyaltySource === 'homegrown_and_tenure') {
+    return `homegrown connection + ${preview.tenureSeasons} prior seasons`;
+  }
+  if (preview.loyaltySource === 'homegrown') return 'homegrown connection';
+  if (preview.loyaltySource === 'tenure') return `${preview.tenureSeasons} prior seasons`;
+  return 'no persisted tie';
 }
 
 export default function FreeAgencyContractOfferPanel({
@@ -82,6 +128,29 @@ export default function FreeAgencyContractOfferPanel({
               </span>
             </div>
           </div>
+
+          {selectedPlayer.decisionPreview ? (
+            <div
+              role="note"
+              data-testid="free-agency-decision-preview"
+              className="rounded border border-accent-info/40 bg-accent-info/10 p-3 font-data text-xs text-dynasty-text"
+            >
+              <div className="font-heading font-semibold text-accent-info">How he weighs offers</div>
+              <div className="mt-1 text-dynasty-muted">
+                Age curve: {selectedPlayer.decisionPreview.careerStage}. Top priorities:{' '}
+                {selectedPlayer.decisionPreview.priorityOrder.slice(0, 2).map(priorityLabel).join(' and ')}.
+              </div>
+              <dl className="mt-2 grid gap-1 sm:grid-cols-2">
+                <div><dt className="inline text-dynasty-muted">Your projected opportunity: </dt><dd className="inline capitalize">{selectedPlayer.decisionPreview.projectedOpportunity} MLB</dd></div>
+                <div><dt className="inline text-dynasty-muted">Your contender status: </dt><dd className="inline">{contenderLabel(selectedPlayer.decisionPreview.contenderStatus)}</dd></div>
+                <div><dt className="inline text-dynasty-muted">Loyalty: </dt><dd className="inline">{loyaltyLabel(selectedPlayer.decisionPreview)}</dd></div>
+                <div><dt className="inline text-dynasty-muted">Clubhouse appeal: </dt><dd className="inline">{selectedPlayer.decisionPreview.clubhouseScore}/100</dd></div>
+              </dl>
+              <div className="mt-2 text-dynasty-muted">
+                Opportunity is projected from today&apos;s MLB depth; future playing time is not guaranteed.
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <label htmlFor={`fa-offer-years-${selectedPlayer.id}`} className="mb-1 block font-heading text-xs text-dynasty-muted">

@@ -34,6 +34,30 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 16, Goal 26 `ECON-FA-DECISIONS-1`: one pure,
+  deterministic player-side evaluator now owns competitive user and CPU
+  free-agent choices. Literal contract value remains dominant while a bounded
+  12% age-shaped ceiling permits truthful current-roster opportunity, completed
+  contender facts, persisted loyalty, and symmetric clubhouse appeal to decide
+  close offers. Valid terms are fenced to the live 1–10 year contract domain.
+- Accepted decisions update the existing canonical player, roster, market,
+  offseason, qualifying-offer, and contract tuple, then publish one exact
+  reason-bearing signing item only after durable save. Rejected, invalid,
+  unaffordable CPU, over-capacity, QO-blocked, and noncanonical offers leave the
+  snapshot and RNG unchanged. Imported market rows rebind only when their
+  persisted player facts are deeply equal; corrupt divergence remains fail-closed.
+- Free Agency previews factual stage/opportunity/contender/loyalty inputs and
+  Press Room retains the same user and CPU reason after hard reload. No schema,
+  dependency, new route, historical motive backfill, enforceable playing-time
+  promise, item-17 salary retention, or item-18 long soak was added.
+- Final evidence: focused feature, worker, route/bundle, compatibility, and
+  max-term regression gates; exact four-seed/four-season replay inside all
+  item-15 economy bands with zero fact/legality/affordability/reconciliation
+  violations; root typecheck 9/9; sim-core 1,709; web 2,434 passed plus nine
+  intentional skips; contracts 24; UI 1; determinism 3/3; 3,033-module /
+  167-entry PWA; production Goal-16 1/1 and reload-smoke 2/2, one worker and
+  zero retries. Final adversarial verdict: `MERGE_READY`, zero P0–P3.
+
 - Verified roadmap item 15, Goal 25 `ECON-MARKET-REVENUE-1`: explicit market
   tiers, the factual final 162-game record, a fixed playoff-berth bump, and the
   persisted owner archetype now produce one deterministic modeled gross-revenue

@@ -54,6 +54,16 @@ describe('useFreeAgencyRouteData', () => {
         letterGrade: 'A',
         marketValue: 22,
         demandLevel: 'elite',
+        decisionPreview: {
+          careerStage: 'prime',
+          priorityOrder: ['contender_status', 'loyalty'],
+          projectedOpportunity: 'featured',
+          contenderStatus: 'playoff',
+          loyaltySource: 'tenure',
+          tenureSeasons: 4,
+          homegrownBond: 0,
+          clubhouseScore: 70,
+        },
       },
       {
         marketValue: 7,
@@ -134,6 +144,11 @@ describe('useFreeAgencyRouteData', () => {
       capSpace: 30,
     });
     expect(result.agents.map((agent) => agent.id)).toEqual(['fa-1', 'fa-2']);
+    expect(result.agents[0]?.decisionPreview).toMatchObject({
+      careerStage: 'prime',
+      projectedOpportunity: 'featured',
+      contenderStatus: 'playoff',
+    });
     expect(result.agents[1]).toMatchObject({
       firstName: 'Depth',
       lastName: 'Arm',

@@ -7,6 +7,7 @@ import {
   compareTimelines,
   describeInjury,
   evaluatePlayerTradeValue,
+  evaluateTeamNeeds,
   generateGameHighlights,
   generateGameRecap,
   generatePlayByPlay,
@@ -78,6 +79,10 @@ import {
   buildOwnerPayrollPresentation,
 } from './sim.worker.ownerPayrollPressure.js';
 import { getSettledMarketRevenueStatement } from './sim.worker.marketRevenue.js';
+import {
+  buildFreeAgencyDecisionContext,
+  buildFreeAgencyPreferencePreview,
+} from './sim.worker.freeAgencyDecision.js';
 import type {
   CareerStatsLedger,
   GMRelationship,
@@ -3475,14 +3480,28 @@ export const queryApi = {
     if (!market || !hasCanonicalFreeAgencyMarket(s)) {
       return [];
     }
+    const userNeeds = evaluateTeamNeeds(s.players.filter((player) => (
+      player.teamId === s.userTeamId
+      && player.rosterStatus === 'MLB'
+    )));
     return getTopFreeAgents(market, undefined, limit).map((freeAgent) => {
+      const decisionContext = buildFreeAgencyDecisionContext(
+        s,
+        s.userTeamId,
+        freeAgent.player,
+        userNeeds.get(freeAgent.player.position) ?? 50,
+      );
+      const decisionPreview = buildFreeAgencyPreferencePreview(
+        freeAgent.player,
+        decisionContext,
+      );
       const record = s.draftState.qualifyingOffers.find((entry) => (
         entry.playerId === freeAgent.player.id
         && entry.season === s.season
         && entry.status === 'rejected'
       ));
       if (!record) {
-        return { ...freeAgent, qualifyingOffer: null };
+        return { ...freeAgent, decisionPreview, qualifyingOffer: null };
       }
 
       const preview = prepareQualifyingOfferCompensation(
@@ -3494,6 +3513,7 @@ export const queryApi = {
       const formerTeam = getTeamById(record.teamId);
       return {
         ...freeAgent,
+        decisionPreview,
         qualifyingOffer: {
           formerTeamId: record.teamId,
           formerTeamName: formerTeam ? `${formerTeam.city} ${formerTeam.name}` : record.teamId.toUpperCase(),

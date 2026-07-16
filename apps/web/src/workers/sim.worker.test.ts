@@ -4471,6 +4471,10 @@ describe('sim worker narrative APIs', () => {
     setCanonicalMlbCount('nym', 25);
     const target = api.getFreeAgents(200).find((entry) => entry.player.id === expiring.id)!;
     expect(target).toBeTruthy();
+    expect(target.decisionPreview).toMatchObject({
+      careerStage: 'prime',
+      loyaltySource: expect.stringMatching(/tenure|homegrown/),
+    });
     expect(requireState().players.find((player) => player.id === target.player.id)?.teamId).toBe('');
     const releasedTenures = structuredClone(requireState().players.find((player) => player.id === target.player.id)?.teamTenures ?? []);
     const teammate = requireState().players.find((player) => player.teamId === 'nym' && player.rosterStatus === 'MLB')!;
@@ -4480,6 +4484,13 @@ describe('sim worker narrative APIs', () => {
     const result = api.makeContractOffer(target.player.id, 4, 100);
 
     expect(result.accepted).toBe(true);
+    expect(result.decision).toMatchObject({
+      accepted: true,
+      actualAav: 100,
+      teamId: 'nym',
+      playerId: target.player.id,
+    });
+    expect(result.reason).toBe(result.decision?.summary);
     expect('flowStateChanged' in result).toBe(false);
 
     const afterState = requireState();
@@ -4495,6 +4506,13 @@ describe('sim worker narrative APIs', () => {
     expect(afterState.freeAgencyMarket?.freeAgents.some((entry) => entry.player.id === target.player.id)).toBe(false);
     expect(signingNews).toBeTruthy();
     expect(signingBriefing).toBeTruthy();
+    expect(signingNews?.body).toContain(`Decision: ${result.reason}`);
+    expect(signingBriefing?.body).toContain(`Decision: ${result.reason}`);
+    expect(api.getPressRoomFeed(25).find((entry) => (
+      entry.relatedPlayerIds.includes(target.player.id)
+    ))?.body).toContain(`Decision: ${result.reason}`);
+    expect(signingNews?.body).not.toMatch(/clubhouse fit feels right|prove their worth|clear role/i);
+    expect(signedPlayer?.contract.annualSalary).toBe(result.decision?.actualAav);
     expect(afterState.playerMorale.get(target.player.id)?.score).toBeGreaterThan(0);
     expect(afterState.playerMorale.get(teammate.id)?.score).toBeGreaterThan(baselineTeammateMorale);
     expect(afterOwner?.summary).not.toBe(beforeOwner?.summary);
@@ -4510,6 +4528,125 @@ describe('sim worker narrative APIs', () => {
     expect(api.importSnapshot(exported).success).toBe(true);
     expect(requireState().rosterStates.has('')).toBe(false);
     expect(requireState().players.find((player) => player.id === target.player.id)?.teamId).toBe('nym');
+    const reloadedNews = api.getNews(25).filter(
+      (item) => item.category === 'signing' && item.relatedPlayerIds.includes(target.player.id),
+    );
+    expect(reloadedNews).toHaveLength(1);
+    expect(reloadedNews[0]?.body).toContain(`Decision: ${result.reason}`);
+    expect(api.getPressRoomFeed(25).find((entry) => (
+      entry.relatedPlayerIds.includes(target.player.id)
+    ))?.body).toContain(`Decision: ${result.reason}`);
+  });
+
+  it('rejects an under-floor user offer without snapshot or RNG mutation', () => {
+    startGame(6541, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos'
+        && candidate.rosterStatus === 'MLB'
+        && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    const result = api.makeContractOffer(player.id, 1, 0.75);
+
+    expect(result).toMatchObject({
+      accepted: false,
+      decision: {
+        accepted: false,
+        actualAav: 0.75,
+        reasonCodes: ['below_minimum'],
+      },
+    });
+    expect(result.reason).toMatch(/below the .* minimum/i);
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('rejects an overlong user offer without snapshot or RNG mutation', () => {
+    startGame(65411, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos'
+        && candidate.rosterStatus === 'MLB'
+        && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    const before = JSON.stringify(api.exportSnapshot());
+    const rngBefore = state.rng.getState();
+
+    const result = api.makeContractOffer(player.id, 11, 45);
+
+    expect(result).toMatchObject({
+      accepted: false,
+      decision: {
+        accepted: false,
+        reasonCodes: ['invalid_contract'],
+      },
+    });
+    expect(result.reason).toBe('The offer is not a valid contract.');
+    expect(JSON.stringify(api.exportSnapshot())).toBe(before);
+    expect(state.rng.getState()).toEqual(rngBefore);
+  });
+
+  it('evaluates the literal offer identically across user difficulty settings', () => {
+    const run = (difficulty: 'easy' | 'standard' | 'hard') => {
+      startGameWithOptions({ seed: 6542, userTeamId: 'nym', difficulty });
+      const state = requireState();
+      const player = state.players.find(
+        (candidate) => candidate.teamId === 'bos'
+          && candidate.rosterStatus === 'MLB'
+          && candidate.pitcherAttributes == null,
+      )!;
+      configureSingleFreeAgent(player);
+      setCanonicalMlbCount('nym', 25);
+      const marketValue = state.freeAgencyMarket!.freeAgents[0]!.marketValue;
+      const salary = Math.round(marketValue * 0.85 * 100) / 100;
+      const result = api.makeContractOffer(player.id, 4, salary);
+      return {
+        accepted: result.accepted,
+        reason: result.reason,
+        decision: result.decision,
+        persistedSalary: result.accepted
+          ? requireState().players.find((candidate) => candidate.id === player.id)?.contract.annualSalary
+          : null,
+      };
+    };
+
+    const easy = run('easy');
+    const standard = run('standard');
+    const hard = run('hard');
+
+    expect(easy).toEqual(standard);
+    expect(hard).toEqual(standard);
+    if (standard.accepted) {
+      expect(standard.persistedSalary).toBe(standard.decision?.actualAav);
+    }
+  });
+
+  it('evaluates and persists one high-precision user AAV without salary drift', () => {
+    startGame(65421, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'bos'
+        && candidate.rosterStatus === 'MLB'
+        && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    setCanonicalMlbCount('nym', 25);
+    const literalAav = 41.123456;
+
+    const result = api.makeContractOffer(player.id, 4, literalAav);
+
+    expect(result).toMatchObject({ accepted: true, decision: { actualAav: literalAav } });
+    expect(requireState().players.find((candidate) => candidate.id === player.id)?.contract)
+      .toMatchObject({ annualSalary: literalAav, totalValue: literalAav * 4 });
+    expect(requireState().offseasonState?.phaseResults.freeAgentSignings.at(-1))
+      .toMatchObject({ playerId: player.id, annualSalary: literalAav, totalValue: literalAav * 4 });
   });
 
   it('keeps free-agent listing and offers fail-closed before canonical market entry', () => {
@@ -4642,6 +4779,54 @@ describe('sim worker narrative APIs', () => {
       expect(JSON.stringify(api.exportSnapshot()), corruption).toBe(before);
       expect(state.rng.getState(), corruption).toEqual(rngBefore);
     }
+  });
+
+  it('rebinds a detached imported market row after a CPU signing and continues after reload', () => {
+    startGame(65571, 'nym');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'chi'
+        && candidate.rosterStatus === 'MLB'
+        && candidate.pitcherAttributes == null,
+    )!;
+    configureSingleFreeAgent(player);
+    state.freeAgencyMarket = structuredClone(state.freeAgencyMarket);
+    const market = state.freeAgencyMarket!;
+    const available = market.freeAgents.shift()!;
+    const contract = {
+      teamId: 'bos',
+      playerId: player.id,
+      years: 3,
+      annualSalary: 20,
+      totalValue: 60,
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+      signingBonus: 2,
+    };
+    market.signedPlayers.push({ ...available, signedWith: 'bos', contract });
+
+    const progress = applyNewFreeAgencySignings(state, new Set());
+
+    expect(progress).toHaveLength(1);
+    expect(hasCanonicalFreeAgencyMarket(state)).toBe(true);
+    const signedRow = state.freeAgencyMarket?.signedPlayers[0];
+    expect(signedRow?.player).toEqual(state.players.find((candidate) => candidate.id === player.id));
+    const snapshot = api.exportSnapshot();
+    expect(api.importSnapshot(structuredClone(snapshot)).success).toBe(true);
+    expect(hasCanonicalFreeAgencyMarket(requireState())).toBe(true);
+    const previousMarketDay = requireState().freeAgencyMarket!.day;
+    api.advanceOffseason();
+    expect(requireState().freeAgencyMarket?.day).toBe(previousMarketDay + 1);
+    const continued = api.exportSnapshot();
+    expect(api.importSnapshot(structuredClone(continued)).success).toBe(true);
+    expect(hasCanonicalFreeAgencyMarket(requireState())).toBe(true);
+
+    const corrupted = structuredClone(continued);
+    const corruptedMarket = corrupted.freeAgencyMarket as typeof market;
+    corruptedMarket.signedPlayers[0]!.player.firstName = 'Corrupted';
+    expect(api.importSnapshot(corrupted).success).toBe(true);
+    expect(hasCanonicalFreeAgencyMarket(requireState())).toBe(false);
   });
 
   it('fails closed atomically when an invalid imported market tries to leave free agency for draft', () => {
@@ -4983,6 +5168,51 @@ describe('sim worker narrative APIs', () => {
     api.advanceOffseason();
     expect(requireState().players.find((candidate) => candidate.id === playerId)?.contract.years).toBe(0);
     expect(requireState().news.filter((item) => item.id === 'contract-clock-live-10')).toHaveLength(1);
+    expect(requireState().news.some((item) => item.body.includes('Decision:'))).toBe(false);
+
+    const migratedState = requireState();
+    const migratedPlayer = migratedState.players.find((candidate) => candidate.id === playerId)!;
+    migratedPlayer.teamId = '';
+    migratedPlayer.rosterStatus = 'MLB';
+    migratedPlayer.minorLeagueLevel = null;
+    migratedState.phase = 'offseason';
+    migratedState.offseasonState = {
+      ...createOffseasonState(migratedState.season),
+      currentPhase: 'free_agency',
+      phaseDay: 1,
+      totalDay: 22,
+    };
+    migratedState.freeAgencyMarket = createFreeAgencyMarket(migratedState.season, migratedState.players);
+    migratedPlayer.rosterStatus = 'INTERNATIONAL';
+    migratedPlayer.minorLeagueLevel = 'INTERNATIONAL';
+
+    const offer = api.makeContractOffer(playerId, 3, 42);
+    expect(offer.accepted, offer.reason).toBe(true);
+    expect(offer.decision).toMatchObject({
+      playerId,
+      teamId: 'nym',
+      actualAav: 42,
+    });
+    expect(offer.reason).toBe(offer.decision?.summary);
+    expect(requireState().news.filter((item) => (
+      item.category === 'signing'
+      && item.relatedPlayerIds.includes(playerId)
+      && item.body.includes(`Decision: ${offer.reason}`)
+    ))).toHaveLength(1);
+
+    const signedSave = api.exportSnapshot();
+    expect(api.importSnapshot(signedSave).success).toBe(true);
+    expect(requireState().players.find((candidate) => candidate.id === playerId)).toMatchObject({
+      firstName: 'Alex',
+      lastName: 'Ramirez',
+      teamId: 'nym',
+      contract: { years: 3, annualSalary: 42 },
+    });
+    expect(requireState().news.filter((item) => (
+      item.category === 'signing'
+      && item.relatedPlayerIds.includes(playerId)
+      && item.body.includes(`Decision: ${offer.reason}`)
+    ))).toHaveLength(1);
   });
 
   it('keeps Draft and IFA route views pure when fresh-save scaffolding is missing', () => {
@@ -5818,14 +6048,19 @@ describe('sim worker narrative APIs', () => {
     expect(signing?.teamId).toBe('bos');
     expect(requireState().players.find((player) => player.id === target.id)?.teamId).toBe('bos');
 
-    const signingNews = api.getNews(25).find(
+    const signingNewsItems = api.getNews(25).filter(
       (item) => item.category === 'signing' && item.relatedPlayerIds.includes(target.id),
     );
-    const signingBriefing = api.getBriefing(25).find(
-      (item) => item.category === 'news' && item.relatedPlayerIds.includes(target.id),
+    const signingNews = signingNewsItems[0];
+    const signingPressItems = api.getPressRoomFeed(25).filter(
+      (item) => item.relatedPlayerIds.includes(target.id) && item.body.includes('Decision:'),
     );
     expect(signingNews).toBeTruthy();
-    expect(signingBriefing).toBeTruthy();
+    expect(signingNewsItems).toHaveLength(1);
+    expect(signingPressItems).toHaveLength(1);
+    expect(signingNews?.body).toContain('Decision:');
+    expect(signingNews?.body.match(/Decision: /g)).toHaveLength(1);
+    expect(signingNews?.body).not.toMatch(/clubhouse fit feels right|prove their worth|clear role/i);
   });
 
   it('records rich season recaps and finalizes retirements into the same history entry', () => {
