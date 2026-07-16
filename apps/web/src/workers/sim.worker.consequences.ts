@@ -472,7 +472,9 @@ export function applyAISigningConsequences(
     years,
     marketValue,
     payrollAfterSigning: calculateTeamPayroll(teamId, getTeamPlayers(teamId)).totalPayroll,
-    payrollTarget: getTeamBudget(teamId),
+    payrollTarget: state.ownerState.get(teamId)?.payrollCap
+      ?? state.ownerState.get(teamId)?.annualBudget
+      ?? getTeamBudget(teamId),
     remainingUserPlayers: getTeamPlayers(teamId).filter(
       (candidate) => candidate.rosterStatus === 'MLB' && candidate.id !== playerId,
     ),

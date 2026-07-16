@@ -64,9 +64,9 @@ describe('FinanceSummaryCardsPanel', () => {
     expect(container.textContent).toContain('$162.30M');
     expect(container.textContent).toContain('Minors');
     expect(container.textContent).toContain('$23.20M');
-    expect(container.textContent).toContain('Budget');
+    expect(container.textContent).toContain('Effective Gameplay Budget');
     expect(container.textContent).toContain('$210.00M');
-    expect(container.textContent).toContain('$24.50M remaining');
+    expect(container.textContent).toContain('$24.50M effective room');
     expect(container.textContent).toContain('Owner Plan');
     expect(container.textContent).toContain('$72.00M');
     expect(container.textContent).toContain('$180.00M');
@@ -79,7 +79,7 @@ describe('FinanceSummaryCardsPanel', () => {
     expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(5);
   });
 
-  it('shows over-budget and over-tax pressure without route state', async () => {
+  it('labels a hard-difficulty overlay as effective gameplay budget and shows pressure', async () => {
     await act(async () => {
       root.render(
         <FinanceSummaryCardsPanel
@@ -106,7 +106,8 @@ describe('FinanceSummaryCardsPanel', () => {
       );
     });
 
-    expect(container.textContent).toContain('$70.00M over budget');
+    expect(container.textContent).toContain('Effective Gameplay Budget');
+    expect(container.textContent).toContain('$70.00M over effective budget');
     expect(container.textContent).toContain('$3.15M');
     expect(container.textContent).toContain('$15.75M');
   });

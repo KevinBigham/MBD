@@ -151,6 +151,11 @@ function normalizeTeamMarketKey(teamId: string): string {
   return TEAM_MARKET_ALIASES[normalized] ?? normalized;
 }
 
+/** Resolve an explicit team market without the legacy unknown-team fallback. */
+export function getTeamMarketConfig(teamId: string): MarketConfig | null {
+  return TEAM_MARKETS[normalizeTeamMarketKey(teamId)] ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Contract Types
 // ---------------------------------------------------------------------------
@@ -950,7 +955,7 @@ export function calculateLuxuryTax(payroll: number): number {
  * market's budget range in millions.
  */
 export function getTeamBudget(teamId: string): number {
-  const market = TEAM_MARKETS[normalizeTeamMarketKey(teamId)];
+  const market = getTeamMarketConfig(teamId);
   if (!market) {
     // Unknown team defaults to small-market midpoint
     return (SMALL_MARKET.budgetMin + SMALL_MARKET.budgetMax) / 2;

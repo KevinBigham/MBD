@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TeamChemistry } from '@mbd/contracts';
-import type { OwnerPayrollPolicy } from '@mbd/sim-core';
+import type { MarketRevenueStatement, OwnerPayrollPolicy } from '@mbd/sim-core';
 import type { FrontOfficeMentorshipView } from '../components/FrontOfficeClubhouseWebCard';
 import type { FrontOfficeReputationView } from '../components/FrontOfficeHealthCards';
 import type { FrontOfficeIdentityView } from '../components/FrontOfficeIdentityCard';
@@ -36,6 +36,7 @@ export function useFrontOfficeRouteData({
 }: UseFrontOfficeRouteDataOptions) {
   const [owner, setOwner] = useState<FrontOfficeOwnerView | null>(null);
   const [ownerPayrollPolicy, setOwnerPayrollPolicy] = useState<OwnerPayrollPolicy | null>(null);
+  const [marketRevenueStatement, setMarketRevenueStatement] = useState<MarketRevenueStatement | null>(null);
   const [frontOffice, setFrontOffice] = useState<FrontOfficeReputationView | null>(null);
   const [chemistry, setChemistry] = useState<TeamChemistry | null>(null);
   const [identity, setIdentity] = useState<FrontOfficeIdentityView | null>(null);
@@ -64,9 +65,11 @@ export function useFrontOfficeRouteData({
     const ownerPresentation = ownerPresentationData as {
       owner?: FrontOfficeOwnerView | null;
       ownerPayrollPolicy?: OwnerPayrollPolicy | null;
+      marketRevenueStatement?: MarketRevenueStatement | null;
     } | null;
     setOwner(ownerPresentation?.owner ?? null);
     setOwnerPayrollPolicy(ownerPresentation?.ownerPayrollPolicy ?? null);
+    setMarketRevenueStatement(ownerPresentation?.marketRevenueStatement ?? null);
     setFrontOffice((frontOfficeData ?? null) as FrontOfficeReputationView | null);
     setChemistry((chemistryData ?? null) as TeamChemistry | null);
     setIdentity((identityData ?? null) as FrontOfficeIdentityView | null);
@@ -96,6 +99,7 @@ export function useFrontOfficeRouteData({
     mentorship,
     owner,
     ownerPayrollPolicy,
+    marketRevenueStatement,
     relationships,
   };
 }

@@ -731,8 +731,13 @@ export {
   resolveArbitration,
   calculateTeamPayroll,
   calculateLuxuryTax,
+  getTeamMarketConfig,
   getTeamBudget,
   advanceContracts,
+  MARKET_REVENUE_ALLOCATION_FACTORS,
+  MARKET_REVENUE_ATTENDANCE_LIMIT,
+  MARKET_REVENUE_PLAYOFF_RATE,
+  deriveMarketRevenueStatement,
   OWNER_PAYROLL_FLOOR_RATIOS,
   deriveOwnerPayrollPolicy,
   resolveOwnerSoftCeiling,
@@ -775,6 +780,8 @@ export type {
   MarketReportContext,
   MarketReport,
   MarketSummary,
+  MarketRevenueStatementInput,
+  MarketRevenueStatement,
 } from './finance/index.js';
 
 // Onboarding

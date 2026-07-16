@@ -305,7 +305,7 @@ describe('OffseasonPage', () => {
     expect(container.textContent).toContain('Offseason Command Center');
     expect(container.textContent).toContain('Opening Day Projection');
     expect(container.textContent).toContain('24/26');
-    expect(container.textContent).toContain('Payroll Space');
+    expect(container.textContent).toContain('Effective Payroll Space');
     expect(container.textContent).toContain('-$6.0M');
     expect(container.textContent).toContain('Arbitration');
     expect(container.textContent).toContain('Qualifying Offers');

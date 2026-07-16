@@ -25,6 +25,7 @@ export default function FrontOfficePage() {
     mentorship,
     owner,
     ownerPayrollPolicy,
+    marketRevenueStatement,
     relationships,
   } = useFrontOfficeRouteData({
     day,
@@ -61,7 +62,13 @@ export default function FrontOfficePage() {
           </div>
           <div className="space-y-4">
             {frontOffice && <FrontOfficeReputationCard reputation={frontOffice} />}
-            {owner && <FrontOfficeBudgetCard owner={owner} ownerPayrollPolicy={ownerPayrollPolicy} />}
+            {owner && (
+              <FrontOfficeBudgetCard
+                marketRevenueStatement={marketRevenueStatement}
+                owner={owner}
+                ownerPayrollPolicy={ownerPayrollPolicy}
+              />
+            )}
           </div>
         </div>
 

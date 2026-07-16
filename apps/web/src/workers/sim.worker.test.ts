@@ -2247,9 +2247,26 @@ describe('sim worker narrative APIs', () => {
     const selectedTeamId = jobMarket?.availableJobs.find((job) => job.teamId !== 'nym')?.teamId;
     expect(selectedTeamId).toBeTruthy();
 
+    const selectedOwner = state.ownerState.get(selectedTeamId!);
+    expect(selectedOwner).toBeTruthy();
+    state.ownerState.set(selectedTeamId!, {
+      ...selectedOwner!,
+      annualBudget: 321.09,
+      payrollCap: 295.4,
+      expectations: {
+        ...selectedOwner!.expectations,
+        payrollTarget: 295.4,
+      },
+    });
+
     const result = (api as typeof api & MinorLeagueWorkerApi).applyForJob(selectedTeamId!);
     expect(result.success).toBe(true);
     expect(requireState().userTeamId).toBe(selectedTeamId);
+    expect(requireState().ownerState.get(selectedTeamId!)).toMatchObject({
+      annualBudget: 321.09,
+      payrollCap: 295.4,
+      expectations: { payrollTarget: 295.4 },
+    });
   });
 
   it('publishes record watch stories after monthly sim when a user player is on pace', () => {
@@ -4687,6 +4704,13 @@ describe('sim worker narrative APIs', () => {
       if (team.id !== 'nym' && team.id !== 'bos') setCanonicalMlbCount(team.id, 26);
     }
     setCanonicalMlbCount('bos', 25);
+    const bosOwner = cpuState.ownerState.get('bos')!;
+    cpuState.ownerState.set('bos', {
+      ...bosOwner,
+      annualBudget: 500,
+      payrollCap: 460,
+      expectations: { ...bosOwner.expectations, payrollTarget: 460 },
+    });
 
     api.advanceOffseason();
 

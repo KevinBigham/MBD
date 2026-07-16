@@ -51,6 +51,7 @@ export {
   resolveArbitration,
   calculateTeamPayroll,
   calculateLuxuryTax,
+  getTeamMarketConfig,
   getTeamBudget,
   advanceContracts,
   generateContractOffer,
@@ -64,6 +65,15 @@ export {
   negotiateExtension,
   processTeamExtensions,
 } from './contracts.js';
+
+export {
+  MARKET_REVENUE_ALLOCATION_FACTORS,
+  MARKET_REVENUE_ATTENDANCE_LIMIT,
+  MARKET_REVENUE_PLAYOFF_RATE,
+  deriveMarketRevenueStatement,
+  type MarketRevenueStatementInput,
+  type MarketRevenueStatement,
+} from './marketRevenue.js';
 
 export {
   findComparableContracts,

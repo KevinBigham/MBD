@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-15 after roadmap-item-14 verification and local landing; ECON-OWNER-PAYROLL-PRESSURE-1 is complete and item 15 has not started.
+Last reconciled: 2026-07-15 after roadmap-item-15 verification and local landing; ECON-MARKET-REVENUE-1 is complete and item 16 has not started.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -10,11 +10,12 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## Current campaign checkpoint
 
-- Verified complete: items 1–14 and 80.
+- Verified complete: items 1–15 and 80.
 - Closed item: **11 — service-time arbitration drama**, now **VERIFIED COMPLETE** under Goal 21 / `ECON-ARBITRATION-1`; Goal 11's bounded contract clock remains complete.
 - Closed item: **12 — qualifying offers and draft-pick compensation**, now **VERIFIED COMPLETE** under Goal 22 / `ECON-QUALIFYING-OFFERS-1`.
 - Closed item: **13 — identity-driven CPU extensions**, now **VERIFIED COMPLETE** under Goal 23 / `ECON-EXTENSION-AI-1`.
-- Closed item: **14 — owner payroll pressure/tax consequences**, now **VERIFIED COMPLETE** under Goal 24 / `ECON-OWNER-PAYROLL-PRESSURE-1`; item 15 has not started.
+- Closed item: **14 — owner payroll pressure/tax consequences**, now **VERIFIED COMPLETE** under Goal 24 / `ECON-OWNER-PAYROLL-PRESSURE-1`.
+- Closed item: **15 — market-size revenue feeds budgets**, now **VERIFIED COMPLETE** under Goal 25 / `ECON-MARKET-REVENUE-1`; item 16 has not started.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -37,7 +38,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 12 | 2 | Qualifying offers and pick compensation | VERIFIED COMPLETE | Goal 22 / `runs/ECON-QUALIFYING-OFFERS-1` | Completion matrix; atomic award/loss conservation; exact-save issue/resolve/sign/draft; full gates; production QO 1/1 and reload-smoke 2/2 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; final `/root/qoffers_final_review` `MERGE_READY` with zero P0–P2 | Items 9–11 | Preserve fixed salary, aggregate validation, exact draft phase, and no-free-award law; item 13 is next |
 | 13 | 2 | Identity-driven CPU extensions | VERIFIED COMPLETE | Goal 23 / `runs/ECON-EXTENSION-AI-1` | Completion matrix; persisted-GM bounded team policy with identity-neutral player RNG; candidate-scoped lanes; exact budget/aggregate/save proof; four-seed study; production extension 1/1 and reload-smoke 2/2, final 3/3 | Commit containing this report; final SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; `/root/extensions_final_review` final `MERGE_READY` 0/0/0 after `FIX_AND_REVIEW` 0/4/1 and 0/1/0 | Items 9, 49 (bounded consumption only) | Preserve player-side neutrality, candidate isolation, exact budget, and aggregate/save fencing; item 49 remains partial |
 | 14 | 2 | Owner payroll pressure/tax consequences | VERIFIED COMPLETE | Goal 24 / `runs/ECON-OWNER-PAYROLL-PRESSURE-1` | Pure owner policy; canonical tax basis; exact annual receipts; old-save, 4×4 study, production/reload, and root-gate proof | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only source/test/risk maps; `/root/ownerpayroll_risk_review` final `MERGE_READY` 0/0/0 after two bounded correction loops | Items 9, 51 (bounded owner-state consumption only) | Preserve advisory semantics, tax basis, once-only receipts, and item-15 boundary |
-| 15 | 2 | Market-size revenue feeds budgets | PARTIAL | No run | Attendance/playoff/spending factors feed budget state | Historical source | — | Item 9 | Add multi-season calibration |
+| 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 remains unstarted |
 | 16 | 2 | Explainable free-agent decisions | PARTIAL | No run | FA fit/reason surfaces exist; full requested model incomplete | Historical source | — | Items 9, 49 | Complete reasons and browser proof |
 | 17 | 2 | Salary retention and cash in trades | PENDING | No goal/run | Trade assets have no retained-salary/cash type | — | — | Items 9, 54 | Design contract-safe trade assets |
 | 18 | 2 | 30-season multi-seed economy soak | PARTIAL | No goal/run | Calibration records some economy measures; current sample is far below 30 seasons | — | — | Items 9–17 | Add enforced long-horizon bands |
@@ -182,13 +183,12 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## First incomplete item source contract
 
-Item 15 is not authorized as an extension of item 14. Live source already has
-attendance, playoff, market-size, owner-budget, and spending-factor fragments,
-but it lacks a reconciled item-15 goal/run proving that revenue causally and
-fairly feeds budgets across deterministic seasons. The next legal slice must
-create its own bounded goal and run, reconcile those fragments from live source,
-freeze revenue/budget/save/calibration authority, and preserve item 14's
-advisory payroll/tax contract. No item-15 source work began in this run.
+Item 16 remains `PARTIAL`. Live source has free-agent fit/reason fragments but
+no reconciled item-16 goal/run proving a complete, deterministic, symmetric,
+player-facing decision explanation across real signings and reload. The next
+legal slice must create its own bounded goal and run, reconcile that live source,
+and preserve items 9-15 contract, budget, owner-policy, and exact-save
+invariants. No item-16 source work began in this run.
 
 ## Item 9/10 landing receipt
 
@@ -223,3 +223,25 @@ advisory payroll/tax contract. No item-15 source work began in this run.
   `MERGE_READY`, P0/P1/P2 `0/0/0`, after two bounded correction loops.
 - GameSnapshot remains v34 and Dexie v6. No push, deploy, tag, publication,
   release, item-15 work, or unrelated-file staging occurred.
+
+## Item 15 landing receipt
+
+- Goal 25 / `ECON-MARKET-REVENUE-1` is verified complete in the item-only
+  commit containing this report. The exact revision is verified from local Git
+  history after commit and reported in the closeout response.
+- Formula and authority: explicit 8/14/10 market tiers, bounded completed-record
+  effect, fixed 3.5% berth bump, owner-archetype allocation, and one atomic
+  exact Season Review Advance/Skip settlement for all 32 clubs. GameSnapshot
+  remains v34 and Dexie remains v6.
+- Final gates: focused sim-core 95, focused web 27, broad worker/persistence/
+  boot 376, authentic rollover 2/2, hard 4x4 study 1/1 in 494.99 seconds with
+  512 statements/receipts, root typecheck 9/9, full sim-core 1,689 and web
+  2,422 with five intentional skips, determinism 3/3, 3,032-module / 167-entry
+  PWA, production item journey 1/1, and reload-smoke 2/2. Browser gates used
+  one worker, zero retries, and no flaky result.
+- Manual relay-pattern fallback: parent sole writer and closeout; read-only
+  `/root/revenue_risk_map` and `/root/revenue_test_map`; final
+  `/root/revenue_final_review` verdict `MERGE_READY`, zero P0-P2, after two
+  bounded correction loops.
+- No push, deploy, tag, publication, release, item-16 work, or unrelated-file
+  staging occurred.

@@ -5,6 +5,7 @@ import { FinanceContractTablePanel } from '../components/FinanceContractTablePan
 import { FinanceDecisionDeskPanel } from '../components/FinanceDecisionDeskPanel';
 import { FinanceFutureCommitmentsPanel } from '../components/FinanceFutureCommitmentsPanel';
 import { FinanceSummaryCardsPanel } from '../components/FinanceSummaryCardsPanel';
+import { MarketRevenueStatementPanel } from '../components/MarketRevenueStatementPanel';
 import { formatMoney } from '../components/financePresentation';
 import { useFinanceRouteData } from '../hooks/useFinanceRouteData';
 
@@ -71,6 +72,8 @@ export default function FinancePage() {
         ownerPayrollPolicy={data.ownerPayrollPolicy}
         totalPayroll={data.totalPayroll}
       />
+
+      <MarketRevenueStatementPanel statement={data.marketRevenueStatement ?? null} />
 
       <FinanceFutureCommitmentsPanel
         futureCommitments={data.futureCommitments}

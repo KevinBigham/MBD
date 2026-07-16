@@ -10,8 +10,6 @@ import {
   TEAMS,
   advanceEntireOffseason,
   api,
-  forceCompletedPlayoffBracket,
-  jumpToLateSeasonCheckpoint,
   requireState,
   resetIntegrationState,
   seedRetiringHallOfFamer,
@@ -27,12 +25,8 @@ describe('worker rollover integration', () => {
   it('holds together across a seasonal rollover without orphaned players, negative salaries, or duplicate achievements', () => {
     startGame(3_104);
 
-    jumpToLateSeasonCheckpoint(162);
     api.simToPlayoffs();
-    if (!requireState().playoffBracket) {
-      api.simDay();
-    }
-    forceCompletedPlayoffBracket();
+    api.simRemainingPlayoffs();
     advanceEntireOffseason();
     api.startNextSeason();
 
@@ -53,7 +47,6 @@ describe('worker rollover integration', () => {
     startGame(3_105);
     const iconId = seedRetiringHallOfFamer();
 
-    jumpToLateSeasonCheckpoint(162);
     api.simToPlayoffs();
     api.simRemainingPlayoffs();
     advanceEntireOffseason();

@@ -141,6 +141,7 @@ import {
   type Rule5Selection,
   type Rule5SessionState,
   type OwnerPayrollPolicy,
+  type MarketRevenueStatement,
 } from '@mbd/sim-core';
 import {
   detectArbitrationMoments,
@@ -240,6 +241,10 @@ import {
   buildOwnerPayrollPolicy,
   reconcileCompletedOffseasonOwnerPayrollPressure,
 } from './sim.worker.ownerPayrollPressure.js';
+import {
+  getSettledMarketRevenueStatement,
+  reconcileCompletedSeasonMarketRevenue,
+} from './sim.worker.marketRevenue.js';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -545,6 +550,7 @@ export interface OffseasonOpeningDayProjection {
   payrollSpace: number;
   capSpace: number;
   ownerPayrollPolicy?: OwnerPayrollPolicy;
+  marketRevenueStatement?: MarketRevenueStatement | null;
   rosterHoleCount: number;
 }
 
@@ -4180,6 +4186,7 @@ function buildOffseasonCommandCenter(s: FullGameState): OffseasonCommandCenterVi
     payrollSpace,
     capSpace,
     ownerPayrollPolicy,
+    marketRevenueStatement: getSettledMarketRevenueStatement(s, teamId),
     rosterHoleCount,
   };
 
@@ -6865,6 +6872,14 @@ function applyOffseasonTransition(
   );
   if (draftExitError) {
     return { aiSignings: [], error: draftExitError, flowStateChanged: false };
+  }
+
+  // Authentic compact old saves can reach the contract clock without a full
+  // league or postseason artifact. Do not invent revenue facts or strand that
+  // save: a wholly absent bracket defers settlement until the next factual
+  // completed season. Once a bracket exists, validation is fail-closed.
+  if (previousState.currentPhase === 'season_review' && s.playoffBracket) {
+    reconcileCompletedSeasonMarketRevenue(s);
   }
 
   reconcileExistingOffseasonServiceOnce(s);

@@ -2281,7 +2281,9 @@ export const actionApi = {
       createdAt: s.franchise.createdAt,
       onboarding: s.franchise.onboarding,
     });
-    s.ownerState.set(teamId, createOwnerState(teamId, getTeamBudget(teamId)));
+    if (!s.ownerState.has(teamId)) {
+      s.ownerState.set(teamId, createOwnerState(teamId, getTeamBudget(teamId)));
+    }
     s.frontOfficeState.set(teamId, createFrontOfficeState(teamId));
 
     return {

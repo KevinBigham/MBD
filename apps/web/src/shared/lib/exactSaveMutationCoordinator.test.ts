@@ -2,7 +2,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GameSnapshot } from '@mbd/contracts';
-import { TEAMS, createOffseasonState } from '@mbd/sim-core';
+import {
+  TEAMS,
+  createOffseasonState,
+  createOwnerState,
+  deriveMarketRevenueStatement,
+  getTeamBudget,
+} from '@mbd/sim-core';
 import v34SnapshotFixture from '../../../../../packages/contracts/tests/fixtures/save/v34/core.json';
 
 const mocks = vi.hoisted(() => ({
@@ -225,6 +231,86 @@ function ownerPayrollReconciliationWorker() {
   };
 }
 
+function marketRevenueReconciliationWorker() {
+  const baseline = structuredClone(v34SnapshotFixture) as unknown as ExtensionSnapshot;
+  baseline.phase = 'offseason';
+  baseline.offseasonState = createOffseasonState(baseline.season);
+  const post = structuredClone(baseline);
+  post.offseasonState = {
+    ...post.offseasonState!,
+    phaseDay: 2,
+    totalDay: 2,
+  };
+  const flag = `market_revenue_budget_reconciled_s${post.season}`;
+  post.narrative.storyFlags = TEAMS.map((team) => [team.id, [flag]]);
+  post.narrative.ownerState = TEAMS.map((team) => {
+    const owner = createOwnerState(team.id, getTeamBudget(team.id));
+    const statement = deriveMarketRevenueStatement({
+      teamId: team.id,
+      wins: 81,
+      losses: 81,
+      madePlayoffs: team.id === post.userTeamId,
+      ownerArchetype: owner.archetype,
+    });
+    return [team.id, {
+      ...owner,
+      annualBudget: statement.annualBudget,
+      payrollCap: statement.payrollCap,
+      draftBonusPool: statement.draftBonusPool,
+      ifaBonusPool: statement.ifaBonusPool,
+      staffBudget: statement.staffBudget,
+      expectations: { ...owner.expectations, payrollTarget: statement.payrollCap },
+    }];
+  });
+  post.news = [{
+    id: `market-revenue-${post.season}-${post.userTeamId}`,
+    headline: 'Market revenue sets the next-season budget',
+    body: 'Modeled gross revenue sets the raw next-season budget. Projected tax remains separate.',
+    priority: 2,
+    category: 'performance',
+    tag: 'ANALYSIS',
+    timestamp: `S${post.season}D1`,
+    relatedPlayerIds: [],
+    relatedTeamIds: [post.userTeamId],
+    read: false,
+  }];
+  post.narrative.briefingQueue = [{
+    id: `brief-market-revenue-${post.season}-${post.userTeamId}`,
+    priority: 2,
+    category: 'owner',
+    tag: 'ANALYSIS',
+    headline: 'Market revenue sets the next-season budget',
+    body: 'Modeled gross revenue sets the raw next-season budget. Projected tax remains separate.',
+    relatedTeamIds: [post.userTeamId],
+    relatedPlayerIds: [],
+    timestamp: `S${post.season}D1`,
+    acknowledged: false,
+  }];
+
+  let current: ExtensionSnapshot = baseline;
+  return {
+    baseline,
+    post,
+    adapter: {
+      exportSnapshot: vi.fn(async () => structuredClone(current)),
+      execute: vi.fn(async () => {
+        current = post;
+        return { currentPhase: 'season_review', phaseDay: 2, flowStateChanged: true };
+      }),
+      restoreBaseline: vi.fn(async (_session, snapshot: object) => {
+        current = structuredClone(snapshot) as ExtensionSnapshot;
+        return {
+          importResult: { success: true },
+          restoredSnapshot: structuredClone(current),
+        };
+      }),
+      publishFlow: vi.fn(),
+      discardFlow: vi.fn(),
+    },
+    readCurrent: () => structuredClone(current),
+  };
+}
+
 beforeEach(() => {
   mocks.assertActive.mockImplementation(() => undefined);
   mocks.assertTree.mockImplementation(() => undefined);
@@ -433,6 +519,57 @@ describe('exact-save mutation coordinator', () => {
     settleReceipt({ kind: 'durable', record: {} });
     await expect(pending).resolves.toMatchObject({ kind: 'durable' });
     expect(payroll.adapter.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains one all-team market-revenue settlement through retry without replay or partial publication', async () => {
+    let settleReceipt!: (value: { kind: 'durable'; record: object }) => void;
+    let retainedSnapshot: ExtensionSnapshot | null = null;
+    mocks.capture.mockImplementationOnce(async (_lease, capture) => {
+      retainedSnapshot = await capture.exportSnapshot() as ExtensionSnapshot;
+      return receipt;
+    });
+    mocks.wait.mockReturnValue(new Promise((resolve) => { settleReceipt = resolve; }));
+    const revenue = marketRevenueReconciliationWorker();
+    const pending = executeExactSaveMutation({
+      ...options(revenue.adapter),
+      didChange: didFlowAwareExactMutationChange,
+    });
+
+    await vi.waitFor(() => expect(mocks.wait).toHaveBeenCalledWith(receipt));
+    const retained = retainedSnapshot as ExtensionSnapshot | null;
+    const flag = `market_revenue_budget_reconciled_s${revenue.post.season}`;
+    expect(revenue.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(retained?.narrative.storyFlags).toHaveLength(32);
+    expect(retained?.narrative.storyFlags.every(([, flags]) => flags.includes(flag))).toBe(true);
+    expect(retained?.narrative.ownerState).toHaveLength(32);
+    expect(retained?.news).toContainEqual(expect.objectContaining({
+      id: `market-revenue-${revenue.post.season}-${revenue.post.userTeamId}`,
+    }));
+    expect(revenue.adapter.publishFlow).not.toHaveBeenCalled();
+
+    settleReceipt({ kind: 'durable', record: {} });
+    await expect(pending).resolves.toMatchObject({ kind: 'durable' });
+    expect(revenue.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(revenue.adapter.publishFlow).toHaveBeenCalledTimes(1);
+    expect(revenue.readCurrent()).toEqual(revenue.post);
+  });
+
+  it('restores the exact pre-revenue baseline when settlement persistence is rejected before acceptance', async () => {
+    mocks.capture.mockRejectedValueOnce(new Error('revenue receipt not accepted'));
+    const revenue = marketRevenueReconciliationWorker();
+
+    const outcome = await executeExactSaveMutation({
+      ...options(revenue.adapter),
+      didChange: didFlowAwareExactMutationChange,
+    });
+
+    expect(outcome).toMatchObject({ kind: 'rolled_back' });
+    expect(revenue.adapter.execute).toHaveBeenCalledTimes(1);
+    expect(revenue.adapter.restoreBaseline).toHaveBeenCalledTimes(1);
+    expect(revenue.readCurrent()).toEqual(revenue.baseline);
+    expect(revenue.readCurrent().narrative.storyFlags).toEqual(revenue.baseline.narrative.storyFlags);
+    expect(revenue.readCurrent().narrative.ownerState).toEqual(revenue.baseline.narrative.ownerState);
+    expect(revenue.adapter.publishFlow).not.toHaveBeenCalled();
   });
 
   it('restores the extension-phase baseline when persistence fails before receipt acceptance', async () => {

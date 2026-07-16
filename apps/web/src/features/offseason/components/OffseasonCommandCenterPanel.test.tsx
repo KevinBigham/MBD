@@ -1,6 +1,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
+import { deriveMarketRevenueStatement } from '@mbd/sim-core';
 import {
   OffseasonCommandCenterPanel,
   type OffseasonCommandCenterView,
@@ -76,6 +77,13 @@ function makeCommandCenter(overrides: Partial<OffseasonCommandCenterView> = {}):
         taxOverage: 0,
         projectedTax: 0,
       },
+      marketRevenueStatement: deriveMarketRevenueStatement({
+        teamId: 'msp',
+        wins: 92,
+        losses: 70,
+        madePlayoffs: true,
+        ownerArchetype: 'patient_builder',
+      }),
       rosterHoleCount: 2,
     },
     ...overrides,
@@ -110,11 +118,16 @@ describe('OffseasonCommandCenterPanel', () => {
     expect(container.textContent).toContain('39/40');
     expect(container.textContent).toContain('$186.0M');
     expect(container.textContent).toContain('-$6.0M');
+    expect(container.textContent).toContain('Effective Payroll Space');
     expect(container.textContent).toContain('Above soft ceiling');
     expect(container.textContent).toContain('Floor');
     expect(container.textContent).toContain('$72.0M');
     expect(container.textContent).toContain('Tax line');
     expect(container.textContent).toContain('$230.0M');
+    expect(container.textContent).toContain('Modeled gross revenue');
+    expect(container.textContent).toContain('Record-driven attendance');
+    expect(container.textContent).toContain('Playoff bump');
+    expect(container.textContent).toContain('Raw next-season budget');
     expect(container.textContent).toContain('Complete');
     expect(container.textContent).toContain('Needs attention');
     expect(container.textContent).toContain('Blocked');

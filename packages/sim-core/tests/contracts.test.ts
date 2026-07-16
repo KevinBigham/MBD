@@ -7,6 +7,7 @@ import {
   calculateQualifyingOfferSalary,
   createFreeAgencyMarket,
   evaluateExtensionWillingness,
+  deriveMarketRevenueStatement,
   generateArbitrationCase,
   generatePlayer,
   getArbEligiblePlayers,
@@ -290,6 +291,49 @@ describe('negotiateExtension', () => {
 });
 
 describe('processTeamExtensions', () => {
+  it('lets a higher lawful revenue budget fund a CPU extension attempt that the low budget cannot', () => {
+    const candidate = {
+      ...setHitterRatings(makePlayer(40), 410),
+      age: 28,
+      developmentTrajectory: 'on_track' as const,
+    };
+    const lowRevenue = deriveMarketRevenueStatement({
+      teamId: 'pit',
+      wins: 62,
+      losses: 100,
+      madePlayoffs: false,
+      ownerArchetype: 'penny_pincher',
+    });
+    const highRevenue = deriveMarketRevenueStatement({
+      teamId: 'nym',
+      wins: 100,
+      losses: 62,
+      madePlayoffs: true,
+      ownerArchetype: 'win_now',
+    });
+    const currentPayroll = Math.round(((lowRevenue.annualBudget + highRevenue.annualBudget) / 2) * 100) / 100;
+    const context = createTeamContext({ currentPayroll });
+    context.controlYearsByPlayer.set(candidate.id, 1);
+    context.serviceYearsByPlayer.set(candidate.id, 5);
+    context.moraleByPlayer.set(candidate.id, 72);
+
+    const low = processTeamExtensions(
+      { ...context, teamBudget: lowRevenue.annualBudget },
+      [candidate],
+      new GameRNG(101),
+    );
+    const high = processTeamExtensions(
+      { ...context, teamBudget: highRevenue.annualBudget },
+      [candidate],
+      new GameRNG(101),
+    );
+
+    expect(low.results).toEqual([]);
+    expect(high.results.some((entry) => entry.playerId === candidate.id)).toBe(true);
+    expect(lowRevenue.annualBudget).toBeLessThan(currentPayroll);
+    expect(highRevenue.annualBudget).toBeGreaterThan(currentPayroll);
+  });
+
   it('prioritizes near-free-agency stars ahead of fringe depth players', () => {
     const franchiseStar = {
       ...setHitterRatings(makePlayer(41), 410),

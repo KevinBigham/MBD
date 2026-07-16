@@ -34,6 +34,24 @@
 
 ### Save And Determinism
 
+- Verified roadmap item 15, Goal 25 `ECON-MARKET-REVENUE-1`: explicit market
+  tiers, the factual final 162-game record, a fixed playoff-berth bump, and the
+  persisted owner archetype now produce one deterministic modeled gross-revenue
+  statement and coherent next-season budget allocation for all 32 clubs.
+- Settlement occurs only on the exact Season Review Advance/Skip transition,
+  precomputes the whole league before mutation, repairs hostile partial state,
+  and remains bound to the existing exact-save rollback/retry/fencing contract.
+  Ordinary owner narrative no longer rewrites budgets midseason.
+- Finance, Owner Intel, and Offseason share truthful raw/effective vocabulary;
+  projected tax remains separate. GameSnapshot stays v34 and Dexie stays v6;
+  no actual attendance, cash, revenue-sharing, or paid-tax system is claimed.
+- Final evidence: focused pure/worker/consumer/compatibility gates; hard
+  4-seed x 4-season study with 512 statements/receipts and zero settlement
+  isolation drift; root typecheck 9/9; sim-core 1,689; web 2,422 with five
+  intentional skips; 3,032-module / 167-entry PWA; determinism 3/3; production
+  annual journey 1/1 and reload-smoke 2/2, both zero-retry. Final adversarial
+  verdict: `MERGE_READY`, zero P0-P2. Item 16 was not started.
+
 - Verified roadmap item 14, Goal 24 `ECON-OWNER-PAYROLL-PRESSURE-1`: every
   organization now derives one source-owned advisory payroll floor and soft
   ceiling from its persisted owner state, while canonical MLB payroll plus dead

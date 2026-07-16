@@ -77,6 +77,7 @@ import {
   buildOwnerPayrollPolicy,
   buildOwnerPayrollPresentation,
 } from './sim.worker.ownerPayrollPressure.js';
+import { getSettledMarketRevenueStatement } from './sim.worker.marketRevenue.js';
 import type {
   CareerStatsLedger,
   GMRelationship,
@@ -3788,15 +3789,17 @@ export const queryApi = {
   },
 
   getTeamFinances(teamId: string) {
-    const ownerPayrollPolicy = buildOwnerPayrollPolicy(requireState(), teamId);
+    const s = requireState();
+    const ownerPayrollPolicy = buildOwnerPayrollPolicy(s, teamId);
     const payroll = ownerPayrollPolicy.totalPayroll;
-    const budget = getDifficultyAdjustedBudget(requireState(), teamId);
+    const budget = getDifficultyAdjustedBudget(s, teamId);
     return {
       payroll,
       budget,
       luxuryTax: ownerPayrollPolicy.projectedTax,
       budgetRoom: Math.round((budget - payroll) * 100) / 100,
       ownerPayrollPolicy,
+      marketRevenueStatement: getSettledMarketRevenueStatement(s, teamId),
     };
   },
 
@@ -3994,6 +3997,7 @@ export const queryApi = {
       capSpace: payroll.capSpace,
       budgetRoom: Math.round((budget - payroll.totalPayroll) * 100) / 100,
       ownerPayrollPolicy,
+      marketRevenueStatement: getSettledMarketRevenueStatement(s, s.userTeamId),
       futureCommitments: payroll.futureCommitments,
       coachingPayroll,
       contracts,
@@ -5116,9 +5120,8 @@ export const queryApi = {
 
     // Build team budget info
     const teams = s.seasonState.standings.getLeagueStandings().map(e => {
-      const budget = 80 + (e.wins > e.losses ? 20 : 0);
-      const teamPlayers = s.players.filter(p => p.teamId === e.teamId && p.rosterStatus === 'MLB');
-      const payroll = teamPlayers.reduce((sum, p) => sum + (p.contract?.annualSalary ?? 0), 0);
+      const budget = getDifficultyAdjustedBudget(s, e.teamId);
+      const payroll = calculateTeamPayroll(e.teamId, s.players).totalPayroll;
       return {
         teamId: e.teamId,
         budgetRemaining: Math.max(0, budget - payroll),

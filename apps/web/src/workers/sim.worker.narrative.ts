@@ -45,7 +45,6 @@ import {
 } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers';
-import { getDifficultyAdjustedBudget } from './sim.worker.setup.js';
 import { getOwnerAlignmentDecisionScore } from './sim.worker.frontOfficeIdentity.js';
 
 export interface PersonalityProfileDTO {
@@ -897,7 +896,9 @@ function archiveFinancials(state: FullGameState): SeasonArchiveEntry['financials
     .map((team) => ({
       teamId: team.id,
       payroll: calculateTeamPayroll(team.id, getTeamPlayers(team.id)).totalPayroll,
-      budget: getDifficultyAdjustedBudget(state, team.id),
+      // Historical finance records the raw league economic authority used for
+      // that completed season, never the user-only difficulty overlay.
+      budget: state.ownerState.get(team.id)?.annualBudget ?? getTeamBudget(team.id),
     }))
     .sort((left, right) => right.payroll - left.payroll);
 }
@@ -932,6 +933,7 @@ function archiveTimelineEvents(
 
 export function recordSeasonArchive(state: FullGameState, options?: { includeOffseasonData?: boolean }) {
   const includeOffseasonData = options?.includeOffseasonData ?? false;
+  const existingEntry = state.seasonArchive.find((candidate) => candidate.season === state.season) ?? null;
   const awards = state.awardHistory.filter((entry) => entry.season === state.season);
   const transactions = archiveTransactions(state, includeOffseasonData);
   const draftClass = archiveDraftClass(state, includeOffseasonData);
@@ -943,7 +945,12 @@ export function recordSeasonArchive(state: FullGameState, options?: { includeOff
     statLeaders: deriveStatLeaders(state, 10),
     transactions,
     draftClass,
-    financials: archiveFinancials(state),
+    // The first factual archive is written before next-season revenue settles.
+    // Later offseason enrichment must preserve that completed season's actual
+    // operating budget instead of replacing it with the new allocation.
+    financials: includeOffseasonData && existingEntry?.financials.length
+      ? existingEntry.financials
+      : archiveFinancials(state),
     userSummary: state.seasonHistory.find((candidate) => candidate.season === state.season)?.userSeason ?? null,
     timelineEvents: archiveTimelineEvents(state, awards, transactions, draftClass),
   };

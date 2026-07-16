@@ -4,7 +4,6 @@ import {
   TEAMS,
   calculateTeamPayroll,
   checkAchievements,
-  getTeamBudget,
   getTeamById,
   isTradeDeadlineModeDay,
   type AchievementDefinition,
@@ -14,6 +13,7 @@ import {
 import { buildAdvancedStatsIndex } from './sim.worker.stats.js';
 import { queueCeremonyMoment } from './sim.worker.ceremony.js';
 import type { FullGameState } from './sim.worker.helpers.js';
+import { getDifficultyAdjustedBudget } from './sim.worker.budget.js';
 
 export interface AchievementView extends AchievementDefinition {
   unlocked: boolean;
@@ -297,7 +297,7 @@ export function captureSeasonAchievementFacts(state: FullGameState) {
   writeCounter(state, counterKey('payrollRank', state.season), payrollRank);
 
   const userPayroll = payrolls.find((entry) => entry.teamId === state.userTeamId)?.payroll ?? 0;
-  const budget = getTeamBudget(state.userTeamId);
+  const budget = getDifficultyAdjustedBudget(state, state.userTeamId);
   writeCounter(state, counterKey('budgetRatio', state.season), budget > 0 ? userPayroll / budget : 0);
 
   const homegrownMlbCount = userPlayers.filter((player) => homegrownIds.has(player.id)).length;

@@ -5,7 +5,7 @@ import type {
   Rivalry,
   TeamChemistry,
 } from '@mbd/contracts';
-import { getTeamBudget } from '../finance/contracts.js';
+import { deriveMarketRevenueStatement } from '../finance/marketRevenue.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import {
   CLUBHOUSE_LEADER_TRAITS,
@@ -85,10 +85,6 @@ function pickStableVariantByValue(value: number, variants: readonly string[]): s
   return variants[Math.abs(value) % variants.length] ?? variants[0] ?? '';
 }
 
-function clampBudget(value: number): number {
-  return Math.round(Math.max(0, value) * 100) / 100;
-}
-
 function normalizeBudgetAmount(value: number): number {
   return value > 1_000 ? value / 1_000_000 : value;
 }
@@ -145,41 +141,6 @@ const OWNER_STEADY_HEADLINES = [
   'Ownership is holding course.',
   'Ownership sees the direction.',
 ] as const;
-
-function stableOwnerBudgetBase(owner: Pick<OwnerState, 'teamId' | 'expectations'>): number {
-  return normalizeBudgetAmount(getTeamBudget(owner.teamId) || owner.expectations.payrollTarget);
-}
-
-function budgetOutputsFromOwner(
-  owner: Pick<OwnerState, 'spendingWillingness' | 'satisfaction'>,
-  baseBudget: number,
-  wins: number,
-  losses: number,
-  madePlayoffs: boolean,
-) {
-  const normalizedBaseBudget = normalizeBudgetAmount(baseBudget);
-  const spendingFactor =
-    owner.spendingWillingness === 'lavish'
-      ? 1.12
-      : owner.spendingWillingness === 'cheap'
-        ? 0.9
-        : 1;
-  const satisfactionFactor = ((owner.satisfaction ?? 50) - 50) / 240;
-  const attendanceFactor = clamp(((wins - losses) / 162) * 0.08, -0.08, 0.08);
-  const playoffFactor = madePlayoffs ? 0.035 : 0;
-  const annualBudget = clampBudget(
-    normalizedBaseBudget * (1 + satisfactionFactor + attendanceFactor + playoffFactor) * spendingFactor,
-  );
-  const payrollCap = clampBudget(annualBudget * 0.92);
-
-  return {
-    annualBudget,
-    payrollCap,
-    draftBonusPool: clampBudget(Math.max(4.5, annualBudget * 0.03)),
-    ifaBonusPool: clampBudget(Math.max(3.5, annualBudget * 0.0225)),
-    staffBudget: clampBudget(Math.max(7.5, annualBudget * 0.0525)),
-  };
-}
 
 export function getPersonalityArchetype(player: GeneratedPlayer): PersonalityArchetype {
   const { leadership, workEthic, competitiveness, mentalToughness } = player.personality;
@@ -334,13 +295,13 @@ export function createOwnerState(teamId: string, payrollTarget: number): OwnerSt
     archetype === 'win_now' ? 62 : archetype === 'patient_builder' ? 38 : 74;
   const satisfaction =
     archetype === 'win_now' ? 62 : archetype === 'patient_builder' ? 58 : 52;
-  const budgets = budgetOutputsFromOwner(
-    { spendingWillingness, satisfaction },
-    normalizedPayrollTarget,
-    winsTarget,
-    162 - winsTarget,
-    archetype === 'win_now',
-  );
+  const budgets = deriveMarketRevenueStatement({
+    teamId,
+    wins: 81,
+    losses: 81,
+    madePlayoffs: false,
+    ownerArchetype: archetype,
+  });
 
   return {
     teamId,
@@ -421,17 +382,6 @@ export function evaluateOwnerState(
   ));
 
   const hotSeat = satisfaction < 50 || patience < 45 || confidence < 45;
-  const budgets = budgetOutputsFromOwner(
-    {
-      spendingWillingness: owner.spendingWillingness,
-      satisfaction,
-    },
-    stableOwnerBudgetBase(owner),
-    context.wins,
-    context.losses,
-    context.madePlayoffs ?? false,
-  );
-
   return {
     ...owner,
     patience,
@@ -439,15 +389,6 @@ export function evaluateOwnerState(
     hotSeat,
     summary: ownerSummary({ satisfaction, hotSeat, winNowPressure: owner.winNowPressure }),
     satisfaction,
-    annualBudget: budgets.annualBudget,
-    payrollCap: budgets.payrollCap,
-    draftBonusPool: budgets.draftBonusPool,
-    ifaBonusPool: budgets.ifaBonusPool,
-    staffBudget: budgets.staffBudget,
-    expectations: {
-      ...owner.expectations,
-      payrollTarget: budgets.payrollCap,
-    },
   };
 }
 
@@ -460,17 +401,6 @@ export function applyOwnerDecisionDelta(
   const confidence = clampScore(owner.confidence + delta);
   const satisfaction = clampScore((owner.satisfaction ?? average([owner.patience, owner.confidence])) + delta);
   const hotSeat = satisfaction < 50 || patience < 45 || confidence < 45;
-  const budgets = budgetOutputsFromOwner(
-    {
-      spendingWillingness: owner.spendingWillingness,
-      satisfaction,
-    },
-    stableOwnerBudgetBase(owner),
-    owner.expectations.winsTarget,
-    162 - owner.expectations.winsTarget,
-    satisfaction >= 80,
-  );
-
   return {
     ...owner,
     patience,
@@ -478,15 +408,6 @@ export function applyOwnerDecisionDelta(
     hotSeat,
     satisfaction,
     summary,
-    annualBudget: budgets.annualBudget,
-    payrollCap: budgets.payrollCap,
-    draftBonusPool: budgets.draftBonusPool,
-    ifaBonusPool: budgets.ifaBonusPool,
-    staffBudget: budgets.staffBudget,
-    expectations: {
-      ...owner.expectations,
-      payrollTarget: budgets.payrollCap,
-    },
   };
 }
 

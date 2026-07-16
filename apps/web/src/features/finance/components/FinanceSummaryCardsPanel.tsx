@@ -72,7 +72,7 @@ export function FinanceSummaryCardsPanel({
       </DensePanel>
 
       <DensePanel
-        title="Budget"
+        title="Effective Gameplay Budget"
         icon={budgetRoom >= 0
           ? <TrendingUp className="h-4 w-4 text-accent-success" />
           : <TrendingDown className="h-4 w-4 text-accent-danger" />}
@@ -81,8 +81,8 @@ export function FinanceSummaryCardsPanel({
           <div className="font-data text-2xl font-bold text-dynasty-text">{formatMoney(budget)}</div>
           <div className={`mt-1 font-data text-sm ${budgetStatusColor(budgetRoom)}`}>
             {budgetRoom >= 0
-              ? `${formatMoney(budgetRoom)} remaining`
-              : `${formatMoney(Math.abs(budgetRoom))} over budget`}
+              ? `${formatMoney(budgetRoom)} effective room`
+              : `${formatMoney(Math.abs(budgetRoom))} over effective budget`}
           </div>
       </DensePanel>
 

@@ -7,9 +7,11 @@ import {
   getTeamBudget,
   resolveOwnerSoftCeiling,
   type OwnerPayrollPolicy,
+  type MarketRevenueStatement,
 } from '@mbd/sim-core';
 import type { FullGameState } from './sim.worker.helpers.js';
 import type { OwnerState } from '@mbd/contracts';
+import { getSettledMarketRevenueStatement } from './sim.worker.marketRevenue.js';
 
 type NormalizedOwnerState = OwnerState & Required<Pick<OwnerState,
   | 'spendingWillingness'
@@ -26,6 +28,7 @@ type NormalizedOwnerState = OwnerState & Required<Pick<OwnerState,
 export interface OwnerPayrollPresentation {
   owner: NormalizedOwnerState;
   ownerPayrollPolicy: OwnerPayrollPolicy;
+  marketRevenueStatement: MarketRevenueStatement | null;
 }
 
 export interface OwnerPayrollReconciliationReceipt {
@@ -106,6 +109,7 @@ export function buildOwnerPayrollPresentation(
   return {
     owner: normalizeOwnerPresentation(state, teamId),
     ownerPayrollPolicy: buildOwnerPayrollPolicy(state, teamId),
+    marketRevenueStatement: getSettledMarketRevenueStatement(state, teamId),
   };
 }
 

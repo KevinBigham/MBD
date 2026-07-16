@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
-import type { OwnerPayrollPolicy } from '@mbd/sim-core';
+import type { MarketRevenueStatement, OwnerPayrollPolicy } from '@mbd/sim-core';
 
 type OffseasonCommandStatus = 'complete' | 'attention' | 'blocked' | 'upcoming';
 
@@ -28,6 +28,7 @@ export interface OffseasonCommandCenterView {
     payrollSpace: number;
     capSpace?: number;
     ownerPayrollPolicy?: OwnerPayrollPolicy;
+    marketRevenueStatement?: MarketRevenueStatement | null;
     rosterHoleCount: number;
   };
 }
@@ -121,7 +122,7 @@ export function OffseasonCommandCenterPanel({ commandCenter }: { commandCenter: 
               {signedMoneyLabel(commandCenter.projectedOpeningDay.payrollSpace)}
             </div>
             <div className="font-heading text-[10px] uppercase tracking-[0.16em] text-dynasty-muted">
-              Payroll Space
+              Effective Payroll Space
             </div>
           </div>
         </div>
@@ -134,6 +135,15 @@ export function OffseasonCommandCenterPanel({ commandCenter }: { commandCenter: 
           <div><span className="text-dynasty-muted">Soft ceiling</span><br />{moneyLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy.softCeiling)}</div>
           <div><span className="text-dynasty-muted">Tax line</span><br />{moneyLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy.taxThreshold)}</div>
           <div><span className="text-dynasty-muted">Projected exposure</span><br />{moneyLabel(commandCenter.projectedOpeningDay.ownerPayrollPolicy.projectedTax)}</div>
+        </div>
+      ) : null}
+
+      {commandCenter.projectedOpeningDay.marketRevenueStatement ? (
+        <div className="grid gap-2 border-b border-dynasty-border bg-accent-success/5 px-4 py-3 font-data text-xs text-dynasty-text sm:grid-cols-2 lg:grid-cols-4">
+          <div><span className="text-dynasty-muted">Modeled gross revenue</span><br />{moneyLabel(commandCenter.projectedOpeningDay.marketRevenueStatement.grossRevenue)}</div>
+          <div><span className="text-dynasty-muted">Record-driven attendance</span><br />{commandCenter.projectedOpeningDay.marketRevenueStatement.attendanceRate >= 0 ? '+' : ''}{(commandCenter.projectedOpeningDay.marketRevenueStatement.attendanceRate * 100).toFixed(2)}%</div>
+          <div><span className="text-dynasty-muted">Playoff bump</span><br />{(commandCenter.projectedOpeningDay.marketRevenueStatement.playoffRate * 100).toFixed(1)}%</div>
+          <div><span className="text-dynasty-muted">Raw next-season budget</span><br />{moneyLabel(commandCenter.projectedOpeningDay.marketRevenueStatement.annualBudget)}</div>
         </div>
       ) : null}
 

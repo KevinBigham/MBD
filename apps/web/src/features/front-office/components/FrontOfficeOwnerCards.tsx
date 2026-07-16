@@ -1,5 +1,5 @@
 import { Badge, GradeBar } from '@mbd/ui';
-import type { OwnerPayrollPolicy } from '@mbd/sim-core';
+import type { MarketRevenueStatement, OwnerPayrollPolicy } from '@mbd/sim-core';
 import { Building2, Clock, Coins, TrendingUp } from 'lucide-react';
 import { DensePanel } from '@/shared/components/DensePanel';
 
@@ -95,9 +95,11 @@ export function FrontOfficeOwnerProfileCard({ owner }: { owner: FrontOfficeOwner
 export function FrontOfficeBudgetCard({
   owner,
   ownerPayrollPolicy,
+  marketRevenueStatement,
 }: {
   owner: FrontOfficeOwnerView;
   ownerPayrollPolicy?: OwnerPayrollPolicy | null;
+  marketRevenueStatement?: MarketRevenueStatement | null;
 }) {
   return (
     <DensePanel
@@ -111,7 +113,7 @@ export function FrontOfficeBudgetCard({
             { label: 'Draft Bonus Pool', value: formatMoney(owner.draftBonusPool) },
             { label: 'IFA Bonus Pool', value: formatMoney(owner.ifaBonusPool) },
             { label: 'Staff Budget', value: formatMoney(owner.staffBudget) },
-            { label: 'Spending Will', value: `${owner.spendingWillingness}` },
+            { label: 'GM Spending Style', value: `${owner.spendingWillingness}` },
           ].map((item) => (
             <div key={item.label} className="rounded-md border border-dynasty-border bg-dynasty-base p-2.5">
               <div className="font-data text-[10px] text-dynasty-muted">{item.label}</div>
@@ -131,6 +133,21 @@ export function FrontOfficeBudgetCard({
             </div>
             <p className="mt-2 font-data text-xs text-dynasty-muted">
               Advisory lines only. Final owner payroll pressure is reconciled once when the offseason completes.
+            </p>
+          </div>
+        ) : null}
+
+        {marketRevenueStatement ? (
+          <div className="mt-3 rounded-md border border-accent-success/30 bg-accent-success/5 p-3">
+            <div className="font-heading text-xs uppercase tracking-[0.14em] text-accent-success">Settled market revenue</div>
+            <div className="mt-2 grid grid-cols-2 gap-2 font-data text-xs text-dynasty-text sm:grid-cols-4">
+              <div>Baseline <span className="text-dynasty-textBright">{formatMoney(marketRevenueStatement.marketBaseline)}</span></div>
+              <div>Modeled attendance <span className="text-dynasty-textBright">{marketRevenueStatement.attendanceRate >= 0 ? '+' : ''}{(marketRevenueStatement.attendanceRate * 100).toFixed(2)}%</span></div>
+              <div>Playoff bump <span className="text-dynasty-textBright">{(marketRevenueStatement.playoffRate * 100).toFixed(1)}%</span></div>
+              <div>Gross <span className="text-dynasty-textBright">{formatMoney(marketRevenueStatement.grossRevenue)}</span></div>
+            </div>
+            <p className="mt-2 font-data text-xs text-dynasty-muted">
+              The {marketRevenueStatement.wins}-{marketRevenueStatement.losses} completed record and owner allocation set the raw next-season budget above. Projected tax is separate.
             </p>
           </div>
         ) : null}

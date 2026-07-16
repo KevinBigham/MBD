@@ -6,6 +6,7 @@ import {
   FrontOfficeOwnerProfileCard,
   type FrontOfficeOwnerView,
 } from './FrontOfficeOwnerCards';
+import { deriveMarketRevenueStatement } from '@mbd/sim-core';
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -52,6 +53,13 @@ describe('FrontOfficeOwnerCards', () => {
         <>
           <FrontOfficeOwnerProfileCard owner={OWNER} />
           <FrontOfficeBudgetCard
+            marketRevenueStatement={deriveMarketRevenueStatement({
+              teamId: 'nym',
+              wins: 100,
+              losses: 62,
+              madePlayoffs: true,
+              ownerArchetype: 'win_now',
+            })}
             owner={OWNER}
             ownerPayrollPolicy={{
               archetype: 'win_now',
@@ -86,11 +94,16 @@ describe('FrontOfficeOwnerCards', () => {
     expect(container.textContent).toContain('$8.0M');
     expect(container.textContent).toContain('$5.0M');
     expect(container.textContent).toContain('$12.0M');
-    expect(container.textContent).toContain('Spending Will');
+    expect(container.textContent).toContain('GM Spending Style');
     expect(container.textContent).toContain('Owner payroll plan');
     expect(container.textContent).toContain('Floor $90.0M');
     expect(container.textContent).toContain('Soft ceiling $180.0M');
     expect(container.textContent).toContain('Advisory lines only');
+    expect(container.textContent).toContain('Settled market revenue');
+    expect(container.textContent).toContain('Modeled attendance +1.88%');
+    expect(container.textContent).toContain('Playoff bump 3.5%');
+    expect(container.textContent).toContain('Gross $331.9M');
+    expect(container.textContent).toContain('Projected tax is separate');
   });
 
   it('renders calm owner state and small budget values without hot-seat treatment', async () => {

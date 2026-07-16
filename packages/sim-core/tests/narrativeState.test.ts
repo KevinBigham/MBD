@@ -17,6 +17,7 @@ import {
   type StandingsEntry,
   upsertRivalry,
   applyMoraleEvent,
+  applyOwnerDecisionDelta,
 } from '../src/index.js';
 import type {
   BriefingItem,
@@ -177,6 +178,52 @@ describe('narrative state', () => {
     expect(evaluated.hotSeat).toBe(true);
     expect(evaluated.patience).toBeLessThan(owner.patience);
     expect(evaluated.summary).toContain('playoff');
+  });
+
+  it('keeps annual economics out of ordinary owner evaluation and decision deltas', () => {
+    const owner = {
+      ...createOwnerState('nym', 210_000_000),
+      annualBudget: 321.09,
+      payrollCap: 295.4,
+      draftBonusPool: 9.63,
+      ifaBonusPool: 7.22,
+      staffBudget: 16.86,
+      expectations: {
+        ...createOwnerState('nym', 210_000_000).expectations,
+        payrollTarget: 295.4,
+      },
+    };
+    const finance = {
+      annualBudget: owner.annualBudget,
+      payrollCap: owner.payrollCap,
+      draftBonusPool: owner.draftBonusPool,
+      ifaBonusPool: owner.ifaBonusPool,
+      staffBudget: owner.staffBudget,
+      payrollTarget: owner.expectations.payrollTarget,
+    };
+
+    const evaluated = evaluateOwnerState(owner, {
+      wins: 110,
+      losses: 40,
+      payroll: 250_000_000,
+      chemistryScore: 80,
+      recentDecisionScore: 12,
+      madePlayoffs: true,
+    });
+    const decision = applyOwnerDecisionDelta(owner, 15, 'Ownership loved the decision.');
+
+    for (const result of [evaluated, decision]) {
+      expect({
+        annualBudget: result.annualBudget,
+        payrollCap: result.payrollCap,
+        draftBonusPool: result.draftBonusPool,
+        ifaBonusPool: result.ifaBonusPool,
+        staffBudget: result.staffBudget,
+        payrollTarget: result.expectations.payrollTarget,
+      }).toEqual(finance);
+    }
+    expect(evaluated.satisfaction).not.toBe(owner.satisfaction);
+    expect(decision.satisfaction).not.toBe(owner.satisfaction);
   });
 
   it('builds a front office briefing ordered by urgency', () => {
