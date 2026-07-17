@@ -38,8 +38,12 @@ ADR and must not block web release.
 - Roadmap item 17, contract-safe salary retention and player-linked cash
   reimbursement in two-team trades, is complete under Goal 27 /
   `docs/codex/runs/ECON-TRADE-RETENTION-1/`.
-- Roadmap item 18, the 30-season multi-seed economy soak, is the next eligible
-  economy slice. It was not started in the item-17 run.
+- Roadmap item 18, the 30-season multi-seed economy soak, is active on its
+  isolated Goal-28 branch. Its corrected seed-7111 proof reached only primary
+  season 17 before the fixed 40-minute gate. Kevin authorized Goal 29 /
+  `ECON-LONG-SAVE-PERF-1` as a bounded semantics-neutral prerequisite from clean
+  `main`; item 19 remains closed until the prerequisite lands and Goal 18
+  completes.
 
 ## Remaining Release Gates
 
