@@ -619,8 +619,11 @@ export function applyRegularSeasonPlayerMicroArcMoments(state: FullGameState) {
 
   for (const player of state.players) {
     const injury = state.injuries.get(player.id);
+    if (!injury || injury.daysRemaining > 0) {
+      continue;
+    }
     const injuryStartDay = latestInjuryStartDay(state, player.id);
-    if (!injury || injury.daysRemaining > 0 || !injuryStartDay) {
+    if (!injuryStartDay) {
       continue;
     }
     const detected = detectInjuryReturnHero(player, {

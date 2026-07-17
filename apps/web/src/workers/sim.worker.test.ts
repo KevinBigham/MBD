@@ -9463,6 +9463,46 @@ describe('sim worker narrative APIs', () => {
     expect(state.playerMoments.get(veteran.id)?.some((moment) => moment.type === 'late_career_peak')).toBe(true);
   });
 
+  it('does not scan injury news for a player without an injury', () => {
+    startGame(1506, 'nym');
+    const state = requireState();
+    const healthyPlayer = state.players[0]!;
+    state.players.splice(0, state.players.length, healthyPlayer);
+    state.injuries.clear();
+
+    const newsIterator = vi.fn(() => {
+      throw new Error('news should not be scanned for a player without an injury');
+    });
+    Object.defineProperty(state.news, Symbol.iterator, { value: newsIterator });
+
+    expect(() => applyRegularSeasonPlayerMicroArcMoments(state)).not.toThrow();
+    expect(newsIterator).not.toHaveBeenCalled();
+  });
+
+  it('does not scan injury news for a player with an active injury', () => {
+    startGame(1507, 'nym');
+    const state = requireState();
+    const injuredPlayer = state.players[0]!;
+    state.players.splice(0, state.players.length, injuredPlayer);
+    state.injuries.clear();
+    state.injuries.set(injuredPlayer.id, {
+      type: 'hamstring_strain',
+      severity: 'il_15',
+      daysRemaining: 5,
+      totalDays: 15,
+      attributePenalty: 0.03,
+      reinjuryRisk: 0.05,
+    });
+
+    const newsIterator = vi.fn(() => {
+      throw new Error('news should not be scanned for a player with an active injury');
+    });
+    Object.defineProperty(state.news, Symbol.iterator, { value: newsIterator });
+
+    expect(() => applyRegularSeasonPlayerMicroArcMoments(state)).not.toThrow();
+    expect(newsIterator).not.toHaveBeenCalled();
+  });
+
   it('plumbs player micro-arc sources through regular-season and season-end passes without duplicates', () => {
     startGame(1508, 'nym');
     const state = requireState();
@@ -9484,6 +9524,19 @@ describe('sim worker narrative APIs', () => {
     for (const player of [injuryHero, tradeHero, callupHero, leagueAverage, pitcher]) {
       player.rosterStatus = 'MLB';
     }
+    state.playerMoments.set(injuryHero.id, [{
+      season: 1,
+      day: 90,
+      timestamp: 'S1D90',
+      type: 'hot_streak_week',
+      description: 'Existing weekly moment.',
+      impact: 42,
+      relevance: 0.7,
+      isPlayoff: false,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      round: null,
+    }]);
 
     state.injuries.set(injuryHero.id, {
       type: 'hamstring_strain',
@@ -9493,11 +9546,66 @@ describe('sim worker narrative APIs', () => {
       attributePenalty: 0.03,
       reinjuryRisk: 0.05,
     });
-    state.news.unshift(
+    state.news.splice(0, state.news.length,
+      {
+        id: 'micro-arc-injury-newer-first',
+        headline: 'Injury watch',
+        body: 'A newer current-season injury entry encountered first.',
+        priority: 3,
+        category: 'injury',
+        timestamp: 'S1D80',
+        relatedPlayerIds: [injuryHero.id],
+        relatedTeamIds: ['nym'],
+        read: false,
+      },
+      {
+        id: 'micro-arc-injury-other-player',
+        headline: 'Injury watch',
+        body: 'An unrelated player injury.',
+        priority: 3,
+        category: 'injury',
+        timestamp: 'S1D170',
+        relatedPlayerIds: [tradeHero.id, injuryHero.id],
+        relatedTeamIds: ['bos'],
+        read: false,
+      },
+      {
+        id: 'micro-arc-injury-other-season',
+        headline: 'Injury watch',
+        body: 'An injury from a different season.',
+        priority: 3,
+        category: 'injury',
+        timestamp: 'S2D140',
+        relatedPlayerIds: [injuryHero.id],
+        relatedTeamIds: ['nym'],
+        read: false,
+      },
+      {
+        id: 'micro-arc-injury-malformed',
+        headline: 'Injury watch',
+        body: 'An injury entry with a malformed timestamp.',
+        priority: 3,
+        category: 'injury',
+        timestamp: 'not-a-timestamp',
+        relatedPlayerIds: [injuryHero.id],
+        relatedTeamIds: ['nym'],
+        read: false,
+      },
+      {
+        id: 'micro-arc-injury-unrelated-category',
+        headline: 'Development watch',
+        body: 'An unrelated category for the same player.',
+        priority: 3,
+        category: 'development',
+        timestamp: 'S1D180',
+        relatedPlayerIds: [injuryHero.id],
+        relatedTeamIds: ['nym'],
+        read: false,
+      },
       {
         id: 'micro-arc-injury-start',
         headline: 'Injury watch',
-        body: 'Hamstring strain.',
+        body: 'The last matching current-season injury entry.',
         priority: 3,
         category: 'injury',
         timestamp: 'S1D66',
@@ -9596,9 +9704,38 @@ describe('sim worker narrative APIs', () => {
     }));
 
     applyRegularSeasonPlayerMicroArcMoments(state);
+    applyRegularSeasonPlayerMicroArcMoments(state);
     applySeasonEndPlayerMicroArcMoments(state);
     applySeasonEndPlayerMicroArcMoments(state);
 
+    expect(state.playerMoments.get(injuryHero.id)).toEqual([
+      {
+        season: 1,
+        day: 100,
+        timestamp: 'S1D100',
+        type: 'injury_return_hero',
+        description: 'Gideon Frost turned the hamstring layoff into a fresh burst. After 34 days down with the hamstring, Gideon Frost gave New York Tycoons a 477+ first window back.',
+        impact: 53,
+        relevance: 0.83,
+        isPlayoff: false,
+        isEliminationGame: false,
+        worldSeriesClincher: false,
+        round: null,
+      },
+      {
+        season: 1,
+        day: 90,
+        timestamp: 'S1D90',
+        type: 'hot_streak_week',
+        description: 'Existing weekly moment.',
+        impact: 42,
+        relevance: 0.7,
+        isPlayoff: false,
+        isEliminationGame: false,
+        worldSeriesClincher: false,
+        round: null,
+      },
+    ]);
     expect(state.playerMoments.get(injuryHero.id)?.filter((moment) => moment.type === 'injury_return_hero')).toHaveLength(1);
     expect(state.playerMoments.get(tradeHero.id)?.filter((moment) => moment.type === 'trade_deadline_spark')).toHaveLength(1);
     expect(state.playerMoments.get(callupHero.id)?.filter((moment) => moment.type === 'september_callup_hero')).toHaveLength(1);
