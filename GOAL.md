@@ -39,11 +39,12 @@ ADR and must not block web release.
   reimbursement in two-team trades, is complete under Goal 27 /
   `docs/codex/runs/ECON-TRADE-RETENTION-1/`.
 - Roadmap item 18, the 30-season multi-seed economy soak, is active on its
-  isolated Goal-28 branch. Its corrected seed-7111 proof reached only primary
-  season 17 before the fixed 40-minute gate. Kevin authorized Goal 29 /
-  `ECON-LONG-SAVE-PERF-1` as a bounded semantics-neutral prerequisite from clean
-  `main`; item 19 remains closed until the prerequisite lands and Goal 18
-  completes.
+  isolated Goal-28 branch. Goal 29 / `ECON-LONG-SAVE-PERF-1` measured and
+  removed a semantics-neutral late-save hot path, passed exact paired profiles,
+  corrected-tree horizon proof, root gates, and final review, and is locally
+  landed conditionally. The sole post-landing seed-7111 30+15 diagnostic under
+  the unchanged 40-minute gate remains; item 19 stays closed until it validates
+  and Goal 18 completes.
 
 ## Remaining Release Gates
 

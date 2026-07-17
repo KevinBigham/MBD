@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-16 after Kevin authorized the bounded ECON-LONG-SAVE-PERF-1 prerequisite required to complete item 18 without weakening its fixed runtime proof.
+Last reconciled: 2026-07-16 after the bounded ECON-LONG-SAVE-PERF-1 prerequisite passed exact performance, semantic, repository, and review gates and was locally landed conditionally; Goal 18's sole post-landing full diagnostic remains.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -18,9 +18,11 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 - Closed item: **15 — market-size revenue feeds budgets**, now **VERIFIED COMPLETE** under Goal 25 / `ECON-MARKET-REVENUE-1`.
 - Closed item: **16 — explainable free-agent decisions**, now **VERIFIED COMPLETE** under Goal 26 / `ECON-FA-DECISIONS-1`.
 - Closed item: **17 — salary retention and player-linked cash in trades**, now **VERIFIED COMPLETE** under Goal 27 / `ECON-TRADE-RETENTION-1`; item 18 was not started.
-- Active prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29. It starts from
-  clean `main`; Goal 28 remains isolated on its dependent WIP branch. No item-19
-  work begins until the prerequisite lands and Goal 18 completes.
+- Conditional prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
+  landed after green paired performance/exactness, corrected-tree horizon,
+  repository, and review gates. Goal 28 remains isolated on its dependent WIP
+  branch; the sole seed-7111 30+15 run remains. No item-19 work begins until it
+  validates and Goal 18 completes.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -46,7 +48,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | IN PROGRESS | Goal 29 / `runs/ECON-LONG-SAVE-PERF-1` prerequisite; Goal 28 on dependent WIP branch | Corrected Goal-18 seed 7111 reached primary season 17 before fixed 40-minute timeout; bounded semantics-neutral runtime prerequisite authorized | WIP branches; neither landed | Bounded read-only architecture map, one writer, final review/closeout | Items 9–17 | Measure and optimize canonical hot paths, preserve exact proof, then rerun seed 7111 under unchanged gate |
+| 18 | 2 | 30-season multi-seed economy soak | IN PROGRESS | Goal 29 / `runs/ECON-LONG-SAVE-PERF-1` prerequisite conditionally landed; Goal 28 on dependent WIP branch | Exact checkpoint; 3/3 paired performance/exactness; corrected horizon 4/4 in 47.20s; root/build/bundle/determinism green; Sol `MERGE_READY` 0/0/0 | Goal-29 commit containing completion report on local `main`; Goal 28 unlanded | Ledger-assisted swarm; one production writer; final Sol; Luna closeout; model/effort unpinned | Items 9–17 | Integrate landed prerequisite and run the sole seed-7111 30+15 proof under unchanged 40-minute gate |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |
@@ -188,12 +190,30 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## First incomplete item source contract
 
-Item 18 remains `PARTIAL`. Item 17 now supplies deterministic, conserved,
-save-compatible salary retention and player-linked reimbursement facts, but no
-30-season multi-seed economy soak was started. The next legal slice must create
-its own bounded goal/run, freeze source-grounded long-horizon bands, and
-preserve items 9–17 contract, budget, owner-policy, free-agency, trade-finance,
-exact-save, determinism, and old-save invariants.
+Item 18 remains `IN PROGRESS`. Goal 29's semantics-neutral prerequisite is
+conditionally landed with exact checkpoint/profile/root/review evidence, but it
+does not complete the roadmap item. The next legal action is only the existing
+Goal-28 seed-7111 30-season primary plus checkpoint-15 replay under the unchanged
+40-minute gate. Item 19 remains closed until that receipt validates and the
+remaining Goal-18 multi-seed acceptance is resolved.
+
+## Item 18 prerequisite conditional landing receipt
+
+- Goal 29 / `ECON-LONG-SAVE-PERF-1` is locally landed in the item-only commit
+  containing `runs/ECON-LONG-SAVE-PERF-1/COMPLETION.md`; its exact SHA is read
+  from local Git history after commit and reported by closeout.
+- Source commits: `c722342` profiler, `d80ff41` resolved-injury guard, and
+  `c8b941d` direct sim-day stage ownership. GameSnapshot remains v35; Dexie v6.
+- Exact paired evidence reduced total season-16 runtime from
+  178,121.040–199,411.976ms to 72,764.402–79,800.696ms and target time from
+  110,382.877–128,976.246ms to 4,369.359–4,515.245ms with identical semantic,
+  row, state, RNG, contracts, payroll, population, and free-agency digests.
+- Final gates: corrected horizon 4/4 in 47.20s; checkout-local typechecks;
+  contracts 37; sim-core 1,714; UI 1; web 2,478 plus nine intentional skips;
+  3,035-module / 168-entry PWA; bundle budget; determinism 3/3; final Sol
+  `MERGE_READY`, actionable P0/P1/P2 `0/0/0`.
+- Model/effort requests were not host-pinned. No push, deploy, tag, release,
+  Goal-18 full run, or item-19 work occurred during this landing.
 
 ## Item 9/10 landing receipt
 

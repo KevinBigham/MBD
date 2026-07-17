@@ -1,96 +1,108 @@
 # Current Source Truth — ECON-LONG-SAVE-PERF-1
 
-## Preflight
+Status: source frozen at `c8b941de4e0370c4e0795b2aaf7b3ec7971ca5b3`
+(tree `e359c94df9217a80e6131f803a5f6e83e73948d4`).
 
-- Repository/worktree: `/Users/kevin/Downloads/MBD-econ-long-save-perf-1`
-- Branch: `codex/econ-long-save-perf-1`
-- Base/HEAD before slice docs: `8e24909c630a47cb71065c7bb1dd00619a5c8c38`
-- Local `main` and `origin/main`: same revision at preflight.
-- Slice worktree dirty state before work: clean; index empty.
-- Main worktree preserved dirty paths: `.agents/skills/mbd-implement-slice/SKILL.md`,
-  `AGENTS.md`, and `docs/codex/PROGRAM.md`; none are owned by this slice.
-- Package manifest: `pnpm@9.15.4`, Node `>=20`; invoke through
-  `corepack pnpm` because the ambient `pnpm` binary is `11.9.0`.
-- Live root scripts: `typecheck`, `test`, `build`, `verify:determinism`,
-  `playtest:calibrate`; web scripts: `typecheck`, `test`, `build`,
-  `e2e:reload-smoke`.
-- Current GameSnapshot: v35 (`CURRENT_GAME_SNAPSHOT_VERSION = 35`). Dexie: v6.
-- Dependency setup: `corepack pnpm install --offline --frozen-lockfile` passed;
-  705 packages reused from the local store, no download.
-- Clean-main baseline: `corepack pnpm --filter @mbd/web typecheck` passed.
-- Focused clean-main baseline: `sim.worker.balance.test.ts`,
-  `sim.worker.rollover.integration.test.ts`, and `econClockSoak.test.ts` passed
-  3 files / 12 tests with one env-gated skip in `172.51s`.
+## Preflight and authority
 
-## Authorized dependency state
+- Worktree: `/Users/kevin/Downloads/MBD-econ-long-save-perf-1`; branch
+  `codex/econ-long-save-perf-1`; base `main@8e24909c630a47cb71065c7bb1dd00619a5c8c38`.
+- Goal-18 authorization branch: `codex/econ-long-soak-18@2ac8287d0050bf369ebcbf3d6a2ebc85818cf2c2`.
+- Its corrected seed-7111 run reached primary season 17, emitted no receipt, and
+  exceeded the fixed `2_400_000ms` gate (`2_496_670ms` observed).
+- GameSnapshot is v35 and Dexie v6; neither changed.
+- Protected main-worktree dirt is `.agents/skills/mbd-implement-slice/SKILL.md`,
+  `AGENTS.md`, and `docs/codex/PROGRAM.md`; all remain outside this slice.
 
-- Goal 18 lives on unlanded branch `codex/econ-long-soak-18` at authorization
-  commit `2ac8287d0050bf369ebcbf3d6a2ebc85818cf2c2`.
-- Its sole corrected seed-7111 run at implementation revision `4d938bb` reached
-  primary season 17, never began season 18 or replay, emitted no receipt, and
-  timed out at the unchanged `2_400_000ms` gate (`2_496_670ms` observed).
-- Its corrected horizon-2 smoke preserved canonical rows and all recorded
-  state/RNG/subdomain digests byte-for-byte under a 90-second external ceiling.
-- Kevin authorized the recommended bounded prerequisite on 2026-07-16. Goal 18
-  is dependency-blocked rather than oracle-blocked; items 19+ remain closed.
+## Landable source
 
-## Initial source map
+- `c72234204e07b33ae0e0e5b1256ae56778f12e3d` (tree
+  `baff0aff02a82d3e7cd1e94f4dd7780d3b5bbb1d`) adds the opt-in module-local
+  long-save profiler and exact disabled/enabled worker tests.
+- `d80ff41024eaea304a9b679d2b99cc4509f194c3` changes
+  `applyRegularSeasonPlayerMicroArcMoments`: players with no injury or an active
+  injury now skip `latestInjuryStartDay`; all resolved-injury behavior, history
+  scan order, moment construction, and duplicate suppression remain unchanged.
+- `c8b941de4e0370c4e0795b2aaf7b3ec7971ca5b3` makes the sim-day operation own and
+  finalize its profiler stage directly. It is an observation-boundary correction,
+  not a gameplay change.
+- No schema, Dexie, public Comlink, UI, route, dependency, receipt, validator,
+  band, timeout, automatic prune, or history-retention change exists.
 
-- `apps/web/src/workers/sim.worker.actions.ts` owns `simToPlayoffs`,
-  `simMonthInternal`, affiliate advancement, roster normalization, and the
-  monthly orchestration path.
-- `apps/web/src/workers/sim.worker.narrative.ts` owns monthly narrative, morale,
-  chemistry, and payroll refresh work.
-- `apps/web/src/workers/sim.worker.records.ts` owns record synchronization.
-- `packages/sim-core/src/roster/minorLeagues.ts` owns affiliate-day simulation.
-- `apps/web/src/workers/sim.worker.diagnostics.ts` exposes only coarse runtime
-  facts and manual archive/prune actions; rollover does not automatically prune.
-- `apps/web/src/shared/lib/performance.ts` provides a UI-side interactive
-  sim-month budget, not canonical long-save stage attribution.
-- Goal 18's `econLongSoak.testSupport.ts` executes the real worker path and owns
-  the checkpoint/replay proof, but remains on its dependent WIP branch.
+## Exact checkpoint and admission
 
-These seams are hypotheses until the authorized profile ranks them.
+- Local artifact: `/tmp/mbd-econ-long-save-perf-1-20260716-01add12/season15-checkpoint.json`;
+  97,073,683 bytes; intentionally outside Git.
+- Producer revision/tree:
+  `01add123b668d736e2385c2a30338b628ee0513b` /
+  `ecf12a7e0e12de10d7529c399dd4cbd9b8400358`.
+- Seed 7111, mode `diagnostic_inherited_candidates`, season 15, schema v35.
+- Raw SHA-256: `260594ec24b4f0846835343f7c96bc835a6b2e68909dcc531759cbd44a63516f`.
+- Canonical envelope digest:
+  `0cf2564bc2f9a3328c521cc404760a0784d684ff3c05cbb2c9c1f2f991d24d98`.
+- Capture passed 15 seasons in 1,447.694s; Vitest observed 1,448.72s, within
+  the fixed 40-minute external ceiling.
+- The current hostile validator rejected byte, producer revision/tree, seed,
+  schema, season, snapshot/state/RNG/row/context, malformed/truncated, and
+  recomputed-envelope forgeries before singleton state installation; the full
+  matrix passed in 80.603s.
 
-## Constraints and corrections
+## Measured baseline and hot-path freeze
 
-1. The prerequisite must start and land from clean `main`; unfinished Goal-18
-   commits may not be smuggled into the independent landing.
-2. Profiling/checkpoint integration may use a temporary branch composed from the
-   Goal-18 WIP plus the prerequisite's instrumentation commit. The Goal-18 WIP
-   branch itself stays clean until the prerequisite lands.
-3. Automatic pruning is not a semantics-neutral optimization because current
-   rollover does not invoke it. It is outside scope.
-4. No performance threshold below the final 40-minute proof is frozen before a
-   real baseline profile. Synthetic microbenchmarks cannot substitute for the
-   canonical worker receipt.
-5. Save schema, public worker API, receipt content, annual rows, RNG, and
-   gameplay outcomes remain unchanged.
-6. Checkpoint artifact identity uses immutable producer revision/tree. Baseline
-   and candidate profiles record their own explicit consumer revision/tree;
-   consumer equality is not required, but exact schema/state/RNG/row/context
-   admission is. This corrects the initial ambiguous "source revision" wording.
-7. Existing persisted `performanceDiagnostics` is not the profiler seam. The
-   dedicated observer remains module-local and absent from public diagnostics.
+- Identical season-16 input contained 12,097 players, 44,714 news items, and
+  only 198 injuries. The old all-player news scan implied an upper bound of
+  approximately 17.85 billion news visits across 33 calls.
+- Baseline measured `regularSeason.total`:
+  199,411.976ms / 190,429.581ms / 178,121.040ms.
+- Baseline `regularSeason.signatureWeeklyMicroArc`:
+  128,976.246ms / 121,200.907ms / 110,382.877ms, about 61.5–64.2% of the stage.
+- Sol froze only `sim.worker.narrativeFarm.ts` and adjacent worker tests. It
+  prohibited helper/index/order/RNG/news/history/secondary-stage changes.
 
-## Read-only architecture result
+## Paired candidate proof
 
-- Source map: `/root/perf_source_map`, complete, no edits.
-- Test/checkpoint map: `/root/perf_test_map`, complete, no edits.
-- Adversarial Sol gate: `/root/swarm_econ18_calibration_adjudication`,
-  `MAP_READY` for instrumentation only, no edits.
-- Production optimization remains blocked until checkpointed season-16 baseline
-  repetitions freeze actual hot paths and exact files.
-- Full decision and instrumentation contract: `SOL_ARCHITECTURE_GATE.md`.
+Serial fresh-process order was B1/C1/B2/C2/B3/C3 with no retry or substitution.
 
-## Instrumentation checkpoint
+| Pair | Baseline total / target ms | Candidate total / target ms | Artifact SHA-256 baseline / candidate |
+| --- | ---: | ---: | --- |
+| 1 | 199,411.976 / 128,976.246 | 78,249.806 / 4,515.245 | `db5e0484715ea221ccfd8012d199ca2c231a662d99d63b4a58ab6a876dcc5eed` / `eaa588ca894b69cb52e2796b02e5d4add374d16ba2a35c718e5fce9e33a4e380` |
+| 2 | 190,429.581 / 121,200.907 | 72,764.402 / 4,369.359 | `5ee0a4c18c50c4b7bef4741013868ce186505c86c50ecce0b5a125752e28836a` / `edd23e38d5e88e33cae36b67b297e5e1986196bfc77ab599a4c1a9ef5acba1e0` |
+| 3 | 178,121.040 / 110,382.877 | 79,800.696 / 4,377.717 | `26be9401983691670a89bac6232faf875e761cd60898c470de81949a16a7dc07` / `f942bd67b24d0e11009aae3c689945943036b0df5368b3ffc3cab194fc682af4` |
 
-- Immutable commit: `c72234204e07b33ae0e0e5b1256ae56778f12e3d`
-- Git tree: `baff0aff02a82d3e7cd1e94f4dd7780d3b5bbb1d`
-- Paths: `sim.worker.actions.ts`, `sim.worker.longSaveProfiler.ts`, and
-  `sim.worker.longSaveProfiler.test.ts` only.
-- Profiler suite: 8/8 passed in `31.07s`; exact v35/action/RNG/diagnostics/public-
-  surface equality passed in `29.842s`.
-- Web/e2e typecheck and diff check passed.
-- The observer remains module-local and out of state, snapshots, public worker
-  contracts, and persisted/public diagnostics.
+Every pair improved; total and target ranges do not overlap. Every run has stage
+signature `d7fc71fee05e4124c0fb3f3d00d6b396cfb3a1e90e59c5bbdc88a7c89636ea60`,
+semantic digest `92a32b6d44099a6f797cf20d7918a450787b6e0367b97ee3f29b007b4c6b7f6f`,
+and row-16 digest `028cfe00273a9f9edfe11b20c6eb7ccadc4ce3f302011d8a3cd3a5d09e23a845`.
+The row subdigests are contracts `252d7d0c790fdbefb21882efa3e2e9a0af22bc46c00d02edb3af8b92bf0352dd`,
+free agency `3ca62d787e9c9137824cb17351c73e3cfe52f7fcaab560d94c90b0c47b9248f5`,
+payroll `7df605c2d8f6d25474783ca15fe5542752d088b4e2de54781a8d22b0eb6cad1e`,
+population `d39bce561aa52c5c54503cc9a5ec178f2cae4d84dd843eda3c6d291dd9fb0814`,
+RNG `8612a0c98050ac5e11f3a333b4439d717573596bcb3f8af6e48e84552feda52c`,
+and state `fe7871f1700446dead37ae3c57ed33fe9ba7642a1729b05e0df6e7a251110618`.
+
+## Corrected-tree and final gates
+
+- Corrected composition `cbcef621b5c841b616fff6bdf7f2120a757fbcc8` reproduced the
+  Goal-18 horizon-2 reference: 4/4 in 47.20s, under 90s, with exact content
+  digest `7c3462952de7828276c4d5fab7a9bbf6de653372992a0f9da599b49ce021f32f`.
+  Receipt SHA-256:
+  `418091a619244e18f41edb5f51a91e0f447c82135f373f0db57d866047407822`.
+- Checkout-local package/web/e2e typechecks all passed.
+- Contracts: 37 passed. Sim-core: 1,714 passed. UI: 1 passed. Web:
+  2,478 passed and 9 intentional skips.
+- Production build/PWA: 3,035 modules and 168 precache entries.
+- Bundle: core 454,918 raw / 147,456 gzip at the exact ceiling; story 393,205
+  raw / 111,617 gzip. Determinism: 3/3.
+- The Turbo wrapper's bundled pnpm 11 attempted an unsafe install and used a
+  shared cross-worktree cache, so that wrapper receipt is environmental and
+  non-authoritative. Direct repository-installed binaries supplied the green
+  typecheck receipts.
+- Final Sol `/root/perf_final_sol_review`: `MERGE_READY`, actionable
+  P0/P1/P2 `0/0/0`. Models/effort were requested but never host-pinned.
+
+## Remaining source truth
+
+All Goal-29 production source and gates are frozen. Sufficiency remains
+conditional until the locally landed commits are integrated into Goal 18 and
+the sole seed-7111 30-season plus checkpoint-15 replay emits a valid exact
+receipt under `2_400_000ms`. No item-19 work may begin first.

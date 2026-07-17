@@ -2,10 +2,12 @@
 
 Date: 2026-07-16
 
-Verdict: `MAP_READY_INSTRUMENTATION_ONLY`
+Verdict: `MERGE_READY — prerequisite landing authorized; Goal-18 sufficiency remains conditional`
 
-Production optimization remains blocked until the checkpointed baseline profile
-freezes measured hot paths and exact editable files.
+The instrumentation, measured hot-path freeze, semantics-neutral optimization,
+paired proof, corrected-tree horizon proof, repository gates, and final review
+are complete. Goal 29 is sufficient only if the sole post-landing Goal-18
+seed-7111 30+15 run validates under the unchanged 40-minute ceiling.
 
 ## Read-only route
 
@@ -14,9 +16,16 @@ freezes measured hot paths and exact editable files.
 | Source/hot-path mapper | `/root/perf_source_map` | Line-level canonical season map and ranked unmeasured hypotheses | Complete; no edits |
 | Test/checkpoint mapper | `/root/perf_test_map` | Exact artifact envelope, hostile matrix, commands, composition plan | Complete; no edits |
 | Adversarial architecture reviewer | `/root/swarm_econ18_calibration_adjudication` | Severity-ranked trust/determinism gate and sequencing | `MAP_READY`; no edits |
+| Measured hot-path freezer | same Sol responsibility | Exact file/function freeze from checkpoint profiles | `FREEZE_READY`; no edits |
+| Final adversarial reviewer | `/root/perf_final_sol_review` | Gate-green diff/evidence review | `MERGE_READY`; P0/P1/P2 `0/0/0`; no edits |
 
 Models and effort were not host-pinned. Role names describe responsibility, not
 verified model routing.
+
+The route used ledger-assisted swarm coordination. One correction continued in
+the same Terra implementation responsibility through a prompt-only scope update
+because the ledger could not expand that existing thread without falsely
+reporting a second writer. No actual model or effort pin was available.
 
 ## Frozen facts
 
@@ -183,4 +192,76 @@ one seed-7111 run under 40 minutes.
 - Coordinator-observed web/e2e typecheck: passed.
 - `git diff --cached --check`: passed before commit.
 - The closed union includes all regular and 18 disposable-adapter stages.
-- Production optimization remains blocked pending checkpointed baseline evidence.
+- At this historical instrumentation checkpoint, production optimization was
+  blocked pending checkpointed baseline evidence; the measured freeze below
+  subsequently resolved that block.
+
+## Measured hot-path and file freeze
+
+The authorized season-15 checkpoint contained 12,097 players, 44,714 news
+items, and 198 injuries. At season 16 the target stage called the injury-return
+news lookup for all players on each of 33 invocations, an upper bound of about
+17.85 billion news-item visits even though only players with a resolved injury
+could produce the moment.
+
+Baseline `regularSeason.total` was 199,411.976ms / 190,429.581ms /
+178,121.040ms. `regularSeason.signatureWeeklyMicroArc` was 128,976.246ms /
+121,200.907ms / 110,382.877ms, approximately 61.5–64.2% of the stage.
+
+Sol froze production scope to:
+
+- `apps/web/src/workers/sim.worker.narrativeFarm.ts`, specifically the
+  precondition before `latestInjuryStartDay` in
+  `applyRegularSeasonPlayerMicroArcMoments`;
+- adjacent exact worker tests in `apps/web/src/workers/sim.worker.test.ts`.
+
+The helper, scan order for eligible players, RNG, news/history, moment creation,
+duplicate suppression, and all secondary stages remained frozen.
+
+## Paired candidate gate
+
+One warmup preceded three serial B/C pairs. Each process imported the same
+checkpoint, exposed the same stage set/call counts, and preserved stage
+signature `d7fc71fee05e4124c0fb3f3d00d6b396cfb3a1e90e59c5bbdc88a7c89636ea60`,
+semantic digest `92a32b6d44099a6f797cf20d7918a450787b6e0367b97ee3f29b007b4c6b7f6f`,
+and row-16 digest
+`028cfe00273a9f9edfe11b20c6eb7ccadc4ce3f302011d8a3cd3a5d09e23a845`.
+
+| Pair | Baseline total / target ms | Candidate total / target ms |
+| --- | ---: | ---: |
+| 1 | 199,411.976 / 128,976.246 | 78,249.806 / 4,515.245 |
+| 2 | 190,429.581 / 121,200.907 | 72,764.402 / 4,369.359 |
+| 3 | 178,121.040 / 110,382.877 | 79,800.696 / 4,377.717 |
+
+Every pair improved and neither total nor target ranges overlap. This proves the
+measured optimization, not final Goal-18 sufficiency.
+
+## Correction and source-freeze gates
+
+- `d80ff41024eaea304a9b679d2b99cc4509f194c3` adds the guard-first production
+  optimization and hostile no-injury/active-injury tests plus exact ordered
+  resolved-injury and duplicate-suppression proof.
+- `c8b941de4e0370c4e0795b2aaf7b3ec7971ca5b3` makes the sim-day profile stage
+  own its lifetime directly. No gameplay path or result changes.
+- Corrected composition `cbcef621b5c841b616fff6bdf7f2120a757fbcc8`
+  passed the frozen horizon-2 proof 4/4 in 47.20s under 90s; exact content digest
+  `7c3462952de7828276c4d5fab7a9bbf6de653372992a0f9da599b49ce021f32f`.
+- Final checkout-local typechecks passed. Contracts 37, sim-core 1,714, UI 1,
+  and web 2,478 passed with 9 intentional skips. Build/PWA produced 3,035
+  modules / 168 precache entries. Bundle core was 454,918 raw / 147,456 gzip at
+  the exact ceiling; story was 393,205 / 111,617. Determinism passed 3/3.
+- The Turbo wrapper's bundled-pnpm/shared-cache failure is environmental and
+  non-authoritative; direct checkout-local typechecks are authoritative.
+
+## Final adversarial review and landing gate
+
+`/root/perf_final_sol_review` returned `MERGE_READY` with actionable
+P0/P1/P2 `0/0/0`. It found no semantic drift, incomplete guard, observer leak,
+bundle regression, unrelated edit, schema/public-contract change, or basis to
+weaken Goal 18.
+
+Sol authorizes exact local prerequisite landing. This gate does not declare the
+prerequisite sufficient: the parent must integrate the landed source into Goal
+18 and run seed 7111 exactly once under the original external 40-minute gate.
+Failure to validate the full 30+15 receipt returns the slice to bounded
+adjudication and keeps item 19 closed.

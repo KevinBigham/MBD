@@ -1,144 +1,84 @@
 # ECON-LONG-SAVE-PERF-1 Execution Plan
 
+Status: `CONDITIONAL — prerequisite locally landed; sole post-landing Goal-18 full diagnostic pending`
+
 ## Objective and player outcome
 
-Long saves complete the exact Goal-18 economy proof within its existing
-40-minute gate because the canonical simulation does less redundant work while
-producing identical state, RNG, history, and receipts.
+Make the canonical long-save simulation perform less redundant work without
+changing state, RNG, history, saves, or receipts, then let Goal 18's unchanged
+seed-7111 30-season plus checkpoint-15 replay prove whether that improvement is
+sufficient under the original `2_400_000ms` ceiling.
 
 Goal: `docs/codex/goals/29_ECON_LONG_SAVE_PERF_1.md`.
 
-## Live source truth
+## Frozen scope and invariants
 
-See `SOURCE_TRUTH.md`. The slice starts from `main@8e24909`; GameSnapshot is v35,
-Dexie is v6, and the unfinished Goal-18 branch remains isolated. Baseline source
-mapping, tests, and profiling evidence are pending and will be appended here
-before production optimization.
+- GameSnapshot remains v35 and Dexie remains v6.
+- Worker state remains canonical; the profiler is module-local observation only.
+- No simulation mechanic, call order, RNG draw, history fact, save shape,
+  Goal-18 row, receipt, validator, calibration band, or timeout changes.
+- No automatic pruning, UI/route/dependency/public-worker change, item 19,
+  remote push, deploy, tag, publication, or release.
+- The three protected main-worktree edits remain untouched and unstaged.
 
-## Scope and non-goals
+## Executed route
 
-Owned initially:
-
-- Goal/run/status documentation;
-- opt-in test-only timing/checkpoint helpers proven outside persisted state and
-  public worker contracts;
-- only the production hot paths frozen after measurement;
-- focused exactness/performance tests and receipts.
-
-Hard cut: no mechanics skipped/reordered/approximated; no RNG, state, schema,
-history retention, automatic pruning, receipt, validation, calibration, UI,
-route, dependency, public worker API, item-19, broad item-98, push, deploy, tag,
-or release change.
-
-## Behavioral invariants
-
-1. Worker state remains canonical; profiling is observation only.
-2. Same deterministic input produces identical complete state and RNG.
-3. All 32 organizations, players, games, affiliates, phases, facts, and market
-   outcomes execute in the same order.
-4. GameSnapshot remains v35 and old-save facts remain unchanged.
-5. Goal-18 rows, checkpoints, replay, validators, bands, and 40-minute gate are
-   unchanged.
-6. No automatic archive/prune action or history loss.
-7. User/CPU semantics remain symmetric and difficulty-neutral.
-8. Main-worktree user edits remain untouched and unstaged.
-
-## Design decision
-
-Use observation-first optimization:
-
-1. add out-of-band timing with disabled no-op semantics;
-2. compose that instrumentation with the Goal-18 WIP only on a temporary
-   diagnostic branch;
-3. capture one hash-bound season-15 v35 checkpoint and rank canonical stages;
-4. freeze exact production paths and gates;
-5. allow one Terra writer at most two semantics-neutral correction loops;
-6. prove exactness, land the prerequisite independently, then integrate and run
-   Goal 18 seed 7111 once.
-
-Rejected: timeout increase; split receipt processes; pruning/history truncation;
-shorter horizon; synthetic-only benchmark; optimizing plausible seams before
-measurement; landing Goal-18 WIP with the prerequisite.
-
-Migration: none. Rollback: revert the prerequisite commit; snapshots remain v35.
-
-## Milestones
-
-1. **Preflight/docs** — goal, source truth, plan, authorization/status; prove
-   with scoped diff and `git diff --check`.
-2. **Read-only architecture/profile freeze preparation** — source, tests, and
-   risks mapped by three read-only reviewers; coordinator synthesizes exact
-   instrumentation contract.
-3. **Profiler/checkpoint instrumentation** — opt-in test-only observer plus unit
-   exactness/fail-closed tests; focused Vitest and web typecheck.
-4. **Baseline evidence** — temporary Goal-18 integration, one exact season-15
-   artifact, ranked stage receipt, and frozen production file scope.
-5. **Production optimization** — one writer, at most two correction loops, tests
-   beside each measured change.
-6. **Source freeze** — identical stage comparison, horizon-2 exact reference,
-   focused matrix, typecheck, full tests, build/PWA, determinism.
-7. **Final review/closeout** — zero P0–P2, completion report, changelog/status,
-   exact staging, commit, local main fast-forward.
-8. **Goal-18 resumption** — integrate onto Goal-18 branch and run exactly the
-   seed-7111 diagnostic under the original external 40-minute gate.
+1. Started Goal 29 independently from clean `main@8e24909`.
+2. Read-only source/test/Sol maps froze an instrumentation-only contract.
+3. The sole writer added the opt-in observer and exactness tests in `c722342`.
+4. A disposable Goal-18 composition captured one exact season-15 checkpoint.
+5. Fresh-process baseline profiles identified the real dominant stage; Sol then
+   froze the exact production file/function and paired-comparison gate.
+6. The writer skipped injury-news history scans only for players proven unable
+   to produce an injury-return moment (`d80ff41`) and added hostile/ordered tests.
+7. One correction made the sim-day profiler own its stage directly so its
+   lifetime remained exact (`c8b941d`).
+8. Three serial baseline/candidate pairs, corrected-tree horizon-2 proof, focused
+   and root gates, build/PWA, bundle budget, determinism, and final Sol review
+   passed.
+9. Luna reconciled docs and locally landed the prerequisite conditionally.
+10. The parent now integrates the landed prerequisite into Goal 18 and runs the
+    sole seed-7111 30+15 diagnostic. That run is not part of this receipt yet.
 
 ## Acceptance matrix
 
 | Requirement | Artifact | Proof | Status |
 | --- | --- | --- | --- |
-| Out-of-band stable stage profiler | `sim.worker.longSaveProfiler.ts`; `c722342` | 8/8 focused unit/worker exactness | Complete |
-| No state/RNG/save/receipt impact | observer + action boundaries | exact v35/action/RNG/diagnostics/public-surface proof | Complete for instrumentation; Goal-18 evidence pending |
-| Exact season-15 checkpoint | local artifact + hash receipt | capture/reload and hostile mismatch tests | Pending |
-| Measured hot-path freeze | architecture gate | identical checkpoint stage report | Pending |
-| Semantics-neutral optimization | pending measured files | focused before/after exactness | Pending |
-| Horizon-2 exact preservation | Goal-18 integration receipt | byte-identical rows/digests, <90s | Pending |
-| Repository gates | command receipts | typecheck/test/build/determinism | Pending |
-| Final review | review artifact | zero actionable P0–P2 | Pending |
-| Goal-18 seed 7111 <40m | full diagnostic receipt | exact validator pass | Pending |
-| Independent landing | Git receipts | prerequisite commit on local main only | Pending |
+| Out-of-band stable profiler | `sim.worker.longSaveProfiler.ts`, `sim.worker.actions.ts`; `c722342`, `c8b941d` | profiler 8/8; exact day-stage ownership; no public/persisted surface | Complete |
+| No state/RNG/save/receipt impact | observer and worker exactness tests | exact v35/action/RNG/diagnostics/public-surface equality; all paired semantic digests identical | Complete |
+| Exact season-15 checkpoint | local 97,073,683-byte artifact, not Git | raw SHA `260594ec24b4f0846835343f7c96bc835a6b2e68909dcc531759cbd44a63516f`; envelope `0cf2564bc2f9a3328c521cc404760a0784d684ff3c05cbb2c9c1f2f991d24d98`; hostile matrix passed | Complete |
+| Measured hot-path freeze | `SOL_ARCHITECTURE_GATE.md` | 12,097 players, 44,714 news rows, 198 injuries; target dominated 110,382.877–128,976.246ms | Complete |
+| Semantics-neutral optimization | `sim.worker.narrativeFarm.ts`, `sim.worker.test.ts`; `d80ff41` | guard-first negative controls; resolved-injury ordered receipt and duplicate suppression | Complete |
+| Paired performance proof | six local profile receipts | total 178,121.040–199,411.976ms -> 72,764.402–79,800.696ms; target 110,382.877–128,976.246ms -> 4,369.359–4,515.245ms; every pair improved, ranges did not overlap | Complete |
+| Horizon-2 exact preservation | corrected composition `cbcef621` | 4/4 in 47.20s under 90s; artifact SHA `418091a619244e18f41edb5f51a91e0f447c82135f373f0db57d866047407822`; content digest `7c3462952de7828276c4d5fab7a9bbf6de653372992a0f9da599b49ce021f32f` | Complete |
+| Repository gates | final `c8b941d` command receipts | package/web/e2e typechecks; contracts 37; sim-core 1,714; UI 1; web 2,478 plus 9 intentional skips; build/PWA; bundle; determinism 3/3 | Complete |
+| Final review | `/root/perf_final_sol_review` | `MERGE_READY`; actionable P0/P1/P2 = 0/0/0 | Complete |
+| Independent local landing | Git closeout receipt | exact owned staging, cached diff check, one docs commit, local-main fast-forward only | Complete when this report's commit is on local `main` |
+| Goal-18 seed 7111 <40m | dependent Goal-18 receipt | exact 30-season primary plus checkpoint-15 replay validator | Pending; sole remaining sufficiency condition |
 
-## Progress log
+## Progress and decisions
 
-1. 2026-07-16 — Kevin authorized Option A from the Goal-18 runtime oracle
-   request. Goal-18 authorization artifacts were updated and committed on its
-   isolated branch at `2ac8287`.
-2. 2026-07-16 — Created `codex/econ-long-save-perf-1` from clean
-   `main@8e24909`. Main's three unrelated dirty files remain isolated.
-3. 2026-07-16 — Offline frozen dependency setup passed. Clean-main web
-   typecheck passed; focused worker baseline passed 3 files / 12 tests with one
-   env-gated skip in `172.51s`.
-4. 2026-07-16 — Three read-only maps completed with no edits. Sol verdict is
-   `MAP_READY_INSTRUMENTATION_ONLY`; production optimization remains blocked
-   until checkpointed baseline profiling freezes measured files/functions.
-5. 2026-07-16 — The sole Terra writer produced the frozen three-path observer.
-   After one bounded correction adding the 18 adapter-only stage literals,
-   coordinator verification passed 8/8 tests in `31.07s`, web/e2e typecheck,
-   and diff check. Instrumentation committed as `c722342` (tree `baff0aff`).
+- The checkpoint producer is immutable revision `01add123b668d736e2385c2a30338b628ee0513b`
+  / tree `ecf12a7e0e12de10d7529c399dd4cbd9b8400358`; consumers are admitted by
+  exact schema/state/RNG/row/context digests, not false revision equality.
+- Baseline consumer `71c73f969fb53793c025aa7573a64b90bc9eef26` and candidate
+  `c510089fbe1699ac4c530161cb8e530e9a497ab5` used the same checkpoint and
+  fresh-process stage signature
+  `d7fc71fee05e4124c0fb3f3d00d6b396cfb3a1e90e59c5bbdc88a7c89636ea60`.
+- All paired runs preserved semantic digest
+  `92a32b6d44099a6f797cf20d7918a450787b6e0367b97ee3f29b007b4c6b7f6f`
+  and row-16 digest
+  `028cfe00273a9f9edfe11b20c6eb7ccadc4ce3f302011d8a3cd3a5d09e23a845`.
+- The repository's Turbo wrapper is a non-authoritative environmental failure:
+  bundled pnpm 11 attempted an unsafe install and shared cross-worktree cache.
+  Direct checkout-local binaries for every package/web/e2e typecheck are the
+  authoritative green receipt.
+- The unchanged Goal-18 runtime gate remains the only sufficiency band; no
+  performance threshold was invented for Goal 29.
 
-## Decision log
+## Remaining step and stop condition
 
-1. Use Goal 29 for this prerequisite; Goal 28 remains the dependent soak.
-2. Honor manifest `pnpm@9.15.4` with `corepack pnpm`; ambient pnpm is 11.9.0.
-3. Do not assign numeric micro-bands before real profiling. The unchanged
-   Goal-18 40-minute run is the final acceptance gate.
-4. A temporary composition branch may collect the authorized checkpoint without
-   landing or rewriting Goal-18 WIP.
-5. Separate immutable checkpoint producer revision/tree from explicit per-run
-   consumer revision/tree. Exact semantic/context digests, not revision equality,
-   admit a consumer.
-6. Use a dedicated internal observer rather than persisted/public performance
-   diagnostics.
-
-## Completion conditions
-
-- Goal contract and living artifacts remain current.
-- Profiler/checkpoint tests and exactness proof pass.
-- Profile freezes real hot paths before production edits.
-- At most two semantics-neutral correction loops.
-- Focused tests and affected-package typecheck pass during implementation.
-- After source freeze: root typecheck, full tests, production build/PWA, and
-  `verify:determinism` pass.
-- Final review has zero actionable P0–P2 findings.
-- Prerequisite lands independently on local `main`; no unrelated file enters.
-- Existing Goal-18 seed 7111 emits a valid exact receipt under 40 minutes.
-- No remote push or deployment.
+Integrate the locally landed prerequisite into Goal 18 and run seed 7111 exactly
+once under the original external 40-minute ceiling. If the exact 30+15 receipt
+does not validate or misses that ceiling, Goal 29 remains insufficient and work
+stops for bounded adjudication; item 19 does not begin.

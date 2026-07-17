@@ -1,5 +1,8 @@
 # ECON-LONG-SAVE-PERF-1 — Exact Long-Save Runtime Prerequisite
 
+Current status: `CONDITIONAL — prerequisite locally landed; sole post-landing
+Goal-18 full diagnostic pending`.
+
 ## Objective
 
 Unblock Goal 28 without weakening it. Measure the canonical worker path that
@@ -124,3 +127,8 @@ The measured canonical long-save worker path is faster without any semantic or
 deterministic drift; all focused and root gates pass; final review is clean; the
 prerequisite lands independently; and the existing Goal-18 seed-7111 proof emits
 its exact valid receipt within the unchanged 40-minute ceiling.
+
+The landable Goal-29 source, exact checkpoint/profile evidence, corrected-tree
+horizon proof, root gates, and final Sol review are complete. The status above
+remains conditional because this goal's last sentence is deliberately not
+satisfied until the dependent Goal-18 run emits and validates its full receipt.

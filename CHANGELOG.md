@@ -34,6 +34,24 @@
 
 ### Save And Determinism
 
+- Conditionally landed Goal 29 `ECON-LONG-SAVE-PERF-1`, the bounded runtime
+  prerequisite for roadmap item 18. An opt-in module-local observer identified
+  regular-season player micro-arcs as the dominant late-save stage; players
+  without a resolved injury now bypass an irrelevant full news-history scan
+  while every eligible scan, moment, state transition, and RNG draw stays exact.
+- Three fresh-process pairs reduced season-16 total runtime from
+  178,121.040–199,411.976ms to 72,764.402–79,800.696ms and the targeted stage
+  from 110,382.877–128,976.246ms to 4,369.359–4,515.245ms. Every pair improved
+  with non-overlapping ranges and identical row/state/RNG/contracts/payroll/
+  population/free-agency evidence.
+- Final evidence: corrected-tree Goal-18 horizon-2 4/4 in 47.20s with exact
+  content digest; package/web/e2e typechecks; contracts 37, sim-core 1,714, UI 1,
+  web 2,478 plus nine intentional skips; 3,035-module / 168-entry PWA; bundle
+  budget; determinism 3/3; Sol `MERGE_READY`, P0/P1/P2 0/0/0. GameSnapshot
+  remains v35 and Dexie v6. Sufficiency and roadmap-item completion remain
+  pending the sole post-landing Goal-18 seed-7111 30+15 receipt under the
+  unchanged 40-minute gate.
+
 - Verified roadmap item 17, Goal 27 `ECON-TRADE-RETENTION-1`: legal two-team
   trades may now carry flat annual retained salary and one current-season,
   player-linked payroll reimbursement. Gross player salary never changes; one
