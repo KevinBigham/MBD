@@ -82,3 +82,15 @@ These seams are hypotheses until the authorized profile ranks them.
 - Production optimization remains blocked until checkpointed season-16 baseline
   repetitions freeze actual hot paths and exact files.
 - Full decision and instrumentation contract: `SOL_ARCHITECTURE_GATE.md`.
+
+## Instrumentation checkpoint
+
+- Immutable commit: `c72234204e07b33ae0e0e5b1256ae56778f12e3d`
+- Git tree: `baff0aff02a82d3e7cd1e94f4dd7780d3b5bbb1d`
+- Paths: `sim.worker.actions.ts`, `sim.worker.longSaveProfiler.ts`, and
+  `sim.worker.longSaveProfiler.test.ts` only.
+- Profiler suite: 8/8 passed in `31.07s`; exact v35/action/RNG/diagnostics/public-
+  surface equality passed in `29.842s`.
+- Web/e2e typecheck and diff check passed.
+- The observer remains module-local and out of state, snapshots, public worker
+  contracts, and persisted/public diagnostics.

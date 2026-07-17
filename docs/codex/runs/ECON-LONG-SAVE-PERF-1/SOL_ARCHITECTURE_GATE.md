@@ -171,3 +171,16 @@ baseline repetitions -> Sol hot-path/file freeze -> same single writer (maximum
 two correction loops) -> paired profiles/exactness -> horizon-2/root gates ->
 final Sol review -> local prerequisite landing -> Goal-18 integration -> exactly
 one seed-7111 run under 40 minutes.
+
+## Instrumentation gate receipt
+
+- Commit: `c72234204e07b33ae0e0e5b1256ae56778f12e3d`
+- Tree: `baff0aff02a82d3e7cd1e94f4dd7780d3b5bbb1d`
+- Scope: exactly `sim.worker.actions.ts`,
+  `sim.worker.longSaveProfiler.ts`, and its test.
+- Coordinator-observed profiler suite: 1 file / 8 tests passed in `31.07s`;
+  the full exactness test took `29.842s`.
+- Coordinator-observed web/e2e typecheck: passed.
+- `git diff --cached --check`: passed before commit.
+- The closed union includes all regular and 18 disposable-adapter stages.
+- Production optimization remains blocked pending checkpointed baseline evidence.

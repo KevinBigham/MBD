@@ -86,8 +86,8 @@ Migration: none. Rollback: revert the prerequisite commit; snapshots remain v35.
 
 | Requirement | Artifact | Proof | Status |
 | --- | --- | --- | --- |
-| Out-of-band stable stage profiler | pending source freeze | focused unit/worker exactness | Pending |
-| No state/RNG/save/receipt impact | pending | exact exports and digests | Pending |
+| Out-of-band stable stage profiler | `sim.worker.longSaveProfiler.ts`; `c722342` | 8/8 focused unit/worker exactness | Complete |
+| No state/RNG/save/receipt impact | observer + action boundaries | exact v35/action/RNG/diagnostics/public-surface proof | Complete for instrumentation; Goal-18 evidence pending |
 | Exact season-15 checkpoint | local artifact + hash receipt | capture/reload and hostile mismatch tests | Pending |
 | Measured hot-path freeze | architecture gate | identical checkpoint stage report | Pending |
 | Semantics-neutral optimization | pending measured files | focused before/after exactness | Pending |
@@ -110,6 +110,10 @@ Migration: none. Rollback: revert the prerequisite commit; snapshots remain v35.
 4. 2026-07-16 — Three read-only maps completed with no edits. Sol verdict is
    `MAP_READY_INSTRUMENTATION_ONLY`; production optimization remains blocked
    until checkpointed baseline profiling freezes measured files/functions.
+5. 2026-07-16 — The sole Terra writer produced the frozen three-path observer.
+   After one bounded correction adding the 18 adapter-only stage literals,
+   coordinator verification passed 8/8 tests in `31.07s`, web/e2e typecheck,
+   and diff check. Instrumentation committed as `c722342` (tree `baff0aff`).
 
 ## Decision log
 
