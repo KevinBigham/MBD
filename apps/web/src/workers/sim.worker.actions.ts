@@ -2072,105 +2072,117 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 }
 
 function simDayInternal(): SimResultDTO {
-  return profileLongSaveStage('regularSeason.day', simDayOperation);
-}
-
-function simDayOperation(): SimResultDTO {
-  return measureRuntimeSync('lastSimDayMs', () => {
-    const s = requireState();
-    if (syncFranchiseTerminationFromOwner(s)) {
-      return blockedSimResult(s);
-    }
-    if (s.phase === 'preseason') {
-      s.phase = 'regular';
-      s.day = 1;
-    }
-
-    if (s.phase === 'regular') {
-      const previousDay = s.day;
-      const previousStandings = s.seasonState.standings.serialize();
-      const previousInjuryIds = new Set(s.injuries.keys());
-      const previousTradeCount = s.tradeState.tradeHistory.length;
-      const { newState, result } = profileLongSaveStage('regularSeason.mlbSimulation', () => {
-        incrementGamesMissedToInjury(s, s.day, s.day + 1);
-        return simulateDay(
-          s.rng,
-          s.seasonState,
-          s.schedule,
-          s.players,
-          buildSeasonSimulationOptions(s),
-        );
-      });
-      s.seasonState = newState;
-      s.day = newState.currentDay;
-      s.gmRelationships = decayRelationships(s.gmRelationships, s.season);
-      profileLongSaveStage('regularSeason.affiliateDays', () => {
-        advanceMinorLeagueDay(s);
-      });
-      const crossedMonths = profileLongSaveStage('regularSeason.monthlyDevelopment', () =>
-        applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day));
-      profileLongSaveStage('regularSeason.tradeMarket', () => {
-        processTradeMarketActivity(s, previousDay, s.day);
-      });
-      profileLongSaveStage('regularSeason.injuryNews', () => {
-        processDayInjuriesAndNews(s);
-      });
-      profileLongSaveStage('regularSeason.signatureWeeklyMicroArc', () => {
-        processSignatureMoments(s, result.games);
-        applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
-        applyRegularSeasonPlayerMicroArcMoments(s);
-      });
-      profileLongSaveStage('regularSeason.narrative', () => {
-        refreshNarrativeState(s, result.games);
-      });
-      profileLongSaveStage('regularSeason.tickerDebutConsequences', () => {
-        refreshTickerFeed(s, {
-          simDay: previousDay,
-          games: result.games,
-          previousStandings,
-          previousInjuryIds,
-          previousTradeCount,
-        });
-        applyDebutFlashbacks(s, recordProspectBondDebuts(s));
-        resolveConsequenceChains(s);
-      });
-      profileLongSaveStage('regularSeason.recordTracking', () => {
-        syncRecordTracking(s);
-      });
-      return profileLongSaveStage('regularSeason.monthlyHooksPulseAchievementsScenario', () => {
-        publishMonthlyNarrativeHooks(s, crossedMonths);
-        updateScenarioProgress(s);
-        return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
-      });
-    }
-
-    if (s.phase === 'playoffs') {
-      if (ensurePlayoffBracket(s)) {
-        return playoffResult(s, 0);
+  const stage = startLongSaveProfileStage('regularSeason.day');
+  try {
+    return measureRuntimeSync('lastSimDayMs', () => {
+      const s = requireState();
+      if (syncFranchiseTerminationFromOwner(s)) {
+        return blockedSimResult(s);
+      }
+      if (s.phase === 'preseason') {
+        s.phase = 'regular';
+        s.day = 1;
       }
 
-      if (s.playoffBracket?.champion) {
+      if (s.phase === 'regular') {
+        const previousDay = s.day;
+        const previousStandings = s.seasonState.standings.serialize();
+        const previousInjuryIds = new Set(s.injuries.keys());
+        const previousTradeCount = s.tradeState.tradeHistory.length;
+        const { newState, result } = profileLongSaveStage('regularSeason.mlbSimulation', () => {
+          incrementGamesMissedToInjury(s, s.day, s.day + 1);
+          return simulateDay(
+            s.rng,
+            s.seasonState,
+            s.schedule,
+            s.players,
+            buildSeasonSimulationOptions(s),
+          );
+        });
+        s.seasonState = newState;
+        s.day = newState.currentDay;
+        s.gmRelationships = decayRelationships(s.gmRelationships, s.season);
+        profileLongSaveStage('regularSeason.affiliateDays', () => {
+          advanceMinorLeagueDay(s);
+        });
+        const crossedMonths = profileLongSaveStage('regularSeason.monthlyDevelopment', () =>
+          applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day));
+        profileLongSaveStage('regularSeason.tradeMarket', () => {
+          processTradeMarketActivity(s, previousDay, s.day);
+        });
+        profileLongSaveStage('regularSeason.injuryNews', () => {
+          processDayInjuriesAndNews(s);
+        });
+        profileLongSaveStage('regularSeason.signatureWeeklyMicroArc', () => {
+          processSignatureMoments(s, result.games);
+          applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
+          applyRegularSeasonPlayerMicroArcMoments(s);
+        });
+        profileLongSaveStage('regularSeason.narrative', () => {
+          refreshNarrativeState(s, result.games);
+        });
+        profileLongSaveStage('regularSeason.tickerDebutConsequences', () => {
+          refreshTickerFeed(s, {
+            simDay: previousDay,
+            games: result.games,
+            previousStandings,
+            previousInjuryIds,
+            previousTradeCount,
+          });
+          applyDebutFlashbacks(s, recordProspectBondDebuts(s));
+          resolveConsequenceChains(s);
+        });
+        profileLongSaveStage('regularSeason.recordTracking', () => {
+          syncRecordTracking(s);
+        });
+        return profileLongSaveStage('regularSeason.monthlyHooksPulseAchievementsScenario', () => {
+          publishMonthlyNarrativeHooks(s, crossedMonths);
+          updateScenarioProgress(s);
+          return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+        });
+      }
+
+      if (s.phase === 'playoffs') {
+        if (ensurePlayoffBracket(s)) {
+          return playoffResult(s, 0);
+        }
+
+        if (s.playoffBracket?.champion) {
+          finalizePlayoffRunIfNeeded(s);
+          return playoffResult(s, 0);
+        }
+
+        const before = s.playoffBracket!;
+        const gamesBefore = countBracketGames(before);
+        let working = before;
+        while (!isPlayoffComplete(working)) {
+          working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+            teamModifiers: buildTeamPerformanceModifiers(s),
+            unavailablePlayerIds: buildUnavailablePlayerIds(s),
+          });
+        }
+        s.playoffBracket = working;
+        recordPlayoffProgressCoverage(s, before, s.playoffBracket);
         finalizePlayoffRunIfNeeded(s);
-        return playoffResult(s, 0);
+        return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
       }
 
-      const before = s.playoffBracket!;
-      const gamesBefore = countBracketGames(before);
-      let working = before;
-      while (!isPlayoffComplete(working)) {
-        working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
-          teamModifiers: buildTeamPerformanceModifiers(s),
-          unavailablePlayerIds: buildUnavailablePlayerIds(s),
-        });
-      }
-      s.playoffBracket = working;
-      recordPlayoffProgressCoverage(s, before, s.playoffBracket);
-      finalizePlayoffRunIfNeeded(s);
-      return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
-    }
+      if (s.phase === 'offseason') {
+        if (s.offseasonState?.completed) {
+          return {
+            day: s.day,
+            season: s.season,
+            phase: 'offseason',
+            gamesPlayed: 0,
+            seasonComplete: true,
+          };
+        }
 
-    if (s.phase === 'offseason') {
-      if (s.offseasonState?.completed) {
+        const offseasonProgress = advanceOffseasonOnce(s);
+        applyAISigningProgress(s, offseasonProgress.aiSignings);
+        resolveConsequenceChains(s);
+        updateScenarioProgress(s);
+
         return {
           day: s.day,
           season: s.season,
@@ -2180,29 +2192,18 @@ function simDayOperation(): SimResultDTO {
         };
       }
 
-      const offseasonProgress = advanceOffseasonOnce(s);
-      applyAISigningProgress(s, offseasonProgress.aiSignings);
-      resolveConsequenceChains(s);
-      updateScenarioProgress(s);
-
       return {
         day: s.day,
         season: s.season,
-        phase: 'offseason',
+        phase: s.phase,
         gamesPlayed: 0,
-        seasonComplete: true,
+        seasonComplete: false,
+        flowStateChanged: true,
       };
-    }
-
-    return {
-      day: s.day,
-      season: s.season,
-      phase: s.phase,
-      gamesPlayed: 0,
-      seasonComplete: false,
-      flowStateChanged: true,
-    };
-  });
+    });
+  } finally {
+    finishLongSaveProfileStage(stage);
+  }
 }
 
 export const actionApi = {
