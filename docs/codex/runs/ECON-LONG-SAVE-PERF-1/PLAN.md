@@ -107,6 +107,9 @@ Migration: none. Rollback: revert the prerequisite commit; snapshots remain v35.
 3. 2026-07-16 — Offline frozen dependency setup passed. Clean-main web
    typecheck passed; focused worker baseline passed 3 files / 12 tests with one
    env-gated skip in `172.51s`.
+4. 2026-07-16 — Three read-only maps completed with no edits. Sol verdict is
+   `MAP_READY_INSTRUMENTATION_ONLY`; production optimization remains blocked
+   until checkpointed baseline profiling freezes measured files/functions.
 
 ## Decision log
 
@@ -116,6 +119,11 @@ Migration: none. Rollback: revert the prerequisite commit; snapshots remain v35.
    Goal-18 40-minute run is the final acceptance gate.
 4. A temporary composition branch may collect the authorized checkpoint without
    landing or rewriting Goal-18 WIP.
+5. Separate immutable checkpoint producer revision/tree from explicit per-run
+   consumer revision/tree. Exact semantic/context digests, not revision equality,
+   admit a consumer.
+6. Use a dedicated internal observer rather than persisted/public performance
+   diagnostics.
 
 ## Completion conditions
 

@@ -66,3 +66,19 @@ These seams are hypotheses until the authorized profile ranks them.
    canonical worker receipt.
 5. Save schema, public worker API, receipt content, annual rows, RNG, and
    gameplay outcomes remain unchanged.
+6. Checkpoint artifact identity uses immutable producer revision/tree. Baseline
+   and candidate profiles record their own explicit consumer revision/tree;
+   consumer equality is not required, but exact schema/state/RNG/row/context
+   admission is. This corrects the initial ambiguous "source revision" wording.
+7. Existing persisted `performanceDiagnostics` is not the profiler seam. The
+   dedicated observer remains module-local and absent from public diagnostics.
+
+## Read-only architecture result
+
+- Source map: `/root/perf_source_map`, complete, no edits.
+- Test/checkpoint map: `/root/perf_test_map`, complete, no edits.
+- Adversarial Sol gate: `/root/swarm_econ18_calibration_adjudication`,
+  `MAP_READY` for instrumentation only, no edits.
+- Production optimization remains blocked until checkpointed season-16 baseline
+  repetitions freeze actual hot paths and exact files.
+- Full decision and instrumentation contract: `SOL_ARCHITECTURE_GATE.md`.

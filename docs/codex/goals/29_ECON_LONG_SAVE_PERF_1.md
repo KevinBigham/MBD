@@ -45,9 +45,11 @@ band widening, item 19, remote push, deployment, tag, release, or publication.
   morale/chemistry/payroll, signature moments, records, offseason phases, and
   checkpoint export—are hypotheses until measured.
 - The exact season-15 artifact is diagnostic input, not a game fixture. It must
-  bind source revision, seed, save schema, complete serialized-state digest, RNG
-  state/digest, and the Goal-18 checkpoint-15 annual row. A mismatch fails
-  closed before profiling.
+  bind its immutable producer revision/tree, seed, save schema, complete
+  serialized-state digest, RNG state/digest, and the Goal-18 checkpoint-15
+  annual row. Each profile also binds an explicit consumer revision/tree;
+  consumers may differ only when every semantic/context digest matches. Any
+  mismatch fails closed before profiling.
 
 ## Required behavior
 
