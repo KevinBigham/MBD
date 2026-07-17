@@ -1,6 +1,6 @@
 # ECON-LONG-SAVE-PERF-1 Completion Report
 
-Status: `CONDITIONAL — prerequisite locally landed; sole post-landing Goal-18 full diagnostic pending`
+Status: `BLOCKED — post-landing sufficiency gate missed`
 
 Date: 2026-07-16
 
@@ -15,10 +15,11 @@ baseline/candidate pairs improved with non-overlapping ranges and exact semantic
 digests.
 
 The prerequisite's source, focused gates, repository gates, bundle, determinism,
-corrected-tree horizon proof, and final adversarial review are green. Local
-landing is intentionally conditional: Goal 29 is not sufficient and roadmap
-item 18 is not complete until the sole post-landing Goal-18 seed-7111 30-season
-primary plus checkpoint-15 replay emits a valid receipt within `2_400_000ms`.
+corrected-tree horizon proof, and final adversarial review are green. The sole
+post-landing Goal-18 seed-7111 run nevertheless hit the exact external 40-minute
+alarm after 30 primary starts and 29 completions. Season 30 did not complete,
+replay never began, and no JSON receipt was emitted. The locally landed code is
+verified but insufficient; Goal 29 and roadmap item 18 are not complete.
 
 ## Implementation and owned files
 
@@ -53,8 +54,8 @@ automatic-pruning, receipt, validator, band, timeout, or gameplay-policy change.
 | 8 | Identical before/after production-path comparison | fresh-process B1/C1/B2/C2/B3/C3 | every pair improves; ranges do not overlap | paired gate passed without retries/substitution | Final 30+15 runtime still decides sufficiency |
 | 9 | Focused exactness plus horizon reference | worker tests; corrected composition `cbcef621` | horizon 4/4 in 47.20s; no UI changed, so no browser presentation gate applies | content digest `7c3462952de7828276c4d5fab7a9bbf6de653372992a0f9da599b49ce021f32f` exact | None identified for two seasons |
 | 10 | Root gates and final review | frozen source `c8b941d` | checkout-local typechecks; contracts 37; sim-core 1,714; UI 1; web 2,478 + 9 skip; build/PWA; bundle; determinism | Sol `MERGE_READY`, P0/P1/P2 0/0/0 | Turbo wrapper receipt is environmental/non-authoritative; direct binaries passed |
-| 11 | Independent local landing then one Goal-18 run | one item-only docs commit after source commits; local-main fast-forward | exact staging/cached diff/Git receipts | local landing complete; Goal-18 run pending | Parent must not run more than the one authorized full diagnostic |
-| 12 | Sufficiency only on exact 30+15 <40m | unchanged Goal-18 harness/gate | No receipt claimed here | Pending | This is the sole remaining conditional risk |
+| 11 | Independent local landing then one Goal-18 run | item-only docs commit after source commits; local-main fast-forward; Goal-18 integration `41b12d1` | exact staging/cached diff/Git receipts; sole run executed | Local landing complete; run stopped by SIGALRM | No retry is authorized |
+| 12 | Sufficiency only on exact 30+15 <40m | unchanged Goal-18 harness/gate | 30 starts, 29 completions, zero replay, no receipt, exit 142 | Failed | Newly bounded split or explicit contract amendment required |
 
 ## Exact performance and semantic evidence
 
@@ -94,6 +95,22 @@ Raw checkpoint and timing payloads remain outside Git.
 - Corrected-tree Goal-18 horizon-2: 4/4, 47.20s, exact digest, under 90s.
 - Final Sol: `MERGE_READY`, actionable P0/P1/P2 `0/0/0`.
 
+## Post-landing sufficiency-gate receipt
+
+- Goal-18 revision: `41b12d13639d0670afd2f24b1d2a76fb3fd74d64`.
+- Environment: `MBD_ECON_LONG_SOAK=1`, mode
+  `diagnostic_inherited_candidates`, seed 7111, source revision exact, direct
+  `econLongSoak.test.ts`, external Perl alarm exactly 2,400 seconds.
+- Exit: 142 from external SIGALRM.
+- Progress: 30 primary start markers; 29 primary completion markers; zero replay
+  markers. Season 30 started but did not complete.
+- JSON path `/tmp/econ18-seed7111-full-41b12d1.json`: absent.
+- Log `/tmp/econ18-seed7111-full-41b12d1.log`: 3,840 bytes; SHA-256
+  `d51c9bc1d33dca8d007404330105fd39fec4bd3102f93e0cf6f8c3c4604b2148`;
+  last modified `2026-07-16T23:26:51-0500`.
+- No process remains. No retry, timeout change, seed 7112/7113, source edit, or
+  item-19 work followed.
+
 The root Turbo wrapper is not an authoritative failure: its bundled pnpm 11
 attempted an unsafe install and shared a cross-worktree cache. All direct
 repository-installed package/web/e2e typecheck binaries passed in the exact
@@ -120,14 +137,19 @@ commit cannot truthfully embed its own future hash. Staging excludes raw `/tmp`
 artifacts, swarm ledgers, Goal-18 WIP, and all unrelated user files.
 
 Rollback is a normal revert of the Goal-29 commits. There is no migration or
-save rewrite to undo; v35 snapshots remain compatible. The retained risks are:
+save rewrite to undo; v35 snapshots remain compatible. The blocker and retained
+risks are:
 
-1. Goal-18's sole full seed-7111 30+15 diagnostic may still miss 40 minutes or
-   expose a late-horizon problem not present in the season-16 paired gate.
+1. Goal-18's sole full seed-7111 diagnostic did miss 40 minutes before season 30
+   completion, so the 30+15 receipt does not exist and Goal 29 is insufficient.
 2. The core bundle passes at the exact gzip ceiling, so future unrelated core
    growth has no budget headroom.
 3. The 97MB checkpoint is intentionally local evidence and must be retained
-   until the dependent diagnostic/review is closed.
+   until the blocker is adjudicated.
+
+Both authorized Goal-29 correction loops are exhausted. The precise next
+authority required is a newly bounded performance split or explicit contract
+amendment. A retry or timeout increase is not an accepted substitute.
 
 ## Actual swarm route
 

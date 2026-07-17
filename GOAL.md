@@ -41,10 +41,12 @@ ADR and must not block web release.
 - Roadmap item 18, the 30-season multi-seed economy soak, is active on its
   isolated Goal-28 branch. Goal 29 / `ECON-LONG-SAVE-PERF-1` measured and
   removed a semantics-neutral late-save hot path, passed exact paired profiles,
-  corrected-tree horizon proof, root gates, and final review, and is locally
-  landed conditionally. The sole post-landing seed-7111 30+15 diagnostic under
-  the unchanged 40-minute gate remains; item 19 stays closed until it validates
-  and Goal 18 completes.
+  corrected-tree horizon proof, root gates, and final review, and remains locally
+  landed. The sole post-landing seed-7111 diagnostic then hit the exact 40-minute
+  alarm after 30 primary starts but only 29 completions, before replay or a JSON
+  receipt. Goal 29 is insufficient and blocked with both correction loops
+  exhausted; Goal 18 is incomplete and item 19 stays closed. Continuing requires
+  a newly bounded performance split or explicit contract amendment.
 
 ## Remaining Release Gates
 

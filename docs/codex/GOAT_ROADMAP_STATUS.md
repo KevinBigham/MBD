@@ -1,12 +1,12 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-16 after the bounded ECON-LONG-SAVE-PERF-1 prerequisite passed exact performance, semantic, repository, and review gates and was locally landed conditionally; Goal 18's sole post-landing full diagnostic remains.
+Last reconciled: 2026-07-16 after the landed ECON-LONG-SAVE-PERF-1 optimization passed its semantic/repository gates but the sole post-landing Goal-18 run missed the exact 40-minute sufficiency gate after 30 primary starts and 29 completions.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
 Current invariants: GameSnapshot v35; Dexie v6; worker canonical; no bare simulation `Math.random()`; no fabricated old-save history; no hidden CPU advantage; no UI finalization before durable persistence. The three pre-existing user-owned dirty files remain outside campaign scope and must stay unstaged: `.agents/skills/mbd-implement-slice/SKILL.md`, `AGENTS.md`, and `docs/codex/PROGRAM.md`.
 
-Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `PENDING`, `BLOCKED — ORACLE`, and `BLOCKED — EXTERNAL AUTHORIZATION`.
+Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `PENDING`, `BLOCKED — POST-LANDING SUFFICIENCY GATE MISSED`, `BLOCKED — ORACLE`, and `BLOCKED — EXTERNAL AUTHORIZATION`.
 
 ## Current campaign checkpoint
 
@@ -18,11 +18,13 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 - Closed item: **15 — market-size revenue feeds budgets**, now **VERIFIED COMPLETE** under Goal 25 / `ECON-MARKET-REVENUE-1`.
 - Closed item: **16 — explainable free-agent decisions**, now **VERIFIED COMPLETE** under Goal 26 / `ECON-FA-DECISIONS-1`.
 - Closed item: **17 — salary retention and player-linked cash in trades**, now **VERIFIED COMPLETE** under Goal 27 / `ECON-TRADE-RETENTION-1`; item 18 was not started.
-- Conditional prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
+- Blocked prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
   landed after green paired performance/exactness, corrected-tree horizon,
-  repository, and review gates. Goal 28 remains isolated on its dependent WIP
-  branch; the sole seed-7111 30+15 run remains. No item-19 work begins until it
-  validates and Goal 18 completes.
+  repository, and review gates, but its sole seed-7111 run reached 30 primary
+  starts and only 29 completions before SIGALRM. Goal 28 remains incomplete;
+  replay never began and no receipt exists. Both correction loops are exhausted.
+  A newly bounded performance split or explicit contract amendment is required;
+  item 19 remains closed.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -48,7 +50,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | IN PROGRESS | Goal 29 / `runs/ECON-LONG-SAVE-PERF-1` prerequisite conditionally landed; Goal 28 on dependent WIP branch | Exact checkpoint; 3/3 paired performance/exactness; corrected horizon 4/4 in 47.20s; root/build/bundle/determinism green; Sol `MERGE_READY` 0/0/0 | Goal-29 commit containing completion report on local `main`; Goal 28 unlanded | Ledger-assisted swarm; one production writer; final Sol; Luna closeout; model/effort unpinned | Items 9–17 | Integrate landed prerequisite and run the sole seed-7111 30+15 proof under unchanged 40-minute gate |
+| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — POST-LANDING SUFFICIENCY GATE MISSED | Goal 29 locally landed but insufficient; Goal 28 on dependent WIP branch | Exact paired/horizon/root gates green; sole full seed-7111 run: 30 starts, 29 completions, zero replay, no JSON, exit 142 at 2,400s | Goal-29 blocker commit on local `main`; Goal-18 blocker commit remains unlanded | Ledger-assisted swarm; one production writer; final Sol; same Luna closeout responsibility; model/effort unpinned | Items 9–17 | Obtain a newly bounded performance split or explicit contract amendment; no retry/timeout change/item 19 |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |
@@ -190,12 +192,13 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## First incomplete item source contract
 
-Item 18 remains `IN PROGRESS`. Goal 29's semantics-neutral prerequisite is
-conditionally landed with exact checkpoint/profile/root/review evidence, but it
-does not complete the roadmap item. The next legal action is only the existing
-Goal-28 seed-7111 30-season primary plus checkpoint-15 replay under the unchanged
-40-minute gate. Item 19 remains closed until that receipt validates and the
-remaining Goal-18 multi-seed acceptance is resolved.
+Item 18 is `BLOCKED — POST-LANDING SUFFICIENCY GATE MISSED`. Goal 29's
+semantics-neutral source remains locally landed with exact checkpoint/profile/
+root/review evidence, but the sole full run stopped before season 30 completed,
+before replay, and without a receipt. Both correction loops are exhausted. The
+next legal action requires a newly bounded performance split or explicit
+contract amendment. A retry, timeout increase, seed 7112/7113, item 19, or new
+source edit is not currently authorized.
 
 ## Item 18 prerequisite conditional landing receipt
 
@@ -214,6 +217,10 @@ remaining Goal-18 multi-seed acceptance is resolved.
   `MERGE_READY`, actionable P0/P1/P2 `0/0/0`.
 - Model/effort requests were not host-pinned. No push, deploy, tag, release,
   Goal-18 full run, or item-19 work occurred during this landing.
+- Post-landing result at Goal-18 revision `41b12d13639d0670afd2f24b1d2a76fb3fd74d64`:
+  external 2,400-second SIGALRM, exit 142, 30 primary starts, 29 completions,
+  zero replay markers, and no JSON receipt. Log SHA-256:
+  `d51c9bc1d33dca8d007404330105fd39fec4bd3102f93e0cf6f8c3c4604b2148`.
 
 ## Item 9/10 landing receipt
 

@@ -1,7 +1,6 @@
 # ECON-LONG-SAVE-PERF-1 — Exact Long-Save Runtime Prerequisite
 
-Current status: `CONDITIONAL — prerequisite locally landed; sole post-landing
-Goal-18 full diagnostic pending`.
+Current status: `BLOCKED — post-landing sufficiency gate missed`.
 
 ## Objective
 
@@ -130,5 +129,8 @@ its exact valid receipt within the unchanged 40-minute ceiling.
 
 The landable Goal-29 source, exact checkpoint/profile evidence, corrected-tree
 horizon proof, root gates, and final Sol review are complete. The status above
-remains conditional because this goal's last sentence is deliberately not
-satisfied until the dependent Goal-18 run emits and validates its full receipt.
+is blocked because the sole dependent run reached 30 primary starts but only 29
+primary completions before the exact external 40-minute alarm. It emitted no
+replay marker or JSON receipt. Both authorized correction loops are exhausted;
+the Done contract is not achieved. Further work requires a newly bounded
+performance split or explicit contract amendment, not a retry or timeout change.

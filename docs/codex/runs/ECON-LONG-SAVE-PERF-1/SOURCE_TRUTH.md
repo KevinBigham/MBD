@@ -100,9 +100,25 @@ and state `fe7871f1700446dead37ae3c57ed33fe9ba7642a1729b05e0df6e7a251110618`.
 - Final Sol `/root/perf_final_sol_review`: `MERGE_READY`, actionable
   P0/P1/P2 `0/0/0`. Models/effort were requested but never host-pinned.
 
-## Remaining source truth
+## Post-landing sufficiency truth
 
-All Goal-29 production source and gates are frozen. Sufficiency remains
-conditional until the locally landed commits are integrated into Goal 18 and
-the sole seed-7111 30-season plus checkpoint-15 replay emits a valid exact
-receipt under `2_400_000ms`. No item-19 work may begin first.
+- Goal-18 integration revision:
+  `41b12d13639d0670afd2f24b1d2a76fb3fd74d64`, merged without rewriting its
+  existing history.
+- Command environment: `MBD_ECON_LONG_SOAK=1`, mode
+  `diagnostic_inherited_candidates`, seed 7111, exact source revision above,
+  direct `econLongSoak.test.ts`, and external Perl alarm exactly 2,400 seconds.
+- Intended JSON: `/tmp/econ18-seed7111-full-41b12d1.json`; none was emitted.
+  Log: `/tmp/econ18-seed7111-full-41b12d1.log`; SHA-256
+  `d51c9bc1d33dca8d007404330105fd39fec4bd3102f93e0cf6f8c3c4604b2148`,
+  3,840 bytes, last modified `2026-07-16T23:26:51-0500`.
+- Terminal result: exit 142 from external SIGALRM. The log contains 30 primary
+  start markers, exactly 29 primary completion markers, and zero replay markers.
+  Season 30 started but did not complete. No process remains.
+
+The result materially improves on the former season-17 stop, and all paired,
+horizon, repository, and semantic gates remain green. It nevertheless fails
+Goal 29's decisive sufficiency contract. Both authorized correction loops are
+exhausted. Source remains frozen and locally landed; no retry, timeout change,
+new seed, source edit, or item-19 work is authorized. Continuing requires a
+newly bounded performance split or explicit contract amendment.

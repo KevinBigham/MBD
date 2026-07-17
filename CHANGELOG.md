@@ -48,9 +48,10 @@
   content digest; package/web/e2e typechecks; contracts 37, sim-core 1,714, UI 1,
   web 2,478 plus nine intentional skips; 3,035-module / 168-entry PWA; bundle
   budget; determinism 3/3; Sol `MERGE_READY`, P0/P1/P2 0/0/0. GameSnapshot
-  remains v35 and Dexie v6. Sufficiency and roadmap-item completion remain
-  pending the sole post-landing Goal-18 seed-7111 30+15 receipt under the
-  unchanged 40-minute gate.
+  remains v35 and Dexie v6. The sole post-landing Goal-18 seed-7111 run reached
+  30 primary starts but only 29 completions before the unchanged 40-minute alarm;
+  replay never began and no receipt was emitted. The optimization remains landed
+  and verified, but it is insufficient and neither Goal 29 nor item 18 is complete.
 
 - Verified roadmap item 17, Goal 27 `ECON-TRADE-RETENTION-1`: legal two-team
   trades may now carry flat annual retained salary and one current-season,

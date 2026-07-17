@@ -1,6 +1,6 @@
 # ECON-LONG-SAVE-PERF-1 Execution Plan
 
-Status: `CONDITIONAL — prerequisite locally landed; sole post-landing Goal-18 full diagnostic pending`
+Status: `BLOCKED — post-landing sufficiency gate missed`
 
 ## Objective and player outcome
 
@@ -54,7 +54,7 @@ Goal: `docs/codex/goals/29_ECON_LONG_SAVE_PERF_1.md`.
 | Repository gates | final `c8b941d` command receipts | package/web/e2e typechecks; contracts 37; sim-core 1,714; UI 1; web 2,478 plus 9 intentional skips; build/PWA; bundle; determinism 3/3 | Complete |
 | Final review | `/root/perf_final_sol_review` | `MERGE_READY`; actionable P0/P1/P2 = 0/0/0 | Complete |
 | Independent local landing | Git closeout receipt | exact owned staging, cached diff check, one docs commit, local-main fast-forward only | Complete when this report's commit is on local `main` |
-| Goal-18 seed 7111 <40m | dependent Goal-18 receipt | exact 30-season primary plus checkpoint-15 replay validator | Pending; sole remaining sufficiency condition |
+| Goal-18 seed 7111 <40m | dependent Goal-18 receipt | exact command hit SIGALRM after 30 starts / 29 completions; no replay or receipt | Failed; Goal 29 insufficient |
 
 ## Progress and decisions
 
@@ -76,9 +76,13 @@ Goal: `docs/codex/goals/29_ECON_LONG_SAVE_PERF_1.md`.
 - The unchanged Goal-18 runtime gate remains the only sufficiency band; no
   performance threshold was invented for Goal 29.
 
-## Remaining step and stop condition
+## Sufficiency-gate outcome and stop
 
-Integrate the locally landed prerequisite into Goal 18 and run seed 7111 exactly
-once under the original external 40-minute ceiling. If the exact 30+15 receipt
-does not validate or misses that ceiling, Goal 29 remains insufficient and work
-stops for bounded adjudication; item 19 does not begin.
+The landed prerequisite was integrated without rewriting Goal-18 history at
+`41b12d13639d0670afd2f24b1d2a76fb3fd74d64`. The sole authorized seed-7111 run
+used the unchanged `2_400_000ms` external alarm. It started all 30 primary
+seasons, completed exactly 29, started no replay, emitted no JSON receipt, and
+exited 142 from SIGALRM. Both Goal-29 correction loops are exhausted. Work stops
+here: no retry, timeout change, new seed, source edit, or item 19 is authorized.
+Continuing requires a newly bounded performance split or explicit contract
+amendment.
