@@ -1,6 +1,6 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-16 after the landed ECON-LONG-SAVE-PERF-1 optimization passed its semantic/repository gates but the sole post-landing Goal-18 run missed the exact 40-minute sufficiency gate after 30 primary starts and 29 completions.
+Last reconciled: 2026-07-16 after Kevin authorized Goal 30 / ECON-LATE-HORIZON-PERF-1 as the new bounded season-30 performance prerequisite required by Goal 29's fixed-gate miss.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -25,6 +25,11 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
   replay never began and no receipt exists. Both correction loops are exhausted.
   A newly bounded performance split or explicit contract amendment is required;
   item 19 remains closed.
+- Active prerequisite: **ECON-LATE-HORIZON-PERF-1** under Goal 30 now owns one
+  authenticated season-29 artifact, exact season-30 profile/freeze, one narrow
+  semantics-neutral optimization, a 15%-headroom readiness forecast, and one
+  unchanged final Goal-18 run. Goal 29 remains blocked history; item 19 stays
+  closed.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
 - Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
@@ -50,7 +55,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — POST-LANDING SUFFICIENCY GATE MISSED | Goal 29 locally landed but insufficient; Goal 28 on dependent WIP branch | Exact paired/horizon/root gates green; sole full seed-7111 run: 30 starts, 29 completions, zero replay, no JSON, exit 142 at 2,400s | Goal-29 blocker commit on local `main`; Goal-18 blocker commit remains unlanded | Ledger-assisted swarm; one production writer; final Sol; same Luna closeout responsibility; model/effort unpinned | Items 9–17 | Obtain a newly bounded performance split or explicit contract amendment; no retry/timeout change/item 19 |
+| 18 | 2 | 30-season multi-seed economy soak | IN PROGRESS | Goal 30 active prerequisite; Goal 29 blocked history; Goal 28 dependent WIP | Goal-30 architecture gate requires authenticated season-29 state, exact season-30 attribution, 15% forecast headroom, and unchanged final 30+15 receipt | Goal-30 branch from local `main`; Goal-18 blocker commit remains unlanded | Ledger-assisted swarm; three read-only maps complete; one Terra writer planned; routing unpinned | Items 9–17 | Build disposable late-state adapter; no production edit before Sol late-profile freeze; no item 19 |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |
