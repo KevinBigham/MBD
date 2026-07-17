@@ -34,6 +34,18 @@
 
 ### Save And Determinism
 
+- Recorded Goal 30 `ECON-LATE-HORIZON-PERF-1` as blocked without landing its
+  production candidate. The exact season-30 milestone lookup reduction preserved
+  all row/state/RNG/round-trip/subdomain/call facts while improving median
+  regular-season total 21.125%, combined target time 39.017%, and selected V8
+  cost 99.278%; worker-core remained exactly 454,918 raw / 147,456 gzip.
+- The sole canonical primary forecast then timed out at the unchanged
+  2,400,000ms test ceiling and measured 2,766,160ms adjusted, already 726,160ms
+  above the complete readiness cap. It emitted no receipt; continuation, full
+  gates, production landing, final Goal 18, and item 19 were not run. Final Sol
+  verdict: `BLOCK_CONFIRMED`, zero actionable P0–P2. GameSnapshot remains v35
+  and Dexie remains v6.
+
 - Conditionally landed Goal 29 `ECON-LONG-SAVE-PERF-1`, the bounded runtime
   prerequisite for roadmap item 18. An opt-in module-local observer identified
   regular-season player micro-arcs as the dominant late-save stage; players

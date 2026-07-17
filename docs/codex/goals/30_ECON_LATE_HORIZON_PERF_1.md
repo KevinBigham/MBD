@@ -1,6 +1,6 @@
 # ECON-LATE-HORIZON-PERF-1 — Exact Season-30 Runtime Prerequisite
 
-Current status: `ACTIVE — late-checkpoint evidence gate`.
+Current status: `BLOCKED — forecast admission failed; production unlanded`.
 
 ## Objective
 

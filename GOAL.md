@@ -38,14 +38,14 @@ ADR and must not block web release.
 - Roadmap item 17, contract-safe salary retention and player-linked cash
   reimbursement in two-team trades, is complete under Goal 27 /
   `docs/codex/runs/ECON-TRADE-RETENTION-1/`.
-- Roadmap item 18, the 30-season multi-seed economy soak, remains active on its
-  isolated Goal-28 branch. Goal 29 / `ECON-LONG-SAVE-PERF-1` is locally landed
-  but honestly blocked after its exact 40-minute post-landing run reached 30
-  primary starts and only 29 completions. Kevin authorized the required newly
-  bounded split, now Goal 30 / `ECON-LATE-HORIZON-PERF-1`: authenticate season
-  29, profile the exact season-30 operation, and optimize only one measured
-  semantics-neutral path before one unchanged final Goal-18 run. Item 19 stays
-  closed.
+- Roadmap item 18, the 30-season multi-seed economy soak, is blocked. Goal 29 /
+  `ECON-LONG-SAVE-PERF-1` remains landed but insufficient. Goal 30 /
+  `ECON-LATE-HORIZON-PERF-1` then proved a second narrow optimization exact and
+  fast at season 30, but its sole primary readiness forecast timed out and
+  measured 2,766,160ms adjusted, already above the full 2,040,000ms admission
+  cap. The candidate remains uncommitted/unlanded; continuation, final Goal 18,
+  and item 19 did not start. A new bounded prerequisite or explicit contract
+  amendment is required before resumption.
 
 ## Remaining Release Gates
 
