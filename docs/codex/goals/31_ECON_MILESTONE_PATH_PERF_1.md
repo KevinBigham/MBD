@@ -1,6 +1,6 @@
 # ECON-MILESTONE-PATH-PERF-1 — Exact Combined Milestone Production Path
 
-Current status: `ACTIVE — docs-first implementation and focused proof`.
+Current status: `BLOCKED — correction-loop budget exhausted before matrix completion`.
 
 ## Objective
 

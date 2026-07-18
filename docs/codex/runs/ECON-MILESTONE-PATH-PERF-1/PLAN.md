@@ -18,8 +18,9 @@ confirmed. The source modules are the two independent consumers listed there.
 Allowed source is exactly milestones, ceremony, their adjacent tests, and Goal
 31/run docs. No sim-core, schemas, APIs, UI, dependencies, Goal-18 harnesses,
 or retained Goal-30 worktree state. Raw proof data remains untracked outside
-this repository. This is a `HEAVY` bounded prerequisite with 0/2 correction
-loops consumed.
+this repository. This is a `HEAVY` bounded prerequisite with 2/2 correction
+loops consumed; the attempted C3 configuration then triggered the forbidden
+third-correction stop condition.
 
 ## Behavioral invariants
 
@@ -66,7 +67,13 @@ No migration is needed; rollback is reverting the eventual source-freeze commit.
 ## Progress log
 
 1. Verified exact clean base, scripts, v35, Dexie v6, source hashes, and live
-   consumer seams. Began docs-first artifact; no production edit has occurred.
+   consumer seams. Committed the docs-first artifact `3f4bf71` before production.
+2. Completed two-consumer implementation, adjacent 6/6 focused proof, restored
+   negative controls, web typecheck, and Vite/PWA build.
+3. Correction 1/2 invalidated overlapping standard processes before a receipt;
+   correction 2/2 invalidated one fail-closed C2 environment parse. The
+   corrected serial warm-up, C1, and C2 receipts are exact. C3 repeated the
+   malformed producer tree and is the forbidden third correction. Stop.
 
 ## Decision log
 
@@ -75,10 +82,11 @@ No migration is needed; rollback is reverting the eventual source-freeze commit.
    contract is documented by Goals 29/30 and the route.
 2. Separate adjacent tests are necessary because clean main has no tests for
    either consumer and the scope prohibits widening a shared module.
+3. No C3, V8, forecast, full gate, review, source freeze, or landing may run
+   because the frozen correction budget is exhausted.
 
 ## Completion conditions
 
-Only source-freeze work may complete here: all frozen focused/semantic,
-negative-control, provenance, C1–C3, V8, build/bundle, and one forecast gate
-must be recorded. Full repository gates, Sol final review, and landing are
-explicitly deferred to later owners.
+This run is blocked before source freeze. A new narrow Sol authorization is
+required before any remaining matrix work; full gates, review, and landing are
+still explicitly deferred.

@@ -1,6 +1,6 @@
 # Source Truth — ECON-MILESTONE-PATH-PERF-1
 
-Status: `DOCS_FIRST`.
+Status: `BLOCKED — correction-loop budget exhausted`.
 
 ## Preflight
 
