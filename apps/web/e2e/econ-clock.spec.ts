@@ -175,8 +175,11 @@ test('ECON-CLOCK-1 option and expiry outcomes survive public save and hard reloa
     await page.getByPlaceholder('Search name or position...').fill(EXPIRING_STAR_NAME);
     await expect(page.getByRole('heading', { name: 'Available Free Agents (1)', exact: true })).toBeVisible();
     let availableRegion = page.getByRole('region', { name: 'Available Free Agents (1)', exact: true });
-    let starLink = availableRegion.locator('a:visible').filter({ hasText: new RegExp(`^${EXPIRING_STAR_NAME}$`) });
-    await expect(starLink).toBeVisible();
+    let starOfferButton = availableRegion.getByRole('button', {
+      name: `Select ${EXPIRING_STAR_NAME} for a contract offer`,
+      exact: true,
+    });
+    await expect(starOfferButton).toBeVisible();
 
     await page.setViewportSize({ width: 375, height: 667 });
     const search = page.getByPlaceholder('Search name or position...');
@@ -190,8 +193,11 @@ test('ECON-CLOCK-1 option and expiry outcomes survive public save and hard reloa
     expect(filterBox).not.toBeNull();
     expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(375);
     expect(filterBox!.x + filterBox!.width).toBeLessThanOrEqual(375);
-    starLink = availableRegion.locator('a:visible').filter({ hasText: new RegExp(`^${EXPIRING_STAR_NAME}$`) });
-    await expect(starLink).toBeVisible();
+    starOfferButton = availableRegion.getByRole('button', {
+      name: `Select ${EXPIRING_STAR_NAME} for a contract offer`,
+      exact: true,
+    });
+    await expect(starOfferButton).toBeVisible();
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await freshRuntimeReload(page, { ready: async () => waitForAppReady(page) });
@@ -199,17 +205,21 @@ test('ECON-CLOCK-1 option and expiry outcomes survive public save and hard reloa
     await page.getByPlaceholder('Search name or position...').fill(EXPIRING_STAR_NAME);
     await expect(page.getByRole('heading', { name: 'Available Free Agents (1)', exact: true })).toBeVisible();
     availableRegion = page.getByRole('region', { name: 'Available Free Agents (1)', exact: true });
-    const availableStar = availableRegion.locator('a:visible').filter({ hasText: new RegExp(`^${EXPIRING_STAR_NAME}$`) });
+    const availableStar = availableRegion.getByRole('button', {
+      name: `Select ${EXPIRING_STAR_NAME} for a contract offer`,
+      exact: true,
+    });
     await expect(availableStar).toBeVisible();
     await expect(readIndexedDbSaveIntegrityPair(page, ACTIVE_SAVE_ID)).resolves.toEqual(enteredMarket);
 
-    await availableRegion.locator('tbody tr').filter({ hasText: EXPIRING_STAR_NAME }).click();
+    await availableStar.click();
     await expect(page.getByText(EXPIRING_STAR_NAME, { exact: true }).last()).toBeVisible();
     const salarySlider = page.locator('input[type="range"]').nth(1);
     await salarySlider.focus();
     await salarySlider.press('End');
     await page.getByRole('button', { name: 'Offer Contract', exact: true }).click();
-    await expect(page.getByText(`Signed! ${EXPIRING_STAR_NAME} joins your team.`, { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Contract Offer', exact: true }).getByRole('status'))
+      .toContainText(`Signed! ${EXPIRING_STAR_NAME} joins your team.`);
     await expectMutationSaved(page);
     await expect(page.getByRole('heading', { name: 'Available Free Agents (0)', exact: true })).toBeVisible();
     // The first signing unlocks a persisted achievement ceremony. Dismiss it

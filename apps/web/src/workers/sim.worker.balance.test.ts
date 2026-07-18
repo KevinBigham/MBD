@@ -165,7 +165,10 @@ describe('worker balance activity targets', () => {
     for (const seed of ACTIVITY_SEEDS) {
       metrics.push(await runSeasonActivity(seed));
     }
-  }, 300_000);
+  // This deterministic fixture simulates four complete seasons serially. A
+  // cold GitHub runner can exceed five minutes as the live worker gains new
+  // season systems, so preserve the full sample instead of truncating proof.
+  }, 600_000);
 
   afterAll(async () => {
     vi.restoreAllMocks();
