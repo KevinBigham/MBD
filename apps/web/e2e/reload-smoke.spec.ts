@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   appMain,
   clickFreshOverlayAction,
+  clickTransientLocator,
   disableIndexedDbSaveFault,
   dismissGuidedStartNudges,
   drainDurableOverlays,
@@ -26,6 +27,18 @@ import {
   tamperIndexedDbSaveChecksum,
   waitForAppReady,
 } from './helpers/dynasty';
+
+test('transient overlay dismissal ignores disappearance but preserves visible failures', async () => {
+  await expect(clickTransientLocator({
+    click: async () => { throw new Error('detached transient action'); },
+    isVisible: async () => false,
+  } as never)).resolves.toBeUndefined();
+
+  await expect(clickTransientLocator({
+    click: async () => { throw new Error('blocked visible action'); },
+    isVisible: async () => true,
+  } as never)).rejects.toThrow('blocked visible action');
+});
 
 test('fresh overlay-action oracle never retains a stale report control', async () => {
   const firstRead = selectExactlyOneVisibleOverlayAction([

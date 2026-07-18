@@ -903,9 +903,20 @@ export async function runGlobalSimulation(
   await expectMutationSaved(page);
 }
 
+export async function clickTransientLocator(locator: Locator): Promise<void> {
+  try {
+    await locator.click({ timeout: 5_000 });
+  } catch (error) {
+    // Locator handlers may observe a transient overlay just as another
+    // legitimate UI transition removes it. Ignore only that verified race;
+    // a target that remains visible must still surface the click failure.
+    if (await locator.isVisible().catch(() => false)) throw error;
+  }
+}
+
 export async function installTutorialDismissal(page: Page): Promise<void> {
   const skipTutorial = page.getByRole('button', { name: 'Skip tutorial' });
-  await page.addLocatorHandler(skipTutorial, async () => {
-    await skipTutorial.click();
+  await page.addLocatorHandler(skipTutorial, async (button) => {
+    await clickTransientLocator(button);
   });
 }
