@@ -1,6 +1,6 @@
 # MBD Codex Program
 
-Each row is a separate worktree/branch and a separate `/goal`. Do not run the entire table as one goal.
+Each row is a separate worktree/branch and a separate `/goal`. Do not collapse the table into one undifferentiated goal statement — work the rows in dependency order, one `/goal` per row, continuing to the next independent row in the same run once the current row lands cleanly. Respect the `Depends on` and `Parallel notes` columns; goals flagged as conflicting (e.g. 11 and 12 re-baseline the same calibration bands) must still not run concurrently.
 
 | Order | Goal | Outcome | Depends on | Parallel notes |
 |---:|---|---|---|---|

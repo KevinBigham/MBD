@@ -1,6 +1,6 @@
 ---
 name: mbd-implement-slice
-description: Implement exactly one Mr. Baseball Dynasty goal file with source reconciliation, a living plan, deterministic/save-safe coding, tests, browser proof, and a completion report. Use for MBD feature slices; do not use for broad backlog implementation.
+description: Implement a Mr. Baseball Dynasty goal file with source reconciliation, a living plan, deterministic/save-safe coding, tests, browser proof, and a completion report. Use for MBD feature slices, invoking it again for each subsequent independent goal file in a marathon run.
 ---
 
 # MBD Implement Slice

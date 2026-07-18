@@ -9,7 +9,7 @@ Build MBD as a trustworthy, deterministic, approachable long-save baseball dynas
 ## Source truth and scope
 
 - Current repository source, tests, schemas, runtime behavior, and git state outrank every audit or council document.
-- Implement exactly one file from `docs/codex/goals/` per branch/worktree.
+- Implement one goal file from `docs/codex/goals/` per branch/worktree, verify and land it, then continue into the next independent goal file in its own branch/worktree without waiting for a new session.
 - Read the goal, inspect the live source, and create a living plan before production edits.
 - Treat paths, line numbers, save versions, and “already fixed” claims in older documents as unverified until checked.
 - Preserve all pre-existing work. Never run destructive Git commands (`reset --hard`, `clean`, force checkout, force push) or delete untracked user files.
