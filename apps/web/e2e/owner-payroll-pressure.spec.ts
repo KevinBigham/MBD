@@ -340,7 +340,8 @@ test('ECON-OWNER-PAYROLL-PRESSURE-1 crosses advisory lines, reconciles once, and
     await page.screenshot({ path: MOBILE_EVIDENCE_PATH, fullPage: true });
 
     await offer.click();
-    await expect(page.getByText(`Signed! ${OWNER_PLAYER_NAME} joins your team.`, { exact: true })).toBeVisible();
+    await expect(offerPanel.getByRole('status'))
+      .toContainText(`Signed! ${OWNER_PLAYER_NAME} joins your team.`);
     await expectMutationSaved(page);
     expect(await drainDurableOverlays(page)).toBe(true);
     await expectMutationSaved(page);
@@ -381,11 +382,11 @@ test('ECON-OWNER-PAYROLL-PRESSURE-1 crosses advisory lines, reconciles once, and
     if (!completedFacts) throw new Error('Missing completed owner-payroll facts.');
     await expect(readDurableOwnerPayrollFacts(page)).resolves.toEqual(completedFacts);
     await mainNavigation(page).getByRole('link', { name: 'News', exact: true }).click();
-    await expect(page.getByText('Ownership accepts a tax-line season', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ownership marks an aggressive payroll finish', { exact: true })).toBeVisible();
     await expect(page.getByText(/projected exposure/i)).toBeVisible();
 
     await mainNavigation(page).getByRole('link', { name: 'Finance', exact: true }).click();
-    await expect(appMain(page).getByText('Inside owner plan', { exact: true })).toBeVisible();
+    await expect(appMain(page).getByText('Above soft ceiling', { exact: true })).toBeVisible();
     await expect(appMain(page).getByRole('region', { name: 'Total Payroll', exact: true }))
       .toContainText('$275.00M');
     await expect(
