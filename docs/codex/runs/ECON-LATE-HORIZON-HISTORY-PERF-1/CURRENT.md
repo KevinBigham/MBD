@@ -1,10 +1,10 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: bounded verification correction loop 3 opened by reproducible P1s;
+Phase: correction loop 3 frozen; fresh Sol diagnostic review pending;
 diagnostic execution closed
 
-Writer: none pending the docs checkpoint. The same Terra/high writer will own
-the exact three-file bounded split.
+Writer: none. The same Terra/high writer completed the exact three-file
+bounded split byte-identically in both disposable compositions.
 
 Landable source freeze:
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
@@ -21,16 +21,32 @@ Focused receipts, retries disabled:
 - four structural mutants failed their intended guards and were restored;
 - `git diff --check` passed and the source-freeze worktree/index are clean.
 
-Current blocker: no production blocker. Final Sol review returned
-`FIX_AND_REVIEW`, P0/P1/P2 `0/2/1`: reducer validation can admit a forged
-re-digested `PASS`; output provenance does not reopen observations through a
-stable regular-file boundary; and malformed selective semantic digests are
-accepted. The reviewed `-r1` root is immutable and contains only its manifest.
-The explicit campaign rule permits a third loop because the P1s are
-reproducible and Sol supplied an exact three-file bounded split.
+Changed paths: only the three disposable proof paths approved for correction
+loop 3 changed in each composition:
 
-Next action: change only `econLongSoak.receipts.ts`,
-`econLongSoak.receipts.test.ts`, and
-`econLateHorizonPerf.integration.test.ts` byte-identically in both
-compositions; rerun focused tests/typecheck; seal fresh diagnostic `-r2`; run
-check-only; and obtain one fresh Sol review. Do not run the diagnostic.
+- `apps/web/src/workers/econLongSoak.receipts.ts`;
+- `apps/web/src/workers/econLongSoak.receipts.test.ts`;
+- `apps/web/src/workers/econLateHorizonPerf.integration.test.ts`.
+
+Last green command: the fresh `-r2` check-only command exited `0` with 15 tests
+passed and one unrelated Goal-31 gated adapter skipped. It spawned no paired
+child, created no input copy or output, called no measured root or timer, and
+left the artifact root containing only its sealed manifest.
+
+Current blocker: no production or implementation blocker. Execution remains
+closed until a fresh independent Sol review returns zero actionable P0-P2 on:
+
+- baseline composition `505cfdf7c3c11e0cb821bea0716641dbcb787555`,
+  tree `0640b942317d7bfacebb33b2b5befa20e90cd746`;
+- successor composition `7cfda1134cd6f7458f906018a23461ba6a7a97d1`,
+  tree `36b8f2fdef9adb68b7516441ece0a3e9ad09a04e`;
+- manifest
+  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/manifest.json`,
+  raw SHA-256
+  `15e8d9e6c81aac8da253a3076dd7a9414f2e8a42beea3d02feea02992e7d5995`,
+  internal digest
+  `57d0ba66a26dca3f5dcd03a8dfeddb8f06aefd36a74232456d4bec0f9fd8340b`.
+
+Next action: obtain exactly one fresh Sol/xhigh review. Do not run the paired
+diagnostic unless that review records `APPROVED` with actionable P0/P1/P2
+`0/0/0`.

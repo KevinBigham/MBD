@@ -245,13 +245,16 @@ or Item-19 command has run under Goal 31.
 The exact Goal-31 terminal documentation is now locally landed without its
 failed source candidate at `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`.
 Kevin authorized the Sol-approved Goal-32 multi-seam successor exactly as
-recorded in `docs/codex/goals/32_ECON_LATE_HORIZON_HISTORY_PERF_1.md`. The
-current legal action is to finish its docs-first architecture gate, then use
-one Terra writer for only the named four production seams and tests. A single
-paired diagnostic against post-season-15 and season-30-input data may run
-after source freeze and independent Sol review; the final no-retry
-proof/admission opens only when the diagnostic's frozen headroom gate is
-green. Item 19 remains closed.
+recorded in `docs/codex/goals/32_ECON_LATE_HORIZON_HISTORY_PERF_1.md`. Its
+landable source freeze is `5a4eb60f8b1890803117a84a613d43af605f47dc`,
+independently source-reviewed `MERGE_READY` with zero actionable P0-P2. The
+final paired compositions are `505cfdf7…` and `7cfda113…`; replacement
+diagnostic `-r2` is sealed and check-only green. The current legal action is
+exactly one fresh Sol review of that frozen artifact. A single paired
+diagnostic against post-season-15 and season-30-input data may run only after
+a zero-finding verdict; the final no-retry proof/admission opens only when the
+diagnostic's frozen headroom gate is green. No paired diagnostic or final
+proof has run. Item 19 remains closed.
 
 ## Item 18 Goal-30 blocker receipt
 

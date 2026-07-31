@@ -448,6 +448,37 @@ name is `rph-receipt.json`.
 `manifestDigest` is `digestV1` over all preceding top-level keys. The
 operator-supplied raw manifest SHA-256 independently binds complete bytes.
 
+### Sealed `-r2` pre-execution artifact
+
+Correction loop 3 changed only the exact three-file Sol split,
+byte-identically in both compositions. It recomputes the reducer threshold
+predicate, validates the complete exact semantic-digest closure, and reads the
+manifest, inputs, and observations through the canonical-root stable
+single-file-descriptor contract. The focused 48-test matrix, ordinary 95-test
+matrix, and web typecheck passed in each composition with retries disabled;
+the authorized gated skips were two and six respectively.
+
+The deliberate negative control temporarily bypassed canonical-root symlink
+admission. The hostile root-link regression then failed at the intended
+`goal32CanonicalDirectory(rootLink)` assertion. Correct bytes were restored,
+and the same regression passed.
+
+The fresh seal command ran once and exclusively created:
+
+- root:
+  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2`;
+- only file: `manifest.json`;
+- raw SHA-256:
+  `15e8d9e6c81aac8da253a3076dd7a9414f2e8a42beea3d02feea02992e7d5995`;
+- internal manifest digest:
+  `57d0ba66a26dca3f5dcd03a8dfeddb8f06aefd36a74232456d4bec0f9fd8340b`.
+
+The exact check-only command then exited `0` with 15 tests passed and one
+unrelated Goal-31 gated adapter skipped. It spawned no paired child, created
+no input copy or output, called no measured root or timer, and left the
+manifest and artifact-root entry set unchanged. No paired diagnostic,
+forecast, proof, or retry has run.
+
 ## Exact manifest seal and check-only commands
 
 After the two composition commits and three parity receipts are immutable, the

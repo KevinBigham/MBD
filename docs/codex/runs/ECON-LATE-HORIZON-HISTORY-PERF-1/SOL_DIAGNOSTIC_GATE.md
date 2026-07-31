@@ -1,30 +1,27 @@
 # Sol Diagnostic Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `FIX_AND_REVIEW — P0/P1/P2 0/2/1 — EXECUTION CLOSED`
+Status: `PENDING FRESH SOL REVIEW — EXECUTION CLOSED`
 
-## Exact artifact under review
+## Replacement `-r2` artifact pending review
 
 - Landable source freeze:
   `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
   `23aa4bf628f353775b445b1c4963b9c0d21d3057`.
-- Current contract record:
-  `28d45f25a4b799cd21a1ef5db6024645b313b06c`, tree
-  `b681f2d689a9e5889710d822ec480bdb43102769`.
 - Baseline composition:
-  `e51854080d4bae705483ae2d55a56c0cd5bd7127`, tree
-  `f5c32903eb66436cc1fda40310a04753cb23d1ee`.
+  `505cfdf7c3c11e0cb821bea0716641dbcb787555`, tree
+  `0640b942317d7bfacebb33b2b5befa20e90cd746`.
 - Successor composition:
-  `51a7c88063d69d95bb01bd227e48d8bd33c61c8d`, tree
-  `44a93e038d2d46fd1b36f0db68fecf5e865f46d9`.
+  `7cfda1134cd6f7458f906018a23461ba6a7a97d1`, tree
+  `36b8f2fdef9adb68b7516441ece0a3e9ad09a04e`.
 - Manifest path:
-  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/manifest.json`.
+  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/manifest.json`.
 - Manifest raw SHA-256:
-  `860d534833ec0e42b630bd29ec6b1bdf605893f6a15d7878750aa35dec941aec`.
+  `15e8d9e6c81aac8da253a3076dd7a9414f2e8a42beea3d02feea02992e7d5995`.
 - Internal manifest digest:
-  `9041c4cd0947ae592c4fd53cbb1e483bb7320f0af87cbb2ffabe580d302633a0`.
-- Check-only result: exit `0`; 14 tests passed, one unrelated Goal-31 gated
+  `57d0ba66a26dca3f5dcd03a8dfeddb8f06aefd36a74232456d4bec0f9fd8340b`.
+- Check-only result: exit `0`; 15 tests passed, one unrelated Goal-31 gated
   adapter skipped; no paired child, input copy, observation, reducer, measured
-  root, or timer ran.
+  root, or timer ran. The artifact root still contains only the manifest.
 
 The two composition diffs contain exactly the authorized twelve paths. The
 eleven non-helper paths are byte-identical. Helper SHA-256 values:
@@ -33,6 +30,15 @@ eleven non-helper paths are byte-identical. Helper SHA-256 values:
   `79bd367a80603185a2f73c8138883e31ff8d5c731e676ec11390789bc96f7aa4`;
 - successor:
   `768d95a446901d81f54c194e520bdc15e82a93b788ffdd10a5c7cb376524fd1b`.
+
+Correction-loop-3 shared SHA-256 values:
+
+- `econLongSoak.receipts.ts`:
+  `3a2465dc26f6e6ae576f8cd831b6dc79f3fd4a9fb93ab57fd27259f4a1e7348e`;
+- `econLongSoak.receipts.test.ts`:
+  `8682f56d1d918ab2617e69c116fb5c0d2d7ba5daaededc8062610b884f64e56b`;
+- `econLateHorizonPerf.integration.test.ts`:
+  `e476405e8b41a7059f45c4a8342c70b625a1cef44ec6bf57f91724f496f7d0f5`.
 
 ## Final parity receipts
 
@@ -57,12 +63,15 @@ and binds their raw hashes and internal content digests.
 
 - Source freeze: sim-core 64 tests passed; web 225 tests passed; direct package
   typechecks passed; root typecheck 9/9 passed.
-- Final composition ordinary matrix: 94 tests passed and six authorized gated
+- Correction-loop-3 affected matrix: 48 tests passed and two authorized gated
   skips in each composition, retries disabled.
-- Final pure/hostile environment matrix: four tests passed in each.
+- Correction-loop-3 ordinary seven-file matrix: 95 tests passed and six
+  authorized gated skips in each composition, retries disabled.
 - Final web typecheck: passed in each.
-- Deliberate live-identity bypass mutant failed at the intended hostile
-  assertion and correct bytes were restored.
+- Deliberately bypassing canonical-root symlink admission made the hostile
+  root-link regression fail at the intended
+  `goal32CanonicalDirectory(rootLink)` assertion; correct bytes were restored
+  and the same test passed.
 - `git diff --check` passed; both worktrees and indexes are clean.
 
 ## Preserved stopped evidence
@@ -74,8 +83,14 @@ and binds their raw hashes and internal content digests.
   `c0f29a87128910ce76901764982854100aca3b71683bc5d7dd7bb5581fd88113`,
   internal
   `6e8810e18959afee1c8c32f296b7c0604dfb5d83932ac8b493bc66da725895ff`.
-- No check-only, child, diagnostic, timer, profile, forecast, or proof ran
-  against any failed/superseded root.
+- Rejected `-r1` root: immutable, manifest only; raw
+  `860d534833ec0e42b630bd29ec6b1bdf605893f6a15d7878750aa35dec941aec`,
+  internal
+  `9041c4cd0947ae592c4fd53cbb1e483bb7320f0af87cbb2ffabe580d302633a0`;
+  check-only passed 14 tests with one unrelated gated skip before Sol rejected
+  it.
+- No paired child, diagnostic, timer, profile, forecast, or proof ran against
+  any failed, superseded, or rejected root.
 
 ## Literal command proposed for admission
 
@@ -85,14 +100,14 @@ this file is `APPROVED` with actionable P0/P1/P2 `0/0/0`:
 ```sh
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=paired-diagnostic \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/manifest.json \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=860d534833ec0e42b630bd29ec6b1bdf605893f6a15d7878750aa35dec941aec \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/rph-receipt.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=15e8d9e6c81aac8da253a3076dd7a9414f2e8a42beea3d02feea02992e7d5995 \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/rph-receipt.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
 ```
 
-## Sol verdict
+## Historical rejected `-r1` Sol verdict
 
 `FIX_AND_REVIEW`, actionable P0/P1/P2 `0/2/1`.
 
@@ -117,5 +132,10 @@ It must recompute the reducer result predicate; enforce exact digest
 types/shapes and semantic closure; canonicalize the artifact root; reopen
 manifest, inputs, and observations as stable regular non-symlink files; and
 add hostile forged-PASS, selective-semantic, root-symlink, and substituted-file
-regressions. The reviewed literal command above never ran. A fresh `-r2`
-manifest/check-only artifact and new zero-finding Sol review are required.
+regressions. The rejected `-r1` literal command never ran.
+
+## Fresh `-r2` Sol verdict
+
+Pending. Execution remains closed unless one independent Sol/xhigh review of
+the exact replacement artifact returns `APPROVED` with actionable P0/P1/P2
+`0/0/0`.

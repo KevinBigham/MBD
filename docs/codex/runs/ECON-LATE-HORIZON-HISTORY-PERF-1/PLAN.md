@@ -1,6 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `ACTIVE — Sol architecture approved; docs-first checkpoint review`
+Status: `ACTIVE — source and replacement diagnostic artifact frozen; fresh Sol
+diagnostic review pending; execution closed`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -176,11 +177,33 @@ process order, and mechanical non-ancestry from local main.
 The exact command, manifest/receipt key order, fail-closed runner contract, and
 pre-execution negative controls are frozen in `DIAGNOSTIC_AUTHORITY.md`.
 
+Completed:
+
+- final baseline composition:
+  `505cfdf7c3c11e0cb821bea0716641dbcb787555`, tree
+  `0640b942317d7bfacebb33b2b5befa20e90cd746`;
+- final successor composition:
+  `7cfda1134cd6f7458f906018a23461ba6a7a97d1`, tree
+  `36b8f2fdef9adb68b7516441ece0a3e9ad09a04e`;
+- all eleven non-helper paths are byte-identical;
+- final `-r2` parity receipts are immutable and green;
+- replacement `-r2` manifest is sealed with raw SHA-256
+  `15e8d9e6c81aac8da253a3076dd7a9414f2e8a42beea3d02feea02992e7d5995`
+  and internal digest
+  `57d0ba66a26dca3f5dcd03a8dfeddb8f06aefd36a74232456d4bec0f9fd8340b`;
+- check-only passed 15 tests with one unrelated Goal-31 gated skip and ran no
+  diagnostic child, measured root, or timer.
+
 ### Phase 5 — Independent Sol review
 
 Review the exact frozen landable diff, both composition diffs, helper
 projections, identity manifest, negative controls, and diagnostic reducer.
 Actionable P0–P2 must be zero before any diagnostic process runs.
+
+Current state: the rejected `-r1` review returned `FIX_AND_REVIEW`, P0/P1/P2
+`0/2/1`. The exact three-path correction is frozen and verified. One fresh
+review of the replacement `-r2` artifact is pending; diagnostic execution
+remains closed.
 
 ### Phase 6 — One diagnostic
 

@@ -1,7 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `ACTIVE — Sol architecture approved; docs-first checkpoint
-review; no Goal-32 production edit or performance command has run`.
+Current status: `ACTIVE — landable source frozen and source-reviewed;
+replacement paired diagnostic sealed/check-only; fresh Sol diagnostic review
+pending; no paired diagnostic or final proof has run`.
 
 ## Player-facing outcome
 

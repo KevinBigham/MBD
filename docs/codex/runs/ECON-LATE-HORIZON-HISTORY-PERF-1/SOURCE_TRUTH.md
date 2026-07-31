@@ -241,3 +241,29 @@ entry to `pnpm-workspace.yaml` and then failed on ignored `esbuild` scripts.
 That attempted edit was restored byte-for-byte and was never staged or
 committed. The successful root typecheck used an external `/tmp` Corepack
 shim; repository dependency policy remains unchanged.
+
+## Final pre-execution diagnostic truth
+
+Correction loop 3 changed only the shared disposable proof files
+`econLongSoak.receipts.ts`, `econLongSoak.receipts.test.ts`, and
+`econLateHorizonPerf.integration.test.ts` in both compositions. It did not
+change the landable source freeze.
+
+- Baseline composition:
+  `505cfdf7c3c11e0cb821bea0716641dbcb787555`, tree
+  `0640b942317d7bfacebb33b2b5befa20e90cd746`.
+- Successor composition:
+  `7cfda1134cd6f7458f906018a23461ba6a7a97d1`, tree
+  `36b8f2fdef9adb68b7516441ece0a3e9ad09a04e`.
+- Fresh artifact root:
+  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2`.
+- Its only current file is the regular direct-child `manifest.json`.
+- Raw manifest SHA-256:
+  `15e8d9e6c81aac8da253a3076dd7a9414f2e8a42beea3d02feea02992e7d5995`.
+- Internal manifest digest:
+  `57d0ba66a26dca3f5dcd03a8dfeddb8f06aefd36a74232456d4bec0f9fd8340b`.
+- Exact check-only result: 15 tests passed, one unrelated Goal-31 gated
+  adapter skipped, exit `0`, retries disabled.
+
+No paired child, input copy, observation, reducer, measured root, diagnostic,
+forecast, final proof, admission, or retry has run against this root.
