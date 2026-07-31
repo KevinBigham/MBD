@@ -1,7 +1,7 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: landable source frozen and Sol-approved; paired proof compositions not
-yet built
+Phase: landable source frozen and Sol-approved; corrected executable
+diagnostic contract awaiting Sol re-review
 
 Writer: none. The Terra implementation writer completed correction loop 2 of
 2. A separate paired-composition writer has not started.
@@ -21,11 +21,13 @@ Focused receipts, retries disabled:
 - four structural mutants failed their intended guards and were restored;
 - `git diff --check` passed and the source-freeze worktree/index are clean.
 
-Current blocker: no production blocker. Diagnostic execution remains closed
-until both non-landed compositions, their exact identity manifest, helper
-parity receipts, hostile reducer tests, and literal command interface are
-built and independently reviewed with zero actionable P0-P2 findings.
+Current blocker: no production blocker. The first diagnostic-contract draft
+was rejected before implementation with P0/P1/P2 `0/5/1`. Its impossible old
+observer-byte requirement, incomplete live-root and child identity, incomplete
+semantic projection, weak output exclusivity, and conflated canonical/transport
+ordering have been replaced in one source-grounded correction. Diagnostic
+execution remains closed.
 
-Next action: create the two exact non-landed compositions and generated
-manifest under `DIAGNOSTIC_AUTHORITY.md`; run parity and check-only tests only.
-Do not run the diagnostic.
+Next action: obtain Sol zero-finding re-review of the corrected contract, then
+create the two exact non-landed compositions and generated manifest. Run parity
+and check-only tests only. Do not run the diagnostic.
