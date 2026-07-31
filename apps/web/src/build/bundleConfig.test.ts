@@ -23,6 +23,10 @@ describe('worker manual chunking', () => {
     expect(resolveWorkerManualChunk('/apps/web/src/workers/sim.worker.queries.ts')).toBe('game-engine-queries');
   });
 
+  it('keeps trade finance out of the engine core chunk', () => {
+    expect(resolveWorkerManualChunk('/packages/sim-core/src/finance/tradeFinance.ts')).toBe('game-engine-trade-finance');
+  });
+
   it('keeps worker budget lifts scoped to the oversized chunks', () => {
     expect(getBudgetForBundleFile('game-engine-story-D0fw_gN6.js')).toMatchObject({
       rawBudget: 499 * 1024,
