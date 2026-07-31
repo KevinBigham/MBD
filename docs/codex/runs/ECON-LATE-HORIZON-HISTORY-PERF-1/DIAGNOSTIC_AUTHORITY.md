@@ -160,8 +160,33 @@ The exact ordered modes are `interactive-before-after`,
 
 ## Exact parity receipt construction
 
+### Failed first capture evidence
+
+The first baseline parity attempt is evidence-only and may never be reused:
+
+- the initial operator launch resolved the repository fallback `pnpm`, failed
+  before Vitest on `ERR_PNPM_IGNORED_BUILDS`, created no parity root, and its
+  attempted `pnpm-workspace.yaml` edit was restored byte-for-byte;
+- the corrected external-Corepack launch reached the capture fixture, wrote
+  only
+  `/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-baseline.json`,
+  then exited `1` because an ordinary default-mode unit assertion incorrectly
+  required the explicitly supplied capture-mode environment to be absent;
+- failed capture raw SHA-256:
+  `23487f03fffd1367bce5fe0fdc8d0b243b37dd226b7ccef0a7b933ef66cc07c8`;
+- failed capture internal receipt digest:
+  `eeee92e13240ffcad2517d09a0ccd7bf8da935190af77a86b241e8835b51b757`;
+- no successor capture or parity reducer ran;
+- the frozen diagnostic root remained absent;
+- the failed root and receipt remain immutable evidence. No cleanup,
+  overwrite, completion, reducer, seal, or reuse is permitted.
+
+This is a verification-program defect, not a payroll/gameplay/RNG result. The
+same Terra writer owns correction loop 1 of 2. The active parity construction
+below uses a fresh root.
+
 The frozen canonical parity root is
-`/private/tmp/mbd-goal32-parity-5a4eb60-20260730`. It must be absent before the
+`/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1`. It must be absent before the
 first capture and remain outside both repositories, the preserved Goal-31
 evidence root, checkpoint source roots, and the later diagnostic artifact root.
 No command may clean, delete, overwrite, or reuse it.
@@ -171,7 +196,7 @@ The baseline capture command runs from the baseline composition:
 ```sh
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=baseline \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-baseline.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-baseline.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
 ```
@@ -183,7 +208,7 @@ composition:
 ```sh
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=successor \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-successor.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-successor.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
 ```
@@ -243,9 +268,9 @@ The reducer command runs from the successor composition:
 
 ```sh
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=reduce \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_BASELINE=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-baseline.json \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_SUCCESSOR=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-successor.json \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_ROOT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730 \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_BASELINE=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-baseline.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_SUCCESSOR=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-successor.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_ROOT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1 \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
 ```

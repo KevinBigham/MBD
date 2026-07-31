@@ -1,7 +1,7 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: landable source frozen and Sol-approved; corrected executable
-diagnostic contract awaiting Sol re-review
+Phase: landable source frozen and Sol-approved; paired compositions built;
+parity correction loop 1 of 2
 
 Writer: none. The Terra implementation writer completed correction loop 2 of
 2. A separate paired-composition writer has not started.
@@ -21,14 +21,15 @@ Focused receipts, retries disabled:
 - four structural mutants failed their intended guards and were restored;
 - `git diff --check` passed and the source-freeze worktree/index are clean.
 
-Current blocker: no production blocker. Two pre-construction Sol reviews
-rejected incomplete diagnostic contracts before implementation. The current
-contract now also freezes the disposable two-argument 32-team helper boundary,
-monotonic timer, feasible reporter policy, exact seal/check-only commands,
-one-shot external artifact root, truthful finite-regression `FAIL`, complete
-digest mapping, durable Sol manifest anchor, and exact two-capture/three-receipt
-parity construction. Diagnostic execution remains closed.
+Current blocker: no production blocker. The first baseline parity capture
+reached the real fixture and wrote its receipt, but an ordinary default-mode
+test asserted the explicitly supplied capture environment must be absent, so
+the process exited `1`. The root is sealed as failed evidence. No successor
+capture or reducer ran. The same Terra writer owns the bounded test correction
+and new shared proof bytes; the active parity root is the fresh `-r1` path.
+Diagnostic execution remains closed.
 
-Next action: obtain Sol zero-finding re-review of the corrected contract, then
-create the two exact non-landed compositions and generated manifest. Run parity
-and check-only tests only. Do not run the diagnostic.
+Next action: correct the verification-program assertion in both byte-identical
+proof closures, rerun ordinary focused tests, commit new immutable composition
+heads, then run the three active `-r1` parity commands once in order. Do not run
+the diagnostic.
