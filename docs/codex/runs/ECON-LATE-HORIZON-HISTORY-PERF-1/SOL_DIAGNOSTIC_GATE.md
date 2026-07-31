@@ -1,6 +1,7 @@
 # Sol Diagnostic Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `BLOCKED — ORACLE — causal and direct proof routes stopped; R/P/H EXECUTION UNCONSUMED AND CLOSED`
+Status: `AUTHORIZED PREEXECUTION — fresh direct proof requires static 0/0/0 and
+one green import probe; R/P/H EXECUTION UNCONSUMED AND CLOSED`
 
 ## Direct-route terminal gate
 
@@ -15,6 +16,13 @@ The `R/P/H` budget remains unconsumed. It cannot open until a new bounded oracle
 explicitly authorizes fresh roots, lockfile dependency preparation, a corrected
 one-file candidate, static independent `0/0/0`, and only then one fresh import
 probe and focused gates.
+
+Kevin's reaffirmed standing authorization now supplies that exact oracle in
+`AUTHORITY.md` and the fresh-successor addendum to
+`SOL_DIRECT_IN_PROCESS_GATE.md`. This changes the permission state only. The
+diagnostic remains closed until the new candidate's independent static review
+is `0/0/0`, its sole import probe is green, and its focused test/typecheck pass.
+The old route and old candidate remain terminally stopped.
 
 ## Latest proof-authority review
 
@@ -34,18 +42,19 @@ manifest-only semantic artifact. Independent Sol review nevertheless returned
    incomplete.
 
 No paired diagnostic, timer, forecast, direct proof, final admission, retry,
-or measured artifact ran. The rejected compositions
+or measured artifact ran. The rejected composition commits
 `afb8ab973259d20aaae2d738c16755d1ac24786b` and
-`9eede0ce020a0876eca0b464331397c920cc5d5e` and manifest-only root
-`/private/tmp/mbd-goal32-proof-authority-5a4eb60-20260731` remain immutable.
+`9eede0ce020a0876eca0b464331397c920cc5d5e` remain immutable Git evidence. The
+manifest-only `/private/tmp/mbd-goal32-proof-authority-5a4eb60-20260731` root
+was later removed externally and is now represented only by its recorded
+hashes and review.
 
-The only open implementation route is the approved architecture in
-`SOL_CAUSAL_ARCHITECTURE.md`, using the fresh semantic root
-`/private/tmp/mbd-goal32-causal-proof-5a4eb60-20260731`. Execution remains
-closed until focused gates, check-only gates, and one fresh independent Sol
-review return zero actionable P0–P2.
+The causal architecture is terminally stopped. The only open preexecution
+route is the persistent fresh-successor addendum in
+`SOL_DIRECT_IN_PROCESS_GATE.md`. Diagnostic execution remains closed until its
+static review, single import probe, focused test, and typecheck are green.
 
-## Replacement `-r2` artifact pending review
+## Historical replacement `-r2` artifact record (temporary root removed)
 
 - Landable source freeze:
   `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
@@ -64,7 +73,8 @@ review return zero actionable P0–P2.
   `57d0ba66a26dca3f5dcd03a8dfeddb8f06aefd36a74232456d4bec0f9fd8340b`.
 - Check-only result: exit `0`; 15 tests passed, one unrelated Goal-31 gated
   adapter skipped; no paired child, input copy, observation, reducer, measured
-  root, or timer ran. The artifact root still contains only the manifest.
+  root, or timer ran. At capture time the artifact root contained only the
+  manifest; that temporary root no longer exists locally.
 
 The two composition diffs contain exactly the authorized twelve paths. The
 eleven non-helper paths are byte-identical. Helper SHA-256 values:
@@ -117,7 +127,7 @@ and binds their raw hashes and internal content digests.
   and the same test passed.
 - `git diff --check` passed; both worktrees and indexes are clean.
 
-## Preserved stopped evidence
+## Recorded stopped evidence (temporary roots removed)
 
 - Original failed parity capture root: immutable, one failed baseline capture,
   no successor/reducer.

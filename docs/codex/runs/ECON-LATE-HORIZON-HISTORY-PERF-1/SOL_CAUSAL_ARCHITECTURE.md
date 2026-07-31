@@ -140,7 +140,9 @@ was not the sole publication descriptor, direct proof remained unchanged, and
 the nested transport/publication negative controls were absent. No diagnostic,
 timer, proof, admission, retry, or causal artifact root ran or was created.
 
-The dirty compositions and all prior evidence are preserved exactly as
-recorded in `CURRENT.md`. This architecture must not be corrected, executed,
-revived, renamed, or used to mint another semantic root. Sol replaced it with
-the smaller repository-owned boundary in `SOL_DIRECT_IN_PROCESS_GATE.md`.
+The dirty compositions were recorded exactly in the then-current `CURRENT.md`
+but their temporary directories were later removed externally; only committed
+identities, recorded hashes, and review findings remain. This architecture
+must not be corrected, executed, revived, renamed, reconstructed, or used to
+mint another semantic root. Sol replaced it with the smaller repository-owned
+boundary in `SOL_DIRECT_IN_PROCESS_GATE.md`.

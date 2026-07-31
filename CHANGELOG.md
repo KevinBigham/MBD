@@ -34,6 +34,15 @@
 
 ### Save And Determinism
 
+- Reconciled Goal 32 after external cleanup removed its temporary-only proof
+  checkouts and authenticated checkpoint files. All committed source and review
+  history remains intact; lost dirty bytes are no longer described as
+  preserved evidence. Kevin's standing authority now opens one persistent,
+  frozen-lockfile, corrected one-file proof successor with independent static
+  review before its sole import probe, plus an exact checkpoint restore or one
+  canonical recapture before the still-unspent diagnostic. No gameplay, RNG,
+  save, schema, receipt, seed, horizon, timeout, or acceptance cap changed.
+
 - Recorded Goal 31 `ECON-MILESTONE-PATH-PERF-1` as blocked without landing its
   four-file production candidate. The milestone/ceremony lookup reduction
   preserved exact season-30 semantic, state, RNG, round-trip, row, population,

@@ -1,8 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `BLOCKED — ORACLE — direct import probe exhausted and static
-candidate review BLOCK 0/8/2; corrected dependency-prepared fresh route needed;
-R/P/H diagnostic and final admission remain unexecuted`.
+Current status: `ACTIVE — FRESH DIRECT PROOF AUTHORIZED — persistent clean
+roots and dependencies are next; R/P/H diagnostic and final admission remain
+unexecuted`.
 
 ## Player-facing outcome
 
@@ -32,8 +32,10 @@ Kevin authorized the Sol-approved proposal at
 
 The authorization does not weaken any cap, gameplay, RNG, save, schema,
 receipt, seed, horizon, or retry contract. R41 and custom recovery-lineage
-machinery remain permanently prohibited. Roadmap item 19, remote push,
-deployment, release, publication, and tagging remain closed.
+machinery remain permanently prohibited. Roadmap item 19 remains closed.
+Kevin's standing grant separately authorizes GitHub preservation of clean
+commits and this active draft branch; it does not authorize landing unproven
+Goal-32 source on `main` or deploying/releasing it before all gates pass.
 
 ## Required base and preserved evidence
 
@@ -49,10 +51,12 @@ deployment, release, publication, and tagging remain closed.
   `2,948,890ms`, correctly rejected against the immutable `2,040,000ms`
   aggregate cap.
 
-The original Goal-31 worktree, proof composition, and evidence root remain
-untouched and evidence-only. The exact Goal-31 milestone/ceremony source and
-adjacent-test blobs may be imported into this branch, but their failed forecast
-may never be relabeled as a pass.
+The original Goal-31 worktree remains untouched, and its proof-composition
+commit remains immutable Git evidence. The temporary proof-composition checkout
+and evidence root were removed externally; their recorded hashes and receipts
+remain historical evidence, not live files. The exact Goal-31
+milestone/ceremony source and adjacent-test blobs may be imported into this
+branch, but their failed forecast may never be relabeled as a pass.
 
 ## Landable production scope
 
@@ -158,12 +162,42 @@ Stop without retry or reinterpretation if:
   appears necessary;
 - two corrections fail from the same defect family.
 
+A stop consumes and quarantines the affected candidate. Under
+`STANDING_USER_AUTHORITY.md`, it does not create a user-permission wait when a
+technically distinct bounded successor can preserve every contract above.
+
+## Authorized fresh direct-proof successor
+
+The exhausted direct candidate and its vanished temporary checkout are
+historical evidence only. The fresh route must:
+
+1. create persistent clean baseline and successor roots from `505cfdf7…` and
+   `7cfda113…` outside `/private/tmp`;
+2. prepare each root separately with the repository lockfile and verify clean
+   Git identity afterward;
+3. run a read-only topology/dependency preflight before any module import;
+4. change only successor `apps/web/src/workers/econLongSoak.test.ts` and close
+   every `0/8/2` static-review finding;
+5. obtain independent static Sol review `0/0/0` before execution;
+6. run exactly one fresh no-simulation, no-timer, no-evidence-output import
+   probe with cache/temp output redirected outside both repositories;
+7. only after a green probe, run the focused test and affected web typecheck;
+8. locate exact checkpoint copies matching both frozen raw/envelope hashes or
+   run one canonical repository-owned season-15/season-29 recapture into a
+   persistent external evidence root;
+9. only after authenticated inputs exist, run the still-unspent no-retry
+   `R/P/H` diagnostic and—only if green—the one final admission already frozen
+   above.
+
+The fresh route is not a retry or correction of the lost candidate, creates no
+custom manifest/reducer/recovery lineage, and opens no fifth production seam.
+
 ## Done
 
 The four exact seams and preserved Goal-31 source are locally landed from a
 source-bound clean revision; focused, negative-control, diagnostic, final
 admission, root, build, determinism, and browser gates are green; every
 acceptance criterion is mapped in `COMPLETION.md`; local `main` contains the
-verified commit; remote and release state remain unchanged; and item 18 may
-resume from live landed source. Item 19 remains closed until item 18 itself
-passes.
+verified commit; GitHub contains the recoverable campaign history and draft
+branch; and item 18 may resume from live landed source. Item 19 remains closed
+until item 18 itself passes.

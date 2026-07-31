@@ -2,6 +2,13 @@
 
 Status: `CONSTRUCTION AUTHORIZED; EXECUTION CLOSED`
 
+Historical-storage addendum (2026-07-31): the `/private/tmp` roots frozen by
+this document were later removed externally. Their recorded hashes, schemas,
+commands, committed composition identities, and review outcomes remain
+historical evidence; their temporary files do not. Nothing in this document
+authorizes recreating or executing those extinct roots. The active fresh route
+is the persistent-root addendum in `SOL_DIRECT_IN_PROCESS_GATE.md`.
+
 This document freezes the executable interface for the authorized paired
 `R/P/H` diagnostic. It does not authorize running that diagnostic. Execution
 opens only after both non-landed compositions and their generated manifest are
@@ -489,8 +496,9 @@ P0/P1/P2 `0/2/0`:
    admission through the incompatible Goal-31 identity requiring false
    `4e016cc…` ancestry and legacy helper/observer hashes.
 
-The root remains immutable and manifest-only. It is rejected evidence, not an
-execution artifact. Because the first finding repeats the same copied
+At review time the root was immutable and manifest-only. It was rejected
+evidence, not an execution artifact, and was later removed externally as noted
+above. Because the first finding repeats the same copied
 path/provenance family, the stop-loss forbids a derivative `-r3` artifact.
 Only a separately authorized first-principles generated-identity correction
 may supersede this pre-execution boundary.

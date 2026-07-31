@@ -9,23 +9,28 @@ Recorded: 2026-07-30 before any Goal-32 production edit or performance command.
   `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`.
 - `origin/main`:
   `a9343763b35818fd1111ffec3bc3440a8294e6aa`.
-- Active worktree:
-  `/private/tmp/mbd-goal32-source-20260730`.
+- Active worktree at initial recording:
+  `/private/tmp/mbd-goal32-source-20260730`; it was later removed externally
+  and replaced by the persistent worktree recorded at the end of this file.
 - Active index/worktree before docs: clean.
 - Original stopped Goal-31 worktree:
   `/Users/kevin/Downloads/MBD-main-main`, branch
   `codex/econ-milestone-path-perf-1-authorized`, HEAD
   `4e016cc4fe3043e438cc0cbc3aeec798b6f47d6b`, with its eight terminal
   documentation overlays preserved and unstaged.
-- Original proof composition:
-  `/private/tmp/mbd-goal31-composition-20260730`,
-  `2f3329b0886396cd9d8550aa42ea2738d02c4126`, preserved untouched.
-- Original evidence root:
-  `/tmp/mbd-goal31-direct-proof-2f3329b-20260730`, preserved untouched.
+- Original proof composition commit:
+  `2f3329b0886396cd9d8550aa42ea2738d02c4126`, preserved as Git evidence; its
+  `/private/tmp/mbd-goal31-composition-20260730` checkout was later removed
+  externally.
+- Original evidence root at initial recording:
+  `/tmp/mbd-goal31-direct-proof-2f3329b-20260730`; it was later removed
+  externally.
 
 The local-main stop-record commit contains exactly the approved 17
 documentation paths and excludes all four Goal-31 source/test candidate blobs.
-No remote operation occurred.
+No remote operation had occurred at initial recording. Local `main` was later
+pushed under Kevin's standing GitHub authorization, as recorded in the final
+reconciliation section.
 
 ## Package, schema, and save state
 
@@ -399,3 +404,53 @@ The candidate remains valuable design evidence: it has the correct four-root
 order, composition-rooted Vite servers, timing placement, root-row shape
 checks, and final factual/snapshot/state/RNG comparison. It must not be edited
 or retried. `SOL_DIRECT_CANDIDATE_REVIEW.md` freezes the exact future boundary.
+
+## 2026-07-31 live workspace and GitHub reconciliation
+
+The prior `/private/tmp` Goal-32 source, composition, proof, and dirty-candidate
+directories were removed externally between sessions. Live `git worktree`
+metadata pointed to nonexistent directories and was pruned only after a dry
+run confirmed those paths were stale. No live checkout, tracked file, branch,
+commit, or user-owned work was deleted by the repository operation.
+
+Recoverable facts:
+
+- all committed Goal-32 source, test, architecture, and review commits survive;
+- active persistent worktree:
+  `/Users/kevin/Downloads/MBD-econ-late-horizon-history-perf-1-goal32`;
+- active branch pre-sweep HEAD:
+  `6b7fd49c1b8232358340779f69153d0885177f09`;
+- local `main`: `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`;
+- pre-sync `origin/main`:
+  `a9343763b35818fd1111ffec3bc3440a8294e6aa`;
+- frozen landable source and independent `0/0/0` review remain intact at
+  `5a4eb60f8b1890803117a84a613d43af605f47dc`;
+- clean committed baseline/successor proof identities remain addressable at
+  `505cfdf7…` and `7cfda113…`;
+- the original Goal-31 worktree remains present with exactly eight protected
+  documentation changes, all unstaged and untouched.
+
+Irrecoverable temporary facts:
+
+- the stopped causal and direct candidates' uncommitted working bytes are not
+  present on disk;
+- the authenticated `season15.json` and `season29.json` files at the recorded
+  `/tmp` evidence root are also absent;
+- their recorded hashes and reviews remain historical evidence, but the run
+  may no longer claim their dirty worktrees or private artifacts are preserved;
+- no later implementation may reconstruct bytes from prose and identify them
+  as the historical candidate.
+
+This loss does not consume the still-zero `R/P/H` or final-admission lanes. It
+does require the next proof route to use persistent roots outside
+`/private/tmp`, create an independently reviewed candidate from the frozen
+contract, and either locate exact checkpoint copies matching both recorded
+raw/envelope hashes or perform the one previously authorized canonical
+repository-owned recapture before diagnostic execution.
+
+Kevin's reaffirmed standing authority supplies the requested bounded oracle:
+fresh persistent roots, separate frozen-lockfile installs, read-only preflight,
+one corrected proof-only test candidate, independent static `0/0/0`, and one
+fresh import probe before the existing no-retry diagnostic/admission sequence.
+GitHub synchronization of recoverable clean commits is authorized; unproven
+Goal-32 production remains excluded from `main` and any deployment/release.

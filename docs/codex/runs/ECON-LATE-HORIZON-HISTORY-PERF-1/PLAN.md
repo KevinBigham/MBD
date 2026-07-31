@@ -1,7 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `BLOCKED — ORACLE — one-shot direct import probe exhausted before
-module resolution; all timing execution remains closed`
+Status: `ACTIVE — FRESH DIRECT PROOF AUTHORIZED — GitHub preservation and
+persistent proof-root preparation; all timing execution remains closed`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -221,8 +221,10 @@ standing grant recorded in `docs/codex/STANDING_USER_AUTHORITY.md`.
 
 The causal proof-boundary implementation exhausted its one correction with
 live publishers still bypassing its proposed authority boundary. It is
-permanently stopped and preserved dirty, evidence-only. Its semantic root was
-never created and no measurement lane ran.
+permanently stopped and evidence-only. Its temporary dirty checkout was later
+removed externally; committed identities, recorded hashes, and review findings
+remain, but the dirty bytes do not. Its semantic root was never created and no
+measurement lane ran.
 
 The replacement is frozen in `SOL_DIRECT_IN_PROCESS_GATE.md`. One Terra/high
 writer changes only repository-owned `econLongSoak.test.ts` in a fresh clean
@@ -256,6 +258,39 @@ correction, loader, composition, diagnostic, or admission is legal without a
 new bounded oracle explicitly authorizing fresh roots, dependency preparation,
 one corrected one-file candidate, static `0/0/0` review, and only then one
 fresh probe.
+
+### Phase 5c — Authorized persistent fresh direct proof
+
+Kevin's reaffirmed standing authorization supplies that exact bounded oracle.
+The exhausted `/private/tmp` route remains closed. Its temporary directories
+were removed externally and its uncommitted candidate bytes are no longer on
+disk; committed identities and the static review remain evidence.
+
+Execute sequentially:
+
+1. publish recoverable `main` and active Goal-32 commits to GitHub without
+   landing Goal-32 source;
+2. create persistent clean proof roots outside `/private/tmp` from exact
+   `505cfdf7…` and `7cfda113…` commits;
+3. prepare dependencies separately with the frozen lockfile, then verify exact
+   HEAD/tree, clean tracked/untracked state, and frozen production hashes;
+4. run a read-only topology/dependency/output-isolation preflight;
+5. assign exactly one Terra/high writer to successor
+   `apps/web/src/workers/econLongSoak.test.ts` and no other path;
+6. close all eight P1 and two P2 review findings and run only static/source
+   inspection until one independent Sol/xhigh review returns `0/0/0`;
+7. run exactly one fresh import probe with no simulation, timer, evidence
+   output, or repository cache/temp writes;
+8. only after a green probe, run the focused test and affected web typecheck;
+9. source-freeze the proof candidate; locate exact checkpoint copies matching
+   both frozen raw/envelope hashes or run one canonical repository-owned
+   season-15/season-29 recapture into a persistent external evidence root;
+10. authenticate the inputs, then proceed to Phase 6 without retry.
+
+The fresh route is not a retry or correction of the vanished candidate. A
+probe or review failure stops these new bytes. The `R/P/H`, final-admission,
+cap, timeout, seed, horizon, production-path, gameplay/RNG/save/receipt, R41,
+custom-lineage, and Item-19 contracts are unchanged.
 
 ### Phase 6 — One diagnostic
 

@@ -15,6 +15,10 @@ MBD should be the most trustworthy and legible long-save baseball dynasty simula
 
 - Standing user authority removes permission-only pauses; it does not weaken
   any guardrail or gate (`STANDING_USER_AUTHORITY.md`).
+- An exhausted proof candidate stays exhausted. Agents may design and freeze a
+  separately identified bounded successor without another user permission
+  round-trip when product behavior, saves, determinism, acceptance bands, and
+  roadmap ownership remain unchanged.
 - Source and tests outrank council documents.
 - Determinism stays seeded and testable.
 - No hidden CPU advantage.

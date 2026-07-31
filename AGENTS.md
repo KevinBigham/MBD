@@ -11,8 +11,11 @@ Build MBD as a trustworthy, deterministic, approachable long-save baseball dynas
 - Kevin's canonical standing authorization is recorded in
   `docs/codex/STANDING_USER_AUTHORITY.md`. Do not pause solely to request user
   permission for bounded GOAT-campaign work; choose the narrowest
-  source-grounded action and continue. Technical gates and safety invariants
-  remain mandatory.
+  source-grounded action and continue. When a bounded verification route
+  correctly exhausts, preserve it and freeze a distinct smallest successor
+  under that standing authority instead of requesting another permission-only
+  oracle. Technical gates, explicit retry budgets, and safety invariants remain
+  mandatory.
 - Current repository source, tests, schemas, runtime behavior, and git state outrank every audit or council document.
 - Implement exactly one file from `docs/codex/goals/` per branch/worktree.
 - Read the goal, inspect the live source, and create a living plan before production edits.
@@ -92,3 +95,8 @@ Pause with a precise technical blocker report—not a permission request—when:
 - required browser infrastructure is absent and adding it would exceed scope;
 - the goal requires another unmerged slice;
 - completing the work would cross the goal's scope cut line.
+
+A pause terminates the unsafe candidate, not the campaign's standing authority.
+When a safe, newly identified, bounded successor exists, record its identity,
+scope, gates, and retry budget and continue without waiting for another user
+permission message.

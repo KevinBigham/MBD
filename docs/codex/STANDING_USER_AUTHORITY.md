@@ -23,6 +23,14 @@ Do not pause solely to request user permission for a bounded campaign action.
 When several authorized approaches exist, choose the narrowest source-grounded
 path that preserves the game's contracts and continue.
 
+This grant also covers bounded verification recovery after a route correctly
+stops. An agent may freeze a fresh proof root, prepare lockfile-pinned
+dependencies, correct a proof-only candidate, obtain the required independent
+review, and consume the next explicitly frozen one-shot gate without returning
+to Kevin for another permission-only oracle. The failed route remains closed;
+the new route must have a new identity, an exact scope, an explicit retry
+budget, and unchanged product contracts.
+
 ## What this does not waive
 
 Standing authority is not permission to manufacture evidence or bypass a
@@ -41,7 +49,10 @@ An agent may stop for a genuine technical impossibility, contradictory product
 contract, unavailable external system, destructive ambiguity affecting
 user-owned work, or a failed authoritative gate. It must not relabel such a
 stop as missing user permission. It should preserve evidence, choose the
-safest strong next strategy, and continue when technically possible.
+safest strong next strategy, and continue when technically possible. A failed
+gate can still halt that candidate or consume that candidate's retry budget;
+it does not require a user permission round-trip before the agent designs and
+freezes a distinct bounded successor.
 
 ## Active Goal-32 effect
 
@@ -49,3 +60,13 @@ This standing grant explicitly authorizes the first-principles Goal-32
 proof-authority stop-loss replacement in
 `docs/codex/runs/ECON-LATE-HORIZON-HISTORY-PERF-1/STOP_LOSS_PROPOSAL.md`, including its
 narrow correction-cap exception and exact five-path proof boundary.
+
+Kevin's later 2026-07-31 reaffirmation explicitly authorizes the fresh Goal-32
+direct-proof successor recorded in that run's `AUTHORITY.md`: persistent fresh
+roots, separate frozen-lockfile dependency preparation, one corrected
+proof-only test candidate, static independent review before execution, one
+fresh no-simulation import probe, and—only after those gates—use of the still
+unspent diagnostic and conditional admission. It also authorizes committing
+and pushing recoverable campaign branches and documentation to GitHub. This
+does not convert an unlanded candidate into `main`, deploy an unproven build,
+or waive any technical gate.

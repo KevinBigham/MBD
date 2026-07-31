@@ -32,7 +32,10 @@ allowlist with the exact Goal-32 proposal. It does not:
 - authorize roadmap item 19;
 - authorize push, deployment, publication, release, or tag.
 
-Any materially different path requires a new bounded oracle decision.
+Any materially different path must be recorded as a new bounded oracle with an
+exact identity, scope, gate, and retry budget. Kevin's standing grant supplies
+permission for the narrowest source-grounded successor; it does not waive the
+need to freeze that technical contract before execution.
 
 ## 2026-07-31 standing authority and stop-loss decision
 
@@ -101,3 +104,61 @@ oracle that explicitly authorizes fresh roots, lockfile dependency preparation,
 one corrected one-file candidate, static `0/0/0` review, and only then one
 genuinely fresh probe. Routine quarantine/review documentation requires no new
 authority.
+
+## 2026-07-31 fresh direct-proof successor oracle
+
+Kevin reaffirmed that Codex, Claude Code, and other coding agents have standing
+authorization for every bounded action reasonably needed to make MBD GOAT-level
+and that agents must not stop to request permission. Read with the prior exact
+technical stops, this is the complete narrow oracle requested by
+`SOL_DIRECT_CANDIDATE_REVIEW.md`; it supersedes only the permission wait, not
+the exhausted route or any product contract.
+
+Authorized:
+
+1. persistent fresh clean baseline and successor roots from exact commits
+   `505cfdf7c3c11e0cb821bea0716641dbcb787555` and
+   `7cfda1134cd6f7458f906018a23461ba6a7a97d1`;
+2. separate `pnpm install --frozen-lockfile` preparation in each fresh root,
+   using repository policy and verifying Git identity/cleanliness afterward;
+3. one read-only topology, dependency, root, HEAD/tree, frozen-production-hash,
+   checkpoint-presence, and output-isolation preflight;
+4. exactly one Terra/high proof writer changing only successor
+   `apps/web/src/workers/econLongSoak.test.ts`;
+5. one candidate that closes every static `0/8/2` finding, including exact
+   producer envelope authentication, explicit env parsing, inert ordinary
+   mode, pre-state/pre-RNG/round-trip admission, strict framed collection,
+   complete `D15/D30/R/P/H` math, causal hostile controls, read-only import
+   isolation, source-byte module identity, and exact candidate/Git binding;
+6. one independent Sol/xhigh static review before execution, requiring
+   actionable P0/P1/P2 `0/0/0`;
+7. exactly one fresh no-simulation, no-timer, no-evidence-output import probe,
+   with all cache/temp output redirected to a fresh path outside both roots;
+8. after a green probe only, the focused test and affected web typecheck;
+9. after those pre-gates, exact checkpoint restoration from a real copy whose
+   raw/envelope hashes match the frozen values, or otherwise one canonical
+   repository-owned recapture of post-season-15 and season-30-input state;
+10. after all pre-gates and authenticated input availability only, the already
+   authorized, still-unspent single
+   no-retry `R/P/H` diagnostic and, only if it passes, the already authorized
+   single no-retry final admission;
+11. committing and pushing recoverable campaign documentation and the active
+    draft Goal-32 branch to GitHub.
+
+Not authorized or reopened:
+
+- editing, executing, or retrying the extinct direct candidate;
+- reconstructing lost uncommitted bytes and calling them preserved evidence;
+- custom manifests, reducers, semantic roots, recovery lineages, or R41;
+- a second probe or diagnostic retry;
+- a fifth production seam, cap/timeout/seed/horizon adjustment, or any
+  gameplay, RNG, save, schema, receipt, or product-behavior change;
+- Item 19;
+- landing unproven Goal-32 source on `main`, deployment, release, publication,
+  or tagging before the frozen technical gates pass.
+
+If this fresh candidate fails a technical gate, that candidate stops and its
+evidence is preserved. Standing authority permits the coordinator to choose a
+new smallest source-grounded strategy without asking Kevin for permission, but
+no exhausted execution may be repeated and no acceptance contract may be
+weakened.

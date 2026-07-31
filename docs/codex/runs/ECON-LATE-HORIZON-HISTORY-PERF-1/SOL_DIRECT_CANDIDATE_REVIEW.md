@@ -73,3 +73,17 @@ route. A new bounded oracle must authorize all of the following together:
 
 No new manifest, artifact root, reducer, recovery lineage, R41, gameplay/RNG/
 save/receipt/cap change, remote action, release, or Item-19 work is needed.
+
+## Current disposition
+
+The `/private/tmp` checkout containing this uncommitted candidate was removed
+externally between sessions. Its recorded file/diff hashes and this static
+review remain historical evidence; the candidate bytes are not a current local
+artifact and must not be described as preserved or executable.
+
+Kevin's reaffirmed standing authority authorizes the complete fresh boundary
+above, now frozen in `AUTHORITY.md` and the fresh-successor addendum to
+`SOL_DIRECT_IN_PROCESS_GATE.md`. The new candidate must be independently
+implemented from the source contract, not reconstructed and relabeled as these
+lost bytes. This review remains the exact regression checklist for the required
+pre-probe static `0/0/0` verdict.

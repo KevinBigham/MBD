@@ -194,3 +194,59 @@ Any future oracle must authorize a fresh dependency-prepared pair, one
 corrected one-file candidate closing the complete review, and static Sol
 `0/0/0` before the sole fresh import probe. The stopped candidate may not be
 edited, installed, executed, or used as that fresh route.
+
+## Authorized fresh successor addendum
+
+Status: `AUTHORIZED_PREEXECUTION — STATIC REVIEW REQUIRED BEFORE ONE PROBE`
+
+Kevin's reaffirmed standing authority grants the complete future oracle above.
+This addendum does not reopen the terminal route or its missing temporary
+checkout. It creates one distinct route with persistent roots:
+
+- baseline:
+  `/Users/kevin/Downloads/MBD-goal32-direct-baseline-505cfdf-fresh` at exact
+  `505cfdf7c3c11e0cb821bea0716641dbcb787555`;
+- successor:
+  `/Users/kevin/Downloads/MBD-goal32-direct-successor-7cfda113-fresh` at exact
+  `7cfda1134cd6f7458f906018a23461ba6a7a97d1`;
+- external cache/temp root:
+  `/Users/kevin/.codex/tmp/mbd-goal32-direct-fresh-20260731`, absent before
+  preparation and never admitted as evidence.
+
+Before either composition is imported:
+
+1. create each checkout cleanly and verify exact HEAD/tree;
+2. install separately with the frozen lockfile and the repository's declared
+   package manager;
+3. verify the install changed no tracked or non-ignored untracked repository
+   path; lockfile-pinned ignored dependency artifacts such as `node_modules`
+   are expected and are never admitted as evidence;
+4. verify Vite, Vitest, the worker module, and the workspace sim-core package
+   resolve from each root without loading the game module;
+5. bind exact source-freeze production hashes and exact successor candidate
+   file/diff hashes;
+6. redirect Vite cache/temp output outside both repositories and prove a
+   no-import dry preflight leaves both roots unchanged.
+
+Exactly one Terra/high writer may change only successor
+`apps/web/src/workers/econLongSoak.test.ts`. The candidate must close all ten
+findings in `SOL_DIRECT_CANDIDATE_REVIEW.md`. Its collector must admit one
+strictly framed record per ordered descriptor only after exact identity,
+checkpoint, pre-state, pre-RNG, round-trip, factual, final-state, and final-RNG
+validation. The `rph` summary must compute and enforce the exact frozen
+`D15/D30/R/P/H` formulas. Hostile controls must enter the real collector with
+otherwise-valid records. Ordinary mode must remain inert.
+
+One independent Sol/xhigh static review of the exact one-file diff must return
+actionable P0/P1/P2 `0/0/0` before any import probe. Only then may the route run
+exactly one no-simulation/no-timer/no-evidence-output probe. A probe failure is
+terminal for these fresh bytes. A green probe opens the focused test and web
+typecheck. Before the still-unspent diagnostic, locate exact checkpoint copies
+matching the frozen raw/envelope hashes or perform one canonical
+repository-owned recapture into a persistent external evidence root. The
+recapture is input construction, not diagnostic/admission execution, and must
+bind the frozen seed, producer, state, RNG, season, and envelope contracts. A
+green authenticated-input gate then opens the diagnostic and conditional
+admission already frozen above. No retry, second probe, custom artifact
+machinery, R41, fifth production seam, cap change, gameplay/RNG/save/receipt
+change, or Item 19 is opened.
