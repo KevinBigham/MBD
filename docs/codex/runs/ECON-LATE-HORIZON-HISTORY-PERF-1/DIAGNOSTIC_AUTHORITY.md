@@ -185,8 +185,43 @@ This is a verification-program defect, not a payroll/gameplay/RNG result. The
 same Terra writer owns correction loop 1 of 2. The active parity construction
 below uses a fresh root.
 
+### Superseded successful `-r1` parity evidence
+
+The correction-loop-1 parity sequence ran once in exact order with no retry:
+baseline capture, successor capture, then reducer. All three commands exited
+`0`; the two captures and three `PASS` receipts are preserved at
+`/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1`.
+
+Exact raw SHA-256 / internal digest pairs:
+
+- `capture-baseline.json`:
+  `13b4254b2ad9e785879274ac40b6bb7744de96b65a0d2ca1c4259d4559d5fe36` /
+  `6bf501c24e8d37717e74f1b044abd87bce0fc6f6441cf5d7c3b56ca0183fb18a`;
+- `capture-successor.json`:
+  `2438f847907a8f30e1f04bef9f1dcf4a4173ed9d62439b5b62cfb74aca986bd7` /
+  `a5bcd4cee8e359bc476f9d07982a8d9af8dbc3323f2f8d554396b8755877bd94`;
+- `interactive-before-after.json`:
+  `58730ee39b7e27318129ac7d4e0f6629dbb098e7b43f08ebefdfc82fa0451671` /
+  `b41e94cfb792f61aa05f7bcdf8b61859f581cd6b461515f1ed7f174b070744e3`;
+- `autonomous-before-after.json`:
+  `0456fdf50bd1b0db748535b114cf31fa97f6d63e2a589147282a8fe276a734b2` /
+  `bf1948ed310f80f19d6652ea29b53da499c012da074aa022cab90f45220ce21f`;
+- `cross-mode-difference.json`:
+  `a5389683e0ef32e71d145c4cc09a70898c8f83a445036253e73029c4daeb326d` /
+  `ebfafaa2556316a5d460c4287209a81bd41160986b7c24a4d19f77a387275418`.
+
+These receipts are semantically green but become superseded when correction
+loop 2 replaces the copied live-global-environment assertion in the shared
+observer. They remain immutable evidence and are never rewritten or admitted
+by the new manifest.
+
+The parity and seal failures were the same copied assertion class. The
+lineage stop-loss therefore forbids another conditional global assertion.
+Correction loop 2 replaces both with pure parser tests over explicit
+environment objects before producing new evidence.
+
 The frozen canonical parity root is
-`/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1`. It must be absent before the
+`/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r2`. It must be absent before the
 first capture and remain outside both repositories, the preserved Goal-31
 evidence root, checkpoint source roots, and the later diagnostic artifact root.
 No command may clean, delete, overwrite, or reuse it.
@@ -197,7 +232,7 @@ The baseline capture command runs from the baseline composition:
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=baseline \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-baseline.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r2/capture-baseline.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
 ```
@@ -210,7 +245,7 @@ composition:
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=successor \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-successor.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r2/capture-successor.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
 ```
@@ -271,9 +306,9 @@ The reducer command runs from the successor composition:
 ```sh
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=reduce \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_BASELINE=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-baseline.json \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_SUCCESSOR=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-successor.json \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_ROOT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1 \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_BASELINE=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r2/capture-baseline.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_SUCCESSOR=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r2/capture-successor.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_ROOT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r2 \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
 ```
@@ -350,8 +385,26 @@ The exact process order is:
 
 `artifactRoot, manifestPath, childOutputPaths, reducerOutputPath`.
 
+### Failed first manifest seal evidence
+
+The first manifest seal invoked the real seal handler and exclusively created:
+
+- root:
+  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730`;
+- only file: `manifest.json`;
+- raw SHA-256:
+  `c0f29a87128910ce76901764982854100aca3b71683bc5d7dd7bb5581fd88113`;
+- internal manifest digest:
+  `6e8810e18959afee1c8c32f296b7c0604dfb5d83932ac8b493bc66da725895ff`.
+
+The process then exited `1` because the copied ordinary default-mode test read
+the live `seal-manifest` environment and incorrectly required it to be absent.
+No check-only, paired child, diagnostic, timer, profile, forecast, or proof ran.
+The root and manifest are immutable evidence-only. No cleanup, overwrite,
+check, child output, reducer, completion, or reuse is permitted.
+
 The frozen artifact root is
-`/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730`; `manifestPath` is its direct
+`/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1`; `manifestPath` is its direct
 child `manifest.json`. The four input-copy direct-child names are
 `input-1-baseline-post15.json`, `input-2-successor-post15.json`,
 `input-3-baseline-season30Input.json`, and
@@ -394,7 +447,7 @@ successor composition, substituting only the reviewed 64-hex raw manifest hash:
 ```sh
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=check-only \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
@@ -432,9 +485,9 @@ operator-supplied values:
 ```sh
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=paired-diagnostic \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/rph-receipt.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/rph-receipt.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
 ```

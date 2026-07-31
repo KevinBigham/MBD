@@ -1,11 +1,11 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
 Phase: landable source frozen and Sol-approved; paired compositions built;
-parity correction loop 1 of 2
+verification stop-loss correction loop 2 of 2
 
 Writer: `/root/goal32_source_mapper`, Terra/high, paused at the immutable
-failed-capture boundary pending correction-loop-1 contract approval. The
-landable source writer completed its separate correction loop 2 of 2.
+failed-seal boundary pending correction-loop-2 contract approval. The landable
+source writer completed its separate correction loop 2 of 2.
 
 Landable source freeze:
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
@@ -22,15 +22,15 @@ Focused receipts, retries disabled:
 - four structural mutants failed their intended guards and were restored;
 - `git diff --check` passed and the source-freeze worktree/index are clean.
 
-Current blocker: no production blocker. The first baseline parity capture
-reached the real fixture and wrote its receipt, but an ordinary default-mode
-test asserted the explicitly supplied capture environment must be absent, so
-the process exited `1`. The root is sealed as failed evidence. No successor
-capture or reducer ran. The same Terra writer owns the bounded test correction
-and new shared proof bytes; the active parity root is the fresh `-r1` path.
-Diagnostic execution remains closed.
+Current blocker: no production blocker. The correction-loop-1 parity evidence
+is green, but the first manifest seal hit the same copied live-global
+environment assertion class and exited `1` after writing the manifest. Both
+failed roots are immutable. The stop-loss now requires one pure explicit-env
+parser boundary in both shared observers, new composition heads, fresh `-r2`
+parity evidence, and fresh `-r1` diagnostic artifacts. This is correction loop
+2 of 2. Diagnostic execution remains closed.
 
-Next action: correct the verification-program assertion in both byte-identical
-proof closures, rerun ordinary focused tests, commit new immutable composition
-heads, then run the three active `-r1` parity commands once in order. Do not run
+Next action: replace both copied global-environment assertions, rerun ordinary
+focused tests, commit final immutable composition heads, then run the three
+active `-r2` parity commands and one `-r1` seal/check-only sequence. Do not run
 the diagnostic.
