@@ -195,7 +195,7 @@ The exact process order is:
 `artifactRoot, manifestPath, childOutputPaths, reducerOutputPath`.
 
 The frozen artifact root is
-`/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730`; `manifestPath` is its direct
+`/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730`; `manifestPath` is its direct
 child `manifest.json`. The four input-copy direct-child names are
 `input-1-baseline-post15.json`, `input-2-successor-post15.json`,
 `input-3-baseline-season30Input.json`, and
@@ -236,17 +236,35 @@ successor composition, substituting only the reviewed 64-hex raw manifest hash:
 
 ```sh
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=check-only \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
 ```
 
-Check-only accepts no `OUT` value. It performs zero OS child spawns, zero input
-copy or output creation, zero measured-root calls, and zero timer calls. It
-records artifact-root entry names and file-byte hashes plus both live worktree
-identities before validation, reopens and validates the manifest, then proves
-those exact observations are unchanged afterward.
+Check-only accepts no `OUT` value. It performs zero paired-child observer
+spawns, zero input-copy or output creation, zero measured-root calls, and zero
+timer calls. The outer pnpm/Vitest process chain is the operator command, not a
+harness spawn. Inside the harness, only read-only `git` subprocesses are
+permitted.
+
+One live composition-identity pass uses exactly six Git subprocesses per
+composition:
+
+1. `git rev-parse --show-toplevel`;
+2. one `git rev-parse` for `HEAD`, `HEAD^{tree}`, parent revision, and parent
+   tree;
+3. `git status --porcelain=v1 --untracked-files=all`;
+4. `git diff --name-only <parent>..HEAD`;
+5. `git merge-base --is-ancestor HEAD <local-main-revision>`;
+6. one `git rev-parse` containing all twelve `HEAD:<path>` blob arguments.
+
+The before/after check for two compositions therefore permits and requires
+exactly 24 Git subprocesses. A wrapper counts every internal spawn, rejects any
+non-`git` executable or non-allowlisted argv, and asserts the exact count. File
+SHA-256 and byte lengths use direct filesystem reads. Check-only records
+artifact-root entry names/file-byte hashes and both identities before manifest
+validation, then proves those exact observations are unchanged afterward.
 
 ## Literal outer command
 
@@ -255,9 +273,9 @@ operator-supplied values:
 
 ```sh
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=paired-diagnostic \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/rph-receipt.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/rph-receipt.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
 ```
@@ -490,8 +508,9 @@ Before Sol review, and without running the diagnostic:
    - altered reducer constants, equations, threshold, cap, or key order;
 5. one deliberate negative control bypasses a live composition-identity check
    and proves the hostile test fails, then restores correct bytes;
-6. the exact check-only command passes with zero OS child spawns, input copies,
-   outputs, measured-root calls, or timers, and proves identical manifest,
+6. the exact check-only command passes with zero paired-child observer spawns,
+   input copies, outputs, measured-root calls, or timers; permits exactly the
+   24 allowlisted Git identity subprocesses; and proves identical manifest,
    artifact-root entries/bytes, and live worktree identities before/after;
 7. independent Sol review of the exact composition commits, manifest,
    raw manifest hash, helper projections, tests, and literal command returns
