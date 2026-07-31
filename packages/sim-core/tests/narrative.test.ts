@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   GameRNG,
   generatePlayer,
@@ -555,6 +557,41 @@ describe('deduplicateNews', () => {
 
     expect(deduplicateNews(items)[0]?.id).toBe('news-a');
     expect(deduplicateNews([...items].reverse())[0]?.id).toBe('news-a');
+  });
+
+  it('preserves original references, malformed ranks, duplicate player IDs, and full comparator ties', () => {
+    const tiedFirst: NewsItem = {
+      id: 'full-tie', headline: 'First full tie', body: 'Body', priority: 2,
+      category: 'injury', timestamp: 'malformed', relatedPlayerIds: ['p2', 'p1', 'p1'], relatedTeamIds: [], read: false,
+    };
+    const tiedSecond: NewsItem = {
+      ...tiedFirst,
+      headline: 'Second full tie',
+    };
+    const distinct: NewsItem = {
+      ...tiedFirst,
+      id: 'distinct', category: 'trade', relatedPlayerIds: ['p3'],
+    };
+    const output = deduplicateNews([tiedFirst, tiedSecond, distinct]);
+    expect(output).toEqual([distinct, tiedFirst]);
+    expect(output[1]).toBe(tiedFirst);
+    expect(deduplicateNews([tiedSecond, tiedFirst, distinct])[1]).toBe(tiedSecond);
+  });
+
+  it('decorates timestamp ranks and player keys once per input row outside its comparator', () => {
+    const source = readFileSync(fileURLToPath(new URL('../src/narrative/newsFeed.ts', import.meta.url)), 'utf8');
+    const start = source.indexOf('export function deduplicateNews(');
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    let end = bodyStart;
+    for (; end < source.length; end += 1) {
+      if (source[end] === '{') depth += 1;
+      if (source[end] === '}' && --depth === 0) break;
+    }
+    const body = source.slice(bodyStart, end + 1);
+    expect(body.match(/parseTimestampRank\(/g)).toHaveLength(1);
+    expect(body.match(/relatedPlayerIds\].sort/g)).toHaveLength(1);
+    expect(body.indexOf('parseTimestampRank(')).toBeLessThan(body.indexOf('const compareDecoratedNews'));
   });
 });
 

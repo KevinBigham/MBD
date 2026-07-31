@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   GameRNG,
   TEAMS,
@@ -11,6 +13,8 @@ import {
   evaluateHoldout,
   resolveArbitration,
   calculateTeamPayroll,
+  calculateLeaguePayrolls,
+  deriveLeagueTradePayrollAdjustments,
   derivePlayerTradeSalaryResponsibility,
   calculateLuxuryTax,
   getTeamBudget,
@@ -399,6 +403,134 @@ describe('calculateTeamPayroll', () => {
     expect(hasActiveTradeFinancialObligationForPlayer([released], history, released.id, 10)).toBe(true);
     expect(activeRetainedContractCountForTeam(history, 'NYT', 10, [replacement], 10)).toBe(0);
     expect(hasActiveTradeFinancialObligationForPlayer([replacement], history, replacement.id, 10)).toBe(false);
+  });
+
+  it('projects all 32 clubs and every future year from the canonical finance rules under adversarial financial history', () => {
+    const teamIds = TEAMS.map((team) => team.id);
+    const players = generateLeaguePlayers(new GameRNG(32_032), teamIds);
+    const controlled = players.find((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')!;
+    controlled.contract = {
+      ...controlled.contract,
+      annualSalary: 20,
+      totalValue: 60,
+      years: 3,
+      playerOption: false,
+      teamOption: false,
+    };
+    controlled.teamId = 'nym';
+    const released = {
+      ...retainedPlayer(''),
+      id: 'league-projection-released',
+      contract: {
+        ...retainedPlayer('').contract,
+        annualSalary: 18,
+        totalValue: 54,
+        years: 3,
+        playerOption: false,
+        teamOption: false,
+      },
+    };
+    players.push(released);
+    const controlledReference = { annualSalary: 20, contractEndSeasonExclusive: 13 };
+    const releasedReference = { annualSalary: 18, contractEndSeasonExclusive: 13 };
+    const context = {
+      season: 10,
+      allPlayers: players,
+      tradeHistory: [{
+        // The history is deliberately newest-first: worker state preserves this
+        // insertion order, while the current player controller remains canonical.
+        id: 'league-projection-return-to-payer',
+        fromTeamId: 'lax',
+        toTeamId: 'nym',
+        offeringAssets: [{
+          type: 'player' as const,
+          playerId: controlled.id,
+          contractReference: controlledReference,
+        }],
+        requestingAssets: [],
+        fairnessScore: 0,
+        summary: 'League projection return to original payer',
+        timestamp: 'S10D82',
+      }, {
+        id: 'league-projection-retrade',
+        fromTeamId: 'bos',
+        toTeamId: 'lax',
+        offeringAssets: [{
+          type: 'player' as const,
+          playerId: controlled.id,
+          contractReference: controlledReference,
+        }],
+        requestingAssets: [],
+        fairnessScore: 0,
+        summary: 'League projection retrade',
+        timestamp: 'S10D81',
+      }, {
+        id: 'league-projection-released-controller',
+        fromTeamId: 'bos',
+        toTeamId: 'lax',
+        offeringAssets: [{
+          type: 'player' as const,
+          playerId: released.id,
+          contractReference: releasedReference,
+          retainedSalary: { annualAmount: 3, startSeason: 10, endSeasonExclusive: 13 },
+          cashConsideration: { amount: 1, season: 10 },
+        }],
+        requestingAssets: [],
+        fairnessScore: 0,
+        summary: 'League projection released controller liability',
+        timestamp: 'S10D80',
+      }, {
+        id: 'league-projection-retained',
+        fromTeamId: 'nym',
+        toTeamId: 'bos',
+        offeringAssets: [{
+          type: 'player' as const,
+          playerId: controlled.id,
+          contractReference: controlledReference,
+          retainedSalary: { annualAmount: 5, startSeason: 10, endSeasonExclusive: 13 },
+          cashConsideration: { amount: 2, season: 10 },
+        }],
+        requestingAssets: [],
+        fairnessScore: 0,
+        summary: 'League projection retained salary',
+        timestamp: 'S10D80',
+      }] satisfies TradeHistoryEntry[],
+    };
+    const projection = calculateLeaguePayrolls(teamIds, players, context);
+    const adjustments = deriveLeagueTradePayrollAdjustments(
+      teamIds,
+      players,
+      context.tradeHistory,
+      context.season,
+      [10, 11, 12, 13, 14, 15],
+    );
+
+    expect(Array.from(projection.keys())).toEqual(teamIds);
+    expect(Array.from(adjustments.keys())).toEqual(teamIds);
+    for (const teamId of teamIds) {
+      const canonical = calculateTeamPayroll(teamId, players, context);
+      expect(projection.get(teamId)).toEqual(canonical);
+      expect(projection.get(teamId)?.futureCommitments).toEqual(canonical.futureCommitments);
+      expect(Array.from(adjustments.get(teamId)!.keys())).toEqual([10, 11, 12, 13, 14, 15]);
+    }
+    expect(projection.get('lax')).toMatchObject({ releasedContractCharges: 14 });
+  });
+
+  it('builds the shared trade projection before, not inside, the team enumeration', () => {
+    const source = readFileSync(fileURLToPath(new URL('../src/finance/contracts.ts', import.meta.url)), 'utf8');
+    const start = source.indexOf('export function calculateLeaguePayrolls(');
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    let end = bodyStart;
+    for (; end < source.length; end += 1) {
+      if (source[end] === '{') depth += 1;
+      if (source[end] === '}' && --depth === 0) break;
+    }
+    const body = source.slice(bodyStart, end + 1);
+    expect(body.match(/deriveLeagueTradePayrollAdjustments\(/g)).toHaveLength(1);
+    expect(body.indexOf('deriveLeagueTradePayrollAdjustments(')).toBeLessThan(
+      body.indexOf('for (const teamId of teamIds)'),
+    );
   });
 });
 

@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PersistentTradeOffer, TradeAsset, TradeHistoryEntry } from '@mbd/contracts';
-import type { GeneratedPlayer } from '@mbd/sim-core';
+import { TEAMS, type GeneratedPlayer } from '@mbd/sim-core';
 
 vi.mock('comlink', () => ({
   expose: () => {},
@@ -18,6 +18,7 @@ import { api } from './sim.worker';
 import { requireState, setState, type FullGameState } from './sim.worker.helpers';
 import {
   calculateStateTeamPayroll,
+  calculateStateLeaguePayrolls,
   effectiveAcquiringSalary,
   validateTradeFinancialTerms,
 } from './sim.worker.tradeFinance';
@@ -150,6 +151,16 @@ describe('trade financial aggregate validator', () => {
         - asset.retainedSalary!.annualAmount
         - asset.cashConsideration!.amount) * 100) / 100,
     );
+  });
+
+  it('builds an exact ordered same-day league projection without changing the single-team oracle', () => {
+    const state = startRegularGame();
+    const teamIds = TEAMS.map((team) => team.id);
+    const projection = calculateStateLeaguePayrolls(state, teamIds);
+    expect(Array.from(projection.keys())).toEqual(teamIds);
+    for (const teamId of teamIds) {
+      expect(projection.get(teamId)).toEqual(calculateStateTeamPayroll(state, teamId));
+    }
   });
 
   it.each([

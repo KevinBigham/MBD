@@ -1185,23 +1185,38 @@ export function markAsRead(news: NewsItem[], newsId: string): NewsItem[] {
  * within the same timestamp, keeping the higher-priority version.
  */
 export function deduplicateNews(news: NewsItem[]): NewsItem[] {
-  const seen = new Map<string, NewsItem>();
-
-  // Sort by priority first so we keep the most important version
-  const sorted = [...news].sort(compareNewsItems);
-
-  for (const item of sorted) {
-    // Build a dedup key from category + timestamp + sorted player IDs
-    const playerKey = [...item.relatedPlayerIds].sort((left, right) => left.localeCompare(right)).join(',');
-    const key = `${item.category}:${item.timestamp}:${playerKey}`;
-
-    if (!seen.has(key)) {
-      seen.set(key, item);
+  const decorated = news.map((item, inputIndex) => ({
+    item,
+    inputIndex,
+    timestampRank: parseTimestampRank(item.timestamp),
+    playerKey: [...item.relatedPlayerIds].sort((left, right) => left.localeCompare(right)).join(','),
+  }));
+  const compareDecoratedNews = (
+    left: (typeof decorated)[number],
+    right: (typeof decorated)[number],
+  ) => {
+    if (left.item.priority !== right.item.priority) {
+      return left.item.priority - right.item.priority;
     }
-    // Skip duplicates — the first one (highest priority) wins
+    const timestampDelta = right.timestampRank - left.timestampRank;
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
+    const idDelta = left.item.id.localeCompare(right.item.id);
+    return idDelta !== 0 ? idDelta : left.inputIndex - right.inputIndex;
+  };
+  const seen = new Map<string, (typeof decorated)[number]>();
+
+  for (const entry of decorated.sort(compareDecoratedNews)) {
+    const key = `${entry.item.category}:${entry.item.timestamp}:${entry.playerKey}`;
+    if (!seen.has(key)) {
+      seen.set(key, entry);
+    }
   }
 
-  return Array.from(seen.values()).sort(compareNewsItems);
+  // Winners are an ordered subsequence of the sorted input, so a second sort
+  // would repeat comparator work without changing the public result.
+  return Array.from(seen.values(), (entry) => entry.item);
 }
 
 // ---------------------------------------------------------------------------

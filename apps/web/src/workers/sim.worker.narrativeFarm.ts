@@ -699,22 +699,49 @@ export function applyWeeklyMomentsForCompletedRange(
 
 export function applySeasonEndPlayerMicroArcMoments(state: FullGameState) {
   const baseContext = playerMicroArcBaseContext(state);
+  const callupFactsByPlayerId = new Map<string, number[]>();
+  for (const item of state.news) {
+    const playerId = item.relatedPlayerIds[0];
+    if (!playerId || !item.body.includes('cal')) {
+      continue;
+    }
+    const parsed = parseTimestampParts(item.timestamp);
+    if (!parsed || parsed[0] !== state.season) {
+      continue;
+    }
+    const facts = callupFactsByPlayerId.get(playerId) ?? [];
+    facts.push(parsed[1]);
+    callupFactsByPlayerId.set(playerId, facts);
+  }
+  const tradeFactsByPlayerId = new Map<string, Array<{
+    tradeDay: number;
+    acquiringTeamId: string;
+    priorTeamId: string;
+  }>>();
+  for (const trade of state.tradeState.tradeHistory) {
+    const parsed = parseTimestampParts(trade.timestamp);
+    if (!parsed || parsed[0] !== state.season) {
+      continue;
+    }
+    for (const [assets, acquiringTeamId, priorTeamId] of [
+      [trade.offeringAssets, trade.toTeamId, trade.fromTeamId],
+      [trade.requestingAssets, trade.fromTeamId, trade.toTeamId],
+    ] as const) {
+      for (const asset of assets) {
+        const playerId = (asset as { readonly playerId?: string }).playerId;
+        if (!playerId) continue;
+        const facts = tradeFactsByPlayerId.get(playerId) ?? [];
+        facts.push({ tradeDay: parsed[1], acquiringTeamId, priorTeamId });
+        tradeFactsByPlayerId.set(playerId, facts);
+      }
+    }
+  }
 
   for (const player of state.players) {
-    for (const item of state.news) {
-      if (
-        item.relatedPlayerIds[0] !== player.id
-        || !item.body.includes('cal')
-      ) {
-        continue;
-      }
-      const parsed = parseTimestampParts(item.timestamp);
-      if (!parsed || parsed[0] - state.season) {
-        continue;
-      }
+    for (const callupDay of callupFactsByPlayerId.get(player.id) ?? []) {
       const detected = detectSeptemberCallupHero(player, {
         ...baseContext,
-        callupDay: parsed[1],
+        callupDay,
         teamId: player.teamId,
       });
       if (detected) {
@@ -723,30 +750,17 @@ export function applySeasonEndPlayerMicroArcMoments(state: FullGameState) {
     }
 
     const bestTrades: Record<string, NonNullable<ReturnType<typeof detectTradeDeadlineSpark>>> = {};
-    for (const trade of state.tradeState.tradeHistory) {
-      const parsed = parseTimestampParts(trade.timestamp);
-      if (!parsed || parsed[0] - state.season) {
-        continue;
-      }
-      for (const [assets, acquiringTeamId, priorTeamId] of [
-        [trade.offeringAssets, trade.toTeamId, trade.fromTeamId],
-        [trade.requestingAssets, trade.fromTeamId, trade.toTeamId],
-      ] as const) {
-        for (const asset of assets) {
-          if ((asset as { readonly playerId?: string }).playerId === player.id) {
-            const detected = detectTradeDeadlineSpark(player, {
-              ...baseContext,
-              tradeDay: parsed[1],
-              acquiringTeamId,
-              priorTeamId,
-            });
-            if (detected) {
-              const current = bestTrades[acquiringTeamId];
-              if (!current || detected.score! > current.score!) {
-                bestTrades[acquiringTeamId] = detected;
-              }
-            }
-          }
+    for (const fact of tradeFactsByPlayerId.get(player.id) ?? []) {
+      const detected = detectTradeDeadlineSpark(player, {
+        ...baseContext,
+        tradeDay: fact.tradeDay,
+        acquiringTeamId: fact.acquiringTeamId,
+        priorTeamId: fact.priorTeamId,
+      });
+      if (detected) {
+        const current = bestTrades[fact.acquiringTeamId];
+        if (!current || detected.score! > current.score!) {
+          bestTrades[fact.acquiringTeamId] = detected;
         }
       }
     }

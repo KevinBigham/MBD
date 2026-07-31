@@ -280,6 +280,134 @@ export function deriveTradePayrollAdjustment(
   };
 }
 
+/**
+ * Derive exact trade-payroll adjustments for a bounded league projection.
+ *
+ * This is deliberately an operation-local calculation: callers provide the
+ * exact teams, player array, history, finance season, and target seasons for
+ * one coherent read. Nothing is retained after this function returns.
+ */
+export function deriveLeagueTradePayrollAdjustments(
+  teamIds: readonly string[],
+  players: readonly GeneratedPlayer[],
+  tradeHistory: readonly TradeHistoryEntry[],
+  currentSeason: number,
+  targetSeasons: readonly number[],
+): ReadonlyMap<string, ReadonlyMap<number, TradePayrollAdjustment>> {
+  const requestedTeamIds = Array.from(new Set(teamIds));
+  const requestedTargetSeasons = Array.from(new Set(targetSeasons));
+  const adjustments = new Map<string, Map<number, {
+    retainedSalaryCharges: number;
+    cashConsiderationCharges: number;
+    releasedContractCharges: number;
+    totalExternalSalaryCredits: number;
+    salaryCreditsByPlayerId: Map<string, number>;
+  }>>();
+  const playerById = new Map(players.map((player) => [player.id, player] as const));
+  const agreements = collectPlayerTradeFinancialAgreements(tradeHistory);
+
+  for (const teamId of requestedTeamIds) {
+    adjustments.set(teamId, new Map(requestedTargetSeasons.map((targetSeason) => [
+      targetSeason,
+      {
+        retainedSalaryCharges: 0,
+        cashConsiderationCharges: 0,
+        releasedContractCharges: 0,
+        totalExternalSalaryCredits: 0,
+        salaryCreditsByPlayerId: new Map<string, number>(),
+      },
+    ])));
+  }
+
+  for (const targetSeason of requestedTargetSeasons) {
+    const releasedCreditsByPlayerId = new Map<string, number>();
+    const releasedControllerByPlayerId = new Map<string, string>();
+
+    for (const agreement of agreements) {
+      const player = playerById.get(agreement.playerId);
+      if (!player || !tradeContractReferencesEqual(
+        contractReferenceForPlayer(player, currentSeason),
+        agreement.contractReference,
+      )) continue;
+
+      const { retained, cash } = activeAgreementAmount(agreement, targetSeason);
+      const total = roundTradeMoney(retained + cash);
+      if (total <= 0) continue;
+
+      const controllerTeamId = player.teamId || latestControllerForContract(
+        tradeHistory,
+        player.id,
+        agreement.contractReference,
+        agreement.controllerTeamIdAtAgreement,
+      );
+      const payerAdjustment = adjustments.get(agreement.payerTeamId)?.get(targetSeason);
+      if (payerAdjustment) {
+        payerAdjustment.retainedSalaryCharges = roundTradeMoney(
+          payerAdjustment.retainedSalaryCharges + retained,
+        );
+        payerAdjustment.cashConsiderationCharges = roundTradeMoney(
+          payerAdjustment.cashConsiderationCharges + cash,
+        );
+      }
+
+      if (!player.teamId) {
+        releasedCreditsByPlayerId.set(
+          player.id,
+          roundTradeMoney((releasedCreditsByPlayerId.get(player.id) ?? 0) + total),
+        );
+        releasedControllerByPlayerId.set(player.id, controllerTeamId);
+        continue;
+      }
+
+      const controllerAdjustment = adjustments.get(controllerTeamId)?.get(targetSeason);
+      if (!controllerAdjustment) continue;
+      controllerAdjustment.salaryCreditsByPlayerId.set(
+        player.id,
+        roundTradeMoney((controllerAdjustment.salaryCreditsByPlayerId.get(player.id) ?? 0) + total),
+      );
+      if (agreement.payerTeamId !== controllerTeamId) {
+        controllerAdjustment.totalExternalSalaryCredits += total;
+      }
+    }
+
+    for (const [playerId, controllerTeamId] of releasedControllerByPlayerId) {
+      const adjustment = adjustments.get(controllerTeamId)?.get(targetSeason);
+      const player = playerById.get(playerId);
+      if (!adjustment || !player) continue;
+      adjustment.releasedContractCharges = roundTradeMoney(
+        adjustment.releasedContractCharges
+        + Math.max(0, player.contract.annualSalary - (releasedCreditsByPlayerId.get(playerId) ?? 0)),
+      );
+    }
+  }
+
+  return new Map(requestedTeamIds.map((teamId) => [
+    teamId,
+    new Map(requestedTargetSeasons.map((targetSeason) => {
+      const adjustment = adjustments.get(teamId)?.get(targetSeason)!;
+      const totalSalaryCredits = roundTradeMoney(
+        Array.from(adjustment.salaryCreditsByPlayerId.values()).reduce(
+          (sum, amount) => sum + amount,
+          0,
+        ),
+      );
+      return [targetSeason, {
+        retainedSalaryCharges: adjustment.retainedSalaryCharges,
+        cashConsiderationCharges: adjustment.cashConsiderationCharges,
+        releasedContractCharges: adjustment.releasedContractCharges,
+        deadMoneyCharges: roundTradeMoney(
+          adjustment.retainedSalaryCharges
+          + adjustment.cashConsiderationCharges
+          + adjustment.releasedContractCharges,
+        ),
+        salaryCreditsByPlayerId: adjustment.salaryCreditsByPlayerId,
+        totalSalaryCredits,
+        totalExternalSalaryCredits: roundTradeMoney(adjustment.totalExternalSalaryCredits),
+      } satisfies TradePayrollAdjustment];
+    })),
+  ]));
+}
+
 export function retainedSalaryForContract(
   tradeHistory: readonly TradeHistoryEntry[],
   playerId: string,
