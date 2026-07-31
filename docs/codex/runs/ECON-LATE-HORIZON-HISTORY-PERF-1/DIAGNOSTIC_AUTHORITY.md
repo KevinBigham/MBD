@@ -206,8 +206,38 @@ Required values:
 - `autonomousLeague`: the same exact facts for autonomous mode;
 - `crossMode`: exact selected-user-team inclusion/exclusion and changed/no-change
   facts that are intentionally different between modes;
-- `stateDigest` and `rngDigest`: full canonical fixture snapshot facts;
+- `stateDigest` and `rngDigest`: the common pristine pre-mode fixture's full
+  `exportGameSnapshot` snapshot-without-RNG and exact RNG digests;
 - `receiptDigest`: `digestV1` over every preceding key.
+
+`interactive` and `autonomousLeague` each have exact key order:
+
+`teamIds, payrollEntries, operationResultDigest, postStateDigest,
+postRngDigest`.
+
+- `teamIds` is the exact ordered team-ID list returned by
+  `buildFreeAgencyPayrolls`;
+- `payrollEntries` is the exact ordered
+  `Array.from(buildFreeAgencyPayrolls(...).entries())`;
+- `operationResultDigest` is `digestV1` of the exact result from the parity
+  fixture's one free-agency-day operation;
+- `postStateDigest` is `digestV1` of the full post-operation
+  `exportGameSnapshot` value without its `rng` field;
+- `postRngDigest` is `digestV1` of that exact snapshot's `rng` field.
+
+The two modes start from separately imported copies of the exact same pristine
+snapshot bound by the top-level `stateDigest` and `rngDigest`.
+
+`crossMode` has exact key order:
+
+`userTeamId, interactiveTeamIds, autonomousTeamIds, interactiveIncludesUser,
+autonomousIncludesUser, differingTeamIds, interactiveDigest,
+autonomousLeagueDigest, differenceDigest`.
+
+`interactiveDigest` and `autonomousLeagueDigest` are `digestV1` of the complete
+mode objects above. `differingTeamIds` preserves canonical team order and is
+exactly the teams whose inclusion differs. `differenceDigest` is `digestV1`
+over every preceding cross-mode key.
 
 The reducer command runs from the successor composition:
 
@@ -234,7 +264,18 @@ Each parity receipt has exact key order:
 result, contentDigest`.
 
 `schema` is `mbd.econ-late-horizon-history-perf.parity.v1`; `result` is exactly
-`PASS`. `assertions` contains the exact compared factual/state/RNG projections.
+`PASS`. `baselineCaptureDigest` is the fully revalidated baseline capture's
+`receiptDigest`; `successorCaptureDigest` is the fully revalidated successor
+capture's `receiptDigest`; `contentDigest = digestV1` over every preceding
+parity-receipt key.
+
+`assertions` has exact key order:
+
+`baselineEqualsSuccessor, stateEquals, rngEquals, crossModeDifferenceMatches,
+crossModeDifferenceNonempty`.
+
+Every field is boolean and must be `true`. It binds the exact compared
+factual/state/RNG projections.
 Interactive and autonomous baseline/successor facts must be exact-equal.
 Cross-mode intentional differences must be exact-equal between variants and
 must remain nonempty. Any mismatch writes none of the three receipts. The
