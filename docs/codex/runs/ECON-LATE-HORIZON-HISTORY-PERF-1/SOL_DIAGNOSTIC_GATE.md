@@ -1,6 +1,6 @@
 # Sol Diagnostic Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `PENDING FRESH SOL REVIEW — EXECUTION CLOSED`
+Status: `FIX_AND_REVIEW — P0/P1/P2 0/2/0 — EXECUTION CLOSED`
 
 ## Replacement `-r2` artifact pending review
 
@@ -136,6 +136,40 @@ regressions. The rejected `-r1` literal command never ran.
 
 ## Fresh `-r2` Sol verdict
 
-Pending. Execution remains closed unless one independent Sol/xhigh review of
-the exact replacement artifact returns `APPROVED` with actionable P0/P1/P2
-`0/0/0`.
+`FIX_AND_REVIEW`, actionable P0/P1/P2 `0/2/0`.
+
+1. **P1 — observation/root identity is not retained through admission.**
+   `econLateHorizonPerf.integration.test.ts` performs one stable output read
+   after each child but discards its bytes and identity. It later reopens each
+   pathname without an expected hash or retained inode. Artifact-root identity
+   is likewise pinned only within each individual read, not across
+   orchestration or immediately before reducer creation. A same-path regular
+   file or root replacement can therefore supply self-consistent arbitrary
+   timings and alter `R/P/H`. The hostile suite proves symlink and known-hash
+   rejection, but not same-path regular-file/root replacement.
+2. **P1 — the mandatory post-green proof is non-executable.**
+   `econLongSoak.receipts.ts` still requires Goal-31 source freeze
+   `4e016cc…`, its ancestry, the exact legacy diff closure, helper SHA
+   `07115d…`, and observer SHA `809da8…`. Live optimized successor
+   `7cfda113…` instead has false `4e016cc…` ancestry, 39 paths in that diff,
+   helper SHA `768d95…`, and observer SHA `075a26…`. Forecast/profile,
+   season-15 direct proof, and final admission all invoke that incompatible
+   derivation. A green diagnostic therefore cannot reach Phase 7.
+
+Prior finding closure:
+
+- reducer predicate recomputation: closed;
+- empty/selective digest closure: closed;
+- symlink and single-read TOCTOU handling: improved, but cross-read/root-life
+  substitution remains open.
+
+Identity review otherwise passed: exact composition heads/trees, exact
+twelve-path diffs, eleven byte-identical proof files, intended helper variants,
+clean worktrees, non-ancestry from local `main`, exact manifest raw/internal
+hashes, exact parity/input hashes, and a manifest-only regular artifact root.
+
+Exact next gate: architecture replan and explicit authorization for one
+first-principles proof-only correction, fresh compositions/manifest/check-only,
+then one new Sol review. The paired diagnostic remains unspent. No write,
+diagnostic, measured root, timer, forecast, proof, or admission ran during
+review.

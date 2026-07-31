@@ -77,7 +77,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — ACTIVE PREREQUISITE | Goal 32 multi-seam successor active; Goal 31 failed evidence; Goal 28 autonomous-league WIP; Goals 29–30 blocker history | Goal-31 stop record `198759d`; source freeze `4e016cc`; composition `2f3329b`; failed adjusted forecast `2,948,890ms` versus `2,040,000ms` cap; Goal-32 docs-first architecture | Goal-31 exactness and standard/V8 bands green; final admission failed once with no retry/receipt; Goal-32 execution not begun | Goal-32 parent coordinator; Sol/xhigh architecture; Terra/high source map; Terra/medium Luna-style test map; one Terra writer pending | Items 9–17 | Complete Goal-32 architecture, four seams, one diagnostic, and conditional one-shot admission; no R41 or Item 19 |
+| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — ACTIVE PREREQUISITE | Goal 32 source frozen; paired diagnostic unspent; Goal 31 failed evidence; Goal 28 autonomous-league WIP; Goals 29–30 blocker history | Goal-32 source `5a4eb60`, compositions `505cfdf`/`7cfda11`, rejected manifest-only `-r2`; Sol `FIX_AND_REVIEW` 0/2/0 | Four seams exact/focused-green; diagnostic blocked by cross-read/root substitution and non-executable copied Goal-31 proof identity | Parent coordinator; Sol/xhigh stop-loss proposal; no writer authorized | Items 9–17 | Authorize the exact five-path generated-proof-authority stop-loss checkpoint; no diagnostic, R41, or Item 19 |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |
@@ -249,12 +249,19 @@ recorded in `docs/codex/goals/32_ECON_LATE_HORIZON_HISTORY_PERF_1.md`. Its
 landable source freeze is `5a4eb60f8b1890803117a84a613d43af605f47dc`,
 independently source-reviewed `MERGE_READY` with zero actionable P0-P2. The
 final paired compositions are `505cfdf7…` and `7cfda113…`; replacement
-diagnostic `-r2` is sealed and check-only green. The current legal action is
-exactly one fresh Sol review of that frozen artifact. A single paired
-diagnostic against post-season-15 and season-30-input data may run only after
-a zero-finding verdict; the final no-retry proof/admission opens only when the
-diagnostic's frozen headroom gate is green. No paired diagnostic or final
-proof has run. Item 19 remains closed.
+diagnostic `-r2` is sealed and check-only green, but fresh Sol review returned
+`FIX_AND_REVIEW`, P0/P1/P2 `0/2/0`. It found an unbound cross-read/root
+replacement window and proved the optimized successor cannot execute the
+mandatory Phase-7 proof because that lane still requires extinct Goal-31
+identity. The repeated provenance class triggers the stop-loss; derivative
+`-r3` work is prohibited. The current legal action is a first-principles
+generated-identity architecture proposal and the smallest explicit authority
+exception. No paired diagnostic or final proof has run. Item 19 remains
+closed.
+
+The exact next-action proposal is
+`docs/codex/runs/ECON-LATE-HORIZON-HISTORY-PERF-1/STOP_LOSS_PROPOSAL.md`.
+It is not execution authority.
 
 ## Item 18 Goal-30 blocker receipt
 

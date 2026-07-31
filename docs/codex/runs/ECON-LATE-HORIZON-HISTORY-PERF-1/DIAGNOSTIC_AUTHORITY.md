@@ -479,6 +479,22 @@ no input copy or output, called no measured root or timer, and left the
 manifest and artifact-root entry set unchanged. No paired diagnostic,
 forecast, proof, or retry has run.
 
+Fresh independent Sol review rejected this artifact before execution with
+P0/P1/P2 `0/2/0`:
+
+1. The orchestrator's first stable observation read is discarded and the
+   pathname is reopened later without the original bytes, hash, or inode.
+   Artifact-root identity is not pinned across the complete orchestration.
+2. The optimized successor still routes forecast, direct-proof, and final
+   admission through the incompatible Goal-31 identity requiring false
+   `4e016cc…` ancestry and legacy helper/observer hashes.
+
+The root remains immutable and manifest-only. It is rejected evidence, not an
+execution artifact. Because the first finding repeats the same copied
+path/provenance family, the stop-loss forbids a derivative `-r3` artifact.
+Only a separately authorized first-principles generated-identity correction
+may supersede this pre-execution boundary.
+
 ## Exact manifest seal and check-only commands
 
 After the two composition commits and three parity receipts are immutable, the

@@ -1,8 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `ACTIVE — landable source frozen and source-reviewed;
-replacement paired diagnostic sealed/check-only; fresh Sol diagnostic review
-pending; no paired diagnostic or final proof has run`.
+Current status: `BLOCKED — fresh Sol review found two reproducible P1
+architecture-contract/evidence defects; paired diagnostic and final proof
+remain unexecuted`.
 
 ## Player-facing outcome
 

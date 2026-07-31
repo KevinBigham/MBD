@@ -1,7 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `ACTIVE — source and replacement diagnostic artifact frozen; fresh Sol
-diagnostic review pending; execution closed`
+Status: `BLOCKED — fresh Sol review P0/P1/P2 0/2/0; architecture stop-loss;
+execution closed`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -201,9 +201,20 @@ projections, identity manifest, negative controls, and diagnostic reducer.
 Actionable P0–P2 must be zero before any diagnostic process runs.
 
 Current state: the rejected `-r1` review returned `FIX_AND_REVIEW`, P0/P1/P2
-`0/2/1`. The exact three-path correction is frozen and verified. One fresh
-review of the replacement `-r2` artifact is pending; diagnostic execution
-remains closed.
+`0/2/1`. Correction loop 3 produced `-r2`; fresh review also returned
+`FIX_AND_REVIEW`, P0/P1/P2 `0/2/0`. It found a remaining cross-read/root
+replacement window and proved that the successor cannot execute Phase 7
+because its forecast/admission lanes still require extinct Goal-31 identity.
+No diagnostic ran.
+
+The repeated provenance class triggers the stop-loss. A derivative `-r3`
+artifact is prohibited. Architecture must replace copied identity and
+multi-read admission with one generated Goal-32 identity/buffer boundary, and
+an explicit authority exception is required before correction.
+
+The exact five-path design, hostile controls, semantic artifact root,
+check-only gates, stop conditions, and oracle request are frozen in
+`STOP_LOSS_PROPOSAL.md`. Its status is proposal-only.
 
 ### Phase 6 — One diagnostic
 

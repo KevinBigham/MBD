@@ -1,10 +1,9 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: correction loop 3 frozen; fresh Sol diagnostic review pending;
-diagnostic execution closed
+Phase: architecture stop-loss after fresh Sol review; diagnostic execution
+closed
 
-Writer: none. The same Terra/high writer completed the exact three-file
-bounded split byte-identically in both disposable compositions.
+Writer: none. No correction is authorized.
 
 Landable source freeze:
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
@@ -33,20 +32,25 @@ passed and one unrelated Goal-31 gated adapter skipped. It spawned no paired
 child, created no input copy or output, called no measured root or timer, and
 left the artifact root containing only its sealed manifest.
 
-Current blocker: no production or implementation blocker. Execution remains
-closed until a fresh independent Sol review returns zero actionable P0-P2 on:
+Current blocker: fresh independent Sol review returned `FIX_AND_REVIEW`,
+actionable P0/P1/P2 `0/2/0`.
 
-- baseline composition `505cfdf7c3c11e0cb821bea0716641dbcb787555`,
-  tree `0640b942317d7bfacebb33b2b5befa20e90cd746`;
-- successor composition `7cfda1134cd6f7458f906018a23461ba6a7a97d1`,
-  tree `36b8f2fdef9adb68b7516441ece0a3e9ad09a04e`;
-- manifest
-  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/manifest.json`,
-  raw SHA-256
-  `15e8d9e6c81aac8da253a3076dd7a9414f2e8a42beea3d02feea02992e7d5995`,
-  internal digest
-  `57d0ba66a26dca3f5dcd03a8dfeddb8f06aefd36a74232456d4bec0f9fd8340b`.
+1. The orchestrator discards its first stable observation read and later
+   reopens the pathname without binding the original bytes/inode. Artifact-root
+   identity is not pinned across the whole orchestration. Same-path regular
+   file or root replacement can therefore change admitted timings.
+2. The only optimized successor cannot execute the authorized post-green proof:
+   forecast/direct-proof/final-admission code still requires Goal-31
+   `4e016cc…` ancestry, the legacy 12-path closure, helper SHA `07115d…`, and
+   observer SHA `809da8…`. Live successor `7cfda113…` has no such ancestry,
+   has a 39-path diff from that revision, helper SHA `768d95…`, and observer
+   SHA `075a26…`.
 
-Next action: obtain exactly one fresh Sol/xhigh review. Do not run the paired
-diagnostic unless that review records `APPROVED` with actionable P0/P1/P2
-`0/0/0`.
+The first defect repeats the same provenance family that correction loop 3
+attempted to close. The stop-loss therefore prohibits another derivative
+`-r3` correction. The sealed/check-only `-r2` root is immutable rejected
+evidence.
+
+Next action: obtain the exact oracle decision in `STOP_LOSS_PROPOSAL.md`.
+No file change or command in that proposal is authorized yet. Do not run the
+paired diagnostic, final proof, retry, or Item 19.

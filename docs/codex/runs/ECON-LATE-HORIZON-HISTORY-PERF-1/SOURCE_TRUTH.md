@@ -267,3 +267,17 @@ change the landable source freeze.
 
 No paired child, input copy, observation, reducer, measured root, diagnostic,
 forecast, final proof, admission, or retry has run against this root.
+
+Fresh Sol review rejected `-r2` before execution with actionable P0/P1/P2
+`0/2/0`. The verified source truth is:
+
+- a stable observation read is discarded before a later unbound pathname
+  reopen, and the artifact-root inode is not pinned for the orchestration
+  lifetime;
+- the optimized successor's forecast/direct-proof/admission path is
+  non-executable because it still enforces Goal-31 ancestry and legacy helper
+  identities that the Goal-32 composition intentionally does not satisfy.
+
+This is verification architecture failure, not evidence that the production
+optimization or performance threshold failed. The one paired diagnostic
+remains unconsumed.

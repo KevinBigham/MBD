@@ -1,0 +1,13 @@
+# Defect Ledger — ECON-LATE-HORIZON-HISTORY-PERF-1
+
+| Evidence stop | Defect | Class | Production affected | Command executed | Root cause | Correction / next design | Regression | Family repeated |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| First parity capture | Ordinary assertion read explicit capture-mode environment as though default mode were active | Verification-program | No | Baseline capture reached fixture and exited 1; no successor or reducer | Copied conditional live-environment assertion | Replaced with pure parser checks over explicit environment objects | Pure empty/default and explicit-mode tests | No |
+| First manifest seal | Same conditional assertion rejected explicit seal mode after writing the manifest | Verification-program | No | Seal handler wrote one manifest then process exited 1; no check/child/diagnostic | Same copied live-environment assertion | Same pure parser redesign; prior root preserved | Pure mode tests | Yes; stop-loss applied to conditional assertions |
+| Rejected `-r1` review | Forged PASS, incomplete semantic closure, and non-stable output provenance | Evidence-recording / architecture-contract | No | Seal and check-only only; no measurement | Reducer trusted copied result; evidence boundary trusted path-level reads | Exact predicate and digest closure; canonical stable single-FD reads | Forged-PASS, selective-digest, symlink, and known-hash substitution tests | No |
+| Rejected `-r2` review | First stable output bytes discarded; later pathname/root identity unbound | Evidence-recording / architecture-contract | No | Seal and check-only only; no measurement | Multi-read boundary did not retain the authoritative buffer/root inode across orchestration | Replace with one retained buffer per child and one orchestration-lifetime root identity | Same-path file replacement and root replacement must deterministically fail | Yes; provenance stop-loss now active |
+| Rejected `-r2` review | Optimized successor cannot execute forecast/direct-proof/final admission | Architecture-contract | No | No final proof command | Phase-7 code copied Goal-31 ancestry, diff, helper, and observer identity instead of consuming generated Goal-32 identity | Generate the successor identity once and feed the same exact value through capture, forecast, and admission parsers | Check-only real-successor acceptance plus stale Goal-31 and wrong-successor rejection | Yes; copied-identity stop-loss now active |
+
+No entry above is a production-gameplay failure or a measured performance
+failure. All paired diagnostic, forecast, proof, admission, retry, Item-19,
+remote, and release lanes remain closed.
