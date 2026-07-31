@@ -34,6 +34,19 @@
 
 ### Save And Determinism
 
+- Recorded Goal 31 `ECON-MILESTONE-PATH-PERF-1` as blocked without landing its
+  four-file production candidate. The milestone/ceremony lookup reduction
+  preserved exact season-30 semantic, state, RNG, round-trip, row, population,
+  and call-signature facts; standard median combined time improved from
+  88,044.107ms to 16,518.497ms, and real V8 combined roots fell from
+  73,501,040us to 333,791–351,748us.
+- The exact no-retry primary and season-15 continuation forecasts each stayed
+  below 40 minutes and converged on identical final facts, but their frozen
+  adjusted aggregate was 2,948,890ms—908,890ms above the 2,040,000ms
+  admission cap. Final admission correctly failed once and wrote no receipt.
+  Root gates, final merge review, landing, Goal-18 integration/diagnostic,
+  Item 19, and remote/release actions did not run.
+
 - Recorded Goal 30 `ECON-LATE-HORIZON-PERF-1` as blocked without landing its
   production candidate. The exact season-30 milestone lookup reduction preserved
   all row/state/RNG/round-trip/subdomain/call facts while improving median

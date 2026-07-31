@@ -1,6 +1,11 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-17 after Goal 30 / ECON-LATE-HORIZON-PERF-1 passed its narrow season-30 optimization gates but failed the sole primary readiness forecast and stopped without landing.
+Last reconciled: 2026-07-30 after Goal 31's exact tracked, disposable,
+non-landed 12-path proof composition reached final admission once. All
+identity, semantic, standard, and V8 gates passed, but forecast-primary plus
+its permitted continuation measured `2,948,890ms` adjusted and failed the
+immutable `2,040,000ms` aggregate cap. No retry, root full gate, final review,
+landing, Goal-18 diagnostic, Item 19, or remote/release action followed.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -18,6 +23,13 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 - Closed item: **15 — market-size revenue feeds budgets**, now **VERIFIED COMPLETE** under Goal 25 / `ECON-MARKET-REVENUE-1`.
 - Closed item: **16 — explainable free-agent decisions**, now **VERIFIED COMPLETE** under Goal 26 / `ECON-FA-DECISIONS-1`.
 - Closed item: **17 — salary retention and player-linked cash in trades**, now **VERIFIED COMPLETE** under Goal 27 / `ECON-TRADE-RETENTION-1`; item 18 later opened and is blocked below.
+- Blocked prerequisite: **ECON-MILESTONE-PATH-PERF-1** under Goal 31 proved
+  its semantics-neutral two-consumer optimization exact, standard-band green,
+  and V8-band green. The exact no-retry forecast paths converged on identical
+  season-30 facts, but their `2,948,890ms` adjusted aggregate exceeded the
+  frozen `2,040,000ms` cap by `908,890ms`. Final admission correctly failed
+  without writing a receipt. Root gates, final merge review, landing, Goal-18
+  integration/diagnostic, R41, and Item 19 remain prohibited.
 - Blocked prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
   landed after green paired performance/exactness, corrected-tree horizon,
   repository, and review gates, but its sole seed-7111 run reached 30 primary
@@ -56,7 +68,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — FORECAST ADMISSION FAILED | Goal 30 blocker; Goal 29 blocked history; Goal 28 dependent WIP | Goal-30 completion report: exact checkpoint, three paired candidates, three V8 samples, failed sole primary forecast, final `BLOCK_CONFIRMED` | Docs-only blocker record; production source/test uncommitted and unlanded | Ledger-assisted manual swarm pattern; requested Sol/Terra/Luna routes host-unpinned | Items 9–17 | New bounded prerequisite or explicit contract amendment required; no retry or item 19 |
+| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — FORECAST ADMISSION FAILED | Goal 31 direct-proof prerequisite; Goal 28 autonomous-league WIP; Goals 29–30 blocker history | Goal-31 source freeze `4e016cc`; composition `2f3329b`; exact forecast convergence but `2,948,890ms` adjusted versus `2,040,000ms` cap | Pre-artifact Sol `MERGE_READY` 0/0/0; focused 88 passed / 4 execution-only skips; standard/V8 bands green; final admission failed once; no retry or receipt | Parent sole writer; read-only Sol pre-artifact review; read-only Terra/medium Luna-style closeout substitution | Items 9–17 | Preserve evidence; require a materially new bounded performance strategy; no retry, R41, landing, or Item 19 |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |
@@ -198,14 +210,28 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 
 ## First incomplete item source contract
 
-Item 18 is `BLOCKED — FORECAST ADMISSION FAILED`. Goal 30's unlanded milestone
-lookup candidate passed exact semantic, pair, range, bundle, and selected-cost
-gates, but the sole canonical primary forecast timed out and measured
+Goal 30's historical stop was `BLOCKED — FORECAST ADMISSION FAILED`: its
+unlanded milestone lookup candidate passed exact semantic, pair, range, bundle,
+and selected-cost gates, but the sole canonical primary forecast timed out at
 2,766,160ms adjusted. It emitted no receipt; continuation and final Goal 18 did
-not run. Final Sol independently confirmed the blocker with zero actionable
-P0–P2. The next legal action requires a new bounded prerequisite or explicit
-contract amendment. A retry, timeout increase, alternate seed, production
-landing, or item 19 is not authorized by the stopped run.
+not run. That stopped run still authorizes no retry, timeout increase, alternate
+seed, production landing, or item 19.
+
+2026-07-27 Goal-31 reconciliation supersedes that next-action status, not the
+historical evidence. Kevin authorized the bounded direct-proof oracle under the
+unchanged bands and runtime ceilings. The two-consumer candidate remains
+byte-exact and focused-green on live WIP
+`codex/econ-milestone-path-perf-1@9ba8b35a2e908a484cb5fa21781f91d415777a3a`;
+Gate-M v1/v2/v3 and R37–R40 are retired, and R41 is permanently prohibited.
+Pre-execution source inspection then found a new architecture-contract block:
+current main lacks Goal 18's canonical `autonomous_league` production seam,
+and no existing reviewed proof tree also combines season-15 capture,
+late-range/profile, real CPU-profile receipt, and final admission. Goal 31
+permits no third production module in its landing. The next legal action is
+explicit authority for the tracked, non-landed 12-path composition in
+`DIRECT_PROOF_AUTHORITY.md`; inside it, authenticated exact raw inputs may be
+restored or recaptured once. No candidate, capture, performance, diagnostic,
+or Item-19 command has run under Goal 31.
 
 ## Item 18 Goal-30 blocker receipt
 

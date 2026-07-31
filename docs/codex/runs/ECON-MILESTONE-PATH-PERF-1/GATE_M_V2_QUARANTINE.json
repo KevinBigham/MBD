@@ -1,0 +1,93 @@
+{
+  "schema": "mbd-item18-gate-m-v2-quarantine-v1",
+  "recordedAt": "2026-07-22",
+  "status": "FAILED_PREFREEZE_QUARANTINED",
+  "worktree": "/Users/kevin/Downloads/MBD-item18-gate-m-v2-20260722",
+  "branch": "codex/econ-milestone-path-perf-1-gate-m-v2",
+  "repository": {
+    "head": "98c4de4e75f50bc2b32832bbcba1e9bfbf353df1",
+    "tree": "7389c5cd0d8fb0dea26545135e285403d6780b9e",
+    "indexClean": true,
+    "dirtyPaths": [
+      "apps/web/src/workers/item18.preparation.process-policy.ts",
+      "apps/web/src/workers/item18.preparation.runtime.ts",
+      "apps/web/src/workers/item18.preparation.test.ts",
+      "apps/web/vitest.item18-preparation.config.ts"
+    ],
+    "untrackedPaths": []
+  },
+  "source": {
+    "processPolicy": {
+      "path": "apps/web/src/workers/item18.preparation.process-policy.ts",
+      "sha256": "157bc440cd0bb085c89a2677d26f03baf3b7b2210cbb5939c45e4fd48653bf99",
+      "bytes": 14219,
+      "mode": "0644"
+    },
+    "runtime": {
+      "path": "apps/web/src/workers/item18.preparation.runtime.ts",
+      "sha256": "5cc934b32a464f014644c43ce2dc9e76c501a6958fcafdcd079f560bd0f3ed8c",
+      "bytes": 224805,
+      "mode": "0644"
+    },
+    "test": {
+      "path": "apps/web/src/workers/item18.preparation.test.ts",
+      "sha256": "03057b26a9e5e13295252b8738f475536cfea983d70de9b2a1ded5de615aa727",
+      "bytes": 75996,
+      "mode": "0644"
+    },
+    "config": {
+      "path": "apps/web/vitest.item18-preparation.config.ts",
+      "sha256": "9e6e4a6c0e8521e9045acdfd92dd76d578fde58038ef533741ef2d64dc502a4a",
+      "bytes": 9326,
+      "mode": "0644"
+    }
+  },
+  "focusedReceipt": {
+    "commandCwd": "/Users/kevin/Downloads/MBD-item18-gate-m-v2-20260722/apps/web",
+    "environment": {
+      "LANG": "C",
+      "LC_ALL": "C",
+      "TZ": "UTC",
+      "MBD_ITEM18_PREPARATION_CHALLENGE": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "retry": 0,
+    "passed": 20,
+    "failed": 0,
+    "result": "PASS"
+  },
+  "typecheck": "PASS",
+  "diffCheck": "PASS",
+  "reviews": {
+    "mechanical": {
+      "verdict": "FIX_AND_REVIEW",
+      "P0": 0,
+      "P1": 1,
+      "P2": 2
+    },
+    "sol": {
+      "verdict": "FIX_AND_REVIEW",
+      "P0": 0,
+      "P1": 4,
+      "P2": 2
+    }
+  },
+  "blockingFindings": [
+    "Execution authority is infeasible because active launch equality and authority/anchor hash dependencies form self and mutual cycles.",
+    "Compiler-only failure consumes the one-shot without creating a sealed terminal failure.",
+    "Failure verification accepts contradictory counters, stages, proof identity, and canonical-absence paths.",
+    "Attempt-8 quarantine is checked live but is not recursively committed by source freeze, reviews, authority, prerequisite evidence, and receipts.",
+    "Malformed-root observations omit the partial root chain.",
+    "The AST and hostile replay matrix remains incomplete."
+  ],
+  "dynamicExecution": {
+    "gateMCommands": 0,
+    "sourceFreezeCreated": false,
+    "staticReviewArtifactsCreated": false,
+    "executionAuthorityCreated": false,
+    "executionAnchorCreated": false,
+    "canonicalSuccessArtifactsCreated": false,
+    "canonicalFailureArtifactCreated": false,
+    "attemptConsumed": false
+  },
+  "disposition": "Preserve byte-for-byte as failed pre-freeze evidence. Do not patch in place or authorize a v2 execution. Continue Goal 31 in fresh v3 attempt-1 lineage."
+}
