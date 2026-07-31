@@ -159,6 +159,21 @@ Completed:
 - direct package typechecks and root typecheck 9/9 passed;
 - all four deliberate mutants failed at the intended guard and were restored.
 
+2026-07-31 bounded source-gate addendum:
+
+- draft CI exposed one reproducible bundle-architecture defect: worker core
+  exceeded the unchanged budget by `1,533` raw / `725` gzip bytes;
+- one Terra/high writer changed only `bundleConfig.ts` and its paired test;
+- source-freeze commit `85310795ef3ef13118eb75386a0864d270ace37c`,
+  tree `8ce776cc7d84c8872de807510d1968a136bee773`;
+- independent Sol/xhigh verdict `MERGE_READY`, P0/P1/P2 `0/0/0`;
+- routing `9`, budget `1`, worker-finance `14`, root typecheck `9/9`,
+  no-cache full tests, determinism `3/3`, 169-entry PWA, and production
+  Playwright `14/14` are green with retries disabled where applicable;
+- no simulation source or technical performance/proof contract changed;
+- the old `7cfda113…` successor composition is evidence-only and must be
+  regenerated from this exact landable freeze before the fresh import probe.
+
 ### Phase 4 — Paired proof compositions
 
 Create two fresh immutable, non-landed compositions:
@@ -270,8 +285,9 @@ Execute sequentially:
 
 1. publish recoverable `main` and active Goal-32 commits to GitHub without
    landing Goal-32 source;
-2. create persistent clean proof roots outside `/private/tmp` from exact
-   `505cfdf7…` and `7cfda113…` commits;
+2. create a persistent clean baseline root outside `/private/tmp` from exact
+   `505cfdf7…` and a fresh clean successor composition rooted in
+   `85310795…`; retain `7cfda113…` as historical evidence only;
 3. prepare dependencies separately with the frozen lockfile, then verify exact
    HEAD/tree, clean tracked/untracked state, and frozen production hashes;
 4. run a read-only topology/dependency/output-isolation preflight;

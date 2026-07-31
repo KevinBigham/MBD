@@ -293,3 +293,20 @@ The re-review confirmed:
 
 This verdict opens composition construction only. It does not open the paired
 diagnostic or final proof.
+
+## 2026-07-31 bounded bundle addendum
+
+Draft CI proved the reviewed functional freeze exceeded the unchanged worker
+core budget. `BUNDLE_GATE_CORRECTION.md` records the exact two-file,
+semantics-neutral correction. Landable source is now
+`85310795ef3ef13118eb75386a0864d270ace37c`, tree
+`8ce776cc7d84c8872de807510d1968a136bee773`. Independent Sol review returned
+`MERGE_READY`, P0/P1/P2 `0/0/0`; core is `452,347` raw / `146,487` gzip and the
+new trade-finance leaf is `5,908` raw / `1,939` gzip.
+
+The old `7cfda113…` successor composition is historical evidence only because
+its revision/tree predates this landable freeze. The persistent direct-proof
+route must generate one fresh clean successor composition from `85310795…`
+before static review or import. Baseline evidence, formulas, caps, all unspent
+execution lanes, gameplay/RNG/save/receipt contracts, R41 prohibition, and
+Item-19 closure are unchanged.

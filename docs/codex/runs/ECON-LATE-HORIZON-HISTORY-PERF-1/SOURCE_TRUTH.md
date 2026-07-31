@@ -454,3 +454,38 @@ one corrected proof-only test candidate, independent static `0/0/0`, and one
 fresh import probe before the existing no-retry diagnostic/admission sequence.
 GitHub synchronization of recoverable clean commits is authorized; unproven
 Goal-32 production remains excluded from `main` and any deployment/release.
+
+## 2026-07-31 bundle-gate source correction
+
+Draft PR 85 CI at `8b90b50…` failed the exact worker-core bundle budget:
+`458,237 > 456,704` raw and `148,181 > 147,456` gzip. One retries-disabled
+local reproduction returned the same bytes. Source and test inspection showed
+the new operation-local trade-finance projection had entered the generic
+sim-core chunk. The defect was build architecture, not simulation behavior or
+test infrastructure.
+
+`BUNDLE_GATE_CORRECTION.md` freezes the bounded two-file correction. Exact
+landable source is now
+`85310795ef3ef13118eb75386a0864d270ace37c`, tree
+`8ce776cc7d84c8872de807510d1968a136bee773`. It routes only the type-leaf
+`tradeFinance.ts` module to `game-engine-trade-finance`; no budget was raised
+and no simulation source changed. Independent Sol review verified the exact
+pre-commit diff SHA-256
+`7947ec75731a7efb823922ec07924fbb71866af76af86ba8890667a71bb18509`
+and returned `MERGE_READY`, P0/P1/P2 `0/0/0`.
+
+Current source-bound gates are green: core `452,347` raw / `146,487` gzip,
+trade-finance `5,908` raw / `1,939` gzip, 169-entry PWA with the new chunk
+precache-bound, root typecheck `9/9`, no-cache full tests, determinism `3/3`,
+and production Playwright `14/14` in `7.4m` with zero retries. The browser run
+rewrote tracked evidence screenshots as part of existing journeys; those
+generated working-tree changes were restored before source freeze, leaving the
+two-file commit exact.
+
+This source change invalidates revision/tree-bound successor, build, PWA,
+browser, diagnostic, and admission artifacts. The old `7cfda113…` successor
+composition remains evidence-only. The persistent direct-proof route must
+generate a fresh clean successor composition rooted in `85310795…`, then
+perform static `0/0/0` review before its sole import probe. Baseline evidence,
+checkpoint contracts, formulas, caps, R41 prohibition, all unspent timing
+lanes, and Item-19 closure remain unchanged.

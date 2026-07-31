@@ -116,9 +116,11 @@ the exhausted route or any product contract.
 
 Authorized:
 
-1. persistent fresh clean baseline and successor roots from exact commits
-   `505cfdf7c3c11e0cb821bea0716641dbcb787555` and
-   `7cfda1134cd6f7458f906018a23461ba6a7a97d1`;
+1. a persistent fresh clean baseline root from exact commit
+   `505cfdf7c3c11e0cb821bea0716641dbcb787555` and a fresh clean successor
+   composition rooted in exact landable source
+   `85310795ef3ef13118eb75386a0864d270ace37c`; the prior `7cfda113…`
+   composition remains evidence-only;
 2. separate `pnpm install --frozen-lockfile` preparation in each fresh root,
    using repository policy and verifying Git identity/cleanliness afterward;
 3. one read-only topology, dependency, root, HEAD/tree, frozen-production-hash,

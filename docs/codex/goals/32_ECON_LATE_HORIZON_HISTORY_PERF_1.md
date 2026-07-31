@@ -1,8 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `ACTIVE — FRESH DIRECT PROOF AUTHORIZED — persistent clean
-roots and dependencies are next; R/P/H diagnostic and final admission remain
-unexecuted`.
+Current status: `ACTIVE — SOURCE/BUNDLE GATES GREEN — corrected draft CI and
+persistent direct-proof roots are next; R/P/H diagnostic and final admission
+remain unexecuted`.
 
 ## Player-facing outcome
 
@@ -79,6 +79,12 @@ Only the test paths named in the run plan may change. Goal/run/status/changelog
 documentation is allowed. Any additional production, caller, test,
 instrumentation, or proof path requires a bounded Sol addendum and new
 authority before editing.
+
+The bounded bundle-gate addendum in `BUNDLE_GATE_CORRECTION.md` opens only
+`apps/web/src/build/bundleConfig.ts` and its paired test. It routes the existing
+trade-finance leaf out of the tight worker-core chunk without changing any
+simulation source or behavior. That addendum does not create a fifth gameplay
+seam.
 
 ## Required behavior
 
@@ -171,8 +177,9 @@ technically distinct bounded successor can preserve every contract above.
 The exhausted direct candidate and its vanished temporary checkout are
 historical evidence only. The fresh route must:
 
-1. create persistent clean baseline and successor roots from `505cfdf7…` and
-   `7cfda113…` outside `/private/tmp`;
+1. create a persistent clean baseline root from `505cfdf7…` and a fresh clean
+   successor composition rooted in landable source `85310795…` outside
+   `/private/tmp`; `7cfda113…` is historical evidence only;
 2. prepare each root separately with the repository lockfile and verify clean
    Git identity afterward;
 3. run a read-only topology/dependency preflight before any module import;
@@ -194,8 +201,9 @@ custom manifest/reducer/recovery lineage, and opens no fifth production seam.
 
 ## Done
 
-The four exact seams and preserved Goal-31 source are locally landed from a
-source-bound clean revision; focused, negative-control, diagnostic, final
+The four exact seams, preserved Goal-31 source, and bounded worker-chunk route
+are locally frozen from a source-bound clean revision; focused,
+negative-control, diagnostic, final
 admission, root, build, determinism, and browser gates are green; every
 acceptance criterion is mapped in `COMPLETION.md`; local `main` contains the
 verified commit; GitHub contains the recoverable campaign history and draft

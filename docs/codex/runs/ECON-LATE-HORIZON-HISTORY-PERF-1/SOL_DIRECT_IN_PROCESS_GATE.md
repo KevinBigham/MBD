@@ -6,8 +6,12 @@ Status: `APPROVED_SIMPLIFICATION_PLAN — 2026-07-31`
 
 Permanently abandon the custom proof manifest, child output pathname,
 held-descriptor publisher, reducer file, recovery-lineage, and semantic-root
-machinery. The production source freeze remains
+machinery. The functional simulation freeze remains
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, independently reviewed
+`MERGE_READY 0/0/0`. The exact landable source revision is superseded by the
+bounded build-only addendum at
+`85310795ef3ef13118eb75386a0864d270ace37c`, tree
+`8ce776cc7d84c8872de807510d1968a136bee773`, also independently reviewed
 `MERGE_READY 0/0/0`.
 
 This changes only proof mechanism. Gameplay, RNG, save v35, receipt facts,
@@ -207,8 +211,10 @@ checkout. It creates one distinct route with persistent roots:
   `/Users/kevin/Downloads/MBD-goal32-direct-baseline-505cfdf-fresh` at exact
   `505cfdf7c3c11e0cb821bea0716641dbcb787555`;
 - successor:
-  `/Users/kevin/Downloads/MBD-goal32-direct-successor-7cfda113-fresh` at exact
-  `7cfda1134cd6f7458f906018a23461ba6a7a97d1`;
+  `/Users/kevin/Downloads/MBD-goal32-direct-successor-85310795-fresh` at a
+  fresh clean composition rooted in exact landable source
+  `85310795ef3ef13118eb75386a0864d270ace37c`; its exact commit/tree must be
+  frozen before the proof writer starts;
 - external cache/temp root:
   `/Users/kevin/.codex/tmp/mbd-goal32-direct-fresh-20260731`, absent before
   preparation and never admitted as evidence.

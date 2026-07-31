@@ -34,6 +34,15 @@
 
 ### Save And Determinism
 
+- Goal 32's draft CI caught the worker core `1,533` raw / `725` gzip bytes over
+  its unchanged budget. The exact type-leaf trade-finance module now emits as
+  its own worker chunk; core is `452,347` raw / `146,487` gzip and the new
+  chunk is PWA-precache-bound. No simulation, RNG, save, schema, receipt,
+  performance cap, seed, horizon, or gameplay behavior changed. Local
+  no-cache full tests, root typecheck, determinism, production build, and
+  retries-disabled Playwright `14/14` are green; independent Sol review is
+  `MERGE_READY` with zero actionable P0-P2.
+
 - Reconciled Goal 32 after external cleanup removed its temporary-only proof
   checkouts and authenticated checkpoint files. All committed source and review
   history remains intact; lost dirty bytes are no longer described as

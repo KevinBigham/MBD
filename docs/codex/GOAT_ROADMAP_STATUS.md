@@ -90,7 +90,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | ACTIVE | Goal 32 source frozen; fresh direct proof authorized; R/P/H unspent | Source `5a4eb60`; prior committed evidence preserved; lost temporary-only candidates described by recorded hashes/reviews | Four production seams exact/source-reviewed; persistent dependency-prepared corrected one-file proof needs static 0/0/0 before one probe | Parent coordinator; proof writer not started; prior Sol `ROUTE_STOPPED`/`BLOCK` remain evidence | Items 9–17 | Publish recoverable Git state, then persistent roots + dependencies + corrected one-file candidate + static 0/0/0 + one probe; preserve every cap |
+| 18 | 2 | 30-season multi-seed economy soak | ACTIVE | Goal 32 source/bundle gates green; fresh direct proof authorized; R/P/H unspent | Landable `85310795`; core 452,347/146,487; full tests, determinism, PWA, Playwright 14/14; Sol 0/0/0 | Four simulation seams exact; bounded trade-finance chunk route; fresh persistent successor composition and corrected one-file proof still need static 0/0/0 before one probe | Terra `/root/goal32_bundle_writer` high; Sol `/root/goal32_authority_review` xhigh `MERGE_READY`; parent closeout | Items 9–17 | Corrected draft CI, then persistent roots + dependencies + fresh successor composition + static 0/0/0 + one probe; preserve every cap |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Items 9 and 18 | Keep closed until item 18 passes; then execute Goal 12 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |
@@ -260,9 +260,13 @@ The exact Goal-31 terminal documentation is now locally landed without its
 failed source candidate at `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`.
 Kevin authorized the Sol-approved Goal-32 multi-seam successor exactly as
 recorded in `docs/codex/goals/32_ECON_LATE_HORIZON_HISTORY_PERF_1.md`. Its
-landable source freeze is `5a4eb60f8b1890803117a84a613d43af605f47dc`,
+functional simulation freeze is `5a4eb60f8b1890803117a84a613d43af605f47dc`,
 independently source-reviewed `MERGE_READY` with zero actionable P0-P2. The
-final paired compositions are `505cfdf7…` and `7cfda113…`; replacement
+bounded bundle-gate correction is source-frozen at
+`85310795ef3ef13118eb75386a0864d270ace37c`, independently reviewed
+`MERGE_READY` with zero actionable P0-P2 and full local source gates green.
+The final historical paired compositions are `505cfdf7…` and `7cfda113…`;
+replacement
 diagnostic `-r2` is sealed and check-only green, but fresh Sol review returned
 `FIX_AND_REVIEW`, P0/P1/P2 `0/2/0`. It found an unbound cross-read/root
 replacement window and proved the optimized successor cannot execute the
