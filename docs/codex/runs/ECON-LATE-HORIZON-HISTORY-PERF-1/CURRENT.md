@@ -1,9 +1,9 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: architecture stop-loss after fresh Sol review; diagnostic execution
-closed
+Phase: first-principles proof-authority stop-loss implementation authorized;
+diagnostic execution closed
 
-Writer: none. No correction is authorized.
+Writer: exactly one Terra/high writer pending dispatch.
 
 Landable source freeze:
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
@@ -51,6 +51,7 @@ attempted to close. The stop-loss therefore prohibits another derivative
 `-r3` correction. The sealed/check-only `-r2` root is immutable rejected
 evidence.
 
-Next action: obtain the exact oracle decision in `STOP_LOSS_PROPOSAL.md`.
-No file change or command in that proposal is authorized yet. Do not run the
-paired diagnostic, final proof, retry, or Item 19.
+Next action: the same Terra role implements the exact five-file checkpoint
+byte-identically in both compositions, then runs only its frozen focused gates.
+Do not run the paired diagnostic, final proof, retry, or Item 19 before the
+fresh zero-finding Sol review.

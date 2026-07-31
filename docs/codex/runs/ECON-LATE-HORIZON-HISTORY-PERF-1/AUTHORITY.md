@@ -33,3 +33,25 @@ allowlist with the exact Goal-32 proposal. It does not:
 - authorize push, deployment, publication, release, or tag.
 
 Any materially different path requires a new bounded oracle decision.
+
+## 2026-07-31 standing authority and stop-loss decision
+
+Kevin granted Codex, Claude Code, and other coding agents standing authority
+for any work reasonably needed to make MBD GOAT-level and explicitly removed
+permission-only pauses. The canonical cross-campaign record is
+`docs/codex/STANDING_USER_AUTHORITY.md`.
+
+For this slice, that direction authorizes
+`STOP_LOSS_PROPOSAL.md` exactly, including:
+
+- the narrow correction-cap exception;
+- one Terra/high writer;
+- only the five named proof files, byte-identical across both compositions;
+- one manifest-derived Goal-32 proof authority;
+- orchestration-lifetime retained file/root identities;
+- one fresh semantic artifact root and manifest;
+- focused tests, web typecheck, two check-only gates, and one Sol/xhigh review.
+
+The previously authorized diagnostic and conditional final proof remain closed
+until that fresh review is zero-actionable-P0-P2. Technical caps, gameplay,
+RNG, save, receipt, retry, R41, and Item-19 boundaries remain unchanged.

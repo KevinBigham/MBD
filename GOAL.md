@@ -62,5 +62,7 @@ ADR and must not block web release.
 ## Git Safety
 
 Use one bounded `codex/` branch/worktree per slice. Preserve user-owned dirty
-files, stage only verified slice paths, land by local fast-forward, and never
-push, deploy, tag, publish, or release without explicit authorization.
+files, stage only verified slice paths, and land by local fast-forward. Kevin's
+standing authorization in `docs/codex/STANDING_USER_AUTHORITY.md` covers
+remote and release actions when the accepted campaign step requires them;
+technical release gates still decide readiness.

@@ -1,7 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `BLOCKED — fresh Sol review P0/P1/P2 0/2/0; architecture stop-loss;
-execution closed`
+Status: `ACTIVE — first-principles proof-authority stop-loss authorized;
+implementation pending; execution closed`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -214,7 +214,8 @@ an explicit authority exception is required before correction.
 
 The exact five-path design, hostile controls, semantic artifact root,
 check-only gates, stop conditions, and oracle request are frozen in
-`STOP_LOSS_PROPOSAL.md`. Its status is proposal-only.
+`STOP_LOSS_PROPOSAL.md`. Kevin authorized it on 2026-07-31 through the
+standing grant recorded in `docs/codex/STANDING_USER_AUTHORITY.md`.
 
 ### Phase 6 — One diagnostic
 

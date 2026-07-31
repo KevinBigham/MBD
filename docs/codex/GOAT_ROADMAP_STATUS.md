@@ -1,12 +1,14 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-30 after Goal 31's failed forecast was closed locally
+Last reconciled: 2026-07-31 after Kevin granted standing GOAT-campaign
+authority and opened Goal 32's exact first-principles proof-authority
+stop-loss checkpoint. Goal 31's failed forecast was closed locally
 with the exact 17-path documentation-only stop record at
 `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`. Kevin then authorized Goal 32 /
 `ECON-LATE-HORIZON-HISTORY-PERF-1`, the Sol-approved four-seam successor.
-Goal 32 has an approved Sol architecture and is in docs-first checkpoint
-review; no Goal-32 production edit, diagnostic, final proof, Item-19 work, or
-remote/release action has run.
+Goal 32's landable source remains frozen and source-reviewed. Its five-file
+proof-only stop-loss implementation is authorized; no paired diagnostic, final
+proof, Item-19 work, or remote/release action has run.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -38,7 +40,8 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
   season-end micro-arc indexing. It permits one paired `R/P/H` diagnostic and,
   only if green, one no-retry final admission. The Sol architecture gate is
   approved with zero actionable P0–P2; production remains closed until its
-  docs-first checkpoint is committed.
+  newly authorized proof-authority stop-loss checkpoint is implemented and
+  independently reviewed with zero actionable P0-P2.
 - Blocked prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
   landed after green paired performance/exactness, corrected-tree horizon,
   repository, and review gates, but its sole seed-7111 run reached 30 primary
@@ -54,7 +57,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
   19 stays closed.
 - Item 8 remains locally landed at `2c07cc3eea4cfca1faef344e51b91818782b2da3`; Goal 11 is recorded below with its final commit after landing.
 - Item 97 safe-delete work is integrated; the remaining Appendix-B restructure is `PARTIAL` and explicitly authorized by the campaign objective when roadmap order reaches it.
-- Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Push, tag, publish, deploy, and actual release remain outside current authority.
+- Item 100 has useful release infrastructure but remains `PARTIAL`: local cadence/release-note tooling and rehearsal are unfinished. Standing user authority now covers push, tag, publish, deploy, and release when the campaign reaches a gate-green intentional release step; those actions have not run.
 
 ## Roadmap ledger
 
@@ -77,7 +80,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — ACTIVE PREREQUISITE | Goal 32 source frozen; paired diagnostic unspent; Goal 31 failed evidence; Goal 28 autonomous-league WIP; Goals 29–30 blocker history | Goal-32 source `5a4eb60`, compositions `505cfdf`/`7cfda11`, rejected manifest-only `-r2`; Sol `FIX_AND_REVIEW` 0/2/0 | Four seams exact/focused-green; diagnostic blocked by cross-read/root substitution and non-executable copied Goal-31 proof identity | Parent coordinator; Sol/xhigh stop-loss proposal; no writer authorized | Items 9–17 | Authorize the exact five-path generated-proof-authority stop-loss checkpoint; no diagnostic, R41, or Item 19 |
+| 18 | 2 | 30-season multi-seed economy soak | ACTIVE PREREQUISITE | Goal 32 source frozen; five-file proof-authority stop-loss authorized; paired diagnostic unspent; Goal 31 failed evidence | Goal-32 source `5a4eb60`, compositions `505cfdf`/`7cfda11`, rejected manifest-only `-r2`; Sol `FIX_AND_REVIEW` 0/2/0; standing authority recorded | Four seams exact/focused-green; exact generated-identity/root-pin correction now open | Parent coordinator; one Terra/high writer next; Sol/xhigh review after gates | Items 9–17 | Implement exact five-path checkpoint, check-only gates, fresh Sol review; no diagnostic before 0/0/0 |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |
@@ -159,7 +162,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 97 | 10 | Complete repo slim/restructure | PARTIAL | Audit Appendix A/B | Safe-delete integrated; June audits/content still unmoved | `c4e154b`, `d0aff48` | Historical cleanup route not recorded | Items 95–96 | Execute authorized Appendix-B `git mv` restructure |
 | 98 | 10 | Long-save performance budgets | PARTIAL | No run | Diagnostics/size/performance tests exist; no enforced 30-season latency/memory/save bands | Historical source | — | Integrated gameplay | Add benchmark and CI budgets |
 | 99 | 10 | Privacy-safe opt-in diagnostic bundle | PARTIAL | No run | Runtime/save diagnostics exist; no redacted support bundle | Historical source | — | Item 98 | Define consent/redaction/bundle tests |
-| 100 | 10 | v1.x release train | PARTIAL | No run | Checklist, PWA ADR, changelog, and Pages workflow exist; cadence/notes automation absent | Historical source | — | Items 1–99 | Complete local tooling/rehearsal; actual tag/push/publish/deploy awaits explicit authorization |
+| 100 | 10 | v1.x release train | PARTIAL | No run | Checklist, PWA ADR, changelog, and Pages workflow exist; cadence/notes automation absent | Historical source | — | Items 1–99 | Complete local tooling/rehearsal; standing authority covers a gate-green intentional release step |
 
 ## Item 5 landing receipt
 
@@ -214,8 +217,9 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 21 | 6 | After item 20 seam | FINISH_PARTIAL | M | derived franchise/league era read model | factual derivation, old-save, deterministic multi-season and browser proof | Unassigned | Reconcile live goal/source |
 | 22 | 7 | After item 21 seam | FINISH_PARTIAL | M | memory continuity and player-to-legend history | provenance, no fabricated history, export/reload proof | Unassigned | Reconcile live goal/source |
 
-- Release state remains `READY — AWAITING EXPLICIT RELEASE AUTHORIZATION`; no
-  push, deploy, tag, publish, or release is implied by local landing.
+- Historical release state at that landing was
+  `READY — AWAITING EXPLICIT RELEASE AUTHORIZATION`. The 2026-07-31 standing
+  grant supersedes the permission wait, but not the remaining technical gates.
 
 ## First incomplete item source contract
 
@@ -254,14 +258,14 @@ diagnostic `-r2` is sealed and check-only green, but fresh Sol review returned
 replacement window and proved the optimized successor cannot execute the
 mandatory Phase-7 proof because that lane still requires extinct Goal-31
 identity. The repeated provenance class triggers the stop-loss; derivative
-`-r3` work is prohibited. The current legal action is a first-principles
-generated-identity architecture proposal and the smallest explicit authority
+`-r3` work is prohibited. Kevin's 2026-07-31 standing grant authorizes the
+first-principles generated-identity checkpoint and its narrow correction-cap
 exception. No paired diagnostic or final proof has run. Item 19 remains
 closed.
 
 The exact next-action proposal is
 `docs/codex/runs/ECON-LATE-HORIZON-HISTORY-PERF-1/STOP_LOSS_PROPOSAL.md`.
-It is not execution authority.
+It is now execution authority for the exact named checkpoint only.
 
 ## Item 18 Goal-30 blocker receipt
 
@@ -320,8 +324,9 @@ It is not execution authority.
   all browser runs zero-retry; Sol `MERGE_READY` 0/0/0.
 - Relay: Sol `019f552e-4389-7501-8f16-a1256dcd1824` xhigh; Terra
   `019f57d9-5a81-7c41-af54-3ffb3a39878d` high; Luna current medium closeout.
-- Release state remains `READY — AWAITING EXPLICIT RELEASE AUTHORIZATION`; no
-  push, deploy, tag, publish, or release is implied by local landing.
+- Historical release state at that landing was
+  `READY — AWAITING EXPLICIT RELEASE AUTHORIZATION`; the 2026-07-31 standing
+  grant later removed that permission-only wait while preserving release gates.
 
 ## Item 14 landing receipt
 

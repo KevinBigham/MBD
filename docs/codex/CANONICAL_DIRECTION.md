@@ -13,6 +13,8 @@ MBD should be the most trustworthy and legible long-save baseball dynasty simula
 
 ## Non-negotiable guardrails
 
+- Standing user authority removes permission-only pauses; it does not weaken
+  any guardrail or gate (`STANDING_USER_AUTHORITY.md`).
 - Source and tests outrank council documents.
 - Determinism stays seeded and testable.
 - No hidden CPU advantage.

@@ -1,11 +1,13 @@
 # Stop-Loss Proposal — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `PROPOSAL — NOT EXECUTION AUTHORITY`
+Status: `AUTHORIZED 2026-07-31 — IMPLEMENTATION OPEN; DIAGNOSTIC CLOSED`
 
-This proposal responds to the fresh Sol `FIX_AND_REVIEW` verdict,
-P0/P1/P2 `0/2/0`. It does not authorize a file change, new composition,
-artifact seal, check-only command, diagnostic, forecast, proof, admission,
-retry, Item 19, remote operation, or release.
+This checkpoint responds to the fresh Sol `FIX_AND_REVIEW` verdict,
+P0/P1/P2 `0/2/0`. Kevin's standing authorization in
+`docs/codex/STANDING_USER_AUTHORITY.md` opens the exact five-file changes,
+fresh compositions, semantic artifact seal, focused gates, check-only gates,
+and one Sol review. Diagnostic, forecast, proof, admission, retry, and Item 19
+remain closed until their existing gates open them.
 
 ## Defect classes
 
@@ -145,7 +147,7 @@ Stop before diagnostic execution if:
 - review reports an actionable P0-P2;
 - copied-identity or pathname-provenance failure recurs.
 
-## Exact oracle request
+## Authorization received
 
 > I authorize one first-principles Goal-32 proof-authority stop-loss
 > replacement checkpoint exactly as proposed: one Terra/high writer may
@@ -169,3 +171,6 @@ Stop before diagnostic execution if:
 > unless the fresh review returns zero actionable P0-P2 under the previously
 > granted authority; stop on any actionable P0-P2 or any need beyond this exact
 > boundary.
+
+Kevin's 2026-07-31 standing authorization grants this exact request and the
+narrow correction-cap exception. No further permission request is required.

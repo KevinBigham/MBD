@@ -8,6 +8,11 @@ Build MBD as a trustworthy, deterministic, approachable long-save baseball dynas
 
 ## Source truth and scope
 
+- Kevin's canonical standing authorization is recorded in
+  `docs/codex/STANDING_USER_AUTHORITY.md`. Do not pause solely to request user
+  permission for bounded GOAT-campaign work; choose the narrowest
+  source-grounded action and continue. Technical gates and safety invariants
+  remain mandatory.
 - Current repository source, tests, schemas, runtime behavior, and git state outrank every audit or council document.
 - Implement exactly one file from `docs/codex/goals/` per branch/worktree.
 - Read the goal, inspect the live source, and create a living plan before production edits.
@@ -79,7 +84,7 @@ Do not claim a command passed unless it was run in the current worktree and its 
 
 ## Stop conditions
 
-Pause with a precise blocker report when:
+Pause with a precise technical blocker report—not a permission request—when:
 
 - the goal contradicts live source;
 - a required schema migration cannot be fully covered;

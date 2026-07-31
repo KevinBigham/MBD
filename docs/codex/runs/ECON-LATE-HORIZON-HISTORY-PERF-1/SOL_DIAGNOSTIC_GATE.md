@@ -168,8 +168,8 @@ twelve-path diffs, eleven byte-identical proof files, intended helper variants,
 clean worktrees, non-ancestry from local `main`, exact manifest raw/internal
 hashes, exact parity/input hashes, and a manifest-only regular artifact root.
 
-Exact next gate: architecture replan and explicit authorization for one
-first-principles proof-only correction, fresh compositions/manifest/check-only,
-then one new Sol review. The paired diagnostic remains unspent. No write,
+Exact next gate: the authorized first-principles five-file proof-only
+correction, fresh compositions/manifest/check-only, then one new Sol review.
+The paired diagnostic remains unspent. No write,
 diagnostic, measured root, timer, forecast, proof, or admission ran during
 review.
