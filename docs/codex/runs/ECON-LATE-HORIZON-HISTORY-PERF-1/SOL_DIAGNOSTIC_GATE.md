@@ -1,6 +1,6 @@
 # Sol Diagnostic Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `PENDING FINAL SOL REVIEW — EXECUTION CLOSED`
+Status: `FIX_AND_REVIEW — P0/P1/P2 0/2/1 — EXECUTION CLOSED`
 
 ## Exact artifact under review
 
@@ -94,7 +94,28 @@ pnpm --filter @mbd/web exec vitest run \
 
 ## Sol verdict
 
-Pending. The reviewer must inspect the exact source freeze, both composition
-commits, helper projections, shared proof closure, negative controls, parity
-receipts, raw manifest bytes, check-only result, process/root/digest schemas,
-and reducer equations. Any actionable P0-P2 keeps execution closed.
+`FIX_AND_REVIEW`, actionable P0/P1/P2 `0/2/1`.
+
+Findings:
+
+1. `assertGoal32ReducerRaw` validates equations and a re-digested result string
+   but does not recompute the threshold predicate, so a finite failing result
+   can be forged to `PASS`.
+2. Orchestration checks absolute/direct-child paths but does not canonicalize
+   the artifact root or reopen observations as stable regular non-symlink
+   files before admission.
+3. Observation parsing permits self-consistent empty/selective checkpoint,
+   factual, state, RNG, helper, observer, and result digests.
+
+The smallest approved bounded split changes only:
+
+- `apps/web/src/workers/econLongSoak.receipts.ts`;
+- `apps/web/src/workers/econLongSoak.receipts.test.ts`;
+- `apps/web/src/workers/econLateHorizonPerf.integration.test.ts`.
+
+It must recompute the reducer result predicate; enforce exact digest
+types/shapes and semantic closure; canonicalize the artifact root; reopen
+manifest, inputs, and observations as stable regular non-symlink files; and
+add hostile forged-PASS, selective-semantic, root-symlink, and substituted-file
+regressions. The reviewed literal command above never ran. A fresh `-r2`
+manifest/check-only artifact and new zero-finding Sol review are required.

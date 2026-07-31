@@ -403,8 +403,35 @@ No check-only, paired child, diagnostic, timer, profile, forecast, or proof ran.
 The root and manifest are immutable evidence-only. No cleanup, overwrite,
 check, child output, reducer, completion, or reuse is permitted.
 
+### Rejected `-r1` pre-execution artifact
+
+Correction loop 2 sealed and check-only validated:
+
+- root:
+  `/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1`;
+- only file: `manifest.json`;
+- raw SHA-256:
+  `860d534833ec0e42b630bd29ec6b1bdf605893f6a15d7878750aa35dec941aec`;
+- internal manifest digest:
+  `9041c4cd0947ae592c4fd53cbb1e483bb7320f0af87cbb2ffabe580d302633a0`;
+- check-only: exit `0`, 14 tests passed, one unrelated Goal-31 adapter
+  skipped.
+
+Final Sol review correctly rejected execution with P0/P1/P2 `0/2/1`:
+
+1. reducer validation did not recompute the `PASS` threshold predicate;
+2. orchestration did not canonicalize the artifact root or reopen observations
+   as stable regular non-symlink files;
+3. observation parsing admitted self-consistent empty/selective semantic
+   digests.
+
+No paired child, input copy, observation, reducer, measured root, timer,
+diagnostic, profile, forecast, or proof ran. The root is immutable rejected
+evidence. The reproducible P1s and Sol's exact three-file bounded split satisfy
+the campaign rule for correction loop 3; no other path opens.
+
 The frozen artifact root is
-`/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1`; `manifestPath` is its direct
+`/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2`; `manifestPath` is its direct
 child `manifest.json`. The four input-copy direct-child names are
 `input-1-baseline-post15.json`, `input-2-successor-post15.json`,
 `input-3-baseline-season30Input.json`, and
@@ -447,7 +474,7 @@ successor composition, substituting only the reviewed 64-hex raw manifest hash:
 ```sh
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=check-only \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
@@ -485,9 +512,9 @@ operator-supplied values:
 ```sh
 PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=paired-diagnostic \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r1/rph-receipt.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730-r2/rph-receipt.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
 ```

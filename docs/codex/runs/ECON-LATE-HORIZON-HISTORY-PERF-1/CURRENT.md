@@ -1,9 +1,10 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: final source/compositions/parity/manifest/check-only frozen; independent
-Sol diagnostic review pending
+Phase: bounded verification correction loop 3 opened by reproducible P1s;
+diagnostic execution closed
 
-Writer: none. The Terra/high writer completed final correction loop 2 of 2.
+Writer: none pending the docs checkpoint. The same Terra/high writer will own
+the exact three-file bounded split.
 
 Landable source freeze:
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
@@ -20,12 +21,16 @@ Focused receipts, retries disabled:
 - four structural mutants failed their intended guards and were restored;
 - `git diff --check` passed and the source-freeze worktree/index are clean.
 
-Current blocker: no production blocker. Final parity `-r2`, manifest sealing,
-and check-only are green on immutable composition heads. Diagnostic execution
-remains closed until independent Sol review of the exact manifest and
-compositions returns actionable P0/P1/P2 `0/0/0` and that verdict is recorded
-in `SOL_DIAGNOSTIC_GATE.md`.
+Current blocker: no production blocker. Final Sol review returned
+`FIX_AND_REVIEW`, P0/P1/P2 `0/2/1`: reducer validation can admit a forged
+re-digested `PASS`; output provenance does not reopen observations through a
+stable regular-file boundary; and malformed selective semantic digests are
+accepted. The reviewed `-r1` root is immutable and contains only its manifest.
+The explicit campaign rule permits a third loop because the P1s are
+reproducible and Sol supplied an exact three-file bounded split.
 
-Next action: run one final Sol review on the exact gate artifact. If and only if
-it is approved, record the durable verdict and run the literal one-shot
-diagnostic command. Do not run it before that record is complete.
+Next action: change only `econLongSoak.receipts.ts`,
+`econLongSoak.receipts.test.ts`, and
+`econLateHorizonPerf.integration.test.ts` byte-identically in both
+compositions; rerun focused tests/typecheck; seal fresh diagnostic `-r2`; run
+check-only; and obtain one fresh Sol review. Do not run the diagnostic.
