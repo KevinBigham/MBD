@@ -1,7 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `ACTIVE — first-principles proof-authority stop-loss authorized;
-implementation pending; execution closed`
+Status: `ACTIVE — causal proof-boundary architecture approved after
+STOP_REQUIRED 0/4/0; implementation pending; execution closed`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -216,6 +216,29 @@ The exact five-path design, hostile controls, semantic artifact root,
 check-only gates, stop conditions, and oracle request are frozen in
 `STOP_LOSS_PROPOSAL.md`. Kevin authorized it on 2026-07-31 through the
 standing grant recorded in `docs/codex/STANDING_USER_AUTHORITY.md`.
+
+### Phase 5b — Causal proof-boundary replacement
+
+The first proof-authority implementation reached focused green and remained
+inside the five-file boundary, but independent Sol review returned
+`STOP_REQUIRED`, actionable P0/P1/P2 `0/4/0`. The rejected compositions and
+manifest-only artifact remain immutable evidence. No diagnostic, timer,
+forecast, proof, admission, or retry ran.
+
+The replacement architecture in `SOL_CAUSAL_ARCHITECTURE.md` is approved. One
+fresh Terra/high writer may change the same five proof-only files identically
+in both non-landed compositions. The replacement must derive Goal-32 source
+identity from the manifest, retain current bytes through held descriptors,
+transport child observations through one authenticated stderr frame, publish
+only after final authority validation, and close the reducer over every
+source, input, observation, composition, and authority fact it admits.
+
+The fresh semantic artifact root is
+`/private/tmp/mbd-goal32-causal-proof-5a4eb60-20260731`. It must not be created
+until the implementation is frozen. Focused tests, affected web typecheck,
+manifest seal, manifest check-only, three-consumer check-only, and one fresh
+Sol/xhigh review must pass with zero actionable P0–P2 before Phase 6 opens.
+At most one correction is permitted for this replacement.
 
 ### Phase 6 — One diagnostic
 

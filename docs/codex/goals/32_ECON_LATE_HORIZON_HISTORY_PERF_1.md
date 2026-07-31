@@ -1,8 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `ACTIVE — first-principles proof-authority stop-loss checkpoint
-authorized; implementation pending; paired diagnostic and final proof remain
-unexecuted`.
+Current status: `ACTIVE — causal proof-boundary replacement approved after
+STOP_REQUIRED 0/4/0; implementation pending; paired diagnostic and final proof
+remain unexecuted`.
 
 ## Player-facing outcome
 

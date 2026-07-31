@@ -1,6 +1,35 @@
 # Sol Diagnostic Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `FIX_AND_REVIEW — P0/P1/P2 0/2/0 — EXECUTION CLOSED`
+Status: `STOP_REQUIRED — latest P0/P1/P2 0/4/0 — CAUSAL REPLACEMENT OPEN; EXECUTION CLOSED`
+
+## Latest proof-authority review
+
+The first authorized proof-authority replacement stayed within the exact
+five-file proof-only boundary, passed both focused matrices and web
+typechecks, passed its deliberate negative control, and produced a
+manifest-only semantic artifact. Independent Sol review nevertheless returned
+`STOP_REQUIRED`, actionable P0/P1/P2 `0/4/0`:
+
+1. live Goal-32 News identity was inconsistent with a hard-coded Goal-31 News
+   identity in final admission;
+2. wrapper publication preceded final authority validation and the live
+   successor was not rederived after asynchronous work;
+3. child-to-parent observation transfer had a closed-path replacement window;
+4. final retained validation hashed cached bytes rather than current bytes
+   reread from the held descriptor, and reducer postwrite closure was
+   incomplete.
+
+No paired diagnostic, timer, forecast, direct proof, final admission, retry,
+or measured artifact ran. The rejected compositions
+`afb8ab973259d20aaae2d738c16755d1ac24786b` and
+`9eede0ce020a0876eca0b464331397c920cc5d5e` and manifest-only root
+`/private/tmp/mbd-goal32-proof-authority-5a4eb60-20260731` remain immutable.
+
+The only open implementation route is the approved architecture in
+`SOL_CAUSAL_ARCHITECTURE.md`, using the fresh semantic root
+`/private/tmp/mbd-goal32-causal-proof-5a4eb60-20260731`. Execution remains
+closed until focused gates, check-only gates, and one fresh independent Sol
+review return zero actionable P0–P2.
 
 ## Replacement `-r2` artifact pending review
 

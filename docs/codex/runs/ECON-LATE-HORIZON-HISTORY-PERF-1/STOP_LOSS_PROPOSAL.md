@@ -1,6 +1,6 @@
 # Stop-Loss Proposal — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `AUTHORIZED 2026-07-31 — IMPLEMENTATION OPEN; DIAGNOSTIC CLOSED`
+Status: `SUPERSEDED AFTER REVIEW — REJECTED CHECKPOINT PRESERVED; SEE SOL_CAUSAL_ARCHITECTURE.md`
 
 This checkpoint responds to the fresh Sol `FIX_AND_REVIEW` verdict,
 P0/P1/P2 `0/2/0`. Kevin's standing authorization in

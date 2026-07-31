@@ -281,3 +281,44 @@ Fresh Sol review rejected `-r2` before execution with actionable P0/P1/P2
 This is verification architecture failure, not evidence that the production
 optimization or performance threshold failed. The one paired diagnostic
 remains unconsumed.
+
+## Rejected proof-authority checkpoint and causal replacement
+
+The first five-file proof-authority checkpoint produced clean, focused-green
+composition commits:
+
+- baseline `afb8ab973259d20aaae2d738c16755d1ac24786b`, tree
+  `eafa617d279709c1fbe4c0f135f8fa0a81b0a1a4`;
+- successor `9eede0ce020a0876eca0b464331397c920cc5d5e`, tree
+  `44a9e6cd050fab2d0ba850d587f94c2850d820ec`.
+
+Both composition matrices passed 66 tests with seven expected gated skips,
+and both affected web typechecks passed. The deliberately disabled retained
+observation assertion made its named regression fail; restoring the assertion
+made it pass. The manifest-only root
+`/private/tmp/mbd-goal32-proof-authority-5a4eb60-20260731` has raw SHA-256
+`d6a2165f3571382803859816316128e41ca4f6403c598caf411ee99cbac70bbd`
+and internal digest
+`c9fb34fa4b452c81bf1dfb0e53d96014e892c337dc6b782f827a4b58c838d42c`.
+Manifest seal and check-only passed 15 tests with two expected skips;
+three-consumer check-only passed 29 tests with four expected skips. All
+execution lanes remained zero.
+
+Independent Sol review returned `STOP_REQUIRED`, actionable P0/P1/P2
+`0/4/0`, because the checkpoint still had four causal proof defects:
+
+1. live Goal-32 News identity and the final admission's historical Goal-31
+   News identity disagreed;
+2. wrappers could expose output before final authority validation and did not
+   rederive the asynchronous successor after the awaited work;
+3. child output closed a pathname before the parent first retained it;
+4. retained validation rehashed cached bytes instead of rereading current
+   held-descriptor bytes, leaving reducer postwrite closure incomplete.
+
+These are proof-architecture defects only. The source freeze remains reviewed
+`0/0/0`; the paired diagnostic remains unspent. Sol approved the
+first-principles causal replacement recorded in
+`SOL_CAUSAL_ARCHITECTURE.md`: manifest-derived identity, current-byte
+held-descriptor validation, authenticated stderr-frame child transport,
+staged parent-owned publication, and a reducer that reopens and binds the
+complete causal closure.
