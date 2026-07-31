@@ -3,8 +3,9 @@
 Phase: landable source frozen and Sol-approved; paired compositions built;
 parity correction loop 1 of 2
 
-Writer: none. The Terra implementation writer completed correction loop 2 of
-2. A separate paired-composition writer has not started.
+Writer: `/root/goal32_source_mapper`, Terra/high, paused at the immutable
+failed-capture boundary pending correction-loop-1 contract approval. The
+landable source writer completed its separate correction loop 2 of 2.
 
 Landable source freeze:
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree

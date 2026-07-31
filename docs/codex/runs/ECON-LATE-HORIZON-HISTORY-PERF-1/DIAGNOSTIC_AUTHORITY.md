@@ -194,6 +194,7 @@ No command may clean, delete, overwrite, or reuse it.
 The baseline capture command runs from the baseline composition:
 
 ```sh
+PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=baseline \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-baseline.json \
@@ -206,6 +207,7 @@ It exclusively creates the parity root and
 composition:
 
 ```sh
+PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=successor \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-successor.json \
@@ -267,6 +269,7 @@ over every preceding cross-mode key.
 The reducer command runs from the successor composition:
 
 ```sh
+PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=reduce \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_BASELINE=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-baseline.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_SUCCESSOR=/private/tmp/mbd-goal32-parity-5a4eb60-20260730-r1/capture-successor.json \
@@ -372,6 +375,7 @@ artifact root must not exist. Run this one repository-owned seal command from
 the successor composition:
 
 ```sh
+PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=seal-manifest \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
@@ -388,6 +392,7 @@ After sealing and before Sol review, run this exact check-only command from the
 successor composition, substituting only the reviewed 64-hex raw manifest hash:
 
 ```sh
+PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=check-only \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
@@ -425,6 +430,7 @@ The command runs from the immutable successor composition. These are the only
 operator-supplied values:
 
 ```sh
+PATH=/private/tmp/mbd-goal32-corepack-bin-12608:$PATH \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=paired-diagnostic \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/private/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
