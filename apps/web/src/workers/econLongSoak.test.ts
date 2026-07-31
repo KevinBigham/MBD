@@ -42,7 +42,7 @@ const longSoakIt = enabled ? it : it.skip;
  */
 const DIRECT_MODE_KEY = 'MBD_GOAL32_DIRECT_MODE';
 const DIRECT_PREFIX = 'MBD_GOAL32_DIRECT_';
-const DIRECT_PARENT = '31b82bbee4dd5d3b2a72bcc80821c33082108a47';
+const DIRECT_PARENT = 'a16639b832df77795c27b3b87a9a42a7a63fd024';
 const DIRECT_BASELINE = {
   revision: '505cfdf7c3c11e0cb821bea0716641dbcb787555',
   tree: '0640b942317d7bfacebb33b2b5befa20e90cd746',
@@ -79,6 +79,8 @@ const DIRECT_ROOT_IDS = [
   'applySeasonEndPlayerMicroArcMoments',
 ] as const;
 const HEX_64 = /^[a-f0-9]{64}$/;
+const GIT_OBJECT_ID = /^[a-f0-9]{40}$/;
+const DIRECT_FRAME_SCHEMA = 'mbd.goal32.direct.frame.v1';
 
 type DirectMode = 'import_probe' | 'rph';
 type DirectVariant = 'baseline' | 'successor';
@@ -169,9 +171,15 @@ export function parseGoal32DirectEnvironment(
     binaryDiffSha256: directValue(environment, 'MBD_GOAL32_DIRECT_CANDIDATE_BINARY_DIFF_SHA256'),
   };
   directAssert(candidate.parent === DIRECT_PARENT, 'candidate parent is not the fresh direct seed');
-  for (const [label, value] of Object.entries(candidate)) {
-    directAssert(HEX_64.test(value), `candidate ${label} is not a SHA-256/Git object id`);
-  }
+  for (const [label, value] of Object.entries({
+    parent: candidate.parent,
+    commit: candidate.commit,
+    tree: candidate.tree,
+  })) directAssert(GIT_OBJECT_ID.test(value), `candidate ${label} is not a 40-hex Git object id`);
+  for (const [label, value] of Object.entries({
+    fileSha256: candidate.fileSha256,
+    binaryDiffSha256: candidate.binaryDiffSha256,
+  })) directAssert(HEX_64.test(value), `candidate ${label} is not a SHA-256 digest`);
   return {
     mode,
     baselineRoot: directValue(environment, 'MBD_GOAL32_DIRECT_BASELINE_ROOT'),
@@ -430,13 +438,69 @@ function directAssertRecord(
   }), 'semantic digest does not bind factual/final-state/RNG facts');
 }
 
+interface DirectFrame {
+  schema: string;
+  kind: 'record' | 'summary';
+  payload: unknown;
+}
+
+interface DirectSummary {
+  D15: number;
+  D30: number;
+  R: number;
+  P: number;
+  H: number;
+  result: 'PASS';
+}
+
+/**
+ * Frame crossing is intentionally explicit even though this direct proof runs
+ * in one process.  The collector never receives a mutable record object.
+ */
+function directEncodeFrame(kind: DirectFrame['kind'], payload: unknown): string {
+  return JSON.stringify({ schema: DIRECT_FRAME_SCHEMA, kind, payload });
+}
+
+function directDecodeFrame(frame: string, expectedKind: DirectFrame['kind']): unknown {
+  directAssert(typeof frame === 'string' && frame.length > 0, 'frame is missing');
+  const decoded = JSON.parse(frame) as DirectFrame;
+  directAssert(decoded !== null && typeof decoded === 'object', 'frame is not an object');
+  directExactKeys(decoded as unknown as Record<string, unknown>, ['schema', 'kind', 'payload'], 'direct frame');
+  directAssert(decoded.schema === DIRECT_FRAME_SCHEMA && decoded.kind === expectedKind, 'frame schema/kind mismatch');
+  directAssert(frame === JSON.stringify(decoded), 'frame is not canonical strict JSON');
+  return decoded.payload;
+}
+
+function directDecodeRecordFrame(frame: string): DirectRecord {
+  const payload = directDecodeFrame(frame, 'record');
+  directAssert(payload !== null && typeof payload === 'object', 'record frame payload is not an object');
+  return payload as DirectRecord;
+}
+
+function directDecodeSummaryFrame(frame: string): DirectSummary {
+  const payload = directDecodeFrame(frame, 'summary');
+  directAssert(payload !== null && typeof payload === 'object', 'summary frame payload is not an object');
+  const summary = payload as DirectSummary;
+  directExactKeys(summary as unknown as Record<string, unknown>, ['D15', 'D30', 'R', 'P', 'H', 'result'], 'final summary');
+  directAssert([summary.D15, summary.D30, summary.R, summary.P, summary.H].every(Number.isFinite)
+    && summary.result === 'PASS', 'final summary is malformed');
+  return summary;
+}
+
 class DirectCollector {
   private readonly records: DirectRecord[] = [];
 
   constructor(private readonly identities: { baseline: DirectIdentity; successor: DirectIdentity }) {}
 
-  accept(record: DirectRecord, descriptor: { ordinal: number; variant: DirectVariant; dataAge: DirectDataAge }): void {
-    directAssert(this.records.length === descriptor.ordinal - 1, 'record is missing, duplicate, extra, or reordered');
+  accept(frame: string, descriptor: { ordinal: number; variant: DirectVariant; dataAge: DirectDataAge } | undefined): void {
+    directAssert(descriptor !== undefined, 'extra record frame');
+    directAssert(this.records.length < 4, 'extra record frame');
+    const record = directDecodeRecordFrame(frame);
+    directAssert(!this.records.some((accepted) => (
+      accepted.ordinal === record.ordinal
+      || (accepted.variant === record.variant && accepted.dataAge === record.dataAge)
+    )), 'duplicate record identity');
+    directAssert(this.records.length === descriptor.ordinal - 1, 'record is missing or reordered');
     directAssertRecord(record, descriptor, this.identities[descriptor.variant]);
     this.records.push(record);
   }
@@ -473,7 +537,7 @@ function directHostileCollectorControls(
     const rows = mutate(structuredClone(records) as DirectRecord[]);
     let rejected = false;
     try {
-      rows.forEach((row, index) => collector.accept(row, descriptors[index]!));
+      rows.forEach((row, index) => collector.accept(directEncodeFrame('record', row), descriptors[index]));
       collector.finish();
     } catch {
       rejected = true;
@@ -482,9 +546,19 @@ function directHostileCollectorControls(
   };
   hostile((rows) => rows.slice(1));
   hostile((rows) => [...rows, structuredClone(rows[3]!) as DirectRecord]);
+  hostile((rows) => [rows[0]!, structuredClone(rows[0]!) as DirectRecord, rows[2]!, rows[3]!]);
   hostile((rows) => [rows[1]!, rows[0]!, rows[2]!, rows[3]!]);
   hostile((rows) => rows.map((row, index) => index === 1 ? { ...row, sourceIdentity: { ...row.sourceIdentity, revision: DIRECT_BASELINE.revision } } : row));
-  hostile((rows) => rows.map((row, index) => index === 3 ? { ...row, semanticDigest: directSha256('altered-semantic') } : row));
+  hostile((rows) => rows.map((row, index) => {
+    if (index !== 3) return row;
+    const factualDigests = { ...row.factualDigests, playerMicroArcs: directSha256('altered-semantic-factual') };
+    return {
+      ...row,
+      roots: row.roots.map((root, rootIndex) => rootIndex === 3 ? { ...root, resultDigest: factualDigests.playerMicroArcs } : root),
+      factualDigests,
+      semanticDigest: directDigest({ factualDigests, stateDigest: row.stateDigest, rngDigest: row.rngDigest }),
+    };
+  }));
 }
 
 async function directRunDescriptor(
@@ -565,7 +639,7 @@ async function directRunDescriptor(
   }
 }
 
-async function runGoal32Direct(environment: DirectEnvironment): Promise<void> {
+async function runGoal32Direct(environment: DirectEnvironment): Promise<string | undefined> {
   const identities = directAssertIdentities(environment);
   if (environment.mode === 'import_probe') {
     const baseline = await directOpenContext(identities.baseline, environment.cacheRoot, 1);
@@ -576,7 +650,7 @@ async function runGoal32Direct(environment: DirectEnvironment): Promise<void> {
       await Promise.all([baseline.close(), successor.close()]);
     }
     directAssertIdentities(environment);
-    return;
+    return undefined;
   }
   const descriptors = [
     { identity: identities.baseline, variant: 'baseline' as const, dataAge: 'post15' as const },
@@ -587,7 +661,11 @@ async function runGoal32Direct(environment: DirectEnvironment): Promise<void> {
   const collector = new DirectCollector(identities);
   for (const [index, descriptor] of descriptors.entries()) {
     const record = await directRunDescriptor(environment, descriptor.identity, descriptor.variant, descriptor.dataAge, index + 1);
-    collector.accept(record, { ordinal: index + 1, variant: descriptor.variant, dataAge: descriptor.dataAge });
+    collector.accept(directEncodeFrame('record', record), {
+      ordinal: index + 1,
+      variant: descriptor.variant,
+      dataAge: descriptor.dataAge,
+    });
   }
   const records = collector.finish();
   directHostileCollectorControls(records, identities);
@@ -602,6 +680,12 @@ async function runGoal32Direct(environment: DirectEnvironment): Promise<void> {
   directAssert(D15 >= 0 && D30 >= 0 && R >= 1_010_890 && P <= H,
     `R/P/H threshold failed: D15=${D15}, D30=${D30}, R=${R}, P=${P}, H=${H}`);
   directAssertIdentities(environment);
+  const frame = directEncodeFrame('summary', { D15, D30, R, P, H, result: 'PASS' as const });
+  const summary = directDecodeSummaryFrame(frame);
+  directAssert(summary.D15 === D15 && summary.D30 === D30 && summary.R === R
+    && summary.P === P && summary.H === H && summary.result === 'PASS', 'final summary revalidation failed');
+  process.stdout.write(`${frame}\n`);
+  return frame;
 }
 
 export function parseEnvironment(environment: Record<string, string | undefined> = process.env) {
