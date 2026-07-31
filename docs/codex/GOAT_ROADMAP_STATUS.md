@@ -7,9 +7,11 @@ with the exact 17-path documentation-only stop record at
 `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`. Kevin then authorized Goal 32 /
 `ECON-LATE-HORIZON-HISTORY-PERF-1`, the Sol-approved four-seam successor.
 Goal 32's landable source remains frozen and source-reviewed. The stopped dirty
-causal and direct candidates are evidence-only. The R/P/H diagnostic remains
-unspent; Goal 32 is blocked on one bounded dependency-prepared-probe oracle. No
-final admission, Item-19 work, or remote/release action has run.
+causal and direct candidates are evidence-only. Static review of the direct
+candidate returned `BLOCK` 0/8/2, so dependency preparation alone is
+insufficient. The R/P/H diagnostic remains unspent; Goal 32 is blocked on one
+bounded fresh-corrected-proof oracle. No final admission, Item-19 work, or
+remote/release action has run.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -42,8 +44,9 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
   only if green, one no-retry final admission. The causal proof machinery is
   permanently stopped. Its one-file direct successor also stopped when the
   exact one-shot import probe found an unprepared baseline Vite environment
-  before module resolution. A new bounded oracle is required; all timing and
-  Item-19 work remain closed.
+  before module resolution. Static review then found eight P1 and two P2 proof
+  defects in the quarantined candidate. A new bounded fresh-candidate oracle is
+  required; all timing and Item-19 work remain closed.
 - Blocked prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
   landed after green paired performance/exactness, corrected-tree horizon,
   repository, and review gates, but its sole seed-7111 run reached 30 primary
@@ -82,7 +85,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — ORACLE | Goal 32 source frozen; causal route stopped; one-shot direct import probe exhausted; R/P/H unspent | Source `5a4eb60`; causal dirty diff preserved; direct file SHA `4c419d6`; probe failed before module resolution; no causal root | Four production seams exact/source-reviewed; proof environment needs dependency preparation before one fresh probe | Parent coordinator; no writer open; Sol returned `ROUTE_STOPPED` | Items 9–17 | Bounded oracle: authorize dependency preparation before one fresh import probe; preserve every cap and no retry thereafter |
+| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — ORACLE | Goal 32 source frozen; causal route stopped; direct probe exhausted; static candidate review `BLOCK` 0/8/2; R/P/H unspent | Source `5a4eb60`; stopped proof evidence preserved; direct file SHA `4c419d6`; no protected execution or causal root | Four production seams exact/source-reviewed; fresh dependency-prepared corrected one-file proof needs static 0/0/0 before one probe | Parent coordinator; no writer open; Sol `ROUTE_STOPPED`, then candidate `BLOCK` | Items 9–17 | Bounded oracle: fresh roots + dependencies + corrected one-file candidate + static 0/0/0 + one probe; preserve every cap |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |

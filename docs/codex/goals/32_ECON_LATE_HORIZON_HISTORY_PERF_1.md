@@ -1,8 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `BLOCKED — ORACLE — direct import probe exhausted on missing
-baseline Vite dependency before game-module resolution; R/P/H diagnostic and
-final admission remain unexecuted`.
+Current status: `BLOCKED — ORACLE — direct import probe exhausted and static
+candidate review BLOCK 0/8/2; corrected dependency-prepared fresh route needed;
+R/P/H diagnostic and final admission remain unexecuted`.
 
 ## Player-facing outcome
 

@@ -94,7 +94,10 @@ any failure to stop the route. Its narrower stop clause overrides the general
 single import-wiring correction allowance. Standing campaign authority removes
 permission-only pauses but does not waive this explicit retry cap.
 
-The proof candidate and failure are quarantined as evidence. Continuing Goal
-32 now requires one new bounded oracle that explicitly authorizes dependency
-preparation before one genuinely fresh probe. Routine quarantine documentation
-requires no new authority.
+The proof candidate and failure are quarantined as evidence. Static Sol review
+then returned `BLOCK`, P0/P1/P2 `0/8/2`; even a dependency-prepared retry of
+those bytes could not pass. Continuing Goal 32 now requires one new bounded
+oracle that explicitly authorizes fresh roots, lockfile dependency preparation,
+one corrected one-file candidate, static `0/0/0` review, and only then one
+genuinely fresh probe. Routine quarantine/review documentation requires no new
+authority.

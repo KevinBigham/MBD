@@ -377,3 +377,25 @@ Sol returned `ROUTE_STOPPED`. This is a verification-environment defect. The
 direct candidate must remain uncommitted and evidence-only. The `R/P/H`
 diagnostic remains genuinely unspent; Goal 32 cannot continue without an
 oracle explicitly authorizing dependency preparation before one new probe.
+
+## Quarantined direct-candidate static review
+
+Fresh read-only Sol review returned `BLOCK`, actionable P0/P1/P2 `0/8/2`.
+The exact stopped candidate could not pass even after dependencies exist:
+
+- envelope authentication excludes the snapshot that the producer includes;
+- the operator root/input environment is ignored;
+- ordinary mode is not inert;
+- authenticated pre-state/pre-RNG/round-trip facts are not admitted;
+- no strict stdout collector or post-acceptance publication boundary exists;
+- no `D15`, `D30`, `R`, `P`, `H`, or threshold is computed;
+- semantic/identity hostile controls do not exercise actual admission;
+- default Vite config loading can write cache/temp state during the nominally
+  no-output import probe;
+- module evidence hashes paths, and Git admission does not bind the exact
+  reviewed candidate bytes or untracked state.
+
+The candidate remains valuable design evidence: it has the correct four-root
+order, composition-rooted Vite servers, timing placement, root-row shape
+checks, and final factual/snapshot/state/RNG comparison. It must not be edited
+or retried. `SOL_DIRECT_CANDIDATE_REVIEW.md` freezes the exact future boundary.

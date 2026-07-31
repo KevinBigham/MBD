@@ -248,10 +248,14 @@ The one import probe failed before module resolution because the clean baseline
 root lacked its lockfile Vite dependency. Sol classified this as a
 verification-environment defect and `ROUTE_STOPPED`: the gate's exact one-shot
 failure clause overrides its general static import-wiring correction budget.
-The direct candidate is quarantined and Phase 6 remains closed. No dependency
-installation, probe rerun, source correction, loader, composition, diagnostic,
-or admission is legal without a new bounded oracle explicitly reopening one
-fresh, dependency-prepared probe.
+The direct candidate is quarantined and Phase 6 remains closed. Static Sol
+review subsequently returned `BLOCK`, P0/P1/P2 `0/8/2`; dependency preparation
+alone is insufficient because the exact candidate cannot authenticate the
+checkpoints or compute `R/P/H`. No dependency installation, probe rerun, source
+correction, loader, composition, diagnostic, or admission is legal without a
+new bounded oracle explicitly authorizing fresh roots, dependency preparation,
+one corrected one-file candidate, static `0/0/0` review, and only then one
+fresh probe.
 
 ### Phase 6 — One diagnostic
 

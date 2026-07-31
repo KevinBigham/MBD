@@ -179,3 +179,18 @@ file, composition, root, or lineage, or execute timing under this route.
 Preserve the one-file candidate and failure as evidence. Continuing requires a
 new bounded oracle expressly authorizing dependency preparation before one
 genuinely fresh probe; standing authority alone does not waive this retry cap.
+
+## Post-stop static candidate review
+
+Status: `BLOCK — P0/P1/P2 0/8/2 — CANDIDATE CANNOT BE RETRIED`
+
+`SOL_DIRECT_CANDIDATE_REVIEW.md` records the full read-only review. Dependency
+preparation alone cannot reopen these bytes: checkpoint authentication must
+fail because it omits snapshot from the producer's envelope projection, and
+the `rph` lane contains no `R/P/H` calculation or threshold. Six additional P1
+and two P2 proof defects remain.
+
+Any future oracle must authorize a fresh dependency-prepared pair, one
+corrected one-file candidate closing the complete review, and static Sol
+`0/0/0` before the sole fresh import probe. The stopped candidate may not be
+edited, installed, executed, or used as that fresh route.

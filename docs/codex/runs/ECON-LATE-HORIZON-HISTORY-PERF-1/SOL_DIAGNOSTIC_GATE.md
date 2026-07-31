@@ -9,9 +9,12 @@ but its single import-resolution probe failed on a missing baseline Vite
 dependency before resolving any game module. Sol returned `ROUTE_STOPPED`.
 No simulation, timer, diagnostic, artifact, proof, admission, or retry ran.
 
+Static review of the stopped candidate then returned `BLOCK`, P0/P1/P2
+`0/8/2`; installing dependencies alone cannot produce a valid probe candidate.
 The `R/P/H` budget remains unconsumed. It cannot open until a new bounded oracle
-explicitly authorizes dependency preparation before one fresh import probe and
-that probe, focused gates, and independent review are green.
+explicitly authorizes fresh roots, lockfile dependency preparation, a corrected
+one-file candidate, static independent `0/0/0`, and only then one fresh import
+probe and focused gates.
 
 ## Latest proof-authority review
 

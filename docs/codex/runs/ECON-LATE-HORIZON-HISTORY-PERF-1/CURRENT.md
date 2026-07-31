@@ -60,7 +60,16 @@ dependencies for this exhausted route, rerun the probe, edit the candidate,
 add a loader/file/composition, create an artifact root or lineage, execute
 timing, or reinterpret the failure.
 
-Goal 32 requires one bounded oracle explicitly authorizing dependency
-preparation before one genuinely fresh probe. Every gameplay/RNG/save/receipt
-contract and every performance cap remains unchanged. R41, retry of the
-exhausted route, remote/release actions, and Item 19 remain closed.
+Read-only Sol review of the exact candidate returned `BLOCK`, actionable
+P0/P1/P2 `0/8/2`. `SOL_DIRECT_CANDIDATE_REVIEW.md` records the line-level
+findings. Most decisively, checkpoint-envelope authentication is guaranteed to
+reject and the `rph` branch contains no `D15/D30/R/P/H` calculation or
+threshold enforcement. Installing dependencies alone would not make the
+candidate admissible.
+
+Goal 32 therefore requires one bounded oracle explicitly authorizing fresh
+roots, lockfile dependency preparation, one corrected one-file candidate,
+static independent `0/0/0` review, and only then one genuinely fresh probe.
+Every gameplay/RNG/save/receipt contract and every performance cap remains
+unchanged. R41, retry or correction of the exhausted candidate, remote/release
+actions, and Item 19 remain closed.
