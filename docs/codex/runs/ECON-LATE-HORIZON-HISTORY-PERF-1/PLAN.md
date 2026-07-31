@@ -1,7 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `ACTIVE — causal proof-boundary architecture approved after
-STOP_REQUIRED 0/4/0; implementation pending; execution closed`
+Status: `ACTIVE — direct in-process proof simplification approved; one-file
+implementation pending; timing execution closed`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -22,7 +22,7 @@ proof.
 | Source mapping | `/root/goal32_source_mapper` | `gpt-5.6-terra` / `high`, read-only | exact call graphs, parity traps, helper overlap | incorporated into architecture |
 | Test/risk mapping | `/root/goal32_test_risk_mapper` | `gpt-5.6-terra` / `medium`, Luna-style substitution because Luna is unavailable | tests, mutants, commands, composition risks | incorporated into architecture |
 | Implementation | exactly one Terra writer | `gpt-5.6-terra` / `high` | four production seams, focused tests, negative controls | focused tests and affected typecheck green |
-| Adversarial review | one independent Sol reviewer | `gpt-5.6-sol` / `xhigh` | line-level source/composition/manifest verdict | zero actionable P0–P2 |
+| Adversarial review | one independent Sol reviewer | `gpt-5.6-sol` / `xhigh` | line-level source/direct-proof verdict | zero actionable P0–P2 |
 | Closeout | one Luna role when available; otherwise labeled manual fallback | medium | full gates, docs, exact staging, local landing | all frozen gates green |
 
 Only the implementation role may write production/test source. No two writers
@@ -217,32 +217,37 @@ check-only gates, stop conditions, and oracle request are frozen in
 `STOP_LOSS_PROPOSAL.md`. Kevin authorized it on 2026-07-31 through the
 standing grant recorded in `docs/codex/STANDING_USER_AUTHORITY.md`.
 
-### Phase 5b — Causal proof-boundary replacement
+### Phase 5b — Causal candidate stop and direct simplification
 
-The first proof-authority implementation reached focused green and remained
-inside the five-file boundary, but independent Sol review returned
-`STOP_REQUIRED`, actionable P0/P1/P2 `0/4/0`. The rejected compositions and
-manifest-only artifact remain immutable evidence. No diagnostic, timer,
-forecast, proof, admission, or retry ran.
+The causal proof-boundary implementation exhausted its one correction with
+live publishers still bypassing its proposed authority boundary. It is
+permanently stopped and preserved dirty, evidence-only. Its semantic root was
+never created and no measurement lane ran.
 
-The replacement architecture in `SOL_CAUSAL_ARCHITECTURE.md` is approved. One
-fresh Terra/high writer may change the same five proof-only files identically
-in both non-landed compositions. The replacement must derive Goal-32 source
-identity from the manifest, retain current bytes through held descriptors,
-transport child observations through one authenticated stderr frame, publish
-only after final authority validation, and close the reducer over every
-source, input, observation, composition, and authority fact it admits.
+The replacement is frozen in `SOL_DIRECT_IN_PROCESS_GATE.md`. One Terra/high
+writer changes only repository-owned `econLongSoak.test.ts` in a fresh clean
+successor proof worktree. The existing canonical test remains behaviorally
+unchanged. The new opt-in lane:
 
-The fresh semantic artifact root is
-`/private/tmp/mbd-goal32-causal-proof-5a4eb60-20260731`. It must not be created
-until the implementation is frozen. Focused tests, affected web typecheck,
-manifest seal, manifest check-only, three-consumer check-only, and one fresh
-Sol/xhigh review must pass with zero actionable P0–P2 before Phase 6 opens.
-At most one correction is permitted for this replacement.
+- derives the four ordered baseline/successor and post15/season30Input
+  descriptors from one tuple;
+- verifies clean native Git HEAD/tree and frozen production hashes;
+- authenticates the exact Goal-31 checkpoint bytes;
+- loads each composition in its own module context;
+- calls each of the four real production roots exactly once and in order;
+- emits strict in-memory digest/timing records and no files;
+- proves missing/reordered roots, swapped identity, and changed semantic facts
+  reject.
+
+Before timing, run one no-simulation import probe, focused tests, affected web
+typecheck, and one independent Sol/xhigh review. Any repeated import/identity
+defect or actionable review P0–P2 stops. No custom artifact protocol or new
+semantic root may be introduced.
 
 ### Phase 6 — One diagnostic
 
-Run one command, no retry, in fresh processes and exact order:
+Run one direct command, no retry, with four isolated module contexts in exact
+order:
 
 1. baseline against post-season-15 data;
 2. successor against post-season-15 data;
@@ -274,15 +279,12 @@ fifth seam.
 
 ### Phase 7 — Conditional final proof
 
-Only after a green diagnostic:
-
-- run the fresh direct-proof matrix;
-- run one forecast-primary and only its contractually permitted continuation;
-- run one final admission;
-- disable retries throughout.
-
-Final adjusted aggregate must be `<= 2,040,000ms`; each process must be
-`<= 2,400,000ms`. Failure stops without reinterpretation.
+Only after a green diagnostic, run the existing canonical test's exact primary
+seasons 1–30 plus replay seasons 16–30 once, with retries disabled. Convert
+`/usr/bin/time -p` real time to milliseconds, add the unchanged conservative
+`10ms` process adjustment, and require adjusted wall `<= 2,040,000ms`. The
+existing `2,400,000ms` test timeout remains unchanged. Failure stops without
+reinterpretation or rerun.
 
 ### Phase 8 — Final gates and landing
 

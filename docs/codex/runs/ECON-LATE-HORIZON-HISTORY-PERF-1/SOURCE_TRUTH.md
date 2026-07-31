@@ -322,3 +322,36 @@ first-principles causal replacement recorded in
 held-descriptor validation, authenticated stderr-frame child transport,
 staged parent-owned publication, and a reducer that reopens and binds the
 complete causal closure.
+
+## Causal implementation stop and direct-proof source truth
+
+The approved causal architecture did not become executable within its one
+implementation pass and one correction. The final identical dirty diff has
+SHA-256
+`6b82fc2fdff37e5269097f15953b1659eb445c11c8c513a76203ceeb08744ce8`
+and changes four proof-only paths in each rejected composition. Focused tests
+and typechecks were green, but actual Goal-32 publishers still used direct
+pathname writes, the held-FD publisher was not the sole live boundary, the
+direct proof file remained unchanged, and required transport/publication
+negative controls were absent. The candidate is permanently stopped before
+measurement.
+
+Live source inspection established a smaller authoritative boundary:
+
+- `apps/web/src/workers/econLongSoak.test.ts` is the same repository-owned blob
+  `5f569293aa352b4638196451b4168c77e47979b5` at Goal-18 commit `6ce96eb…`,
+  Goal-31 proof commit `2f3329b…`, and both clean Goal-32 compositions;
+- `runEconLongSoak` already owns the canonical primary 1–30 plus replay 16–30
+  lifecycle and exact receipt validation;
+- the four production seams and their semantic tests are already source-frozen
+  and reviewed;
+- the authenticated `season15.json` and `season29.json` inputs remain unchanged;
+- native Git HEAD/tree/clean-state checks replace the failed copied identity
+  graph;
+- strict child stdout records replace manifest, pathname, reducer, and artifact
+  custody.
+
+Sol approved the one-file plan in `SOL_DIRECT_IN_PROCESS_GATE.md`. It preserves
+the exact `R/P/H` equations, `1,938,000ms` diagnostic threshold,
+`2,040,000ms` final adjusted cap, `10ms` adjustment, and `2,400,000ms` process
+timeout. No custom semantic artifact root or new lineage is required.

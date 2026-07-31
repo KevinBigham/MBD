@@ -1,8 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `ACTIVE — causal proof-boundary replacement approved after
-STOP_REQUIRED 0/4/0; implementation pending; paired diagnostic and final proof
-remain unexecuted`.
+Current status: `ACTIVE — direct in-process proof simplification approved;
+one-file implementation pending; R/P/H diagnostic and final admission remain
+unexecuted`.
 
 ## Player-facing outcome
 
@@ -137,9 +137,10 @@ idempotence. No derived index enters the save.
 9. The one diagnostic uses the exact authenticated post-season-15 and
    season-30-input states and satisfies `R >= 1,010,890ms` and
    `P <= 1,938,000ms`; otherwise execution stops without retry.
-10. Only after criterion 9, one final admission may run. Its adjusted primary
-    plus permitted continuation must be `<= 2,040,000ms`, and each process
-    must be `<= 2,400,000ms`.
+10. Only after criterion 9, one final admission may run. It executes the exact
+    canonical primary seasons 1–30 plus replay seasons 16–30 in one process.
+    Its externally measured `real_ms + 10` must be `<= 2,040,000ms`, and the
+    unchanged process timeout remains `2,400,000ms`.
 11. Root typecheck, full tests, determinism, production build/PWA, and required
     reload/browser proof pass on the landable source revision.
 12. Independent final Sol review returns zero actionable P0–P2 findings.

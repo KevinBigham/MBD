@@ -1,14 +1,15 @@
 # MBD GOAT Roadmap Status
 
 Last reconciled: 2026-07-31 after Kevin granted standing GOAT-campaign
-authority and Sol approved Goal 32's causal proof-boundary replacement after
-the first proof-authority checkpoint was rejected 0/4/0. Goal 31's failed forecast was closed locally
+authority and Sol approved Goal 32's direct in-process proof simplification
+after the custom causal candidate exhausted its correction. Goal 31's failed forecast was closed locally
 with the exact 17-path documentation-only stop record at
 `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`. Kevin then authorized Goal 32 /
 `ECON-LATE-HORIZON-HISTORY-PERF-1`, the Sol-approved four-seam successor.
-Goal 32's landable source remains frozen and source-reviewed. Its replacement
-remains restricted to the same five proof-only files and one Terra writer; no
-paired diagnostic, final proof, Item-19 work, or remote/release action has run.
+Goal 32's landable source remains frozen and source-reviewed. The stopped dirty
+causal compositions are evidence-only; the open proof boundary is one existing
+repository-owned test file. No R/P/H diagnostic, final admission, Item-19 work,
+or remote/release action has run.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -38,10 +39,10 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
   and caps while bounding four profile-proven production roots: league payroll
   projection, news dedupe decoration, prospect first-match lookup, and
   season-end micro-arc indexing. It permits one paired `R/P/H` diagnostic and,
-  only if green, one no-retry final admission. The Sol architecture gate is
-  approved with zero actionable P0–P2; production remains closed until its
-  newly authorized proof-authority stop-loss checkpoint is implemented and
-  independently reviewed with zero actionable P0-P2.
+  only if green, one no-retry final admission. The causal proof machinery is
+  permanently stopped; `SOL_DIRECT_IN_PROCESS_GATE.md` now freezes a one-file
+  repository-owned proof route that preserves every cap. Timing remains closed
+  until its import probe, focused gates, and independent Sol review are green.
 - Blocked prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
   landed after green paired performance/exactness, corrected-tree horizon,
   repository, and review gates, but its sole seed-7111 run reached 30 primary
@@ -80,7 +81,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | ACTIVE PREREQUISITE | Goal 32 source frozen; causal five-file proof replacement approved; paired diagnostic unspent; Goal 31 failed evidence | Goal-32 source `5a4eb60`; rejected proof commits `afb8ab9`/`9eede0c`; manifest-only proof root; Sol `STOP_REQUIRED` 0/4/0; standing authority recorded | Four production seams exact/source-reviewed; manifest-derived identity, held-FD current-byte validation, authenticated child frames, and staged parent publication now open | Parent coordinator; one Terra/high causal writer next; fresh Sol/xhigh review after gates | Items 9–17 | Implement `SOL_CAUSAL_ARCHITECTURE.md`, run check-only gates, fresh Sol review; no diagnostic before 0/0/0 |
+| 18 | 2 | 30-season multi-seed economy soak | ACTIVE PREREQUISITE | Goal 32 source frozen; direct in-process proof approved; R/P/H diagnostic unspent; Goal 31 failed evidence | Goal-32 source `5a4eb60`; stopped causal commits `afb8ab9`/`9eede0c` with preserved dirty diff; no causal root; standing authority recorded | Four production seams exact/source-reviewed; one repository-owned `econLongSoak.test.ts` proof lane now open | Parent coordinator; one Terra/high direct-proof writer; Sol/xhigh review before timing | Items 9–17 | Implement one-file direct lane, run import probe/focused gates/review; no diagnostic before 0/0/0 |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Item 9 | Execute goal 12 after ECON-CLOCK-1 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |

@@ -55,3 +55,28 @@ For this slice, that direction authorizes
 The previously authorized diagnostic and conditional final proof remain closed
 until that fresh review is zero-actionable-P0-P2. Technical caps, gameplay,
 RNG, save, receipt, retry, R41, and Item-19 boundaries remain unchanged.
+
+## 2026-07-31 direct in-process proof simplification
+
+The causal proof implementation exhausted its one correction while actual
+Goal-32 lanes still bypassed the proposed publisher. Standing authority permits
+the narrowest source-grounded replacement because the change affects only the
+verification mechanism; it changes no gameplay, save, RNG, receipt fact,
+performance cap, or roadmap ownership.
+
+Sol approved `SOL_DIRECT_IN_PROCESS_GATE.md`. It permanently stops the custom
+manifest/child-output/reducer publication design and authorizes:
+
+- one proof-only change to the existing repository-owned
+  `apps/web/src/workers/econLongSoak.test.ts`;
+- one no-simulation import-resolution probe;
+- focused tests, web typecheck, and one independent Sol review;
+- only after those gates, the still-unspent no-retry `R/P/H` diagnostic;
+- only after a green diagnostic, one canonical 30-season primary plus
+  15-season replay admission.
+
+The admission converts `/usr/bin/time -p` real time to milliseconds, adds the
+unchanged conservative `10ms` adjustment, and requires the result to remain
+`<= 2,040,000ms`; the existing `2,400,000ms` process timeout remains intact.
+No new semantic artifact root, recovery lineage, R41 mechanism, user
+permission, remote action, release, or Item-19 work is authorized or required.

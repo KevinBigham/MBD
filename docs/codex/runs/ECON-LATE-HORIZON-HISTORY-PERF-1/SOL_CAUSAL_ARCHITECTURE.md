@@ -129,3 +129,18 @@ Any sixth path, transport instability, copied identity, pathname provenance,
 cached projection, prevalidation publication, gameplay/RNG/save/cap/receipt
 change, focused failure, or review P0-P2 is immediate `STOP_REQUIRED`. No new
 user permission is required under `docs/codex/STANDING_USER_AUTHORITY.md`.
+
+## Terminal implementation stop
+
+Status: `STOPPED_PERMANENTLY — IMPLEMENTATION AND CORRECTION EXHAUSTED`
+
+The implementation remained incomplete after its sole authorized correction:
+actual Goal-32 lanes still bypassed the causal publisher, the original held FD
+was not the sole publication descriptor, direct proof remained unchanged, and
+the nested transport/publication negative controls were absent. No diagnostic,
+timer, proof, admission, retry, or causal artifact root ran or was created.
+
+The dirty compositions and all prior evidence are preserved exactly as
+recorded in `CURRENT.md`. This architecture must not be corrected, executed,
+revived, renamed, or used to mint another semantic root. Sol replaced it with
+the smaller repository-owned boundary in `SOL_DIRECT_IN_PROCESS_GATE.md`.
