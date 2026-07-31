@@ -15,6 +15,7 @@ import {
   calculateTeamPayroll,
   calculateLeaguePayrolls,
   deriveLeagueTradePayrollAdjustments,
+  deriveTradePayrollAdjustment,
   derivePlayerTradeSalaryResponsibility,
   calculateLuxuryTax,
   getTeamBudget,
@@ -66,6 +67,21 @@ class FixedRng extends GameRNG {
     this.intIndex += 1;
     return Math.max(min, Math.min(max, candidate));
   }
+}
+
+function extractNamedFunctionBody(source: string, signature: string): string {
+  const start = source.indexOf(signature);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const bodyStart = source.indexOf('{', start);
+  expect(bodyStart).toBeGreaterThan(start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}' && --depth === 0) {
+      return source.slice(bodyStart, index + 1);
+    }
+  }
+  throw new Error(`Could not extract balanced body for ${signature}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -516,21 +532,138 @@ describe('calculateTeamPayroll', () => {
     expect(projection.get('lax')).toMatchObject({ releasedContractCharges: 14 });
   });
 
-  it('builds the shared trade projection before, not inside, the team enumeration', () => {
-    const source = readFileSync(fileURLToPath(new URL('../src/finance/contracts.ts', import.meta.url)), 'utf8');
-    const start = source.indexOf('export function calculateLeaguePayrolls(');
-    const bodyStart = source.indexOf('{', start);
-    let depth = 0;
-    let end = bodyStart;
-    for (; end < source.length; end += 1) {
-      if (source[end] === '{') depth += 1;
-      if (source[end] === '}' && --depth === 0) break;
-    }
-    const body = source.slice(bodyStart, end + 1);
-    expect(body.match(/deriveLeagueTradePayrollAdjustments\(/g)).toHaveLength(1);
-    expect(body.indexOf('deriveLeagueTradePayrollAdjustments(')).toBeLessThan(
-      body.indexOf('for (const teamId of teamIds)'),
+  it('matches both canonical payroll oracles for reordered dimensions, fractional terms, duplicate players, and repeated controller history', () => {
+    const teamIds = ['lax', 'nym', 'bos'];
+    const targetSeasons = [15, 10, 13, 11, 14, 12];
+    const currentPlayer = {
+      ...retainedPlayer('nym'),
+      id: 'batch-duplicate-player',
+      contract: {
+        ...retainedPlayer('nym').contract,
+        annualSalary: 20,
+        totalValue: 120,
+        years: 6,
+        playerOption: false,
+        teamOption: false,
+      },
+    };
+    const staleDuplicate = {
+      ...currentPlayer,
+      teamId: 'bos',
+      contract: {
+        ...currentPlayer.contract,
+        annualSalary: 99,
+        totalValue: 594,
+      },
+    };
+    const released = {
+      ...currentPlayer,
+      id: 'batch-released-player',
+      teamId: '',
+      contract: {
+        ...currentPlayer.contract,
+        annualSalary: 18,
+        totalValue: 108,
+      },
+    };
+    // Duplicate IDs deliberately prove that operation-local indexing retains
+    // the same last-write winner as the single-team oracle.
+    const players = [staleDuplicate, currentPlayer, released];
+    const currentReference = { annualSalary: 20, contractEndSeasonExclusive: 16 };
+    const releasedReference = { annualSalary: 18, contractEndSeasonExclusive: 16 };
+    const tradeHistory: TradeHistoryEntry[] = [{
+      id: 'fractional-return-to-payer',
+      fromTeamId: 'nym',
+      toTeamId: 'bos',
+      offeringAssets: [{
+        type: 'player',
+        playerId: currentPlayer.id,
+        contractReference: currentReference,
+        retainedSalary: { annualAmount: 5.127, startSeason: 10, endSeasonExclusive: 16 },
+        cashConsideration: { amount: 2.119, season: 10 },
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'Fractional retained and cash terms',
+      timestamp: 'S10D80',
+    }, {
+      id: 'released-controller-first-match',
+      fromTeamId: 'bos',
+      toTeamId: 'lax',
+      offeringAssets: [{
+        type: 'player',
+        playerId: released.id,
+        contractReference: releasedReference,
+        retainedSalary: { annualAmount: 3.337, startSeason: 10, endSeasonExclusive: 16 },
+        cashConsideration: { amount: 1.119, season: 10 },
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'First exact released controller match',
+      timestamp: 'S10D82',
+    }, {
+      id: 'released-controller-second-match',
+      fromTeamId: 'nym',
+      toTeamId: 'bos',
+      offeringAssets: [{
+        type: 'player',
+        playerId: released.id,
+        contractReference: releasedReference,
+      }],
+      requestingAssets: [],
+      fairnessScore: 0,
+      summary: 'Second exact released controller match',
+      timestamp: 'S10D81',
+    }];
+    const context = { season: 10, tradeHistory, allPlayers: players };
+    const adjustments = deriveLeagueTradePayrollAdjustments(
+      teamIds,
+      players,
+      tradeHistory,
+      context.season,
+      targetSeasons,
     );
+    const payrolls = calculateLeaguePayrolls(teamIds, players, context);
+
+    expect(Array.from(adjustments.keys())).toEqual(teamIds);
+    expect(Array.from(payrolls.keys())).toEqual(teamIds);
+    for (const teamId of teamIds) {
+      expect(Array.from(adjustments.get(teamId)!.keys())).toEqual(targetSeasons);
+      for (const targetSeason of targetSeasons) {
+        expect(adjustments.get(teamId)!.get(targetSeason)).toEqual(
+          deriveTradePayrollAdjustment(teamId, players, tradeHistory, context.season, targetSeason),
+        );
+      }
+      expect(payrolls.get(teamId)).toEqual(calculateTeamPayroll(teamId, players, context));
+    }
+  });
+
+  it('keeps both batch function bodies free of per-team or per-year canonical fallbacks', () => {
+    const contractsSource = readFileSync(
+      fileURLToPath(new URL('../src/finance/contracts.ts', import.meta.url)),
+      'utf8',
+    );
+    const tradeFinanceSource = readFileSync(
+      fileURLToPath(new URL('../src/finance/tradeFinance.ts', import.meta.url)),
+      'utf8',
+    );
+    const leaguePayrollBody = extractNamedFunctionBody(
+      contractsSource,
+      'export function calculateLeaguePayrolls(',
+    );
+    const leagueAdjustmentBody = extractNamedFunctionBody(
+      tradeFinanceSource,
+      'export function deriveLeagueTradePayrollAdjustments(',
+    );
+
+    expect(leaguePayrollBody.match(/deriveLeagueTradePayrollAdjustments\(/g)).toHaveLength(1);
+    expect(leaguePayrollBody.indexOf('deriveLeagueTradePayrollAdjustments(')).toBeLessThan(
+      leaguePayrollBody.indexOf('for (const teamId of teamIds)'),
+    );
+    expect(leaguePayrollBody).not.toMatch(/\bcalculateTeamPayroll\s*\(/);
+    expect(leaguePayrollBody).not.toMatch(/\bderiveTradePayrollAdjustment\s*\(/);
+    expect(leagueAdjustmentBody).not.toMatch(/\bcalculateTeamPayroll\s*\(/);
+    expect(leagueAdjustmentBody).not.toMatch(/\bderiveTradePayrollAdjustment\s*\(/);
   });
 });
 

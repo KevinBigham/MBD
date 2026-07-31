@@ -15,7 +15,12 @@ vi.mock('../shared/lib/saveSystem.js', () => ({
 }));
 
 import { api } from './sim.worker';
-import { requireState, setState, type FullGameState } from './sim.worker.helpers';
+import {
+  buildFreeAgencyPayrolls,
+  requireState,
+  setState,
+  type FullGameState,
+} from './sim.worker.helpers';
 import {
   calculateStateTeamPayroll,
   calculateStateLeaguePayrolls,
@@ -161,6 +166,94 @@ describe('trade financial aggregate validator', () => {
     for (const teamId of teamIds) {
       expect(projection.get(teamId)).toEqual(calculateStateTeamPayroll(state, teamId));
     }
+  });
+
+  it('rebuilds exact free-agency payrolls across lifetime boundaries without reviving prior maps', () => {
+    const state = startRegularGame(17_102);
+    const cpuTeamIds = TEAMS
+      .filter((team) => team.id !== state.userTeamId)
+      .map((team) => team.id);
+    const signingTeamId = cpuTeamIds[0]!;
+    const tradeTargetTeamId = cpuTeamIds[1]!;
+    const signingPlayer = controlledContractPlayer(state, state.userTeamId);
+    signingPlayer.teamId = '';
+
+    const priorResults: Array<{
+      map: Map<string, number>;
+      entries: Array<[string, number]>;
+    }> = [];
+    const assertFreshExactPayrolls = (candidate: FullGameState) => {
+      const result = buildFreeAgencyPayrolls(candidate);
+      expect(Array.from(result.keys())).toEqual(cpuTeamIds);
+      for (const teamId of cpuTeamIds) {
+        expect(result.get(teamId)).toBe(calculateStateTeamPayroll(candidate, teamId).totalPayroll);
+      }
+      for (const prior of priorResults) {
+        expect(result).not.toBe(prior.map);
+        expect(Array.from(prior.map.entries())).toEqual(prior.entries);
+      }
+      priorResults.push({ map: result, entries: Array.from(result.entries()) });
+      return result;
+    };
+
+    assertFreshExactPayrolls(state);
+
+    // Signing boundary.
+    signingPlayer.teamId = signingTeamId;
+    signingPlayer.rosterStatus = 'MLB';
+    assertFreshExactPayrolls(state);
+
+    // Release boundary.
+    signingPlayer.teamId = '';
+    assertFreshExactPayrolls(state);
+
+    // Trade-history boundary, including one fractional payroll obligation.
+    const tradedPlayer = controlledContractPlayer(state, signingTeamId, [signingPlayer.id]);
+    const tradeAsset = financialAsset(state, tradedPlayer, {
+      retainedSalary: {
+        annualAmount: Math.min(0.11, tradedPlayer.contract.annualSalary),
+        startSeason: state.season,
+        endSeasonExclusive: state.season + 1,
+      },
+      cashConsideration: { amount: 0.07, season: state.season },
+    });
+    state.tradeState.tradeHistory.unshift(history(
+      state,
+      'payroll-lifetime-trade',
+      signingTeamId,
+      tradeTargetTeamId,
+      tradeAsset,
+    ));
+    tradedPlayer.teamId = tradeTargetTeamId;
+    assertFreshExactPayrolls(state);
+
+    // Finance-season boundary.
+    state.season += 1;
+    assertFreshExactPayrolls(state);
+
+    // Imported/reconstructed-state boundary.
+    const reconstructed = {
+      ...state,
+      players: state.players.map((player) => ({
+        ...player,
+        contract: { ...player.contract },
+      })),
+      tradeState: {
+        ...state.tradeState,
+        tradeHistory: state.tradeState.tradeHistory.map((entry) => ({
+          ...entry,
+          offeringAssets: entry.offeringAssets.map((asset) => ({ ...asset })),
+          requestingAssets: entry.requestingAssets.map((asset) => ({ ...asset })),
+        })),
+      },
+    } as FullGameState;
+    assertFreshExactPayrolls(reconstructed);
+
+    // Consecutive-day boundaries are still fresh operation-local reads.
+    reconstructed.day += 1;
+    assertFreshExactPayrolls(reconstructed);
+    reconstructed.day += 1;
+    assertFreshExactPayrolls(reconstructed);
   });
 
   it.each([

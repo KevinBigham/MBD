@@ -482,6 +482,19 @@ describe('markAsRead', () => {
 });
 
 describe('deduplicateNews', () => {
+  const newsItem = (id: string, overrides: Partial<NewsItem> = {}): NewsItem => ({
+    id,
+    headline: id,
+    body: `${id} body`,
+    priority: 2,
+    category: 'injury',
+    timestamp: 'S1D10',
+    relatedPlayerIds: ['p1'],
+    relatedTeamIds: ['NYT'],
+    read: false,
+    ...overrides,
+  });
+
   it('removes duplicates with same category, timestamp, and players', () => {
     const rng = new GameRNG(42);
     const items: NewsItem[] = [
@@ -576,6 +589,68 @@ describe('deduplicateNews', () => {
     expect(output).toEqual([distinct, tiedFirst]);
     expect(output[1]).toBe(tiedFirst);
     expect(deduplicateNews([tiedSecond, tiedFirst, distinct])[1]).toBe(tiedSecond);
+  });
+
+  const unique = newsItem('unique');
+  const duplicateLowerPriority = newsItem('duplicate-low', { priority: 4 });
+  const duplicateHigherPriority = newsItem('duplicate-high', { priority: 1 });
+  const equalPriorityLaterId = newsItem('equal-z');
+  const equalPriorityEarlierId = newsItem('equal-a');
+  const malformedLaterId = newsItem('malformed-z', {
+    category: 'trade',
+    timestamp: 'malformed-z',
+    relatedPlayerIds: ['p2'],
+  });
+  const malformedEarlierId = newsItem('malformed-a', {
+    category: 'standings',
+    timestamp: 'malformed-a',
+    relatedPlayerIds: ['p3'],
+  });
+  const duplicatePlayerIds = newsItem('players-a', { relatedPlayerIds: ['p1', 'p1'] });
+  const singlePlayerId = newsItem('players-b', { relatedPlayerIds: ['p1'] });
+  const permutedPlayerIdsLater = newsItem('permuted-z', { relatedPlayerIds: ['p2', 'p1'] });
+  const permutedPlayerIdsEarlier = newsItem('permuted-a', { relatedPlayerIds: ['p1', 'p2'] });
+  const fullTieFirst = newsItem('full-tie', { headline: 'first full tie' });
+  const fullTieSecond = newsItem('full-tie', { headline: 'second full tie' });
+
+  it.each([
+    { label: 'empty input', input: [] as NewsItem[], expected: [] as NewsItem[] },
+    { label: 'one unique input', input: [unique], expected: [unique] },
+    {
+      label: 'priority duplicate',
+      input: [duplicateLowerPriority, duplicateHigherPriority],
+      expected: [duplicateHigherPriority],
+    },
+    {
+      label: 'equal-priority duplicate',
+      input: [equalPriorityLaterId, equalPriorityEarlierId],
+      expected: [equalPriorityEarlierId],
+    },
+    {
+      label: 'malformed distinct timestamps',
+      input: [malformedLaterId, malformedEarlierId],
+      expected: [malformedEarlierId, malformedLaterId],
+    },
+    {
+      label: 'duplicate player IDs remain key-significant',
+      input: [singlePlayerId, duplicatePlayerIds],
+      expected: [duplicatePlayerIds, singlePlayerId],
+    },
+    {
+      label: 'permuted distinct player IDs deduplicate',
+      input: [permutedPlayerIdsLater, permutedPlayerIdsEarlier],
+      expected: [permutedPlayerIdsEarlier],
+    },
+    {
+      label: 'full comparator tie keeps input-first reference',
+      input: [fullTieFirst, fullTieSecond],
+      expected: [fullTieFirst],
+    },
+  ])('returns the exact original-reference output for $label', ({ input, expected }) => {
+    const output = deduplicateNews(input);
+    expect(output).toEqual(expected);
+    expect(output).toHaveLength(expected.length);
+    output.forEach((item, index) => expect(item).toBe(expected[index]));
   });
 
   it('decorates timestamp ranks and player keys once per input row outside its comparator', () => {
