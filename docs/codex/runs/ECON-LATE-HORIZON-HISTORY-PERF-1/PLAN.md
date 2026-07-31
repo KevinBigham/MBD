@@ -98,7 +98,7 @@ compositions. Neither composition may become an ancestor of local `main`.
 - [x] Freeze exact APIs, mutation boundaries, helper topology, parity fixtures,
       negative controls, diagnostic schema/formula, and stop rules.
 - [x] Obtain Sol architecture verdict with zero actionable P0–P2.
-- [ ] Commit the docs-first checkpoint.
+- [x] Commit the docs-first checkpoint as `fdcb1375b0b47894085070e52113f3d368c99b02`.
 
 ### Phase 2 — Focused implementation
 
@@ -145,6 +145,19 @@ Then create the source-freeze commit and record its revision, tree, clean
 state, exact diff allowlist, and SHA-256 for every changed path. Any later
 landable source/test change invalidates downstream diagnostic receipts.
 
+Completed:
+
+- production source commit:
+  `c900ffc084812444d3553b1f08ad0e985345181b`;
+- test-only final correction:
+  `5a4eb60f8b1890803117a84a613d43af605f47dc`;
+- final tree:
+  `23aa4bf628f353775b445b1c4963b9c0d21d3057`;
+- final Sol verdict: `MERGE_READY`, P0/P1/P2 `0/0/0`;
+- focused tests: sim-core 64 and web 225 passed, retries disabled;
+- direct package typechecks and root typecheck 9/9 passed;
+- all four deliberate mutants failed at the intended guard and were restored.
+
 ### Phase 4 — Paired proof compositions
 
 Create two fresh immutable, non-landed compositions:
@@ -159,6 +172,9 @@ hashes, helper projections, exact overlapping functions, three helper parity
 receipts, proof-path byte identity, authenticated post-season-15 and
 season-30-input bytes, exclusive outputs,
 process order, and mechanical non-ancestry from local main.
+
+The exact command, manifest/receipt key order, fail-closed runner contract, and
+pre-execution negative controls are frozen in `DIAGNOSTIC_AUTHORITY.md`.
 
 ### Phase 5 — Independent Sol review
 

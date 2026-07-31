@@ -193,3 +193,51 @@ because no direct isolated structural coverage exists for those two seams.
    named function body and are paired with exact semantic fixtures.
 7. The diagnostic is only a prefilter; only final admission proves the
    40-minute contract.
+
+## Final landable source freeze
+
+The final landable source/test freeze is commit
+`5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
+`23aa4bf628f353775b445b1c4963b9c0d21d3057`. Its production parent is
+`c900ffc084812444d3553b1f08ad0e985345181b`; the final commit changes only
+three allowlisted test files. Sol returned `MERGE_READY` with actionable
+P0/P1/P2 `0/0/0`.
+
+Exact source/test SHA-256 values:
+
+| Path | SHA-256 |
+| --- | --- |
+| `apps/web/src/workers/sim.worker.ceremony.test.ts` | `00bfabd45662a837e7c01d4c3c2581287b39ab2f91719b1f4d25e85fbab66811` |
+| `apps/web/src/workers/sim.worker.ceremony.ts` | `ee6fe50bdc5bb83107b01822840684d71197abc4bed79e7e6ae8f01eb82f0102` |
+| `apps/web/src/workers/sim.worker.farm.performance.test.ts` | `47fc6e84ff1d74fafe1004a1331332a8c939c3ec1140ca6aa116039570eda17a` |
+| `apps/web/src/workers/sim.worker.farm.ts` | `f91e6e6bfca57072e57848185ed18610dc35ccc08add74209a4a8d0440c12feb` |
+| `apps/web/src/workers/sim.worker.helpers.ts` | `892bc0193b1c735cb36126b9af7ea901361c864d43e2a6586dc852dd8c87ca37` |
+| `apps/web/src/workers/sim.worker.milestones.test.ts` | `6834b7b5915ddb135ed1d28467794922e37980b7ca7a9214263390053ec62123` |
+| `apps/web/src/workers/sim.worker.milestones.ts` | `bef65c1e23a3fc8096ae8745528cd577e00f93cbc1f4b3909c95d8c86b09bbd6` |
+| `apps/web/src/workers/sim.worker.narrativeFarm.performance.test.ts` | `4201dfaaf24a8596bb5552b1087cc3faf96868955f21be32fbcd2c36032f40df` |
+| `apps/web/src/workers/sim.worker.narrativeFarm.ts` | `08c0eb03e40e111b82d4acff16ecfc87bdcb132b419e7b41d83b5f751b22e720` |
+| `apps/web/src/workers/sim.worker.tradeFinance.test.ts` | `b4121e152af92a9b451d174efb59ef348c5c29170c2f5c77a12d2d3eae9a5ac2` |
+| `apps/web/src/workers/sim.worker.tradeFinance.ts` | `82477b77188a1d362f82d56ebc8903f4624314ae888cb64a2e82c0e707947087` |
+| `packages/sim-core/src/finance/contracts.ts` | `0e2ca8262560b983865cf61cd7c78922c134891c1f0b5fc68f75cb2a24088b45` |
+| `packages/sim-core/src/finance/index.ts` | `4e1598908330a1eeacae2252ea33dceaa6542509cc5251d8395d3b2075273bd3` |
+| `packages/sim-core/src/finance/tradeFinance.ts` | `a4e08f5af295ca03994bb034654816fa7ef35868a88a23dd83036e9b9e255c71` |
+| `packages/sim-core/src/index.ts` | `077c335b88e034571eb28c69f51979933033aca010c8766fbbc2d148d6082a3d` |
+| `packages/sim-core/src/narrative/newsFeed.ts` | `9c4a84e3eca72e1f05e0561c1b0bb934b47c865f9a0692e66b25cc8a6ba2ebb3` |
+| `packages/sim-core/tests/finance.test.ts` | `377cda7f1169cb83bf5d3a0184f88c578c33a681ec994169c9b3ed1d0186c749` |
+| `packages/sim-core/tests/narrative.test.ts` | `7705bbcb6126e84309fe983d2737539cf03fbb915a77cd1c9042ad7110dbd35c` |
+
+Focused final receipts, all on the current source freeze with retries disabled:
+
+- sim-core finance/narrative: 2 files, 64 tests passed;
+- web affected matrix: 6 files, 225 tests passed;
+- sim-core and web direct typechecks passed;
+- root typecheck passed 9/9 using a Corepack shim outside the repository;
+- `git diff --check` passed;
+- all 11 production files are byte-identical to `c900ffc…`;
+- all four preserved Goal-31 files retain their frozen hashes.
+
+The repository-owned fallback `pnpm` wrapper attempted to add an `allowBuilds`
+entry to `pnpm-workspace.yaml` and then failed on ignored `esbuild` scripts.
+That attempted edit was restored byte-for-byte and was never staged or
+committed. The successful root typecheck used an external `/tmp` Corepack
+shim; repository dependency policy remains unchanged.

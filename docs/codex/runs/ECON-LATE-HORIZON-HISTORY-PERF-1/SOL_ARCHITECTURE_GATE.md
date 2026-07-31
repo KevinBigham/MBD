@@ -268,5 +268,28 @@ projection family trigger redesign of the authoritative generator/reducer;
 they may not create a recovery lineage. R41 remains prohibited.
 
 Architecture passed with the recorded independent Sol verdict and zero
-actionable P0–P2. Production editing remains closed until the docs-first commit
-exists.
+actionable P0–P2.
+
+## Final landable source review
+
+Sol re-reviewed final source-freeze commit
+`5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
+`23aa4bf628f353775b445b1c4963b9c0d21d3057`, after correction loop 2 of 2.
+Verdict: `MERGE_READY`, actionable P0/P1/P2 `0/0/0`.
+
+The re-review confirmed:
+
+- free-agency payroll lifetime parity across signing, release, trade-history
+  mutation, finance-season change, reconstructed/import-like state, and
+  consecutive days;
+- exact whole-output and original-reference news parity across the full frozen
+  matrix;
+- adversarial batch payroll/adjustment parity for reordered dimensions,
+  fractional terms, duplicate players, and repeated controller history;
+- balanced structural guards for both batch functions;
+- byte-identical production relative to `c900ffc…` after the test-only
+  correction;
+- no Comlink, schema, save, API, RNG, gameplay, or receipt drift.
+
+This verdict opens composition construction only. It does not open the paired
+diagnostic or final proof.
