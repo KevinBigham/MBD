@@ -1,0 +1,195 @@
+# Source Truth — ECON-LATE-HORIZON-HISTORY-PERF-1
+
+Recorded: 2026-07-30 before any Goal-32 production edit or performance command.
+
+## Git and worktrees
+
+- Active branch: `codex/econ-late-horizon-history-perf-1`.
+- Active HEAD/local main:
+  `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`.
+- `origin/main`:
+  `a9343763b35818fd1111ffec3bc3440a8294e6aa`.
+- Active worktree:
+  `/private/tmp/mbd-goal32-source-20260730`.
+- Active index/worktree before docs: clean.
+- Original stopped Goal-31 worktree:
+  `/Users/kevin/Downloads/MBD-main-main`, branch
+  `codex/econ-milestone-path-perf-1-authorized`, HEAD
+  `4e016cc4fe3043e438cc0cbc3aeec798b6f47d6b`, with its eight terminal
+  documentation overlays preserved and unstaged.
+- Original proof composition:
+  `/private/tmp/mbd-goal31-composition-20260730`,
+  `2f3329b0886396cd9d8550aa42ea2738d02c4126`, preserved untouched.
+- Original evidence root:
+  `/tmp/mbd-goal31-direct-proof-2f3329b-20260730`, preserved untouched.
+
+The local-main stop-record commit contains exactly the approved 17
+documentation paths and excludes all four Goal-31 source/test candidate blobs.
+No remote operation occurred.
+
+## Package, schema, and save state
+
+- Package manager: `pnpm@9.15.4`.
+- Game snapshot: v35.
+- Dexie schema: v6.
+- Root commands are read from live `package.json`:
+  `pnpm typecheck`, `pnpm test`, `pnpm build`,
+  `pnpm verify:determinism`, and `pnpm e2e:reload-smoke`.
+- No save-schema or migration work is authorized.
+
+## Failed predecessor evidence
+
+Goal 31 proved its milestone and ceremony source semantically exact and reduced
+the measured season-30 V8 root by about 99.53%. The single final admission then
+correctly failed:
+
+- forecast-primary raw wall: `1,739,710ms`;
+- permitted continuation raw wall: `1,209,160ms`;
+- frozen adjustment: `+10ms` per process;
+- adjusted aggregate: `2,948,890ms`;
+- immutable cap: `2,040,000ms`;
+- deficit: `908,890ms` (`44.553%`);
+- both individual processes remained under `2,400,000ms`;
+- final season-30 state, RNG, round-trip, snapshot, population, and season facts
+  converged exactly;
+- no admission receipt was written and no retry ran.
+
+The predecessor is failed evidence, not a landing candidate.
+
+## Exact preserved Goal-31 blobs
+
+Imported later only after the docs-first architecture gate:
+
+| Path | SHA-256 at `4e016cc4…` |
+| --- | --- |
+| `apps/web/src/workers/sim.worker.milestones.ts` | `bef65c1e23a3fc8096ae8745528cd577e00f93cbc1f4b3909c95d8c86b09bbd6` |
+| `apps/web/src/workers/sim.worker.ceremony.ts` | `ee6fe50bdc5bb83107b01822840684d71197abc4bed79e7e6ae8f01eb82f0102` |
+| `apps/web/src/workers/sim.worker.milestones.test.ts` | `6834b7b5915ddb135ed1d28467794922e37980b7ca7a9214263390053ec62123` |
+| `apps/web/src/workers/sim.worker.ceremony.test.ts` | `00bfabd45662a837e7c01d4c3c2581287b39ab2f91719b1f4d25e85fbab66811` |
+
+## Live source seams
+
+### Payroll
+
+`buildFreeAgencyPayrolls` in `sim.worker.helpers.ts` calls
+`calculateStateTeamPayroll` once per 31 CPU team immediately before one
+`simulateFADay`. `calculateTeamPayroll` performs one current-season and five
+future-season `deriveTradePayrollAdjustment` calls, so the helper repeats the
+whole trade-history projection 186 times per free-agency day.
+
+Canonical signings occur only after `simulateFADay`, through
+`applyNewFreeAgencySignings`. Therefore an exact operation-local projection is
+valid only for the pre-signing map and must be discarded before that mutation.
+The current helper's `freeAgentIds` and `teamPlayers` locals do not feed payroll
+calculation and are not a filtering contract.
+
+Base SHA-256 values before Goal-32 source edits:
+
+- `packages/sim-core/src/finance/tradeFinance.ts`:
+  `30d59f94376a0d347eac80921668f9291b2887dfe46c0292f50c76f241f7b98d`
+- `packages/sim-core/src/finance/contracts.ts`:
+  `0aac8ec1b66d1cc55e93f587633c7cfa8d8653bba9354dd6383f928966856e46`
+- `apps/web/src/workers/sim.worker.tradeFinance.ts`:
+  `6c17db1cf6c7c53816e8d6077f69067c2579091953024466c888edac888aee06`
+- `apps/web/src/workers/sim.worker.helpers.ts`:
+  `49677b8d4b2b6fa3d3bdf29729d4827cb3b7f6f0c6462d8523a8cd3e0b18c13e`
+
+The historical autonomous helper at `6ce96ebf…` overlaps
+`buildFreeAgencyPayrolls` and `simulateFreeAgencyDays`; its raw patch cannot be
+applied. The disposable helper must be a reviewed semantic merge. The landable
+Goal-32 helper remains interactive-only.
+
+### News
+
+`deduplicateNews` sorts the full feed with `compareNewsItems`, whose comparator
+reparses both timestamps on every comparison, then builds a sorted player key
+for each row, then sorts winners again. The API has many callers and must not
+change.
+
+Base `newsFeed.ts` SHA-256:
+`a6f66ec5027a68ac624d9bdea9bdb5d4aaa4a800ff8a8b7af224270eeab4144c`.
+
+### Prospect bonds
+
+`recordProspectBondDebuts` traverses unresolved bonds and performs
+`state.players.find` for each. It is called by all three regular simulation
+lanes. Its operation-local index must be first-write-wins to preserve
+`Array.find` duplicate-ID semantics.
+
+Base `sim.worker.farm.ts` SHA-256:
+`d01af0d469cbf27680b08c9618951256951958606f81cdf7ec9d3e81fcc8ab43`.
+
+### Season-end micro-arcs
+
+`applySeasonEndPlayerMicroArcMoments` loops every player over all news and all
+trade history/assets. It runs once at season completion. News matches only
+`relatedPlayerIds[0]`; trade candidates preserve history, offering/requesting,
+asset, and outer-player order; equal scores retain the first candidate.
+
+Base `sim.worker.narrativeFarm.ts` SHA-256:
+`6941c1802f2b7455639fc8020d3b58ee5a4c44b67d9d463bbfda820ed7b0b9d7`.
+
+## Profile-backed need
+
+The sealed season-30 profiles attribute about:
+
+- `19.6s` to repeated trade-payroll projection;
+- `10.2s` to full-feed news deduplication;
+- `10.7s` to prospect/player cross-product lookup;
+- `5.1s` to season-end player/news/trade scans.
+
+No single production seam can plausibly recover the `908,890ms` deficit. The
+exact four-seam bundle is the smallest source-backed strategy with a plausible
+path to the frozen diagnostic threshold. Receipt serialization remains
+proof-only and outside this production scope.
+
+## Authenticated diagnostic data ages
+
+The sealed inputs are historical filenames, not execution labels:
+
+- `season15.json` has raw SHA-256
+  `043595c3bd9d557f520b438de48f11edd8d49e926d3d23e9c449c45441500d3e`
+  and envelope digest
+  `a4e66914ab270f761fa1b0c027c53c97f9971720f7f36d4680aa53e512c85bca`.
+  It contains season-16 preseason state after season 15.
+- `season29.json` has raw SHA-256
+  `3a0160764d0899706c4d940ab30f238673e8a7c8ab39a6a5adc589cf93b256d3`
+  and envelope digest
+  `4664509f1f94d567f7518c1521cb2756cf938eaac318905fde33061dcd3f47e0`.
+  It contains season-30 preseason state after season 29.
+
+The diagnostic names these `post15` and `season30Input`. `D15` is the
+observation against post-season-15 data; `D30` is the season-30-input
+observation. Neither artifact may be relabeled as a completed-season execution.
+
+## Focused test truth
+
+Existing coverage:
+
+- `packages/sim-core/tests/finance.test.ts` covers retained salary, retrades,
+  return-to-payer, released-controller liability, credits, and future
+  commitments.
+- `packages/sim-core/tests/narrative.test.ts` covers dedupe winner and lexical
+  ID order.
+- `apps/web/src/workers/sim.worker.tradeFinance.test.ts` covers worker retained
+  finance.
+- `apps/web/src/workers/sim.worker.test.ts` covers exact micro-arc moments and
+  idempotence.
+
+The approved new farm and narrative-farm performance tests are necessary
+because no direct isolated structural coverage exists for those two seams.
+
+## Active risks
+
+1. Payroll projection may silently change duplicate-player, release,
+   controller, rounding, or future-commitment behavior.
+2. A cached projection may survive a signing, day boundary, import, or trade
+   mutation.
+3. Decorated news sorting may change full-tie stability or object identity.
+4. A normal `Map(players.map(...))` would change first-duplicate prospect
+   behavior.
+5. Reordered micro-arc facts may change equal-score winners or idempotence.
+6. Static structural tests may be misleading unless they extract the exact
+   named function body and are paired with exact semantic fixtures.
+7. The diagnostic is only a prefilter; only final admission proves the
+   40-minute contract.
