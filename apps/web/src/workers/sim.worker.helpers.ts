@@ -504,6 +504,67 @@ export interface OffseasonProgressResult {
   flowStateChanged?: boolean;
 }
 
+/**
+ * Internal-only policy used by deterministic league studies. It is deliberately
+ * absent from FullGameState/GameSnapshot and from the public Comlink API.
+ */
+export type OffseasonAutomationMode = 'interactive' | 'autonomous_league';
+export type OffseasonAutomationLane =
+  | 'tender'
+  | 'extensions'
+  | 'qualifying_offers'
+  | 'rule5'
+  | 'draft_signing'
+  | 'free_agency'
+  | 'international_signing';
+
+function isAutonomousLeague(mode: OffseasonAutomationMode): boolean {
+  return mode === 'autonomous_league';
+}
+
+function shouldAutomateTeam(
+  s: Pick<FullGameState, 'userTeamId'>,
+  teamId: string,
+  mode: OffseasonAutomationMode,
+): boolean {
+  return isAutonomousLeague(mode) || teamId !== s.userTeamId;
+}
+
+/** Internal receipt seam: every autonomous lane must use this exact selector. */
+export function automatedTeamIdsForOffseasonLane(
+  s: Pick<FullGameState, 'userTeamId'>,
+  _lane: OffseasonAutomationLane,
+  mode: OffseasonAutomationMode,
+): string[] {
+  return TEAMS
+    .map((team) => team.id)
+    .filter((teamId) => shouldAutomateTeam(s, teamId, mode));
+}
+
+function validateAutonomousLeagueInputs(s: FullGameState): string | null {
+  if (s.franchise.difficulty !== 'standard') {
+    return 'Autonomous league receipts require standard difficulty.';
+  }
+  const teamIds = TEAMS.map((team) => team.id);
+  if (teamIds.length !== 32 || new Set(teamIds).size !== 32) {
+    return 'Autonomous league receipts require exactly 32 unique organizations.';
+  }
+  for (const teamId of teamIds) {
+    const owner = s.ownerState.get(teamId);
+    const payroll = calculateStateTeamPayroll(s, teamId);
+    if (!owner
+      || !Number.isFinite(owner.annualBudget)
+      || (owner.annualBudget ?? -1) < 0
+      || !Number.isFinite(owner.payrollCap)
+      || (owner.payrollCap ?? -1) < 0
+      || !Number.isFinite(payroll.totalPayroll)
+      || payroll.totalPayroll < 0) {
+      return `Autonomous league receipts require canonical owner/payroll inputs for ${teamId}.`;
+    }
+  }
+  return null;
+}
+
 export type OffseasonTransactionTone = 'user' | 'division_rival' | 'neutral';
 
 export interface OffseasonTransactionRow {
@@ -2139,11 +2200,13 @@ function applyIFASigningToLeague(
   }
 }
 
-function simulateInternationalSigningDay(s: FullGameState) {
+function simulateInternationalSigningDay(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
   ensureInternationalScoutingStateForSeason(s);
 
-  for (const teamId of TEAMS.map((team) => team.id)) {
-    if (teamId === s.userTeamId) continue;
+  for (const teamId of automatedTeamIdsForOffseasonLane(s, 'international_signing', mode)) {
     if (s.rng.nextFloat() > 0.18) continue;
 
     const budget = s.internationalScoutingState.budgets.get(teamId);
@@ -3751,14 +3814,18 @@ export function signUserDraftPick(
   return { success: true, signed: true, message: 'Player signed and joined the organization.' };
 }
 
-function autoResolveAIDraftSignings(s: FullGameState) {
+function autoResolveAIDraftSignings(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
   const session = ensureDraftSession(s);
   if (!session || session.status !== 'complete') {
     return;
   }
 
+  const automatedTeamIds = new Set(automatedTeamIdsForOffseasonLane(s, 'draft_signing', mode));
   for (const pick of session.completedPicks) {
-    if (pick.teamId === s.userTeamId) continue;
+    if (!automatedTeamIds.has(pick.teamId)) continue;
     if (s.draftState.signingDecisions.some((entry) => entry.playerId === pick.playerId)) continue;
 
     const prospect = buildDraftProspectFromState(s, pick.playerId, pick.scoutingGrade, pick.round, pick.pickNumber);
@@ -3885,7 +3952,10 @@ export function makeUserDraftSelection(s: FullGameState, prospectId: string): Dr
   };
 }
 
-export function simulateRemainingDraftSession(s: FullGameState): DraftActionResult {
+export function simulateRemainingDraftSession(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+): DraftActionResult {
   if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'draft') {
     return { success: false, draft: null, newPicks: [], error: 'Draft is only available during the draft phase' };
   }
@@ -3921,7 +3991,7 @@ export function simulateRemainingDraftSession(s: FullGameState): DraftActionResu
 
   session.status = getDraftStatus(session);
   if (session.status === 'complete') {
-    autoResolveAIDraftSignings(s);
+    autoResolveAIDraftSignings(s, mode);
   }
   return {
     success: true,
@@ -5393,12 +5463,16 @@ function syncRule5ProtectionToRosterState(
   });
 }
 
-function autoProtectAITeams(s: FullGameState) {
+function autoProtectAITeams(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
   if (!s.rule5Session) return;
 
   let session = s.rule5Session;
+  const automatedTeamIds = new Set(automatedTeamIdsForOffseasonLane(s, 'rule5', mode));
   for (const teamId of session.draftOrder) {
-    if (teamId === s.userTeamId) continue;
+    if (!automatedTeamIds.has(teamId)) continue;
 
     const currentProtected = session.protectedPlayerIdsByTeam[teamId] ?? [];
     const availableSlots = Math.max(0, FORTY_MAN_LIMIT - currentProtected.length);
@@ -5424,7 +5498,10 @@ function autoProtectAITeams(s: FullGameState) {
   s.rule5Session = session;
 }
 
-function ensureRule5SessionForCurrentPhase(s: FullGameState) {
+function ensureRule5SessionForCurrentPhase(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
   if (!s.offseasonState) return;
   if (s.offseasonState.currentPhase !== 'protection_audit' && s.offseasonState.currentPhase !== 'rule5_draft') {
     return;
@@ -5437,7 +5514,7 @@ function ensureRule5SessionForCurrentPhase(s: FullGameState) {
       players: s.players,
       rosterStates: s.rosterStates,
     });
-    autoProtectAITeams(s);
+    autoProtectAITeams(s, mode);
   }
 
   if (s.offseasonState.currentPhase === 'rule5_draft' && s.rule5Session.phase === 'protection_audit') {
@@ -5467,6 +5544,7 @@ function restoreRule5MutationCheckpoint(
 function chooseRule5TargetForTeam(
   s: FullGameState,
   teamId: string,
+  mode: OffseasonAutomationMode = 'interactive',
 ): Rule5EligiblePlayer | null {
   if (!s.rule5Session) return null;
 
@@ -5486,7 +5564,7 @@ function chooseRule5TargetForTeam(
         + (needs.get(player.position) ?? 0) * 2
         - Math.max(0, player.age - 26) * 4
         + (
-          player.teamId === s.userTeamId
+          !isAutonomousLeague(mode) && player.teamId === s.userTeamId
             ? getRule5TargetingBonus(getRelationship(s.gmRelationships, teamId)) * 550
             : 0
         ),
@@ -5516,17 +5594,21 @@ function applyRule5SelectionToLeague(s: FullGameState, selection: Rule5Selection
   s.rosterStates.set(selection.draftingTeamId, buildRosterState(selection.draftingTeamId, s.players));
 }
 
-function advanceRule5DraftToUserTurn(s: FullGameState) {
-  ensureRule5SessionForCurrentPhase(s);
+function advanceRule5DraftToUserTurn(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
+  ensureRule5SessionForCurrentPhase(s, mode);
   if (!s.rule5Session || s.rule5Session.phase !== 'rule5_draft') return;
 
+  const automatedTeamIds = new Set(automatedTeamIdsForOffseasonLane(s, 'rule5', mode));
   while (s.rule5Session.phase === 'rule5_draft') {
     const teamId = currentRule5TeamId(s.rule5Session);
-    if (!teamId || teamId === s.userTeamId) {
+    if (!teamId || !automatedTeamIds.has(teamId)) {
       return;
     }
 
-    const target = chooseRule5TargetForTeam(s, teamId);
+    const target = chooseRule5TargetForTeam(s, teamId, mode);
     if (target) {
       const result = makeRule5SelectionCore(s.rule5Session, teamId, target.playerId);
       if (!result.success) {
@@ -5894,15 +5976,17 @@ function resolveHoldoutsForSpringTrainingOnce(s: FullGameState) {
   if (newsEntries.length > 0) s.news = deduplicateNews([...newsEntries, ...s.news]);
 }
 
-function applyTenderDecisionsOnce(s: FullGameState) {
+function applyTenderDecisionsOnce(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
   if (!s.offseasonState) return;
 
   const existingTendered = new Set(s.offseasonState.phaseResults.tenderedPlayers);
   const existingNonTendered = new Set(s.offseasonState.phaseResults.nonTenderedPlayers);
   const affectedTeams = new Set<string>();
 
-  for (const teamId of TEAMS.map((team) => team.id)) {
-    if (teamId === s.userTeamId) continue;
+  for (const teamId of automatedTeamIdsForOffseasonLane(s, 'tender', mode)) {
 
     const arbEligiblePlayers = getArbEligiblePlayers(s.players, teamId, s.serviceTime)
       .filter((player) => player.rosterStatus === 'MLB');
@@ -6026,7 +6110,10 @@ function validateCurrentExtensionAggregate(s: FullGameState): string | null {
   return null;
 }
 
-function processTeamExtensionsOnce(s: FullGameState): string | null {
+function processTeamExtensionsOnce(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+): string | null {
   if (!s.offseasonState) {
     return null;
   }
@@ -6038,8 +6125,8 @@ function processTeamExtensionsOnce(s: FullGameState): string | null {
     s.offseasonState.phaseResults.extensions.map((entry) => entry.teamId),
   );
 
-  for (const teamId of TEAMS.map((team) => team.id)) {
-    if (teamId === s.userTeamId || recordedTeamIds.has(teamId)) {
+  for (const teamId of automatedTeamIdsForOffseasonLane(s, 'extensions', mode)) {
+    if (recordedTeamIds.has(teamId)) {
       continue;
     }
 
@@ -6099,7 +6186,10 @@ function processTeamExtensionsOnce(s: FullGameState): string | null {
   return validateCurrentExtensionAggregate(s);
 }
 
-function processQualifyingOfferIssuanceOnce(s: FullGameState) {
+function processQualifyingOfferIssuanceOnce(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
   const amount = ensureQualifyingOfferSalaryForState(s);
   const existingPlayerIds = new Set(
     s.draftState.qualifyingOffers
@@ -6107,10 +6197,7 @@ function processQualifyingOfferIssuanceOnce(s: FullGameState) {
       .map((entry) => entry.playerId),
   );
 
-  for (const teamId of TEAMS.map((team) => team.id)) {
-    if (teamId === s.userTeamId) {
-      continue;
-    }
+  for (const teamId of automatedTeamIdsForOffseasonLane(s, 'qualifying_offers', mode)) {
 
     for (const player of getQualifyingOfferEligiblePlayers(s.players, teamId, s.serviceTime, amount)) {
       if (existingPlayerIds.has(player.id)) {
@@ -6422,10 +6509,11 @@ function ensureFreeAgencyMarket(s: FullGameState): boolean {
   return true;
 }
 
-export function buildFreeAgencyPayrolls(s: FullGameState) {
-  const teamIds = TEAMS
-    .filter((team) => team.id !== s.userTeamId)
-    .map((team) => team.id);
+export function buildFreeAgencyPayrolls(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
+  const teamIds = automatedTeamIdsForOffseasonLane(s, 'free_agency', mode);
   return new Map(
     Array.from(calculateStateLeaguePayrolls(s, teamIds), ([teamId, payroll]) => [
       teamId,
@@ -6434,16 +6522,18 @@ export function buildFreeAgencyPayrolls(s: FullGameState) {
   );
 }
 
-function buildFreeAgencyNeeds(s: FullGameState) {
+function buildFreeAgencyNeeds(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+) {
   const freeAgentIds = new Set(s.freeAgencyMarket?.freeAgents.map((freeAgent) => freeAgent.player.id) ?? []);
   return new Map(
-    TEAMS
-      .filter((team) => team.id !== s.userTeamId)
-      .map((team) => {
+    automatedTeamIdsForOffseasonLane(s, 'free_agency', mode)
+      .map((teamId) => {
         const teamRoster = s.players.filter(
-          (player) => player.teamId === team.id && player.rosterStatus === 'MLB' && !freeAgentIds.has(player.id),
+          (player) => player.teamId === teamId && player.rosterStatus === 'MLB' && !freeAgentIds.has(player.id),
         );
-        return [team.id, evaluateTeamNeeds(teamRoster)] as const;
+        return [teamId, evaluateTeamNeeds(teamRoster)] as const;
       }),
   );
 }
@@ -6611,25 +6701,27 @@ export function applyNewFreeAgencySignings(
 function simulateFreeAgencyDays(
   s: FullGameState,
   daysToSimulate: number,
+  mode: OffseasonAutomationMode = 'interactive',
 ): OffseasonProgressResult['aiSignings'] {
   if (!hasCanonicalFreeAgencyMarket(s)) return [];
   const aiSignings: OffseasonProgressResult['aiSignings'] = [];
-  const userTeamNeeds = evaluateTeamNeeds(
-    s.players.filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB'),
-  );
+  const userTeamNeeds = isAutonomousLeague(mode)
+    ? new Map<string, number>()
+    : evaluateTeamNeeds(
+      s.players.filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB'),
+    );
   const relationshipContexts = new Map<string, RelationshipBidContext>(
-    TEAMS
-      .filter((team) => team.id !== s.userTeamId)
-      .map((team) => {
-        const relationship = s.gmRelationships.get(team.id);
+    (isAutonomousLeague(mode) ? [] : automatedTeamIdsForOffseasonLane(s, 'free_agency', mode))
+      .map((teamId) => {
+        const relationship = s.gmRelationships.get(teamId);
         if (!relationship) {
           return null;
         }
         return [
-          team.id,
+          teamId,
           {
             relationship,
-            personality: s.gmPersonalities.get(team.id) ?? 'analytical',
+            personality: s.gmPersonalities.get(teamId) ?? 'analytical',
           },
         ] as const;
       })
@@ -6651,34 +6743,30 @@ function simulateFreeAgencyDays(
       };
     }>();
     const teamBudgets = new Map(
-      TEAMS
-        .filter((team) => team.id !== s.userTeamId)
-        .map((team) => [team.id, getTeamPayrollCap(s, team.id)] as const),
+      automatedTeamIdsForOffseasonLane(s, 'free_agency', mode)
+        .map((teamId) => [teamId, getTeamPayrollCap(s, teamId)] as const),
     );
-    const teamPayrolls = buildFreeAgencyPayrolls(s);
+    const teamPayrolls = buildFreeAgencyPayrolls(s, mode);
     const independentlyDerivedDayPayrolls = new Map(teamPayrolls);
-    const teamNeeds = buildFreeAgencyNeeds(s);
+    const teamNeeds = buildFreeAgencyNeeds(s, mode);
     const freeAgentIds = new Set(
       s.freeAgencyMarket.freeAgents.map((freeAgent) => freeAgent.player.id),
     );
     const virtualMlbRosters = new Map(
-      TEAMS
-        .filter((team) => team.id !== s.userTeamId)
-        .map((team) => [team.id, s.players.filter((player) => (
-          player.teamId === team.id
+      automatedTeamIdsForOffseasonLane(s, 'free_agency', mode)
+        .map((teamId) => [teamId, s.players.filter((player) => (
+          player.teamId === teamId
           && player.rosterStatus === 'MLB'
           && !freeAgentIds.has(player.id)
         ))] as const),
     );
     const teamMlbSigningSlots = new Map(
-      TEAMS
-        .filter((team) => team.id !== s.userTeamId)
-        .map((team) => [team.id, getAvailableMlbSigningSlots(s, team.id)] as const),
+      automatedTeamIdsForOffseasonLane(s, 'free_agency', mode)
+        .map((teamId) => [teamId, getAvailableMlbSigningSlots(s, teamId)] as const),
     );
     const teamBuildingArchetypes = new Map(
-      TEAMS
-        .filter((team) => team.id !== s.userTeamId)
-        .map((team) => [team.id, deriveWorkerTeamBuildingArchetype(s, team.id)] as const),
+      automatedTeamIdsForOffseasonLane(s, 'free_agency', mode)
+        .map((teamId) => [teamId, deriveWorkerTeamBuildingArchetype(s, teamId)] as const),
     );
     s.freeAgencyMarket = simulateFADay(
       s.rng.fork(),
@@ -6758,6 +6846,7 @@ function processCurrentOffseasonPhase(
   s: FullGameState,
   previousPhase: OffseasonState['currentPhase'] | null,
   previousPhaseDay: number | null,
+  mode: OffseasonAutomationMode = 'interactive',
 ): OffseasonProgressResult {
   if (!s.offseasonState) return { aiSignings: [] };
 
@@ -6776,12 +6865,12 @@ function processCurrentOffseasonPhase(
   }
 
   if (currentPhase === 'tender_nontender' && enteredPhase) {
-    applyTenderDecisionsOnce(s);
+    applyTenderDecisionsOnce(s, mode);
     return { aiSignings: [] };
   }
 
   if (currentPhase === 'extensions' && enteredPhase) {
-    const error = processTeamExtensionsOnce(s);
+    const error = processTeamExtensionsOnce(s, mode);
     if (error) {
       return { aiSignings: [], error, flowStateChanged: false };
     }
@@ -6789,7 +6878,7 @@ function processCurrentOffseasonPhase(
   }
 
   if (currentPhase === 'qualifying_offers' && enteredPhase) {
-    processQualifyingOfferIssuanceOnce(s);
+    processQualifyingOfferIssuanceOnce(s, mode);
     return { aiSignings: [] };
   }
 
@@ -6809,20 +6898,20 @@ function processCurrentOffseasonPhase(
         }
       }
       return {
-        aiSignings: simulateFreeAgencyDays(s, 1),
+        aiSignings: simulateFreeAgencyDays(s, 1, mode),
       };
     }
   }
 
   if (currentPhase === 'protection_audit') {
-    ensureRule5SessionForCurrentPhase(s);
+    ensureRule5SessionForCurrentPhase(s, mode);
     return { aiSignings: [] };
   }
 
   if (currentPhase === 'rule5_draft') {
-    ensureRule5SessionForCurrentPhase(s);
+    ensureRule5SessionForCurrentPhase(s, mode);
     if (enteredPhase) {
-      advanceRule5DraftToUserTurn(s);
+      advanceRule5DraftToUserTurn(s, mode);
     }
     return { aiSignings: [] };
   }
@@ -6830,7 +6919,7 @@ function processCurrentOffseasonPhase(
   if (currentPhase === 'international_signing') {
     const advancedWithinPhase = previousPhase === currentPhase && previousPhaseDay !== s.offseasonState.phaseDay;
     if (enteredPhase || advancedWithinPhase) {
-      simulateInternationalSigningDay(s);
+      simulateInternationalSigningDay(s, mode);
     }
     return { aiSignings: [] };
   }
@@ -6847,6 +6936,7 @@ function finalizeFreeAgencyIfNeeded(
   s: FullGameState,
   previousPhase: OffseasonState['currentPhase'],
   nextPhase: OffseasonState['currentPhase'] | null,
+  mode: OffseasonAutomationMode = 'interactive',
 ): OffseasonProgressResult['aiSignings'] {
   if (previousPhase !== 'free_agency' || nextPhase === 'free_agency') {
     return [];
@@ -6854,13 +6944,14 @@ function finalizeFreeAgencyIfNeeded(
 
   if (!hasCanonicalFreeAgencyMarket(s)) return [];
   const remainingDays = s.freeAgencyMarket ? Math.max(0, 60 - s.freeAgencyMarket.day) : 0;
-  return simulateFreeAgencyDays(s, remainingDays);
+  return simulateFreeAgencyDays(s, remainingDays, mode);
 }
 
 function finalizeDraftIfNeeded(
   s: FullGameState,
   previousPhase: OffseasonState['currentPhase'],
   nextPhase: OffseasonState['currentPhase'] | null,
+  mode: OffseasonAutomationMode = 'interactive',
 ): { success: true } | { success: false; error: string } {
   if (previousPhase !== 'draft' || nextPhase === 'draft') {
     return { success: true };
@@ -6893,12 +6984,12 @@ function finalizeDraftIfNeeded(
     return { success: true };
   }
 
-  const result = simulateRemainingDraftSession(s);
+  const result = simulateRemainingDraftSession(s, mode);
   if (!result.success) {
     restoreDraftMutationCheckpoint(s, checkpoint);
     return { success: false, error: result.error ?? 'Draft could not be completed.' };
   }
-  autoResolveAIDraftSignings(s);
+  autoResolveAIDraftSignings(s, mode);
   return { success: true };
 }
 
@@ -6927,6 +7018,7 @@ function applyOffseasonTransition(
   s: FullGameState,
   previousState: OffseasonState,
   nextState: OffseasonState,
+  mode: OffseasonAutomationMode = 'interactive',
 ): OffseasonProgressResult {
   if (previousState.currentPhase !== 'extensions' && nextState.currentPhase === 'extensions') {
     const extensionError = validateCurrentExtensionAggregate(s);
@@ -6972,8 +7064,8 @@ function applyOffseasonTransition(
 
   reconcileExistingOffseasonServiceOnce(s);
 
-  const aiSignings = finalizeFreeAgencyIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
-  const draftFinalization = finalizeDraftIfNeeded(s, previousState.currentPhase, nextState.currentPhase);
+  const aiSignings = finalizeFreeAgencyIfNeeded(s, previousState.currentPhase, nextState.currentPhase, mode);
+  const draftFinalization = finalizeDraftIfNeeded(s, previousState.currentPhase, nextState.currentPhase, mode);
   if (!draftFinalization.success) {
     return { aiSignings: [], error: draftFinalization.error, flowStateChanged: false };
   }
@@ -6987,7 +7079,7 @@ function applyOffseasonTransition(
     phaseResults: s.offseasonState?.phaseResults ?? previousState.phaseResults,
   };
   updateOffseasonClock(s);
-  const currentProgress = processCurrentOffseasonPhase(s, previousState.currentPhase, previousState.phaseDay);
+  const currentProgress = processCurrentOffseasonPhase(s, previousState.currentPhase, previousState.phaseDay, mode);
   if (currentProgress.error) {
     return { aiSignings: [], error: currentProgress.error, flowStateChanged: false };
   }
@@ -7001,22 +7093,32 @@ function applyOffseasonTransition(
 }
 
 /** Handle one offseason day with AI auto-resolution. */
-export function advanceOffseasonOnce(s: FullGameState): OffseasonProgressResult {
+export function advanceOffseasonOnce(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+): OffseasonProgressResult {
+  const autonomousError = isAutonomousLeague(mode) ? validateAutonomousLeagueInputs(s) : null;
+  if (autonomousError) return { aiSignings: [], error: autonomousError, flowStateChanged: false };
   ensureOffseasonState(s);
   if (!s.offseasonState || s.offseasonState.completed) return { aiSignings: [], flowStateChanged: false };
 
   const previousState = s.offseasonState;
   const nextState = advanceOffseasonDay(previousState);
-  return applyOffseasonTransition(s, previousState, nextState);
+  return applyOffseasonTransition(s, previousState, nextState, mode);
 }
 
-export function skipOffseasonPhaseWithAI(s: FullGameState): OffseasonProgressResult {
+export function skipOffseasonPhaseWithAI(
+  s: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+): OffseasonProgressResult {
+  const autonomousError = isAutonomousLeague(mode) ? validateAutonomousLeagueInputs(s) : null;
+  if (autonomousError) return { aiSignings: [], error: autonomousError, flowStateChanged: false };
   ensureOffseasonState(s);
   if (!s.offseasonState || s.offseasonState.completed) return { aiSignings: [], flowStateChanged: false };
 
   const previousState = s.offseasonState;
   const nextState = skipCurrentPhase(previousState);
-  return applyOffseasonTransition(s, previousState, nextState);
+  return applyOffseasonTransition(s, previousState, nextState, mode);
 }
 
 export function toggleUserRule5Protection(
