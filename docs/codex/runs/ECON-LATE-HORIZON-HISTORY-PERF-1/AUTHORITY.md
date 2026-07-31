@@ -164,3 +164,15 @@ evidence is preserved. Standing authority permits the coordinator to choose a
 new smallest source-grounded strategy without asking Kevin for permission, but
 no exhausted execution may be repeated and no acceptance contract may be
 weakened.
+
+## 2026-07-31 authority consumption
+
+The fresh route used its one import probe successfully, completed its focused
+gates and exact canonical input recapture, and consumed its single R/P/H
+diagnostic. The diagnostic was red: `R=271,978ms` and `P=2,676,912ms` against
+`H=1,938,000ms`. The no-retry rule is now active. Conditional final admission
+did not open and remains unexecuted.
+
+This oracle is exhausted. It does not authorize another diagnostic, a fifth
+seam, a cap change, or final admission after the red gate. The exact stop is
+recorded in `DIRECT_PROOF_DIAGNOSTIC_STOP.md`.

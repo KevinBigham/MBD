@@ -1,8 +1,13 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `ACTIVE — SOURCE/BUNDLE GATES GREEN — corrected draft CI and
-persistent direct-proof roots are next; R/P/H diagnostic and final admission
-remain unexecuted`.
+Current status: `STOPPED — EXACT R/P/H DIAGNOSTIC RED — CANDIDATE NOT
+LANDABLE — FINAL ADMISSION CLOSED`.
+
+The single authorized diagnostic measured `D15=5,543ms`, `D30=9,377ms`,
+`R=271,978ms`, and `P=2,676,912ms`. `P` exceeded the unchanged
+`H=1,938,000ms` gate by `738,912ms`. No retry or final admission ran. Exact
+evidence is in
+`runs/ECON-LATE-HORIZON-HISTORY-PERF-1/DIRECT_PROOF_DIAGNOSTIC_STOP.md`.
 
 ## Player-facing outcome
 

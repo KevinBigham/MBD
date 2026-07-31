@@ -1,7 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `ACTIVE — FRESH DIRECT PROOF AUTHORIZED — GitHub preservation and
-persistent proof-root preparation; all timing execution remains closed`
+Status: `STOPPED — FRESH DIRECT PROOF REACHED R/P/H AND FAILED — NO RETRY —
+FINAL ADMISSION CLOSED`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -380,3 +380,16 @@ stop record. Rollback is removal of that commit before local-main landing, or a
 normal future revert after landing. Never alter the stopped Goal-31 worktree,
 proof composition, or evidence root. Disposable diagnostic compositions are
 never merged.
+
+## 2026-07-31 terminal direct-proof result
+
+The persistent fresh route completed its static `0/0/0` review, sole import
+probe, focused regression, typecheck, exact two-checkpoint recapture, and all
+three hostile input validations. The one authorized `R/P/H` diagnostic then
+failed with `D15=5,543ms`, `D30=9,377ms`, `R=271,978ms`,
+`P=2,676,912ms`, and `H=1,938,000ms`.
+
+The diagnostic lane is consumed. Phase 7 did not open. Phases 7–8 remain
+unchecked and closed; no Goal-32 source is eligible for staging or landing.
+See `DIRECT_PROOF_DIAGNOSTIC_STOP.md` for identities, hashes, counter accounting,
+and exact consequences.

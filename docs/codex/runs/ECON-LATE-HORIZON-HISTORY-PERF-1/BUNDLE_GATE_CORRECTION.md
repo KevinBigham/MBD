@@ -1,6 +1,9 @@
 # Bundle Gate Correction — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `SOURCE_GATE_GREEN — MERGE_READY 0/0/0 — GITHUB CI PENDING`
+Status: `SOURCE_GATE_GREEN — MERGE_READY 0/0/0 — GITHUB CI GREEN`
+
+Corrected draft PR CI run `30666011715` completed green at exact branch commit
+`0f4c089795a8adc607eb25ef065a3a7b569d3abf`.
 
 ## Failure classification
 

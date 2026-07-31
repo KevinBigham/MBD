@@ -489,3 +489,28 @@ generate a fresh clean successor composition rooted in `85310795…`, then
 perform static `0/0/0` review before its sole import probe. Baseline evidence,
 checkpoint contracts, formulas, caps, R41 prohibition, all unspent timing
 lanes, and Item-19 closure remain unchanged.
+
+## 2026-07-31 fresh direct-proof terminal truth
+
+The persistent route did generate a clean successor rooted in `85310795…`.
+The exact candidate `79d022333e9ad4cedcd2d14bbcf8b0afd03e2ab0`, tree
+`25d3c58f291e87e131d0e7967256163d1ccb1192`, changed only
+`econLongSoak.test.ts` from parent `a16639b…`. Its file SHA-256 was
+`08181daa…72e9`; immediate-parent binary-diff SHA-256 was
+`6d01f9d0…245b`. Independent Sol review returned `MERGE_READY`, actionable
+P0/P1/P2 `0/0/0`. The sole import probe, focused test, and web typecheck passed.
+
+The exact repository-owned `2f3329b…` producer then canonically reproduced
+both lost inputs byte-for-byte in persistent storage. `season15.json` was
+97,077,025 bytes with raw SHA `043595c3…00d3e` and envelope `a4e66914…85bca`;
+`season29.json` was 188,382,012 bytes with raw SHA `3a016076…b256d3` and
+envelope `4664509f…f47e0`. The producer, season-15 consumer, and season-29
+consumer hostile validations all passed on their first attempts.
+
+The single no-retry R/P/H diagnostic then failed after `92.217s` of test time:
+`D15=5,543ms`, `D30=9,377ms`, `R=271,978ms`, `P=2,676,912ms`,
+`H=1,938,000ms`. The candidate recovered `738,912ms` less than required. The
+diagnostic is consumed; no PASS summary, retry, final admission, root release
+gate, staging, or landing occurred. The candidate chain is preserved remotely
+at `origin/codex/goal32-direct-successor-85310795-candidate-r1` and remains
+evidence-only. `DIRECT_PROOF_DIAGNOSTIC_STOP.md` contains the complete receipt.

@@ -1,19 +1,19 @@
 # MBD GOAT Roadmap Status
 
-Last reconciled: 2026-07-31 after Kevin reaffirmed standing authority for the
-complete bounded Goal-32 fresh-proof route and GitHub preservation. Goal 31's
+Last reconciled: 2026-07-31 after the complete bounded Goal-32 fresh-proof
+route reached its single R/P/H diagnostic and failed without retry. Goal 31's
 failed forecast remains honestly closed at
 `198759d88815d977f47672f7e1f5f0cb5ee4f0aa`. Goal 32's four-seam landable
 source remains frozen and source-reviewed `0/0/0`; its prior causal and direct
 proof candidates stopped before timing. The operating system later removed
 their temporary-only dirty checkouts, so recorded hashes/reviews remain
 historical evidence but those uncommitted bytes are not preserved locally.
-The authorized next route uses persistent fresh roots, frozen-lockfile
-dependencies, one corrected proof-only test candidate, static Sol `0/0/0`, and
-then one fresh import probe. The temporary checkpoint files are also absent, so
-an exact verified restore or one canonical recapture is required after the
-probe gates and before timing. The `R/P/H` diagnostic remains unspent; no final
-admission or Item-19 work has run.
+The fresh route used persistent roots, frozen-lockfile dependencies, a corrected
+one-file candidate, static Sol `0/0/0`, a green import probe, and an exact
+canonical checkpoint recapture. The R/P/H diagnostic measured only
+`271,978ms` of recovery and projected `2,676,912ms`, missing its unchanged
+`1,938,000ms` gate by `738,912ms`. The diagnostic is consumed and red; no final
+admission or Item-19 work ran.
 
 This ledger reconciles `MBD_REPO_AUDIT_AND_GOAT_ROADMAP_2026-07-10.md` against the live source, tests, goals, run artifacts, Git history, and canonical program documents. Source and tests outrank the audit. A historical feature is `PARTIAL`, not complete, when it lacks the roadmap item's bounded acceptance report, integrated slice commit, or required browser/calibration/performance proof.
 
@@ -38,7 +38,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
   frozen `2,040,000ms` cap by `908,890ms`. Final admission correctly failed
   without writing a receipt. Root gates, final merge review, landing, Goal-18
   integration/diagnostic, R41, and Item 19 remain prohibited.
-- Active prerequisite: **ECON-LATE-HORIZON-HISTORY-PERF-1** under Goal 32 is
+- Blocked prerequisite: **ECON-LATE-HORIZON-HISTORY-PERF-1** under Goal 32 is
   the authorized multi-seam successor. It preserves the exact Goal-31 evidence
   and caps while bounding four profile-proven production roots: league payroll
   projection, news dedupe decoration, prospect first-match lookup, and
@@ -50,8 +50,12 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
   defects in the quarantined candidate. Kevin's standing authorization now
   opens the exact bounded fresh-candidate route: persistent roots, separate
   frozen-lockfile dependency preparation, a corrected one-file candidate,
-  static `0/0/0`, and only then one fresh import probe. All timing and Item-19
-  work remain closed until those pre-gates pass.
+  static `0/0/0`, and one fresh import probe. Those gates and an exact
+  checkpoint recapture passed. The sole R/P/H diagnostic then returned
+  `D15=5,543ms`, `D30=9,377ms`, `R=271,978ms`, and `P=2,676,912ms`, exceeding
+  `H=1,938,000ms` by `738,912ms`. No retry or final admission ran. A technically
+  distinct source-grounded successor and new acceptance/oracle amendment are
+  required; Item 19 remains closed.
 - Blocked prerequisite: **ECON-LONG-SAVE-PERF-1** under Goal 29 is locally
   landed after green paired performance/exactness, corrected-tree horizon,
   repository, and review gates, but its sole seed-7111 run reached 30 primary
@@ -90,7 +94,7 @@ Allowed statuses are `VERIFIED COMPLETE`, `PARTIAL`, `IN PROGRESS`, `ACTIVE`, `P
 | 15 | 2 | Market-size revenue feeds budgets | VERIFIED COMPLETE | Goal 25 / `runs/ECON-MARKET-REVENUE-1` | Pure statement; exact annual settlement/repair; 4x4 study; production/reload and root gates | Commit containing this report; exact SHA in local Git history | Manual relay-pattern fallback: parent sole writer/closeout; read-only risk/test maps; `/root/revenue_final_review` `MERGE_READY` after two bounded correction loops | Items 9, 14 | Preserve exact annual authority, modeled vocabulary, and no-recursive-budget law; item 16 is complete |
 | 16 | 2 | Explainable free-agent decisions | VERIFIED COMPLETE | Goal 26 / `runs/ECON-FA-DECISIONS-1` | Shared deterministic user/CPU evaluator; exact durable reason; 4x4 study; production/reload proof; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; read-only Sol/Luna requested-route audits; final `/root/fa16_max_term_recheck` `MERGE_READY` 0/0/0/0 | Items 9, 49 (bounded factual consumption only) | Preserve bounded factual model and no-promise boundary; item 17 complete |
 | 17 | 2 | Salary retention and cash in trades | VERIFIED COMPLETE | Goal 27 / `runs/ECON-TRADE-RETENTION-1` | v35 immutable player-linked terms; canonical conserved payroll/valuation; exact-save retry; lifecycle/study proof; production item-17 1/1 and reload-smoke 2/2; final `MERGE_READY` | Commit containing completion report; exact SHA in local Git history | `gpt-5-6-swarm`: parent sole writer; three PURE Luna/Sol requested-route scouts; `/root/item17_final_sol_review` `MERGE_READY` 0/0/0 after bounded corrections | Items 9, 54 | Preserve player-linked reimbursement/no-treasury boundary; item 18 next |
-| 18 | 2 | 30-season multi-seed economy soak | ACTIVE | Goal 32 source/bundle gates green; fresh direct proof authorized; R/P/H unspent | Landable `85310795`; core 452,347/146,487; full tests, determinism, PWA, Playwright 14/14; Sol 0/0/0 | Four simulation seams exact; bounded trade-finance chunk route; fresh persistent successor composition and corrected one-file proof still need static 0/0/0 before one probe | Terra `/root/goal32_bundle_writer` high; Sol `/root/goal32_authority_review` xhigh `MERGE_READY`; parent closeout | Items 9–17 | Corrected draft CI, then persistent roots + dependencies + fresh successor composition + static 0/0/0 + one probe; preserve every cap |
+| 18 | 2 | 30-season multi-seed economy soak | BLOCKED — ORACLE | Goal 32 exact direct diagnostic red; no retry; admission closed | Landable candidate `85310795` remains unlanded; core 452,347/146,487; full gates green; static Sol 0/0/0; exact recapture green; R/P/H `271,978 / 2,676,912 / 1,938,000` red | Four seams preserve exact semantics but recover `738,912ms` less than required; candidate evidence branch `origin/codex/goal32-direct-successor-85310795-candidate-r1` | Terra `/root/goal32_bundle_writer` and `/root/goal32_direct_proof_writer` high; Sol `/root/goal32_authority_review` xhigh; parent mechanical closeout | Items 9–17 | Preserve red evidence; require technically distinct source-grounded successor and new acceptance/oracle amendment; do not rerun diagnostic or open Item 19 |
 | 19 | 3 | Legal Day-1 26/40 rosters | PENDING | Goal 12 `DAY-ONE-ROSTERS-1`; no run | Live generator still produces 28 MLB and invalid derived 40-man shape | — | — | Items 9 and 18 | Keep closed until item 18 passes; then execute Goal 12 |
 | 20 | 3 | Affiliate position balance | PENDING | Goal 12; no run | Current generation retains low-pitcher affiliate shape | — | — | Item 19 | Implement with legal generation slice |
 | 21 | 3 | Legal minors contracts | PENDING | Goal 12; no run | Non-MLB generation still assigns zero-year deals | — | — | Items 9, 19 | Coordinate initial values with clock semantics |

@@ -1,6 +1,6 @@
 # Sol Direct In-Process Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `APPROVED_SIMPLIFICATION_PLAN — 2026-07-31`
+Status: `EXECUTED — IMPORT GREEN — R/P/H RED — NO RETRY — ADMISSION CLOSED`
 
 ## Decision
 
@@ -256,3 +256,16 @@ green authenticated-input gate then opens the diagnostic and conditional
 admission already frozen above. No retry, second probe, custom artifact
 machinery, R41, fifth production seam, cap change, gameplay/RNG/save/receipt
 change, or Item 19 is opened.
+
+## Terminal execution result
+
+The fresh persistent implementation closed static review at actionable
+P0/P1/P2 `0/0/0`. Its sole import probe, focused test, typecheck, exact
+season-15/season-29 recapture, and all hostile input validations passed. The
+single diagnostic then failed with `D15=5,543ms`, `D30=9,377ms`,
+`R=271,978ms`, `P=2,676,912ms`, and `H=1,938,000ms`.
+
+The candidate is stopped. No PASS summary, retry, or final admission ran.
+`DIRECT_PROOF_DIAGNOSTIC_STOP.md` supersedes every earlier preexecution status
+for this route while preserving those earlier sections as chronological
+evidence.

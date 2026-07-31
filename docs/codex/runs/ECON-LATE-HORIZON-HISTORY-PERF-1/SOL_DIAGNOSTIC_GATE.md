@@ -1,7 +1,26 @@
 # Sol Diagnostic Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `AUTHORIZED PREEXECUTION — fresh direct proof requires static 0/0/0 and
-one green import probe; R/P/H EXECUTION UNCONSUMED AND CLOSED`
+Status: `TERMINAL RED — R/P/H EXECUTED ONCE — NO RETRY — FINAL ADMISSION
+CLOSED`
+
+## 2026-07-31 terminal R/P/H verdict
+
+The fresh candidate passed independent static review with actionable P0/P1/P2
+`0/0/0`, its sole import probe, focused regression, affected typecheck, exact
+checkpoint recapture, and all producer/consumer hostile validations. The
+single authorized diagnostic then failed:
+
+```text
+D15=5543
+D30=9377
+R=271978
+P=2676912
+H=1938000
+```
+
+The `738,912ms` miss is a production-performance insufficiency. The command
+exited `1`; no strict PASS summary was emitted. No retry or conditional final
+admission ran. `DIRECT_PROOF_DIAGNOSTIC_STOP.md` is the authoritative receipt.
 
 ## Direct-route terminal gate
 

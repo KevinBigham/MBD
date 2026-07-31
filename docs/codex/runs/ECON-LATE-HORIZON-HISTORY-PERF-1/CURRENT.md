@@ -1,17 +1,19 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: `SOURCE_GATE_GREEN — corrected draft CI and persistent proof-root
-preparation`
+Phase: `STOPPED — EXACT R/P/H DIAGNOSTIC RED — NO RETRY — FINAL ADMISSION
+CLOSED`
 
 Writer: parent coordinator for documentation/GitHub only. The bounded Terra
 bundle writer is complete; no production or proof-source writer is active.
 
-Changed paths: the standing-authority sweep plus the exact two-file bounded
-bundle correction in `BUNDLE_GATE_CORRECTION.md`. Landable source is frozen at
+Landable source: the standing-authority sweep plus the exact two-file bounded
+bundle correction in `BUNDLE_GATE_CORRECTION.md`. Production/build source is
+frozen at
 `85310795ef3ef13118eb75386a0864d270ace37c`, tree
 `8ce776cc7d84c8872de807510d1968a136bee773`, with independent bundle review
 `MERGE_READY`, actionable P0/P1/P2 `0/0/0`. Functional simulation bytes remain
-the independently reviewed `5a4eb60…` freeze.
+the independently reviewed `5a4eb60…` freeze. Current working changes are
+documentation-only terminal receipts for the red diagnostic.
 
 Last green gates: no-cache full tests passed contracts `37`, sim-core `1,726`,
 UI `1`, and web `2,492`; root typecheck passed `9/9`; determinism passed `3/3`;
@@ -19,16 +21,17 @@ the fresh PWA build emitted 169 precache entries; production Playwright passed
 `14/14` in `7.4m`, retries disabled. No result from a vanished temporary
 checkout is being reclassified as current.
 
-Current blocker: none requiring user permission. Corrected draft CI must turn
-green. A fresh successor proof composition based on `85310795…` and its one-file
-proof candidate still must be built and statically reviewed `0/0/0` before its
-sole import probe. The `R/P/H` diagnostic and conditional final admission
-remain unspent and closed.
+Current blocker: the exact fresh successor completed static review `0/0/0`,
+its sole import probe, focused test, typecheck, canonical checkpoint recapture,
+and three hostile input validations. Its single no-retry `R/P/H` diagnostic
+then measured `D15=5,543ms`, `D30=9,377ms`, `R=271,978ms`, and
+`P=2,676,912ms`, which exceeds `H=1,938,000ms` by `738,912ms`. The diagnostic
+is consumed and red. The final admission is closed and did not run.
 
-Next action: commit/push the bounded run receipts, observe corrected draft CI,
-then create persistent clean baseline/successor proof roots outside
-`/private/tmp`, prepare dependencies separately from the frozen lockfile, and
-start exactly one proof-only writer.
+Next action: preserve this terminal candidate and its exact receipts on GitHub,
+keep Goal-32 source off `main`, and freeze a technically distinct successor
+proposal. No command may rerun the consumed diagnostic or open final admission
+without a new source-grounded acceptance/oracle amendment.
 
 ## Live Git reconciliation
 
