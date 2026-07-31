@@ -1,57 +1,66 @@
 # Current — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Phase: `APPROVED_DIRECT_IN_PROCESS_GATE — one-file proof implementation pending`
+Phase: `BLOCKED_ORACLE — direct import probe exhausted before module resolution`
 
 Landable production/source freeze:
 `5a4eb60f8b1890803117a84a613d43af605f47dc`, tree
 `23aa4bf628f353775b445b1c4963b9c0d21d3057`. Its independent source review
 remains `MERGE_READY`, actionable P0/P1/P2 `0/0/0`.
 
-## Permanently stopped causal candidate
+## Preserved stopped causal candidate
 
-The causal proof-boundary implementation exhausted its one permitted
-correction and remains incomplete. Its focused matrices passed 68 tests with
-seven expected skips in each composition and both web typechecks passed, but
-real direct, late, diagnostic, and admission lanes still bypassed the proposed
-central publisher. It is verification-program/architecture-contract failure,
-not a production, gameplay, RNG, save, cap, or measured-performance failure.
+The prior causal proof machinery remains permanently stopped and evidence-only
+at the exact dirty worktrees, commits, paths, and diff SHA recorded in
+`SOL_CAUSAL_ARCHITECTURE.md`. Its semantic root remains absent. No causal
+measurement lane ran.
 
-Preserve without staging, committing, resetting, cleaning, deleting, or
-reusing:
+## Stopped direct candidate
 
-- baseline worktree HEAD `afb8ab973259d20aaae2d738c16755d1ac24786b`;
-- successor worktree HEAD `9eede0ce020a0876eca0b464331397c920cc5d5e`;
-- identical dirty diff SHA-256
-  `6b82fc2fdff37e5269097f15953b1659eb445c11c8c513a76203ceeb08744ce8`;
-- dirty paths:
-  - `apps/web/src/workers/econLongSoak.receipts.ts`;
-  - `apps/web/src/workers/econLongSoak.receipts.test.ts`;
-  - `apps/web/src/workers/econLateHorizonPerf.integration.test.ts`;
-  - `apps/web/src/workers/econMilestonePathCpuProfile.test.ts`.
+Fresh roots:
 
-The proposed
-`/private/tmp/mbd-goal32-causal-proof-5a4eb60-20260731` root is absent and must
-never be created. No causal diagnostic, timer, forecast, proof, admission, or
-retry ran.
+- baseline `/private/tmp/mbd-goal32-direct-baseline-505cfdf`, detached at
+  `505cfdf7c3c11e0cb821bea0716641dbcb787555`, tree
+  `0640b942317d7bfacebb33b2b5befa20e90cd746`, Git-clean, no `node_modules`;
+- successor `/private/tmp/mbd-goal32-direct-successor-7cfda113`, branch
+  `codex/econ-late-horizon-direct-proof-1`, HEAD
+  `7cfda1134cd6f7458f906018a23461ba6a7a97d1`, tree
+  `36b8f2fdef9adb68b7516441ece0a3e9ad09a04e`.
 
-## Current approved action
+The successor has one uncommitted proof-only change:
 
-`SOL_DIRECT_IN_PROCESS_GATE.md` is `APPROVED_SIMPLIFICATION_PLAN`.
+- `apps/web/src/workers/econLongSoak.test.ts`;
+- file SHA-256
+  `4c419d62bff7b66cd9a7115640e502e5c8407b7c624e487b9bf9d48082d58262`;
+- binary diff SHA-256
+  `3846cf5d4effb18c130bfe05ba31c6c0eed73be45d7a370b5018f75536a09daa`;
+- `384` insertions and `1` deletion.
 
-Use fresh clean proof-only compositions at baseline `505cfdf7…` and successor
-`7cfda113…`. One Terra/high writer may modify only
-`apps/web/src/workers/econLongSoak.test.ts` in the clean successor proof
-worktree. The existing canonical soak test remains behaviorally unchanged; an
-opt-in Goal-32 lane directly loads each exact composition, authenticates the
-two frozen checkpoints, times the four real production roots once in canonical
-order, and emits strict in-memory records only.
+Pre-gates observed before the probe:
 
-Before any timer or simulation, the import-resolution probe must prove that
-both contexts resolve their own worker and `@mbd/sim-core` modules. Focused
-tests, web typecheck, and one independent Sol/xhigh review must be green before
-the sole no-retry `R/P/H` diagnostic opens. A green diagnostic alone opens one
-canonical 30+15-season admission with adjusted wall
-`real_ms + 10 <= 2,040,000ms` and the unchanged `2,400,000ms` timeout.
+- ordinary focused test, direct mode absent: `4 passed | 2 skipped`;
+- affected web typecheck: passed;
+- `git diff --check`: passed;
+- baseline remained Git-clean and successor changed only the one allowed file.
 
-No custom artifact root, manifest, reducer file, recovery lineage, R41, retry,
-remote action, release, or Item 19 is permitted.
+The sole literal `import_probe` failed while loading the baseline
+`apps/web/vite.config.ts`:
+
+```text
+Cannot find package 'vite' imported from
+/private/tmp/mbd-goal32-direct-baseline-505cfdf/apps/web/vite.config.ts.timestamp-…mjs
+```
+
+Neither worker nor `@mbd/sim-core` resolved. No Goal-32 simulation,
+`process.hrtime` measurement, file artifact, diagnostic, or admission ran.
+
+## Blocker
+
+Sol classified the failure as `ROUTE_STOPPED`. Do not install baseline
+dependencies for this exhausted route, rerun the probe, edit the candidate,
+add a loader/file/composition, create an artifact root or lineage, execute
+timing, or reinterpret the failure.
+
+Goal 32 requires one bounded oracle explicitly authorizing dependency
+preparation before one genuinely fresh probe. Every gameplay/RNG/save/receipt
+contract and every performance cap remains unchanged. R41, retry of the
+exhausted route, remote/release actions, and Item 19 remain closed.

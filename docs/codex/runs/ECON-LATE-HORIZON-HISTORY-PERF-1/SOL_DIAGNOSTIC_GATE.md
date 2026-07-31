@@ -1,6 +1,17 @@
 # Sol Diagnostic Gate — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `STOP_REQUIRED — latest P0/P1/P2 0/4/0 — CAUSAL REPLACEMENT OPEN; EXECUTION CLOSED`
+Status: `BLOCKED — ORACLE — causal and direct proof routes stopped; R/P/H EXECUTION UNCONSUMED AND CLOSED`
+
+## Direct-route terminal gate
+
+The replacement direct proof route passed ordinary focused tests and typecheck
+but its single import-resolution probe failed on a missing baseline Vite
+dependency before resolving any game module. Sol returned `ROUTE_STOPPED`.
+No simulation, timer, diagnostic, artifact, proof, admission, or retry ran.
+
+The `R/P/H` budget remains unconsumed. It cannot open until a new bounded oracle
+explicitly authorizes dependency preparation before one fresh import probe and
+that probe, focused gates, and independent review are green.
 
 ## Latest proof-authority review
 

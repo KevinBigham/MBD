@@ -155,3 +155,27 @@ admission, run the frozen source gates on the clean landable Goal-32 source,
 one final Sol review, Luna closeout, exact staging, intentional commit, and
 local-main fast-forward. Remote push, deployment, release, R41, custom recovery
 machinery, and Item 19 remain closed.
+
+## Terminal import-probe stop
+
+Status: `ROUTE_STOPPED — ONE-SHOT IMPORT PROBE EXHAUSTED`
+
+The one authorized probe failed before either protected module resolved:
+
+```text
+Cannot find package 'vite' imported from
+/private/tmp/mbd-goal32-direct-baseline-505cfdf/apps/web/vite.config.ts.timestamp-…mjs
+```
+
+The clean baseline root had no installed dependencies. This is a verification
+environment defect, not a production or simulation defect. Ordinary focused
+tests and successor typecheck were green; no simulation, timer, artifact,
+`R/P/H` diagnostic, or final admission ran.
+
+The exact import-probe section above made any failure terminal. Its narrower
+one-shot rule overrides the general static import-wiring correction allowance.
+Do not install dependencies, rerun the probe, edit the candidate, add a loader,
+file, composition, root, or lineage, or execute timing under this route.
+Preserve the one-file candidate and failure as evidence. Continuing requires a
+new bounded oracle expressly authorizing dependency preparation before one
+genuinely fresh probe; standing authority alone does not waive this retry cap.

@@ -355,3 +355,25 @@ Sol approved the one-file plan in `SOL_DIRECT_IN_PROCESS_GATE.md`. It preserves
 the exact `R/P/H` equations, `1,938,000ms` diagnostic threshold,
 `2,040,000ms` final adjusted cap, `10ms` adjustment, and `2,400,000ms` process
 timeout. No custom semantic artifact root or new lineage is required.
+
+## Direct import-probe terminal evidence
+
+The direct proof candidate changed only
+`apps/web/src/workers/econLongSoak.test.ts` in the clean successor proof
+worktree. Its file SHA-256 is
+`4c419d62bff7b66cd9a7115640e502e5c8407b7c624e487b9bf9d48082d58262`;
+its binary diff SHA-256 is
+`3846cf5d4effb18c130bfe05ba31c6c0eed73be45d7a370b5018f75536a09daa`.
+The baseline remained Git-clean at `505cfdf7…`; the successor remained at
+`7cfda113…` with only that file modified.
+
+The ordinary focused test passed `4` with two gated skips, web typecheck
+passed, and diff-check passed. The single authorized import probe then failed
+before resolving either game module because the baseline root lacked
+`node_modules` and Vite could not load its own configuration. No worker,
+simulation, `hrtime` root, artifact, diagnostic, or admission ran.
+
+Sol returned `ROUTE_STOPPED`. This is a verification-environment defect. The
+direct candidate must remain uncommitted and evidence-only. The `R/P/H`
+diagnostic remains genuinely unspent; Goal 32 cannot continue without an
+oracle explicitly authorizing dependency preparation before one new probe.

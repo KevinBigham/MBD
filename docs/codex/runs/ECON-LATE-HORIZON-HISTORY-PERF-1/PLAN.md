@@ -1,7 +1,7 @@
 # Plan — ECON-LATE-HORIZON-HISTORY-PERF-1
 
-Status: `ACTIVE — direct in-process proof simplification approved; one-file
-implementation pending; timing execution closed`
+Status: `BLOCKED — ORACLE — one-shot direct import probe exhausted before
+module resolution; all timing execution remains closed`
 
 Size: `EXCEPTIONAL`, explicitly authorized as one bounded four-seam
 prerequisite because sealed profiles prove that no one seam can recover the
@@ -243,6 +243,15 @@ Before timing, run one no-simulation import probe, focused tests, affected web
 typecheck, and one independent Sol/xhigh review. Any repeated import/identity
 defect or actionable review P0–P2 stops. No custom artifact protocol or new
 semantic root may be introduced.
+
+The one import probe failed before module resolution because the clean baseline
+root lacked its lockfile Vite dependency. Sol classified this as a
+verification-environment defect and `ROUTE_STOPPED`: the gate's exact one-shot
+failure clause overrides its general static import-wiring correction budget.
+The direct candidate is quarantined and Phase 6 remains closed. No dependency
+installation, probe rerun, source correction, loader, composition, diagnostic,
+or admission is legal without a new bounded oracle explicitly reopening one
+fresh, dependency-prepared probe.
 
 ### Phase 6 — One diagnostic
 

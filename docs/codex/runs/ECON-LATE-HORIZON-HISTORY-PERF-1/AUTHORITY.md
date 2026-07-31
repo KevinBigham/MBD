@@ -80,3 +80,21 @@ unchanged conservative `10ms` adjustment, and requires the result to remain
 `<= 2,040,000ms`; the existing `2,400,000ms` process timeout remains intact.
 No new semantic artifact root, recovery lineage, R41 mechanism, user
 permission, remote action, release, or Item-19 work is authorized or required.
+
+## Direct import-probe stop
+
+The one authorized import-resolution probe failed before either protected
+worker or `@mbd/sim-core` module resolved because the immutable baseline
+worktree had no installed Vite dependency. The failure is a verification
+environment defect, not a production or simulation defect. No protected
+execution, timer, artifact, `R/P/H` diagnostic, or admission ran.
+
+`SOL_DIRECT_IN_PROCESS_GATE.md` made the probe explicitly one-shot and required
+any failure to stop the route. Its narrower stop clause overrides the general
+single import-wiring correction allowance. Standing campaign authority removes
+permission-only pauses but does not waive this explicit retry cap.
+
+The proof candidate and failure are quarantined as evidence. Continuing Goal
+32 now requires one new bounded oracle that explicitly authorizes dependency
+preparation before one genuinely fresh probe. Routine quarantine documentation
+requires no new authority.

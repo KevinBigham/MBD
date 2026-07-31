@@ -1,8 +1,8 @@
 # ECON-LATE-HORIZON-HISTORY-PERF-1 — Bounded Multi-Seam Successor
 
-Current status: `ACTIVE — direct in-process proof simplification approved;
-one-file implementation pending; R/P/H diagnostic and final admission remain
-unexecuted`.
+Current status: `BLOCKED — ORACLE — direct import probe exhausted on missing
+baseline Vite dependency before game-module resolution; R/P/H diagnostic and
+final admission remain unexecuted`.
 
 ## Player-facing outcome
 
