@@ -158,6 +158,93 @@ Each `parityReceipts` row has key order:
 The exact ordered modes are `interactive-before-after`,
 `autonomous-before-after`, and `cross-mode-difference`.
 
+## Exact parity receipt construction
+
+The frozen canonical parity root is
+`/private/tmp/mbd-goal32-parity-5a4eb60-20260730`. It must be absent before the
+first capture and remain outside both repositories, the preserved Goal-31
+evidence root, checkpoint source roots, and the later diagnostic artifact root.
+No command may clean, delete, overwrite, or reuse it.
+
+The baseline capture command runs from the baseline composition:
+
+```sh
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=baseline \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-baseline.json \
+pnpm --filter @mbd/web exec vitest run \
+  src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
+```
+
+It exclusively creates the parity root and
+`capture-baseline.json`. The successor capture command runs from the successor
+composition:
+
+```sh
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=capture \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_VARIANT=successor \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_OUT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-successor.json \
+pnpm --filter @mbd/web exec vitest run \
+  src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
+```
+
+It requires the root to contain exactly the immutable baseline capture and
+exclusively creates `capture-successor.json`.
+
+Each capture has exact key order:
+
+`schema, goal, variant, helperSha256, observerSha256, interactive,
+autonomousLeague, crossMode, stateDigest, rngDigest, receiptDigest`.
+
+Required values:
+
+- `schema`: `mbd.econ-late-horizon-history-perf.parity-capture.v1`;
+- `goal`: `ECON-LATE-HORIZON-HISTORY-PERF-1`;
+- variant and helper/observer hashes: exact composition identity;
+- `interactive`: exact ordered helper results and exact post-fixture
+  save-without-RNG/RNG facts for interactive mode;
+- `autonomousLeague`: the same exact facts for autonomous mode;
+- `crossMode`: exact selected-user-team inclusion/exclusion and changed/no-change
+  facts that are intentionally different between modes;
+- `stateDigest` and `rngDigest`: full canonical fixture snapshot facts;
+- `receiptDigest`: `digestV1` over every preceding key.
+
+The reducer command runs from the successor composition:
+
+```sh
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_MODE=reduce \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_BASELINE=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-baseline.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_SUCCESSOR=/private/tmp/mbd-goal32-parity-5a4eb60-20260730/capture-successor.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_PARITY_ROOT=/private/tmp/mbd-goal32-parity-5a4eb60-20260730 \
+pnpm --filter @mbd/web exec vitest run \
+  src/workers/sim.worker.autonomousOffseason.test.ts --retry=0
+```
+
+It requires exactly the two capture files, revalidates their raw transport,
+digests, helper/observer identities, composition roots, and fixture schemas,
+then exclusively writes these three direct-child receipts:
+
+- `interactive-before-after.json`;
+- `autonomous-before-after.json`;
+- `cross-mode-difference.json`.
+
+Each parity receipt has exact key order:
+
+`schema, goal, mode, baselineCaptureDigest, successorCaptureDigest, assertions,
+result, contentDigest`.
+
+`schema` is `mbd.econ-late-horizon-history-perf.parity.v1`; `result` is exactly
+`PASS`. `assertions` contains the exact compared factual/state/RNG projections.
+Interactive and autonomous baseline/successor facts must be exact-equal.
+Cross-mode intentional differences must be exact-equal between variants and
+must remain nonempty. Any mismatch writes none of the three receipts. The
+reducer leaves both captures and all failure evidence untouched.
+
+The manifest `parityReceipts` rows use the three receipt paths above. Their
+`command` field is the literal reducer command, `exitCode` is `0`, `rawSha256`
+binds complete raw bytes, and `contentDigest` equals the receipt's internal
+digest.
+
 `inputs` has key order `post15, season30Input`. Each row has key order:
 
 `dataAge, sourcePath, sourceRawSha256, sourceEnvelopeDigest,

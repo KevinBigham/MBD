@@ -26,8 +26,8 @@ rejected incomplete diagnostic contracts before implementation. The current
 contract now also freezes the disposable two-argument 32-team helper boundary,
 monotonic timer, feasible reporter policy, exact seal/check-only commands,
 one-shot external artifact root, truthful finite-regression `FAIL`, complete
-digest mapping, and durable Sol manifest anchor. Diagnostic execution remains
-closed.
+digest mapping, durable Sol manifest anchor, and exact two-capture/three-receipt
+parity construction. Diagnostic execution remains closed.
 
 Next action: obtain Sol zero-finding re-review of the corrected contract, then
 create the two exact non-landed compositions and generated manifest. Run parity
