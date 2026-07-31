@@ -32,6 +32,24 @@ identity. Each composition may differ from its parent in exactly the twelve
 paths listed in `PLAN.md`. No thirteenth harness or instrumentation path is
 permitted.
 
+Both disposable helpers expose this exact composition-only signature:
+
+```ts
+export function buildFreeAgencyPayrolls(
+  state: FullGameState,
+  mode: OffseasonAutomationMode = 'interactive',
+): Map<string, number>
+```
+
+The baseline keeps the historical per-team payroll implementation. The
+successor uses the operation-local batch projection. This two-argument export
+is the reviewed merge of the historical autonomous helper with the landable
+one-argument helper; it does not describe or change the landable helper's
+signature and is never added to Comlink or a package barrel. In
+`autonomous_league` mode both disposable helpers return the exact ordered
+32-team map. In `interactive` mode they return the exact ordered 31
+non-user-team map.
+
 The manifest freezes these two exact absolute canonical realpaths:
 
 - `/private/tmp/mbd-goal32-baseline-composition-20260730`;
@@ -80,6 +98,12 @@ The Sol gate records both:
 
 Every child and the reducer independently rechecks both. The reducer binds
 both values in its provenance.
+
+The durable Sol record is
+`docs/codex/runs/ECON-LATE-HORIZON-HISTORY-PERF-1/SOL_DIAGNOSTIC_GATE.md`.
+Before execution it must name the exact manifest absolute path, raw SHA-256,
+internal `manifestDigest`, literal outer command, both composition
+commit/tree identities, and a zero-actionable-P0-P2 verdict.
 
 ## Manifest key order and nested schema
 
@@ -170,6 +194,15 @@ The exact process order is:
 
 `artifactRoot, manifestPath, childOutputPaths, reducerOutputPath`.
 
+The frozen artifact root is
+`/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730`; `manifestPath` is its direct
+child `manifest.json`. The four input-copy direct-child names are
+`input-1-baseline-post15.json`, `input-2-successor-post15.json`,
+`input-3-baseline-season30Input.json`, and
+`input-4-successor-season30Input.json`. The child output direct-child names are
+`observation-1.json` through `observation-4.json`. The reducer direct-child
+name is `rph-receipt.json`.
+
 `futureItem18` key order:
 
 `requiredHelperSha256, equalityRequiredBeforeExecution, executionAuthorized`.
@@ -179,6 +212,42 @@ The exact process order is:
 `manifestDigest` is `digestV1` over all preceding top-level keys. The
 operator-supplied raw manifest SHA-256 independently binds complete bytes.
 
+## Exact manifest seal and check-only commands
+
+After the two composition commits and three parity receipts are immutable, the
+artifact root must not exist. Run this one repository-owned seal command from
+the successor composition:
+
+```sh
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=seal-manifest \
+pnpm --filter @mbd/web exec vitest run \
+  src/workers/econLateHorizonPerf.integration.test.ts --retry=0
+```
+
+Seal mode uses only the frozen absolute paths and identities in this document.
+It invokes no measured root or timer. It exclusively creates the artifact
+root, exclusively writes `manifest.json` under the raw transport rules, then
+reopens and verifies it. Failure preserves whatever evidence was created and
+does not delete, clean, overwrite, or reuse the root. A second seal attempt
+must fail because the root exists.
+
+After sealing and before Sol review, run this exact check-only command from the
+successor composition, substituting only the reviewed 64-hex raw manifest hash:
+
+```sh
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=check-only \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
+pnpm --filter @mbd/web exec vitest run \
+  src/workers/econLateHorizonPerf.integration.test.ts --retry=0
+```
+
+Check-only accepts no `OUT` value. It performs zero OS child spawns, zero input
+copy or output creation, zero measured-root calls, and zero timer calls. It
+records artifact-root entry names and file-byte hashes plus both live worktree
+identities before validation, reopens and validates the manifest, then proves
+those exact observations are unchanged afterward.
+
 ## Literal outer command
 
 The command runs from the immutable successor composition. These are the only
@@ -186,9 +255,9 @@ operator-supplied values:
 
 ```sh
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MODE=paired-diagnostic \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/absolute/path/manifest.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST=/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/manifest.json \
 MBD_ECON_LATE_HORIZON_HISTORY_PERF_MANIFEST_SHA256=<64-lowercase-hex> \
-MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/absolute/path/rph-receipt.json \
+MBD_ECON_LATE_HORIZON_HISTORY_PERF_OUT=/tmp/mbd-goal32-rph-diagnostic-5a4eb60-20260730/rph-receipt.json \
 pnpm --filter @mbd/web exec vitest run \
   src/workers/econLateHorizonPerf.integration.test.ts --retry=0
 ```
@@ -203,11 +272,16 @@ as free-form operator values.
 For each process descriptor the orchestrator spawns the exact `argv` from the
 descriptor, with:
 
-- `cwd` equal to that descriptor's verified `rootRealpath`;
+- spawn `cwd` equal to that descriptor's verified `rootRealpath`;
 - synchronous completion before the next ordinal;
 - `stdio` captured as raw bytes;
-- nonzero exit, signal, spawn error, missing output, or unexpected stdout/stderr
-  treated as invalid evidence and terminal failure.
+- nonzero exit, signal, spawn error, or missing output treated as invalid
+  evidence and terminal failure.
+
+Vitest reporter stdout/stderr may be captured for diagnostics but is never
+parsed, hashed, or admitted as evidence. The child test proves
+`git rev-parse --show-toplevel` equals the descriptor `rootRealpath`, even when
+pnpm/Vitest selects `apps/web` as the package process CWD.
 
 The child environment is rebuilt, not inherited wholesale. Its only inherited
 keys are present values from this exact allowlist:
@@ -231,28 +305,33 @@ checks its CWD and live composition identity, rejects any extra
 `MBD_ECON_LATE_HORIZON_HISTORY_PERF_*` key, and runs exactly one descriptor.
 This prevents recursion into `paired-diagnostic`.
 
-The child emits no JSON on stdout. Its only evidence channel is exclusive
-creation of its descriptor's output file. Diagnostic console noise is invalid.
+The child's only admitted evidence channel is exclusive creation of its
+descriptor's output file. Reporter or console output is non-evidence; it cannot
+repair or replace a missing or invalid receipt.
 
 ## Output and copy safety
 
-The existing manifest path is an absolute, regular, non-symlink file outside
-both repositories. Its parent directory is the canonical artifact root.
+Before seal mode, the canonical artifact root must be absent. Seal mode creates
+it exclusively and never reuses or cleans it. After sealing, the manifest path
+is an absolute, regular, non-symlink file outside both repositories and every
+evidence/input source root. Its parent is the canonical artifact root.
 
-These nine paths must be absolute, pairwise distinct from each other and the
-manifest, outside both repositories, non-symlink at every existing ancestor,
-and absent before orchestration:
+These nine direct children of the artifact root must be absolute, pairwise
+distinct from each other and the manifest, outside both repositories and every
+evidence/input source root, non-symlink at every existing ancestor, and absent
+before orchestration:
 
 - four input copy paths, one per variant/data-age pair;
 - four child output paths;
 - one reducer output path.
 
-The artifact root must exist as a regular directory, be outside both
-repositories, and contain no path except the already sealed manifest before
-the run. Input copies use exclusive creation, preserve exact source bytes, are
-made read-only before child spawn, and are rehashed before and after the child.
-Output files use exclusive creation and are reopened by the orchestrator as
-regular non-symlink files.
+The artifact root must contain exactly the sealed manifest before the run.
+There is no cleanup, deletion, overwrite, or reuse path. The outer `MANIFEST`
+must exact-equal `outputs.manifestPath`; outer `OUT` must exact-equal
+`outputs.reducerOutputPath`. Input copies use exclusive creation, preserve
+exact source bytes, are made read-only before child spawn, and are rehashed
+before and after the child. Output files use exclusive creation and are
+reopened by the orchestrator as regular non-symlink files.
 
 Any invalid identity, input, child, semantic, or reducer evidence produces no
 reducer receipt. A fully valid measurement that misses the threshold writes a
@@ -274,10 +353,19 @@ The payroll root includes all 32 teams. Successor elapsed time includes the
 batch projection itself. Nested callees are not timed independently. Every root
 has one finite, nonnegative raw wall-time observation.
 
+The raw timer is `process.hrtime.bigint()`. For each root, read it once
+immediately before and once immediately after the exact invocation; compute
+`elapsedMs = Number(end - start) / 1_000_000`. No nested or overlapping timer
+is permitted.
+
 `checkpoint` key order:
 
 `dataAge, inputRawSha256, inputEnvelopeDigest, snapshotSerializedDigest,
 preStateDigest, preRngDigest`.
+
+`snapshotSerializedDigest = digestV1(preObservationSnapshot)`, where
+`preObservationSnapshot` is the exact result of the one pre-timing
+`exportGameSnapshot(state)` call.
 
 `sourceIdentity` key order:
 
@@ -356,18 +444,22 @@ Required values:
 - `goal`: `ECON-LATE-HORIZON-HISTORY-PERF-1`;
 - `manifestRawSha256`: reviewed raw manifest hash from the command;
 - `manifestDigest`: verified internal manifest digest;
+- each of the four `*Digest` fields: the corresponding verified child
+  `receiptDigest`;
 - `cap`: `2040000`;
 - `H`: `1938000`;
 - `D15 = floor(baselinePost15Total - successorPost15Total)`;
 - `D30 = floor(baselineSeason30InputTotal - successorSeason30InputTotal)`;
 - `R = 22 * D15 + 16 * D30`;
 - `P = 2948890 - R`;
-- `result = PASS` only when `D15 >= 0`, `D30 >= 0`,
-  `R >= 1010890`, and `P <= H`.
+- `result`: exactly `PASS` or `FAIL`; it is `PASS` only when `D15 >= 0`,
+  `D30 >= 0`, `R >= 1010890`, and `P <= H`, otherwise `FAIL`.
 
 Each total is the raw sum of the four root `elapsedMs` values before flooring.
-Negative or non-finite deltas invalidate evidence and produce no reducer
-receipt. `receiptDigest` is `digestV1` over all preceding keys.
+A finite negative delta is valid measured evidence and produces a truthful
+terminal `FAIL` receipt. Only malformed, non-finite, identity-invalid, or
+semantically mismatched evidence produces no reducer receipt. `receiptDigest`
+is `digestV1` over all preceding keys.
 
 A valid `FAIL` is terminal for this slice: no retry, fifth seam, forecast, or
 admission. A green diagnostic is not admission evidence and opens only the one
@@ -398,8 +490,9 @@ Before Sol review, and without running the diagnostic:
    - altered reducer constants, equations, threshold, cap, or key order;
 5. one deliberate negative control bypasses a live composition-identity check
    and proves the hostile test fails, then restores correct bytes;
-6. generated manifest verification passes in check-only mode before and after
-   a no-op child-spawn simulation that does not invoke any measured root;
+6. the exact check-only command passes with zero OS child spawns, input copies,
+   outputs, measured-root calls, or timers, and proves identical manifest,
+   artifact-root entries/bytes, and live worktree identities before/after;
 7. independent Sol review of the exact composition commits, manifest,
    raw manifest hash, helper projections, tests, and literal command returns
    zero actionable P0-P2 findings.

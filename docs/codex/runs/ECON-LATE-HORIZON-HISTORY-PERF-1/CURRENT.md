@@ -21,12 +21,13 @@ Focused receipts, retries disabled:
 - four structural mutants failed their intended guards and were restored;
 - `git diff --check` passed and the source-freeze worktree/index are clean.
 
-Current blocker: no production blocker. The first diagnostic-contract draft
-was rejected before implementation with P0/P1/P2 `0/5/1`. Its impossible old
-observer-byte requirement, incomplete live-root and child identity, incomplete
-semantic projection, weak output exclusivity, and conflated canonical/transport
-ordering have been replaced in one source-grounded correction. Diagnostic
-execution remains closed.
+Current blocker: no production blocker. Two pre-construction Sol reviews
+rejected incomplete diagnostic contracts before implementation. The current
+contract now also freezes the disposable two-argument 32-team helper boundary,
+monotonic timer, feasible reporter policy, exact seal/check-only commands,
+one-shot external artifact root, truthful finite-regression `FAIL`, complete
+digest mapping, and durable Sol manifest anchor. Diagnostic execution remains
+closed.
 
 Next action: obtain Sol zero-finding re-review of the corrected contract, then
 create the two exact non-landed compositions and generated manifest. Run parity
