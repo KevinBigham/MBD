@@ -12,13 +12,23 @@ export {
   NUM_TEAMS,
 } from './draftPool.js';
 
-export type { DraftPick, DraftResult } from './draftAI.js';
-export {
-  determineDraftOrder,
-  aiSelectPick,
-  evaluateTeamNeeds,
-  simulateFullDraft,
+export type {
+  DraftPick,
+  DraftResult,
+  OrganizationDraftProfileV1,
+  DraftCandidateVisibleInput,
+  DraftCandidateScoreBreakdown,
+  DraftSelectionCoreResult,
 } from './draftAI.js';
+export {
+  getOrganizationDraftProfile,
+  toDraftCandidateVisibleInput,
+  scoreDraftCandidate,
+} from './draftAI.js';
+export { determineDraftOrder, aiSelectPick, evaluateTeamNeeds } from './draftWorker.js';
+export { simulateFullDraft } from './draftSimulation.js';
+export type { AIDraftSelectionResult } from './draftAI.explanations.js';
+export { aiSelectPickDetailed } from './draftAI.explanations.js';
 
 export type { DraftScoutingReport } from './draftScouting.js';
 export { scoutDraftProspect } from './draftScouting.js';

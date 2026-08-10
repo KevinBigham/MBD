@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 import {
   GameRNG,
   generateTeamRoster,
@@ -22,6 +23,12 @@ import {
   buildDraftPickSlots,
   forfeitHighestEligiblePick,
 } from '../src/index.js';
+import {
+  aiSelectPickDetailed,
+  getOrganizationDraftProfile,
+  scoreDraftCandidate,
+} from '../src/draft/index.js';
+import { aiSelectPick as detailedPathSelect } from '../src/draft/draftAI.js';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -135,6 +142,15 @@ describe('determineDraftOrder', () => {
 });
 
 describe('aiSelectPick', () => {
+  it('keeps the compact worker selector in parity with the public policy selector', () => {
+    const prospects = generateDraftClass(new GameRNG(2041), 12).prospects.slice(0, 24);
+    const roster = generateTeamRoster(new GameRNG(2042), 'NYT');
+    for (const [seed, teamId] of [[2043, 'NYT'], [2044, 'PIT'], [2045, 'SFB']] as const) {
+      expect(aiSelectPick(new GameRNG(seed), teamId, prospects, roster).player.id)
+        .toBe(detailedPathSelect(new GameRNG(seed), teamId, prospects, roster).player.id);
+    }
+  });
+
   it('returns a valid prospect from the available pool', () => {
     const rng1 = new GameRNG(42);
     const draftClass = generateDraftClass(rng1, 1);
@@ -239,6 +255,59 @@ describe('aiSelectPick', () => {
       background: prospect.background,
       ceiling: prospect.player.ceiling,
     }))).toEqual(originalProspects);
+  });
+
+  it('does not change semantic scoring or selection when hidden talent changes', () => {
+    const prospects = generateDraftClass(new GameRNG(2034), 12).prospects.slice(0, 3).map((prospect, index) => ({
+      ...prospect,
+      player: { ...prospect.player, id: `visible-only-${index}`, position: 'SS' as const },
+      scoutingGrade: 60 + index,
+      signability: 0.7,
+    }));
+    const hiddenChanged = prospects.map((prospect, index) => ({
+      ...prospect,
+      player: { ...prospect.player, overallRating: 100 + index * 100, potentialRating: 550 - index * 100, ceiling: index === 0 ? 20 : 550 },
+    }));
+    const roster = generateTeamRoster(new GameRNG(2035), 'pit').filter((player) => player.position !== 'SS');
+    const first = aiSelectPickDetailed(new GameRNG(2036), 'pit', prospects, roster);
+    const second = aiSelectPickDetailed(new GameRNG(2036), 'pit', hiddenChanged, roster);
+    expect(second.prospect.player.id).toBe(first.prospect.player.id);
+    expect(second.breakdown).toEqual(first.breakdown);
+  });
+
+  it('exposes bounded, finite, pure visible scoring with a deterministic fallback profile', () => {
+    const profile = getOrganizationDraftProfile('unknown-team');
+    const candidate = {
+      playerId: 'candidate', position: 'SS' as const, age: 18, scoutingGrade: 80,
+      signability: 0, background: 'high_school' as const,
+    };
+    const before = { ...candidate };
+    const breakdown = scoreDraftCandidate(profile, candidate, new Map([['SS', 100]]));
+    expect(profile.id).toBe('balanced');
+    expect(Number.isFinite(breakdown.scoreBeforeTiebreak)).toBe(true);
+    expect(Math.abs(breakdown.profileAdjustment)).toBeLessThanOrEqual(8);
+    expect(candidate).toEqual(before);
+  });
+
+  it('keeps visible score components finite and profile adjustment bounded for generated boards', () => {
+    const profile = getOrganizationDraftProfile('pit');
+    const positionArbitrary = fc.constantFrom(...ALL_POSITIONS);
+    const backgroundArbitrary = fc.constantFrom('college_senior' as const, 'college_underclass' as const, 'high_school' as const);
+    fc.assert(fc.property(
+      fc.record({
+        playerId: fc.string({ minLength: 1, maxLength: 20 }),
+        position: positionArbitrary,
+        age: fc.integer({ min: 17, max: 24 }),
+        scoutingGrade: fc.integer({ min: 20, max: 80 }),
+        signability: fc.double({ min: 0, max: 1, noNaN: true }),
+        background: backgroundArbitrary,
+      }),
+      (candidate) => {
+        const result = scoreDraftCandidate(profile, candidate, new Map([['SS', 70], ['SP', 40]]));
+        return Object.values(result).every((value) => typeof value !== 'number' || Number.isFinite(value))
+          && Math.abs(result.profileAdjustment) <= 8;
+      },
+    ));
   });
 });
 
