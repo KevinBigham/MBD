@@ -8,7 +8,6 @@
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer, Position } from '../player/generation.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
-import { toDisplayRating } from '../player/attributes.js';
 import type { DraftProspect, DraftClass } from './draftPool.js';
 import { DRAFT_ROUNDS, NUM_TEAMS } from './draftPool.js';
 
@@ -28,8 +27,9 @@ const SECONDARY_NEED_BONUS = 5;
 /** Signability multiplier to put it on comparable scale to scouting grade. */
 const SIGNABILITY_SCALE = 20;
 
-/** Ceiling-gap multiplier to put upside on comparable scale to scouting grade. */
+/** Visible risk/upside proxy multiplier to keep it on the scouting-grade scale. */
 const UPSIDE_SCALE = 20;
+const MAX_DRAFT_PROFILE_ADJUSTMENT = 8;
 
 /** Minimum roster count at a position before it becomes a need. */
 const MIN_POSITION_DEPTH: Record<string, number> = {
@@ -60,132 +60,67 @@ export interface DraftResult {
   undrafted: DraftProspect[];
 }
 
-type DraftStrategyArchetype =
-  | 'balanced'
-  | 'board'
-  | 'college_secure'
-  | 'need_first'
-  | 'pitching'
-  | 'premium_athletes'
-  | 'upside';
+const DRAFT_STRATEGY_IDS = ['balanced', 'board', 'college_secure', 'need_first', 'pitching', 'premium_athletes', 'upside'] as const;
+type DraftStrategyArchetype = (typeof DRAFT_STRATEGY_IDS)[number];
+type DraftStrategyIndex = number;
 
-interface AIDraftStrategyProfile {
+const ORG_DRAFT_PROFILE_VERSION = 1 as const;
+
+export interface OrganizationDraftProfileV1 {
+  readonly version: 1;
+  readonly id: string;
   readonly bpaWeight: number;
   readonly needWeight: number;
   readonly signabilityWeight: number;
-  readonly upsideWeight: number;
-  readonly collegeSecurityBonus: number;
-  readonly prepUpsideBonus: number;
-  readonly pitcherBonus: number;
-  readonly upTheMiddleBonus: number;
+  readonly upsideOrRiskWeight: number;
+  readonly ageOrBackgroundLean: number;
+  readonly pitchingLean: number;
+  readonly premiumPositionLean: number;
 }
 
-const DRAFT_STRATEGY_PROFILES: Record<DraftStrategyArchetype, AIDraftStrategyProfile> = {
-  balanced: {
-    bpaWeight: WEIGHT_BPA,
-    needWeight: WEIGHT_NEED,
-    signabilityWeight: WEIGHT_SIGNABILITY,
-    upsideWeight: 0.04,
-    collegeSecurityBonus: 0,
-    prepUpsideBonus: 0,
-    pitcherBonus: 0,
-    upTheMiddleBonus: 0,
-  },
-  board: {
-    bpaWeight: 0.64,
-    needWeight: 0.18,
-    signabilityWeight: 0.12,
-    upsideWeight: 0.06,
-    collegeSecurityBonus: 0,
-    prepUpsideBonus: 0,
-    pitcherBonus: 0,
-    upTheMiddleBonus: 1.5,
-  },
-  college_secure: {
-    bpaWeight: 0.56,
-    needWeight: 0.22,
-    signabilityWeight: 0.22,
-    upsideWeight: 0.02,
-    collegeSecurityBonus: 3,
-    prepUpsideBonus: -4,
-    pitcherBonus: 0,
-    upTheMiddleBonus: 0,
-  },
-  need_first: {
-    bpaWeight: 0.50,
-    needWeight: 0.36,
-    signabilityWeight: 0.10,
-    upsideWeight: 0.04,
-    collegeSecurityBonus: 0,
-    prepUpsideBonus: 0,
-    pitcherBonus: 0,
-    upTheMiddleBonus: 0,
-  },
-  pitching: {
-    bpaWeight: 0.54,
-    needWeight: 0.22,
-    signabilityWeight: 0.12,
-    upsideWeight: 0.06,
-    collegeSecurityBonus: 0,
-    prepUpsideBonus: 0,
-    pitcherBonus: 4,
-    upTheMiddleBonus: 0,
-  },
-  premium_athletes: {
-    bpaWeight: 0.54,
-    needWeight: 0.20,
-    signabilityWeight: 0.11,
-    upsideWeight: 0.10,
-    collegeSecurityBonus: 0,
-    prepUpsideBonus: 1.5,
-    pitcherBonus: 0,
-    upTheMiddleBonus: 4,
-  },
-  upside: {
-    bpaWeight: 0.56,
-    needWeight: 0.18,
-    signabilityWeight: 0.06,
-    upsideWeight: 0.20,
-    collegeSecurityBonus: 0,
-    prepUpsideBonus: 4,
-    pitcherBonus: 0,
-    upTheMiddleBonus: 2,
-  },
+export interface DraftCandidateVisibleInput {
+  readonly playerId: string;
+  readonly position: Position;
+  readonly age: number;
+  readonly scoutingGrade: number;
+  readonly signability: number;
+  readonly background: DraftProspect['background'];
+  readonly commitmentStrength?: number;
+  readonly consensusRank?: number;
+  readonly projectedRound?: number;
+  readonly positionRank?: number;
+}
+
+export interface DraftCandidateScoreBreakdown {
+  readonly profileVersion: 1;
+  readonly profileId: string;
+  readonly playerId: string;
+  readonly bpa: number;
+  readonly need: number;
+  readonly signability: number;
+  readonly riskOrUpside: number;
+  readonly backgroundOrAge: number;
+  readonly positionBias: number;
+  readonly profileAdjustment: number;
+  readonly scoreBeforeTiebreak: number;
+}
+
+type ProfileWeights = readonly [number, number, number, number, number, number, number];
+const DRAFT_STRATEGY_PROFILES: Record<DraftStrategyArchetype, ProfileWeights> = {
+  balanced: [WEIGHT_BPA, WEIGHT_NEED, WEIGHT_SIGNABILITY, 0.04, 0, 0, 0],
+  board: [0.64, 0.18, 0.12, 0.06, 0, 0, 1.5],
+  college_secure: [0.56, 0.22, 0.22, 0.02, -2, 0, 0],
+  need_first: [0.50, 0.36, 0.10, 0.04, 0, 0, 0],
+  pitching: [0.54, 0.22, 0.12, 0.06, 0, 4, 0],
+  premium_athletes: [0.54, 0.20, 0.11, 0.10, 1, 0, 4],
+  upside: [0.56, 0.18, 0.06, 0.20, 2, 0, 2],
 };
 
-const TEAM_DRAFT_STRATEGY: Record<string, DraftStrategyArchetype> = {
-  nym: 'board',
-  phi: 'college_secure',
-  bos: 'board',
-  bal: 'premium_athletes',
-  wsh: 'college_secure',
-  chi: 'board',
-  det: 'need_first',
-  cle: 'pitching',
-  col: 'balanced',
-  pit: 'upside',
-  kc: 'premium_athletes',
-  msp: 'pitching',
-  stl: 'college_secure',
-  ind: 'premium_athletes',
-  mil: 'balanced',
-  nas: 'upside',
-  mia: 'upside',
-  atl: 'premium_athletes',
-  cha: 'balanced',
-  orl: 'upside',
-  ral: 'college_secure',
-  hou: 'board',
-  dal: 'need_first',
-  sat: 'pitching',
-  den: 'premium_athletes',
-  aus: 'upside',
-  lax: 'board',
-  sfb: 'college_secure',
-  phx: 'need_first',
-  sea: 'pitching',
-  sdg: 'balanced',
-  por: 'premium_athletes',
+const TEAM_DRAFT_STRATEGY: Record<string, DraftStrategyIndex> = {
+  nym: 1, phi: 2, bos: 1, bal: 5, wsh: 2, chi: 1, det: 3, cle: 4,
+  col: 0, pit: 6, kc: 5, msp: 4, stl: 2, ind: 5, mil: 0, nas: 6,
+  mia: 6, atl: 5, cha: 0, orl: 6, ral: 2, hou: 1, dal: 3, sat: 4,
+  den: 5, aus: 6, lax: 1, sfb: 2, phx: 3, sea: 4, sdg: 0, por: 5,
 };
 
 // ---------------------------------------------------------------------------
@@ -279,30 +214,56 @@ export function evaluateTeamNeeds(teamRoster: GeneratedPlayer[]): Map<string, nu
 // AI pick selection
 // ---------------------------------------------------------------------------
 
-function draftStrategyProfileForTeam(teamId: string): AIDraftStrategyProfile {
-  return DRAFT_STRATEGY_PROFILES[TEAM_DRAFT_STRATEGY[teamId] ?? 'balanced'];
+export function getOrganizationDraftProfile(teamId: string): Readonly<OrganizationDraftProfileV1> {
+  const strategyIndex = TEAM_DRAFT_STRATEGY[teamId] ?? 0;
+  const archetype = DRAFT_STRATEGY_IDS[strategyIndex] ?? DRAFT_STRATEGY_IDS[0];
+  const [bpaWeight, needWeight, signabilityWeight, upsideOrRiskWeight, ageOrBackgroundLean, pitchingLean, premiumPositionLean] = DRAFT_STRATEGY_PROFILES[archetype];
+  return Object.freeze({ version: ORG_DRAFT_PROFILE_VERSION, id: archetype, bpaWeight, needWeight, signabilityWeight, upsideOrRiskWeight, ageOrBackgroundLean, pitchingLean, premiumPositionLean });
 }
 
-function prospectUpsideScore(prospect: DraftProspect): number {
-  const projectedCeiling = prospect.player.ceiling ?? prospect.player.potentialRating ?? prospect.player.overallRating;
-  const gap = Math.max(0, projectedCeiling - prospect.player.overallRating);
-  return Math.min(UPSIDE_SCALE, (gap / 170) * UPSIDE_SCALE);
+export function toDraftCandidateVisibleInput(prospect: DraftProspect): DraftCandidateVisibleInput {
+  return Object.freeze({
+    playerId: prospect.player.id,
+    position: prospect.player.position,
+    age: prospect.player.age,
+    scoutingGrade: prospect.scoutingGrade,
+    signability: prospect.signability,
+    background: prospect.background,
+  });
 }
 
-function profileBackgroundBonus(profile: AIDraftStrategyProfile, prospect: DraftProspect): number {
-  if (prospect.background === 'college_senior') {
-    return profile.collegeSecurityBonus;
-  }
-  if (prospect.background === 'high_school') {
-    return profile.prepUpsideBonus;
-  }
-  return profile.collegeSecurityBonus / 2;
+function visibleRiskOrUpside(candidate: DraftCandidateVisibleInput): number {
+  const youth = Math.max(0, Math.min(1, (21 - candidate.age) / 4));
+  const prep = candidate.background === 'high_school' ? 1 : candidate.background === 'college_underclass' ? 0.5 : 0;
+  return Math.min(UPSIDE_SCALE, (candidate.scoutingGrade / 80) * 8 + youth * 6 + prep * 6);
 }
 
-function profilePositionBonus(profile: AIDraftStrategyProfile, position: Position): number {
-  const isPitcher = position === 'SP' || position === 'RP' || position === 'CL';
-  const isUpTheMiddle = position === 'C' || position === 'SS' || position === 'CF';
-  return (isPitcher ? profile.pitcherBonus : 0) + (isUpTheMiddle ? profile.upTheMiddleBonus : 0);
+function visibleBackgroundAge(candidate: DraftCandidateVisibleInput): number {
+  return candidate.background === 'college_senior' ? -1 : candidate.background === 'high_school' ? 1 : 0;
+}
+
+function positionBias(candidate: DraftCandidateVisibleInput, profile: Readonly<OrganizationDraftProfileV1>): number {
+  const pitcher = candidate.position === 'SP' || candidate.position === 'RP' || candidate.position === 'CL';
+  const premium = candidate.position === 'C' || candidate.position === 'SS' || candidate.position === 'CF';
+  return (pitcher ? profile.pitchingLean : 0) + (premium ? profile.premiumPositionLean : 0);
+}
+
+export function scoreDraftCandidate(
+  profile: Readonly<OrganizationDraftProfileV1>,
+  candidate: DraftCandidateVisibleInput,
+  needs: ReadonlyMap<string, number>,
+): DraftCandidateScoreBreakdown {
+  const sortedNeeds = [...needs.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const need = candidate.position === sortedNeeds[0]?.[0] ? PRIMARY_NEED_BONUS : candidate.position === sortedNeeds[1]?.[0] ? SECONDARY_NEED_BONUS : 0;
+  const bpa = candidate.scoutingGrade * profile.bpaWeight;
+  const needComponent = need * profile.needWeight;
+  const signability = candidate.signability * SIGNABILITY_SCALE * profile.signabilityWeight;
+  const riskOrUpside = visibleRiskOrUpside(candidate) * profile.upsideOrRiskWeight;
+  const backgroundOrAge = visibleBackgroundAge(candidate) * profile.ageOrBackgroundLean;
+  const positionComponent = positionBias(candidate, profile);
+  const rawAdjustment = needComponent + signability + riskOrUpside + backgroundOrAge + positionComponent - bpa * (1 - profile.bpaWeight);
+  const adjustment = Math.max(-MAX_DRAFT_PROFILE_ADJUSTMENT, Math.min(MAX_DRAFT_PROFILE_ADJUSTMENT, rawAdjustment));
+  return { profileVersion: 1, profileId: profile.id, playerId: candidate.playerId, bpa, need: needComponent, signability, riskOrUpside, backgroundOrAge, positionBias: positionComponent, profileAdjustment: adjustment, scoreBeforeTiebreak: bpa + adjustment };
 }
 
 /**
@@ -315,21 +276,34 @@ export function aiSelectPick(
   availableProspects: DraftProspect[],
   teamRoster: GeneratedPlayer[],
 ): DraftProspect {
+  return selectDraftProspect(rng, teamId, availableProspects, teamRoster).prospect;
+}
+
+export interface DraftSelectionCoreResult {
+  readonly prospect: DraftProspect;
+  readonly profile: Readonly<OrganizationDraftProfileV1>;
+  readonly breakdown: DraftCandidateScoreBreakdown;
+}
+
+export function selectDraftProspect(
+  rng: GameRNG,
+  teamId: string,
+  availableProspects: DraftProspect[],
+  teamRoster: GeneratedPlayer[],
+): DraftSelectionCoreResult {
   if (availableProspects.length === 0) {
     throw new Error(`aiSelectPick: no available prospects for team ${teamId}`);
   }
 
   if (availableProspects.length === 1) {
-    return availableProspects[0]!;
+    const profile = getOrganizationDraftProfile(teamId);
+    const candidate = toDraftCandidateVisibleInput(availableProspects[0]!);
+    const breakdown = scoreDraftCandidate(profile, candidate, evaluateTeamNeeds(teamRoster));
+    return { prospect: availableProspects[0]!, profile, breakdown };
   }
 
   const needs = evaluateTeamNeeds(teamRoster);
-  const profile = draftStrategyProfileForTeam(teamId);
-
-  // Find the top two need positions for bonus calculation
-  const sortedNeeds = [...needs.entries()].sort((a, b) => b[1] - a[1]);
-  const primaryNeedPos = sortedNeeds[0]?.[0];
-  const secondaryNeedPos = sortedNeeds[1]?.[0];
+  const profile = getOrganizationDraftProfile(teamId);
 
   // Score each available prospect in stable order so the RNG tiebreaker is
   // assigned to the same player regardless of caller-provided array order.
@@ -340,23 +314,8 @@ export function aiSelectPick(
   let bestScore = -Infinity;
 
   for (const prospect of candidates) {
-    const pos = prospect.player.position;
-
-    // Need bonus
-    let needBonus = 0;
-    if (pos === primaryNeedPos) {
-      needBonus = PRIMARY_NEED_BONUS;
-    } else if (pos === secondaryNeedPos) {
-      needBonus = SECONDARY_NEED_BONUS;
-    }
-
-    const pickScore =
-      prospect.scoutingGrade * profile.bpaWeight +
-      needBonus * profile.needWeight +
-      prospect.signability * SIGNABILITY_SCALE * profile.signabilityWeight +
-      prospectUpsideScore(prospect) * profile.upsideWeight +
-      profileBackgroundBonus(profile, prospect) +
-      profilePositionBonus(profile, pos);
+    const breakdown = scoreDraftCandidate(profile, toDraftCandidateVisibleInput(prospect), needs);
+    const pickScore = breakdown.scoreBeforeTiebreak;
 
     // Add a small seeded tiebreaker so equal-scored players still vary by draft seed.
     const tiebreaker = rng.nextFloat() * 0.5;
@@ -369,96 +328,6 @@ export function aiSelectPick(
     }
   }
 
-  return bestProspect;
-}
-
-// ---------------------------------------------------------------------------
-// Full draft simulation
-// ---------------------------------------------------------------------------
-
-/**
- * Run the full draft: 20 rounds, 32 teams per round = up to 640 picks.
- *
- * When it is the user's team's turn:
- * - If `userPicks` contains a pick for that round, it is used automatically.
- * - Otherwise the AI picks on behalf of the user (for simulated/instant drafts).
- *
- * For interactive draft-room pausing, the worker layer handles pause/resume
- * by calling this function with pre-populated userPicks.
- */
-export function simulateFullDraft(
-  rng: GameRNG,
-  draftClass: DraftClass,
-  draftOrder: string[],
-  teamRosters: Map<string, GeneratedPlayer[]>,
-  userTeamId: string,
-  userPicks?: Map<number, DraftProspect>,
-): DraftResult {
-  const picks: DraftPick[] = [];
-  const available = [...draftClass.prospects];
-  let overallPickNumber = 0;
-
-  // Mutable copy of rosters so drafted players get added
-  const rosters = new Map<string, GeneratedPlayer[]>();
-  for (const [teamId, roster] of teamRosters) {
-    rosters.set(teamId, [...roster]);
-  }
-
-  for (let round = 1; round <= DRAFT_ROUNDS; round++) {
-    for (const teamId of draftOrder) {
-      if (available.length === 0) break;
-
-      overallPickNumber++;
-      let selectedProspect: DraftProspect;
-
-      if (teamId === userTeamId && userPicks?.has(round)) {
-        // User has pre-selected a pick for this round
-        selectedProspect = userPicks.get(round)!;
-
-        // Remove from available pool
-        const idx = available.findIndex((p) => p.player.id === selectedProspect.player.id);
-        if (idx >= 0) {
-          available.splice(idx, 1);
-        }
-      } else {
-        // AI selection (also used for user team if no pre-selected pick)
-        const teamRoster = rosters.get(teamId) ?? [];
-        selectedProspect = aiSelectPick(rng, teamId, available, teamRoster);
-
-        // Remove from available pool
-        const idx = available.indexOf(selectedProspect);
-        if (idx >= 0) {
-          available.splice(idx, 1);
-        }
-      }
-
-      // Preserve the original draft pool entry; the drafted copy carries team assignment.
-      const draftedProspect: DraftProspect = {
-        ...selectedProspect,
-        player: {
-          ...selectedProspect.player,
-          teamId,
-        },
-      };
-
-      // Add to team's roster for future need calculations
-      const teamRoster = rosters.get(teamId) ?? [];
-      teamRoster.push(draftedProspect.player);
-      rosters.set(teamId, teamRoster);
-
-      picks.push({
-        round,
-        pickNumber: overallPickNumber,
-        teamId,
-        prospect: draftedProspect,
-      });
-    }
-
-    if (available.length === 0) break;
-  }
-
-  return {
-    picks,
-    undrafted: available,
-  };
+  const breakdown = scoreDraftCandidate(profile, toDraftCandidateVisibleInput(bestProspect), needs);
+  return { prospect: bestProspect, profile, breakdown };
 }
