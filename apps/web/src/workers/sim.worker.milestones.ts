@@ -39,7 +39,7 @@ function buildCumulativeMilestoneStats(state: FullGameState): Map<string, Milest
 }
 
 function eventFromMoment(
-  state: FullGameState,
+  players: FullGameState['players'],
   cumulativeStats: ReadonlyMap<string, MilestoneStats>,
   moment: Moment,
 ): CareerMilestoneEvent | null {
@@ -48,7 +48,7 @@ function eventFromMoment(
     return null;
   }
 
-  const player = state.players.find((entry) => entry.id === playerId);
+  const player = players.find((entry) => entry.id === playerId);
   const stats = cumulativeStats.get(playerId);
   if (!player || !stats) {
     return null;
@@ -103,7 +103,14 @@ function eventFromMoment(
 
 export function buildCareerMilestoneEvents(state: FullGameState, simDay: number): CareerMilestoneEvent[] {
   const cumulativeStats = buildCumulativeMilestoneStats(state);
-  return checkMilestones(cumulativeStats, state.players, state.season, simDay)
-    .map((moment) => eventFromMoment(state, cumulativeStats, moment))
+  const eligibilityProbe = checkMilestones(cumulativeStats, [], state.season, simDay);
+  const qualifyingPlayerIds = new Set(eligibilityProbe.flatMap((moment) => moment.playerIds));
+  if (qualifyingPlayerIds.size === 0) {
+    return [];
+  }
+
+  const qualifyingPlayers = state.players.filter((player) => qualifyingPlayerIds.has(player.id));
+  return checkMilestones(cumulativeStats, qualifyingPlayers, state.season, simDay)
+    .map((moment) => eventFromMoment(qualifyingPlayers, cumulativeStats, moment))
     .filter((event): event is CareerMilestoneEvent => event != null && event.count > 0);
 }

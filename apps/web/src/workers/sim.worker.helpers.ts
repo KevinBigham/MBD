@@ -145,7 +145,7 @@ import {
   type FreeAgencyOfferAcceptanceReceipt,
   type FreeAgencyOfferDecision,
 } from '@mbd/sim-core';
-import { calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
+import { calculateStateLeaguePayrolls, calculateStateTeamPayroll } from './sim.worker.tradeFinance.js';
 import {
   detectArbitrationMoments,
   detectHoldoutResolutions,
@@ -6422,17 +6422,15 @@ function ensureFreeAgencyMarket(s: FullGameState): boolean {
   return true;
 }
 
-function buildFreeAgencyPayrolls(s: FullGameState) {
-  const freeAgentIds = new Set(s.freeAgencyMarket?.freeAgents.map((freeAgent) => freeAgent.player.id) ?? []);
+export function buildFreeAgencyPayrolls(s: FullGameState) {
+  const teamIds = TEAMS
+    .filter((team) => team.id !== s.userTeamId)
+    .map((team) => team.id);
   return new Map(
-    TEAMS
-      .filter((team) => team.id !== s.userTeamId)
-      .map((team) => {
-        const teamPlayers = s.players.filter(
-          (player) => player.teamId === team.id && !freeAgentIds.has(player.id),
-        );
-        return [team.id, calculateStateTeamPayroll(s, team.id).totalPayroll] as const;
-      }),
+    Array.from(calculateStateLeaguePayrolls(s, teamIds), ([teamId, payroll]) => [
+      teamId,
+      payroll.totalPayroll,
+    ] as const),
   );
 }
 

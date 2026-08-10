@@ -2,6 +2,7 @@ import type { TradeAsset, TradeContractReference } from '@mbd/contracts';
 import {
   activeRetainedContractCountForTeam,
   calculateTeamPayroll,
+  calculateLeaguePayrolls,
   contractReferenceForPlayer,
   derivePlayerTradeSalaryResponsibility,
   deriveTradePayrollAdjustment,
@@ -26,6 +27,18 @@ export function stateTradeFinanceSeason(state: FullGameState): number {
 export function calculateStateTeamPayroll(state: FullGameState, teamId: string) {
   const financeSeason = stateTradeFinanceSeason(state);
   return calculateTeamPayroll(teamId, state.players, {
+    season: financeSeason,
+    tradeHistory: state.tradeState.tradeHistory,
+    allPlayers: state.players,
+  });
+}
+
+export function calculateStateLeaguePayrolls(
+  state: FullGameState,
+  teamIds: readonly string[],
+) {
+  const financeSeason = stateTradeFinanceSeason(state);
+  return calculateLeaguePayrolls(teamIds, state.players, {
     season: financeSeason,
     tradeHistory: state.tradeState.tradeHistory,
     allPlayers: state.players,

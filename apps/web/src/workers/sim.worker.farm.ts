@@ -207,12 +207,18 @@ export function recordProspectBondDebuts(
   state: Pick<ProspectFarmState, 'season' | 'players' | 'seasonStats' | 'seasonState' | 'prospectBonds'>,
 ) {
   const seasonStats = getSeasonStats(state);
+  const playersById = new Map<string, GeneratedPlayer>();
+  for (const player of state.players) {
+    if (!playersById.has(player.id)) {
+      playersById.set(player.id, player);
+    }
+  }
   const debutedPlayerIds: string[] = [];
   state.prospectBonds = sortBonds(state.prospectBonds.map((bond) => {
     if (bond.debutSeason != null) {
       return bond;
     }
-    const player = state.players.find((candidate) => candidate.id === bond.prospectId);
+    const player = playersById.get(bond.prospectId);
     const statLine = seasonStats.get(bond.prospectId);
     if (!player || player.rosterStatus !== 'MLB' || ((statLine?.pa ?? 0) <= 0 && (statLine?.ip ?? 0) <= 0)) {
       return bond;

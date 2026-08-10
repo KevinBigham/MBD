@@ -2,6 +2,13 @@
 
 The live repository's package files are authoritative. At each goal start, record exact commands in the run plan.
 
+Kevin's standing authorization in `STANDING_USER_AUTHORITY.md` permits remote,
+deployment, and release work when the campaign reaches it. Authorization does
+not make a candidate releasable: every applicable gate below must still pass.
+Failed gates stop the affected candidate. They do not create a permission-only
+wait when a fresh bounded correction or proof route can be frozen without
+changing the product contract.
+
 ## Baseline
 
 - cleanly identify pre-existing failures before edits;

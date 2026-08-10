@@ -16,6 +16,7 @@ import {
 import type { GMPersonality } from '../trade/tradeAI.js';
 import type { TradeHistoryEntry } from '@mbd/contracts';
 import { deriveTradePayrollAdjustment, roundTradeMoney } from './tradeFinance.js';
+import { deriveLeagueTradePayrollAdjustments, type TradePayrollAdjustment } from './tradeFinance.js';
 
 // ---------------------------------------------------------------------------
 // Financial Constants
@@ -965,6 +966,108 @@ export function calculateTeamPayroll(
     futureCommitments,
     capSpace,
   };
+}
+
+function calculateProjectedTeamPayroll(
+  teamId: string,
+  players: GeneratedPlayer[],
+  ordinaryDeadMoney: number,
+  tradeAdjustment: TradePayrollAdjustment,
+  futureAdjustments: ReadonlyMap<number, TradePayrollAdjustment>,
+): TeamPayroll {
+  let mlbPayroll = 0;
+  let minorsPayroll = 0;
+
+  for (const player of players) {
+    if (player.teamId !== teamId) continue;
+    const salary = roundTradeMoney(Math.max(
+      0,
+      player.contract.annualSalary - (tradeAdjustment.salaryCreditsByPlayerId.get(player.id) ?? 0),
+    ));
+    if (player.rosterStatus === 'MLB') {
+      mlbPayroll += salary;
+    } else {
+      minorsPayroll += salary;
+    }
+  }
+
+  mlbPayroll = Math.round(mlbPayroll * 100) / 100;
+  minorsPayroll = Math.round(minorsPayroll * 100) / 100;
+
+  const deadMoney = roundTradeMoney(ordinaryDeadMoney + tradeAdjustment.deadMoneyCharges);
+  const totalPayroll = roundTradeMoney(mlbPayroll + minorsPayroll + deadMoney);
+  const luxuryTaxPayroll = roundTradeMoney(mlbPayroll + deadMoney);
+  const futureCommitments: number[] = [];
+  for (let y = 1; y <= FUTURE_COMMITMENT_YEARS; y++) {
+    const futureAdjustment = futureAdjustments.get(y)!;
+    let committed = 0;
+    for (const player of players) {
+      if (player.teamId !== teamId) continue;
+      if (player.contract.years > y) {
+        committed += Math.max(
+          0,
+          player.contract.annualSalary - (futureAdjustment.salaryCreditsByPlayerId.get(player.id) ?? 0),
+        );
+      }
+    }
+    committed += futureAdjustment.deadMoneyCharges;
+    futureCommitments.push(Math.round(committed * 100) / 100);
+  }
+
+  const capSpace = Math.round((LUXURY_TAX_THRESHOLD - luxuryTaxPayroll) * 100) / 100;
+  return {
+    teamId,
+    totalPayroll,
+    luxuryTaxPayroll,
+    mlbPayroll,
+    minorsPayroll,
+    deadMoney,
+    retainedSalaryCharges: tradeAdjustment.retainedSalaryCharges,
+    cashConsiderationCharges: tradeAdjustment.cashConsiderationCharges,
+    releasedContractCharges: tradeAdjustment.releasedContractCharges,
+    acquiredSalaryCredits: tradeAdjustment.totalExternalSalaryCredits,
+    futureCommitments,
+    capSpace,
+  };
+}
+
+/**
+ * Calculate an exact ordered set of payrolls from one operation-local trade
+ * projection. The single-team oracle above remains authoritative for parity.
+ */
+export function calculateLeaguePayrolls(
+  teamIds: readonly string[],
+  players: GeneratedPlayer[],
+  context: TeamPayrollContext,
+): ReadonlyMap<string, TeamPayroll> {
+  const targetSeasons = [
+    context.season,
+    ...Array.from({ length: FUTURE_COMMITMENT_YEARS }, (_, index) => context.season + index + 1),
+  ];
+  const adjustments = deriveLeagueTradePayrollAdjustments(
+    teamIds,
+    context.allPlayers ?? players,
+    context.tradeHistory,
+    context.season,
+    targetSeasons,
+  );
+  const result = new Map<string, TeamPayroll>();
+  for (const teamId of teamIds) {
+    if (result.has(teamId)) continue;
+    const teamAdjustments = adjustments.get(teamId);
+    if (!teamAdjustments) continue;
+    result.set(teamId, calculateProjectedTeamPayroll(
+      teamId,
+      players,
+      context.deadMoney ?? 0,
+      teamAdjustments.get(context.season)!,
+      new Map(Array.from({ length: FUTURE_COMMITMENT_YEARS }, (_, index) => [
+        index + 1,
+        teamAdjustments.get(context.season + index + 1)!,
+      ])),
+    ));
+  }
+  return result;
 }
 
 /**

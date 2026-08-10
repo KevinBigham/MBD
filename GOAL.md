@@ -38,14 +38,14 @@ ADR and must not block web release.
 - Roadmap item 17, contract-safe salary retention and player-linked cash
   reimbursement in two-team trades, is complete under Goal 27 /
   `docs/codex/runs/ECON-TRADE-RETENTION-1/`.
-- Roadmap item 18, the 30-season multi-seed economy soak, is blocked. Goal 29 /
-  `ECON-LONG-SAVE-PERF-1` remains landed but insufficient. Goal 30 /
-  `ECON-LATE-HORIZON-PERF-1` then proved a second narrow optimization exact and
-  fast at season 30, but its sole primary readiness forecast timed out and
-  measured 2,766,160ms adjusted, already above the full 2,040,000ms admission
-  cap. The candidate remains uncommitted/unlanded; continuation, final Goal 18,
-  and item 19 did not start. A new bounded prerequisite or explicit contract
-  amendment is required before resumption.
+- Roadmap item 18, the 30-season multi-seed economy soak, is active through
+  Goal 32 / `ECON-LATE-HORIZON-HISTORY-PERF-1`. Its four-seam production
+  optimization is frozen and independently source-reviewed `0/0/0`; prior
+  custom and direct proof candidates stopped before timing and remain
+  evidence-only. Kevin's standing authority now opens one fresh persistent,
+  dependency-prepared, corrected one-file proof route with static `0/0/0`
+  review before its sole import probe. The `R/P/H` diagnostic remains unspent,
+  every performance cap remains unchanged, and item 19 remains closed.
 
 ## Remaining Release Gates
 
@@ -62,5 +62,7 @@ ADR and must not block web release.
 ## Git Safety
 
 Use one bounded `codex/` branch/worktree per slice. Preserve user-owned dirty
-files, stage only verified slice paths, land by local fast-forward, and never
-push, deploy, tag, publish, or release without explicit authorization.
+files, stage only verified slice paths, and land by local fast-forward. Kevin's
+standing authorization in `docs/codex/STANDING_USER_AUTHORITY.md` covers
+remote and release actions when the accepted campaign step requires them;
+technical release gates still decide readiness.

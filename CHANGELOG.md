@@ -34,6 +34,33 @@
 
 ### Save And Determinism
 
+- Goal 32's persistent fresh direct-proof route passed static Sol review with
+  zero actionable P0-P2, its one-shot import probe, focused regression,
+  typecheck, and an exact repository-owned recapture/hostile validation of the
+  97,077,025-byte season-15 and 188,382,012-byte season-29 checkpoints. The
+  single no-retry R/P/H diagnostic then measured only `271,978ms` of recovery:
+  projected `2,676,912ms` remained `738,912ms` above the unchanged
+  `1,938,000ms` gate. No retry, final admission, landing, deployment, or release
+  ran; the candidate remains evidence-only.
+
+- Goal 32's draft CI caught the worker core `1,533` raw / `725` gzip bytes over
+  its unchanged budget. The exact type-leaf trade-finance module now emits as
+  its own worker chunk; core is `452,347` raw / `146,487` gzip and the new
+  chunk is PWA-precache-bound. No simulation, RNG, save, schema, receipt,
+  performance cap, seed, horizon, or gameplay behavior changed. Local
+  no-cache full tests, root typecheck, determinism, production build, and
+  retries-disabled Playwright `14/14` are green; independent Sol review is
+  `MERGE_READY` with zero actionable P0-P2.
+
+- Reconciled Goal 32 after external cleanup removed its temporary-only proof
+  checkouts and authenticated checkpoint files. All committed source and review
+  history remains intact; lost dirty bytes are no longer described as
+  preserved evidence. Kevin's standing authority now opens one persistent,
+  frozen-lockfile, corrected one-file proof successor with independent static
+  review before its sole import probe, plus an exact checkpoint restore or one
+  canonical recapture before the still-unspent diagnostic. No gameplay, RNG,
+  save, schema, receipt, seed, horizon, timeout, or acceptance cap changed.
+
 - Recorded Goal 31 `ECON-MILESTONE-PATH-PERF-1` as blocked without landing its
   four-file production candidate. The milestone/ceremony lookup reduction
   preserved exact season-30 semantic, state, RNG, round-trip, row, population,

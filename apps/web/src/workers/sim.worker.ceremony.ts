@@ -383,10 +383,17 @@ function buildCumulativeMilestoneStats(state: FullGameState) {
 
 export function queueCareerMilestoneMoments(state: FullGameState) {
   const cumulativeStats = buildCumulativeMilestoneStats(state);
-  const moments = checkMilestones(cumulativeStats, state.players, state.season, state.day);
+  const eligibilityProbe = checkMilestones(cumulativeStats, [], state.season, state.day);
+  const qualifyingPlayerIds = new Set(eligibilityProbe.flatMap((moment) => moment.playerIds));
+  if (qualifyingPlayerIds.size === 0) {
+    return;
+  }
+
+  const qualifyingPlayers = state.players.filter((player) => qualifyingPlayerIds.has(player.id));
+  const moments = checkMilestones(cumulativeStats, qualifyingPlayers, state.season, state.day);
 
   for (const moment of moments) {
-    const player = state.players.find((candidate) => candidate.id === moment.playerIds[0]);
+    const player = qualifyingPlayers.find((candidate) => candidate.id === moment.playerIds[0]);
     if (!player || player.teamId !== state.userTeamId) {
       continue;
     }

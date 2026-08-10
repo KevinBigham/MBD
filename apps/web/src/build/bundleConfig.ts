@@ -198,6 +198,12 @@ export function resolveWorkerManualChunk(id: string): string | undefined {
     return 'game-engine-queries';
   }
 
+  // League trade-payroll projection is a worker-only finance module. Keep its
+  // operation-local implementation out of the tight deterministic core chunk.
+  if (normalized.endsWith('/packages/sim-core/src/finance/tradeFinance.ts')) {
+    return 'game-engine-trade-finance';
+  }
+
   if (includesPath(normalized, '/packages/sim-core/src/')) {
     return 'game-engine-core';
   }

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   GameRNG,
   generatePlayer,
@@ -480,6 +482,19 @@ describe('markAsRead', () => {
 });
 
 describe('deduplicateNews', () => {
+  const newsItem = (id: string, overrides: Partial<NewsItem> = {}): NewsItem => ({
+    id,
+    headline: id,
+    body: `${id} body`,
+    priority: 2,
+    category: 'injury',
+    timestamp: 'S1D10',
+    relatedPlayerIds: ['p1'],
+    relatedTeamIds: ['NYT'],
+    read: false,
+    ...overrides,
+  });
+
   it('removes duplicates with same category, timestamp, and players', () => {
     const rng = new GameRNG(42);
     const items: NewsItem[] = [
@@ -555,6 +570,103 @@ describe('deduplicateNews', () => {
 
     expect(deduplicateNews(items)[0]?.id).toBe('news-a');
     expect(deduplicateNews([...items].reverse())[0]?.id).toBe('news-a');
+  });
+
+  it('preserves original references, malformed ranks, duplicate player IDs, and full comparator ties', () => {
+    const tiedFirst: NewsItem = {
+      id: 'full-tie', headline: 'First full tie', body: 'Body', priority: 2,
+      category: 'injury', timestamp: 'malformed', relatedPlayerIds: ['p2', 'p1', 'p1'], relatedTeamIds: [], read: false,
+    };
+    const tiedSecond: NewsItem = {
+      ...tiedFirst,
+      headline: 'Second full tie',
+    };
+    const distinct: NewsItem = {
+      ...tiedFirst,
+      id: 'distinct', category: 'trade', relatedPlayerIds: ['p3'],
+    };
+    const output = deduplicateNews([tiedFirst, tiedSecond, distinct]);
+    expect(output).toEqual([distinct, tiedFirst]);
+    expect(output[1]).toBe(tiedFirst);
+    expect(deduplicateNews([tiedSecond, tiedFirst, distinct])[1]).toBe(tiedSecond);
+  });
+
+  const unique = newsItem('unique');
+  const duplicateLowerPriority = newsItem('duplicate-low', { priority: 4 });
+  const duplicateHigherPriority = newsItem('duplicate-high', { priority: 1 });
+  const equalPriorityLaterId = newsItem('equal-z');
+  const equalPriorityEarlierId = newsItem('equal-a');
+  const malformedLaterId = newsItem('malformed-z', {
+    category: 'trade',
+    timestamp: 'malformed-z',
+    relatedPlayerIds: ['p2'],
+  });
+  const malformedEarlierId = newsItem('malformed-a', {
+    category: 'standings',
+    timestamp: 'malformed-a',
+    relatedPlayerIds: ['p3'],
+  });
+  const duplicatePlayerIds = newsItem('players-a', { relatedPlayerIds: ['p1', 'p1'] });
+  const singlePlayerId = newsItem('players-b', { relatedPlayerIds: ['p1'] });
+  const permutedPlayerIdsLater = newsItem('permuted-z', { relatedPlayerIds: ['p2', 'p1'] });
+  const permutedPlayerIdsEarlier = newsItem('permuted-a', { relatedPlayerIds: ['p1', 'p2'] });
+  const fullTieFirst = newsItem('full-tie', { headline: 'first full tie' });
+  const fullTieSecond = newsItem('full-tie', { headline: 'second full tie' });
+
+  it.each([
+    { label: 'empty input', input: [] as NewsItem[], expected: [] as NewsItem[] },
+    { label: 'one unique input', input: [unique], expected: [unique] },
+    {
+      label: 'priority duplicate',
+      input: [duplicateLowerPriority, duplicateHigherPriority],
+      expected: [duplicateHigherPriority],
+    },
+    {
+      label: 'equal-priority duplicate',
+      input: [equalPriorityLaterId, equalPriorityEarlierId],
+      expected: [equalPriorityEarlierId],
+    },
+    {
+      label: 'malformed distinct timestamps',
+      input: [malformedLaterId, malformedEarlierId],
+      expected: [malformedEarlierId, malformedLaterId],
+    },
+    {
+      label: 'duplicate player IDs remain key-significant',
+      input: [singlePlayerId, duplicatePlayerIds],
+      expected: [duplicatePlayerIds, singlePlayerId],
+    },
+    {
+      label: 'permuted distinct player IDs deduplicate',
+      input: [permutedPlayerIdsLater, permutedPlayerIdsEarlier],
+      expected: [permutedPlayerIdsEarlier],
+    },
+    {
+      label: 'full comparator tie keeps input-first reference',
+      input: [fullTieFirst, fullTieSecond],
+      expected: [fullTieFirst],
+    },
+  ])('returns the exact original-reference output for $label', ({ input, expected }) => {
+    const output = deduplicateNews(input);
+    expect(output).toEqual(expected);
+    expect(output).toHaveLength(expected.length);
+    output.forEach((item, index) => expect(item).toBe(expected[index]));
+  });
+
+  it('decorates timestamp ranks and player keys once per input row outside its comparator', () => {
+    const source = readFileSync(fileURLToPath(new URL('../src/narrative/newsFeed.ts', import.meta.url)), 'utf8');
+    const start = source.indexOf('export function deduplicateNews(');
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    let end = bodyStart;
+    for (; end < source.length; end += 1) {
+      if (source[end] === '{') depth += 1;
+      if (source[end] === '}' && --depth === 0) break;
+    }
+    const body = source.slice(bodyStart, end + 1);
+    expect(body.match(/parseTimestampRank\(/g)).toHaveLength(1);
+    expect(body.match(/relatedPlayerIds\].sort/g)).toHaveLength(1);
+    expect(body.indexOf('parseTimestampRank(')).toBeLessThan(body.indexOf('const compareDecoratedNews'));
   });
 });
 

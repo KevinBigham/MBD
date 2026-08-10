@@ -50,6 +50,13 @@ The plan is a living source-grounded artifact, not a pre-coding essay. Update it
 
 ## Planning rules
 
+- Standing user authorization is canonical at
+  `docs/codex/STANDING_USER_AUTHORITY.md`. Plans must not create a
+  permission-only stop; record the technically safest bounded decision and
+  continue. Product contradictions and failed gates remain real stop
+  conditions for the affected candidate. When a distinct bounded successor is
+  technically safe, give it a fresh identity and explicit gates/retry budget
+  and continue without reopening user permission.
 - Plan mode may inspect and write plan/docs, but should not edit production code until source truth and design are recorded.
 - If source contradicts the goal, write the contradiction and stop instead of forcing the requested architecture.
 - Keep the plan concise enough to remain useful during the run.
